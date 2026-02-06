@@ -14,6 +14,8 @@ struct TrainStatsSummaryView: View {
     let journeyDate: Date?
     let showDepartureOdds: Bool
     let onTrainTap: ((String) -> Void)?
+    let prefetchedSummary: OperationsSummaryResponse?
+    let prefetchedForecast: DelayForecastResponse?
 
     @State private var summary: OperationsSummaryResponse?
     @State private var delayForecast: DelayForecastResponse?
@@ -22,13 +24,15 @@ struct TrainStatsSummaryView: View {
     @State private var hasError = false
     @Environment(\.scenePhase) private var scenePhase
 
-    init(trainId: String, fromStation: String?, toStation: String?, journeyDate: Date? = nil, showDepartureOdds: Bool = true, onTrainTap: ((String) -> Void)? = nil) {
+    init(trainId: String, fromStation: String?, toStation: String?, journeyDate: Date? = nil, showDepartureOdds: Bool = true, onTrainTap: ((String) -> Void)? = nil, prefetchedSummary: OperationsSummaryResponse? = nil, prefetchedForecast: DelayForecastResponse? = nil) {
         self.trainId = trainId
         self.fromStation = fromStation
         self.toStation = toStation
         self.journeyDate = journeyDate
         self.showDepartureOdds = showDepartureOdds
         self.onTrainTap = onTrainTap
+        self.prefetchedSummary = prefetchedSummary
+        self.prefetchedForecast = prefetchedForecast
     }
 
     var body: some View {
@@ -48,7 +52,13 @@ struct TrainStatsSummaryView: View {
             }
         }
         .task {
-            await fetchSummary()
+            if let prefetched = prefetchedSummary {
+                summary = prefetched
+                delayForecast = prefetchedForecast
+                isLoading = false
+            } else {
+                await fetchSummary()
+            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {

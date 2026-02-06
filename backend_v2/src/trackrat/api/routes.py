@@ -760,7 +760,7 @@ async def get_operations_summary(
     - body: Detailed summary (2-4 sentences) for expanded view
     - metrics: Raw statistics for optional UI display
     """
-    from trackrat.services.summary import SummaryService
+    from trackrat.services.summary import summary_service
 
     logger.info(
         "get_operations_summary_request",
@@ -784,8 +784,6 @@ async def get_operations_summary(
                 status_code=400,
                 detail="train_id is required for train scope",
             )
-
-    summary_service = SummaryService()
 
     if scope == "network":
         summary = await summary_service.get_network_summary(db, data_source)

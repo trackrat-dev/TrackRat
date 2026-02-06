@@ -7,10 +7,11 @@ It queries journey_stops directly to find how long recent trains took.
 """
 
 import statistics
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, distinct, func, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.functions import coalesce
 from structlog import get_logger
@@ -108,6 +109,29 @@ class DirectArrivalForecaster:
             predictions_made = 0
             segments_processed = 0
 
+            # Collect station codes for batch query
+            route_station_codes = []
+            for s in stops[start_index:]:
+                try:
+                    route_station_codes.append(_get_station_code(s))
+                except AttributeError as e:
+                    logger.error(f"Failed to get station code: {e}")
+                    break
+
+            # Batch-fetch all segment transit times in one query
+            try:
+                all_transit_data = await self._get_all_segment_transit_times(
+                    db,
+                    route_station_codes,
+                    journey.data_source or "NJT",
+                    journey.line_code,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Failed to batch-fetch transit data: {e}", exc_info=True
+                )
+                all_transit_data = {}
+
             # Process each segment from the starting point
             for i in range(start_index, len(stops) - 1):
                 segments_processed += 1
@@ -131,18 +155,8 @@ class DirectArrivalForecaster:
                     logger.debug(f"Skipping {to_code} - already departed")
                     continue
 
-                # Get transit time for this segment
-                try:
-                    transit_data = await self._get_segment_transit_time(
-                        db,
-                        from_code,
-                        to_code,
-                        journey.data_source or "NJT",
-                        journey.line_code,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to get transit data: {e}", exc_info=True)
-                    transit_data = None
+                # Look up pre-fetched transit data for this segment
+                transit_data = all_transit_data.get((from_code, to_code))
 
                 if transit_data is None:
                     logger.debug(
@@ -213,6 +227,151 @@ class DirectArrivalForecaster:
                 train_id=journey.train_id if journey else None,
             )
 
+    async def _get_all_segment_transit_times(
+        self,
+        db: AsyncSession,
+        station_codes: list[str],
+        data_source: str,
+        line_code: str | None = None,
+    ) -> dict[tuple[str, str], dict[str, float]]:
+        """
+        Batch-fetch transit times for all consecutive station pairs in one query.
+
+        Instead of N-1 individual queries (one per segment), this fetches all
+        relevant stops in a single query and computes segment times in Python.
+
+        Args:
+            db: Database session
+            station_codes: Ordered list of station codes along the route
+            data_source: Train data source (NJT, AMTRAK, etc.)
+            line_code: Optional line code filter
+
+        Returns:
+            Dict mapping (from_station, to_station) to {"avg": float, "samples": int}.
+            Missing pairs (insufficient data) are omitted from the result.
+        """
+        if len(station_codes) < 2:
+            return {}
+
+        cutoff_time = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
+        unique_codes = list(dict.fromkeys(station_codes))  # dedupe preserving order
+
+        # Single query: fetch all recent stops at relevant stations
+        stmt = (
+            select(
+                JourneyStop.journey_id,
+                JourneyStop.station_code,
+                JourneyStop.stop_sequence,
+                coalesce(
+                    JourneyStop.actual_departure, JourneyStop.scheduled_departure
+                ).label("departure_time"),
+                coalesce(
+                    JourneyStop.actual_arrival, JourneyStop.scheduled_arrival
+                ).label("arrival_time"),
+            )
+            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    TrainJourney.data_source == data_source,
+                    JourneyStop.station_code.in_(unique_codes),
+                    # Narrow scan to recent journeys only
+                    TrainJourney.journey_date
+                    >= (now_et() - timedelta(days=1)).date(),
+                )
+            )
+        )
+
+        if line_code:
+            stmt = stmt.where(TrainJourney.line_code == line_code)
+
+        result = await db.execute(stmt)
+
+        # Group stops by journey_id
+        journeys_stops: dict[int, list] = defaultdict(list)
+        for row in result:
+            journeys_stops[row.journey_id].append(row)
+
+        # For each historical journey, compute transit times for each segment pair
+        segment_times: dict[tuple[str, str], list[float]] = defaultdict(list)
+
+        for journey_id, j_stops in journeys_stops.items():
+            # Build lookup: station_code -> (first stop for departure, last stop for arrival)
+            # This matches the original MIN/MAX semantics for handling duplicate stations
+            first_at: dict[str, Any] = {}  # earliest stop_sequence per station
+            last_at: dict[str, Any] = {}  # latest stop_sequence per station
+
+            for stop in j_stops:
+                code = stop.station_code
+                if code not in first_at or stop.stop_sequence < first_at[code].stop_sequence:
+                    first_at[code] = stop
+                if code not in last_at or stop.stop_sequence > last_at[code].stop_sequence:
+                    last_at[code] = stop
+
+            # Check each consecutive pair in the route
+            for i in range(len(station_codes) - 1):
+                from_code = station_codes[i]
+                to_code = station_codes[i + 1]
+
+                from_stop = first_at.get(from_code)
+                to_stop = last_at.get(to_code)
+
+                if not from_stop or not to_stop:
+                    continue
+
+                # Ensure from comes before to (same as original HAVING clause)
+                if from_stop.stop_sequence >= to_stop.stop_sequence:
+                    continue
+
+                # Check arrival recency (same as original cutoff filter)
+                if not to_stop.arrival_time:
+                    continue
+                arr_time = ensure_timezone_aware(to_stop.arrival_time)
+                if arr_time < cutoff_time:
+                    continue
+
+                # Compute transit time
+                if not from_stop.departure_time:
+                    continue
+                dep_time = ensure_timezone_aware(from_stop.departure_time)
+                minutes = (arr_time - dep_time).total_seconds() / 60.0
+
+                if 0 < minutes <= self.MAX_SEGMENT_MINUTES:
+                    segment_times[(from_code, to_code)].append(minutes)
+                    logger.debug(
+                        f"Found recent segment: {from_code}→{to_code} = {minutes:.1f}min "
+                        f"(arrived {to_stop.arrival_time})"
+                    )
+                else:
+                    logger.debug(
+                        f"Skipped unreasonable time: {minutes:.1f}min for {from_code}→{to_code}"
+                    )
+
+        # Convert to result format, only including pairs with sufficient samples
+        result_dict: dict[tuple[str, str], dict[str, float]] = {}
+        for i in range(len(station_codes) - 1):
+            pair = (station_codes[i], station_codes[i + 1])
+            times = segment_times.get(pair, [])
+            if len(times) >= self.MIN_SAMPLES:
+                result_dict[pair] = {
+                    "avg": statistics.median(times),
+                    "samples": len(times),
+                }
+            else:
+                logger.debug(
+                    f"Insufficient recent segments for {pair[0]}→{pair[1]}: "
+                    f"found {len(times)}, need {self.MIN_SAMPLES}"
+                )
+
+        logger.info(
+            "Batch segment query complete",
+            station_count=len(unique_codes),
+            segment_pairs=len(station_codes) - 1,
+            segments_with_data=len(result_dict),
+            total_journeys_scanned=len(journeys_stops),
+        )
+
+        return result_dict
+
     async def _get_segment_transit_time(
         self,
         db: AsyncSession,
@@ -222,149 +381,17 @@ class DirectArrivalForecaster:
         line_code: str | None = None,
     ) -> dict[str, float] | None:
         """
-        Calculate transit time from segments that completed recently.
+        Calculate transit time for a single segment.
 
-        A segment is considered "recent" if the arrival at the destination
-        station occurred within LOOKBACK_HOURS.
+        Delegates to the batch method for a single pair.
 
         Returns:
             Dict with 'avg' and 'samples' keys, or None if insufficient data
         """
-        cutoff_time = now_et() - timedelta(hours=self.LOOKBACK_HOURS)
-
-        # Single query that gets segment data and filters on arrival time.
-        # Only includes trains that have actually arrived at the to-station
-        # (actual_arrival IS NOT NULL) to avoid contaminating samples with
-        # schedule-based data from trains still en route.
-        stmt = (
-            select(
-                JourneyStop.journey_id,
-                func.min(
-                    case(
-                        (
-                            JourneyStop.station_code == from_station,
-                            JourneyStop.stop_sequence,
-                        )
-                    )
-                ).label("from_sequence"),
-                func.max(
-                    case(
-                        (
-                            JourneyStop.station_code == from_station,
-                            coalesce(
-                                JourneyStop.actual_departure,
-                                JourneyStop.scheduled_departure,
-                            ),
-                        )
-                    )
-                ).label("departure_time"),
-                func.max(
-                    case(
-                        (
-                            JourneyStop.station_code == to_station,
-                            JourneyStop.stop_sequence,
-                        )
-                    )
-                ).label("to_sequence"),
-                func.max(
-                    case(
-                        (
-                            JourneyStop.station_code == to_station,
-                            JourneyStop.actual_arrival,
-                        )
-                    )
-                ).label("arrival_time"),
-            )
-            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
-            .where(
-                and_(
-                    TrainJourney.data_source == data_source,
-                    JourneyStop.station_code.in_([from_station, to_station]),
-                )
-            )
-            .group_by(JourneyStop.journey_id)
-            .having(
-                and_(
-                    func.count(distinct(JourneyStop.station_code)) == 2,
-                    # Ensure from comes before to
-                    func.min(
-                        case(
-                            (
-                                JourneyStop.station_code == from_station,
-                                JourneyStop.stop_sequence,
-                            )
-                        )
-                    )
-                    < func.max(
-                        case(
-                            (
-                                JourneyStop.station_code == to_station,
-                                JourneyStop.stop_sequence,
-                            )
-                        )
-                    ),
-                    # Only include trains that actually arrived (not NULL)
-                    func.max(
-                        case(
-                            (
-                                JourneyStop.station_code == to_station,
-                                JourneyStop.actual_arrival,
-                            )
-                        )
-                    )
-                    .isnot(None),
-                    # Filter on recency: actual arrival within lookback window
-                    func.max(
-                        case(
-                            (
-                                JourneyStop.station_code == to_station,
-                                JourneyStop.actual_arrival,
-                            )
-                        )
-                    )
-                    >= cutoff_time,
-                )
-            )
+        results = await self._get_all_segment_transit_times(
+            db, [from_station, to_station], data_source, line_code
         )
-
-        # Add line filter if provided
-        if line_code:
-            stmt = stmt.where(TrainJourney.line_code == line_code)
-
-        result = await db.execute(stmt)
-        transit_times = []
-
-        for row in result:
-            if row.departure_time and row.arrival_time:
-                delta = ensure_timezone_aware(row.arrival_time) - ensure_timezone_aware(
-                    row.departure_time
-                )
-                minutes = delta.total_seconds() / 60.0
-
-                # Validate the time is reasonable (positive and not too long)
-                if 0 < minutes <= self.MAX_SEGMENT_MINUTES:
-                    transit_times.append(minutes)
-                    logger.debug(
-                        f"Found recent segment: {from_station}→{to_station} = {minutes:.1f}min "
-                        f"(arrived {row.arrival_time})"
-                    )
-                else:
-                    logger.debug(
-                        f"Skipped unreasonable time: {minutes:.1f}min for {from_station}→{to_station}"
-                    )
-
-        # Check if we have enough samples
-        if len(transit_times) >= self.MIN_SAMPLES:
-            return {
-                "avg": statistics.median(transit_times),
-                "samples": len(transit_times),
-            }
-
-        logger.debug(
-            f"Insufficient recent segments for {from_station}→{to_station}: "
-            f"found {len(transit_times)}, need {self.MIN_SAMPLES}"
-        )
-        return None
+        return results.get((from_station, to_station))
 
     def _determine_starting_point(
         self, stops: list[Any], user_origin: str | None
