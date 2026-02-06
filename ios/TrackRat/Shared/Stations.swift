@@ -2589,7 +2589,6 @@ struct Stations {
     private static let stationSystemOverrides: [String: Set<String>] = [
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
     ]
-    ]
 
     /// Cached mapping of station codes to their systems, derived from RouteTopology.
     /// Computed once on first access for performance.
