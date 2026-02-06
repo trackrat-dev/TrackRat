@@ -34,6 +34,10 @@ jobs:
         working-directory: ./webpage_v2
         run: npm run build
 
+      - name: Copy index.html as 404.html for SPA routing
+        working-directory: ./webpage_v2
+        run: cp dist/index.html dist/404.html
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:

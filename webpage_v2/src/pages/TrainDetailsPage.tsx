@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { TrainDetails } from '../types';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -11,8 +11,14 @@ import { getTodayDateString } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
 
 export function TrainDetailsPage() {
-  const { trainId, from, to } = useParams<{ trainId: string; from?: string; to?: string }>();
+  const { trainId, from: fromPath, to: toPath } = useParams<{ trainId: string; from?: string; to?: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Merge path params with query params for iOS universal link compatibility
+  // Path params take priority: /train/123/NY/NP, query params as fallback: /train/123?from=NY&to=NP
+  const from = fromPath || searchParams.get('from') || undefined;
+  const to = toPath || searchParams.get('to') || undefined;
 
   const [train, setTrain] = useState<TrainDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +45,30 @@ export function TrainDetailsPage() {
     const interval = setInterval(fetchTrainDetails, 30000);
     return () => clearInterval(interval);
   }, [trainId]);
+
+  // Attempt iOS deep link on mobile Safari — try to open in native app
+  useEffect(() => {
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (!isIOS || !trainId) return;
+
+    const deepLinkUrl = `trackrat://train/${trainId}${from ? `?from=${from}` : ''}${to ? `${from ? '&' : '?'}to=${to}` : ''}`;
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = deepLinkUrl;
+    document.body.appendChild(iframe);
+
+    // Clean up iframe after attempt
+    const timeout = setTimeout(() => {
+      document.body.removeChild(iframe);
+    }, 2000);
+
+    return () => {
+      clearTimeout(timeout);
+      if (iframe.parentNode) {
+        document.body.removeChild(iframe);
+      }
+    };
+  }, [trainId, from, to]);
 
   // Filter stops based on user's journey (from/to params)
   // Must be called before early returns to maintain hook order
@@ -81,7 +111,7 @@ export function TrainDetailsPage() {
   }, [train, from, to]);
 
   if (!trainId) {
-    return <ErrorMessage message="Invalid train ID" onRetry={() => navigate('/')} />;
+    return <ErrorMessage message="Invalid train ID" onRetry={() => navigate('/departures')} />;
   }
 
   if (loading && !train) {

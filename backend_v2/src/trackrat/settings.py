@@ -96,15 +96,6 @@ class Settings(BaseSettings):
         default=True,
         description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
     )
-    # CORS Settings
-    cors_allowed_origins: list[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:3000",
-            "http://localhost:5173",
-        ],
-        description="Allowed CORS origins. Use ['*'] only for development without credentials.",
-    )
-
     # Monitoring
     enable_metrics: bool = Field(default=True, description="Enable Prometheus metrics")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(

@@ -78,7 +78,7 @@ export function TrainListPage() {
     return (
       <ErrorMessage
         message="Invalid route"
-        onRetry={() => navigate('/')}
+        onRetry={() => navigate('/departures')}
       />
     );
   }
@@ -87,7 +87,7 @@ export function TrainListPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/departures')}
           className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back
