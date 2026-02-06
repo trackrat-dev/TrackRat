@@ -374,7 +374,7 @@ async def get_train_details(
             origin_stop = next(
                 (s for s in stops if s.station.code == from_station), None
             )
-            if origin_stop and origin_stop.track is None:
+            if origin_stop and origin_stop.track is None and journey.train_id:
                 try:
                     from trackrat.services.historical_track_predictor import (
                         historical_track_predictor,
@@ -398,9 +398,7 @@ async def get_train_details(
 
                     if prediction:
                         track_prediction = TrackPrediction(
-                            platform_probabilities=prediction[
-                                "platform_probabilities"
-                            ],
+                            platform_probabilities=prediction["platform_probabilities"],
                             primary_prediction=prediction["primary_prediction"],
                             confidence=prediction["confidence"],
                             top_3=prediction["top_3"],
@@ -414,9 +412,7 @@ async def get_train_details(
                         error=str(e),
                     )
 
-    return TrainDetailsResponse(
-        train=train_details, track_prediction=track_prediction
-    )
+    return TrainDetailsResponse(train=train_details, track_prediction=track_prediction)
 
 
 @router.get("/{train_id}/history", response_model=TrainHistoryResponse)

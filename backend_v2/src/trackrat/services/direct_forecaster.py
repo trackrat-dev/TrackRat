@@ -127,9 +127,7 @@ class DirectArrivalForecaster:
                     journey.line_code,
                 )
             except Exception as e:
-                logger.error(
-                    f"Failed to batch-fetch transit data: {e}", exc_info=True
-                )
+                logger.error(f"Failed to batch-fetch transit data: {e}", exc_info=True)
                 all_transit_data = {}
 
             # Process each segment from the starting point
@@ -275,8 +273,7 @@ class DirectArrivalForecaster:
                     TrainJourney.data_source == data_source,
                     JourneyStop.station_code.in_(unique_codes),
                     # Narrow scan to recent journeys only
-                    TrainJourney.journey_date
-                    >= (now_et() - timedelta(days=1)).date(),
+                    TrainJourney.journey_date >= (now_et() - timedelta(days=1)).date(),
                 )
             )
         )
@@ -287,14 +284,14 @@ class DirectArrivalForecaster:
         result = await db.execute(stmt)
 
         # Group stops by journey_id
-        journeys_stops: dict[int, list] = defaultdict(list)
+        journeys_stops: dict[int, list[Any]] = defaultdict(list)
         for row in result:
             journeys_stops[row.journey_id].append(row)
 
         # For each historical journey, compute transit times for each segment pair
         segment_times: dict[tuple[str, str], list[float]] = defaultdict(list)
 
-        for journey_id, j_stops in journeys_stops.items():
+        for _, j_stops in journeys_stops.items():
             # Build lookup: station_code -> (first stop for departure, last stop for arrival)
             # This matches the original MIN/MAX semantics for handling duplicate stations
             first_at: dict[str, Any] = {}  # earliest stop_sequence per station
@@ -302,9 +299,15 @@ class DirectArrivalForecaster:
 
             for stop in j_stops:
                 code = stop.station_code
-                if code not in first_at or stop.stop_sequence < first_at[code].stop_sequence:
+                if (
+                    code not in first_at
+                    or stop.stop_sequence < first_at[code].stop_sequence
+                ):
                     first_at[code] = stop
-                if code not in last_at or stop.stop_sequence > last_at[code].stop_sequence:
+                if (
+                    code not in last_at
+                    or stop.stop_sequence > last_at[code].stop_sequence
+                ):
                     last_at[code] = stop
 
             # Check each consecutive pair in the route
