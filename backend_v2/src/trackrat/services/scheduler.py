@@ -910,6 +910,14 @@ class SchedulerService:
                 journey = await session.scalar(stmt)
 
                 if journey:
+                    # Skip expired, completed, or cancelled trains
+                    if (
+                        journey.is_expired
+                        or journey.is_completed
+                        or journey.is_cancelled
+                    ):
+                        continue
+
                     # Collect if no complete journey data or data is stale (>15 minutes)
                     needs_collection = (
                         not journey.has_complete_journey
@@ -1415,6 +1423,10 @@ class SchedulerService:
 
                 if not journey:
                     logger.warning("journey_not_found_sync", train_id=train_id)
+                    return None
+
+                if journey.is_expired:
+                    logger.debug("skipping_expired_train_sync", train_id=train_id)
                     return None
 
                 # Get train data from API (this is still async)

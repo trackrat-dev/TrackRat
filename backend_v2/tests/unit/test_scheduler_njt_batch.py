@@ -72,6 +72,9 @@ def mock_train_journey():
     journey.train_id = "3737"
     journey.has_complete_journey = False
     journey.last_updated_at = None
+    journey.is_expired = False
+    journey.is_completed = False
+    journey.is_cancelled = False
     return journey
 
 
@@ -87,6 +90,9 @@ class TestScheduleNJTBatchCollection:
         mock_journey = Mock(spec=TrainJourney)
         mock_journey.has_complete_journey = False
         mock_journey.last_updated_at = None
+        mock_journey.is_expired = False
+        mock_journey.is_completed = False
+        mock_journey.is_cancelled = False
 
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
             mock_get_session.return_value.__aenter__.return_value = mock_session
@@ -117,22 +123,33 @@ class TestScheduleNJTBatchCollection:
         mock_session = AsyncMock()
 
         # Mock different journey states
+        journey_defaults = dict(
+            is_expired=False, is_completed=False, is_cancelled=False
+        )
         journeys = {
             "3737": Mock(
                 spec=TrainJourney,
                 has_complete_journey=True,
                 last_updated_at=datetime(2025, 1, 1, 11, 50, 0),
+                **journey_defaults,
             ),  # 10 min ago - skip
             "3893": Mock(
-                spec=TrainJourney, has_complete_journey=False, last_updated_at=None
+                spec=TrainJourney,
+                has_complete_journey=False,
+                last_updated_at=None,
+                **journey_defaults,
             ),  # Never updated - collect
             "4501": Mock(
-                spec=TrainJourney, has_complete_journey=False, last_updated_at=None
+                spec=TrainJourney,
+                has_complete_journey=False,
+                last_updated_at=None,
+                **journey_defaults,
             ),  # Never updated - collect
             "1281": Mock(
                 spec=TrainJourney,
                 has_complete_journey=False,
                 last_updated_at=datetime(2025, 1, 1, 10, 0, 0),
+                **journey_defaults,
             ),  # 2 hours ago - collect
         }
 
@@ -194,6 +211,9 @@ class TestScheduleNJTBatchCollection:
         mock_journey = Mock(spec=TrainJourney)
         mock_journey.has_complete_journey = True
         mock_journey.last_updated_at = datetime(2025, 1, 1, 11, 55, 0)  # 5 min ago
+        mock_journey.is_expired = False
+        mock_journey.is_completed = False
+        mock_journey.is_cancelled = False
 
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
             mock_get_session.return_value.__aenter__.return_value = mock_session

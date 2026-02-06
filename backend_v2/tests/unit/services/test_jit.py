@@ -61,6 +61,7 @@ class TestJustInTimeUpdateService:
         journey.observation_type = "OBSERVED"
         journey.is_cancelled = False
         journey.is_completed = False
+        journey.is_expired = False
         journey.has_complete_journey = True
         journey.scheduled_departure = datetime.now(UTC) + timedelta(hours=2)
         journey.last_updated_at = datetime.now(UTC) - timedelta(minutes=5)
@@ -323,6 +324,7 @@ class TestJustInTimeUpdateService:
         amtrak_journey.observation_type = "OBSERVED"
         amtrak_journey.is_completed = False
         amtrak_journey.is_cancelled = False
+        amtrak_journey.is_expired = False
         amtrak_journey.has_complete_journey = False
         amtrak_journey.last_updated_at = datetime.now(UTC) - timedelta(minutes=5)
         amtrak_journey.api_error_count = 0
@@ -365,6 +367,10 @@ class TestJustInTimeUpdateService:
         sample_journey.data_source = "NJT"
         sample_journey.observation_type = "OBSERVED"
         sample_journey.is_completed = False
+        sample_journey.is_cancelled = False
+        sample_journey.is_expired = False
+        sample_journey.has_complete_journey = True
+        sample_journey.scheduled_departure = datetime.now(UTC) + timedelta(hours=2)
         sample_journey.last_updated_at = datetime.now(UTC) - timedelta(minutes=5)
         sample_journey.api_error_count = 0
 
@@ -409,6 +415,7 @@ class TestJITIntegrationScenarios:
         journey.observation_type = "OBSERVED"
         journey.is_completed = False
         journey.is_cancelled = False
+        journey.is_expired = False
         journey.has_complete_journey = True
         journey.scheduled_departure = datetime.now(UTC) + timedelta(hours=2)
         journey.last_updated_at = datetime.now(UTC) - timedelta(minutes=10)
@@ -442,6 +449,7 @@ class TestJITIntegrationScenarios:
         journey.has_complete_journey = False
         journey.is_completed = False
         journey.is_cancelled = False
+        journey.is_expired = False
         journey.last_updated_at = datetime.now(UTC)  # Fresh but incomplete
         journey.api_error_count = 0
 

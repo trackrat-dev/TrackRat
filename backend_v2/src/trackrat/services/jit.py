@@ -281,8 +281,8 @@ class JustInTimeUpdateService:
         Returns:
             True if data should be refreshed
         """
-        # Never refresh completed or cancelled journeys
-        if journey.is_completed or journey.is_cancelled:
+        # Never refresh completed, cancelled, or expired journeys
+        if journey.is_completed or journey.is_cancelled or journey.is_expired:
             return False
 
         # Always refresh if no complete journey data
