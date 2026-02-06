@@ -81,7 +81,7 @@ Lead with the open-source mission: "Real-time transit predictions. Free, open so
 - [ ] Merge PR #368 (LIRR + Metro-North)
 - [ ] Move Android to separate private repo
 - [ ] Complete issue #339 (secrets audit, CORS config, env setup docs)
-- [ ] Resolve license: currently GPL v3, board approved Apache 2.0 in principle (see Open Questions below)
+- [x] Resolve license: changed from GPL v3 to Apache 2.0
 - [ ] Write README.md for open-source audience
 - [ ] Write CONTRIBUTING.md
 - [ ] Clean up repo (dead code, TODOs, anything embarrassing)
@@ -174,7 +174,7 @@ Everything fires together as a coordinated launch:
 | Vision | Open-source general-purpose transit framework | 2026-02-06 |
 | Competitor framing | None — encourage the sector | 2026-02-06 |
 | Pricing | $2.99/month Pro, no changes | 2026-02-06 |
-| License | Apache 2.0 (pending — currently GPL v3, needs resolution) | 2026-02-06 |
+| License | Apache 2.0 (changed from GPL v3 on 2026-02-06) | 2026-02-06 |
 | Android | Excluded from public repo, moved to private | 2026-02-06 |
 | LIRR/Metro-North | Merge PR #368 before open-source launch | 2026-02-06 |
 | Infrastructure costs | Not a concern at this stage | 2026-02-06 |
@@ -185,7 +185,7 @@ Everything fires together as a coordinated launch:
 
 ## Open Questions
 
-1. **License resolution:** Board approved Apache 2.0 in principle, but repo currently has GPL v3. GPL v3 copyleft requires derivative works to also be GPL v3 — this conflicts with the vision of letting proprietary apps freely use our code. Apache 2.0 is permissive, includes patent protection, and aligns with the stated mission. Decision needed before going public.
+1. ~~**License resolution:**~~ **RESOLVED** — Changed from GPL v3 to Apache 2.0 on 2026-02-06.
 
 2. **App Store Connect analytics:** Do we have data on downloads, impressions, conversion rate? This would help baseline Phase 4 decisions.
 
