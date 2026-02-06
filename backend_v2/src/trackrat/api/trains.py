@@ -26,6 +26,7 @@ from trackrat.models.api import (
     RouteInfo,
     SimpleStationInfo,
     StopDetails,
+    TrackPrediction,
     TrainDetails,
     TrainDetailsResponse,
     TrainHistoryResponse,
@@ -363,7 +364,59 @@ async def get_train_details(
         predicted_arrival=predicted_arrival,
     )
 
-    return TrainDetailsResponse(train=train_details)
+    # Compute inline track prediction when track is unassigned at the user's origin
+    track_prediction = None
+    if include_predictions and from_station:
+        from trackrat.config.station_configs import station_has_ml_predictions
+
+        if station_has_ml_predictions(from_station):
+            # Check if the origin stop has a track assigned
+            origin_stop = next(
+                (s for s in stops if s.station.code == from_station), None
+            )
+            if origin_stop and origin_stop.track is None:
+                try:
+                    from trackrat.services.historical_track_predictor import (
+                        historical_track_predictor,
+                    )
+
+                    scheduled_departure = (
+                        journey.scheduled_departure
+                        if journey.scheduled_departure
+                        else now_et()
+                    )
+                    data_source = journey.data_source or "NJT"
+
+                    prediction = await historical_track_predictor.predict_track(
+                        station_code=from_station,
+                        train_id=journey.train_id,
+                        line_code=journey.line_code,
+                        data_source=data_source,
+                        scheduled_departure=scheduled_departure,
+                        db=db,
+                    )
+
+                    if prediction:
+                        track_prediction = TrackPrediction(
+                            platform_probabilities=prediction[
+                                "platform_probabilities"
+                            ],
+                            primary_prediction=prediction["primary_prediction"],
+                            confidence=prediction["confidence"],
+                            top_3=prediction["top_3"],
+                            station_code=from_station,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "inline_track_prediction_failed",
+                        train_id=journey.train_id,
+                        station=from_station,
+                        error=str(e),
+                    )
+
+    return TrainDetailsResponse(
+        train=train_details, track_prediction=track_prediction
+    )
 
 
 @router.get("/{train_id}/history", response_model=TrainHistoryResponse)

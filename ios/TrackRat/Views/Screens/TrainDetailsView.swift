@@ -158,14 +158,9 @@ struct TrainDetailsView: View {
             // Auto-refresh task that cancels automatically when view disappears
             guard isViewVisible else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
+                let interval = viewModel.pollingInterval
+                try? await Task.sleep(for: .seconds(interval))
                 guard !Task.isCancelled, isViewVisible else { break }
-
-                // Skip polling if LiveActivity is already tracking this train
-                if let activity = LiveActivityService.shared.currentActivity,
-                   activity.attributes.trainNumber == viewModel.train?.trainId {
-                    continue
-                }
 
                 await viewModel.refreshTrainDetails(
                     fromStationCode: appState.departureStationCode,
@@ -188,16 +183,6 @@ struct TrainDetailsView: View {
                let stops = train.stops,
                !stops.isEmpty {
                 appState.currentTrain = train
-            }
-        }
-        .onChange(of: viewModel.triggerBoardingHaptic) { oldValue, newValue in
-            if newValue {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                // Consider a brief delay before resetting if needed, or ensure ViewModel handles reset appropriately.
-                // For now, direct reset.
-                DispatchQueue.main.async {
-                    viewModel.triggerBoardingHaptic = false
-                }
             }
         }
         .onChange(of: viewModel.triggerTrackAssignedHaptic) { oldValue, newValue in
@@ -784,7 +769,6 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isLoadingStops = false  // True when we have partial train data awaiting stops
     @Published var error: String?
-    @Published var triggerBoardingHaptic = false
     @Published var triggerTrackAssignedHaptic = false
     
     // Flexible initialization parameters
@@ -824,7 +808,28 @@ class TrainDetailsViewModel: ObservableObject {
     var trainId: Int {
         return databaseId ?? 0
     }
-    
+
+    /// Adaptive polling interval based on time-to-departure.
+    /// Polls faster when track assignment is most likely (close to departure).
+    var pollingInterval: Double {
+        guard let departureTime = train?.departure.updatedTime ?? train?.departure.scheduledTime else {
+            return 30
+        }
+        let minutesToDeparture = departureTime.timeIntervalSinceNow / 60
+        if minutesToDeparture <= 0 {
+            // Already departed — track info is static
+            return 30
+        } else if minutesToDeparture <= 5 {
+            // Active boarding window
+            return 10
+        } else if minutesToDeparture <= 15 {
+            // Track assignment likely imminent
+            return 15
+        } else {
+            return 30
+        }
+    }
+
     // Display properties
     @Published var displayableTrainStops: [StopV2] = []
     
@@ -1032,6 +1037,12 @@ class TrainDetailsViewModel: ObservableObject {
             }
 
             print("✅ Background refresh successful - updating UI")
+
+            // Check for track assignment (fire haptic on prediction→actual transition)
+            if let currentTrain = train,
+               currentTrain.track == nil && newTrain.track != nil {
+                triggerTrackAssignedHaptic = true
+            }
 
             // Update UI with fresh data (seamless update)
             train = newTrain
@@ -1265,19 +1276,28 @@ struct SegmentedTrackPredictionView: View {
                 RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                     .stroke(Color.orange.opacity(0.3), lineWidth: 1)
             )
-            .task {
+            .task(id: train.trackPrediction?.primaryPrediction) {
                 await loadAdjustedPredictions()
             }
         }
     }
-    
+
     private func loadAdjustedPredictions() async {
         print("🔄 [TrainDetailsView] Loading predictions for train \(train.trainId)")
         print("   - Origin: \(train.originStationCode ?? "nil" as String)")
         print("   - Is NY Penn: \(isDepartingFromNYPenn)")
 
         isLoadingPredictions = true
-        adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
+
+        // Prefer inline prediction from train details response (refreshes every poll)
+        if let inline = train.trackPrediction {
+            print("⚡ [TrainDetailsView] Using inline track prediction from train details")
+            adjustedPredictions = PredictionData(trackProbabilities: inline.platformProbabilities)
+        } else {
+            // Fallback to separate API call (older backend or track already assigned)
+            adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
+        }
+
         isLoadingPredictions = false
 
         if let predictions = adjustedPredictions {

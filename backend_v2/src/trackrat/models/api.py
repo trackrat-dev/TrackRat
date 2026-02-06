@@ -270,10 +270,21 @@ class TrainDetails(BaseModel):
         return f"{journey_date.isoformat()}T00:00:00"
 
 
+class TrackPrediction(BaseModel):
+    """Inline track prediction included in train details when track is unassigned."""
+
+    platform_probabilities: dict[str, float]
+    primary_prediction: str
+    confidence: float
+    top_3: list[str]
+    station_code: str
+
+
 class TrainDetailsResponse(BaseModel):
     """Response for train details endpoint."""
 
     train: TrainDetails
+    track_prediction: TrackPrediction | None = None
 
 
 # History API Models

@@ -62,6 +62,7 @@ class TestJustInTimeUpdateService:
         journey.is_cancelled = False
         journey.is_completed = False
         journey.has_complete_journey = True
+        journey.scheduled_departure = datetime.now(UTC) + timedelta(hours=2)
         journey.last_updated_at = datetime.now(UTC) - timedelta(minutes=5)
         journey.api_error_count = 0
         journey.stops = []
@@ -182,6 +183,41 @@ class TestJustInTimeUpdateService:
 
         # Just under threshold (59 seconds)
         sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=59)
+        assert jit_service.needs_refresh(sample_journey) is False
+
+    def test_needs_refresh_hot_train_uses_tighter_staleness(self, jit_service, sample_journey):
+        """Test that trains departing soon use hot_data_staleness_seconds (20s default)."""
+        # Train departing in 5 minutes — should use hot staleness (20s)
+        sample_journey.scheduled_departure = datetime.now(UTC) + timedelta(minutes=5)
+
+        # 30 seconds old — stale under hot threshold (20s) but fresh under normal (60s)
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=30)
+        assert jit_service.needs_refresh(sample_journey) is True
+
+        # 15 seconds old — fresh under hot threshold (20s)
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=15)
+        assert jit_service.needs_refresh(sample_journey) is False
+
+    def test_needs_refresh_non_hot_train_uses_normal_staleness(self, jit_service, sample_journey):
+        """Test that trains departing far in the future use normal data_staleness_seconds (60s)."""
+        # Train departing in 2 hours — should use normal staleness (60s)
+        sample_journey.scheduled_departure = datetime.now(UTC) + timedelta(hours=2)
+
+        # 30 seconds old — fresh under normal threshold (60s)
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=30)
+        assert jit_service.needs_refresh(sample_journey) is False
+
+        # 65 seconds old — stale under normal threshold (60s)
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=65)
+        assert jit_service.needs_refresh(sample_journey) is True
+
+    def test_needs_refresh_departed_train_uses_normal_staleness(self, jit_service, sample_journey):
+        """Test that already-departed trains (negative time to departure) use normal staleness."""
+        # Train departed 10 minutes ago
+        sample_journey.scheduled_departure = datetime.now(UTC) - timedelta(minutes=10)
+
+        # 30 seconds old — fresh under normal threshold (60s)
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=30)
         assert jit_service.needs_refresh(sample_journey) is False
 
     @pytest.mark.asyncio
@@ -368,6 +404,7 @@ class TestJITIntegrationScenarios:
         journey.is_completed = False
         journey.is_cancelled = False
         journey.has_complete_journey = True
+        journey.scheduled_departure = datetime.now(UTC) + timedelta(hours=2)
         journey.last_updated_at = datetime.now(UTC) - timedelta(minutes=10)
         journey.api_error_count = 0
 

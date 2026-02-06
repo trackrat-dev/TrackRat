@@ -258,7 +258,16 @@ class JustInTimeUpdateService:
         if journey.last_updated_at is None:
             return True
 
-        return is_stale(journey.last_updated_at, self.settings.data_staleness_seconds)
+        # Use tighter staleness for trains departing soon
+        staleness_threshold = self.settings.data_staleness_seconds
+        if journey.scheduled_departure:
+            seconds_to_departure = safe_datetime_subtract(
+                journey.scheduled_departure, now_et()
+            ).total_seconds()
+            if 0 < seconds_to_departure <= self.settings.hot_train_window_minutes * 60:
+                staleness_threshold = self.settings.hot_data_staleness_seconds
+
+        return is_stale(journey.last_updated_at, staleness_threshold)
 
     async def ensure_fresh_departures(
         self,

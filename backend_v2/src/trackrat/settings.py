@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     data_staleness_seconds: int = Field(
         default=60, description="Maximum age of data before refresh (seconds)", ge=1
     )
+    hot_data_staleness_seconds: int = Field(
+        default=20,
+        description="Maximum age of data before refresh for trains departing soon (seconds)",
+        ge=5,
+    )
     hot_train_window_minutes: int = Field(
         default=15,
         description="Window before departure for more frequent updates (minutes)",
