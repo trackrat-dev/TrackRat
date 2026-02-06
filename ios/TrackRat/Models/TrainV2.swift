@@ -42,6 +42,9 @@ struct TrainV2: Identifiable, Codable {
     // Optional detailed stops (populated from detail endpoint)
     var stops: [StopV2]? = nil
 
+    // Inline track prediction from train details endpoint (populated when track is unassigned)
+    var trackPrediction: V2TrackPrediction? = nil
+
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
         case journeyDate = "journey_date"

@@ -261,8 +261,30 @@ struct V2TrainDetails: Codable {
     }
 }
 
+struct V2TrackPrediction: Codable {
+    let platformProbabilities: [String: Double]
+    let primaryPrediction: String
+    let confidence: Double
+    let top3: [String]
+    let stationCode: String
+
+    enum CodingKeys: String, CodingKey {
+        case platformProbabilities = "platform_probabilities"
+        case primaryPrediction = "primary_prediction"
+        case confidence
+        case top3 = "top_3"
+        case stationCode = "station_code"
+    }
+}
+
 struct V2TrainDetailsResponse: Codable {
     let train: V2TrainDetails
+    let trackPrediction: V2TrackPrediction?
+
+    enum CodingKeys: String, CodingKey {
+        case train
+        case trackPrediction = "track_prediction"
+    }
 }
 
 // MARK: - History Endpoint Models

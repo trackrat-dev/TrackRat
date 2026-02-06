@@ -195,7 +195,7 @@ final class APIService: ObservableObject {
 
             do {
                 let detailsResponse = try self.decoder.decode(V2TrainDetailsResponse.self, from: data)
-                return self.adaptV2TrainDetailsToTrainV2(detailsResponse.train, fromStationCode: fromStationCode)
+                return self.adaptV2TrainDetailsToTrainV2(detailsResponse.train, fromStationCode: fromStationCode, trackPrediction: detailsResponse.trackPrediction)
             } catch {
                 print("🔴 V2 DECODING ERROR (fetchTrainDetails for id: \(id)): \(error)")
                 throw error
@@ -930,7 +930,7 @@ final class APIService: ObservableObject {
         )
     }
 
-    private func adaptV2TrainDetailsToTrainV2(_ details: V2TrainDetails, fromStationCode: String?) -> TrainV2 {
+    private func adaptV2TrainDetailsToTrainV2(_ details: V2TrainDetails, fromStationCode: String?, trackPrediction: V2TrackPrediction? = nil) -> TrainV2 {
         // Find departure and arrival stations from stops
         let departureStop = details.stops.first
         let arrivalStop = details.stops.last
@@ -1029,7 +1029,8 @@ final class APIService: ObservableObject {
             cancellationReason: details.cancellationReason,
             isCompleted: details.isCompleted,
             dataSource: details.dataSource,
-            stops: stops
+            stops: stops,
+            trackPrediction: trackPrediction
         )
     }
 
