@@ -1,14 +1,19 @@
 """
 Unit tests for station mapping functionality.
 
-Tests station code conversions between Amtrak and internal codes.
+Tests station code conversions between Amtrak and internal codes,
+NJT GTFS stop mappings, and station coordinate validity.
 """
 
 import pytest
 
 from trackrat.config.stations import (
     AMTRAK_TO_INTERNAL_STATION_MAP,
+    NJT_GTFS_STOP_TO_INTERNAL_MAP,
+    STATION_COORDINATES,
+    STATION_NAMES,
     map_amtrak_station_code,
+    map_gtfs_stop_to_station_code,
     get_station_name,
     get_path_stops_by_origin_destination,
 )
@@ -310,11 +315,6 @@ class TestNJTGTFSStopMapping:
 
     def test_explicit_mapping_takes_precedence(self):
         """Test that explicit stop_id mapping is checked before name matching."""
-        from trackrat.config.stations import (
-            NJT_GTFS_STOP_TO_INTERNAL_MAP,
-            map_gtfs_stop_to_station_code,
-        )
-
         # Verify explicit mapping exists
         assert "125" in NJT_GTFS_STOP_TO_INTERNAL_MAP
         assert NJT_GTFS_STOP_TO_INTERNAL_MAP["125"] == "PJ"
@@ -322,3 +322,169 @@ class TestNJTGTFSStopMapping:
         # Verify it's used even with a different name
         result = map_gtfs_stop_to_station_code("125", "SOME OTHER NAME", "NJT")
         assert result == "PJ", "Explicit mapping should take precedence over name"
+
+    @pytest.mark.parametrize(
+        "gtfs_stop_id,gtfs_name,expected_code",
+        [
+            # Stations that previously collided with Amtrak/PATCO codes
+            ("35", "DOVER", "DO"),  # Was mapping to Amtrak DOV (Dover, NH)
+            ("145", "SUMMIT", "ST"),  # Was mapping to Amtrak SMT (Summit, IL)
+            ("77", "MADISON", "MA"),  # Was mapping to Amtrak MDS (Madison, CT)
+            ("124", "PRINCETON", "PR"),  # Was mapping to Amtrak PCT (Princeton, IL)
+            ("158", "WOODBRIDGE", "WB"),  # Was mapping to Amtrak WDB (Woodbridge, VA)
+            ("25", "BROADWAY", "BF"),  # Was mapping to PATCO BWY (Broadway, Camden)
+            ("71", "LINDENWOLD", "LW"),  # Was mapping to PATCO LND
+        ],
+    )
+    def test_njt_name_collision_stations(self, gtfs_stop_id, gtfs_name, expected_code):
+        """Test NJT stations whose names collide with Amtrak/PATCO codes.
+
+        These stations previously mapped to wrong codes because the fuzzy
+        name matcher returned Amtrak/PATCO station codes instead of NJT codes.
+        The explicit stop_id mapping now prevents this.
+        """
+        result = map_gtfs_stop_to_station_code(gtfs_stop_id, gtfs_name, "NJT")
+        assert result == expected_code, (
+            f"GTFS stop '{gtfs_name}' (id={gtfs_stop_id}) mapped to "
+            f"'{result}' ({STATION_NAMES.get(result, '???')}), "
+            f"expected '{expected_code}' ({STATION_NAMES.get(expected_code, '???')})"
+        )
+
+    @pytest.mark.parametrize(
+        "gtfs_stop_id,gtfs_name,expected_code",
+        [
+            ("38174", "FRANK R LAUTENBERG SECAUCUS LOWER LEVEL", "TS"),
+            ("38187", "FRANK R LAUTENBERG SECAUCUS UPPER LEVEL", "SE"),
+            ("32906", "JERSEY AVE.", "JA"),
+            ("38081", "MSU", "UV"),
+            ("43298", "PENNSAUKEN TRANSIT CENTER", "PN"),
+            ("39635", "WAYNE/ROUTE 23 TRANSIT CENTER [RR]", "23"),
+        ],
+    )
+    def test_previously_unmapped_stations(self, gtfs_stop_id, gtfs_name, expected_code):
+        """Test NJT stations that were previously unmapped (returned None).
+
+        These stations had names too different from our internal names
+        for the fuzzy matcher to find them. They now have explicit mappings.
+        """
+        result = map_gtfs_stop_to_station_code(gtfs_stop_id, gtfs_name, "NJT")
+        assert result == expected_code, (
+            f"GTFS stop '{gtfs_name}' (id={gtfs_stop_id}) mapped to "
+            f"'{result}', expected '{expected_code}' ({STATION_NAMES.get(expected_code, '???')})"
+        )
+
+
+class TestNJTStationCoordinates:
+    """Tests for NJT station coordinate validity.
+
+    Verifies that all NJT station coordinates fall within the expected
+    geographic bounds (NJ/NY/PA/CT region) and that known-problematic
+    stations have correct coordinates from GTFS.
+    """
+
+    # NJ-area bounds for NJT-only stations (2-char codes)
+    NJ_MIN_LAT = 39.3   # South NJ (Atlantic City area)
+    NJ_MAX_LAT = 41.5   # North NJ/lower NY (Port Jervis line)
+    NJ_MIN_LON = -75.2   # West NJ (Philadelphia area)
+    NJ_MAX_LON = -73.9   # East NJ (coastal)
+
+    def test_all_coordinates_are_valid(self):
+        """All station coordinates should have reasonable lat/lon values."""
+        for code, coords in STATION_COORDINATES.items():
+            lat, lon = coords["lat"], coords["lon"]
+            assert -90 <= lat <= 90, (
+                f"[{code}] {STATION_NAMES.get(code, '???')}: "
+                f"lat {lat} is not a valid latitude"
+            )
+            assert -180 <= lon <= 180, (
+                f"[{code}] {STATION_NAMES.get(code, '???')}: "
+                f"lon {lon} is not a valid longitude"
+            )
+
+    def test_njt_stations_within_nj_bounds(self):
+        """NJT stations (2-char codes) should fall within NJ/NY service area.
+
+        Excludes known Amtrak-only stations that share the NJ Transit
+        station list but are outside the NJ area (e.g., WI, BA, BL, WS).
+        """
+        # Codes for stations outside NJ area (Amtrak intercity)
+        non_nj_codes = {
+            "BA", "BL", "WS", "WI", "NF",  # DC corridor
+            "PH",  # Philadelphia
+        }
+        for code, coords in STATION_COORDINATES.items():
+            if len(code) > 2:  # Skip 3-char Amtrak/PATH/PATCO codes
+                continue
+            if code in non_nj_codes:
+                continue
+            lat, lon = coords["lat"], coords["lon"]
+            assert self.NJ_MIN_LAT <= lat <= self.NJ_MAX_LAT, (
+                f"[{code}] {STATION_NAMES.get(code, '???')}: "
+                f"lat {lat} out of NJ bounds [{self.NJ_MIN_LAT}, {self.NJ_MAX_LAT}]"
+            )
+            assert self.NJ_MIN_LON <= lon <= self.NJ_MAX_LON, (
+                f"[{code}] {STATION_NAMES.get(code, '???')}: "
+                f"lon {lon} out of NJ bounds [{self.NJ_MIN_LON}, {self.NJ_MAX_LON}]"
+            )
+
+    def test_no_duplicate_coordinates(self):
+        """No two distinct stations should share identical coordinates.
+
+        Exception: Secaucus variants (SE/SC/TS) share the same location.
+        """
+        secaucus_codes = {"SE", "SC", "TS"}
+        coord_to_codes: dict[tuple[float, float], list[str]] = {}
+        for code, coords in STATION_COORDINATES.items():
+            key = (coords["lat"], coords["lon"])
+            if key not in coord_to_codes:
+                coord_to_codes[key] = []
+            coord_to_codes[key].append(code)
+
+        for coord, codes in coord_to_codes.items():
+            if len(codes) > 1:
+                # Allow Secaucus variants to share coordinates
+                non_secaucus = [c for c in codes if c not in secaucus_codes]
+                assert len(non_secaucus) <= 1, (
+                    f"Stations {codes} share coordinates {coord}: "
+                    f"{[STATION_NAMES.get(c, '???') for c in codes]}"
+                )
+
+    @pytest.mark.parametrize(
+        "code,expected_lat,expected_lon,description",
+        [
+            # Previously had Mountain Station coords at Mount Tabor location (~35km off)
+            ("MT", 40.755365, -74.253024, "Mountain Station was 35km off"),
+            # Previously had Hackettstown in New York state (~17km off)
+            ("HQ", 40.851444, -74.835352, "Hackettstown was 17km north in NY"),
+            # Previously had Metuchen at same coords as Metropark
+            ("MU", 40.540736, -74.360671, "Metuchen had Metropark's coords"),
+            ("MP", 40.56864, -74.329394, "Metropark (distinct from Metuchen)"),
+            # Previously had Jersey Avenue at wrong location (~46km off)
+            ("JA", 40.476912, -74.467363, "Jersey Avenue was 46km off"),
+            # Previously had Murray Hill ~12km off
+            ("MH", 40.695068, -74.403134, "Murray Hill was 12km off"),
+        ],
+    )
+    def test_previously_wrong_coordinates(
+        self, code, expected_lat, expected_lon, description
+    ):
+        """Verify previously-wrong coordinates are now correct (from GTFS)."""
+        assert code in STATION_COORDINATES, (
+            f"[{code}] {STATION_NAMES.get(code, '???')} missing from STATION_COORDINATES"
+        )
+        actual_lat = STATION_COORDINATES[code]["lat"]
+        actual_lon = STATION_COORDINATES[code]["lon"]
+        assert actual_lat == pytest.approx(expected_lat, abs=0.001), (
+            f"[{code}] lat mismatch: {actual_lat} != {expected_lat} ({description})"
+        )
+        assert actual_lon == pytest.approx(expected_lon, abs=0.001), (
+            f"[{code}] lon mismatch: {actual_lon} != {expected_lon} ({description})"
+        )
+
+    def test_njt_explicit_mapping_completeness(self):
+        """Every NJT GTFS explicit mapping should point to a valid station code."""
+        for stop_id, code in NJT_GTFS_STOP_TO_INTERNAL_MAP.items():
+            assert code in STATION_NAMES, (
+                f"GTFS stop_id {stop_id} maps to '{code}' "
+                f"which is not in STATION_NAMES"
+            )

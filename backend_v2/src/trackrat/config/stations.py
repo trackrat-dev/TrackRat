@@ -2153,17 +2153,173 @@ PATH_RIDEPATH_API_TO_INTERNAL_MAP: dict[str, str] = {
 # =============================================================================
 
 # NJT GTFS stop_id to internal station code mapping
-# Only includes stops where name-based matching fails
-# (Most NJT stops are mapped by fuzzy name matching)
+# Complete explicit mapping for all NJT rail stops.
+# Prevents fuzzy name matching issues where NJT station names
+# (e.g., "DOVER", "SUMMIT", "MADISON") collide with Amtrak/PATCO codes.
 NJT_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
-    "1": "PH",  # 30TH ST. PHL. -> Philadelphia
-    "38": "ED",  # EDISON STATION -> Edison
-    "85": "MI",  # MIDDLETOWN NJ -> Middletown
-    "125": "PJ",  # PRINCETON JCT. -> Princeton Junction
-    "126": "FZ",  # RADBURN -> Radburn Fair Lawn
-    "128": "17",  # RAMSEY -> Ramsey Route 17
-    "148": "TR",  # TRENTON TRANSIT CENTER -> Trenton
-    "160": "WR",  # WOOD-RIDGE -> Wood Ridge
+    "1": "PH",  # 30TH ST. PHL.
+    "2": "AB",  # ABSECON
+    "3": "AZ",  # ALLENDALE
+    "4": "AH",  # ALLENHURST
+    "5": "AS",  # ANDERSON STREET
+    "6": "AN",  # ANNANDALE
+    "8": "AP",  # ASBURY PARK
+    "9": "AO",  # ATCO
+    "10": "AC",  # ATLANTIC CITY
+    "11": "AV",  # AVENEL
+    "12": "BI",  # BASKING RIDGE
+    "13": "BH",  # BAY HEAD
+    "14": "MC",  # BAY STREET (Montclair)
+    "15": "BS",  # BELMAR
+    "17": "BY",  # BERKELEY HEIGHTS
+    "18": "BV",  # BERNARDSVILLE
+    "19": "BM",  # BLOOMFIELD
+    "20": "BN",  # BOONTON
+    "21": "BK",  # BOUND BROOK
+    "22": "BB",  # BRADLEY BEACH
+    "23": "BU",  # BRICK CHURCH
+    "24": "BW",  # BRIDGEWATER
+    "25": "BF",  # BROADWAY (Fair Lawn, NJT — not PATCO BWY)
+    "26": "CB",  # CAMPBELL HALL
+    "27": "CM",  # CHATHAM
+    "28": "CY",  # CHERRY HILL
+    "29": "IF",  # CLIFTON
+    "30": "CN",  # CONVENT
+    "31": "RL",  # ROSELLE PARK
+    "32": "XC",  # CRANFORD
+    "33": "DL",  # DELAWANNA
+    "34": "DV",  # DENVILLE
+    "35": "DO",  # DOVER (NJT — not Amtrak DOV)
+    "36": "DN",  # DUNELLEN
+    "37": "EO",  # EAST ORANGE
+    "38": "ED",  # EDISON STATION
+    "39": "EH",  # EGG HARBOR
+    "40": "EL",  # ELBERON
+    "41": "EZ",  # ELIZABETH
+    "42": "EN",  # EMERSON
+    "43": "EX",  # ESSEX STREET
+    "44": "FW",  # FANWOOD
+    "45": "FH",  # FAR HILLS
+    "46": "GD",  # GARFIELD
+    "47": "GW",  # GARWOOD
+    "48": "GI",  # GILLETTE
+    "49": "GL",  # GLADSTONE
+    "50": "GG",  # GLEN RIDGE
+    "51": "GK",  # GLEN ROCK BORO HALL
+    "52": "RS",  # GLEN ROCK MAIN LINE
+    "54": "HQ",  # HACKETTSTOWN
+    "55": "HN",  # HAMMONTON
+    "57": "RM",  # HARRIMAN
+    "58": "HW",  # HAWTHORNE
+    "59": "HZ",  # HAZLET
+    "60": "HG",  # HIGH BRIDGE
+    "61": "HI",  # HIGHLAND AVENUE
+    "62": "HD",  # HILLSDALE
+    "63": "HB",  # HOBOKEN
+    "64": "UF",  # HOHOKUS
+    "67": "HP",  # LAKE HOPATCONG
+    "68": "ON",  # LEBANON
+    "69": "LP",  # LINCOLN PARK
+    "70": "LI",  # LINDEN
+    "71": "LW",  # LINDENWOLD (NJT — not PATCO LND)
+    "72": "FA",  # LITTLE FALLS
+    "73": "LS",  # LITTLE SILVER
+    "74": "LB",  # LONG BRANCH
+    "75": "LN",  # LYNDHURST
+    "76": "LY",  # LYONS
+    "77": "MA",  # MADISON (NJT — not Amtrak MDS)
+    "78": "MZ",  # MAHWAH
+    "79": "SQ",  # MANASQUAN
+    "81": "MW",  # MAPLEWOOD
+    "83": "MP",  # METROPARK
+    "84": "MU",  # METUCHEN
+    "85": "MI",  # MIDDLETOWN NJ
+    "87": "MB",  # MILLBURN
+    "88": "GO",  # MILLINGTON
+    "89": "HS",  # MONTCLAIR HEIGHTS
+    "90": "ZM",  # MONTVALE
+    "91": "MX",  # MORRIS PLAINS
+    "92": "MR",  # MORRISTOWN
+    "93": "OL",  # MOUNT OLIVE
+    "94": "TB",  # MOUNT TABOR
+    "95": "MS",  # MOUNTAIN AVENUE
+    "96": "ML",  # MOUNTAIN LAKES
+    "97": "MT",  # MOUNTAIN STATION
+    "98": "MV",  # MOUNTAIN VIEW
+    "99": "MH",  # MURRAY HILL
+    "100": "NN",  # NANUET
+    "101": "NT",  # NETCONG
+    "102": "NE",  # NETHERWOOD
+    "103": "NB",  # NEW BRUNSWICK
+    "104": "NV",  # NEW PROVIDENCE
+    "105": "NY",  # NEW YORK PENN STATION
+    "106": "ND",  # NEWARK BROAD ST
+    "107": "NP",  # NEWARK PENN STATION
+    "108": "OR",  # NORTH BRANCH
+    "109": "NZ",  # NORTH ELIZABETH
+    "110": "NH",  # NEW BRIDGE LANDING
+    "111": "OD",  # ORADELL
+    "112": "OG",  # ORANGE
+    "113": "OS",  # OTISVILLE
+    "114": "PV",  # PARK RIDGE
+    "115": "PS",  # PASSAIC
+    "116": "RN",  # PATERSON
+    "117": "PC",  # PEAPACK
+    "118": "PQ",  # PEARL RIVER
+    "119": "PE",  # PERTH AMBOY
+    "120": "PF",  # PLAINFIELD
+    "121": "PL",  # PLAUDERVILLE
+    "122": "PP",  # POINT PLEASANT
+    "123": "PO",  # PORT JERVIS
+    "124": "PR",  # PRINCETON (NJT — not Amtrak PCT)
+    "125": "PJ",  # PRINCETON JCT.
+    "126": "FZ",  # RADBURN
+    "127": "RH",  # RAHWAY
+    "128": "17",  # RAMSEY
+    "129": "RA",  # RARITAN
+    "130": "RB",  # RED BANK
+    "131": "RW",  # RIDGEWOOD
+    "132": "RG",  # RIVER EDGE
+    "134": "RF",  # RUTHERFORD
+    "135": "CW",  # SALISBURY MILLS-CORNWALL
+    "136": "RT",  # SHORT HILLS
+    "137": "XG",  # SLOATSBURG
+    "138": "SM",  # SOMERVILLE
+    "139": "CH",  # SOUTH AMBOY
+    "140": "SO",  # SOUTH ORANGE
+    "141": "LA",  # SPRING LAKE
+    "142": "SV",  # SPRING VALLEY
+    "143": "SG",  # STIRLING
+    "144": "SF",  # SUFFERN
+    "145": "ST",  # SUMMIT (NJT — not Amtrak SMT)
+    "146": "TE",  # TETERBORO
+    "147": "TO",  # TOWACO
+    "148": "TR",  # TRENTON TRANSIT CENTER
+    "149": "TC",  # TUXEDO
+    "150": "UM",  # UPPER MONTCLAIR
+    "151": "WK",  # WALDWICK
+    "153": "WG",  # WATCHUNG AVENUE
+    "154": "WT",  # WATSESSING AVENUE
+    "155": "WF",  # WESTFIELD
+    "156": "WW",  # WESTWOOD
+    "157": "WH",  # WHITE HOUSE
+    "158": "WB",  # WOODBRIDGE (NJT — not Amtrak WDB)
+    "159": "WL",  # WOODCLIFF LAKE
+    "160": "WR",  # WOOD-RIDGE
+    # Alternate/extended stop_ids for the same stations
+    "32905": "HL",  # HAMILTON
+    "32906": "JA",  # JERSEY AVE.
+    "37169": "AM",  # ABERDEEN-MATAWAN
+    "37953": "NA",  # NEWARK AIRPORT RAILROAD STATION
+    "38081": "UV",  # MSU (Montclair State University)
+    "38105": "US",  # UNION
+    "38174": "TS",  # FRANK R LAUTENBERG SECAUCUS LOWER LEVEL
+    "38187": "SE",  # FRANK R LAUTENBERG SECAUCUS UPPER LEVEL
+    "38417": "17",  # RAMSEY ROUTE 17 STATION
+    "39472": "HV",  # MOUNT ARLINGTON
+    "39635": "23",  # WAYNE/ROUTE 23 TRANSIT CENTER [RR]
+    "43298": "PN",  # PENNSAUKEN TRANSIT CENTER
+    "43599": "WM",  # WESMONT
 }
 
 
@@ -2399,18 +2555,18 @@ def get_all_stations() -> list[dict[str, str]]:
 # Station coordinates for map visualization
 STATION_COORDINATES = {
     # Major NJ Transit/Amtrak hubs - verified coordinates
-    "NY": {"lat": 40.7506, "lon": -73.9939},  # New York Penn Station
-    "NP": {"lat": 40.7347, "lon": -74.1644},  # Newark Penn Station
-    "TR": {"lat": 40.218518, "lon": -74.753923},  # Trenton Transit Center
-    "PJ": {"lat": 40.3167, "lon": -74.6233},  # Princeton Junction
-    "MP": {"lat": 40.5378, "lon": -74.3562},  # Metropark
-    "NA": {"lat": 40.7058, "lon": -74.1608},  # Newark Airport
-    "NB": {"lat": 40.4862, "lon": -74.4518},  # New Brunswick
-    "SE": {"lat": 40.7612, "lon": -74.0758},  # Secaucus Upper Level
+    "NY": {"lat": 40.750046, "lon": -73.992358},  # New York Penn Station
+    "NP": {"lat": 40.734221, "lon": -74.164554},  # Newark Penn Station
+    "TR": {"lat": 40.218515, "lon": -74.753926},  # Trenton Transit Center
+    "PJ": {"lat": 40.316316, "lon": -74.623753},  # Princeton Junction
+    "MP": {"lat": 40.56864, "lon": -74.329394},  # Metropark
+    "NA": {"lat": 40.704415, "lon": -74.190717},  # Newark Airport
+    "NB": {"lat": 40.497278, "lon": -74.445751},  # New Brunswick
+    "SE": {"lat": 40.761188, "lon": -74.075821},  # Secaucus Upper Level
     "SC": {"lat": 40.7612, "lon": -74.0758},  # Secaucus Concourse
-    "TS": {"lat": 40.7612, "lon": -74.0758},  # Secaucus Lower Level
-    "HB": {"lat": 40.734843, "lon": -74.028043},  # Hoboken Terminal
-    "PH": {"lat": 39.9570, "lon": -75.1820},  # Philadelphia 30th Street Station
+    "TS": {"lat": 40.761188, "lon": -74.075821},  # Secaucus Lower Level
+    "HB": {"lat": 40.734843, "lon": -74.028046},  # Hoboken Terminal
+    "PH": {"lat": 39.956565, "lon": -75.182327},  # Philadelphia 30th Street Station
     "WI": {"lat": 39.7369, "lon": -75.5522},  # Wilmington
     "BA": {"lat": 39.1896, "lon": -76.6934},  # BWI Airport Rail Station
     "BL": {"lat": 39.3081, "lon": -76.6175},  # Baltimore Penn Station
@@ -2418,162 +2574,171 @@ STATION_COORDINATES = {
     "BOS": {"lat": 42.3520, "lon": -71.0552},  # Boston South Station
     "BBY": {"lat": 42.3473, "lon": -71.0764},  # Boston Back Bay
     # NJ Coast Line
-    "LB": {"lat": 40.3042, "lon": -73.9920},  # Long Branch
-    "AP": {"lat": 40.2202, "lon": -74.0120},  # Asbury Park
-    "BS": {"lat": 40.1784, "lon": -74.0276},  # Belmar
-    "SQ": {"lat": 40.1057, "lon": -74.0500},  # Manasquan
-    "PP": {"lat": 40.0917, "lon": -74.0680},  # Point Pleasant Beach
-    "BH": {"lat": 40.0585, "lon": -74.1066},  # Bay Head
-    "AH": {"lat": 40.2301, "lon": -74.0063},  # Allenhurst
-    "EL": {"lat": 40.2689, "lon": -73.9858},  # Elberon
-    "LS": {"lat": 40.3369, "lon": -74.0436},  # Little Silver
+    "LB": {"lat": 40.297145, "lon": -73.988331},  # Long Branch
+    "AP": {"lat": 40.215359, "lon": -74.014786},  # Asbury Park
+    "BS": {"lat": 40.18059, "lon": -74.027301},  # Belmar
+    "SQ": {"lat": 40.120573, "lon": -74.047688},  # Manasquan
+    "PP": {"lat": 40.092718, "lon": -74.048191},  # Point Pleasant Beach
+    "BH": {"lat": 40.077178, "lon": -74.046183},  # Bay Head
+    "AH": {"lat": 40.237659, "lon": -74.006769},  # Allenhurst
+    "EL": {"lat": 40.265292, "lon": -73.99762},  # Elberon
+    "LS": {"lat": 40.326715, "lon": -74.041054},  # Little Silver
     "MK": {"lat": 40.3086, "lon": -74.0253},  # Monmouth Park
-    "RB": {"lat": 40.3503, "lon": -74.0750},  # Red Bank
-    "HZ": {"lat": 40.4236, "lon": -74.1848},  # Hazlet
-    "AM": {"lat": 40.4183, "lon": -74.2206},  # Aberdeen-Matawan
-    "MI": {"lat": 40.4453, "lon": -74.1126},  # Middletown
-    "LA": {"lat": 40.1530, "lon": -74.0340},  # Spring Lake
-    "BB": {"lat": 40.1929, "lon": -74.0218},  # Bradley Beach
+    "RB": {"lat": 40.348284, "lon": -74.074538},  # Red Bank
+    "HZ": {"lat": 40.415385, "lon": -74.190393},  # Hazlet
+    "AM": {"lat": 40.420161, "lon": -74.223702},  # Aberdeen-Matawan
+    "CH": {"lat": 40.484308, "lon": -74.280140},  # South Amboy
+    "MI": {"lat": 40.38978, "lon": -74.116131},  # Middletown
+    "LA": {"lat": 40.150557, "lon": -74.035481},  # Spring Lake
+    "BB": {"lat": 40.203751, "lon": -74.018891},  # Bradley Beach
     # Northeast Corridor
-    "EZ": {"lat": 40.667859, "lon": -74.215171},  # Elizabeth
-    "LI": {"lat": 40.629487, "lon": -74.251772},  # Linden
-    "RH": {"lat": 40.6039, "lon": -74.2723},  # Rahway
-    "MU": {"lat": 40.5378, "lon": -74.3562},  # Metuchen
-    "ED": {"lat": 40.5177, "lon": -74.4075},  # Edison
-    "HL": {"lat": 40.1992, "lon": -74.6877},  # Hamilton
-    "NZ": {"lat": 40.6968, "lon": -74.1733},  # North Elizabeth
+    "EZ": {"lat": 40.667857, "lon": -74.215174},  # Elizabeth
+    "LI": {"lat": 40.629485, "lon": -74.251772},  # Linden
+    "RH": {"lat": 40.606338, "lon": -74.276692},  # Rahway
+    "MU": {"lat": 40.540736, "lon": -74.360671},  # Metuchen
+    "ED": {"lat": 40.519148, "lon": -74.410972},  # Edison
+    "HL": {"lat": 40.255309, "lon": -74.70412},  # Hamilton
+    "AV": {"lat": 40.577620, "lon": -74.277530},  # Avenel
+    "BU": {"lat": 40.765134, "lon": -74.218612},  # Brick Church
+    "WB": {"lat": 40.556610, "lon": -74.277751},  # Woodbridge
+    "PE": {"lat": 40.509398, "lon": -74.273752},  # Perth Amboy
+    "NZ": {"lat": 40.680265, "lon": -74.206165},  # North Elizabeth
     # Atlantic City Line
-    "AC": {"lat": 39.3644, "lon": -74.4414},  # Atlantic City Rail Terminal
-    "AB": {"lat": 39.4273, "lon": -74.4968},  # Absecon
-    "EH": {"lat": 39.5221, "lon": -74.6482},  # Egg Harbor City
-    "HN": {"lat": 39.6380, "lon": -74.8039},  # Hammonton
-    "AO": {"lat": 39.7854, "lon": -74.8887},  # Atco
-    "LW": {"lat": 39.8340, "lon": -74.9995},  # Lindenwold (NJT)
-    "CY": {"lat": 39.9319, "lon": -74.9722},  # Cherry Hill
-    "PN": {"lat": 39.9707, "lon": -75.0565},  # Pennsauken
+    "AC": {"lat": 39.363299, "lon": -74.441486},  # Atlantic City Rail Terminal
+    "AB": {"lat": 39.424333, "lon": -74.502094},  # Absecon
+    "EH": {"lat": 39.526441, "lon": -74.648028},  # Egg Harbor City
+    "HN": {"lat": 39.631673, "lon": -74.79946},  # Hammonton
+    "AO": {"lat": 39.783547, "lon": -74.907588},  # Atco
+    "LW": {"lat": 39.833809, "lon": -75.000314},  # Lindenwold (NJT)
+    "CY": {"lat": 39.928447, "lon": -75.041661},  # Cherry Hill
+    "PN": {"lat": 39.977769, "lon": -75.061796},  # Pennsauken
     "NF": {"lat": 39.9984, "lon": -75.1560},  # North Philadelphia
-    "PR": {"lat": 40.3448, "lon": -74.6552},  # Princeton (shuttle station)
+    "PR": {"lat": 40.342088, "lon": -74.65887},  # Princeton (shuttle station)
     # Raritan Valley Line
-    "RA": {"lat": 40.5682, "lon": -74.6290},  # Raritan
-    "BK": {"lat": 40.5582, "lon": -74.5397},  # Bound Brook
-    "BW": {"lat": 40.5697, "lon": -74.5194},  # Bridgewater
-    "SM": {"lat": 40.5681, "lon": -74.6119},  # Somerville
-    "DN": {"lat": 40.5892, "lon": -74.4719},  # Dunellen
-    "PF": {"lat": 40.6140, "lon": -74.4147},  # Plainfield
-    "NE": {"lat": 40.6344, "lon": -74.4182},  # Netherwood
-    "FW": {"lat": 40.6415, "lon": -74.3826},  # Fanwood
-    "WF": {"lat": 40.6588, "lon": -74.3488},  # Westfield
-    "GW": {"lat": 40.6514, "lon": -74.3241},  # Garwood
-    "XC": {"lat": 40.6559, "lon": -74.3004},  # Cranford
-    "RL": {"lat": 40.6642, "lon": -74.2687},  # Roselle Park
-    "US": {"lat": 40.6973, "lon": -74.2636},  # Union
-    "HG": {"lat": 40.7133, "lon": -74.8771},  # High Bridge
-    "AN": {"lat": 40.6994, "lon": -74.8819},  # Annandale
-    "ON": {"lat": 40.6414, "lon": -74.8283},  # Lebanon
-    "WH": {"lat": 40.6390, "lon": -74.7632},  # White House
+    "RA": {"lat": 40.571005, "lon": -74.634364},  # Raritan
+    "BK": {"lat": 40.560929, "lon": -74.530617},  # Bound Brook
+    "BW": {"lat": 40.559904, "lon": -74.551741},  # Bridgewater
+    "SM": {"lat": 40.566075, "lon": -74.61397},  # Somerville
+    "DN": {"lat": 40.590869, "lon": -74.463043},  # Dunellen
+    "PF": {"lat": 40.618425, "lon": -74.420163},  # Plainfield
+    "NE": {"lat": 40.629148, "lon": -74.403455},  # Netherwood
+    "FW": {"lat": 40.64106, "lon": -74.385003},  # Fanwood
+    "WF": {"lat": 40.649448, "lon": -74.347629},  # Westfield
+    "GW": {"lat": 40.652569, "lon": -74.324794},  # Garwood
+    "XC": {"lat": 40.655523, "lon": -74.303226},  # Cranford
+    "RL": {"lat": 40.66715, "lon": -74.266323},  # Roselle Park
+    "US": {"lat": 40.683663, "lon": -74.238605},  # Union
+    "HG": {"lat": 40.666884, "lon": -74.895863},  # High Bridge
+    "AN": {"lat": 40.645173, "lon": -74.878569},  # Annandale
+    "ON": {"lat": 40.636903, "lon": -74.835766},  # Lebanon
+    "WH": {"lat": 40.615611, "lon": -74.77066},  # White House
+    "OR": {"lat": 40.592020, "lon": -74.683802},  # North Branch
     # Morris & Essex Line
-    "ST": {"lat": 40.7099, "lon": -74.3546},  # Summit
-    "CM": {"lat": 40.7428, "lon": -74.4319},  # Chatham
-    "MA": {"lat": 40.7698, "lon": -74.4151},  # Madison
-    "CN": {"lat": 40.7806, "lon": -74.4656},  # Convent Station
-    "MR": {"lat": 40.7970, "lon": -74.4724},  # Morristown
-    "MX": {"lat": 40.8256, "lon": -74.4615},  # Morris Plains
-    "DV": {"lat": 40.8838, "lon": -74.4752},  # Denville
-    "DO": {"lat": 40.883417, "lon": -74.555884},  # Dover
-    "MT": {"lat": 40.9042, "lon": -74.6254},  # Mount Tabor
-    "HQ": {"lat": 41.0046, "lon": -74.7973},  # Hackettstown
-    "MB": {"lat": 40.725667, "lon": -74.303694},  # Millburn
-    "RT": {"lat": 40.7144, "lon": -74.3215},  # Short Hills
-    "ND": {"lat": 40.7418, "lon": -74.1698},  # Newark Broad Street
-    "OG": {"lat": 40.7706, "lon": -74.2327},  # Orange
-    "HI": {"lat": 40.7681, "lon": -74.2470},  # Highland Avenue
-    "MV": {"lat": 40.8122, "lon": -74.2425},  # Mountain View
-    "SO": {"lat": 40.7591, "lon": -74.2528},  # South Orange
-    "MW": {"lat": 40.7503, "lon": -74.2736},  # Maplewood
+    "ST": {"lat": 40.716549, "lon": -74.357807},  # Summit
+    "CM": {"lat": 40.740137, "lon": -74.384812},  # Chatham
+    "MA": {"lat": 40.757028, "lon": -74.415105},  # Madison
+    "CN": {"lat": 40.779038, "lon": -74.443435},  # Convent Station
+    "MR": {"lat": 40.797113, "lon": -74.474086},  # Morristown
+    "MX": {"lat": 40.828637, "lon": -74.478197},  # Morris Plains
+    "DV": {"lat": 40.8839, "lon": -74.481513},  # Denville
+    "DO": {"lat": 40.883415, "lon": -74.555887},  # Dover
+    "MT": {"lat": 40.755365, "lon": -74.253024},  # Mountain Station
+    "HQ": {"lat": 40.851444, "lon": -74.835352},  # Hackettstown
+    "MB": {"lat": 40.725622, "lon": -74.303755},  # Millburn
+    "RT": {"lat": 40.725249, "lon": -74.323754},  # Short Hills
+    "ND": {"lat": 40.747621, "lon": -74.171943},  # Newark Broad Street
+    "OG": {"lat": 40.771883, "lon": -74.233103},  # Orange
+    "HI": {"lat": 40.766863, "lon": -74.243744},  # Highland Avenue
+    "MV": {"lat": 40.914402, "lon": -74.268158},  # Mountain View
+    "SO": {"lat": 40.745952, "lon": -74.260538},  # South Orange
+    "MW": {"lat": 40.731149, "lon": -74.275427},  # Maplewood
     # Gladstone Branch
-    "BV": {"lat": 40.7184, "lon": -74.6194},  # Bernardsville
-    "FH": {"lat": 40.6834, "lon": -74.6359},  # Far Hills
-    "PC": {"lat": 40.7052, "lon": -74.6550},  # Peapack
-    "GL": {"lat": 40.7194, "lon": -74.6653},  # Gladstone
-    "SG": {"lat": 40.7422, "lon": -74.5438},  # Stirling
-    "GO": {"lat": 40.7028, "lon": -74.5622},  # Millington
-    "LY": {"lat": 40.6723, "lon": -74.5662},  # Lyons
-    "BI": {"lat": 40.6828, "lon": -74.5607},  # Basking Ridge
-    "MH": {"lat": 40.7731, "lon": -74.4984},  # Murray Hill
-    "NV": {"lat": 40.7355, "lon": -74.4641},  # New Providence
-    "BY": {"lat": 40.6976, "lon": -74.5031},  # Berkeley Heights
-    "GI": {"lat": 40.7527, "lon": -74.5241},  # Gillette
+    "BV": {"lat": 40.716845, "lon": -74.571023},  # Bernardsville
+    "FH": {"lat": 40.68571, "lon": -74.633734},  # Far Hills
+    "PC": {"lat": 40.708794, "lon": -74.658469},  # Peapack
+    "GL": {"lat": 40.720284, "lon": -74.666371},  # Gladstone
+    "SG": {"lat": 40.674579, "lon": -74.493723},  # Stirling
+    "GO": {"lat": 40.673513, "lon": -74.523606},  # Millington
+    "LY": {"lat": 40.684844, "lon": -74.54947},  # Lyons
+    "BI": {"lat": 40.711378, "lon": -74.55527},  # Basking Ridge
+    "MH": {"lat": 40.695068, "lon": -74.403134},  # Murray Hill
+    "NV": {"lat": 40.712022, "lon": -74.386501},  # New Providence
+    "BY": {"lat": 40.682345, "lon": -74.442649},  # Berkeley Heights
+    "GI": {"lat": 40.678251, "lon": -74.468317},  # Gillette
     # Main/Bergen County Lines
-    "RF": {"lat": 40.8267, "lon": -74.1069},  # Rutherford
-    "LN": {"lat": 40.8123, "lon": -74.1246},  # Lyndhurst
+    "RF": {"lat": 40.828248, "lon": -74.100563},  # Rutherford
+    "LN": {"lat": 40.814165, "lon": -74.122696},  # Lyndhurst
     "KG": {"lat": 40.8044, "lon": -74.1399},  # Kingsland
-    "DL": {"lat": 40.8180, "lon": -74.1370},  # Delawanna
-    "PS": {"lat": 40.8570, "lon": -74.1294},  # Passaic
-    "IF": {"lat": 40.8584, "lon": -74.1637},  # Clifton
-    "RN": {"lat": 40.9166, "lon": -74.1710},  # Paterson
-    "HW": {"lat": 40.9494, "lon": -74.1527},  # Hawthorne
-    "GK": {"lat": 40.9719, "lon": -74.1338},  # Glen Rock Boro Hall
-    "RS": {"lat": 40.9633, "lon": -74.1269},  # Glen Rock Main Line
-    "RW": {"lat": 40.9808, "lon": -74.1168},  # Ridgewood
-    "UF": {"lat": 40.9956, "lon": -74.1115},  # Ho-Ho-Kus
-    "WK": {"lat": 41.0108, "lon": -74.1267},  # Waldwick
-    "AZ": {"lat": 41.0312, "lon": -74.1306},  # Allendale
+    "DL": {"lat": 40.831369, "lon": -74.131262},  # Delawanna
+    "PS": {"lat": 40.849411, "lon": -74.133933},  # Passaic
+    "GD": {"lat": 40.866669, "lon": -74.105560},  # Garfield
+    "PL": {"lat": 40.884916, "lon": -74.102695},  # Plauderville
+    "IF": {"lat": 40.867998, "lon": -74.153206},  # Clifton
+    "RN": {"lat": 40.914887, "lon": -74.16733},  # Paterson
+    "HW": {"lat": 40.942539, "lon": -74.152411},  # Hawthorne
+    "GK": {"lat": 40.96137, "lon": -74.1293},  # Glen Rock Boro Hall
+    "RS": {"lat": 40.962206, "lon": -74.133485},  # Glen Rock Main Line
+    "RW": {"lat": 40.980629, "lon": -74.120592},  # Ridgewood
+    "UF": {"lat": 40.997369, "lon": -74.113521},  # Ho-Ho-Kus
+    "WK": {"lat": 41.012734, "lon": -74.123412},  # Waldwick
+    "AZ": {"lat": 41.030902, "lon": -74.130957},  # Allendale
     "RY": {"lat": 41.0571, "lon": -74.1413},  # Ramsey Main St
-    "17": {"lat": 41.0615, "lon": -74.1456},  # Ramsey-Route 17
-    "MZ": {"lat": 41.0886, "lon": -74.1438},  # Mahwah
-    "SF": {"lat": 41.1144, "lon": -74.1496},  # Suffern, NY
+    "17": {"lat": 41.07513, "lon": -74.145485},  # Ramsey-Route 17
+    "MZ": {"lat": 41.094416, "lon": -74.14662},  # Mahwah
+    "SF": {"lat": 41.11354, "lon": -74.153442},  # Suffern, NY
     # Montclair-Boonton Line
-    "BM": {"lat": 40.8132, "lon": -74.2050},  # Bloomfield
-    "GG": {"lat": 40.8061, "lon": -74.2070},  # Glen Ridge
-    "BF": {"lat": 40.8926, "lon": -74.1405},  # Broadway Fair Lawn
-    "FZ": {"lat": 40.9405, "lon": -74.1320},  # Radburn Fair Lawn
-    "HS": {"lat": 40.8283, "lon": -74.2093},  # Montclair Heights
-    "MS": {"lat": 40.8263, "lon": -74.2022},  # Mountain Avenue
-    "UM": {"lat": 40.8295, "lon": -74.1987},  # Upper Montclair
-    "WG": {"lat": 40.8070, "lon": -74.1871},  # Watchung Avenue
-    "WT": {"lat": 40.8033, "lon": -74.1738},  # Watsessing Avenue
-    "UV": {"lat": 40.8695, "lon": -74.1975},  # Montclair State University
-    "FA": {"lat": 40.8757, "lon": -74.2290},  # Little Falls
+    "BM": {"lat": 40.792709, "lon": -74.200043},  # Bloomfield
+    "MC": {"lat": 40.808178, "lon": -74.208681},  # Bay Street (Montclair)
+    "GG": {"lat": 40.80059, "lon": -74.204655},  # Glen Ridge
+    "BF": {"lat": 40.922505, "lon": -74.115236},  # Broadway Fair Lawn
+    "FZ": {"lat": 40.939914, "lon": -74.121617},  # Radburn Fair Lawn
+    "HS": {"lat": 40.857536, "lon": -74.2025},  # Montclair Heights
+    "MS": {"lat": 40.848715, "lon": -74.205306},  # Mountain Avenue
+    "UM": {"lat": 40.842004, "lon": -74.209368},  # Upper Montclair
+    "WG": {"lat": 40.829514, "lon": -74.206934},  # Watchung Avenue
+    "WT": {"lat": 40.782743, "lon": -74.198451},  # Watsessing Avenue
+    "UV": {"lat": 40.869782, "lon": -74.197439},  # Montclair State University
+    "FA": {"lat": 40.880669, "lon": -74.235372},  # Little Falls
     "GA": {"lat": 40.8847, "lon": -74.2539},  # Great Notch
-    "TB": {"lat": 40.9033, "lon": -74.3959},  # Mount Tabor
-    "BN": {"lat": 40.903378, "lon": -74.407733},  # Boonton
-    "ML": {"lat": 40.9248, "lon": -74.4095},  # Mountain Lakes
-    "LP": {"lat": 40.8822, "lon": -74.3014},  # Lincoln Park
-    "TO": {"lat": 40.8723, "lon": -74.2808},  # Towaco
-    "HV": {"lat": 40.8648, "lon": -74.5473},  # Mount Arlington
-    "HP": {"lat": 40.9298, "lon": -74.6631},  # Lake Hopatcong
-    "NT": {"lat": 40.9036, "lon": -74.6969},  # Netcong
-    "OL": {"lat": 40.8450, "lon": -74.6885},  # Mount Olive
-    "WM": {"lat": 40.8356, "lon": -74.0989},  # Wesmont
-    "EO": {"lat": 40.7661, "lon": -74.2052},  # East Orange
+    "TB": {"lat": 40.875904, "lon": -74.481915},  # Mount Tabor
+    "BN": {"lat": 40.903378, "lon": -74.407736},  # Boonton
+    "ML": {"lat": 40.885947, "lon": -74.433604},  # Mountain Lakes
+    "LP": {"lat": 40.924138, "lon": -74.301826},  # Lincoln Park
+    "TO": {"lat": 40.922809, "lon": -74.343842},  # Towaco
+    "HV": {"lat": 40.89659, "lon": -74.632731},  # Mount Arlington
+    "HP": {"lat": 40.904219, "lon": -74.665697},  # Lake Hopatcong
+    "NT": {"lat": 40.897552, "lon": -74.707317},  # Netcong
+    "OL": {"lat": 40.907376, "lon": -74.730653},  # Mount Olive
+    "WM": {"lat": 40.854979, "lon": -74.096951},  # Wesmont
+    "EO": {"lat": 40.760977, "lon": -74.210464},  # East Orange
     # Pascack Valley Line
-    "WR": {"lat": 40.8449, "lon": -74.0883},  # Wood Ridge
-    "TE": {"lat": 40.8602, "lon": -74.0639},  # Teterboro
-    "EX": {"lat": 40.8836, "lon": -74.0436},  # Essex Street
-    "AS": {"lat": 40.8944, "lon": -74.0447},  # Anderson Street
-    "RG": {"lat": 40.9264, "lon": -74.0413},  # River Edge
-    "NH": {"lat": 40.9119, "lon": -74.0362},  # New Bridge Landing
-    "OD": {"lat": 40.9545, "lon": -74.0369},  # Oradell
-    "EN": {"lat": 40.9758, "lon": -74.0281},  # Emerson
-    "WW": {"lat": 40.9909, "lon": -74.0336},  # Westwood
-    "HD": {"lat": 41.0021, "lon": -74.0408},  # Hillsdale
-    "WL": {"lat": 41.0230, "lon": -74.0569},  # Woodcliff Lake
-    "PV": {"lat": 41.0371, "lon": -74.0743},  # Park Ridge
-    "ZM": {"lat": 41.0521, "lon": -74.0372},  # Montvale
-    "PQ": {"lat": 41.0595, "lon": -74.0197},  # Pearl River, NY
-    "NN": {"lat": 41.0869, "lon": -74.0130},  # Nanuet, NY
-    "SV": {"lat": 41.1130, "lon": -74.0436},  # Spring Valley, NY
+    "WR": {"lat": 40.843974, "lon": -74.078719},  # Wood Ridge
+    "TE": {"lat": 40.864858, "lon": -74.062676},  # Teterboro
+    "EX": {"lat": 40.878973, "lon": -74.051893},  # Essex Street
+    "AS": {"lat": 40.894458, "lon": -74.043781},  # Anderson Street
+    "RG": {"lat": 40.935146, "lon": -74.02914},  # River Edge
+    "NH": {"lat": 40.910856, "lon": -74.035044},  # New Bridge Landing
+    "OD": {"lat": 40.953478, "lon": -74.029983},  # Oradell
+    "EN": {"lat": 40.975036, "lon": -74.027474},  # Emerson
+    "WW": {"lat": 40.990817, "lon": -74.032696},  # Westwood
+    "HD": {"lat": 41.002414, "lon": -74.041033},  # Hillsdale
+    "WL": {"lat": 41.021078, "lon": -74.040775},  # Woodcliff Lake
+    "PV": {"lat": 41.032305, "lon": -74.036164},  # Park Ridge
+    "ZM": {"lat": 41.040879, "lon": -74.029152},  # Montvale
+    "PQ": {"lat": 41.058181, "lon": -74.02232},  # Pearl River, NY
+    "NN": {"lat": 41.090015, "lon": -74.014794},  # Nanuet, NY
+    "SV": {"lat": 41.111978, "lon": -74.043991},  # Spring Valley, NY
     # Port Jervis Line
-    "XG": {"lat": 41.1568, "lon": -74.1937},  # Sloatsburg, NY
-    "TC": {"lat": 41.1970, "lon": -74.1885},  # Tuxedo, NY
-    "RM": {"lat": 41.3098, "lon": -74.1526},  # Harriman, NY
-    "CW": {"lat": 41.4426, "lon": -74.1351},  # Salisbury Mills-Cornwall, NY
-    "CB": {"lat": 41.4446, "lon": -74.2452},  # Campbell Hall, NY
-    "OS": {"lat": 41.4783, "lon": -74.5336},  # Otisville, NY
-    "PO": {"lat": 41.3753, "lon": -74.6897},  # Port Jervis, NY
-    "23": {"lat": 40.8932, "lon": -74.2458},  # Wayne-Route 23
+    "XG": {"lat": 41.157138, "lon": -74.191307},  # Sloatsburg, NY
+    "TC": {"lat": 41.194208, "lon": -74.18446},  # Tuxedo, NY
+    "RM": {"lat": 41.293354, "lon": -74.13987},  # Harriman, NY
+    "CW": {"lat": 41.437073, "lon": -74.101871},  # Salisbury Mills-Cornwall, NY
+    "CB": {"lat": 41.450917, "lon": -74.266554},  # Campbell Hall, NY
+    "OS": {"lat": 41.471784, "lon": -74.529212},  # Otisville, NY
+    "PO": {"lat": 41.374899, "lon": -74.694622},  # Port Jervis, NY
+    "23": {"lat": 40.900254, "lon": -74.256971},  # Wayne-Route 23
     # Raritan Valley Line Extension
-    "JA": {"lat": 40.7328, "lon": -74.0379},  # Jersey Avenue
+    "JA": {"lat": 40.476912, "lon": -74.467363},  # Jersey Avenue
     # Additional Amtrak stations with GPS coordinates
     "BRP": {"lat": 41.1767, "lon": -73.1874},  # Bridgeport, CT
     "HFD": {"lat": 41.7678, "lon": -72.6821},  # Hartford, CT
