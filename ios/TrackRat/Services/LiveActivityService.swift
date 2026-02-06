@@ -10,6 +10,7 @@ class LiveActivityService: ObservableObject {
     @Published var currentActivity: Activity<TrainActivityAttributes>?
     @Published var isActivityActive: Bool = false
     @Published var journeyStationCodes: [String] = []
+    @Published var journeyDataSource: String = ""
 
     private var updateTimer: Timer?
     private var pushTokenTask: Task<Void, Never>?
@@ -58,6 +59,11 @@ class LiveActivityService: ObservableObject {
         let estimatedDepartureTime = train.getEstimatedDepartureTime(fromStationCode: originCode)
         let estimatedArrivalTime = train.getEstimatedArrivalTime(toStationCode: destinationCode)
         let scheduledArrivalTime = train.getScheduledArrivalTime(toStationCode: destinationCode)
+
+        // Store data source for system filtering
+        await MainActor.run {
+            self.journeyDataSource = train.dataSource
+        }
 
         // Extract journey station codes from origin to destination using existing stops
         if let stops = train.stops {
@@ -207,6 +213,7 @@ class LiveActivityService: ObservableObject {
             self?.isActivityActive = false
             self?.currentPushToken = nil
             self?.journeyStationCodes = []
+            self?.journeyDataSource = ""
             self?.hasDepartedOrigin = false
         }
 
