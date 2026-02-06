@@ -508,30 +508,36 @@ class TestDirectArrivalForecaster:
 
         mock_db = AsyncMock(spec=AsyncSession)
 
-        # Segment NY→NP: NO data (returns empty)
-        # Segment NP→TR: HAS data with ~38 min transit (matches scheduled duration)
-        # Segment TR→PH: HAS data with ~28 min transit (matches scheduled duration)
-        call_count = [0]
-        def mock_execute(stmt):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return []  # NY→NP: no data
-            elif call_count[0] == 2:
-                # NP→TR: 38 min transit (matches scheduled NP dep→TR arr)
-                return [
-                    MagicMock(departure_time=base_time - timedelta(hours=1, minutes=8), arrival_time=base_time - timedelta(minutes=30), from_sequence=1, to_sequence=2, journey_id=1),
-                    MagicMock(departure_time=base_time - timedelta(hours=2, minutes=8), arrival_time=base_time - timedelta(hours=1, minutes=30), from_sequence=1, to_sequence=2, journey_id=2),
-                    MagicMock(departure_time=base_time - timedelta(hours=3, minutes=8), arrival_time=base_time - timedelta(hours=2, minutes=30), from_sequence=1, to_sequence=2, journey_id=3),
-                ]
-            else:
-                # TR→PH: 28 min transit (matches scheduled TR dep→PH arr)
-                return [
-                    MagicMock(departure_time=base_time - timedelta(hours=1, minutes=32), arrival_time=base_time - timedelta(hours=1, minutes=4), from_sequence=2, to_sequence=3, journey_id=4),
-                    MagicMock(departure_time=base_time - timedelta(hours=2, minutes=32), arrival_time=base_time - timedelta(hours=2, minutes=4), from_sequence=2, to_sequence=3, journey_id=5),
-                    MagicMock(departure_time=base_time - timedelta(hours=3, minutes=32), arrival_time=base_time - timedelta(hours=3, minutes=4), from_sequence=2, to_sequence=3, journey_id=6),
-                ]
+        # _get_all_segment_transit_times makes a single batch query returning
+        # per-stop rows (journey_id, station_code, stop_sequence, departure_time,
+        # arrival_time). We provide NO rows for NY (so NY→NP has no data), and
+        # rows for NP, TR, PH across 3 journeys so those segments have data.
+        # Arrival times must be within LOOKBACK_HOURS (1h) of now for the cutoff.
+        #
+        # Segment NP→TR: ~38 min transit (matches scheduled NP dep→TR arr)
+        # Segment TR→PH: ~28 min transit (matches scheduled TR dep→PH arr)
+        batch_rows = []
+        for j_id, offset_min in [(1, 5), (2, 20), (3, 40)]:
+            # NP stop: departure used for NP→TR segment
+            batch_rows.append(MagicMock(
+                journey_id=j_id, station_code="NP", stop_sequence=1,
+                departure_time=base_time - timedelta(minutes=offset_min + 38),
+                arrival_time=base_time - timedelta(minutes=offset_min + 40),
+            ))
+            # TR stop: arrival used for NP→TR, departure used for TR→PH
+            batch_rows.append(MagicMock(
+                journey_id=j_id, station_code="TR", stop_sequence=2,
+                departure_time=base_time - timedelta(minutes=offset_min + 0),
+                arrival_time=base_time - timedelta(minutes=offset_min),
+            ))
+            # PH stop: arrival used for TR→PH segment
+            batch_rows.append(MagicMock(
+                journey_id=j_id, station_code="PH", stop_sequence=3,
+                departure_time=None,
+                arrival_time=base_time - timedelta(minutes=offset_min) + timedelta(minutes=28),
+            ))
 
-        mock_db.execute = AsyncMock(side_effect=mock_execute)
+        mock_db.execute = AsyncMock(return_value=batch_rows)
 
         await forecaster.add_predictions_to_stops(
             mock_db, mock_journey, stops, user_origin="NY"
