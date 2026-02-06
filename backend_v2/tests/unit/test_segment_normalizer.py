@@ -173,6 +173,58 @@ class TestNormalizeAggregatedSegments:
         assert ("PJS", "PGR") in segments_by_key
         assert ("PGR", "PNP") in segments_by_key
 
+    def test_lirr_segment_expansion(self):
+        """Test expansion of LIRR segments (Babylon Branch, trunk included)."""
+        # NY -> JAM on Babylon Branch skips WDD, FHL, KGN
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="JAM",
+                data_source="LIRR",
+                congestion_factor=1.1,
+                congestion_level="normal",
+                avg_transit_minutes=15.0,
+                baseline_minutes=14.0,
+                sample_count=8,
+                average_delay_minutes=1.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 4
+        segments_by_key = {(s.from_station, s.to_station): s for s in result}
+        assert ("NY", "WDD") in segments_by_key
+        assert ("WDD", "FHL") in segments_by_key
+        assert ("FHL", "KGN") in segments_by_key
+        assert ("KGN", "JAM") in segments_by_key
+
+    def test_mnr_segment_expansion(self):
+        """Test expansion of MNR segments (Hudson Line)."""
+        # GCT -> MEYS on Hudson Line skips M125
+        raw = [
+            SegmentCongestion(
+                from_station="GCT",
+                to_station="MEYS",
+                data_source="MNR",
+                congestion_factor=1.0,
+                congestion_level="normal",
+                avg_transit_minutes=8.0,
+                baseline_minutes=8.0,
+                sample_count=12,
+                average_delay_minutes=0.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 2
+        segments_by_key = {(s.from_station, s.to_station): s for s in result}
+        assert ("GCT", "M125") in segments_by_key
+        assert ("M125", "MEYS") in segments_by_key
+
     def test_cancellation_only_segment_filtered(self):
         """Test that segments with only cancellation data are filtered out.
 
@@ -323,6 +375,29 @@ class TestNormalizeIndividualSegments:
         stations = [(s.from_station, s.to_station) for s in result]
         assert ("PJS", "PGR") in stations
         assert ("PGR", "PNP") in stations
+
+    def test_lirr_individual_segment_expansion(self):
+        """Test LIRR individual segment expansion."""
+        # JAM -> LYN on Babylon Branch skips VSM
+        raw = [self._create_segment("JAM", "LYN", data_source="LIRR")]
+        result = normalize_individual_segments(raw)
+
+        assert len(result) == 2
+        stations = [(s.from_station, s.to_station) for s in result]
+        assert ("JAM", "VSM") in stations
+        assert ("VSM", "LYN") in stations
+
+    def test_mnr_individual_segment_expansion(self):
+        """Test MNR individual segment expansion."""
+        # MSTM -> MTMH on New Canaan Branch skips MGLB and MSPD
+        raw = [self._create_segment("MSTM", "MTMH", data_source="MNR")]
+        result = normalize_individual_segments(raw)
+
+        assert len(result) == 3
+        stations = [(s.from_station, s.to_station) for s in result]
+        assert ("MSTM", "MGLB") in stations
+        assert ("MGLB", "MSPD") in stations
+        assert ("MSPD", "MTMH") in stations
 
     def test_station_names_updated(self):
         """Test that station names are updated for expanded segments."""

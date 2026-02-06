@@ -21,7 +21,7 @@ class Route:
 
     id: str  # Unique identifier (e.g., "njt-nec")
     name: str  # Display name
-    data_source: str  # "NJT", "PATH", "PATCO", "AMTRAK"
+    data_source: str  # "NJT", "PATH", "PATCO", "AMTRAK", "LIRR", "MNR"
     line_codes: frozenset[str]  # Valid line_code values for this route
     stations: tuple[str, ...]  # Ordered station codes
 
@@ -675,6 +675,254 @@ AMTRAK_EMPIRE_SERVICE = Route(
 )
 
 # =============================================================================
+# LIRR ROUTES
+# =============================================================================
+# Note: Unlike iOS RouteTopology.swift which splits trunk from branches for map
+# drawing, backend routes include the full station path (trunk + branch) so that
+# segment normalization can expand skip-stop segments end-to-end.
+#
+# Station codes use L-prefix where needed to avoid Amtrak/NJT collisions
+# (e.g., LMIN for Mineola vs Amtrak MIN for Mineola TX).
+
+LIRR_BABYLON = Route(
+    id="lirr-babylon",
+    name="Babylon Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-BB"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "VSM", "LYN", "RVC", "BWN", "FPT", "MRK", "BMR",
+        "WGH", "SFD", "MQA", "LMPK", "AVL", "CPG", "LHT", "BTA",
+    ),
+)
+
+LIRR_HEMPSTEAD = Route(
+    id="lirr-hempstead",
+    name="Hempstead Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-HB"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "QVG", "LHOL", "FPK", "SMR", "NHP",
+        "GCY", "LCLP", "NBD", "HGN", "LHEM",
+    ),
+)
+
+LIRR_OYSTER_BAY = Route(
+    id="lirr-oyster-bay",
+    name="Oyster Bay Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-OB"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "MAV", "LMIN", "EWN", "ABT", "RSN", "LGVL",
+        "GHD", "SCF", "GST", "GCV", "LVL", "OBY",
+    ),
+)
+
+LIRR_RONKONKOMA = Route(
+    id="lirr-ronkonkoma",
+    name="Ronkonkoma Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-RK"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "MAV", "LMIN", "CPL", "WBY", "LHVL", "BPG",
+        "LFMD", "PLN", "WYD", "DPK", "BWD", "CI", "RON",
+    ),
+)
+
+LIRR_MONTAUK = Route(
+    id="lirr-montauk",
+    name="Montauk Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-MK"}),
+    stations=(
+        # Trunk + Babylon Branch (Montauk trains run via Babylon)
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "VSM", "LYN", "RVC", "BWN", "FPT", "MRK", "BMR",
+        "WGH", "SFD", "MQA", "LMPK", "AVL", "CPG", "LHT", "BTA",
+        # Montauk Branch extension east of Babylon
+        "BSR", "ISP", "GRV", "ODL", "SVL", "PGE", "BPT",
+        "MSY", "MFD", "YPK", "RHD",
+        "LSPK", "WHN", "HBY", "SHN", "BHN", "EHN", "AGT", "MTK",
+    ),
+)
+
+LIRR_LONG_BEACH = Route(
+    id="lirr-long-beach",
+    name="Long Beach Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-LB"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "VSM", "LYN", "ERY", "CAV", "ODE", "IPK", "LBH",
+    ),
+)
+
+LIRR_FAR_ROCKAWAY = Route(
+    id="lirr-far-rockaway",
+    name="Far Rockaway Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-FR"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "LLMR", "LSAB", "ROS", "LTN", "GBN",
+        "HWT", "WMR", "CHT", "LCE", "IWD", "LFRY",
+    ),
+)
+
+LIRR_WEST_HEMPSTEAD = Route(
+    id="lirr-west-hempstead",
+    name="West Hempstead Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-WH"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "VSM", "LMVN", "LLVW", "WHD",
+    ),
+)
+
+LIRR_PORT_WASHINGTON = Route(
+    id="lirr-port-washington",
+    name="Port Washington Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-PW"}),
+    stations=(
+        # Port Washington doesn't go through Jamaica
+        "NY", "WDD", "LSSM", "FLS", "LMHL", "BDY",
+        "ADL", "BSD", "DGL", "LLNK", "GNK", "MHT", "PDM", "PWS",
+    ),
+)
+
+LIRR_PORT_JEFFERSON = Route(
+    id="lirr-port-jefferson",
+    name="Port Jefferson Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-PJ"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "MAV", "LMIN", "LHVL", "SYT", "CSH", "LHUN",
+        "GWN", "NPT", "KPK", "LSTN", "LSJM", "LSBK", "PJN",
+    ),
+)
+
+LIRR_ATLANTIC = Route(
+    id="lirr-atlantic",
+    name="Atlantic Branch",
+    data_source="LIRR",
+    line_codes=frozenset(),  # Terminal approach, trains tagged with branch line_code
+    stations=("LAT", "NAV", "ENY", "JAM"),
+)
+
+LIRR_GRAND_CENTRAL = Route(
+    id="lirr-grand-central",
+    name="Grand Central Madison",
+    data_source="LIRR",
+    line_codes=frozenset(),  # Terminal approach, trains tagged with branch line_code
+    stations=("GCT", "JAM"),
+)
+
+LIRR_BELMONT_PARK = Route(
+    id="lirr-belmont-park",
+    name="Belmont Park",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-BP"}),
+    stations=(
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "QVG", "BRS", "EMT",
+    ),
+)
+
+LIRR_GREENPORT = Route(
+    id="lirr-greenport",
+    name="Greenport Service",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-GP"}),
+    stations=(
+        # Greenport service runs via Ronkonkoma Branch
+        "NY", "WDD", "FHL", "KGN", "JAM",
+        "MAV", "LMIN", "CPL", "WBY", "LHVL", "BPG",
+        "LFMD", "PLN", "WYD", "DPK", "BWD", "CI", "RON",
+        # Eastern extension to Greenport
+        "MFD", "YPK", "RHD", "MAK", "SHD", "GPT",
+    ),
+)
+
+# =============================================================================
+# MNR ROUTES
+# =============================================================================
+# MNR station codes use M-prefix consistently (e.g., MYON for Yonkers).
+# Station sequences match iOS RouteTopology.swift.
+
+MNR_HUDSON = Route(
+    id="mnr-hudson",
+    name="Hudson Line",
+    data_source="MNR",
+    line_codes=frozenset({"MNR-HUD"}),
+    stations=(
+        "GCT", "M125", "MEYS", "MMRH", "MUNH", "MMBL",
+        "MSDV", "MRVD", "MLUD", "MYON", "MGWD", "MGRY",
+        "MHOH", "MDBF", "MARD", "MIRV", "MTTN", "MPHM",
+        "MSCB", "MOSS", "MCRH", "MCRT", "MPKS",
+        "MMAN", "MGAR", "MCSP", "MBRK", "MBCN", "MNHB", "MPOK",
+    ),
+)
+
+MNR_HARLEM = Route(
+    id="mnr-harlem",
+    name="Harlem Line",
+    data_source="MNR",
+    line_codes=frozenset({"MNR-HAR"}),
+    stations=(
+        "GCT", "M125", "MMEL", "MTRM", "MFOR", "MBOG",
+        "MWBG", "MWDL", "MWKF", "MMVW", "MFLT", "MBRX",
+        "MTUC", "MCWD", "MSCD", "MHSD", "MWPL", "MNWP",
+        "MVAL", "MMTP", "MHWT", "MPLV", "MCHP", "MMTK",
+        "MBDH", "MKAT", "MGLD", "MPRD", "MCFL", "MBRS",
+        "MSET", "MPAT", "MPAW", "MAPT", "MHVW", "MDVP", "MTMR", "MWAS",
+    ),
+)
+
+MNR_NEW_HAVEN = Route(
+    id="mnr-new-haven",
+    name="New Haven Line",
+    data_source="MNR",
+    line_codes=frozenset({"MNR-NH"}),
+    stations=(
+        "GCT", "M125", "MMVE", "MPEL", "MNRC", "MLRM",
+        "MMAM", "MHRR", "MRYE", "MPCH", "MGRN", "MCOC",
+        "MRSD", "MODG", "MSTM", "MNOH", "MDAR", "MROW",
+        "MSNW", "MENW", "MWPT", "MGRF", "MSPT", "MFFD",
+        "MFBR", "MBGP", "MSTR", "MMIL", "MWHN", "MNHV", "MNSS",
+    ),
+)
+
+MNR_NEW_CANAAN = Route(
+    id="mnr-new-canaan",
+    name="New Canaan Branch",
+    data_source="MNR",
+    line_codes=frozenset({"MNR-NC"}),
+    stations=("MSTM", "MGLB", "MSPD", "MTMH", "MNCA"),
+)
+
+MNR_DANBURY = Route(
+    id="mnr-danbury",
+    name="Danbury Branch",
+    data_source="MNR",
+    line_codes=frozenset({"MNR-DAN"}),
+    stations=("MSNW", "MMR7", "MWIL", "MCAN", "MBVL", "MRED", "MBTH", "MDBY"),
+)
+
+MNR_WATERBURY = Route(
+    id="mnr-waterbury",
+    name="Waterbury Branch",
+    data_source="MNR",
+    line_codes=frozenset({"MNR-WAT"}),
+    stations=("MBGP", "MSTR", "MDBS", "MANS", "MSYM", "MBCF", "MNAU", "MWTB"),
+)
+
+# =============================================================================
 # REGISTRY
 # =============================================================================
 
@@ -730,6 +978,28 @@ ALL_ROUTES: tuple[Route, ...] = (
     AMTRAK_SURFLINER,
     AMTRAK_CASCADES,
     AMTRAK_EMPIRE_SERVICE,
+    # LIRR
+    LIRR_BABYLON,
+    LIRR_HEMPSTEAD,
+    LIRR_OYSTER_BAY,
+    LIRR_RONKONKOMA,
+    LIRR_MONTAUK,
+    LIRR_LONG_BEACH,
+    LIRR_FAR_ROCKAWAY,
+    LIRR_WEST_HEMPSTEAD,
+    LIRR_PORT_WASHINGTON,
+    LIRR_PORT_JEFFERSON,
+    LIRR_ATLANTIC,
+    LIRR_GRAND_CENTRAL,
+    LIRR_BELMONT_PARK,
+    LIRR_GREENPORT,
+    # MNR
+    MNR_HUDSON,
+    MNR_HARLEM,
+    MNR_NEW_HAVEN,
+    MNR_NEW_CANAAN,
+    MNR_DANBURY,
+    MNR_WATERBURY,
 )
 
 # Lookup indexes for fast access
