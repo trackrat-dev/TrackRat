@@ -144,10 +144,32 @@ STATION_ML_CONFIGS = {
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
-    "JA": {  # 113 records
+    "JA": {  # Jersey Avenue (NJT) - 113 records
         "ml_enabled": True,
         "min_samples_required": 100,
         "tracks": ["1", "2"],
+        "platform_mappings": None,
+    },
+    "JAM": {  # Jamaica (LIRR) - busiest junction in the system
+        "ml_enabled": True,
+        "min_samples_required": 100,
+        "tracks": ["2", "6", "7", "8", "11", "12"],
+        "platform_mappings": None,
+    },
+    "GCT": {  # Grand Central - MNR Terminal (tracks 13-114) + LIRR Madison (tracks 201-304)
+        "ml_enabled": True,
+        "min_samples_required": 100,
+        "tracks": [
+            # MNR Grand Central Terminal
+            "13", "15", "16", "18", "19", "20",
+            "23", "24", "25", "28",
+            "32", "33", "35", "36", "37", "38", "39",
+            "42",
+            "102", "103", "104", "106", "107", "111", "112", "114",
+            # LIRR Grand Central Madison
+            "201", "202", "204",
+            "301", "302", "304",
+        ],
         "platform_mappings": None,
     },
     # Default configuration for stations not explicitly listed

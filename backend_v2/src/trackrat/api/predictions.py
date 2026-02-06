@@ -239,7 +239,9 @@ async def get_supported_stations() -> SupportedStationsResponse:
         "DN": "Denville",
         "PL": "Plainfield",
         "LB": "Long Branch",
-        "JA": "Jamaica",
+        "JA": "Jersey Avenue",
+        "JAM": "Jamaica",
+        "GCT": "Grand Central",
     }
 
     stations = []

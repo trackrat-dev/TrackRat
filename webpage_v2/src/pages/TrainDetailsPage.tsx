@@ -93,7 +93,7 @@ export function TrainDetailsPage() {
   }
 
   // Stations that support track predictions (backend has ml_enabled: true for these)
-  const supportedStations = new Set(['NY', 'NP', 'ND', 'HB', 'MP', 'ST', 'TR', 'PH', 'DV', 'DN', 'PL', 'LB', 'JA']);
+  const supportedStations = new Set(['NY', 'NP', 'ND', 'HB', 'MP', 'ST', 'TR', 'PH', 'DV', 'DN', 'PL', 'LB', 'JA', 'JAM', 'GCT']);
 
   // Check if we should show track predictions
   // Show for supported station departures without track assignment

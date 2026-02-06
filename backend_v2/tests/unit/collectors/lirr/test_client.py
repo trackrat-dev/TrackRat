@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from google.transit import gtfs_realtime_pb2
 
 from trackrat.collectors.lirr.client import (
     LIRRClient,
@@ -350,3 +351,96 @@ class TestLIRRClient:
         """Test _get_route_info returns None for unknown route."""
         result = client._get_route_info("999")
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_parses_track_from_mta_extension(self, client):
+        """Test that track is extracted from MTA Railroad extension (field 1005)."""
+        now_ts = int(datetime.now(timezone.utc).timestamp()) + 3600
+
+        # Build a GTFS-RT StopTimeUpdate with MTA extension containing track "12"
+        stu = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate()
+        stu.stop_id = "102"  # Jamaica
+        stu.arrival.time = now_ts
+        stu.arrival.delay = 60
+        stu_bytes = stu.SerializeToString()
+
+        # MTA Railroad extension: field 1005 with sub-message field 1 = "12"
+        track_str = b"12"
+        sub_msg = b"\x0a" + bytes([len(track_str)]) + track_str
+        ext_bytes = b"\xea\x3e" + bytes([len(sub_msg)]) + sub_msg
+
+        # Re-parse STU with extension bytes appended (preserved as unknown fields)
+        stu_with_ext = gtfs_realtime_pb2.TripUpdate.StopTimeUpdate()
+        stu_with_ext.ParseFromString(stu_bytes + ext_bytes)
+
+        # Build complete feed with this STU
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(timezone.utc).timestamp())
+
+        entity = feed.entity.add()
+        entity.id = "1"
+        trip = entity.trip_update.trip
+        trip.trip_id = "test_trip_1"
+        trip.route_id = "1"
+        trip.direction_id = 0
+
+        new_stu = entity.trip_update.stop_time_update.add()
+        new_stu.ParseFromString(stu_with_ext.SerializeToString())
+
+        feed_bytes = feed.SerializeToString()
+
+        # Mock HTTP response to return our constructed feed
+        mock_response = MagicMock()
+        mock_response.content = feed_bytes
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        result = await client.get_all_arrivals()
+
+        assert len(result) == 1
+        assert result[0].station_code == "JAM"
+        assert result[0].trip_id == "test_trip_1"
+        assert result[0].track == "12", (
+            f"Expected track '12' from MTA extension, got '{result[0].track}'"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_handles_missing_extension(self, client):
+        """Test that track is None when MTA extension is absent."""
+        now_ts = int(datetime.now(timezone.utc).timestamp()) + 3600
+
+        # Build a standard GTFS-RT feed with no MTA extension
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(timezone.utc).timestamp())
+
+        entity = feed.entity.add()
+        entity.id = "1"
+        trip = entity.trip_update.trip
+        trip.trip_id = "test_trip_2"
+        trip.route_id = "1"
+        trip.direction_id = 0
+
+        stu = entity.trip_update.stop_time_update.add()
+        stu.stop_id = "102"  # Jamaica
+        stu.arrival.time = now_ts
+        stu.arrival.delay = 0
+
+        feed_bytes = feed.SerializeToString()
+
+        mock_response = MagicMock()
+        mock_response.content = feed_bytes
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        result = await client.get_all_arrivals()
+
+        assert len(result) == 1
+        assert result[0].track is None

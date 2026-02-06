@@ -12,6 +12,7 @@ import httpx
 from google.transit import gtfs_realtime_pb2
 from pydantic import BaseModel
 
+from trackrat.collectors.mta_extensions import extract_mta_track
 from trackrat.config.stations import (
     MNR_GTFS_RT_FEED_URL,
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
@@ -168,8 +169,8 @@ class MNRClient:
                     if arrival_time is None:
                         continue
 
-                    # Track assignment (MTA extensions not parsed for now)
-                    track: str | None = None
+                    # Extract track from MTA Railroad GTFS-RT extension (field 1005)
+                    track = extract_mta_track(stu)
 
                     arrivals.append(
                         MnrArrival(

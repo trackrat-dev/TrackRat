@@ -12,6 +12,7 @@ import httpx
 from google.transit import gtfs_realtime_pb2
 from pydantic import BaseModel
 
+from trackrat.collectors.mta_extensions import extract_mta_track
 from trackrat.config.stations import (
     LIRR_GTFS_RT_FEED_URL,
     LIRR_GTFS_STOP_TO_INTERNAL_MAP,
@@ -170,11 +171,8 @@ class LIRRClient:
                     if arrival_time is None:
                         continue
 
-                    # Try to get track from MTA extension (if available)
-                    # The MTA extension adds a 'track' field to StopTimeUpdate
-                    track: str | None = None
-                    # Note: MTA extensions require compiling their proto file
-                    # For now, we'll skip track and add it in a future iteration
+                    # Extract track from MTA Railroad GTFS-RT extension (field 1005)
+                    track = extract_mta_track(stu)
 
                     arrivals.append(
                         LirrArrival(

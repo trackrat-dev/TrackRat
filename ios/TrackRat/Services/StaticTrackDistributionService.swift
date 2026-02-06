@@ -7,7 +7,7 @@ class StaticTrackDistributionService {
 
     /// Stations that support track predictions (backend has ml_enabled: true for these)
     /// The backend controls the actual list - this is for early filtering to avoid unnecessary API calls
-    static let supportedStations: Set<String> = ["NY", "NP", "ND", "HB", "MP", "ST", "TR", "PH", "DV", "DN", "PL", "LB", "JA"]
+    static let supportedStations: Set<String> = ["NY", "NP", "ND", "HB", "MP", "ST", "TR", "PH", "DV", "DN", "PL", "LB", "JA", "JAM", "GCT"]
 
     private init() {}
 
