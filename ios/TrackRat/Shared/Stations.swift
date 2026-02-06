@@ -117,7 +117,45 @@ struct Stations {
         "Stony Brook", "Syosset", "Valley Stream", "Wantagh", "West Hempstead",
         "Westbury", "Westhampton", "Westwood LIRR", "Woodmere", "Woodside",
         "Wyandanch", "Yaphank",
-        
+
+        // Metro-North Railroad Stations
+        // Hudson Line
+        "Grand Central Terminal", "Harlem-125th Street", "Yankees-E 153 St",
+        "Morris Heights", "University Heights", "Marble Hill",
+        "Spuyten Duyvil", "Riverdale", "Ludlow", "Yonkers Alt",
+        "Glenwood", "Greystone", "Hastings-on-Hudson", "Dobbs Ferry",
+        "Ardsley-on-Hudson", "Irvington", "Tarrytown", "Philipse Manor",
+        "Scarborough", "Ossining", "Croton-Harmon Alt", "Cortlandt",
+        "Peekskill", "Manitou", "Garrison", "Cold Spring",
+        "Breakneck Ridge", "Beacon", "New Hamburg", "Poughkeepsie Alt",
+        // Harlem Line
+        "Melrose", "Tremont", "Fordham", "Botanical Garden",
+        "Williams Bridge", "Woodlawn", "Wakefield", "Mt Vernon West",
+        "Fleetwood", "Bronxville", "Tuckahoe", "Crestwood",
+        "Scarsdale", "Hartsdale", "White Plains", "North White Plains",
+        "Valhalla", "Mt Pleasant", "Hawthorne NY", "Pleasantville",
+        "Chappaqua", "Mt Kisco", "Bedford Hills", "Katonah",
+        "Goldens Bridge", "Purdys", "Croton Falls", "Brewster",
+        "Southeast", "Patterson", "Pawling", "Appalachian Trail",
+        "Harlem Valley-Wingdale", "Dover Plains", "Tenmile River", "Wassaic",
+        // New Haven Line
+        "Mt Vernon East", "Pelham", "New Rochelle Alt", "Larchmont",
+        "Mamaroneck", "Harrison", "Rye", "Port Chester",
+        "Greenwich", "Cos Cob", "Riverside", "Old Greenwich",
+        "Stamford Alt", "Noroton Heights", "Darien", "Rowayton",
+        "South Norwalk", "East Norwalk", "Westport",
+        "Greens Farms", "Southport", "Fairfield", "Fairfield-Black Rock",
+        "Bridgeport Alt", "Stratford", "Milford", "West Haven",
+        "New Haven Alt", "New Haven-State St",
+        // New Canaan Branch
+        "Glenbrook", "Springdale", "Talmadge Hill", "New Canaan",
+        // Danbury Branch
+        "Merritt 7", "Wilton", "Cannondale", "Branchville",
+        "Redding", "Bethel", "Danbury",
+        // Waterbury Branch
+        "Derby-Shelton", "Ansonia", "Seymour", "Beacon Falls",
+        "Naugatuck", "Waterbury",
+
         // Amtrak Northeast Corridor
         "Boston South", "Boston Back Bay", "Providence", "Kingston", "Westerly",
         "New London", "Old Saybrook", "New Haven", "Bridgeport", "Stamford",
