@@ -618,7 +618,8 @@ struct SettingsSection: View {
             }
             .buttonStyle(.plain)
 
-            // Advanced Configuration
+            // Advanced Configuration (only shown in DEBUG/TestFlight builds)
+            if showDebugSections {
             Button {
                 navigationPath.append(ProfileDestination.advancedConfiguration)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -651,7 +652,18 @@ struct SettingsSection: View {
                 )
             }
             .buttonStyle(.plain)
+            }
         }
+    }
+
+    /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
+    private var showDebugSections: Bool {
+        #if DEBUG
+        return true
+        #else
+        guard let url = Bundle.main.appStoreReceiptURL else { return false }
+        return url.lastPathComponent == "sandboxReceipt"
+        #endif
     }
 }
 

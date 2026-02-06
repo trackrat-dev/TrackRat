@@ -15,18 +15,6 @@ struct AdvancedConfigurationView: View {
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
 
-    /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
-    private var showDebugSections: Bool {
-        #if DEBUG
-        return true
-        #else
-        // Check if running in TestFlight by looking for sandbox receipt
-        // Note: In iOS 18+, prefer AppTransaction for receipt validation in production
-        guard let url = Bundle.main.appStoreReceiptURL else { return false }
-        return url.lastPathComponent == "sandboxReceipt"
-        #endif
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
@@ -37,12 +25,10 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    if showDebugSections {
-                        createSubscriptionDebugSection()
-                        createServerEnvironmentSection()
-                        createHealthCheckSection()
-                        createDebugToolsSection()
-                    }
+                    createSubscriptionDebugSection()
+                    createServerEnvironmentSection()
+                    createHealthCheckSection()
+                    createDebugToolsSection()
                     createDataManagementSection()
                 }
                 .padding()
