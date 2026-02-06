@@ -22,6 +22,8 @@ Reference: https://github.com/OneBusAway/onebusaway-gtfs-realtime-api/blob/
 
 import logging
 
+from google.protobuf.message import Message
+
 logger = logging.getLogger(__name__)
 
 # MTA Railroad extension field numbers
@@ -76,7 +78,7 @@ def _find_length_delimited_field(data: bytes, target_field: int) -> bytes | None
     return None
 
 
-def extract_mta_track(stu: object) -> str | None:
+def extract_mta_track(stu: Message) -> str | None:
     """Extract track assignment from an MTA Railroad GTFS-RT StopTimeUpdate.
 
     Parses the MtaRailroadStopTimeUpdate extension (field 1005) to get the

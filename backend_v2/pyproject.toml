@@ -92,6 +92,10 @@ ignore_missing_imports = true
 module = "google.transit.*"
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = "google.protobuf.*"
+ignore_missing_imports = true
+
 [tool.black]
 line-length = 88
 target-version = ['py311']
