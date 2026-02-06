@@ -340,8 +340,9 @@ struct PredictionData: Codable {
         case trackProbabilities = "track_probabilities"
     }
     
-    /// Groups individual track probabilities by shared platforms
-    /// Platforms that share the same physical location are combined
+    /// Groups individual track probabilities by shared platforms at NY Penn Station.
+    /// Handles both individual track keys ("1", "2") and pre-grouped platform keys ("1 & 2").
+    /// Keys that don't match any NY Penn platform group are passed through as-is.
     static func groupTracksByPlatform(_ trackProbabilities: [String: Double]) -> [String: Double] {
         let platformGroups = [
             "1 & 2": ["1", "2"],
@@ -356,16 +357,24 @@ struct PredictionData: Codable {
             "18 & 19": ["18", "19"],
             "20 & 21": ["20", "21"]
         ]
-        
+
         var platformProbabilities: [String: Double] = [:]
-        
+        var consumedKeys: Set<String> = []
+
+        // First: try grouping individual track keys (e.g. "1", "2" -> "1 & 2")
         for (platformName, tracks) in platformGroups {
             let totalProbability = tracks.compactMap { trackProbabilities[$0] }.reduce(0, +)
             if totalProbability > 0 {
                 platformProbabilities[platformName] = totalProbability
+                consumedKeys.formUnion(tracks.filter { trackProbabilities[$0] != nil })
             }
         }
-        
+
+        // Second: pass through any keys not consumed (pre-grouped platforms or non-NY tracks)
+        for (key, probability) in trackProbabilities where !consumedKeys.contains(key) {
+            platformProbabilities[key] = probability
+        }
+
         return platformProbabilities
     }
 }

@@ -60,6 +60,7 @@ struct TrainV2: Identifiable, Codable {
         case isCompleted = "is_completed"
         case dataSource = "data_source"
         case stops
+        case trackPrediction = "track_prediction"
     }
     
     // MARK: - Computed Properties for UI Compatibility
