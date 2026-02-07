@@ -15,8 +15,10 @@ from sqlalchemy.orm import selectinload
 
 from trackrat.collectors.mnr.client import MnrArrival, MNRClient
 from trackrat.collectors.mta_common import (
+    ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    infer_missing_origin,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -264,12 +266,39 @@ class MNRCollector:
             static_stops = await self._gtfs_service.get_static_stop_times(
                 session, "MNR", trip_id, journey_date
             )
+            inferred_origin: str | None = None
             if static_stops:
                 merged_stops, origin_code, terminal_code = build_complete_stops(
                     arrivals, static_stops
                 )
             else:
                 merged_stops = None
+                logger.warning(
+                    "MNR GTFS static backfill failed for trip %s "
+                    "(no static data); falling back to RT-only stops",
+                    trip_id,
+                )
+                # Infer origin for outbound trains whose origin was dropped
+                inferred_origin = infer_missing_origin(
+                    first_arrival.station_code, first_arrival.direction_id, "MNR"
+                )
+                if inferred_origin:
+                    origin_code = inferred_origin
+
+            # Compute scheduled times
+            if merged_stops:
+                sched_departure = merged_stops[0]["scheduled_departure"]
+                sched_arrival = merged_stops[-1]["scheduled_arrival"]
+            else:
+                first_delay = timedelta(seconds=first_arrival.delay_seconds)
+                last_delay = timedelta(seconds=last_arrival.delay_seconds)
+                first_sched = first_arrival.arrival_time - first_delay
+                sched_departure = (
+                    first_sched - ORIGIN_TRAVEL_BUFFER
+                    if inferred_origin
+                    else first_sched
+                )
+                sched_arrival = last_arrival.arrival_time - last_delay
 
             # Create new journey
             journey = TrainJourney(
@@ -283,21 +312,15 @@ class MNRCollector:
                 destination=get_station_name(terminal_code),
                 origin_station_code=origin_code,
                 terminal_station_code=terminal_code,
-                scheduled_departure=(
-                    merged_stops[0]["scheduled_departure"]
-                    if merged_stops
-                    else first_arrival.arrival_time
-                    - timedelta(seconds=first_arrival.delay_seconds)
-                ),
-                scheduled_arrival=(
-                    merged_stops[-1]["scheduled_arrival"]
-                    if merged_stops
-                    else last_arrival.arrival_time
-                    - timedelta(seconds=last_arrival.delay_seconds)
-                ),
+                scheduled_departure=sched_departure,
+                scheduled_arrival=sched_arrival,
                 actual_departure=first_arrival.arrival_time,
                 has_complete_journey=True,
-                stops_count=len(merged_stops) if merged_stops else len(arrivals),
+                stops_count=(
+                    len(merged_stops)
+                    if merged_stops
+                    else len(arrivals) + (1 if inferred_origin else 0)
+                ),
                 is_cancelled=False,
                 is_completed=False,
                 api_error_count=0,
@@ -327,7 +350,28 @@ class MNRCollector:
                     session.add(stop)
                     created_stops.append(stop)
             else:
-                for seq, arr in enumerate(arrivals, start=1):
+                # Synthesize a departed origin stop when the origin terminal
+                # was dropped from GTFS-RT and static backfill is unavailable
+                if inferred_origin:
+                    origin_actual = first_arrival.arrival_time - ORIGIN_TRAVEL_BUFFER
+                    stop = JourneyStop(
+                        journey_id=journey.id,
+                        station_code=inferred_origin,
+                        station_name=get_station_name(inferred_origin),
+                        stop_sequence=1,
+                        scheduled_arrival=sched_departure,
+                        scheduled_departure=sched_departure,
+                        actual_arrival=origin_actual,
+                        actual_departure=origin_actual,
+                        track=None,
+                        has_departed_station=True,
+                        departure_source="synthetic_origin",
+                    )
+                    session.add(stop)
+                    created_stops.append(stop)
+
+                start_seq = 2 if inferred_origin else 1
+                for seq, arr in enumerate(arrivals, start=start_seq):
                     delay = timedelta(seconds=arr.delay_seconds)
                     stop = JourneyStop(
                         journey_id=journey.id,

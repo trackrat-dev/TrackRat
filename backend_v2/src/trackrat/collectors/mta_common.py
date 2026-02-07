@@ -17,6 +17,56 @@ from trackrat.utils.time import normalize_to_et
 
 logger = logging.getLogger(__name__)
 
+# Terminal stations where outbound trains originate (direction_id=0).
+# Used as a fallback when GTFS static backfill is unavailable.
+LIRR_ORIGIN_TERMINALS = frozenset({"NY", "LAT", "GCT", "HPA"})
+MNR_ORIGIN_TERMINALS = frozenset({"GCT"})
+
+_ORIGIN_TERMINAL_CONFIG: dict[str, tuple[frozenset[str], str]] = {
+    "LIRR": (LIRR_ORIGIN_TERMINALS, "NY"),  # Penn Station is most common
+    "MNR": (MNR_ORIGIN_TERMINALS, "GCT"),  # Grand Central is the only terminal
+}
+
+# Rough estimate of travel time from origin terminal to first visible RT stop.
+# Used when synthesizing a departed origin stop without GTFS static data.
+ORIGIN_TRAVEL_BUFFER = timedelta(minutes=10)
+
+
+def infer_missing_origin(
+    first_arrival_station: str,
+    direction_id: int,
+    data_source: str,
+) -> str | None:
+    """Infer the origin terminal when GTFS-RT drops it for outbound trains.
+
+    GTFS-RT feeds omit stops the train has already passed. For outbound trains
+    (direction_id=0), the origin terminal is the first stop dropped. This function
+    detects that case and returns the most likely origin station code.
+
+    Args:
+        first_arrival_station: Station code of the first visible RT stop.
+        direction_id: 0 = outbound (from terminal), 1 = inbound (to terminal).
+        data_source: "LIRR" or "MNR".
+
+    Returns:
+        Inferred origin station code, or None if no inference needed
+        (inbound train or first stop is already a terminal).
+    """
+    if direction_id != 0:
+        return None
+
+    config = _ORIGIN_TERMINAL_CONFIG.get(data_source)
+    if not config:
+        return None
+
+    terminals, default_origin = config
+
+    # If the first RT stop is already a terminal, the origin wasn't dropped
+    if first_arrival_station in terminals:
+        return None
+
+    return default_origin
+
 
 def build_complete_stops(
     realtime_arrivals: list[Any],
