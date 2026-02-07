@@ -546,7 +546,7 @@ struct Stations {
         "Centre Avenue": "CAV",
         "Cold Spring Harbor": "CSH",
         "Copiague": "CPG",
-        "Country Life Press": "CLP",
+        "Country Life Press": "LCLP",
         "Deer Park": "DPK",
         "Douglaston": "DGL",
         "East Hampton": "EHN",
@@ -554,8 +554,8 @@ struct Stations {
         "East Rockaway": "ERY",
         "East Williston": "EWN",
         "Elmont-UBS Arena": "EMT",
-        "Far Rockaway": "FRY",
-        "Farmingdale": "FMD",
+        "Far Rockaway": "LFRY",
+        "Farmingdale": "LFMD",
         "Floral Park": "FPK",
         "Flushing Main Street": "FLS",
         "Forest Hills": "FHL",
@@ -569,44 +569,44 @@ struct Stations {
         "Great River": "GRV",
         "Greenlawn": "GWN",
         "Greenport": "GPT",
-        "Greenvale": "GVL",
+        "Greenvale": "LGVL",
         "Hampton Bays": "HBY",
         "Hempstead Gardens": "HGN",
-        "Hempstead": "HEM",
+        "Hempstead": "LHEM",
         "Hewlett": "HWT",
-        "Hicksville": "HVL",
-        "Hollis": "HOL",
+        "Hicksville": "LHVL",
+        "Hollis": "LHOL",
         "Hunterspoint Avenue": "HPA",
-        "Huntington": "HUN",
+        "Huntington": "LHUN",
         "Inwood": "IWD",
         "Island Park": "IPK",
         "Islip": "ISP",
         "Jamaica": "JAM",
         "Kew Gardens": "KGN",
         "Kings Park": "KPK",
-        "Lakeview": "LVW",
+        "Lakeview": "LLVW",
         "Laurelton": "LTN",
         "Lawrence": "LCE",
         "Lindenhurst": "LHT",
-        "Little Neck": "LNK",
-        "Locust Manor": "LMR",
+        "Little Neck": "LLNK",
+        "Locust Manor": "LLMR",
         "Locust Valley": "LVL",
         "Long Beach": "LBH",
         "Long Island City": "LIC",
         "Lynbrook": "LYN",
-        "Malverne": "MVN",
+        "Malverne": "LMVN",
         "Manhasset": "MHT",
-        "Massapequa Park": "MPK",
+        "Massapequa Park": "LMPK",
         "Massapequa": "MQA",
         "Mastic-Shirley": "MSY",
         "Mattituck": "MAK",
         "Medford": "MFD",
         "Merillon Avenue": "MAV",
         "Merrick": "MRK",
-        "Mets-Willets Point": "SSM",
-        "Mineola": "MIN",
+        "Mets-Willets Point": "LSSM",
+        "Mineola": "LMIN",
         "Montauk": "MTK",
-        "Murray Hill LIRR": "MHL",
+        "Murray Hill LIRR": "LMHL",
         "Nassau Boulevard": "NBD",
         "New Hyde Park": "NHP",
         "Northport": "NPT",
@@ -628,12 +628,12 @@ struct Stations {
         "Sayville": "SVL",
         "Sea Cliff": "SCF",
         "Seaford": "SFD",
-        "Smithtown": "STN",
+        "Smithtown": "LSTN",
         "Southampton": "SHN",
         "Southold": "SHD",
-        "Speonk": "SPK",
-        "St. Albans": "SAB",
-        "St. James": "SJM",
+        "Speonk": "LSPK",
+        "St. Albans": "LSAB",
+        "St. James": "LSJM",
         "Stewart Manor": "SMR",
         "Stony Brook": "LSBK",
         "Syosset": "SYT",
@@ -642,7 +642,7 @@ struct Stations {
         "West Hempstead": "WHD",
         "Westbury": "WBY",
         "Westhampton": "WHN",
-        "Westwood LIRR": "WWD",
+        "Westwood LIRR": "LWWD",
         "Woodmere": "WMR",
         "Woodside": "WDD",
         "Wyandanch": "WYD",
@@ -2185,7 +2185,7 @@ struct Stations {
         "CAV": CLLocationCoordinate2D(latitude: 40.64831835, longitude: -73.6639675),   // Centre Avenue
         "CSH": CLLocationCoordinate2D(latitude: 40.83563832, longitude: -73.45108591),  // Cold Spring Harbor
         "CPG": CLLocationCoordinate2D(latitude: 40.68101528, longitude: -73.39834027),  // Copiague
-        "CLP": CLLocationCoordinate2D(latitude: 40.72145656, longitude: -73.62967386),  // Country Life Press
+        "LCLP": CLLocationCoordinate2D(latitude: 40.72145656, longitude: -73.62967386),  // Country Life Press
         "DPK": CLLocationCoordinate2D(latitude: 40.76948364, longitude: -73.29356494),  // Deer Park
         "DGL": CLLocationCoordinate2D(latitude: 40.76806862, longitude: -73.74941265),  // Douglaston
         "EHN": CLLocationCoordinate2D(latitude: 40.96508629, longitude: -72.19324238),  // East Hampton
@@ -2193,8 +2193,8 @@ struct Stations {
         "ERY": CLLocationCoordinate2D(latitude: 40.64221085, longitude: -73.65821626),  // East Rockaway
         "EWN": CLLocationCoordinate2D(latitude: 40.7560191, longitude: -73.63940764),   // East Williston
         "EMT": CLLocationCoordinate2D(latitude: 40.720074, longitude: -73.725549),      // Elmont-UBS Arena
-        "FRY": CLLocationCoordinate2D(latitude: 40.60914311, longitude: -73.75054135),  // Far Rockaway
-        "FMD": CLLocationCoordinate2D(latitude: 40.73591503, longitude: -73.44123878),  // Farmingdale
+        "LFRY": CLLocationCoordinate2D(latitude: 40.60914311, longitude: -73.75054135),  // Far Rockaway
+        "LFMD": CLLocationCoordinate2D(latitude: 40.73591503, longitude: -73.44123878),  // Farmingdale
         "FPK": CLLocationCoordinate2D(latitude: 40.72463725, longitude: -73.70639714),  // Floral Park
         "FLS": CLLocationCoordinate2D(latitude: 40.75789494, longitude: -73.83134684),  // Flushing Main Street
         "FHL": CLLocationCoordinate2D(latitude: 40.71957556, longitude: -73.84481402),  // Forest Hills
@@ -2209,44 +2209,44 @@ struct Stations {
         "GRV": CLLocationCoordinate2D(latitude: 40.74044444, longitude: -73.17019585),  // Great River
         "GWN": CLLocationCoordinate2D(latitude: 40.86866524, longitude: -73.36284977),  // Greenlawn
         "GPT": CLLocationCoordinate2D(latitude: 41.09970991, longitude: -72.36310396),  // Greenport
-        "GVL": CLLocationCoordinate2D(latitude: 40.81571566, longitude: -73.62687152),  // Greenvale
+        "LGVL": CLLocationCoordinate2D(latitude: 40.81571566, longitude: -73.62687152),  // Greenvale
         "HBY": CLLocationCoordinate2D(latitude: 40.87660916, longitude: -72.52394936),  // Hampton Bays
         "HGN": CLLocationCoordinate2D(latitude: 40.69491356, longitude: -73.64620888),  // Hempstead Gardens
-        "HEM": CLLocationCoordinate2D(latitude: 40.71329663, longitude: -73.62503239),  // Hempstead
+        "LHEM": CLLocationCoordinate2D(latitude: 40.71329663, longitude: -73.62503239),  // Hempstead
         "HWT": CLLocationCoordinate2D(latitude: 40.63676432, longitude: -73.70513866),  // Hewlett
-        "HVL": CLLocationCoordinate2D(latitude: 40.76717491, longitude: -73.52853322),  // Hicksville
-        "HOL": CLLocationCoordinate2D(latitude: 40.71018151, longitude: -73.76675252),  // Hollis
+        "LHVL": CLLocationCoordinate2D(latitude: 40.76717491, longitude: -73.52853322),  // Hicksville
+        "LHOL": CLLocationCoordinate2D(latitude: 40.71018151, longitude: -73.76675252),  // Hollis
         "HPA": CLLocationCoordinate2D(latitude: 40.74239046, longitude: -73.94678997),  // Hunterspoint Avenue
-        "HUN": CLLocationCoordinate2D(latitude: 40.85300971, longitude: -73.40952576),  // Huntington
+        "LHUN": CLLocationCoordinate2D(latitude: 40.85300971, longitude: -73.40952576),  // Huntington
         "IWD": CLLocationCoordinate2D(latitude: 40.61228773, longitude: -73.74418354),  // Inwood
         "IPK": CLLocationCoordinate2D(latitude: 40.60129906, longitude: -73.65474248),  // Island Park
         "ISP": CLLocationCoordinate2D(latitude: 40.73583449, longitude: -73.20932145),  // Islip
         "JAM": CLLocationCoordinate2D(latitude: 40.69960817, longitude: -73.80852987),  // Jamaica
         "KGN": CLLocationCoordinate2D(latitude: 40.70964917, longitude: -73.83088807),  // Kew Gardens
         "KPK": CLLocationCoordinate2D(latitude: 40.88366659, longitude: -73.25624757),  // Kings Park
-        "LVW": CLLocationCoordinate2D(latitude: 40.68585582, longitude: -73.65213777),  // Lakeview
+        "LLVW": CLLocationCoordinate2D(latitude: 40.68585582, longitude: -73.65213777),  // Lakeview
         "LTN": CLLocationCoordinate2D(latitude: 40.66848304, longitude: -73.75174687),  // Laurelton
         "LCE": CLLocationCoordinate2D(latitude: 40.6157347, longitude: -73.73589955),   // Lawrence
         "LHT": CLLocationCoordinate2D(latitude: 40.68826504, longitude: -73.36921149),  // Lindenhurst
-        "LNK": CLLocationCoordinate2D(latitude: 40.77504393, longitude: -73.74064662),  // Little Neck
-        "LMR": CLLocationCoordinate2D(latitude: 40.67513907, longitude: -73.76504303),  // Locust Manor
+        "LLNK": CLLocationCoordinate2D(latitude: 40.77504393, longitude: -73.74064662),  // Little Neck
+        "LLMR": CLLocationCoordinate2D(latitude: 40.67513907, longitude: -73.76504303),  // Locust Manor
         "LVL": CLLocationCoordinate2D(latitude: 40.87446697, longitude: -73.59830284),  // Locust Valley
         "LBH": CLLocationCoordinate2D(latitude: 40.5901817, longitude: -73.66481822),   // Long Beach
         "LIC": CLLocationCoordinate2D(latitude: 40.74134343, longitude: -73.95763922),  // Long Island City
         "LYN": CLLocationCoordinate2D(latitude: 40.65605814, longitude: -73.67607083),  // Lynbrook
-        "MVN": CLLocationCoordinate2D(latitude: 40.67547844, longitude: -73.66886364),  // Malverne
+        "LMVN": CLLocationCoordinate2D(latitude: 40.67547844, longitude: -73.66886364),  // Malverne
         "MHT": CLLocationCoordinate2D(latitude: 40.7967241, longitude: -73.69989909),   // Manhasset
-        "MPK": CLLocationCoordinate2D(latitude: 40.6778591, longitude: -73.45473724),   // Massapequa Park
+        "LMPK": CLLocationCoordinate2D(latitude: 40.6778591, longitude: -73.45473724),   // Massapequa Park
         "MQA": CLLocationCoordinate2D(latitude: 40.67693014, longitude: -73.46905552),  // Massapequa
         "MSY": CLLocationCoordinate2D(latitude: 40.79898815, longitude: -72.86442272),  // Mastic-Shirley
         "MAK": CLLocationCoordinate2D(latitude: 40.99179354, longitude: -72.53606243),  // Mattituck
         "MFD": CLLocationCoordinate2D(latitude: 40.81739665, longitude: -72.99890946),  // Medford
         "MAV": CLLocationCoordinate2D(latitude: 40.73516903, longitude: -73.66252148),  // Merillon Avenue
         "MRK": CLLocationCoordinate2D(latitude: 40.6638004, longitude: -73.55062102),   // Merrick
-        "SSM": CLLocationCoordinate2D(latitude: 40.75239835, longitude: -73.84370059),  // Mets-Willets Point
-        "MIN": CLLocationCoordinate2D(latitude: 40.74034743, longitude: -73.64086293),  // Mineola
+        "LSSM": CLLocationCoordinate2D(latitude: 40.75239835, longitude: -73.84370059),  // Mets-Willets Point
+        "LMIN": CLLocationCoordinate2D(latitude: 40.74034743, longitude: -73.64086293),  // Mineola
         "MTK": CLLocationCoordinate2D(latitude: 41.04710896, longitude: -71.95388103),  // Montauk
-        "MHL": CLLocationCoordinate2D(latitude: 40.76270926, longitude: -73.81453928),  // Murray Hill LIRR
+        "LMHL": CLLocationCoordinate2D(latitude: 40.76270926, longitude: -73.81453928),  // Murray Hill LIRR
         "NBD": CLLocationCoordinate2D(latitude: 40.72296245, longitude: -73.66269823),  // Nassau Boulevard
         "NHP": CLLocationCoordinate2D(latitude: 40.73075708, longitude: -73.68095886),  // New Hyde Park
         "NPT": CLLocationCoordinate2D(latitude: 40.88064972, longitude: -73.32848513),  // Northport
@@ -2268,12 +2268,12 @@ struct Stations {
         "SVL": CLLocationCoordinate2D(latitude: 40.74035373, longitude: -73.08645531),  // Sayville
         "SCF": CLLocationCoordinate2D(latitude: 40.85236805, longitude: -73.62541695),  // Sea Cliff
         "SFD": CLLocationCoordinate2D(latitude: 40.67572393, longitude: -73.48656847),  // Seaford
-        "STN": CLLocationCoordinate2D(latitude: 40.85654755, longitude: -73.19803235),  // Smithtown
+        "LSTN": CLLocationCoordinate2D(latitude: 40.85654755, longitude: -73.19803235),  // Smithtown
         "SHN": CLLocationCoordinate2D(latitude: 40.89471874, longitude: -72.39012376),  // Southampton
         "SHD": CLLocationCoordinate2D(latitude: 41.06632089, longitude: -72.4278803),   // Southold
-        "SPK": CLLocationCoordinate2D(latitude: 40.82131516, longitude: -72.70526225),  // Speonk
-        "SAB": CLLocationCoordinate2D(latitude: 40.69118348, longitude: -73.76550937),  // St. Albans
-        "SJM": CLLocationCoordinate2D(latitude: 40.88216931, longitude: -73.15950725),  // St. James
+        "LSPK": CLLocationCoordinate2D(latitude: 40.82131516, longitude: -72.70526225),  // Speonk
+        "LSAB": CLLocationCoordinate2D(latitude: 40.69118348, longitude: -73.76550937),  // St. Albans
+        "LSJM": CLLocationCoordinate2D(latitude: 40.88216931, longitude: -73.15950725),  // St. James
         "SMR": CLLocationCoordinate2D(latitude: 40.72302771, longitude: -73.68102041),  // Stewart Manor
         "LSBK": CLLocationCoordinate2D(latitude: 40.92032252, longitude: -73.12854943),   // Stony Brook
         "SYT": CLLocationCoordinate2D(latitude: 40.82485746, longitude: -73.5004456),   // Syosset
@@ -2282,7 +2282,7 @@ struct Stations {
         "WHD": CLLocationCoordinate2D(latitude: 40.70196099, longitude: -73.64164361),  // West Hempstead
         "WBY": CLLocationCoordinate2D(latitude: 40.75345386, longitude: -73.5858661),   // Westbury
         "WHN": CLLocationCoordinate2D(latitude: 40.83030532, longitude: -72.65032454),  // Westhampton
-        "WWD": CLLocationCoordinate2D(latitude: 40.66837227, longitude: -73.68120878),  // Westwood LIRR
+        "LWWD": CLLocationCoordinate2D(latitude: 40.66837227, longitude: -73.68120878),  // Westwood LIRR
         "WMR": CLLocationCoordinate2D(latitude: 40.63133646, longitude: -73.71371544),  // Woodmere
         "WDD": CLLocationCoordinate2D(latitude: 40.74585067, longitude: -73.90297516),  // Woodside
         "WYD": CLLocationCoordinate2D(latitude: 40.75480101, longitude: -73.35806588),  // Wyandanch
@@ -2399,7 +2399,30 @@ struct Stations {
         "MSYM": CLLocationCoordinate2D(latitude: 41.395139, longitude: -73.072499),    // Seymour
         "MBCF": CLLocationCoordinate2D(latitude: 41.441752, longitude: -73.06359),     // Beacon Falls
         "MNAU": CLLocationCoordinate2D(latitude: 41.494204, longitude: -73.052655),    // Naugatuck
-        "MWTB": CLLocationCoordinate2D(latitude: 41.552728, longitude: -73.046126)     // Waterbury
+        "MWTB": CLLocationCoordinate2D(latitude: 41.552728, longitude: -73.046126),    // Waterbury
+
+        // Amtrak/PATCO stations that previously collided with LIRR L-prefixed codes
+        "CLP": CLLocationCoordinate2D(latitude: 38.4724, longitude: -77.9934),        // Culpeper, VA
+        "FMD": CLLocationCoordinate2D(latitude: 40.6296, longitude: -91.3135),        // Fort Madison, IA
+        "FRY": CLLocationCoordinate2D(latitude: 39.922572, longitude: -75.091805),    // Ferry Avenue (PATCO)
+        "GVL": CLLocationCoordinate2D(latitude: 34.8526, longitude: -82.3940),        // Greenville, SC
+        "HEM": CLLocationCoordinate2D(latitude: 38.7073, longitude: -91.4326),        // Hermann, MO
+        "HOL": CLLocationCoordinate2D(latitude: 26.0116, longitude: -80.1679),        // Hollywood, FL
+        "HUN": CLLocationCoordinate2D(latitude: 38.4158, longitude: -82.4397),        // Huntington, WV
+        "HVL": CLLocationCoordinate2D(latitude: 34.8912, longitude: -76.9261),        // Havelock, NC
+        "LMR": CLLocationCoordinate2D(latitude: 38.0896, longitude: -102.6186),       // Lamar, CO
+        "LNK": CLLocationCoordinate2D(latitude: 40.8159, longitude: -96.7132),        // Lincoln, NE
+        "LVW": CLLocationCoordinate2D(latitude: 32.4940, longitude: -94.7283),        // Longview, TX
+        "MHL": CLLocationCoordinate2D(latitude: 32.5515, longitude: -94.3670),        // Marshall, TX
+        "MIN": CLLocationCoordinate2D(latitude: 32.6620, longitude: -95.4891),        // Mineola, TX
+        "MPK": CLLocationCoordinate2D(latitude: 34.2848, longitude: -118.8781),       // Moorpark, CA
+        "MVN": CLLocationCoordinate2D(latitude: 34.3655, longitude: -92.8140),        // Malvern, AR
+        "SAB": CLLocationCoordinate2D(latitude: 44.8124, longitude: -73.0862),        // St. Albans, VT
+        "SJM": CLLocationCoordinate2D(latitude: 42.1091, longitude: -86.4845),        // St. Joseph, MI
+        "SPK": CLLocationCoordinate2D(latitude: 47.6533, longitude: -117.4083),       // Spokane, WA
+        "SSM": CLLocationCoordinate2D(latitude: 35.5328, longitude: -78.2801),        // Selma, NC
+        "STN": CLLocationCoordinate2D(latitude: 48.3198, longitude: -102.3894),       // Stanley, ND
+        "WWD": CLLocationCoordinate2D(latitude: 28.8662, longitude: -82.0395)         // Wildwood, FL
     ]
 
     // Supported departure stations - Updated to match backend
@@ -2442,10 +2465,10 @@ struct Stations {
         ("Jamaica", "JAM"),
         ("Atlantic Terminal", "LAT"),
         ("Grand Central Terminal", "GCT"),
-        ("Hicksville", "HVL"),
+        ("Hicksville", "LHVL"),
         ("Ronkonkoma", "RON"),
         ("Babylon", "BTA"),
-        ("Huntington", "HUN"),
+        ("Huntington", "LHUN"),
         ("Port Washington", "PWS"),
         ("Long Beach", "LBH"),
         // MNR hubs

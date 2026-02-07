@@ -193,22 +193,12 @@ class ApiCacheService:
         max_per_segment = params.get("max_per_segment", 100)
         data_source = params.get("data_source")
 
-        # Use existing congestion analyzer logic
+        # Use existing congestion analyzer logic (pass data_source to filter at SQL level)
         aggregated_segments, journeys, individual_segments = (
             await self.congestion_analyzer.get_network_congestion_with_trains(
-                db, time_window_hours, max_per_segment
+                db, time_window_hours, max_per_segment, data_source
             )
         )
-
-        # Filter by data source if specified (same logic as routes.py)
-        if data_source:
-            aggregated_segments = [
-                c for c in aggregated_segments if c.data_source == data_source
-            ]
-            individual_segments = [
-                s for s in individual_segments if s.data_source == data_source
-            ]
-            journeys = [j for j in journeys if j.data_source == data_source]
 
         # Extract train positions from journeys (same logic as routes.py)
         train_positions = []

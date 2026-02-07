@@ -378,7 +378,7 @@ struct RouteTopology {
             id: "lirr-babylon",
             name: "Babylon Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "VSM", "LYN", "RVC", "BWN", "FPT", "MRK", "BMR", "WGH", "SFD", "MQA", "MPK", "AVL", "CPG", "LHT", "BTA"]
+            stationCodes: ["JAM", "VSM", "LYN", "RVC", "BWN", "FPT", "MRK", "BMR", "WGH", "SFD", "MQA", "LMPK", "AVL", "CPG", "LHT", "BTA"]
         ),
 
         // Hempstead Branch
@@ -386,7 +386,7 @@ struct RouteTopology {
             id: "lirr-hempstead",
             name: "Hempstead Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "QVG", "HOL", "FPK", "SMR", "NHP", "GCY", "CLP", "HGN", "WHD", "HEM"]
+            stationCodes: ["JAM", "QVG", "LHOL", "FPK", "SMR", "NHP", "GCY", "LCLP", "HGN", "WHD", "LHEM"]
         ),
 
         // Oyster Bay Branch
@@ -394,7 +394,7 @@ struct RouteTopology {
             id: "lirr-oyster-bay",
             name: "Oyster Bay Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "MIN", "EWN", "ABT", "RSN", "GVL", "GHD", "SCF", "GST", "GCV", "LVL", "OBY"]
+            stationCodes: ["JAM", "LMIN", "EWN", "ABT", "RSN", "LGVL", "GHD", "SCF", "GST", "GCV", "LVL", "OBY"]
         ),
 
         // Ronkonkoma Branch
@@ -402,7 +402,7 @@ struct RouteTopology {
             id: "lirr-ronkonkoma",
             name: "Ronkonkoma Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "MIN", "CPL", "WBY", "HVL", "BPG", "FMD", "PLN", "WYD", "DPK", "BWD", "CI", "RON"]
+            stationCodes: ["JAM", "LMIN", "CPL", "WBY", "LHVL", "BPG", "LFMD", "PLN", "WYD", "DPK", "BWD", "CI", "RON"]
         ),
 
         // Montauk Branch (main portion)
@@ -410,7 +410,7 @@ struct RouteTopology {
             id: "lirr-montauk",
             name: "Montauk Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "BSR", "ISP", "GRV", "ODL", "SVL", "PGE", "BPT", "MSY", "MFD", "YPK", "RHD", "SPK", "WHN", "HBY", "SHN", "BHN", "EHN", "AGT", "MTK"]
+            stationCodes: ["JAM", "BSR", "ISP", "GRV", "ODL", "SVL", "PGE", "BPT", "MSY", "MFD", "YPK", "RHD", "LSPK", "WHN", "HBY", "SHN", "BHN", "EHN", "AGT", "MTK"]
         ),
 
         // Long Beach Branch
@@ -426,7 +426,7 @@ struct RouteTopology {
             id: "lirr-far-rockaway",
             name: "Far Rockaway Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "LMR", "SAB", "ROS", "LTN", "GBN", "HWT", "WMR", "CHT", "LCE", "IWD", "FRY"]
+            stationCodes: ["JAM", "LLMR", "LSAB", "ROS", "LTN", "GBN", "HWT", "WMR", "CHT", "LCE", "IWD", "LFRY"]
         ),
 
         // West Hempstead Branch
@@ -434,7 +434,7 @@ struct RouteTopology {
             id: "lirr-west-hempstead",
             name: "West Hempstead Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "VSM", "MVN", "LVW", "WHD"]
+            stationCodes: ["JAM", "VSM", "LMVN", "LLVW", "WHD"]
         ),
 
         // Port Washington Branch (doesn't go through Jamaica)
@@ -442,7 +442,7 @@ struct RouteTopology {
             id: "lirr-port-washington",
             name: "Port Washington Branch",
             dataSource: "LIRR",
-            stationCodes: ["NY", "WDD", "FLS", "BDY", "ADL", "BSD", "DGL", "LNK", "GNK", "MHT", "PDM", "PWS"]
+            stationCodes: ["NY", "WDD", "FLS", "BDY", "ADL", "BSD", "DGL", "LLNK", "GNK", "MHT", "PDM", "PWS"]
         ),
 
         // Port Jefferson Branch
@@ -450,7 +450,7 @@ struct RouteTopology {
             id: "lirr-port-jefferson",
             name: "Port Jefferson Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "MIN", "HVL", "SYT", "CSH", "HUN", "GWN", "NPT", "KPK", "STN", "SJM", "LSBK", "PJN"]
+            stationCodes: ["JAM", "LMIN", "LHVL", "SYT", "CSH", "LHUN", "GWN", "NPT", "KPK", "LSTN", "LSJM", "LSBK", "PJN"]
         ),
 
         // Atlantic Branch (to Atlantic Terminal)
