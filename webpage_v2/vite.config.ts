@@ -13,9 +13,9 @@ export default defineConfig({
       manifest: {
         name: 'TrackRat - Train Tracking',
         short_name: 'TrackRat',
-        description: 'Real-time train tracking for NJ Transit & Amtrak',
-        theme_color: '#667eea',
-        background_color: '#0a0a0a',
+        description: 'Real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North',
+        theme_color: '#CC5500',
+        background_color: '#F5F1E8',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/TrackRat/',
