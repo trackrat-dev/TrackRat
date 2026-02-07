@@ -6,8 +6,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from trackrat.collectors.mta_common import (
+    LIRR_ORIGIN_TERMINALS,
+    MNR_ORIGIN_TERMINALS,
+    ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    infer_missing_origin,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -539,6 +543,40 @@ class TestBuildCompleteStops:
         assert wdd["actual_arrival"] == base
         assert wdd["actual_departure"] == base + timedelta(minutes=1)
 
+    def test_all_unmapped_static_stops_returns_empty_list(self):
+        """When all static stops have station_code=None (unmapped GTFS stops),
+        build_complete_stops should return an empty merged list so the caller
+        falls through to origin inference."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        # Simulate static stops with no internal station code mapping
+        static_stops = [
+            {
+                "station_code": None,
+                "stop_sequence": 1,
+                "arrival_time": base,
+                "departure_time": base,
+            },
+            {
+                "station_code": None,
+                "stop_sequence": 2,
+                "arrival_time": base + timedelta(minutes=10),
+                "departure_time": base + timedelta(minutes=10),
+            },
+        ]
+
+        rt_arrivals = [
+            _make_arrival("WDD", base + timedelta(minutes=10)),
+            _make_arrival("JAM", base + timedelta(minutes=20)),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        # Empty list — caller should treat this the same as no static data
+        assert merged == []
+        assert origin == "WDD"
+        assert terminal == "JAM"
+
     def test_rt_stop_with_no_departure_time(self):
         """RT stop with departure_time=None should set actual_departure=None."""
         base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
@@ -555,3 +593,76 @@ class TestBuildCompleteStops:
 
         assert merged[0]["actual_departure"] is None
         assert merged[0]["actual_arrival"] == base
+
+
+class TestInferMissingOrigin:
+    """Tests for infer_missing_origin()."""
+
+    def test_lirr_outbound_non_terminal_returns_penn_station(self):
+        """Outbound LIRR train whose first stop is Woodside (not a terminal)
+        should infer Penn Station (NY) as the origin."""
+        result = infer_missing_origin("WDD", direction_id=0, data_source="LIRR")
+        assert result == "NY"
+
+    def test_lirr_outbound_jamaica_returns_penn_station(self):
+        """Outbound train first seen at Jamaica (not a terminal) should
+        infer Penn Station."""
+        result = infer_missing_origin("JAM", direction_id=0, data_source="LIRR")
+        assert result == "NY"
+
+    def test_lirr_outbound_penn_station_returns_none(self):
+        """Outbound train whose first stop IS Penn Station needs no inference."""
+        result = infer_missing_origin("NY", direction_id=0, data_source="LIRR")
+        assert result is None
+
+    def test_lirr_outbound_atlantic_terminal_returns_none(self):
+        """First stop is Atlantic Terminal — already a terminal, no inference."""
+        result = infer_missing_origin("LAT", direction_id=0, data_source="LIRR")
+        assert result is None
+
+    def test_lirr_outbound_grand_central_returns_none(self):
+        """First stop is Grand Central Madison — already a terminal, no inference."""
+        result = infer_missing_origin("GCT", direction_id=0, data_source="LIRR")
+        assert result is None
+
+    def test_lirr_outbound_hunterspoint_returns_none(self):
+        """First stop is Hunterspoint Avenue — already a terminal, no inference."""
+        result = infer_missing_origin("HPA", direction_id=0, data_source="LIRR")
+        assert result is None
+
+    def test_lirr_inbound_returns_none(self):
+        """Inbound trains (direction_id=1) never need origin inference."""
+        result = infer_missing_origin("BTA", direction_id=1, data_source="LIRR")
+        assert result is None
+
+    def test_mnr_outbound_non_terminal_returns_grand_central(self):
+        """Outbound MNR train whose first stop is not GCT should infer GCT."""
+        result = infer_missing_origin("M125", direction_id=0, data_source="MNR")
+        assert result == "GCT"
+
+    def test_mnr_outbound_grand_central_returns_none(self):
+        """MNR train starting at GCT needs no inference."""
+        result = infer_missing_origin("GCT", direction_id=0, data_source="MNR")
+        assert result is None
+
+    def test_mnr_inbound_returns_none(self):
+        """Inbound MNR trains never need origin inference."""
+        result = infer_missing_origin("MCRH", direction_id=1, data_source="MNR")
+        assert result is None
+
+    def test_unknown_data_source_returns_none(self):
+        """Unknown data source should return None (no inference config)."""
+        result = infer_missing_origin("FOO", direction_id=0, data_source="NJT")
+        assert result is None
+
+    def test_lirr_terminals_include_all_four(self):
+        """Verify LIRR_ORIGIN_TERMINALS has the expected terminal stations."""
+        assert LIRR_ORIGIN_TERMINALS == frozenset({"NY", "LAT", "GCT", "HPA"})
+
+    def test_mnr_terminals_only_grand_central(self):
+        """Verify MNR_ORIGIN_TERMINALS is just GCT."""
+        assert MNR_ORIGIN_TERMINALS == frozenset({"GCT"})
+
+    def test_origin_travel_buffer_is_ten_minutes(self):
+        """Verify the travel buffer constant is 10 minutes."""
+        assert ORIGIN_TRAVEL_BUFFER == timedelta(minutes=10)
