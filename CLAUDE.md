@@ -79,6 +79,12 @@ npm run build                        # TypeScript compile + build check
 - Handles both discovery and journey updates in one pass
 - Infers train origin from route when seen mid-journey
 
+**Backend Data Collection (LIRR / Metro-North - Unified GTFS-RT):**
+- Single unified collector per system runs every 4 minutes
+- Uses MTA's official GTFS-RT feeds directly (not Transiter)
+- Shared logic in `mta_common.py` (stop merging, departure inference, completion detection)
+- GTFS static schedules backfill stops that GTFS-RT omits (e.g., origin terminals)
+
 **Backend Data Collection (PATCO - Schedule-only):**
 - Uses GTFS static schedules from SEPTA feed
 - No real-time API available; times are scheduled only
@@ -202,6 +208,8 @@ terraform apply -var="environment=production"
 - Backend services: `backend_v2/src/trackrat/services/`
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr)
+- Backend config: `backend_v2/src/trackrat/config/` (stations, route_topology, station_configs)
 - Backend tests: `backend_v2/tests/`
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
 - iOS services: `ios/TrackRat/Services/`

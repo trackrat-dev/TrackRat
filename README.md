@@ -16,7 +16,7 @@ Built primarily through AI-assisted development ("vibe coding").
 - **Live Activities**: Real-time iOS Lock Screen and Dynamic Island updates
 - **Congestion Maps**: Live network congestion monitoring
 - **Trip Statistics**: Commute history with on-time percentage and time saved metrics
-- **250+ Stations** across the Northeast Corridor
+- **1,000+ Stations** across the Northeast Corridor
 
 ## Architecture
 
@@ -45,7 +45,7 @@ Each transit system uses an architecture suited to its data source:
 - **NJ Transit / Amtrak**: Multi-phase pipeline — Schedule Generation (daily) → Discovery (30min) → Collection (15min) → JIT Updates (on-demand) → Validation (hourly)
 - **PATH**: Single unified collector every 4 minutes via native RidePATH API, discovers trains at all 13 stations
 - **PATCO**: GTFS static schedules (no real-time API available)
-- **LIRR / Metro-North**: Via Transiter API integration
+- **LIRR / Metro-North**: Unified collector every 4 minutes via MTA GTFS-RT feeds, with static schedule backfill
 
 ### Adding a New Transit System
 
@@ -122,8 +122,10 @@ TrackRat/
 ├── backend_v2/          # Python FastAPI backend
 │   ├── src/trackrat/
 │   │   ├── api/         # API endpoints (FastAPI routers)
+│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr)
+│   │   ├── config/      # Station configs, route topology
 │   │   ├── models/      # SQLAlchemy + Pydantic models
-│   │   ├── services/    # Business logic, collectors, ML predictions
+│   │   ├── services/    # Business logic, ML predictions, scheduling
 │   │   └── main.py      # App entrypoint
 │   └── tests/           # pytest tests
 ├── ios/                 # Swift/SwiftUI iOS app
@@ -205,7 +207,7 @@ We welcome contributions. Here's how to get started:
 4. Run linting and tests (`make lint && make test`)
 5. Submit a pull request
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines (coming soon).
+See open issues for good starting points.
 
 ### Areas Where Help Is Wanted
 
