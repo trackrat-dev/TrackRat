@@ -1073,7 +1073,7 @@ private struct TrainSystemRow: View {
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
                         .frame(width: 24, height: 24)
 
-                    Text(system.displayName + (system == .path ? " (beta)" : ""))
+                    Text(system.displayName + (system.isBeta ? " (beta)" : ""))
                         .font(.headline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
