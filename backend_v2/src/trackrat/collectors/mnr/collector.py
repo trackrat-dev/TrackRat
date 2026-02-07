@@ -450,7 +450,9 @@ class MNRCollector:
             if journey.scheduled_departure:
                 first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
                 time_diff = abs(
-                    (first_arr.arrival_time - journey.scheduled_departure).total_seconds()
+                    (
+                        first_arr.arrival_time - journey.scheduled_departure
+                    ).total_seconds()
                 )
 
             if overlap > best_overlap or (
