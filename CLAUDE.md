@@ -205,90 +205,76 @@ terraform apply -var="environment=production"
 
 ## GCP Log Viewing (Cloud Environment)
 
-The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes the key to `/root/.config/gcloud/service-account.json` when `GCP_SA_KEY_JSON` is set (no-op locally).
-
-**Important:** The `gcloud` CLI cannot be installed in this environment (curl to `sdk.cloud.google.com` is blocked). Use the **Python REST API approach** below instead.
+The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes `GCP_SA_KEY_JSON` to `/root/.config/gcloud/service-account.json`. This hook is required for authentication.
 
 ### Setup (once per session)
 
 ```bash
-# Install Python dependencies (cffi must go to /tmp to avoid conflict with system cryptography)
 pip install google-cloud-logging 2>&1 | tail -3
 pip install cffi cryptography --force-reinstall --target=/tmp/pylibs 2>&1 | tail -3
 ```
 
 ### Architecture
 
-- **Staging**: GCE instance `trackrat-staging-s565` running Docker Compose (not Cloud Run)
-- **Production**: GCE instance `trackrat-production-wwk7` running Docker Compose
-- **Resource type**: `gce_instance` (NOT `cloud_run_revision` for the main backend)
+- **Staging & Production**: GCE instances via Managed Instance Groups (Docker Compose, not Cloud Run)
+- **Hostnames**: `trackrat-staging-XXXX` / `trackrat-production-XXXX` (suffix is random, changes on instance recreation)
+- **Resource type**: `gce_instance` (NOT `cloud_run_revision`)
 - **Cloud Run services**: `feedback-notifier`, `train-follow-notifier` (auxiliary only)
-- **Containers on each GCE instance**: `trackrat-api` (FastAPI), PostgreSQL
-- **Log forwarding**: `docker-events-collector-fluent-bit` systemd service
+- **Containers**: `trackrat-api` (FastAPI), PostgreSQL
 
-### Query Logs (Python REST API)
+### Log Structure
 
-The service account JSON has literal newlines in the private key field — use `json.loads(content, strict=False)` to parse it.
+There are two log sources per GCE instance. **Always use `cos_containers` for app logs:**
 
-```python
-# Run with: PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 << 'PYEOF'
-import json, requests
-from google.oauth2 import service_account
-from google.auth.transport.requests import Request
+| Source | Log name | Key fields | Content |
+|--------|----------|------------|---------|
+| **App logs** | `cos_containers` | `jsonPayload.event`, `.level`, `.logger`, `.message` | Structured application logs from trackrat-api |
+| **Docker events** | (default/systemd) | `jsonPayload._HOSTNAME`, `.MESSAGE` | Container lifecycle noise (exec_create/die) — rarely useful |
 
-# Authenticate
-with open('/root/.config/gcloud/service-account.json', 'r') as f:
-    sa_info = json.loads(f.read(), strict=False)  # strict=False needed for literal \n in key
-credentials = service_account.Credentials.from_service_account_info(
-    sa_info, scopes=['https://www.googleapis.com/auth/logging.read']
-)
-credentials.refresh(Request(session=requests.Session()))
+### Query Logs (Helper Script)
 
-# Query
-url = "https://logging.googleapis.com/v2/entries:list"
-headers = {"Authorization": f"Bearer {credentials.token}", "Content-Type": "application/json"}
-body = {
-    "resourceNames": ["projects/trackrat-v2"],
-    "filter": '<FILTER_HERE>',
-    "orderBy": "timestamp desc",
-    "pageSize": 100,
-}
-resp = requests.post(url, json=body, headers=headers)
-entries = resp.json().get("entries", [])
+Use `.claude/scripts/gcp-logs.py` — handles auth, hostname discovery, and structured log formatting:
 
-for entry in entries:
-    ts = entry.get("timestamp", "?")[:19]
-    severity = entry.get("severity", "DEFAULT")
-    text = entry.get("textPayload", "")
-    if not text:
-        jp = entry.get("jsonPayload", {})
-        text = jp.get("message", json.dumps(jp, default=str)[:500]) if jp else ""
-    print(f"[{ts}] {severity}: {text[:400]}")
-# PYEOF
-```
+```bash
+# Recent staging app logs (default)
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py
 
-### Common Filters
-
-```python
-# Staging backend logs
-'resource.type="gce_instance" AND resource.labels.instance_id="1367060876182092510"'
-# Or by hostname in log content:
-'jsonPayload._HOSTNAME="trackrat-staging-s565"'
-
-# Production backend logs
-'jsonPayload._HOSTNAME="trackrat-production-wwk7"'
+# Production app logs
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env production
 
 # Errors only
-'severity>=ERROR'
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --errors
 
-# Application logs (not Docker events)
-'jsonPayload.message=~".*" AND jsonPayload._HOSTNAME="trackrat-staging-s565"'
+# Search for a pattern (searches event + message fields)
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --search "departure_cache"
+
+# Save to file for file-analyzer sub-agent
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --output /tmp/logs.txt --limit 500
+
+# Include raw Docker events (noisy, rarely needed)
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
+```
+
+### Common Filters (for manual queries or --filter flag)
+
+```python
+# App logs (always use cos_containers for application-level logs)
+'logName="projects/trackrat-v2/logs/cos_containers"'
+
+# Discover instance by hostname prefix (prefixes are stable, suffixes change)
+'jsonPayload._HOSTNAME=~"^trackrat-staging-"'
+'jsonPayload._HOSTNAME=~"^trackrat-production-"'
+
+# App-level errors/warnings (structured field, not severity)
+'jsonPayload.level="error"'
+'jsonPayload.level="warning"'
+
+# Search app events or messages
+'jsonPayload.event=~"departure_cache"'
+'jsonPayload.message=~"some pattern"'
 
 # Time range
 'timestamp>="2025-01-01T00:00:00Z" AND timestamp<="2025-01-02T00:00:00Z"'
-
-# Text search
-'jsonPayload.message=~"some pattern"'
 
 # Cloud Run auxiliary services
 'resource.type="cloud_run_revision" AND resource.labels.service_name="train-follow-notifier"'
@@ -296,10 +282,11 @@ for entry in entries:
 
 ### Tips
 
-- **Always use the file-analyzer sub-agent** to process raw log output — GCE Docker logs are very verbose with system-level noise.
-- The grpc transport fails in this environment (SSL cert issues). Always use the REST approach above.
-- Logs from staging and production are in the same project — always filter by hostname.
-- Save query output to a file and pass to file-analyzer to keep the main context clean.
+- **Use the helper script first** — it handles hostname discovery and formats structured logs cleanly.
+- **Use file-analyzer sub-agent** for large result sets — save with `--output` then pass to file-analyzer.
+- `gcloud` CLI cannot be installed (blocked). grpc transport fails (SSL cert issues). Always use REST API.
+- Staging and production logs share the same GCP project — always filter by instance.
+- Service account JSON has literal `\n` in private_key — use `json.loads(content, strict=False)`.
 
 ## Key File Locations
 
