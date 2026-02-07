@@ -130,14 +130,18 @@ class MNRCollector:
 
             logger.info(f"Found {len(trips)} MNR trips in GTFS-RT feed")
 
-            # Process each trip
+            # Process each trip inside a savepoint so one failure
+            # doesn't poison the session for subsequent trips.
             for trip_id, trip_arrivals in trips.items():
                 try:
-                    result = await self._process_trip(session, trip_id, trip_arrivals)
-                    if result == "discovered":
-                        stats["discovered"] += 1
-                    elif result == "updated":
-                        stats["updated"] += 1
+                    async with session.begin_nested():
+                        result = await self._process_trip(
+                            session, trip_id, trip_arrivals
+                        )
+                        if result == "discovered":
+                            stats["discovered"] += 1
+                        elif result == "updated":
+                            stats["updated"] += 1
                 except Exception as e:
                     logger.error(f"Error processing MNR trip {trip_id}: {e}")
                     stats["errors"] += 1

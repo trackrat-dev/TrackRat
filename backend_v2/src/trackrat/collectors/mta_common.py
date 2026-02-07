@@ -42,6 +42,15 @@ def build_complete_stops(
             actual_arrival, actual_departure, track, has_departed.
         origin_code and terminal_code are from the full static schedule.
     """
+    # Filter out static stops with no internal station_code mapping.
+    # GTFS feeds can contain stops not in our station map (event-only platforms,
+    # recently added stations, etc.).  Their station_code is NULL in the DB.
+    static_stops = [s for s in static_stops if s.get("station_code")]
+
+    if not static_stops:
+        # All stops were unmapped — fall back to RT-only path
+        return [], realtime_arrivals[0].station_code, realtime_arrivals[-1].station_code
+
     # Index RT arrivals by station_code for O(1) lookup
     rt_by_station: dict[str, Any] = {}
     for arr in realtime_arrivals:
