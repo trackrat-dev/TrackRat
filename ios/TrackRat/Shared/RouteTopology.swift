@@ -386,7 +386,7 @@ struct RouteTopology {
             id: "lirr-hempstead",
             name: "Hempstead Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "QVG", "LHOL", "FPK", "SMR", "NHP", "GCY", "LCLP", "HGN", "WHD", "LHEM"]
+            stationCodes: ["JAM", "QVG", "LHOL", "FPK", "SMR", "NBD", "GCY", "LCLP", "HGN", "LHEM"]
         ),
 
         // Oyster Bay Branch
@@ -442,7 +442,7 @@ struct RouteTopology {
             id: "lirr-port-washington",
             name: "Port Washington Branch",
             dataSource: "LIRR",
-            stationCodes: ["NY", "WDD", "FLS", "BDY", "ADL", "BSD", "DGL", "LLNK", "GNK", "MHT", "PDM", "PWS"]
+            stationCodes: ["NY", "WDD", "LSSM", "FLS", "LMHL", "BDY", "ADL", "BSD", "DGL", "LLNK", "GNK", "MHT", "PDM", "PWS"]
         ),
 
         // Port Jefferson Branch

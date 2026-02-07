@@ -105,11 +105,14 @@ class MNRCollector:
         stats = {
             "discovered": 0,
             "updated": 0,
+            "expired": 0,
             "errors": 0,
             "total_arrivals": 0,
         }
 
         try:
+            collection_start = now_et()
+
             # Fetch all arrivals
             arrivals = await self.client.get_all_arrivals()
             stats["total_arrivals"] = len(arrivals)
@@ -139,10 +142,34 @@ class MNRCollector:
                     logger.error(f"Error processing MNR trip {trip_id}: {e}")
                     stats["errors"] += 1
 
+            # Expire active OBSERVED journeys not seen in this collection cycle.
+            today = collection_start.date()
+            stale_result = await session.execute(
+                select(TrainJourney).where(
+                    TrainJourney.data_source == "MNR",
+                    TrainJourney.observation_type == "OBSERVED",
+                    TrainJourney.journey_date >= today - timedelta(days=1),
+                    TrainJourney.is_completed == False,  # noqa: E712
+                    TrainJourney.is_expired == False,  # noqa: E712
+                    TrainJourney.is_cancelled == False,  # noqa: E712
+                    TrainJourney.last_updated_at < collection_start,
+                )
+            )
+            for journey in stale_result.scalars():
+                journey.api_error_count = (journey.api_error_count or 0) + 1
+                if journey.api_error_count >= 2:
+                    journey.is_expired = True
+                    stats["expired"] += 1
+                    logger.info(
+                        f"MNR journey expired: {journey.train_id} "
+                        f"(error_count={journey.api_error_count})"
+                    )
+
             await session.commit()
             logger.info(
                 f"MNR collection complete: {stats['discovered']} discovered, "
-                f"{stats['updated']} updated, {stats['errors']} errors"
+                f"{stats['updated']} updated, {stats['expired']} expired, "
+                f"{stats['errors']} errors"
             )
 
         except Exception as e:
@@ -244,14 +271,15 @@ class MNRCollector:
                     merged_stops[0]["scheduled_departure"]
                     if merged_stops
                     else first_arrival.arrival_time
+                    - timedelta(seconds=first_arrival.delay_seconds)
                 ),
                 scheduled_arrival=(
                     merged_stops[-1]["scheduled_arrival"]
                     if merged_stops
                     else last_arrival.arrival_time
+                    - timedelta(seconds=last_arrival.delay_seconds)
                 ),
-                actual_departure=first_arrival.arrival_time
-                + timedelta(seconds=first_arrival.delay_seconds),
+                actual_departure=first_arrival.arrival_time,
                 has_complete_journey=True,
                 stops_count=len(merged_stops) if merged_stops else len(arrivals),
                 is_cancelled=False,
@@ -281,20 +309,20 @@ class MNRCollector:
                     session.add(stop)
             else:
                 for seq, arr in enumerate(arrivals, start=1):
+                    delay = timedelta(seconds=arr.delay_seconds)
                     stop = JourneyStop(
                         journey_id=journey.id,
                         station_code=arr.station_code,
                         station_name=get_station_name(arr.station_code),
                         stop_sequence=seq,
-                        scheduled_arrival=arr.arrival_time,
-                        scheduled_departure=arr.departure_time or arr.arrival_time,
-                        actual_arrival=arr.arrival_time
-                        + timedelta(seconds=arr.delay_seconds),
-                        actual_departure=(
-                            (arr.departure_time + timedelta(seconds=arr.delay_seconds))
+                        scheduled_arrival=arr.arrival_time - delay,
+                        scheduled_departure=(
+                            (arr.departure_time - delay)
                             if arr.departure_time
-                            else None
+                            else (arr.arrival_time - delay)
                         ),
+                        actual_arrival=arr.arrival_time,
+                        actual_departure=arr.departure_time,
                         track=arr.track,
                         has_departed_station=False,
                     )
@@ -303,7 +331,12 @@ class MNRCollector:
             # Infer departure status for trains discovered mid-journey
             await session.flush()
             now = now_et()
-            journey_stops = list(journey.stops)
+            stop_result = await session.execute(
+                select(JourneyStop)
+                .where(JourneyStop.journey_id == journey.id)
+                .order_by(JourneyStop.stop_sequence)
+            )
+            journey_stops = list(stop_result.scalars().all())
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
@@ -312,13 +345,9 @@ class MNRCollector:
             return "discovered"
 
         else:
-            # Update existing journey
-            journey.actual_departure = first_arrival.arrival_time + timedelta(
-                seconds=first_arrival.delay_seconds
-            )
-            journey.actual_arrival = last_arrival.arrival_time + timedelta(
-                seconds=last_arrival.delay_seconds
-            )
+            # Update existing journey — arrival_time is already the predicted time
+            journey.actual_departure = first_arrival.arrival_time
+            journey.actual_arrival = last_arrival.arrival_time
 
             # Update stops
             for arr in arrivals:
@@ -332,19 +361,20 @@ class MNRCollector:
                 existing_stop = stop_result.scalar_one_or_none()
 
                 if existing_stop:
-                    existing_stop.actual_arrival = arr.arrival_time + timedelta(
-                        seconds=arr.delay_seconds
-                    )
+                    existing_stop.actual_arrival = arr.arrival_time
                     if arr.departure_time:
-                        existing_stop.actual_departure = arr.departure_time + timedelta(
-                            seconds=arr.delay_seconds
-                        )
+                        existing_stop.actual_departure = arr.departure_time
                     if arr.track:
                         existing_stop.track = arr.track
 
             # Update departure status and journey metadata
             now = now_et()
-            journey_stops = list(journey.stops)
+            stop_result = await session.execute(
+                select(JourneyStop)
+                .where(JourneyStop.journey_id == journey.id)
+                .order_by(JourneyStop.stop_sequence)
+            )
+            journey_stops = list(stop_result.scalars().all())
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
@@ -383,15 +413,29 @@ class MNRCollector:
                 matching_trips[arr.trip_id] = []
             matching_trips[arr.trip_id].append(arr)
 
-        # Find the best matching trip (most overlapping stations)
+        # Find the best matching trip: most overlapping stations, then
+        # closest departure time as tiebreaker.
         best_trip: list[MnrArrival] | None = None
         best_overlap = 0
+        best_time_diff = float("inf")
 
         for trip_arrivals in matching_trips.values():
             trip_stations = {a.station_code for a in trip_arrivals}
             overlap = len(trip_stations & journey_station_codes)
-            if overlap > best_overlap:
+
+            # Time-based tiebreaker against journey's scheduled departure
+            time_diff = float("inf")
+            if journey.scheduled_departure:
+                first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
+                time_diff = abs(
+                    (first_arr.arrival_time - journey.scheduled_departure).total_seconds()
+                )
+
+            if overlap > best_overlap or (
+                overlap == best_overlap and time_diff < best_time_diff
+            ):
                 best_overlap = overlap
+                best_time_diff = time_diff
                 best_trip = trip_arrivals
 
         if not best_trip:
@@ -409,30 +453,27 @@ class MNRCollector:
             stop = stop_result.scalar_one_or_none()
 
             if stop:
-                stop.actual_arrival = arr.arrival_time + timedelta(
-                    seconds=arr.delay_seconds
-                )
+                stop.actual_arrival = arr.arrival_time
                 if arr.departure_time:
-                    stop.actual_departure = arr.departure_time + timedelta(
-                        seconds=arr.delay_seconds
-                    )
+                    stop.actual_departure = arr.departure_time
                 if arr.track:
                     stop.track = arr.track
 
-        # Update journey-level times
+        # Update journey-level times — arrival_time is already the predicted time
         first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)
 
-        journey.actual_departure = first_stop.arrival_time + timedelta(
-            seconds=first_stop.delay_seconds
-        )
-        journey.actual_arrival = last_stop.arrival_time + timedelta(
-            seconds=last_stop.delay_seconds
-        )
+        journey.actual_departure = first_stop.arrival_time
+        journey.actual_arrival = last_stop.arrival_time
 
         # Update departure status and journey metadata
         now = now_et()
-        journey_stops = list(journey.stops)
+        stop_result = await session.execute(
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now)
         check_journey_completed(journey, journey_stops)
