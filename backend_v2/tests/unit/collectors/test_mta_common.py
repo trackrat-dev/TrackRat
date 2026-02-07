@@ -543,6 +543,40 @@ class TestBuildCompleteStops:
         assert wdd["actual_arrival"] == base
         assert wdd["actual_departure"] == base + timedelta(minutes=1)
 
+    def test_all_unmapped_static_stops_returns_empty_list(self):
+        """When all static stops have station_code=None (unmapped GTFS stops),
+        build_complete_stops should return an empty merged list so the caller
+        falls through to origin inference."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        # Simulate static stops with no internal station code mapping
+        static_stops = [
+            {
+                "station_code": None,
+                "stop_sequence": 1,
+                "arrival_time": base,
+                "departure_time": base,
+            },
+            {
+                "station_code": None,
+                "stop_sequence": 2,
+                "arrival_time": base + timedelta(minutes=10),
+                "departure_time": base + timedelta(minutes=10),
+            },
+        ]
+
+        rt_arrivals = [
+            _make_arrival("WDD", base + timedelta(minutes=10)),
+            _make_arrival("JAM", base + timedelta(minutes=20)),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        # Empty list — caller should treat this the same as no static data
+        assert merged == []
+        assert origin == "WDD"
+        assert terminal == "JAM"
+
     def test_rt_stop_with_no_departure_time(self):
         """RT stop with departure_time=None should set actual_departure=None."""
         base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)

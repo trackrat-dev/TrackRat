@@ -266,19 +266,29 @@ class MNRCollector:
             static_stops = await self._gtfs_service.get_static_stop_times(
                 session, "MNR", trip_id, journey_date
             )
-            inferred_origin: str | None = None
             if static_stops:
                 merged_stops, origin_code, terminal_code = build_complete_stops(
                     arrivals, static_stops
                 )
+                if not merged_stops:
+                    # All static stops had unmapped station codes
+                    logger.warning(
+                        "MNR GTFS static backfill returned no usable stops "
+                        "for trip %s; falling back to RT-only stops",
+                        trip_id,
+                    )
             else:
                 merged_stops = None
                 logger.warning(
-                    "MNR GTFS static backfill failed for trip %s "
-                    "(no static data); falling back to RT-only stops",
+                    "MNR GTFS static backfill unavailable for trip %s; "
+                    "falling back to RT-only stops",
                     trip_id,
                 )
-                # Infer origin for outbound trains whose origin was dropped
+
+            # When GTFS backfill produced no usable stops, infer origin
+            # for outbound trains whose origin terminal was dropped from RT
+            inferred_origin: str | None = None
+            if not merged_stops:
                 inferred_origin = infer_missing_origin(
                     first_arrival.station_code, first_arrival.direction_id, "MNR"
                 )
