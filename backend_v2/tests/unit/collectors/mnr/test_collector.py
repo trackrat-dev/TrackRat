@@ -24,53 +24,37 @@ from trackrat.models.database import JourneyStop, TrainJourney
 
 
 class TestGenerateTrainId:
-    """Tests for the MNR train ID generation function."""
+    """Tests for the MNR train ID generation function.
+
+    _generate_train_id accepts only trip_id and extracts the train number
+    from the last 6 characters, keeping only digits (e.g., "trip_123456" -> "M123456").
+    """
 
     def test_generates_correct_format_with_m_prefix(self):
-        """Test train ID has correct format: M{trip_suffix}."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "trip_123456", "GCT", "MPOK", dt)
+        """Standard trip_id with numeric suffix -> M-prefixed digits."""
+        assert _generate_train_id("trip_123456") == "M123456"
 
-        assert result.startswith("M")
-        # Should extract numeric suffix from trip_id
-        assert result == "M123456"
+    def test_extracts_last_6_digits_from_long_trip_id(self):
+        """Long trip_id: last 6 chars '123456' -> 'M123456'."""
+        assert _generate_train_id("MNR_20260119_123456") == "M123456"
 
-    def test_extracts_last_6_digits(self):
-        """Test trip_id extraction uses last 6 characters."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "MNR_20260119_123456", "GCT", "MPOK", dt)
+    def test_short_numeric_trip_id(self):
+        """Short all-numeric trip_id with no underscores."""
+        assert _generate_train_id("1234") == "M1234"
 
-        assert result == "M123456"
+    def test_mixed_alphanumeric_suffix_keeps_only_digits(self):
+        """Last 6 chars 'BC123\\0' filtered to digits only."""
+        # "tripABC123" -> last 6 = "ABC123" -> digits = "123"
+        assert _generate_train_id("tripABC123") == "M123"
 
-    def test_handles_short_trip_id(self):
-        """Test handling of short trip_id."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "1234", "GCT", "MPOK", dt)
-
-        assert result == "M1234"
-
-    def test_handles_non_numeric_trip_suffix(self):
-        """Test handling of non-numeric characters in trip suffix."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        # If last 6 chars are "ABC123", should extract "123"
-        result = _generate_train_id("1", "tripABC123", "GCT", "MPOK", dt)
-
-        assert result == "M123"
-
-    def test_falls_back_to_first_6_if_no_digits(self):
-        """Test fallback to first 6 chars if no digits in suffix."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "ABCDEFGH", "GCT", "MPOK", dt)
-
-        # Should fall back to first 6 chars of trip_id
-        assert result == "MABCDEF"
+    def test_no_digits_falls_back_to_first_6_chars(self):
+        """Trip_id with no digits in last 6 uses first 6 chars as fallback."""
+        assert _generate_train_id("ABCDEFGH") == "MABCDEF"
 
     def test_different_trip_ids_produce_different_train_ids(self):
-        """Test different trip IDs produce different train IDs."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        id1 = _generate_train_id("1", "trip_111111", "GCT", "MPOK", dt)
-        id2 = _generate_train_id("1", "trip_222222", "GCT", "MPOK", dt)
-
+        """Different trip IDs produce different train IDs."""
+        id1 = _generate_train_id("trip_111111")
+        id2 = _generate_train_id("trip_222222")
         assert id1 != id2
         assert id1 == "M111111"
         assert id2 == "M222222"

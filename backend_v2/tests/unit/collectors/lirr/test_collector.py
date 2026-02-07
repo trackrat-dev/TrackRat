@@ -24,56 +24,39 @@ from trackrat.models.database import JourneyStop, TrainJourney
 
 
 class TestGenerateTrainId:
-    """Tests for the train ID generation function."""
+    """Tests for the train ID generation function.
 
-    def test_generates_correct_format_with_l_prefix(self):
-        """Test train ID has correct format: L{trip_suffix}."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "trip_123456", "JAM", "NY", dt)
+    _generate_train_id accepts only trip_id and extracts the train number
+    from the 3rd underscore-delimited segment (e.g., "GO103_25_181" -> "L181").
+    """
 
-        assert result.startswith("L")
-        # Should extract numeric suffix from trip_id
-        assert result == "L123456"
+    def test_standard_trip_id_extracts_third_segment(self):
+        """Standard GTFS trip_id 'GO103_25_181' -> 'L181'."""
+        assert _generate_train_id("GO103_25_181") == "L181"
 
-    def test_extracts_last_6_digits(self):
-        """Test trip_id extraction uses last 6 characters."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "LIRR_20260119_123456", "JAM", "NY", dt)
+    def test_event_trip_id_extracts_third_segment(self):
+        """Event trip_id 'GO103_25_367_2891_METS' -> 'L367'."""
+        assert _generate_train_id("GO103_25_367_2891_METS") == "L367"
 
-        assert result == "L123456"
+    def test_two_segment_trip_id_falls_back_to_digits(self):
+        """Trip_id with <3 segments falls back to digit extraction."""
+        assert _generate_train_id("LIRR_123456") == "L123456"
 
-    def test_handles_short_trip_id(self):
-        """Test handling of short trip_id."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "1234", "JAM", "NY", dt)
+    def test_short_numeric_trip_id(self):
+        """Short all-numeric trip_id with no underscores."""
+        assert _generate_train_id("1234") == "L1234"
 
-        assert result == "L1234"
-
-    def test_handles_non_numeric_trip_suffix(self):
-        """Test handling of non-numeric characters in trip suffix."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        # If last 6 chars are "ABC123", should extract "123"
-        result = _generate_train_id("1", "tripABC123", "JAM", "NY", dt)
-
-        assert result == "L123"
-
-    def test_falls_back_to_first_6_if_no_digits(self):
-        """Test fallback to first 6 chars if no digits in suffix."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        result = _generate_train_id("1", "ABCDEFGH", "JAM", "NY", dt)
-
-        # Should fall back to first 6 chars of trip_id
-        assert result == "LABCDEF"
+    def test_no_digits_falls_back_to_first_6_chars(self):
+        """Trip_id with no digits and <3 segments uses first 6 chars."""
+        assert _generate_train_id("ABCDEFGH") == "LABCDEF"
 
     def test_different_trip_ids_produce_different_train_ids(self):
-        """Test different trip IDs produce different train IDs."""
-        dt = datetime(2026, 1, 19, 10, 30, 0, tzinfo=timezone.utc)
-        id1 = _generate_train_id("1", "trip_111111", "JAM", "NY", dt)
-        id2 = _generate_train_id("1", "trip_222222", "JAM", "NY", dt)
-
+        """Different trip IDs produce different train IDs."""
+        id1 = _generate_train_id("GO103_25_111")
+        id2 = _generate_train_id("GO103_25_222")
         assert id1 != id2
-        assert id1 == "L111111"
-        assert id2 == "L222222"
+        assert id1 == "L111"
+        assert id2 == "L222"
 
 
 # =============================================================================

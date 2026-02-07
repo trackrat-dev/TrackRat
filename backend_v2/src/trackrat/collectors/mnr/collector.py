@@ -6,7 +6,7 @@ Follows the same pattern as the LIRR collector for consistency.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -35,13 +35,7 @@ from trackrat.utils.time import ET, now_et
 logger = logging.getLogger(__name__)
 
 
-def _generate_train_id(
-    route_id: str,
-    trip_id: str,
-    origin_code: str,
-    dest_code: str,
-    departure_time: datetime,
-) -> str:
+def _generate_train_id(trip_id: str) -> str:
     """
     Generate a stable train ID for Metro-North trains.
 
@@ -236,13 +230,7 @@ class MNRCollector:
         terminal_code = last_arrival.station_code
 
         # Generate train ID
-        train_id = _generate_train_id(
-            route_id,
-            trip_id,
-            origin_code,
-            terminal_code,
-            first_arrival.arrival_time,
-        )
+        train_id = _generate_train_id(trip_id)
 
         # Determine journey date (in Eastern time)
         arrival_et = first_arrival.arrival_time.astimezone(ET)

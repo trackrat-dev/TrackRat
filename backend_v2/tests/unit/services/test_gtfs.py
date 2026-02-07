@@ -11,6 +11,7 @@ from trackrat.services.gtfs import (
     GTFS_DOWNLOAD_INTERVAL_HOURS,
     NJT_LINE_CODE_MAPPING,
     _lirr_train_id_from_gtfs,
+    _mnr_train_id_from_gtfs,
 )
 from trackrat.models.database import (
     GTFSCalendar,
@@ -940,3 +941,41 @@ class TestLirrTrainIdFromGtfs:
     def test_single_segment_non_numeric(self):
         """Non-numeric single values get L-prefix as fallback."""
         assert _lirr_train_id_from_gtfs("UNKNOWN") == "LUNKNOWN"
+
+
+class TestMnrTrainIdFromGtfs:
+    """Tests for _mnr_train_id_from_gtfs helper.
+
+    MNR real-time collector generates train IDs as "M{digits}" where digits are
+    the last 6 characters of trip_id filtered to digits only (e.g., "M631700").
+    GTFS stores the bare number in trip_short_name. This helper must normalize
+    both formats to "M631700".
+    """
+
+    def test_bare_number_gets_m_prefix(self):
+        """trip_short_name is a bare number like '631700'."""
+        assert _mnr_train_id_from_gtfs("631700") == "M631700"
+
+    def test_already_prefixed_unchanged(self):
+        """Real-time format 'M631700' should pass through unchanged."""
+        assert _mnr_train_id_from_gtfs("M631700") == "M631700"
+
+    def test_long_trip_id_extracts_last_6_digits(self):
+        """Long GTFS trip_id: last 6 chars filtered to digits."""
+        assert _mnr_train_id_from_gtfs("MNR_20260119_631700") == "M631700"
+
+    def test_mixed_alphanumeric_suffix(self):
+        """Last 6 chars with mixed alpha/digits keep only digits."""
+        assert _mnr_train_id_from_gtfs("tripABC123") == "M123"
+
+    def test_short_numeric_trip_id(self):
+        """Short all-numeric trip_id."""
+        assert _mnr_train_id_from_gtfs("8042") == "M8042"
+
+    def test_no_digits_falls_back_to_first_6(self):
+        """Trip_id with no digits in last 6 chars uses first 6 as fallback."""
+        assert _mnr_train_id_from_gtfs("UNKNOWN") == "MUNKNOW"
+
+    def test_single_digit_in_suffix(self):
+        """Even a single digit in last 6 chars is extracted."""
+        assert _mnr_train_id_from_gtfs("ABCDE1FG") == "M1"
