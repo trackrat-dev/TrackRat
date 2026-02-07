@@ -207,34 +207,99 @@ terraform apply -var="environment=production"
 
 The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes the key to `/root/.config/gcloud/service-account.json` when `GCP_SA_KEY_JSON` is set (no-op locally).
 
-**Before first log query in a session**, install gcloud and authenticate:
-```bash
-# Install gcloud CLI (~30s)
-curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=/root 2>/dev/null
-export PATH="/root/google-cloud-sdk/bin:$PATH"
+**Important:** The `gcloud` CLI cannot be installed in this environment (curl to `sdk.cloud.google.com` is blocked). Use the **Python REST API approach** below instead.
 
-# Authenticate with the service account key (written by SessionStart hook)
-gcloud auth activate-service-account --key-file=/root/.config/gcloud/service-account.json --project=trackrat-v2
+### Setup (once per session)
+
+```bash
+# Install Python dependencies (cffi must go to /tmp to avoid conflict with system cryptography)
+pip install google-cloud-logging 2>&1 | tail -3
+pip install cffi cryptography --force-reinstall --target=/tmp/pylibs 2>&1 | tail -3
 ```
 
-**Query logs:**
-```bash
-# Recent errors
-gcloud logging read 'severity>=ERROR' --project=trackrat-v2 --limit=50 --format=json
+### Architecture
 
-# Cloud Run backend logs
-gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="trackrat-backend"' \
-  --project=trackrat-v2 --limit=50 --format=json
+- **Staging**: GCE instance `trackrat-staging-s565` running Docker Compose (not Cloud Run)
+- **Production**: GCE instance `trackrat-production-wwk7` running Docker Compose
+- **Resource type**: `gce_instance` (NOT `cloud_run_revision` for the main backend)
+- **Cloud Run services**: `feedback-notifier`, `train-follow-notifier` (auxiliary only)
+- **Containers on each GCE instance**: `trackrat-api` (FastAPI), PostgreSQL
+- **Log forwarding**: `docker-events-collector-fluent-bit` systemd service
 
-# Filter by time range
-gcloud logging read 'severity>=WARNING AND timestamp>="2025-01-01T00:00:00Z"' \
-  --project=trackrat-v2 --limit=100 --format=json
+### Query Logs (Python REST API)
+
+The service account JSON has literal newlines in the private key field — use `json.loads(content, strict=False)` to parse it.
+
+```python
+# Run with: PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 << 'PYEOF'
+import json, requests
+from google.oauth2 import service_account
+from google.auth.transport.requests import Request
+
+# Authenticate
+with open('/root/.config/gcloud/service-account.json', 'r') as f:
+    sa_info = json.loads(f.read(), strict=False)  # strict=False needed for literal \n in key
+credentials = service_account.Credentials.from_service_account_info(
+    sa_info, scopes=['https://www.googleapis.com/auth/logging.read']
+)
+credentials.refresh(Request(session=requests.Session()))
+
+# Query
+url = "https://logging.googleapis.com/v2/entries:list"
+headers = {"Authorization": f"Bearer {credentials.token}", "Content-Type": "application/json"}
+body = {
+    "resourceNames": ["projects/trackrat-v2"],
+    "filter": '<FILTER_HERE>',
+    "orderBy": "timestamp desc",
+    "pageSize": 100,
+}
+resp = requests.post(url, json=body, headers=headers)
+entries = resp.json().get("entries", [])
+
+for entry in entries:
+    ts = entry.get("timestamp", "?")[:19]
+    severity = entry.get("severity", "DEFAULT")
+    text = entry.get("textPayload", "")
+    if not text:
+        jp = entry.get("jsonPayload", {})
+        text = jp.get("message", json.dumps(jp, default=str)[:500]) if jp else ""
+    print(f"[{ts}] {severity}: {text[:400]}")
+# PYEOF
+```
+
+### Common Filters
+
+```python
+# Staging backend logs
+'resource.type="gce_instance" AND resource.labels.instance_id="1367060876182092510"'
+# Or by hostname in log content:
+'jsonPayload._HOSTNAME="trackrat-staging-s565"'
+
+# Production backend logs
+'jsonPayload._HOSTNAME="trackrat-production-wwk7"'
+
+# Errors only
+'severity>=ERROR'
+
+# Application logs (not Docker events)
+'jsonPayload.message=~".*" AND jsonPayload._HOSTNAME="trackrat-staging-s565"'
+
+# Time range
+'timestamp>="2025-01-01T00:00:00Z" AND timestamp<="2025-01-02T00:00:00Z"'
 
 # Text search
-gcloud logging read 'textPayload=~"some pattern"' --project=trackrat-v2 --limit=50 --format=json
+'jsonPayload.message=~"some pattern"'
+
+# Cloud Run auxiliary services
+'resource.type="cloud_run_revision" AND resource.labels.service_name="train-follow-notifier"'
 ```
 
-**Common resource types:** `cloud_run_revision`, `cloud_sql_database`, `cloudbuild`, `gce_instance`
+### Tips
+
+- **Always use the file-analyzer sub-agent** to process raw log output — GCE Docker logs are very verbose with system-level noise.
+- The grpc transport fails in this environment (SSL cert issues). Always use the REST approach above.
+- Logs from staging and production are in the same project — always filter by hostname.
+- Save query output to a file and pass to file-analyzer to keep the main context clean.
 
 ## Key File Locations
 
