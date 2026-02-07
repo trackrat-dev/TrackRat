@@ -197,6 +197,29 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
+## GCP Log Viewing (Cloud Environment)
+
+In the Claude Code cloud environment, `gcloud` is authenticated via a service account with `roles/logging.viewer` on the `trackrat-v2` project. The SessionStart hook in `.claude/settings.json` activates the service account automatically when `GCP_SA_KEY_JSON` is set (cloud only — no-op locally).
+
+**Query logs:**
+```bash
+# Recent errors
+gcloud logging read 'severity>=ERROR' --project=trackrat-v2 --limit=50 --format=json
+
+# Cloud Run backend logs
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="trackrat-backend"' \
+  --project=trackrat-v2 --limit=50 --format=json
+
+# Filter by time range
+gcloud logging read 'severity>=WARNING AND timestamp>="2025-01-01T00:00:00Z"' \
+  --project=trackrat-v2 --limit=100 --format=json
+
+# Text search
+gcloud logging read 'textPayload=~"some pattern"' --project=trackrat-v2 --limit=50 --format=json
+```
+
+**Common resource types:** `cloud_run_revision`, `cloud_sql_database`, `cloudbuild`, `gce_instance`
+
 ## Key File Locations
 
 - Backend services: `backend_v2/src/trackrat/services/`
