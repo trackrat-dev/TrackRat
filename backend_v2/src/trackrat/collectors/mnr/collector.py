@@ -13,13 +13,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.mnr.client import MnrArrival, MNRClient
+from trackrat.collectors.mta_common import (
+    check_journey_completed,
+    update_journey_metadata,
+    update_stop_departure_status,
+)
 from trackrat.config.stations import (
     MNR_ROUTES,
     get_station_name,
 )
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.utils.time import ET
+from trackrat.utils.time import ET, now_et
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +261,14 @@ class MNRCollector:
                 )
                 session.add(stop)
 
+            # Infer departure status for trains discovered mid-journey
+            await session.flush()
+            now = now_et()
+            journey_stops = list(journey.stops)
+            update_stop_departure_status(journey_stops, now)
+            update_journey_metadata(journey, now)
+            check_journey_completed(journey, journey_stops)
+
             logger.debug(f"Discovered MNR train {train_id}")
             return "discovered"
 
@@ -290,6 +303,13 @@ class MNRCollector:
                     if arr.track:
                         existing_stop.track = arr.track
 
+            # Update departure status and journey metadata
+            now = now_et()
+            journey_stops = list(journey.stops)
+            update_stop_departure_status(journey_stops, now)
+            update_journey_metadata(journey, now)
+            check_journey_completed(journey, journey_stops)
+
             logger.debug(f"Updated MNR train {train_id}")
             return "updated"
 
@@ -312,13 +332,13 @@ class MNRCollector:
         arrivals = await self.client.get_all_arrivals()
 
         # Find arrivals that match this journey's stops
-        journey_stops = {s.station_code for s in journey.stops}
+        journey_station_codes = {s.station_code for s in journey.stops}
 
         # Find arrivals that might be part of this journey
         matching_trips: dict[str, list[MnrArrival]] = {}
 
         for arr in arrivals:
-            if arr.station_code not in journey_stops:
+            if arr.station_code not in journey_station_codes:
                 continue
             if arr.trip_id not in matching_trips:
                 matching_trips[arr.trip_id] = []
@@ -330,7 +350,7 @@ class MNRCollector:
 
         for trip_arrivals in matching_trips.values():
             trip_stations = {a.station_code for a in trip_arrivals}
-            overlap = len(trip_stations & journey_stops)
+            overlap = len(trip_stations & journey_station_codes)
             if overlap > best_overlap:
                 best_overlap = overlap
                 best_trip = trip_arrivals
@@ -370,6 +390,13 @@ class MNRCollector:
         journey.actual_arrival = last_stop.arrival_time + timedelta(
             seconds=last_stop.delay_seconds
         )
+
+        # Update departure status and journey metadata
+        now = now_et()
+        journey_stops = list(journey.stops)
+        update_stop_departure_status(journey_stops, now)
+        update_journey_metadata(journey, now)
+        check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated MNR journey {journey.train_id}")
 

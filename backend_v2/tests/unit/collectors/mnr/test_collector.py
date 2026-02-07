@@ -419,11 +419,25 @@ class TestMNRCollectorJourneyDetails:
 
         stop1 = MagicMock(spec=JourneyStop)
         stop1.station_code = "GCT"
+        stop1.stop_sequence = 1
+        stop1.actual_departure = None
+        stop1.actual_arrival = None
+        stop1.scheduled_arrival = now
+        stop1.has_departed_station = False
+        stop1.departure_source = None
 
         stop2 = MagicMock(spec=JourneyStop)
         stop2.station_code = "M125"
+        stop2.stop_sequence = 2
+        stop2.actual_departure = None
+        stop2.actual_arrival = None
+        stop2.scheduled_arrival = now + timedelta(minutes=30)
+        stop2.has_departed_station = False
+        stop2.departure_source = None
 
         journey.stops = [stop1, stop2]
+        journey.is_completed = False
+        journey.update_count = 0
 
         # Mock arrivals that match the journey
         arrivals = [
