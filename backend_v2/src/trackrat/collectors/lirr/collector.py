@@ -11,6 +11,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from trackrat.collectors.lirr.client import LirrArrival, LIRRClient
 from trackrat.collectors.mta_common import (
@@ -26,6 +27,7 @@ from trackrat.config.stations import (
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.gtfs import GTFSService
+from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import ET, now_et
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,13 @@ class LIRRCollector:
                     logger.error(f"Error processing LIRR trip {trip_id}: {e}")
                     stats["errors"] += 1
 
+            # If every trip failed, raise so scheduler marks this run as failed
+            if stats["errors"] > 0 and stats["discovered"] + stats["updated"] == 0:
+                raise RuntimeError(
+                    f"LIRR collection: all {stats['errors']} trips failed, "
+                    f"no successful discoveries or updates"
+                )
+
             await session.commit()
             logger.info(
                 f"LIRR collection complete: {stats['discovered']} discovered, "
@@ -152,6 +161,7 @@ class LIRRCollector:
 
         except Exception as e:
             logger.error(f"LIRR collection failed: {e}")
+            await session.rollback()
             stats["errors"] += 1
 
         return stats
@@ -213,11 +223,13 @@ class LIRRCollector:
 
         # Check if journey already exists
         existing = await session.execute(
-            select(TrainJourney).where(
+            select(TrainJourney)
+            .where(
                 TrainJourney.train_id == train_id,
                 TrainJourney.journey_date == journey_date,
                 TrainJourney.data_source == "LIRR",
             )
+            .options(selectinload(TrainJourney.stops))
         )
         journey = existing.scalar_one_or_none()
 
@@ -269,7 +281,9 @@ class LIRRCollector:
             session.add(journey)
             await session.flush()
 
-            # Create stops
+            # Create stops — collect into local list to avoid lazy-loading
+            # journey.stops in async context (MissingGreenlet)
+            created_stops: list[JourneyStop] = []
             if merged_stops:
                 for stop_data in merged_stops:
                     stop = JourneyStop(
@@ -285,6 +299,7 @@ class LIRRCollector:
                         has_departed_station=stop_data["has_departed"],
                     )
                     session.add(stop)
+                    created_stops.append(stop)
             else:
                 for seq, arr in enumerate(arrivals, start=1):
                     stop = JourneyStop(
@@ -305,14 +320,18 @@ class LIRRCollector:
                         has_departed_station=False,
                     )
                     session.add(stop)
+                    created_stops.append(stop)
 
             # Infer departure status for trains discovered mid-journey
             await session.flush()
             now = now_et()
-            journey_stops = list(journey.stops)
-            update_stop_departure_status(journey_stops, now)
+            update_stop_departure_status(created_stops, now)
             update_journey_metadata(journey, now)
-            check_journey_completed(journey, journey_stops)
+            check_journey_completed(journey, created_stops)
+
+            # Analyze segments for congestion data
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments(session, journey)
 
             logger.debug(f"Discovered LIRR train {train_id}")
             return "discovered"
@@ -354,6 +373,10 @@ class LIRRCollector:
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
+
+            # Analyze segments for congestion data
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments(session, journey)
 
             logger.debug(f"Updated LIRR train {train_id}")
             return "updated"

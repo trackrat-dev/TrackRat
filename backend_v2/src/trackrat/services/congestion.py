@@ -361,54 +361,67 @@ class CongestionAnalyzer:
         # This replaces loading thousands of objects into Python memory
         query = text(
             """
-        WITH segment_data AS (
-            -- Calculate segment transit times by joining consecutive stops
+        WITH stop_pairs AS (
+            -- Pair each stop with its next stop using LEAD window function.
+            -- Handles non-consecutive stop_sequence values (common in GTFS
+            -- static data from MTA feeds like MNR/LIRR) by ordering by
+            -- stop_sequence and taking the actual next mapped stop.
             SELECT
-                js1.station_code as from_station,
-                js2.station_code as to_station,
+                journey_id,
+                station_code as from_station,
+                actual_departure as from_actual_departure,
+                scheduled_departure as from_scheduled_departure,
+                LEAD(station_code) OVER w as to_station,
+                LEAD(actual_arrival) OVER w as to_actual_arrival,
+                LEAD(scheduled_arrival) OVER w as to_scheduled_arrival
+            FROM journey_stops
+            WHERE station_code IS NOT NULL
+            WINDOW w AS (PARTITION BY journey_id ORDER BY stop_sequence)
+        ),
+        segment_data AS (
+            -- Calculate segment transit times from paired stops
+            SELECT
+                sp.from_station,
+                sp.to_station,
                 tj.data_source,
                 tj.is_cancelled,
                 tj.id as journey_id,
                 tj.train_id,
                 -- Calculate actual transit time in minutes
                 EXTRACT(EPOCH FROM (
-                    COALESCE(js2.actual_arrival, js2.scheduled_arrival) -
-                    COALESCE(js1.actual_departure, js1.scheduled_departure)
+                    COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) -
+                    COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)
                 )) / 60.0 as actual_minutes,
                 -- Calculate scheduled transit time
                 CASE
-                    WHEN js1.scheduled_departure IS NOT NULL
-                     AND js2.scheduled_arrival IS NOT NULL
-                     AND js2.scheduled_arrival > js1.scheduled_departure
+                    WHEN sp.from_scheduled_departure IS NOT NULL
+                     AND sp.to_scheduled_arrival IS NOT NULL
+                     AND sp.to_scheduled_arrival > sp.from_scheduled_departure
                     THEN EXTRACT(EPOCH FROM (
-                        js2.scheduled_arrival - js1.scheduled_departure
+                        sp.to_scheduled_arrival - sp.from_scheduled_departure
                     )) / 60.0
                     ELSE NULL
                 END as scheduled_minutes,
                 -- Track when this segment departed for recency sorting
-                COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time,
+                COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) as departure_time,
                 -- Context for frequency baseline comparison
-                EXTRACT(HOUR FROM COALESCE(js1.actual_departure, js1.scheduled_departure)) as hour_of_day,
-                EXTRACT(DOW FROM COALESCE(js1.actual_departure, js1.scheduled_departure)) as day_of_week
+                EXTRACT(HOUR FROM COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)) as hour_of_day,
+                EXTRACT(DOW FROM COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)) as day_of_week
             FROM train_journeys tj
-            JOIN journey_stops js1 ON js1.journey_id = tj.id
-            JOIN journey_stops js2 ON js2.journey_id = tj.id
+            JOIN stop_pairs sp ON sp.journey_id = tj.id
             WHERE
-                -- Consecutive stops only
-                js2.stop_sequence = js1.stop_sequence + 1
-                -- Within time window (based on when segment was actually traversed)
-                AND COALESCE(js1.actual_departure, js1.scheduled_departure) >= :cutoff_time
+                -- LEAD returns NULL for last stop in journey (no next stop)
+                sp.to_station IS NOT NULL
+                -- Within time window
+                AND COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) >= :cutoff_time
                 -- Data source filter (if specified)
                 AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
-                -- Valid stations
-                AND js1.station_code IS NOT NULL
-                AND js2.station_code IS NOT NULL
                 -- Valid times (at least scheduled times must exist)
-                AND js1.scheduled_departure IS NOT NULL
-                AND js2.scheduled_arrival IS NOT NULL
+                AND sp.from_scheduled_departure IS NOT NULL
+                AND sp.to_scheduled_arrival IS NOT NULL
                 -- Ensure arrival is after departure (positive transit time)
-                AND COALESCE(js2.actual_arrival, js2.scheduled_arrival) >
-                    COALESCE(js1.actual_departure, js1.scheduled_departure)
+                AND COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) >
+                    COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)
         ),
         segment_with_recency AS (
             -- Add recency window for efficient filtering
@@ -639,56 +652,64 @@ class CongestionAnalyzer:
             # With per-route limiting using ROW_NUMBER()
             query = text(
                 """
-            WITH segment_data AS (
-                -- Calculate individual train segments between consecutive stops
+            WITH stop_pairs AS (
                 SELECT
-                    js1.station_code as from_station,
-                    js2.station_code as to_station,
+                    journey_id,
+                    station_code as from_station,
+                    actual_departure as from_actual_departure,
+                    scheduled_departure as from_scheduled_departure,
+                    LEAD(station_code) OVER w as to_station,
+                    LEAD(actual_arrival) OVER w as to_actual_arrival,
+                    LEAD(scheduled_arrival) OVER w as to_scheduled_arrival
+                FROM journey_stops
+                WHERE station_code IS NOT NULL
+                WINDOW w AS (PARTITION BY journey_id ORDER BY stop_sequence)
+            ),
+            segment_data AS (
+                -- Calculate individual train segments between adjacent stops
+                SELECT
+                    sp.from_station,
+                    sp.to_station,
                     tj.data_source,
                     tj.id as journey_id,
                     tj.train_id,
                     tj.journey_date,
                     -- Timing data
-                    COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time,
-                    COALESCE(js2.actual_arrival, js2.scheduled_arrival) as arrival_time,
-                    js1.scheduled_departure,
-                    js2.scheduled_arrival,
+                    COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) as departure_time,
+                    COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) as arrival_time,
+                    sp.from_scheduled_departure as scheduled_departure,
+                    sp.to_scheduled_arrival as scheduled_arrival,
                     -- Calculate actual transit time in minutes
                     EXTRACT(EPOCH FROM (
-                        COALESCE(js2.actual_arrival, js2.scheduled_arrival) -
-                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                        COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) -
+                        COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)
                     )) / 60.0 as actual_minutes,
                     -- Calculate scheduled transit time
                     CASE
-                        WHEN js1.scheduled_departure IS NOT NULL
-                         AND js2.scheduled_arrival IS NOT NULL
-                         AND js2.scheduled_arrival > js1.scheduled_departure
+                        WHEN sp.from_scheduled_departure IS NOT NULL
+                         AND sp.to_scheduled_arrival IS NOT NULL
+                         AND sp.to_scheduled_arrival > sp.from_scheduled_departure
                         THEN EXTRACT(EPOCH FROM (
-                            js2.scheduled_arrival - js1.scheduled_departure
+                            sp.to_scheduled_arrival - sp.from_scheduled_departure
                         )) / 60.0
                         ELSE NULL
                     END as scheduled_minutes
                 FROM train_journeys tj
-                JOIN journey_stops js1 ON js1.journey_id = tj.id
-                JOIN journey_stops js2 ON js2.journey_id = tj.id
+                JOIN stop_pairs sp ON sp.journey_id = tj.id
                 WHERE
-                    -- Consecutive stops only
-                    js2.stop_sequence = js1.stop_sequence + 1
-                    -- Within time window (based on when segment was actually traversed)
-                    AND COALESCE(js1.actual_departure, js1.scheduled_departure) >= :cutoff_time
+                    sp.to_station IS NOT NULL
+                    -- Within time window
+                    AND COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) >= :cutoff_time
                     -- Data source filter (if specified)
                     AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only (cancelled trains handled separately)
                     AND NOT tj.is_cancelled
-                    -- Valid stations
-                    AND js1.station_code IS NOT NULL
-                    AND js2.station_code IS NOT NULL
                     -- Valid times
-                    AND js1.scheduled_departure IS NOT NULL
-                    AND js2.scheduled_arrival IS NOT NULL
+                    AND sp.from_scheduled_departure IS NOT NULL
+                    AND sp.to_scheduled_arrival IS NOT NULL
                     -- Ensure arrival is after departure (positive transit time)
-                    AND COALESCE(js2.actual_arrival, js2.scheduled_arrival) >
-                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                    AND COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) >
+                        COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)
             ),
             ranked_segments AS (
                 -- Rank segments by recency within each route
@@ -730,57 +751,65 @@ class CongestionAnalyzer:
             # No per-route limiting - return ALL individual segments
             query = text(
                 """
-            WITH segment_data AS (
-                -- Calculate individual train segments between consecutive stops
+            WITH stop_pairs AS (
                 SELECT
-                    js1.station_code as from_station,
-                    js2.station_code as to_station,
+                    journey_id,
+                    station_code as from_station,
+                    actual_departure as from_actual_departure,
+                    scheduled_departure as from_scheduled_departure,
+                    LEAD(station_code) OVER w as to_station,
+                    LEAD(actual_arrival) OVER w as to_actual_arrival,
+                    LEAD(scheduled_arrival) OVER w as to_scheduled_arrival
+                FROM journey_stops
+                WHERE station_code IS NOT NULL
+                WINDOW w AS (PARTITION BY journey_id ORDER BY stop_sequence)
+            ),
+            segment_data AS (
+                -- Calculate individual train segments between adjacent stops
+                SELECT
+                    sp.from_station,
+                    sp.to_station,
                     tj.data_source,
                     tj.id as journey_id,
                     tj.train_id,
                     tj.journey_date,
                     -- Timing data
-                    COALESCE(js1.actual_departure, js1.scheduled_departure) as departure_time,
-                    COALESCE(js2.actual_arrival, js2.scheduled_arrival) as arrival_time,
-                    js1.scheduled_departure,
-                    js2.scheduled_arrival,
+                    COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) as departure_time,
+                    COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) as arrival_time,
+                    sp.from_scheduled_departure as scheduled_departure,
+                    sp.to_scheduled_arrival as scheduled_arrival,
                     -- Calculate actual transit time in minutes
                     EXTRACT(EPOCH FROM (
-                        COALESCE(js2.actual_arrival, js2.scheduled_arrival) -
-                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                        COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) -
+                        COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)
                     )) / 60.0 as actual_minutes,
                     -- Calculate scheduled transit time
                     CASE
-                        WHEN js1.scheduled_departure IS NOT NULL
-                         AND js2.scheduled_arrival IS NOT NULL
-                         AND js2.scheduled_arrival > js1.scheduled_departure
+                        WHEN sp.from_scheduled_departure IS NOT NULL
+                         AND sp.to_scheduled_arrival IS NOT NULL
+                         AND sp.to_scheduled_arrival > sp.from_scheduled_departure
                         THEN EXTRACT(EPOCH FROM (
-                            js2.scheduled_arrival - js1.scheduled_departure
+                            sp.to_scheduled_arrival - sp.from_scheduled_departure
                         )) / 60.0
                         ELSE NULL
                     END as scheduled_minutes
                 FROM train_journeys tj
-                JOIN journey_stops js1 ON js1.journey_id = tj.id
-                JOIN journey_stops js2 ON js2.journey_id = tj.id
+                JOIN stop_pairs sp ON sp.journey_id = tj.id
                 WHERE
-                    -- Consecutive stops only
-                    js2.stop_sequence = js1.stop_sequence + 1
-                    -- Within time window (based on when segment was actually traversed)
-                    AND COALESCE(js1.actual_departure, js1.scheduled_departure) >= :cutoff_time
+                    sp.to_station IS NOT NULL
+                    -- Within time window
+                    AND COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) >= :cutoff_time
                     -- Data source filter (if specified)
                     AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only
                     AND NOT tj.is_cancelled
-                    -- Valid stations
-                    AND js1.station_code IS NOT NULL
-                    AND js2.station_code IS NOT NULL
                     -- Valid times
-                    AND js1.scheduled_departure IS NOT NULL
-                    AND js2.scheduled_arrival IS NOT NULL
+                    AND sp.from_scheduled_departure IS NOT NULL
+                    AND sp.to_scheduled_arrival IS NOT NULL
                     -- Valid positive transit times
                     AND EXTRACT(EPOCH FROM (
-                        COALESCE(js2.actual_arrival, js2.scheduled_arrival) -
-                        COALESCE(js1.actual_departure, js1.scheduled_departure)
+                        COALESCE(sp.to_actual_arrival, sp.to_scheduled_arrival) -
+                        COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)
                     )) > 0
             )
             SELECT
