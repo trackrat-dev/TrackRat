@@ -1777,7 +1777,7 @@ class GTFSService:
         data_source: str,
         gtfs_trip_id: str,
         target_date: date,
-    ) -> list[dict] | None:
+    ) -> list[dict[str, Any]] | None:
         """Get all stops for a GTFS trip from static schedule data.
 
         Used by MTA collectors to backfill origin/passed stops that are

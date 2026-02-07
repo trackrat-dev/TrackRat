@@ -19,13 +19,13 @@ from trackrat.collectors.mta_common import (
     update_journey_metadata,
     update_stop_departure_status,
 )
-from trackrat.services.gtfs import GTFSService
 from trackrat.config.stations import (
     LIRR_ROUTES,
     get_station_name,
 )
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.gtfs import GTFSService
 from trackrat.utils.time import ET, now_et
 
 logger = logging.getLogger(__name__)
@@ -246,12 +246,16 @@ class LIRRCollector:
                 destination=get_station_name(terminal_code),
                 origin_station_code=origin_code,
                 terminal_station_code=terminal_code,
-                scheduled_departure=merged_stops[0]["scheduled_departure"]
-                if merged_stops
-                else first_arrival.arrival_time,
-                scheduled_arrival=merged_stops[-1]["scheduled_arrival"]
-                if merged_stops
-                else last_arrival.arrival_time,
+                scheduled_departure=(
+                    merged_stops[0]["scheduled_departure"]
+                    if merged_stops
+                    else first_arrival.arrival_time
+                ),
+                scheduled_arrival=(
+                    merged_stops[-1]["scheduled_arrival"]
+                    if merged_stops
+                    else last_arrival.arrival_time
+                ),
                 actual_departure=first_arrival.arrival_time
                 + timedelta(seconds=first_arrival.delay_seconds),
                 has_complete_journey=True,
@@ -293,10 +297,7 @@ class LIRRCollector:
                         actual_arrival=arr.arrival_time
                         + timedelta(seconds=arr.delay_seconds),
                         actual_departure=(
-                            (
-                                arr.departure_time
-                                + timedelta(seconds=arr.delay_seconds)
-                            )
+                            (arr.departure_time + timedelta(seconds=arr.delay_seconds))
                             if arr.departure_time
                             else None
                         ),

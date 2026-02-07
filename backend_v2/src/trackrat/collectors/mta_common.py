@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 def build_complete_stops(
     realtime_arrivals: list[Any],
-    static_stops: list[dict],
-) -> tuple[list[dict], str, str]:
+    static_stops: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str, str]:
     """Merge GTFS-RT arrivals with GTFS static stops to produce a complete stop list.
 
     GTFS-RT feeds may omit already-passed stops (e.g., LIRR drops the origin
@@ -58,7 +58,7 @@ def build_complete_stops(
     origin_code = static_stops[0]["station_code"]
     terminal_code = static_stops[-1]["station_code"]
 
-    merged: list[dict] = []
+    merged: list[dict[str, Any]] = []
     for static_stop in static_stops:
         code = static_stop["station_code"]
         seq = static_stop["stop_sequence"]

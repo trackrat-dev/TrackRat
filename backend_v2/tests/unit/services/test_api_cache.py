@@ -399,7 +399,7 @@ class TestApiCacheService:
         """Test that congestion computation filters by data source when specified."""
         params = {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"}
 
-        # Mock mixed data sources
+        # Mock data already filtered by data source (SQL layer handles filtering)
         mock_aggregated = [
             Mock(
                 from_station="NY",
@@ -414,33 +414,13 @@ class TestApiCacheService:
                 cancellation_count=0,
                 cancellation_rate=0,
             ),
-            Mock(
-                from_station="PH",
-                to_station="TR",
-                data_source="AMTRAK",
-                congestion_level="moderate",
-                congestion_factor=1.2,
-                average_delay_minutes=3,
-                sample_count=5,
-                baseline_minutes=20,
-                avg_transit_minutes=24,
-                cancellation_count=1,
-                cancellation_rate=0.2,
-            ),
         ]
-        mock_individual = []  # Empty list - we're filtering by data source
+        mock_individual = []
         mock_journeys = [
             Mock(
                 train_id="1234",
                 line_code="NE",
                 data_source="NJT",
-                is_cancelled=False,
-                progress=None,
-            ),
-            Mock(
-                train_id="567",
-                line_code="Acela",
-                data_source="AMTRAK",
                 is_cancelled=False,
                 progress=None,
             ),
@@ -450,7 +430,7 @@ class TestApiCacheService:
             cache_service.congestion_analyzer,
             "get_network_congestion_with_trains",
             return_value=(mock_aggregated, mock_journeys, mock_individual),
-        ):
+        ) as mock_congestion:
             # Mock position calculations
             with patch.object(
                 cache_service.departure_service,
@@ -474,6 +454,8 @@ class TestApiCacheService:
                             mock_db, params
                         )
 
+        # Verify data_source was passed through to the congestion analyzer
+        mock_congestion.assert_called_once_with(mock_db, 3, 100, "NJT")
         # Should only include NJT data
         assert len(result["aggregated_segments"]) == 1
         assert result["aggregated_segments"][0]["data_source"] == "NJT"

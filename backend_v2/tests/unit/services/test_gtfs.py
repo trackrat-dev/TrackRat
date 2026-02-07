@@ -821,9 +821,7 @@ class TestGetStaticStopTimes:
         """Should return None when no service IDs are active for the date."""
         mock_db = AsyncMock()
 
-        with patch.object(
-            self.service, "get_active_service_ids", return_value=set()
-        ):
+        with patch.object(self.service, "get_active_service_ids", return_value=set()):
             result = await self.service.get_static_stop_times(
                 mock_db, "LIRR", "GO103_25_181", date(2026, 2, 6)
             )
@@ -838,9 +836,7 @@ class TestGetStaticStopTimes:
         with patch.object(
             self.service, "get_active_service_ids", return_value={"WD_26"}
         ):
-            with patch.object(
-                self.service, "_find_trip_in_source", return_value=None
-            ):
+            with patch.object(self.service, "_find_trip_in_source", return_value=None):
                 result = await self.service.get_static_stop_times(
                     mock_db, "LIRR", "NONEXISTENT_TRIP", date(2026, 2, 6)
                 )

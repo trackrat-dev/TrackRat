@@ -379,7 +379,9 @@ class TestBuildCompleteStops:
         ]
 
         rt_arrivals = [
-            _make_arrival("WDD", base + timedelta(minutes=10), delay_seconds=60, track="3"),
+            _make_arrival(
+                "WDD", base + timedelta(minutes=10), delay_seconds=60, track="3"
+            ),
             _make_arrival("JAM", base + timedelta(minutes=20), delay_seconds=60),
         ]
 
