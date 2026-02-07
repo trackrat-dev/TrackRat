@@ -14,10 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.mnr.client import MnrArrival, MNRClient
 from trackrat.collectors.mta_common import (
+    build_complete_stops,
     check_journey_completed,
     update_journey_metadata,
     update_stop_departure_status,
 )
+from trackrat.services.gtfs import GTFSService
 from trackrat.config.stations import (
     MNR_ROUTES,
     get_station_name,
@@ -72,6 +74,7 @@ class MNRCollector:
         """
         self.client = client or MNRClient()
         self._owns_client = client is None
+        self._gtfs_service = GTFSService()
 
     async def run(self) -> dict[str, Any]:
         """
@@ -213,6 +216,18 @@ class MNRCollector:
         journey = existing.scalar_one_or_none()
 
         if journey is None:
+            # Backfill missing stops from GTFS static (e.g., RT feed may
+            # drop origin terminal from outbound trips)
+            static_stops = await self._gtfs_service.get_static_stop_times(
+                session, "MNR", trip_id, journey_date
+            )
+            if static_stops:
+                merged_stops, origin_code, terminal_code = build_complete_stops(
+                    arrivals, static_stops
+                )
+            else:
+                merged_stops = None
+
             # Create new journey
             journey = TrainJourney(
                 train_id=train_id,
@@ -225,41 +240,64 @@ class MNRCollector:
                 destination=get_station_name(terminal_code),
                 origin_station_code=origin_code,
                 terminal_station_code=terminal_code,
-                scheduled_departure=first_arrival.arrival_time,
-                scheduled_arrival=last_arrival.arrival_time,
+                scheduled_departure=merged_stops[0]["scheduled_departure"]
+                if merged_stops
+                else first_arrival.arrival_time,
+                scheduled_arrival=merged_stops[-1]["scheduled_arrival"]
+                if merged_stops
+                else last_arrival.arrival_time,
                 actual_departure=first_arrival.arrival_time
                 + timedelta(seconds=first_arrival.delay_seconds),
                 has_complete_journey=True,
-                stops_count=len(arrivals),
+                stops_count=len(merged_stops) if merged_stops else len(arrivals),
                 is_cancelled=False,
                 is_completed=False,
                 api_error_count=0,
                 is_expired=False,
-                discovery_station_code=origin_code,
+                discovery_station_code=first_arrival.station_code,
             )
             session.add(journey)
             await session.flush()
 
             # Create stops
-            for seq, arr in enumerate(arrivals, start=1):
-                stop = JourneyStop(
-                    journey_id=journey.id,
-                    station_code=arr.station_code,
-                    station_name=get_station_name(arr.station_code),
-                    stop_sequence=seq,
-                    scheduled_arrival=arr.arrival_time,
-                    scheduled_departure=arr.departure_time or arr.arrival_time,
-                    actual_arrival=arr.arrival_time
-                    + timedelta(seconds=arr.delay_seconds),
-                    actual_departure=(
-                        (arr.departure_time + timedelta(seconds=arr.delay_seconds))
-                        if arr.departure_time
-                        else None
-                    ),
-                    track=arr.track,
-                    has_departed_station=False,
-                )
-                session.add(stop)
+            if merged_stops:
+                for stop_data in merged_stops:
+                    stop = JourneyStop(
+                        journey_id=journey.id,
+                        station_code=stop_data["station_code"],
+                        station_name=get_station_name(stop_data["station_code"]),
+                        stop_sequence=stop_data["stop_sequence"],
+                        scheduled_arrival=stop_data["scheduled_arrival"],
+                        scheduled_departure=stop_data["scheduled_departure"],
+                        actual_arrival=stop_data["actual_arrival"],
+                        actual_departure=stop_data["actual_departure"],
+                        track=stop_data["track"],
+                        has_departed_station=stop_data["has_departed"],
+                    )
+                    session.add(stop)
+            else:
+                for seq, arr in enumerate(arrivals, start=1):
+                    stop = JourneyStop(
+                        journey_id=journey.id,
+                        station_code=arr.station_code,
+                        station_name=get_station_name(arr.station_code),
+                        stop_sequence=seq,
+                        scheduled_arrival=arr.arrival_time,
+                        scheduled_departure=arr.departure_time or arr.arrival_time,
+                        actual_arrival=arr.arrival_time
+                        + timedelta(seconds=arr.delay_seconds),
+                        actual_departure=(
+                            (
+                                arr.departure_time
+                                + timedelta(seconds=arr.delay_seconds)
+                            )
+                            if arr.departure_time
+                            else None
+                        ),
+                        track=arr.track,
+                        has_departed_station=False,
+                    )
+                    session.add(stop)
 
             # Infer departure status for trains discovered mid-journey
             await session.flush()

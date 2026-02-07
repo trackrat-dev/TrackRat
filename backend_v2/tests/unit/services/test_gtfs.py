@@ -748,3 +748,161 @@ class TestDataSourceFiltering:
         # while train_id (from trip_short_name) is the real train number.
         # Real train numbers should always take priority.
         pass
+
+
+class TestGetStaticStopTimes:
+    """Tests for GTFSService.get_static_stop_times().
+
+    Used by MTA collectors to backfill origin stops missing from GTFS-RT."""
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    @pytest.mark.asyncio
+    async def test_returns_stops_for_valid_trip(self):
+        """Should return all stops ordered by stop_sequence with parsed times."""
+        mock_db = AsyncMock()
+        target_date = date(2026, 2, 6)
+
+        # Mock get_active_service_ids
+        with patch.object(
+            self.service, "get_active_service_ids", return_value={"WD_26"}
+        ):
+            # Mock _find_trip_in_source to return a trip row
+            mock_trip_row = MagicMock()
+            mock_trip_row.id = 42
+            with patch.object(
+                self.service, "_find_trip_in_source", return_value=mock_trip_row
+            ):
+                # Mock the stop_times query
+                mock_stop1 = MagicMock()
+                mock_stop1.station_code = "GCT"
+                mock_stop1.stop_sequence = 1
+                mock_stop1.arrival_time = "08:00:00"
+                mock_stop1.departure_time = "08:01:00"
+
+                mock_stop2 = MagicMock()
+                mock_stop2.station_code = "WDD"
+                mock_stop2.stop_sequence = 2
+                mock_stop2.arrival_time = "08:10:00"
+                mock_stop2.departure_time = "08:11:00"
+
+                mock_stop3 = MagicMock()
+                mock_stop3.station_code = "JAM"
+                mock_stop3.stop_sequence = 3
+                mock_stop3.arrival_time = "08:20:00"
+                mock_stop3.departure_time = None
+
+                mock_result = MagicMock()
+                mock_result.all.return_value = [mock_stop1, mock_stop2, mock_stop3]
+                mock_db.execute = AsyncMock(return_value=mock_result)
+
+                result = await self.service.get_static_stop_times(
+                    mock_db, "LIRR", "GO103_25_181", target_date
+                )
+
+        assert result is not None
+        assert len(result) == 3
+
+        assert result[0]["station_code"] == "GCT"
+        assert result[0]["stop_sequence"] == 1
+        assert result[0]["arrival_time"].hour == 8
+        assert result[0]["arrival_time"].minute == 0
+        assert result[0]["departure_time"].hour == 8
+        assert result[0]["departure_time"].minute == 1
+
+        assert result[1]["station_code"] == "WDD"
+        assert result[2]["station_code"] == "JAM"
+        # JAM has no departure_time, should fallback to arrival_time
+        assert result[2]["departure_time"] == result[2]["arrival_time"]
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_active_services(self):
+        """Should return None when no service IDs are active for the date."""
+        mock_db = AsyncMock()
+
+        with patch.object(
+            self.service, "get_active_service_ids", return_value=set()
+        ):
+            result = await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", date(2026, 2, 6)
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_trip_not_found(self):
+        """Should return None when the GTFS trip_id doesn't match any trip."""
+        mock_db = AsyncMock()
+
+        with patch.object(
+            self.service, "get_active_service_ids", return_value={"WD_26"}
+        ):
+            with patch.object(
+                self.service, "_find_trip_in_source", return_value=None
+            ):
+                result = await self.service.get_static_stop_times(
+                    mock_db, "LIRR", "NONEXISTENT_TRIP", date(2026, 2, 6)
+                )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_stop_times(self):
+        """Should return None when trip exists but has no stop_times."""
+        mock_db = AsyncMock()
+
+        with patch.object(
+            self.service, "get_active_service_ids", return_value={"WD_26"}
+        ):
+            mock_trip_row = MagicMock()
+            mock_trip_row.id = 42
+            with patch.object(
+                self.service, "_find_trip_in_source", return_value=mock_trip_row
+            ):
+                mock_result = MagicMock()
+                mock_result.all.return_value = []
+                mock_db.execute = AsyncMock(return_value=mock_result)
+
+                result = await self.service.get_static_stop_times(
+                    mock_db, "LIRR", "GO103_25_181", date(2026, 2, 6)
+                )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_skips_stops_with_unparseable_arrival_time(self):
+        """Should skip stops where arrival_time cannot be parsed."""
+        mock_db = AsyncMock()
+
+        with patch.object(
+            self.service, "get_active_service_ids", return_value={"WD_26"}
+        ):
+            mock_trip_row = MagicMock()
+            mock_trip_row.id = 42
+            with patch.object(
+                self.service, "_find_trip_in_source", return_value=mock_trip_row
+            ):
+                mock_good_stop = MagicMock()
+                mock_good_stop.station_code = "GCT"
+                mock_good_stop.stop_sequence = 1
+                mock_good_stop.arrival_time = "08:00:00"
+                mock_good_stop.departure_time = "08:01:00"
+
+                mock_bad_stop = MagicMock()
+                mock_bad_stop.station_code = "WDD"
+                mock_bad_stop.stop_sequence = 2
+                mock_bad_stop.arrival_time = ""  # Unparseable
+                mock_bad_stop.departure_time = "08:10:00"
+
+                mock_result = MagicMock()
+                mock_result.all.return_value = [mock_good_stop, mock_bad_stop]
+                mock_db.execute = AsyncMock(return_value=mock_result)
+
+                result = await self.service.get_static_stop_times(
+                    mock_db, "LIRR", "GO103_25_181", date(2026, 2, 6)
+                )
+
+        assert result is not None
+        assert len(result) == 1
+        assert result[0]["station_code"] == "GCT"

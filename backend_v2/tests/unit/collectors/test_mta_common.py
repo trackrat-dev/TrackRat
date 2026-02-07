@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from trackrat.collectors.mta_common import (
+    build_complete_stops,
     check_journey_completed,
     update_journey_metadata,
     update_stop_departure_status,
@@ -328,3 +329,226 @@ class TestCheckJourneyCompleted:
         check_journey_completed(journey, [stop_mid, stop_terminal])
 
         assert journey.is_completed is True
+
+
+def _make_arrival(
+    station_code: str,
+    arrival_time: datetime,
+    departure_time: datetime | None = None,
+    delay_seconds: int = 0,
+    track: str | None = None,
+) -> MagicMock:
+    """Create a mock GTFS-RT arrival (LirrArrival/MnrArrival compatible)."""
+    arr = MagicMock()
+    arr.station_code = station_code
+    arr.arrival_time = arrival_time
+    arr.departure_time = departure_time
+    arr.delay_seconds = delay_seconds
+    arr.track = track
+    return arr
+
+
+def _make_static_stop(
+    station_code: str,
+    stop_sequence: int,
+    arrival_time: datetime,
+    departure_time: datetime | None = None,
+) -> dict:
+    """Create a static stop dict matching GTFSService.get_static_stop_times() output."""
+    return {
+        "station_code": station_code,
+        "stop_sequence": stop_sequence,
+        "arrival_time": arrival_time,
+        "departure_time": departure_time or arrival_time,
+    }
+
+
+class TestBuildCompleteStops:
+    """Tests for build_complete_stops()."""
+
+    def test_backfills_missing_origin_stop(self):
+        """LIRR RT feed drops origin (GCT) from outbound trips.
+        Static has GCT->WDD->JAM, RT only has WDD->JAM.
+        Result should include GCT as a departed stop with scheduled times."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        static_stops = [
+            _make_static_stop("GCT", 1, base, base + timedelta(minutes=1)),
+            _make_static_stop("WDD", 2, base + timedelta(minutes=10)),
+            _make_static_stop("JAM", 3, base + timedelta(minutes=20)),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("WDD", base + timedelta(minutes=10), delay_seconds=60, track="3"),
+            _make_arrival("JAM", base + timedelta(minutes=20), delay_seconds=60),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        assert origin == "GCT"
+        assert terminal == "JAM"
+        assert len(merged) == 3
+
+        # GCT: backfilled from static, marked as departed
+        gct = merged[0]
+        assert gct["station_code"] == "GCT"
+        assert gct["stop_sequence"] == 1
+        assert gct["scheduled_arrival"] == base
+        assert gct["actual_arrival"] is None
+        assert gct["actual_departure"] is None
+        assert gct["track"] is None
+        assert gct["has_departed"] is True
+
+        # WDD: has RT data with delay applied
+        wdd = merged[1]
+        assert wdd["station_code"] == "WDD"
+        assert wdd["stop_sequence"] == 2
+        assert wdd["scheduled_arrival"] == base + timedelta(minutes=10)
+        assert wdd["actual_arrival"] == base + timedelta(minutes=10, seconds=60)
+        assert wdd["track"] == "3"
+        assert wdd["has_departed"] is False
+
+    def test_noop_merge_when_rt_has_all_stops(self):
+        """When RT already has all stops (MNR typical case), merge is a no-op.
+        All stops should use RT data, none marked as already departed."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        static_stops = [
+            _make_static_stop("GCT", 1, base),
+            _make_static_stop("M125", 2, base + timedelta(minutes=5)),
+            _make_static_stop("MCRH", 3, base + timedelta(minutes=30)),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("GCT", base, delay_seconds=0, track="21"),
+            _make_arrival("M125", base + timedelta(minutes=5), delay_seconds=30),
+            _make_arrival("MCRH", base + timedelta(minutes=30), delay_seconds=30),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        assert origin == "GCT"
+        assert terminal == "MCRH"
+        assert len(merged) == 3
+
+        # All stops should have RT actual data, none departed
+        for stop in merged:
+            assert stop["actual_arrival"] is not None
+            assert stop["has_departed"] is False
+
+        # GCT should have track from RT
+        assert merged[0]["track"] == "21"
+
+    def test_multiple_missing_origin_stops(self):
+        """When RT is missing multiple stops at the beginning.
+        Static: A->B->C->D, RT: C->D. A and B should be marked departed."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        static_stops = [
+            _make_static_stop("A", 1, base),
+            _make_static_stop("B", 2, base + timedelta(minutes=5)),
+            _make_static_stop("C", 3, base + timedelta(minutes=10)),
+            _make_static_stop("D", 4, base + timedelta(minutes=15)),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("C", base + timedelta(minutes=10)),
+            _make_arrival("D", base + timedelta(minutes=15)),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        assert origin == "A"
+        assert terminal == "D"
+        assert len(merged) == 4
+        assert merged[0]["has_departed"] is True  # A
+        assert merged[1]["has_departed"] is True  # B
+        assert merged[2]["has_departed"] is False  # C (has RT)
+        assert merged[3]["has_departed"] is False  # D (has RT)
+
+    def test_rt_stop_not_in_static_appended(self):
+        """Safety fallback: RT has a stop not in static schedule.
+        Should be appended and logged as a warning."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        static_stops = [
+            _make_static_stop("GCT", 1, base),
+            _make_static_stop("JAM", 2, base + timedelta(minutes=20)),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("JAM", base + timedelta(minutes=20)),
+            _make_arrival("UNKNOWN", base + timedelta(minutes=25), track="5"),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        assert origin == "GCT"
+        assert terminal == "JAM"
+        assert len(merged) == 3  # GCT + JAM + UNKNOWN appended
+
+        unknown = merged[2]
+        assert unknown["station_code"] == "UNKNOWN"
+        assert unknown["track"] == "5"
+
+    def test_stop_sequence_from_static(self):
+        """Merged stops should use stop_sequence from static, not RT order."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        static_stops = [
+            _make_static_stop("GCT", 10, base),
+            _make_static_stop("WDD", 20, base + timedelta(minutes=10)),
+            _make_static_stop("JAM", 30, base + timedelta(minutes=20)),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("WDD", base + timedelta(minutes=10)),
+            _make_arrival("JAM", base + timedelta(minutes=20)),
+        ]
+
+        merged, _, _ = build_complete_stops(rt_arrivals, static_stops)
+
+        assert merged[0]["stop_sequence"] == 10  # GCT from static
+        assert merged[1]["stop_sequence"] == 20  # WDD from static
+        assert merged[2]["stop_sequence"] == 30  # JAM from static
+
+    def test_delay_applied_correctly_to_rt_stops(self):
+        """RT delay_seconds should be added to arrival and departure times."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+        delay = 120  # 2 minutes
+
+        static_stops = [
+            _make_static_stop("WDD", 1, base),
+        ]
+
+        rt_arrivals = [
+            _make_arrival(
+                "WDD",
+                base,
+                departure_time=base + timedelta(minutes=1),
+                delay_seconds=delay,
+            ),
+        ]
+
+        merged, _, _ = build_complete_stops(rt_arrivals, static_stops)
+
+        wdd = merged[0]
+        assert wdd["actual_arrival"] == base + timedelta(seconds=delay)
+        assert wdd["actual_departure"] == base + timedelta(minutes=1, seconds=delay)
+
+    def test_rt_stop_with_no_departure_time(self):
+        """RT stop with departure_time=None should set actual_departure=None."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        static_stops = [
+            _make_static_stop("JAM", 1, base),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("JAM", base, departure_time=None, delay_seconds=30),
+        ]
+
+        merged, _, _ = build_complete_stops(rt_arrivals, static_stops)
+
+        assert merged[0]["actual_departure"] is None
+        assert merged[0]["actual_arrival"] == base + timedelta(seconds=30)

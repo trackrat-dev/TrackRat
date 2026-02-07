@@ -10,11 +10,119 @@ Follows the patterns established in the PATH collector.
 
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import normalize_to_et
 
 logger = logging.getLogger(__name__)
+
+
+def build_complete_stops(
+    realtime_arrivals: list[Any],
+    static_stops: list[dict],
+) -> tuple[list[dict], str, str]:
+    """Merge GTFS-RT arrivals with GTFS static stops to produce a complete stop list.
+
+    GTFS-RT feeds may omit already-passed stops (e.g., LIRR drops the origin
+    terminal from outbound trips). This function backfills those missing stops
+    from the static schedule.
+
+    Args:
+        realtime_arrivals: LirrArrival or MnrArrival objects (sorted by arrival_time).
+            Expected attributes: station_code, arrival_time, departure_time,
+            delay_seconds, track.
+        static_stops: Dicts from GTFSService.get_static_stop_times(), ordered by
+            stop_sequence. Keys: station_code, stop_sequence, arrival_time,
+            departure_time.
+
+    Returns:
+        Tuple of (stops, origin_code, terminal_code) where stops is a list of dicts:
+            station_code, stop_sequence, scheduled_arrival, scheduled_departure,
+            actual_arrival, actual_departure, track, has_departed.
+        origin_code and terminal_code are from the full static schedule.
+    """
+    # Index RT arrivals by station_code for O(1) lookup
+    rt_by_station: dict[str, Any] = {}
+    for arr in realtime_arrivals:
+        rt_by_station[arr.station_code] = arr
+
+    # Find the static stop_sequence of the earliest RT arrival to identify
+    # which static stops the train has already passed
+    first_rt_static_seq = None
+    for static_stop in static_stops:
+        if static_stop["station_code"] in rt_by_station:
+            first_rt_static_seq = static_stop["stop_sequence"]
+            break
+
+    origin_code = static_stops[0]["station_code"]
+    terminal_code = static_stops[-1]["station_code"]
+
+    merged: list[dict] = []
+    for static_stop in static_stops:
+        code = static_stop["station_code"]
+        seq = static_stop["stop_sequence"]
+        arr = rt_by_station.pop(code, None)
+
+        if arr is not None:
+            # RT data available — use real-time times with static as scheduled
+            delay = timedelta(seconds=arr.delay_seconds)
+            merged.append(
+                {
+                    "station_code": code,
+                    "stop_sequence": seq,
+                    "scheduled_arrival": static_stop["arrival_time"],
+                    "scheduled_departure": static_stop["departure_time"],
+                    "actual_arrival": arr.arrival_time + delay,
+                    "actual_departure": (
+                        (arr.departure_time + delay) if arr.departure_time else None
+                    ),
+                    "track": arr.track,
+                    "has_departed": False,
+                }
+            )
+        else:
+            # No RT data — backfill from static schedule
+            already_passed = (
+                first_rt_static_seq is not None and seq < first_rt_static_seq
+            )
+            merged.append(
+                {
+                    "station_code": code,
+                    "stop_sequence": seq,
+                    "scheduled_arrival": static_stop["arrival_time"],
+                    "scheduled_departure": static_stop["departure_time"],
+                    "actual_arrival": None,
+                    "actual_departure": None,
+                    "track": None,
+                    "has_departed": already_passed,
+                }
+            )
+
+    # Safety fallback: RT arrivals not in static (unmapped stops).
+    # Append at end to avoid losing data.
+    for code, arr in rt_by_station.items():
+        delay = timedelta(seconds=arr.delay_seconds)
+        merged.append(
+            {
+                "station_code": code,
+                "stop_sequence": len(merged) + 1,
+                "scheduled_arrival": arr.arrival_time,
+                "scheduled_departure": arr.departure_time or arr.arrival_time,
+                "actual_arrival": arr.arrival_time + delay,
+                "actual_departure": (
+                    (arr.departure_time + delay) if arr.departure_time else None
+                ),
+                "track": arr.track,
+                "has_departed": False,
+            }
+        )
+        logger.warning(
+            "mta_rt_stop_not_in_static",
+            extra={"station_code": code, "trip_arrivals": len(realtime_arrivals)},
+        )
+
+    return merged, origin_code, terminal_code
 
 
 def update_stop_departure_status(stops: list[JourneyStop], now: datetime) -> None:

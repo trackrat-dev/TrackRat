@@ -1770,3 +1770,71 @@ class GTFSService:
             progress=None,
             predicted_arrival=None,
         )
+
+    async def get_static_stop_times(
+        self,
+        db: AsyncSession,
+        data_source: str,
+        gtfs_trip_id: str,
+        target_date: date,
+    ) -> list[dict] | None:
+        """Get all stops for a GTFS trip from static schedule data.
+
+        Used by MTA collectors to backfill origin/passed stops that are
+        missing from GTFS-RT feeds (e.g., LIRR drops origin terminal
+        from outbound trips).
+
+        Args:
+            db: Database session
+            data_source: "LIRR" or "MNR"
+            gtfs_trip_id: The GTFS trip_id string from the RT feed
+            target_date: Service date for time parsing and service_id lookup
+
+        Returns:
+            Ordered list of stop dicts with keys: station_code, stop_sequence,
+            arrival_time (datetime), departure_time (datetime).
+            None if trip not found in static data.
+        """
+        service_ids = await self.get_active_service_ids(db, data_source, target_date)
+        if not service_ids:
+            return None
+
+        trip_row = await self._find_trip_in_source(
+            db, gtfs_trip_id, data_source, service_ids, "trip_id"
+        )
+        if not trip_row:
+            return None
+
+        db_trip_id = trip_row.id
+
+        stops_result = await db.execute(
+            select(
+                GTFSStopTime.station_code,
+                GTFSStopTime.stop_sequence,
+                GTFSStopTime.arrival_time,
+                GTFSStopTime.departure_time,
+            )
+            .where(GTFSStopTime.trip_id == db_trip_id)
+            .order_by(GTFSStopTime.stop_sequence)
+        )
+
+        stop_rows = stops_result.all()
+        if not stop_rows:
+            return None
+
+        stops = []
+        for row in stop_rows:
+            arrival_dt = self._parse_gtfs_time(row.arrival_time, target_date)
+            departure_dt = self._parse_gtfs_time(row.departure_time, target_date)
+            if not arrival_dt:
+                continue
+            stops.append(
+                {
+                    "station_code": row.station_code,
+                    "stop_sequence": row.stop_sequence,
+                    "arrival_time": arrival_dt,
+                    "departure_time": departure_dt or arrival_dt,
+                }
+            )
+
+        return stops if stops else None
