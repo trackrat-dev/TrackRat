@@ -199,7 +199,17 @@ terraform apply -var="environment=production"
 
 ## GCP Log Viewing (Cloud Environment)
 
-In the Claude Code cloud environment, `gcloud` is authenticated via a service account with `roles/logging.viewer` on the `trackrat-v2` project. The SessionStart hook in `.claude/settings.json` activates the service account automatically when `GCP_SA_KEY_JSON` is set (cloud only — no-op locally).
+The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes the key to `/root/.config/gcloud/service-account.json` when `GCP_SA_KEY_JSON` is set (no-op locally).
+
+**Before first log query in a session**, install gcloud and authenticate:
+```bash
+# Install gcloud CLI (~30s)
+curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir=/root 2>/dev/null
+export PATH="/root/google-cloud-sdk/bin:$PATH"
+
+# Authenticate with the service account key (written by SessionStart hook)
+gcloud auth activate-service-account --key-file=/root/.config/gcloud/service-account.json --project=trackrat-v2
+```
 
 **Query logs:**
 ```bash

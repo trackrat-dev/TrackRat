@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "test -n \"$GCP_SA_KEY_JSON\" && mkdir -p /root/.config/gcloud && echo \"$GCP_SA_KEY_JSON\" > /root/.config/gcloud/service-account.json && gcloud auth activate-service-account --key-file=/root/.config/gcloud/service-account.json --project=${GCP_PROJECT:-trackrat-v2} 2>/dev/null; true"
+            "command": "test -n \"$GCP_SA_KEY_JSON\" && mkdir -p /root/.config/gcloud && echo \"$GCP_SA_KEY_JSON\" > /root/.config/gcloud/service-account.json; true"
           }
         ]
       }
