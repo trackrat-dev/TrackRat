@@ -179,7 +179,26 @@ def build_complete_stops(
             extra={"station_code": code, "trip_arrivals": len(realtime_arrivals)},
         )
 
-    return merged, origin_code, terminal_code
+    # Deduplicate by station_code — the unique_journey_stop constraint
+    # requires one stop per station per journey. Static schedules can map
+    # multiple GTFS stops to the same internal station_code.
+    # Keep the entry with real-time data when there's a conflict.
+    seen: dict[str, int] = {}
+    deduped: list[dict[str, Any]] = []
+    for stop in merged:
+        code = stop["station_code"]
+        if code in seen:
+            idx = seen[code]
+            if (
+                deduped[idx]["actual_arrival"] is None
+                and stop["actual_arrival"] is not None
+            ):
+                deduped[idx] = stop
+            continue
+        seen[code] = len(deduped)
+        deduped.append(stop)
+
+    return deduped, origin_code, terminal_code
 
 
 def update_stop_departure_status(stops: list[JourneyStop], now: datetime) -> None:

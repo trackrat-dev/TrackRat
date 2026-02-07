@@ -369,7 +369,14 @@ class MNRCollector:
                     created_stops.append(stop)
 
                 start_seq = 2 if inferred_origin else 1
-                for seq, arr in enumerate(arrivals, start=start_seq):
+                seen_codes: set[str] = set()
+                if inferred_origin:
+                    seen_codes.add(inferred_origin)
+                seq = start_seq
+                for arr in arrivals:
+                    if arr.station_code in seen_codes:
+                        continue
+                    seen_codes.add(arr.station_code)
                     delay = timedelta(seconds=arr.delay_seconds)
                     stop = JourneyStop(
                         journey_id=journey.id,
@@ -389,6 +396,7 @@ class MNRCollector:
                     )
                     session.add(stop)
                     created_stops.append(stop)
+                    seq += 1
 
             # Infer departure status for trains discovered mid-journey
             await session.flush()

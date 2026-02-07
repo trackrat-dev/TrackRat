@@ -577,6 +577,73 @@ class TestBuildCompleteStops:
         assert origin == "WDD"
         assert terminal == "JAM"
 
+    def test_duplicate_station_code_in_static_deduped(self):
+        """When static schedule maps multiple GTFS stops to the same internal
+        station_code, build_complete_stops should deduplicate them.
+        This prevents unique_journey_stop constraint violations."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        # Static has the same station "M125" at two different stop_sequences
+        # (e.g., different GTFS platform IDs mapped to the same station_code)
+        static_stops = [
+            _make_static_stop("GCT", 1, base),
+            _make_static_stop("M125", 2, base + timedelta(minutes=5)),
+            _make_static_stop("M125", 3, base + timedelta(minutes=6)),
+            _make_static_stop("MCRH", 4, base + timedelta(minutes=30)),
+        ]
+
+        rt_arrivals = [
+            _make_arrival("GCT", base, track="21"),
+            _make_arrival("M125", base + timedelta(minutes=5), track="1"),
+            _make_arrival("MCRH", base + timedelta(minutes=30)),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        assert origin == "GCT"
+        assert terminal == "MCRH"
+        # Should be 3 stops, not 4 — duplicate M125 removed
+        assert len(merged) == 3
+        station_codes = [s["station_code"] for s in merged]
+        assert station_codes == ["GCT", "M125", "MCRH"]
+
+        # M125 should have the RT data (not the static-only backfill)
+        m125 = merged[1]
+        assert m125["actual_arrival"] == base + timedelta(minutes=5)
+        assert m125["track"] == "1"
+
+    def test_duplicate_station_code_prefers_rt_data(self):
+        """When deduplicating, the entry with real-time data should be kept
+        over the static-only backfill entry."""
+        base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
+
+        # Static has station "B" twice: once before the first RT stop (will be
+        # backfilled as departed) and once after (will match RT data via pop)
+        static_stops = [
+            _make_static_stop("B", 1, base),
+            _make_static_stop("A", 2, base + timedelta(minutes=5)),
+            _make_static_stop("B", 3, base + timedelta(minutes=10)),
+        ]
+
+        # RT only has A and B — B matches the second static occurrence
+        # because rt_by_station.pop() matches the first static "B"
+        rt_arrivals = [
+            _make_arrival("A", base + timedelta(minutes=5)),
+            _make_arrival("B", base + timedelta(minutes=10), track="2"),
+        ]
+
+        merged, origin, terminal = build_complete_stops(rt_arrivals, static_stops)
+
+        # Should deduplicate B — keep the one with RT data
+        assert len(merged) == 2
+        station_codes = [s["station_code"] for s in merged]
+        assert station_codes == ["B", "A"]
+
+        # First B entry (from pop) should have RT data
+        b_stop = merged[0]
+        assert b_stop["actual_arrival"] is not None
+        assert b_stop["track"] == "2"
+
     def test_rt_stop_with_no_departure_time(self):
         """RT stop with departure_time=None should set actual_departure=None."""
         base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
