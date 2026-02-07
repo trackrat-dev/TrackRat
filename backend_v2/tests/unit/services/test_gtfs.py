@@ -10,6 +10,7 @@ from trackrat.services.gtfs import (
     GTFSService,
     GTFS_DOWNLOAD_INTERVAL_HOURS,
     NJT_LINE_CODE_MAPPING,
+    _lirr_train_id_from_gtfs,
 )
 from trackrat.models.database import (
     GTFSCalendar,
@@ -902,3 +903,40 @@ class TestGetStaticStopTimes:
         assert result is not None
         assert len(result) == 1
         assert result[0]["station_code"] == "GCT"
+
+
+class TestLirrTrainIdFromGtfs:
+    """Tests for _lirr_train_id_from_gtfs helper.
+
+    LIRR real-time collector generates train IDs as "L{number}" (e.g., "L181").
+    GTFS stores the bare number in trip_short_name (e.g., "181") or uses
+    trip_id format like "GO103_25_181". This helper must normalize both to "L181".
+    """
+
+    def test_bare_number_gets_l_prefix(self):
+        """trip_short_name is a bare number like '181'."""
+        assert _lirr_train_id_from_gtfs("181") == "L181"
+
+    def test_already_prefixed_unchanged(self):
+        """Real-time format 'L181' should pass through unchanged."""
+        assert _lirr_train_id_from_gtfs("L181") == "L181"
+
+    def test_gtfs_trip_id_extracts_third_segment(self):
+        """GTFS trip_id 'GO103_25_181' -> extract '181' -> 'L181'."""
+        assert _lirr_train_id_from_gtfs("GO103_25_181") == "L181"
+
+    def test_gtfs_trip_id_different_prefix(self):
+        """Different GTFS trip_id prefixes should still extract train number."""
+        assert _lirr_train_id_from_gtfs("GI501_25_6503") == "L6503"
+
+    def test_multi_digit_train_number(self):
+        """4+ digit train numbers are common on LIRR."""
+        assert _lirr_train_id_from_gtfs("8042") == "L8042"
+
+    def test_short_trip_id_fallback(self):
+        """Trip IDs with fewer than 3 segments fall back to L-prefix."""
+        assert _lirr_train_id_from_gtfs("GO103_181") == "LGO103_181"
+
+    def test_single_segment_non_numeric(self):
+        """Non-numeric single values get L-prefix as fallback."""
+        assert _lirr_train_id_from_gtfs("UNKNOWN") == "LUNKNOWN"

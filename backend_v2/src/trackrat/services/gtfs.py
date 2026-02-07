@@ -100,6 +100,31 @@ NJT_LINE_CODE_MAPPING = {
 }
 
 
+def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
+    """Convert LIRR GTFS train number or trip_id to the L-prefixed real-time format.
+
+    LIRR real-time collector generates train IDs as "L{number}" (e.g., "L181").
+    GTFS stores the bare number in trip_short_name (e.g., "181") or uses
+    trip_id format "GO103_25_181" where the 3rd segment is the train number.
+
+    Args:
+        train_id_or_trip_id: Either a bare number ("181") or GTFS trip_id ("GO103_25_181").
+
+    Returns:
+        L-prefixed train ID (e.g., "L181").
+    """
+    if train_id_or_trip_id.startswith("L"):
+        return train_id_or_trip_id
+    if train_id_or_trip_id.isdigit():
+        return f"L{train_id_or_trip_id}"
+    # GTFS trip_id format: "GO103_25_181" -> extract 3rd segment
+    parts = train_id_or_trip_id.split("_")
+    if len(parts) >= 3:
+        return f"L{parts[2]}"
+    # Fallback: prefix as-is
+    return f"L{train_id_or_trip_id}"
+
+
 class GTFSService:
     """Service for managing GTFS static schedule data."""
 
@@ -1362,6 +1387,10 @@ class GTFSService:
             ):
                 effective_train_id = f"A{effective_train_id}"
 
+            # Add "L" prefix for LIRR to match real-time format (e.g., "181" -> "L181")
+            if data_source == "LIRR" and effective_train_id:
+                effective_train_id = _lirr_train_id_from_gtfs(effective_train_id)
+
             departure = TrainDeparture(
                 train_id=effective_train_id,
                 journey_date=target_date,
@@ -1502,12 +1531,18 @@ class GTFSService:
             data_source=data_source,
         )
 
-        # Normalize Amtrak train_id: strip "A" prefix for lookup since GTFS stores without it
-        # (We add "A" prefix for display consistency with real-time data)
+        # Normalize prefixed train IDs: strip prefix for lookup since GTFS stores without it
+        # (We add prefixes for display consistency with real-time data)
         search_train_id = train_id
         if (
             data_source == "AMTRAK"
             and train_id.startswith("A")
+            and train_id[1:].isdigit()
+        ):
+            search_train_id = train_id[1:]
+        if (
+            data_source == "LIRR"
+            and train_id.startswith("L")
             and train_id[1:].isdigit()
         ):
             search_train_id = train_id[1:]
@@ -1542,8 +1577,10 @@ class GTFSService:
             # Two-phase search: prioritize train_id (real numbers) over trip_id (GTFS IDs)
             # Phase 1: Search all sources for train_id match
             for source, service_ids in source_service_ids.items():
-                # For Amtrak, also try without "A" prefix
-                lookup_id = search_train_id if source == "AMTRAK" else train_id
+                # For Amtrak/LIRR, use prefix-stripped ID for lookup
+                lookup_id = (
+                    search_train_id if source in ("AMTRAK", "LIRR") else train_id
+                )
                 trip_row = await self._find_trip_in_source(
                     db, lookup_id, source, service_ids, "train_id"
                 )
@@ -1554,7 +1591,9 @@ class GTFSService:
             # Phase 2: Fall back to trip_id match
             if not trip_row:
                 for source, service_ids in source_service_ids.items():
-                    lookup_id = search_train_id if source == "AMTRAK" else train_id
+                    lookup_id = (
+                        search_train_id if source in ("AMTRAK", "LIRR") else train_id
+                    )
                     trip_row = await self._find_trip_in_source(
                         db, lookup_id, source, service_ids, "trip_id"
                     )
@@ -1658,6 +1697,10 @@ class GTFSService:
             and not effective_train_id.startswith("A")
         ):
             effective_train_id = f"A{effective_train_id}"
+
+        # Add "L" prefix for LIRR to match real-time format (e.g., "181" -> "L181")
+        if matched_source == "LIRR" and effective_train_id:
+            effective_train_id = _lirr_train_id_from_gtfs(effective_train_id)
 
         # Build line info
         # PATH and PATCO routes need special handling for proper line codes/colors
