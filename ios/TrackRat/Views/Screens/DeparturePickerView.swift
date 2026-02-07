@@ -94,18 +94,18 @@ struct DeparturePickerView: View {
     // Helper function to detect if input looks like a train number
     private func isLikelyTrainNumber(_ input: String) -> Bool {
         let trimmed = input.uppercased()
-        
-        // Amtrak: A followed by 2+ digits
-        if trimmed.hasPrefix("A") && trimmed.count >= 3 {
+
+        // Amtrak "A", LIRR "L", Metro-North "M": prefix followed by 2+ digits
+        if let first = trimmed.first, "ALM".contains(first), trimmed.count >= 3 {
             let remainder = String(trimmed.dropFirst())
             return remainder.allSatisfy(\.isNumber)
         }
-        
+
         // NJ Transit: 2+ digits only
         if trimmed.count >= 2 && trimmed.allSatisfy(\.isNumber) {
             return true
         }
-        
+
         return false
     }
     
@@ -435,14 +435,18 @@ struct DeparturePickerView: View {
             } catch {
                 lastError = error
                 
-                // Second attempt: If input is numeric and first attempt failed with "not found", try with "A" prefix
+                // Second attempt: If input is numeric and not found, try with
+                // transit system prefixes (Amtrak, LIRR, Metro-North)
                 if isNumericInput(trimmedInput) && isTrainNotFoundError(error) {
-                    let amtrakTrainNumber = "A\(trimmedInput)"
-                    do {
-                        foundTrain = try await attemptTrainSearch(trainNumber: amtrakTrainNumber)
-                        successfulTrainNumber = amtrakTrainNumber
-                    } catch {
-                        lastError = error
+                    for prefix in ["A", "L", "M"] {
+                        let prefixedNumber = "\(prefix)\(trimmedInput)"
+                        do {
+                            foundTrain = try await attemptTrainSearch(trainNumber: prefixedNumber)
+                            successfulTrainNumber = prefixedNumber
+                            break
+                        } catch {
+                            lastError = error
+                        }
                     }
                 }
             }

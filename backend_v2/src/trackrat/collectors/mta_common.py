@@ -42,6 +42,15 @@ def build_complete_stops(
             actual_arrival, actual_departure, track, has_departed.
         origin_code and terminal_code are from the full static schedule.
     """
+    # Filter out static stops with no internal station_code mapping.
+    # GTFS feeds can contain stops not in our station map (event-only platforms,
+    # recently added stations, etc.).  Their station_code is NULL in the DB.
+    static_stops = [s for s in static_stops if s.get("station_code")]
+
+    if not static_stops:
+        # All stops were unmapped — fall back to RT-only path
+        return [], realtime_arrivals[0].station_code, realtime_arrivals[-1].station_code
+
     # Index RT arrivals by station_code for O(1) lookup
     rt_by_station: dict[str, Any] = {}
     for arr in realtime_arrivals:
@@ -65,18 +74,17 @@ def build_complete_stops(
         arr = rt_by_station.pop(code, None)
 
         if arr is not None:
-            # RT data available — use real-time times with static as scheduled
-            delay = timedelta(seconds=arr.delay_seconds)
+            # RT data available — use real-time times with static as scheduled.
+            # GTFS-RT `time` is the predicted (actual) time; delay is the
+            # offset from schedule.  Do NOT add delay to arrival_time.
             merged.append(
                 {
                     "station_code": code,
                     "stop_sequence": seq,
                     "scheduled_arrival": static_stop["arrival_time"],
                     "scheduled_departure": static_stop["departure_time"],
-                    "actual_arrival": arr.arrival_time + delay,
-                    "actual_departure": (
-                        (arr.departure_time + delay) if arr.departure_time else None
-                    ),
+                    "actual_arrival": arr.arrival_time,
+                    "actual_departure": arr.departure_time,
                     "track": arr.track,
                     "has_departed": False,
                 }
@@ -101,18 +109,17 @@ def build_complete_stops(
 
     # Safety fallback: RT arrivals not in static (unmapped stops).
     # Append at end to avoid losing data.
+    # GTFS-RT `time` is the predicted time; derive scheduled by subtracting delay.
     for code, arr in rt_by_station.items():
         delay = timedelta(seconds=arr.delay_seconds)
         merged.append(
             {
                 "station_code": code,
                 "stop_sequence": len(merged) + 1,
-                "scheduled_arrival": arr.arrival_time,
-                "scheduled_departure": arr.departure_time or arr.arrival_time,
-                "actual_arrival": arr.arrival_time + delay,
-                "actual_departure": (
-                    (arr.departure_time + delay) if arr.departure_time else None
-                ),
+                "scheduled_arrival": arr.arrival_time - delay,
+                "scheduled_departure": (arr.departure_time or arr.arrival_time) - delay,
+                "actual_arrival": arr.arrival_time,
+                "actual_departure": arr.departure_time,
                 "track": arr.track,
                 "has_departed": False,
             }

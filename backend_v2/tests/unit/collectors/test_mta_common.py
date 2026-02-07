@@ -401,12 +401,12 @@ class TestBuildCompleteStops:
         assert gct["track"] is None
         assert gct["has_departed"] is True
 
-        # WDD: has RT data with delay applied
+        # WDD: has RT data — actual_arrival is the predicted time (no delay added)
         wdd = merged[1]
         assert wdd["station_code"] == "WDD"
         assert wdd["stop_sequence"] == 2
         assert wdd["scheduled_arrival"] == base + timedelta(minutes=10)
-        assert wdd["actual_arrival"] == base + timedelta(minutes=10, seconds=60)
+        assert wdd["actual_arrival"] == base + timedelta(minutes=10)
         assert wdd["track"] == "3"
         assert wdd["has_departed"] is False
 
@@ -514,8 +514,9 @@ class TestBuildCompleteStops:
         assert merged[1]["stop_sequence"] == 20  # WDD from static
         assert merged[2]["stop_sequence"] == 30  # JAM from static
 
-    def test_delay_applied_correctly_to_rt_stops(self):
-        """RT delay_seconds should be added to arrival and departure times."""
+    def test_actual_times_use_predicted_rt_times(self):
+        """GTFS-RT arrival_time/departure_time are already predicted times.
+        actual_arrival/departure should use them directly, not add delay."""
         base = datetime(2026, 2, 6, 8, 0, 0, tzinfo=timezone.utc)
         delay = 120  # 2 minutes
 
@@ -535,8 +536,8 @@ class TestBuildCompleteStops:
         merged, _, _ = build_complete_stops(rt_arrivals, static_stops)
 
         wdd = merged[0]
-        assert wdd["actual_arrival"] == base + timedelta(seconds=delay)
-        assert wdd["actual_departure"] == base + timedelta(minutes=1, seconds=delay)
+        assert wdd["actual_arrival"] == base
+        assert wdd["actual_departure"] == base + timedelta(minutes=1)
 
     def test_rt_stop_with_no_departure_time(self):
         """RT stop with departure_time=None should set actual_departure=None."""
@@ -553,4 +554,4 @@ class TestBuildCompleteStops:
         merged, _, _ = build_complete_stops(rt_arrivals, static_stops)
 
         assert merged[0]["actual_departure"] is None
-        assert merged[0]["actual_arrival"] == base + timedelta(seconds=30)
+        assert merged[0]["actual_arrival"] == base
