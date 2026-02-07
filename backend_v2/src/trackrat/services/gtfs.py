@@ -125,6 +125,36 @@ def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
     return f"L{train_id_or_trip_id}"
 
 
+def _mnr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
+    """Convert MNR GTFS train number or trip_id to the M-prefixed real-time format.
+
+    MNR real-time collector generates train IDs as "M{digits}" where digits are
+    the last 6 characters of the trip_id filtered to digits only (e.g., "M631700").
+    GTFS stores the bare number in trip_short_name (e.g., "631700").
+
+    Args:
+        train_id_or_trip_id: Either a bare number ("631700") or GTFS trip_id.
+
+    Returns:
+        M-prefixed train ID (e.g., "M631700").
+    """
+    if train_id_or_trip_id.startswith("M") and train_id_or_trip_id[1:].isdigit():
+        return train_id_or_trip_id
+    if train_id_or_trip_id.isdigit():
+        return f"M{train_id_or_trip_id}"
+    # Mirror MNR collector logic: last 6 chars, digits only
+    suffix = (
+        train_id_or_trip_id[-6:]
+        if len(train_id_or_trip_id) > 6
+        else train_id_or_trip_id
+    )
+    digits = "".join(c for c in suffix if c.isdigit())
+    if digits:
+        return f"M{digits}"
+    # Fallback: prefix as-is
+    return f"M{train_id_or_trip_id[:6]}"
+
+
 class GTFSService:
     """Service for managing GTFS static schedule data."""
 
@@ -1391,6 +1421,10 @@ class GTFSService:
             if data_source == "LIRR" and effective_train_id:
                 effective_train_id = _lirr_train_id_from_gtfs(effective_train_id)
 
+            # Add "M" prefix for MNR to match real-time format (e.g., "631700" -> "M631700")
+            if data_source == "MNR" and effective_train_id:
+                effective_train_id = _mnr_train_id_from_gtfs(effective_train_id)
+
             departure = TrainDeparture(
                 train_id=effective_train_id,
                 journey_date=target_date,
@@ -1546,6 +1580,8 @@ class GTFSService:
             and train_id[1:].isdigit()
         ):
             search_train_id = train_id[1:]
+        if data_source == "MNR" and train_id.startswith("M") and train_id[1:].isdigit():
+            search_train_id = train_id[1:]
 
         all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
         sources_to_search = [data_source] if data_source else all_sources
@@ -1577,9 +1613,9 @@ class GTFSService:
             # Two-phase search: prioritize train_id (real numbers) over trip_id (GTFS IDs)
             # Phase 1: Search all sources for train_id match
             for source, service_ids in source_service_ids.items():
-                # For Amtrak/LIRR, use prefix-stripped ID for lookup
+                # For Amtrak/LIRR/MNR, use prefix-stripped ID for lookup
                 lookup_id = (
-                    search_train_id if source in ("AMTRAK", "LIRR") else train_id
+                    search_train_id if source in ("AMTRAK", "LIRR", "MNR") else train_id
                 )
                 trip_row = await self._find_trip_in_source(
                     db, lookup_id, source, service_ids, "train_id"
@@ -1592,7 +1628,9 @@ class GTFSService:
             if not trip_row:
                 for source, service_ids in source_service_ids.items():
                     lookup_id = (
-                        search_train_id if source in ("AMTRAK", "LIRR") else train_id
+                        search_train_id
+                        if source in ("AMTRAK", "LIRR", "MNR")
+                        else train_id
                     )
                     trip_row = await self._find_trip_in_source(
                         db, lookup_id, source, service_ids, "trip_id"
@@ -1701,6 +1739,10 @@ class GTFSService:
         # Add "L" prefix for LIRR to match real-time format (e.g., "181" -> "L181")
         if matched_source == "LIRR" and effective_train_id:
             effective_train_id = _lirr_train_id_from_gtfs(effective_train_id)
+
+        # Add "M" prefix for MNR to match real-time format (e.g., "631700" -> "M631700")
+        if matched_source == "MNR" and effective_train_id:
+            effective_train_id = _mnr_train_id_from_gtfs(effective_train_id)
 
         # Build line info
         # PATH and PATCO routes need special handling for proper line codes/colors
