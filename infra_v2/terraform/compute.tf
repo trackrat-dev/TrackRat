@@ -159,6 +159,8 @@ resource "google_compute_instance_template" "trackrat" {
         --secret=trackrat-apns-key-id --project="$PROJECT_ID" 2>/dev/null)
       APNS_BUNDLE_ID=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-apns-bundle-id --project="$PROJECT_ID" 2>/dev/null)
+      APNS_AUTH_KEY=$(toolbox --quiet gcloud secrets versions access latest \
+        --secret=trackrat-apns-auth-key --project="$PROJECT_ID" 2>/dev/null)
       echo "Secrets fetched successfully"
 
       # ===========================================
@@ -186,6 +188,10 @@ resource "google_compute_instance_template" "trackrat" {
       # 6. Create .env file with configuration
       # ===========================================
       echo "=== Creating .env file ==="
+      # Write APNS auth key to a file (PEM has newlines, can't go in .env)
+      echo "$APNS_AUTH_KEY" > "$APP_DIR/apns_auth_key.p8"
+      chmod 600 "$APP_DIR/apns_auth_key.p8"
+
       cat > "$APP_DIR/.env" <<ENVEOF
 DATA_DIR=$MOUNT_PATH
 IMAGE_URL=$CONTAINER_IMAGE
@@ -194,6 +200,7 @@ NJT_API_TOKEN=$NJT_API_TOKEN
 APNS_TEAM_ID=$APNS_TEAM_ID
 APNS_KEY_ID=$APNS_KEY_ID
 APNS_BUNDLE_ID=$APNS_BUNDLE_ID
+APNS_AUTH_KEY_PATH=/app/certs/apns_auth_key.p8
 APNS_ENVIRONMENT=prod
 TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO

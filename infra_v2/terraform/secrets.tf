@@ -7,6 +7,7 @@
 #   - trackrat-apns-team-id: APNS Team ID
 #   - trackrat-apns-key-id: APNS Key ID
 #   - trackrat-apns-bundle-id: APNS Bundle ID
+#   - trackrat-apns-auth-key: APNS Auth Key (P8 content)
 
 data "google_secret_manager_secret" "db_password" {
   secret_id  = "trackrat-db-password"
@@ -30,6 +31,11 @@ data "google_secret_manager_secret" "apns_key_id" {
 
 data "google_secret_manager_secret" "apns_bundle_id" {
   secret_id  = "trackrat-apns-bundle-id"
+  depends_on = [google_project_service.apis]
+}
+
+data "google_secret_manager_secret" "apns_auth_key" {
+  secret_id  = "trackrat-apns-auth-key"
   depends_on = [google_project_service.apis]
 }
 
@@ -67,6 +73,12 @@ resource "google_secret_manager_secret_iam_member" "apns_key_id" {
 
 resource "google_secret_manager_secret_iam_member" "apns_bundle_id" {
   secret_id = data.google_secret_manager_secret.apns_bundle_id.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.trackrat.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "apns_auth_key" {
+  secret_id = data.google_secret_manager_secret.apns_auth_key.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.trackrat.email}"
 }
