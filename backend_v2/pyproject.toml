@@ -61,7 +61,7 @@ types-pytz = "^2024.1"
 sqlalchemy = {extras = ["mypy"], version = "^2.0.25"}
 
 # Code Quality
-black = "^24.1.1"
+black = "^26.1.0"
 ruff = "^0.1.14"
 types-cachetools = "^6.1.0.20250717"
 
