@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.config.stations import (
+    expand_station_codes,
     get_patco_route_info,
     get_path_route_info,
     get_station_name,
@@ -1259,7 +1260,9 @@ class GTFSService:
                 and_(
                     GTFSTrip.data_source == data_source,
                     GTFSTrip.service_id.in_(service_ids),
-                    GTFSStopTime.station_code == from_station,
+                    GTFSStopTime.station_code.in_(
+                        expand_station_codes(from_station)
+                    ),
                 )
             )
             .order_by(GTFSStopTime.departure_time)
@@ -1281,7 +1284,9 @@ class GTFSService:
                 ).where(
                     and_(
                         GTFSStopTime.trip_id.in_(trip_ids),
-                        GTFSStopTime.station_code == to_station,
+                        GTFSStopTime.station_code.in_(
+                            expand_station_codes(to_station)
+                        ),
                     )
                 )
             )

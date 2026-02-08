@@ -1058,6 +1058,51 @@ def get_station_name(code: str) -> str:
     return STATION_NAMES.get(code, code)
 
 
+# Station code equivalences for physically identical stations served by multiple systems.
+# Some stations are shared between Amtrak and Metro-North but use different internal codes.
+# E.g., New Rochelle is "NRO" in Amtrak data and "MNRC" in Metro-North data.
+STATION_EQUIVALENTS: dict[str, str] = {
+    "NRO": "MNRC",
+    "MNRC": "NRO",  # New Rochelle
+    "YNY": "MYON",
+    "MYON": "YNY",  # Yonkers
+    "CRT": "MCRH",
+    "MCRH": "CRT",  # Croton-Harmon
+    "POU": "MPOK",
+    "MPOK": "POU",  # Poughkeepsie
+    "STM": "MSTM",
+    "MSTM": "STM",  # Stamford
+    "BRP": "MBGP",
+    "MBGP": "BRP",  # Bridgeport
+    "NHV": "MNHV",
+    "MNHV": "NHV",  # New Haven
+}
+
+
+def expand_station_codes(code: str) -> list[str]:
+    """Return [code] plus any equivalent codes for the same physical station.
+
+    Some physical stations are served by multiple transit systems that use
+    different internal codes (e.g., Amtrak's NRO vs Metro-North's MNRC for
+    New Rochelle). This function returns all codes for the same physical station
+    so queries can match trains from any system.
+    """
+    equiv = STATION_EQUIVALENTS.get(code)
+    return [code, equiv] if equiv else [code]
+
+
+def canonical_station_code(code: str) -> str:
+    """Return a canonical code for station equivalence groups.
+
+    Used for cache keys so that equivalent codes (e.g., NRO and MNRC)
+    produce the same cache key.
+    """
+    equiv = STATION_EQUIVALENTS.get(code)
+    if equiv:
+        return min(code, equiv)  # Alphabetically first
+    return code
+
+
 # Mapping from Amtrak station codes to our internal codes
 AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "NYP": "NY",  # New York Penn Station

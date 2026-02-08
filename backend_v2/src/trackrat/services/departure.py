@@ -13,7 +13,7 @@ from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import retry_on_deadlock
 from trackrat.models.api import (
     DataFreshness,
@@ -185,13 +185,16 @@ class DepartureService:
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
         query_start = time.perf_counter()
+        from_codes = expand_station_codes(from_station)
+        to_codes = expand_station_codes(to_station) if to_station else []
+
         stmt = (
             select(TrainJourney)
             .join(
                 JourneyStop,
                 and_(
                     JourneyStop.journey_id == TrainJourney.id,
-                    JourneyStop.station_code == from_station,
+                    JourneyStop.station_code.in_(from_codes),
                 ),
             )
             .where(and_(*departure_filters))
@@ -231,9 +234,9 @@ class DepartureService:
             from_stop = None
             to_stop = None
             for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
-                if stop.station_code == from_station and not from_stop:
+                if stop.station_code in from_codes and not from_stop:
                     from_stop = stop
-                elif to_station and stop.station_code == to_station and from_stop:
+                elif to_station and stop.station_code in to_codes and from_stop:
                     # Ensure to_stop comes AFTER from_stop in the journey sequence
                     if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
                         to_stop = stop
@@ -504,7 +507,7 @@ class DepartureService:
                 TrainJourney.data_source == "PATH",
                 TrainJourney.observation_type == "OBSERVED",
                 TrainJourney.journey_date == journey_date,
-                JourneyStop.station_code == station_code,
+                JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,
             )
         )
@@ -545,7 +548,9 @@ class DepartureService:
             .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
             .where(
                 and_(
-                    JourneyStop.station_code == station_code,
+                    JourneyStop.station_code.in_(
+                        expand_station_codes(station_code)
+                    ),
                     TrainJourney.data_source == "NJT",
                     TrainJourney.last_updated_at < cutoff_time,
                 )
@@ -714,7 +719,9 @@ class DepartureService:
                 .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
                 .where(
                     and_(
-                        JourneyStop.station_code == station_code,
+                        JourneyStop.station_code.in_(
+                            expand_station_codes(station_code)
+                        ),
                         TrainJourney.data_source == "NJT",
                         TrainJourney.journey_date == target_date,
                         TrainJourney.last_updated_at < cutoff_time,

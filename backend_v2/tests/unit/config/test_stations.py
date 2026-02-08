@@ -11,10 +11,13 @@ from trackrat.config.stations import (
     AMTRAK_TO_INTERNAL_STATION_MAP,
     NJT_GTFS_STOP_TO_INTERNAL_MAP,
     STATION_COORDINATES,
+    STATION_EQUIVALENTS,
     STATION_NAMES,
+    canonical_station_code,
+    expand_station_codes,
+    get_station_name,
     map_amtrak_station_code,
     map_gtfs_stop_to_station_code,
-    get_station_name,
     get_path_stops_by_origin_destination,
 )
 
@@ -492,4 +495,122 @@ class TestNJTStationCoordinates:
             assert code in STATION_NAMES, (
                 f"GTFS stop_id {stop_id} maps to '{code}' "
                 f"which is not in STATION_NAMES"
+            )
+
+
+class TestStationEquivalences:
+    """Tests for station code equivalence mapping.
+
+    Shared stations between Amtrak and Metro-North use different internal codes.
+    The equivalence mapping ensures queries match trains from both systems.
+    """
+
+    # All expected equivalence pairs (Amtrak code, MNR code, station name)
+    EXPECTED_PAIRS = [
+        ("NRO", "MNRC", "New Rochelle"),
+        ("YNY", "MYON", "Yonkers"),
+        ("CRT", "MCRH", "Croton-Harmon"),
+        ("POU", "MPOK", "Poughkeepsie"),
+        ("STM", "MSTM", "Stamford"),
+        ("BRP", "MBGP", "Bridgeport"),
+        ("NHV", "MNHV", "New Haven"),
+    ]
+
+    def test_expand_station_codes_with_equivalent(self):
+        """expand_station_codes returns both codes for shared stations."""
+        for amtrak_code, mnr_code, name in self.EXPECTED_PAIRS:
+            # Amtrak code expands to include MNR code
+            result = expand_station_codes(amtrak_code)
+            assert amtrak_code in result, (
+                f"{name}: Amtrak code {amtrak_code} missing from its own expansion"
+            )
+            assert mnr_code in result, (
+                f"{name}: MNR code {mnr_code} missing from expansion of {amtrak_code}"
+            )
+            assert len(result) == 2, (
+                f"{name}: expected 2 codes, got {len(result)}: {result}"
+            )
+
+            # MNR code expands to include Amtrak code
+            result = expand_station_codes(mnr_code)
+            assert mnr_code in result, (
+                f"{name}: MNR code {mnr_code} missing from its own expansion"
+            )
+            assert amtrak_code in result, (
+                f"{name}: Amtrak code {amtrak_code} missing from expansion of {mnr_code}"
+            )
+            assert len(result) == 2, (
+                f"{name}: expected 2 codes, got {len(result)}: {result}"
+            )
+
+    def test_expand_station_codes_without_equivalent(self):
+        """expand_station_codes returns single-element list for non-shared stations."""
+        non_shared_codes = ["NY", "NP", "TR", "PHO", "MWPL", "JAM"]
+        for code in non_shared_codes:
+            result = expand_station_codes(code)
+            assert result == [code], (
+                f"Non-shared code {code} should expand to [{code}], got {result}"
+            )
+
+    def test_expand_station_codes_original_code_first(self):
+        """expand_station_codes returns the queried code as first element."""
+        for amtrak_code, mnr_code, name in self.EXPECTED_PAIRS:
+            result = expand_station_codes(amtrak_code)
+            assert result[0] == amtrak_code, (
+                f"{name}: first element should be queried code {amtrak_code}, got {result[0]}"
+            )
+
+            result = expand_station_codes(mnr_code)
+            assert result[0] == mnr_code, (
+                f"{name}: first element should be queried code {mnr_code}, got {result[0]}"
+            )
+
+    def test_canonical_station_code_is_deterministic(self):
+        """canonical_station_code returns the same code regardless of which equivalent is passed."""
+        for amtrak_code, mnr_code, name in self.EXPECTED_PAIRS:
+            canonical_from_amtrak = canonical_station_code(amtrak_code)
+            canonical_from_mnr = canonical_station_code(mnr_code)
+            assert canonical_from_amtrak == canonical_from_mnr, (
+                f"{name}: canonical({amtrak_code})={canonical_from_amtrak} != "
+                f"canonical({mnr_code})={canonical_from_mnr}"
+            )
+
+    def test_canonical_station_code_non_shared(self):
+        """canonical_station_code returns the code itself for non-shared stations."""
+        non_shared_codes = ["NY", "NP", "TR", "PHO", "MWPL"]
+        for code in non_shared_codes:
+            assert canonical_station_code(code) == code, (
+                f"Non-shared code {code} should be its own canonical"
+            )
+
+    def test_equivalents_are_symmetric(self):
+        """Every code in STATION_EQUIVALENTS has a reverse entry."""
+        for code, equiv in STATION_EQUIVALENTS.items():
+            assert equiv in STATION_EQUIVALENTS, (
+                f"Code {code} maps to {equiv}, but {equiv} has no reverse mapping"
+            )
+            assert STATION_EQUIVALENTS[equiv] == code, (
+                f"Code {code} maps to {equiv}, but {equiv} maps to "
+                f"{STATION_EQUIVALENTS[equiv]} instead of {code}"
+            )
+
+    def test_all_equivalent_codes_exist_in_station_names(self):
+        """Every code in STATION_EQUIVALENTS should have an entry in STATION_NAMES."""
+        for code in STATION_EQUIVALENTS:
+            assert code in STATION_NAMES, (
+                f"Equivalent code {code} is missing from STATION_NAMES"
+            )
+
+    def test_equivalent_stations_share_same_name(self):
+        """Equivalent station codes should resolve to the same display name."""
+        for amtrak_code, mnr_code, expected_name in self.EXPECTED_PAIRS:
+            amtrak_name = get_station_name(amtrak_code)
+            mnr_name = get_station_name(mnr_code)
+            assert amtrak_name == expected_name, (
+                f"Amtrak code {amtrak_code} resolves to '{amtrak_name}', "
+                f"expected '{expected_name}'"
+            )
+            assert mnr_name == expected_name, (
+                f"MNR code {mnr_code} resolves to '{mnr_name}', "
+                f"expected '{expected_name}'"
             )

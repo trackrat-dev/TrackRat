@@ -122,12 +122,12 @@ struct Stations {
         // Hudson Line
         "Grand Central Terminal", "Harlem-125th Street", "Yankees-E 153 St",
         "Morris Heights", "University Heights", "Marble Hill",
-        "Spuyten Duyvil", "Riverdale", "Ludlow", "Yonkers Alt",
+        "Spuyten Duyvil", "Riverdale", "Ludlow", "Yonkers",
         "Glenwood", "Greystone", "Hastings-on-Hudson", "Dobbs Ferry",
         "Ardsley-on-Hudson", "Irvington", "Tarrytown", "Philipse Manor",
-        "Scarborough", "Ossining", "Croton-Harmon Alt", "Cortlandt",
+        "Scarborough", "Ossining", "Croton-Harmon", "Cortlandt",
         "Peekskill", "Manitou", "Garrison", "Cold Spring",
-        "Breakneck Ridge", "Beacon", "New Hamburg", "Poughkeepsie Alt",
+        "Breakneck Ridge", "Beacon", "New Hamburg", "Poughkeepsie",
         // Harlem Line
         "Melrose", "Tremont", "Fordham", "Botanical Garden",
         "Williams Bridge", "Woodlawn", "Wakefield", "Mt Vernon West",
@@ -139,14 +139,14 @@ struct Stations {
         "Southeast", "Patterson", "Pawling", "Appalachian Trail",
         "Harlem Valley-Wingdale", "Dover Plains", "Tenmile River", "Wassaic",
         // New Haven Line
-        "Mt Vernon East", "Pelham", "New Rochelle Alt", "Larchmont",
+        "Mt Vernon East", "Pelham", "New Rochelle", "Larchmont",
         "Mamaroneck", "Harrison", "Rye", "Port Chester",
         "Greenwich", "Cos Cob", "Riverside", "Old Greenwich",
-        "Stamford Alt", "Noroton Heights", "Darien", "Rowayton",
+        "Stamford", "Noroton Heights", "Darien", "Rowayton",
         "South Norwalk", "East Norwalk", "Westport",
         "Greens Farms", "Southport", "Fairfield", "Fairfield-Black Rock",
-        "Bridgeport Alt", "Stratford", "Milford", "West Haven",
-        "New Haven Alt", "New Haven-State St",
+        "Bridgeport", "Stratford", "Milford", "West Haven",
+        "New Haven", "New Haven-State St",
         // New Canaan Branch
         "Glenbrook", "Springdale", "Talmadge Hill", "New Canaan",
         // Danbury Branch
@@ -158,7 +158,7 @@ struct Stations {
 
         // Amtrak Northeast Corridor
         "Boston South", "Boston Back Bay", "Providence", "Kingston", "Westerly",
-        "New London", "Old Saybrook", "New Haven", "Bridgeport", "Stamford",
+        "New London", "Old Saybrook",
         "Baltimore Station", "BWI Thurgood Marshall Airport",
         "Washington Union Station", "Wilmington DE",
         
@@ -220,13 +220,13 @@ struct Stations {
         "Kalamazoo", "East Lansing", "Lapeer", "General Mitchell Intl. Airport", "Pontiac MI", "Portage",
         "Port Huron", "Royal Oak", "St. Joseph-Benton Harbor", "Sturtevant", "Troy", "Wisconsin Dells",
         "Altoona", "Ardmore PA", "Berlin", "Branford", "Bowie State", "Clinton",
-        "Connellsville", "Croton-Harmon", "Cumberland", "Cornwells Heights",
+        "Connellsville", "Cumberland", "Cornwells Heights",
         "Edgewood", "Greensburg", "Guilford", "Halethorpe", "Harpers Ferry",
         "Huntingdon", "Johnstown", "Latrobe", "Lewistown", "Madison CT", "Middletown CT",
-        "Martinsburg", "Martin Airport", "Mystic", "Newark", "New Rochelle", "Odenton",
-        "North Philadelphia", "Poughkeepsie", "Perryville", "Rhinecliff",
+        "Martinsburg", "Martin Airport", "Mystic", "Newark", "Odenton",
+        "North Philadelphia", "Perryville", "Rhinecliff",
         "Rockville", "Tyrone", "West Baltimore", "Windsor", "Westbrook",
-        "Yonkers", "Ashland KY", "Alliance", "Alderson", "Bloomington-Normal", "Bryan",
+        "Ashland KY", "Alliance", "Alderson", "Bloomington-Normal", "Bryan",
         "Carbondale", "Centralia IL", "Champaign-Urbana", "Charleston WV", "Connersville", "Crawfordsville",
         "Carlinville", "Dowagiac", "Du Quoin", "Dwight", "Dyer", "Effingham",
         "Elkhart", "Elyria", "Fulton", "Gilman", "Hinton", "Hammond-Whiting",
@@ -486,9 +486,6 @@ struct Stations {
         "Boston South": "BOS",
         "Boston Back Bay": "BBY",
         "Providence": "PVD",
-        "New Haven": "NHV",
-        "Bridgeport": "BRP",
-        "Stamford": "STM",
         "Hartford": "HFD",
         "Meriden": "MDN",
         "New London": "NLC",
@@ -658,7 +655,7 @@ struct Stations {
         "Spuyten Duyvil": "MSDV",
         "Riverdale": "MRVD",
         "Ludlow": "MLUD",
-        "Yonkers Alt": "MYON",
+        "Yonkers": "MYON",
         "Glenwood": "MGWD",
         "Greystone": "MGRY",
         "Hastings-on-Hudson": "MHOH",
@@ -669,7 +666,7 @@ struct Stations {
         "Philipse Manor": "MPHM",
         "Scarborough": "MSCB",
         "Ossining": "MOSS",
-        "Croton-Harmon Alt": "MCRH",
+        "Croton-Harmon": "MCRH",
         "Cortlandt": "MCRT",
         "Peekskill": "MPKS",
         "Manitou": "MMAN",
@@ -678,7 +675,7 @@ struct Stations {
         "Breakneck Ridge": "MBRK",
         "Beacon": "MBCN",
         "New Hamburg": "MNHB",
-        "Poughkeepsie Alt": "MPOK",
+        "Poughkeepsie": "MPOK",
         "Melrose": "MMEL",
         "Tremont": "MTRM",
         "Fordham": "MFOR",
@@ -717,7 +714,7 @@ struct Stations {
         "Wassaic": "MWAS",
         "Mt Vernon East": "MMVE",
         "Pelham": "MPEL",
-        "New Rochelle Alt": "MNRC",
+        "New Rochelle": "MNRC",
         "Larchmont": "MLRM",
         "Mamaroneck": "MMAM",
         "Harrison": "MHRR",
@@ -727,7 +724,7 @@ struct Stations {
         "Cos Cob": "MCOC",
         "Riverside": "MRSD",
         "Old Greenwich": "MODG",
-        "Stamford Alt": "MSTM",
+        "Stamford": "MSTM",
         "Noroton Heights": "MNOH",
         "Darien": "MDAR",
         "Rowayton": "MROW",
@@ -738,11 +735,11 @@ struct Stations {
         "Southport": "MSPT",
         "Fairfield": "MFFD",
         "Fairfield-Black Rock": "MFBR",
-        "Bridgeport Alt": "MBGP",
+        "Bridgeport": "MBGP",
         "Stratford": "MSTR",
         "Milford": "MMIL",
         "West Haven": "MWHN",
-        "New Haven Alt": "MNHV",
+        "New Haven": "MNHV",
         "New Haven-State St": "MNSS",
         "Glenbrook": "MGLB",
         "Springdale": "MSPD",
@@ -986,7 +983,6 @@ struct Stations {
         "Bowie State": "BWE",
         "Clinton": "CLN",
         "Connellsville": "COV",
-        "Croton-Harmon": "CRT",
         "Cumberland": "CUM",
         "Cornwells Heights": "CWH",
         "Edgewood": "EDG",
@@ -1004,11 +1000,9 @@ struct Stations {
         "Martin Airport": "MSA",
         "Mystic": "MYS",
         "Newark": "NRK",
-        "New Rochelle": "NRO",
         "Odenton": "OTN",
         "Parkesburg PA": "PAR",
         "North Philadelphia": "PHN",
-        "Poughkeepsie": "POU",
         "Perryville": "PRV",
         "Rhinecliff": "RHI",
         "Rockville": "RKV",
@@ -1017,7 +1011,6 @@ struct Stations {
         "West Baltimore": "WBL",
         "Windsor": "WND",
         "Westbrook": "WSB",
-        "Yonkers": "YNY",
 
         // Midwest
         "Ashland KY": "AKY",
@@ -2572,13 +2565,31 @@ struct Stations {
     }
 
     /// Reverse lookup dictionary: code → canonical station name.
-    /// Automatically strips " Alt" suffix from alternate station entries.
-    /// This provides O(1) lookup and ensures users never see "Alt" in station names.
+    /// This provides O(1) lookup for displaying station names from codes.
+    /// Includes equivalent Amtrak codes for stations shared with Metro-North,
+    /// so that API responses using either code resolve to the correct display name.
     static let stationCodeToName: [String: String] = {
         var result: [String: String] = [:]
         for (name, code) in stationCodes {
-            let canonicalName = name.hasSuffix(" Alt") ? String(name.dropLast(4)) : name
-            result[code] = canonicalName
+            result[code] = name
+        }
+        // Map equivalent Amtrak codes to the same station name.
+        // These stations are shared between Amtrak and Metro-North but use
+        // different internal codes. The stationCodes dict uses MNR codes;
+        // these entries ensure Amtrak codes also resolve correctly.
+        let amtrakEquivalents: [(amtrakCode: String, mnrCode: String)] = [
+            ("YNY", "MYON"),   // Yonkers
+            ("CRT", "MCRH"),   // Croton-Harmon
+            ("POU", "MPOK"),   // Poughkeepsie
+            ("NRO", "MNRC"),   // New Rochelle
+            ("STM", "MSTM"),   // Stamford
+            ("BRP", "MBGP"),   // Bridgeport
+            ("NHV", "MNHV"),   // New Haven
+        ]
+        for (amtrakCode, mnrCode) in amtrakEquivalents {
+            if let name = result[mnrCode] {
+                result[amtrakCode] = name
+            }
         }
         return result
     }()
