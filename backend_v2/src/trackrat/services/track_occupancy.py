@@ -115,9 +115,7 @@ class TrackOccupancyService:
             .join(TrainJourney)
             .where(
                 and_(
-                    JourneyStop.station_code.in_(
-                        expand_station_codes(station_code)
-                    ),
+                    JourneyStop.station_code.in_(expand_station_codes(station_code)),
                     JourneyStop.track.is_not(None),
                     JourneyStop.has_departed_station.is_not(True),
                     JourneyStop.scheduled_departure >= current_time,

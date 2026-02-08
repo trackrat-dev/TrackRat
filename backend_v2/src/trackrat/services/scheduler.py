@@ -778,7 +778,11 @@ class SchedulerService:
 
             # Use the safe collection method that handles greenlet issues
             # This wraps the collection in a new async task to ensure proper context
-            j_date = journey_date.date() if isinstance(journey_date, datetime) else journey_date
+            j_date = (
+                journey_date.date()
+                if isinstance(journey_date, datetime)
+                else journey_date
+            )
             result = await asyncio.create_task(
                 self._collect_single_njt_journey_safe(train_id, j_date)
             )
@@ -1668,7 +1672,9 @@ class SchedulerService:
             if sync_engine is not None:
                 sync_engine.dispose()
 
-    async def collect_njt_journeys_batch(self, train_ids: list[str], journey_date: date | None = None) -> None:
+    async def collect_njt_journeys_batch(
+        self, train_ids: list[str], journey_date: date | None = None
+    ) -> None:
         """Collect journey data for multiple NJ Transit trains in batch.
 
         Args:
@@ -1726,7 +1732,9 @@ class SchedulerService:
                             )
                             await asyncio.sleep(1.0)  # Wait a bit before retry
                             retry_result = await asyncio.create_task(
-                                self._collect_single_njt_journey_safe(train_id, journey_date)
+                                self._collect_single_njt_journey_safe(
+                                    train_id, journey_date
+                                )
                             )
                             if retry_result and retry_result.get("success"):
                                 success_count += 1

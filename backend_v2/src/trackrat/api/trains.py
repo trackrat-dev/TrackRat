@@ -14,6 +14,7 @@ from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.config.stations import canonical_station_code, expand_station_codes
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
     DataFreshness,
@@ -32,7 +33,6 @@ from trackrat.models.api import (
     TrainHistoryResponse,
     TrainPosition,
 )
-from trackrat.config.stations import canonical_station_code, expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.departure import DepartureService

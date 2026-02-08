@@ -105,9 +105,7 @@ class DepartureService:
             )
             if data_sources:
                 response.departures = [
-                    d
-                    for d in response.departures
-                    if d.data_source in data_sources
+                    d for d in response.departures if d.data_source in data_sources
                 ]
                 response.metadata["count"] = len(response.departures)
             return response
@@ -557,9 +555,7 @@ class DepartureService:
             .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
             .where(
                 and_(
-                    JourneyStop.station_code.in_(
-                        expand_station_codes(station_code)
-                    ),
+                    JourneyStop.station_code.in_(expand_station_codes(station_code)),
                     TrainJourney.data_source == "NJT",
                     TrainJourney.last_updated_at < cutoff_time,
                 )

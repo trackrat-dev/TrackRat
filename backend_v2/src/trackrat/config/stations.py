@@ -1379,7 +1379,6 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "CLN": "CLN",  # Clinton
     "COT": "COT",  # Coatesville
     "COV": "COV",  # Connellsville
-    "CRT": "CRT",  # Croton-Harmon
     "CUM": "CUM",  # Cumberland
     "CWH": "CWH",  # Cornwells Heights
     "DOW": "DOW",  # Downingtown
@@ -1404,16 +1403,13 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "PAO": "PAO",  # Paoli
     "PAR": "PAR",  # Parkesburg
     "PHN": "PHN",  # North Philadelphia
-    "POU": "POU",  # Poughkeepsie
     "PRV": "PRV",  # Perryville
-    "RHI": "RHI",  # Rhinecliff
     "RKV": "RKV",  # Rockville
     "STS": "STS",  # New Haven
     "TYR": "TYR",  # Tyrone
     "WBL": "WBL",  # West Baltimore
     "WND": "WND",  # Windsor
     "WSB": "WSB",  # Westbrook
-    "YNY": "YNY",  # Yonkers
     # Midwest
     "AKY": "AKY",  # Ashland
     "ALC": "ALC",  # Alliance
@@ -1577,7 +1573,6 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "GMS": "GMS",  # Grimsby
     "HHL": "HHL",  # Haverhill
     "HLK": "HLK",  # Holyoke
-    "HUD": "HUD",  # Hudson
     "MBY": "MBY",  # Middlebury
     "MPR": "MPR",  # Montpelier-Berlin
     "NFL": "NFL",  # Niagara Falls
@@ -1595,9 +1590,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "RUD": "RUD",  # Rutland
     "SAB": "SAB",  # St. Albans
     "SAO": "SAO",  # Saco
-    "SAR": "SAR",  # Saratoga Springs
     "SCA": "SCA",  # St. Catherines
-    "SDY": "SDY",  # Schenectady
     "SLQ": "SLQ",  # St-Lambert
     "TWO": "TWO",  # Toronto
     "UCA": "UCA",  # Utica
@@ -1995,7 +1988,6 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "CLN": "CLN",  # Clinton
     "COT": "COT",  # Coatesville
     "COV": "COV",  # Connellsville
-    "CRT": "CRT",  # Croton-Harmon
     "CUM": "CUM",  # Cumberland
     "CWH": "CWH",  # Cornwells Heights
     "DOW": "DOW",  # Downingtown
@@ -2020,16 +2012,13 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "PAO": "PAO",  # Paoli
     "PAR": "PAR",  # Parkesburg
     "PHN": "PHN",  # North Philadelphia
-    "POU": "POU",  # Poughkeepsie
     "PRV": "PRV",  # Perryville
-    "RHI": "RHI",  # Rhinecliff
     "RKV": "RKV",  # Rockville
     "STS": "STS",  # New Haven
     "TYR": "TYR",  # Tyrone
     "WBL": "WBL",  # West Baltimore
     "WND": "WND",  # Windsor
     "WSB": "WSB",  # Westbrook
-    "YNY": "YNY",  # Yonkers
     # Midwest
     "AKY": "AKY",  # Ashland
     "ALC": "ALC",  # Alliance
@@ -2193,7 +2182,6 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "GMS": "GMS",  # Grimsby
     "HHL": "HHL",  # Haverhill
     "HLK": "HLK",  # Holyoke
-    "HUD": "HUD",  # Hudson
     "MBY": "MBY",  # Middlebury
     "MPR": "MPR",  # Montpelier-Berlin
     "NFL": "NFL",  # Niagara Falls
@@ -2211,9 +2199,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "RUD": "RUD",  # Rutland
     "SAB": "SAB",  # St. Albans
     "SAO": "SAO",  # Saco
-    "SAR": "SAR",  # Saratoga Springs
     "SCA": "SCA",  # St. Catherines
-    "SDY": "SDY",  # Schenectady
     "SLQ": "SLQ",  # St-Lambert
     "TWO": "TWO",  # Toronto
     "UCA": "UCA",  # Utica
