@@ -17,7 +17,6 @@ from trackrat.collectors.mnr.collector import (
 from trackrat.collectors.mnr.client import MnrArrival, MNRClient
 from trackrat.models.database import JourneyStop, TrainJourney
 
-
 # =============================================================================
 # HELPER FUNCTION TESTS
 # =============================================================================

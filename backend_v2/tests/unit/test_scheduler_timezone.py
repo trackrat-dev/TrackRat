@@ -2,7 +2,7 @@
 Unit tests for scheduler timezone handling.
 
 Tests the fix for timezone comparison errors that occur when SQLite
-returns naive datetimes but the scheduler needs to compare with 
+returns naive datetimes but the scheduler needs to compare with
 timezone-aware datetimes.
 """
 

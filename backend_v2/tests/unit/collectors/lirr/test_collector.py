@@ -17,7 +17,6 @@ from trackrat.collectors.lirr.collector import (
 from trackrat.collectors.lirr.client import LirrArrival, LIRRClient
 from trackrat.models.database import JourneyStop, TrainJourney
 
-
 # =============================================================================
 # HELPER FUNCTION TESTS
 # =============================================================================

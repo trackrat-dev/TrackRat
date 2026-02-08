@@ -240,8 +240,7 @@ class CongestionAnalyzer:
 
         # Single query to get the latest departed stop for each journey
         # Uses DISTINCT ON to get one row per journey_id (the most recent)
-        query = text(
-            """
+        query = text("""
             SELECT DISTINCT ON (journey_id)
                 journey_id,
                 station_code,
@@ -258,8 +257,7 @@ class CongestionAnalyzer:
             WHERE journey_id = ANY(:journey_ids)
                 AND actual_departure IS NOT NULL
             ORDER BY journey_id, actual_departure DESC NULLS LAST
-            """
-        )
+            """)
 
         result = await db.execute(query, {"journey_ids": journey_ids})
         rows = result.fetchall()
@@ -359,8 +357,7 @@ class CongestionAnalyzer:
 
         # SQL query that calculates segment times and aggregates in database
         # This replaces loading thousands of objects into Python memory
-        query = text(
-            """
+        query = text("""
         WITH stop_pairs AS (
             -- Pair each stop with its next stop using LEAD window function.
             -- Pre-filter by journey_date to avoid scanning the entire history.
@@ -511,8 +508,7 @@ class CongestionAnalyzer:
             AND sa.to_station = hb.to_station
             AND sa.data_source = hb.data_source
         WHERE (sa.active_count + sa.cancelled_count) >= 1  -- Show all segments with any data
-        """
-        )
+        """)
 
         # Execute query with performance logging
         query_start = now_et()
@@ -653,8 +649,7 @@ class CongestionAnalyzer:
         # SQL query to get individual segments with per-route limiting
         if max_per_segment > 0:
             # With per-route limiting using ROW_NUMBER()
-            query = text(
-                """
+            query = text("""
             WITH stop_pairs AS (
                 -- Pre-filter by journey_date to avoid scanning entire history
                 SELECT
@@ -751,12 +746,10 @@ class CongestionAnalyzer:
             FROM ranked_segments
             WHERE rank_within_route <= :max_per_segment
             ORDER BY departure_time DESC
-            """
-            )
+            """)
         else:
             # No per-route limiting - return ALL individual segments
-            query = text(
-                """
+            query = text("""
             WITH stop_pairs AS (
                 -- Pre-filter by journey_date to avoid scanning entire history
                 SELECT
@@ -844,8 +837,7 @@ class CongestionAnalyzer:
                 END as congestion_factor
             FROM segment_data
             ORDER BY departure_time DESC
-            """
-            )
+            """)
 
         # Execute query with performance logging
         params: dict[str, Any] = {

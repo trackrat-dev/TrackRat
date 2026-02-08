@@ -70,7 +70,7 @@ _LINE_NAME_TO_CODE = {
 
 
 def parse_cancellation_alerts(
-    station_messages: list[dict[str, Any]]
+    station_messages: list[dict[str, Any]],
 ) -> list[CancellationAlert]:
     """Parse STATIONMSGS array for cancellation alerts.
 

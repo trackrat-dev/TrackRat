@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 
 from trackrat.utils.time import now_et
 
-
 # NJT API time format: "30-May-2024 10:52:30 AM"
 NJT_TIME_FORMAT = "%d-%b-%Y %I:%M:%S %p"
 

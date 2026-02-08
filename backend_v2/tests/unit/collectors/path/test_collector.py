@@ -23,7 +23,6 @@ from trackrat.collectors.path.collector import (
 from trackrat.collectors.path.ridepath_client import PathArrival
 from trackrat.models.database import JourneyStop, TrainJourney
 
-
 # =============================================================================
 # HELPER FUNCTION TESTS
 # =============================================================================

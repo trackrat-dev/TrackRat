@@ -33,7 +33,6 @@ from trackrat.db.engine import get_db
 from trackrat.models.database import Base
 from trackrat.collectors.njt.client import NJTransitClient
 
-
 # Test database URL - use environment variable or fallback to default
 TEST_DATABASE_URL = os.getenv(
     "TRACKRAT_TEST_DATABASE_URL",
