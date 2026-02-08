@@ -11,6 +11,7 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    infer_direction_from_terminals,
     infer_missing_origin,
     update_journey_metadata,
     update_stop_departure_status,
@@ -733,3 +734,42 @@ class TestInferMissingOrigin:
     def test_origin_travel_buffer_is_ten_minutes(self):
         """Verify the travel buffer constant is 10 minutes."""
         assert ORIGIN_TRAVEL_BUFFER == timedelta(minutes=10)
+
+
+class TestInferDirectionFromTerminals:
+    """Tests for infer_direction_from_terminals()."""
+
+    def test_mnr_last_stop_gct_returns_inbound(self):
+        """MNR trip ending at GCT is inbound (direction_id=1)."""
+        result = infer_direction_from_terminals("GCT", "MNR")
+        assert (
+            result == 1
+        ), f"Expected inbound (1) for MNR trip ending at GCT, got {result}"
+
+    def test_mnr_last_stop_non_terminal_returns_outbound(self):
+        """MNR trip ending at a non-terminal station is outbound (direction_id=0)."""
+        result = infer_direction_from_terminals("MCRH", "MNR")
+        assert (
+            result == 0
+        ), f"Expected outbound (0) for MNR trip ending at MCRH, got {result}"
+
+    def test_unknown_data_source_returns_outbound(self):
+        """Unknown data source should default to outbound (0)."""
+        result = infer_direction_from_terminals("GCT", "NJT")
+        assert (
+            result == 0
+        ), f"Expected outbound (0) for unknown data source, got {result}"
+
+    def test_lirr_last_stop_penn_returns_inbound(self):
+        """LIRR trip ending at Penn Station is inbound (direction_id=1)."""
+        result = infer_direction_from_terminals("NY", "LIRR")
+        assert (
+            result == 1
+        ), f"Expected inbound (1) for LIRR trip ending at NY, got {result}"
+
+    def test_lirr_last_stop_non_terminal_returns_outbound(self):
+        """LIRR trip ending at a non-terminal station is outbound (direction_id=0)."""
+        result = infer_direction_from_terminals("BPG", "LIRR")
+        assert (
+            result == 0
+        ), f"Expected outbound (0) for LIRR trip ending at BPG, got {result}"

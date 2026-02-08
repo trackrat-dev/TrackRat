@@ -68,6 +68,31 @@ def infer_missing_origin(
     return default_origin
 
 
+def infer_direction_from_terminals(
+    last_stop_code: str,
+    data_source: str,
+) -> int:
+    """Infer direction_id from stop order when the feed doesn't provide it.
+
+    MNR GTFS-RT never sets direction_id (defaults to 0), so all trips look
+    outbound. This function checks whether the last stop is a known terminal
+    to determine the actual direction.
+
+    Args:
+        last_stop_code: Station code of the last stop by arrival time.
+        data_source: "LIRR" or "MNR".
+
+    Returns:
+        1 if inbound (last stop is a terminal), 0 otherwise.
+    """
+    config = _ORIGIN_TERMINAL_CONFIG.get(data_source)
+    if not config:
+        return 0
+
+    terminals, _ = config
+    return 1 if last_stop_code in terminals else 0
+
+
 def build_complete_stops(
     realtime_arrivals: list[Any],
     static_stops: list[dict[str, Any]],

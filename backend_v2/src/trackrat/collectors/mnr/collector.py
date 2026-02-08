@@ -18,6 +18,7 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    infer_direction_from_terminals,
     infer_missing_origin,
     update_journey_metadata,
     update_stop_departure_status,
@@ -274,11 +275,15 @@ class MNRCollector:
                 )
 
             # When GTFS backfill produced no usable stops, infer origin
-            # for outbound trains whose origin terminal was dropped from RT
+            # for outbound trains whose origin terminal was dropped from RT.
+            # MNR GTFS-RT never sets direction_id, so infer from stop order.
             inferred_origin: str | None = None
             if not merged_stops:
+                effective_direction = infer_direction_from_terminals(
+                    last_arrival.station_code, "MNR"
+                )
                 inferred_origin = infer_missing_origin(
-                    first_arrival.station_code, first_arrival.direction_id, "MNR"
+                    first_arrival.station_code, effective_direction, "MNR"
                 )
                 if inferred_origin:
                     origin_code = inferred_origin
