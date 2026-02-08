@@ -169,12 +169,12 @@ resource "google_compute_instance_template" "trackrat" {
       echo "=== Downloading docker-compose.yml ==="
       APP_DIR="$MOUNT_PATH/compose"
       mkdir -p "$APP_DIR"
-      # Note: toolbox writes to its internal mount, so we need to copy from there
-      # First download with toolbox (goes to /var/lib/toolbox/.../mnt/disks/data/compose/)
+      # Note: toolbox writes to its internal mount, not the actual host path.
+      # We must find and copy from toolbox mount to the real host path.
+      # Always overwrite to ensure we're running the latest version (persistent disk may have stale copy).
       toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml"
-      # Find and copy from toolbox mount to actual host mount
       TOOLBOX_FILE=$(find /var/lib/toolbox -name "docker-compose.yml" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
-      if [ -n "$TOOLBOX_FILE" ] && [ ! -f "$APP_DIR/docker-compose.yml" ]; then
+      if [ -n "$TOOLBOX_FILE" ]; then
         echo "Copying from toolbox mount: $TOOLBOX_FILE"
         cp "$TOOLBOX_FILE" "$APP_DIR/docker-compose.yml"
       fi
@@ -190,7 +190,7 @@ resource "google_compute_instance_template" "trackrat" {
       echo "=== Creating .env file ==="
       # Write APNS auth key to a file (PEM has newlines, can't go in .env)
       echo "$APNS_AUTH_KEY" > "$APP_DIR/apns_auth_key.p8"
-      chmod 600 "$APP_DIR/apns_auth_key.p8"
+      chmod 644 "$APP_DIR/apns_auth_key.p8"
 
       cat > "$APP_DIR/.env" <<ENVEOF
 DATA_DIR=$MOUNT_PATH
