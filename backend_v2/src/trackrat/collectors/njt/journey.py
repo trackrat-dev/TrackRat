@@ -132,6 +132,7 @@ class JourneyCollector(BaseJourneyCollector):
             and_(
                 TrainJourney.train_id == train_id,
                 TrainJourney.data_source == "NJT",
+                TrainJourney.journey_date == now_et().date(),
             )
         )
         journey = await session.scalar(stmt)
@@ -703,8 +704,6 @@ class JourneyCollector(BaseJourneyCollector):
             journey: Journey to collect data for
             skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
         """
-        now_et()
-
         # Track start time for performance measurement
         start_time = now_et()
 
@@ -1845,7 +1844,12 @@ class JourneyCollector(BaseJourneyCollector):
         """
         async with get_session() as session:
             # Find the journey
-            stmt = select(TrainJourney).where(TrainJourney.train_id == train_id)
+            stmt = select(TrainJourney).where(
+                and_(
+                    TrainJourney.train_id == train_id,
+                    TrainJourney.data_source == "NJT",
+                )
+            )
 
             if journey_date:
                 stmt = stmt.where(TrainJourney.journey_date == journey_date)
