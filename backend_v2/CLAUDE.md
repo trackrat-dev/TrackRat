@@ -345,7 +345,7 @@ TRACKRAT_ENVIRONMENT=development
 # APNS Settings (for Live Activities)
 APNS_TEAM_ID=your_team_id
 APNS_KEY_ID=your_key_id
-APNS_AUTH_KEY_PATH=certs/AuthKey_4WC3F645FR.p8
+APNS_AUTH_KEY_PATH=certs/apns_auth_key.p8
 APNS_BUNDLE_ID=net.trackrat.TrackRat
 APNS_ENVIRONMENT=dev
 

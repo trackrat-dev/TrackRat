@@ -46,6 +46,6 @@ services:
 #    NJT_API_TOKEN=your_nj_transit_token
 #    APNS_TEAM_ID=your_team_id
 #    APNS_KEY_ID=your_key_id
-# 3. Place your AuthKey_4WC3F645FR.p8 file in ./certs/
+# 3. Place your APNS .p8 auth key file in ./certs/apns_auth_key.p8
 # 4. Create ./data directory for database persistence
 # 5. Run: docker-compose up -d

@@ -76,7 +76,8 @@ export function buildTrainShareData(params: {
   const { trainId, origin, destination, from, to } = params;
 
   // Build URL with optional from/to query params
-  let url = `${window.location.origin}/train/${trainId}`;
+  const basePath = import.meta.env.BASE_URL || '/';
+  let url = `${window.location.origin}${basePath}train/${trainId}`;
 
   const queryParams: string[] = [];
   if (from) queryParams.push(`from=${from}`);

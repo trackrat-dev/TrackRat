@@ -131,35 +131,33 @@ validate_apns_config() {
     echo "🔍 Validating APNS configuration..."
     local errors=0
     
-    # Check if P8 file exists
-    if [ ! -f "certs/AuthKey_4WC3F645FR.p8" ]; then
-        echo "❌ APNS P8 file not found: certs/AuthKey_4WC3F645FR.p8"
-        errors=$((errors + 1))
-    fi
-    
-    # Check if P8 file has content
-    if [ ! -s "certs/AuthKey_4WC3F645FR.p8" ]; then
-        echo "❌ APNS P8 file is empty: certs/AuthKey_4WC3F645FR.p8"
-        errors=$((errors + 1))
-    fi
-    
-    # Check if P8 file has valid PEM format
-    if [ -f "certs/AuthKey_4WC3F645FR.p8" ]; then
-        if ! head -1 "certs/AuthKey_4WC3F645FR.p8" | grep -q "BEGIN PRIVATE KEY"; then
+    # Check if APNS_AUTH_KEY_PATH is set and file exists
+    if [ -n "$APNS_AUTH_KEY_PATH" ] && [ -f "$APNS_AUTH_KEY_PATH" ]; then
+        # Check if P8 file has content
+        if [ ! -s "$APNS_AUTH_KEY_PATH" ]; then
+            echo "❌ APNS P8 file is empty: $APNS_AUTH_KEY_PATH"
+            errors=$((errors + 1))
+        fi
+
+        # Check if P8 file has valid PEM format
+        if ! head -1 "$APNS_AUTH_KEY_PATH" | grep -q "BEGIN PRIVATE KEY"; then
             echo "❌ APNS P8 file does not start with '-----BEGIN PRIVATE KEY-----'"
             errors=$((errors + 1))
         fi
-        
-        if ! tail -1 "certs/AuthKey_4WC3F645FR.p8" | grep -q "END PRIVATE KEY"; then
+
+        if ! tail -1 "$APNS_AUTH_KEY_PATH" | grep -q "END PRIVATE KEY"; then
             echo "❌ APNS P8 file does not end with '-----END PRIVATE KEY-----'"
             errors=$((errors + 1))
         fi
-        
+
         # Check file size (should be around 250-300 bytes for P-256 key)
-        file_size=$(wc -c < "certs/AuthKey_4WC3F645FR.p8")
+        file_size=$(wc -c < "$APNS_AUTH_KEY_PATH")
         if [ "$file_size" -lt 200 ] || [ "$file_size" -gt 400 ]; then
             echo "⚠️  APNS P8 file size is unusual: ${file_size} bytes (expected 200-400)"
         fi
+    elif [ -z "$APNS_AUTH_KEY" ]; then
+        echo "❌ Neither APNS_AUTH_KEY_PATH file nor APNS_AUTH_KEY env var found"
+        errors=$((errors + 1))
     fi
     
     # Check if required environment variables are set
@@ -196,17 +194,18 @@ validate_apns_config() {
     fi
     
     # Test loading the P8 file with Python cryptography library
-    if [ -f "certs/AuthKey_4WC3F645FR.p8" ] && command -v poetry >/dev/null 2>&1; then
+    if [ -n "$APNS_AUTH_KEY_PATH" ] && [ -f "$APNS_AUTH_KEY_PATH" ] && command -v poetry >/dev/null 2>&1; then
         echo "🔧 Testing P8 certificate loading..."
         if ! poetry run python -c "
+import os, sys
 from cryptography.hazmat.primitives import serialization
 try:
-    with open('certs/AuthKey_4WC3F645FR.p8', 'rb') as f:
+    with open(os.environ['APNS_AUTH_KEY_PATH'], 'rb') as f:
         serialization.load_pem_private_key(f.read(), password=None)
     print('✅ P8 certificate loads successfully')
 except Exception as e:
     print(f'❌ P8 certificate failed to load: {e}')
-    exit(1)
+    sys.exit(1)
 " 2>/dev/null; then
             errors=$((errors + 1))
         fi
@@ -219,8 +218,8 @@ except Exception as e:
         echo "   Key ID: $APNS_KEY_ID"
         echo "   Bundle ID: $APNS_BUNDLE_ID"
         echo "   Environment: $APNS_ENVIRONMENT"
-        if [ -f "certs/AuthKey_4WC3F645FR.p8" ]; then
-            echo "   P8 File: certs/AuthKey_4WC3F645FR.p8 ($(wc -c < "certs/AuthKey_4WC3F645FR.p8") bytes)"
+        if [ -n "$APNS_AUTH_KEY_PATH" ] && [ -f "$APNS_AUTH_KEY_PATH" ]; then
+            echo "   P8 File: $APNS_AUTH_KEY_PATH ($(wc -c < "$APNS_AUTH_KEY_PATH") bytes)"
         fi
         return 0
     else
@@ -251,11 +250,10 @@ if ! check_postgresql; then
 fi
 
 # Set APNS environment variables (without TRACKRAT_ prefix for compatibility with V1)
-export APNS_TEAM_ID="D5RZZ55J9R"
-export APNS_KEY_ID="4WC3F645FR"
-export APNS_AUTH_KEY="$(cat certs/AuthKey_4WC3F645FR.p8)"
-export APNS_BUNDLE_ID="net.trackrat.TrackRat"
-export APNS_ENVIRONMENT="dev"  # Use sandbox for local development
+# These must be configured in your environment or .env file:
+#   APNS_TEAM_ID, APNS_KEY_ID, APNS_AUTH_KEY_PATH (or APNS_AUTH_KEY),
+#   APNS_BUNDLE_ID, APNS_ENVIRONMENT
+export APNS_ENVIRONMENT="${APNS_ENVIRONMENT:-dev}"  # Default to sandbox for local development
 
 # Validate APNS configuration before starting
 if ! validate_apns_config; then

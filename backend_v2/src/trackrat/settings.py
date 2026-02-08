@@ -129,9 +129,7 @@ class Settings(BaseSettings):
         description="APNS Auth Key (P8 content) - legacy environment variable approach",
     )
     apns_auth_key_path: str = Field(
-        default_factory=lambda: os.getenv(
-            "APNS_AUTH_KEY_PATH", "certs/AuthKey_4WC3F645FR.p8"
-        ),
+        default_factory=lambda: os.getenv("APNS_AUTH_KEY_PATH", ""),
         description="Path to APNS Auth Key (P8 file) - preferred file-based approach",
     )
     apns_bundle_id: str = Field(

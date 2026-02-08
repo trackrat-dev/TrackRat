@@ -31,3 +31,17 @@ tfplan
 
 # Sentry CLI configuration (contains auth tokens)
 .sentryclirc
+
+# Environment files and secrets
+.env
+*.p8
+certs/
+env.sh
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/

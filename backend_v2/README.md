@@ -99,7 +99,7 @@ All configuration is done via environment variables. See `.env.example` for avai
   - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
   - `APNS_BUNDLE_ID`: iOS app bundle identifier (e.g., `net.trackrat.TrackRat`)
   - `APNS_ENVIRONMENT`: `dev` for sandbox, `prod` for production
-  - **APNS P8 Certificate**: Place `AuthKey_4WC3F645FR.p8` in `certs/` directory
+  - **APNS P8 Certificate**: Place your `.p8` auth key in `certs/apns_auth_key.p8`
 
 ### Optional Settings
 - `TRACKRAT_DISCOVERY_INTERVAL_MINUTES`: How often to discover new trains (default: 30)
@@ -124,7 +124,7 @@ All configuration is done via environment variables. See `.env.example` for avai
    ```bash
    # Place the certificate in the expected location
    mkdir -p certs/
-   cp /path/to/your/AuthKey_4WC3F645FR.p8 certs/
+   cp /path/to/your/AuthKey_XXXXXXXXXX.p8 certs/apns_auth_key.p8
    
    # Or set custom path
    export APNS_AUTH_KEY_PATH=/custom/path/to/key.p8
@@ -484,8 +484,8 @@ docker build -t trackrat-v2 .
 
 # Run with environment variables and APNS certificate
 docker run -p 8000:8000 \
-  -e APNS_TEAM_ID="D5RZZ55J9R" \
-  -e APNS_KEY_ID="4WC3F645FR" \
+  -e APNS_TEAM_ID="your_team_id" \
+  -e APNS_KEY_ID="your_key_id" \
   -e APNS_BUNDLE_ID="net.trackrat.TrackRat" \
   -e APNS_ENVIRONMENT="prod" \
   -e TRACKRAT_NJT_API_TOKEN="your_token" \
@@ -509,7 +509,7 @@ EOF
 
 # Place APNS certificate
 mkdir -p certs
-cp /path/to/AuthKey_4WC3F645FR.p8 certs/
+cp /path/to/AuthKey_XXXXXXXXXX.p8 certs/apns_auth_key.p8
 
 # Start the service
 docker-compose up -d

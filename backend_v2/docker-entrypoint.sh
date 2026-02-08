@@ -76,7 +76,7 @@ validate_apns_config() {
     local errors=0
     
     # Check if P8 file exists (using APNS_AUTH_KEY_PATH if set, or default)
-    P8_PATH="${APNS_AUTH_KEY_PATH:-certs/AuthKey_4WC3F645FR.p8}"
+    P8_PATH="${APNS_AUTH_KEY_PATH:-certs/apns_auth_key.p8}"
     
     if [ ! -f "$P8_PATH" ]; then
         echo "❌ APNS P8 file not found: $P8_PATH"
@@ -205,9 +205,10 @@ if ! run_migrations; then
     exit 1
 fi
 
-# Validate APNS configuration before proceeding
+# Validate APNS configuration (warn on failure, don't block startup)
 if ! validate_apns_config; then
-    exit 1
+    echo "⚠️  APNS validation failed — Live Activities will be disabled."
+    echo "   The backend will still serve departures, predictions, and other features."
 fi
 
 echo ""
