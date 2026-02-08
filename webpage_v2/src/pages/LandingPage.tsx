@@ -8,6 +8,7 @@ const YOUTUBE_URL = 'https://www.youtube.com/@TrackRat-App/shorts';
 const INSTAGRAM_URL = 'https://www.instagram.com/trackratapp/';
 const GITHUB_URL = 'https://github.com/bokonon1/TrackRat';
 const FEEDBACK_URL = 'https://trackrat.nolt.io/';
+const API_DOCS_URL = 'https://apiv2.trackrat.net/docs';
 const SUPPORT_EMAIL = 'mailto:trackrat@andymartin.cc';
 
 const features = [
@@ -80,6 +81,22 @@ const faqs = [
     q: 'Is TrackRat open source?',
     a: 'Yes. The backend, iOS app, and web app are all open source under the Apache 2.0 license on GitHub.',
   },
+  {
+    q: 'Can I build my own app with TrackRat data?',
+    a: 'Yes! The API is open and documented. However, we are still actively developing and occasionally making breaking changes to the API. If you are planning to use it in a production application, please get in touch so we can coordinate and avoid surprises.',
+  },
+  {
+    q: 'Does TrackRat work on Android?',
+    a: "Not yet. An Android app is something we'd love to build, but we haven't had the bandwidth. If you're an Android developer interested in leading this effort, we'd love to hear from you — please get in touch!",
+  },
+  {
+    q: 'Why are some trains showing as SCHEDULED instead of real-time?',
+    a: 'TrackRat combines scheduled timetable data with real-time feeds from transit agencies. Trains show as SCHEDULED until the agency\'s real-time feed confirms they are active. Once a train appears in the real-time feed, it switches to OBSERVED with live position and delay information.',
+  },
+  {
+    q: 'Do I need to create an account?',
+    a: 'No. TrackRat works without any account or sign-up. There is no login, no personal data collection, and no tracking. Just open the app or website and start looking up trains.',
+  },
 ];
 
 export function LandingPage() {
@@ -108,12 +125,6 @@ export function LandingPage() {
           />
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-          <Link
-            to="/departures"
-            className="inline-flex items-center px-8 py-3 bg-accent text-white font-semibold rounded-xl hover:opacity-90 transition-opacity text-lg"
-          >
-            Try the Web App
-          </Link>
           <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer">
             <img
               src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
@@ -121,6 +132,12 @@ export function LandingPage() {
               className="h-12"
             />
           </a>
+          <Link
+            to="/departures"
+            className="inline-flex items-center px-8 py-3 bg-accent text-white font-semibold rounded-xl hover:opacity-90 transition-opacity text-lg"
+          >
+            Web App (beta)
+          </Link>
         </div>
         <div className="flex items-center justify-center gap-4">
           <a
@@ -200,6 +217,16 @@ export function LandingPage() {
         <p className="text-text-secondary text-lg mb-8 max-w-2xl mx-auto">
           TrackRat is open source under the Apache 2.0 license. The entire
           codebase — backend, iOS app, and web app — is available on GitHub.
+          The{' '}
+          <a
+            href={API_DOCS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent hover:underline"
+          >
+            REST API
+          </a>{' '}
+          is also open for anyone to use in their own projects.
         </p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           {techStack.map((tech) => (
@@ -270,13 +297,6 @@ export function LandingPage() {
               Submit Feedback
             </a>
           </div>
-          <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer">
-            <img
-              src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
-              alt="Download on the App Store"
-              className="h-10 mx-auto mb-4"
-            />
-          </a>
           <p className="text-text-muted text-sm">
             &copy; {new Date().getFullYear()} TrackRat
           </p>

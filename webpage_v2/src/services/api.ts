@@ -1,6 +1,6 @@
 import { DeparturesResponse, TrainDetailsResponse, HealthResponse, PlatformPrediction } from '../types';
 
-const BASE_URL = 'https://prod.api.trackrat.net/api/v2';
+const BASE_URL = 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
 
 interface CacheEntry<T> {
