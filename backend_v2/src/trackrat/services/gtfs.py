@@ -491,7 +491,10 @@ class GTFSService:
         with zf.open("trips.txt") as f:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
             for row in reader:
-                trip_id = row.get("trip_id", "")
+                # Sanitize trip_id: replace spaces with underscores for URL safety.
+                # PATCO GTFS uses trip_ids like "Sunday Westbound_T25" which break
+                # HTTP requests when used as path parameters.
+                trip_id = row.get("trip_id", "").replace(" ", "_")
                 route_id = row.get("route_id", "")
 
                 if not trip_id or route_id not in routes:
@@ -561,7 +564,8 @@ class GTFSService:
         with zf.open("stop_times.txt") as f:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
             for row in reader:
-                trip_id = row.get("trip_id", "")
+                # Must match the sanitization applied in _parse_trips
+                trip_id = row.get("trip_id", "").replace(" ", "_")
                 if trip_id not in trips:
                     continue
 

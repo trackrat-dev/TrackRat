@@ -350,9 +350,14 @@ async def predict_delay(
     scheduled_departure = train_journey.scheduled_departure or now_et()
     data_source = train_journey.data_source or "NJT"
 
+    # Use the train's actual origin station for historical lookup, not the user's
+    # boarding station. The forecaster queries by origin_station_code, so passing
+    # a mid-route hub (e.g., JAM for LIRR) would return 0 historical matches.
+    origin_station = train_journey.origin_station_code or station_code
+
     forecast = await delay_forecaster.forecast(
         train_id=train_id,
-        station_code=station_code,
+        station_code=origin_station,
         line_code=train_journey.line_code,
         data_source=data_source,
         journey_date=journey_date,

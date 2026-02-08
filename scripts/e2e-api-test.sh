@@ -28,8 +28,14 @@ while [[ $# -gt 0 ]]; do
 done
 API="$BASE/api/v2"
 TODAY=$(date +%Y-%m-%d)
+DOW=$(date +%u)  # 1=Monday .. 7=Sunday
+IS_WEEKEND=false
+[[ "$DOW" -ge 6 ]] && IS_WEEKEND=true
+DOW_NAME=$(date +%A)
 PASS=0
 FAIL=0
+WARN=0
+SKIP=0
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -44,6 +50,9 @@ NC='\033[0m'
 pass() { printf "  ${GREEN}PASS${NC} %s\n" "$1"; PASS=$((PASS + 1)); }
 fail() { printf "  ${RED}FAIL${NC} %s\n" "$1"; FAIL=$((FAIL + 1)); }
 fail_v() { printf "  ${RED}FAIL${NC} %s\n       %s\n" "$1" "$2"; FAIL=$((FAIL + 1)); }
+warn() { printf "  ${YELLOW}WARN${NC} %s\n" "$1"; WARN=$((WARN + 1)); }
+skip() { printf "  ${YELLOW}SKIP${NC} %s\n" "$1"; SKIP=$((SKIP + 1)); }
+urlencode() { jq -rn --arg v "$1" '$v | @uri'; }
 
 # Fetch URL, write body to $TMPDIR/resp.json, print HTTP status code (000 on timeout/error)
 api() { curl -s -o "$TMPDIR/resp.json" -w "%{http_code}" --max-time 15 "$1" 2>/dev/null || echo "000"; }
@@ -54,7 +63,7 @@ command -v jq >/dev/null 2>&1 || { echo "jq is required"; exit 1; }
 
 echo -e "${BOLD}TrackRat E2E API Test${NC}"
 echo -e "Target: $BASE"
-echo -e "Date:   $TODAY\n"
+echo -e "Date:   $TODAY ($DOW_NAME)\n"
 
 echo -e "${BOLD}Health check...${NC}"
 code=$(api "$BASE/health")
@@ -67,36 +76,43 @@ env=$(jq -r '.environment // "unknown"' "$TMPDIR/resp.json")
 echo -e "Status: $status | Environment: $env\n"
 
 # --- Routes ---
-# Format: "label|from|to|data_source|ml_station (empty if none)"
+# Format: "label|from|to|data_source|ml_station|flags"
+#   ml_station: station code for ML prediction tests (empty if none)
+#   flags:  w = weekday-only (skip on weekends)
+#           s = schedule-only data source (skip OBSERVED check)
 
 ROUTES=(
-  # NJ Transit
-  "NJT NEC|NY|TR|NJT|NY"
-  "NJT NJCL|NY|LB|NJT|NY"
-  "NJT Morris & Essex|HB|DV|NJT|HB"
-  "NJT Raritan Valley|NP|HG|NJT|NP"
-  "NJT Main Line|HB|SF|NJT|HB"
+  # NJ Transit - high frequency, reliable all-week
+  "NJT NEC|NY|TR|NJT|NY|"
+  "NJT NJCL|NY|LB|NJT|NY|"
+  "NJT Main Line|HB|SF|NJT|HB|"
+  # NJ Transit - weekday-only (limited weekend service)
+  "NJT Morris & Essex|HB|DV|NJT|HB|w"
+  "NJT Raritan Valley|NP|HG|NJT|NP|w"
   # Amtrak
-  "Amtrak NEC|NY|WS|AMTRAK|NY"
-  "Amtrak Keystone|PH|HAR|AMTRAK|PH"
-  "Amtrak Empire|NY|ALB|AMTRAK|NY"
-  "Amtrak Acela|NY|BOS|AMTRAK|NY"
-  "Amtrak NEC Short|NY|PH|AMTRAK|NY"
+  "Amtrak NEC|NY|WS|AMTRAK|NY|"
+  "Amtrak Keystone|PH|HAR|AMTRAK|PH|"
+  "Amtrak Empire|NY|ALB|AMTRAK|NY|"
+  "Amtrak Acela|NY|BOS|AMTRAK|NY|"
+  "Amtrak NEC Short|NY|PH|AMTRAK|NY|"
   # PATH
-  "PATH HOB-33|PHO|P33|PATH|"
-  "PATH NWK-WTC|PNK|PWC|PATH|"
-  # LIRR
-  "LIRR Babylon|JAM|BTA|LIRR|JAM"
-  "LIRR Ronkonkoma|JAM|RON|LIRR|JAM"
-  "LIRR Port Washington|NY|PWS|LIRR|"
-  "LIRR Long Beach|JAM|LBH|LIRR|JAM"
-  "LIRR Hempstead|JAM|LHEM|LIRR|JAM"
+  "PATH HOB-33|PHO|P33|PATH||"
+  "PATH NWK-WTC|PNK|PWC|PATH||"
+  # LIRR - high frequency
+  "LIRR Babylon|JAM|BTA|LIRR|JAM|"
+  "LIRR Ronkonkoma|JAM|RON|LIRR|JAM|"
+  "LIRR Port Washington|NY|PWS|LIRR||"
+  "LIRR Long Beach|JAM|LBH|LIRR|JAM|"
+  # LIRR - weekday-only (limited weekend branch service)
+  "LIRR Hempstead|JAM|LHEM|LIRR|JAM|w"
   # Metro-North
-  "MNR Hudson|GCT|MPOK|MNR|GCT"
-  "MNR Harlem|GCT|MWAS|MNR|GCT"
-  "MNR New Haven|GCT|MSTM|MNR|GCT"
-  "MNR New Haven Full|GCT|MNSS|MNR|GCT"
-  "MNR Hudson Short|GCT|MCRN|MNR|GCT"
+  "MNR Hudson|GCT|MPOK|MNR|GCT|"
+  "MNR Harlem|GCT|MWPL|MNR|GCT|"
+  "MNR New Haven|GCT|MSTM|MNR|GCT|"
+  "MNR New Haven Main|GCT|MNHV|MNR|GCT|"
+  "MNR Hudson Short|GCT|MCRH|MNR|GCT|"
+  # PATCO - schedule-only (no real-time API available)
+  "PATCO Speedline|LND|FFL|PATCO||s"
 )
 
 # --- Random routes (Phase 2) ---
@@ -108,7 +124,7 @@ if [[ "$NO_RANDOM" != "true" ]]; then
   if [[ -n "$SEED" ]]; then seed_arg="random.seed($SEED)"; fi
 
   if python3 -c "
-import random, importlib.util, os, sys
+import random, importlib.util, os, sys, datetime
 root = '${REPO_ROOT}/backend_v2/src/trackrat/config'
 def _load(name):
     spec = importlib.util.spec_from_file_location(name, os.path.join(root, name + '.py'))
@@ -120,12 +136,21 @@ rt = _load('route_topology')
 sc = _load('station_configs')
 ${seed_arg}
 ml = set(sc.get_ml_enabled_stations())
+is_weekend = datetime.date.today().weekday() >= 5
 for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('PATCO',1)]:
     routes = rt.get_routes_for_data_source(src)
+    flags = 's' if src == 'PATCO' else ''
     for r in random.sample(routes, min(n, len(routes))):
-        f, t = r.stations[0], r.stations[-1]
+        stations = r.stations
+        f = stations[0]
+        # On weekends, use a station 75% along the route instead of the terminus
+        # to avoid extreme branch endpoints that may lack weekend service
+        if is_weekend and len(stations) > 6:
+            t = stations[int(len(stations) * 0.75)]
+        else:
+            t = stations[-1]
         m = next((s for s in [f, t] if s in ml), '')
-        print(f'{src} {r.name}|{f}|{t}|{src}|{m}')
+        print(f'{src} {r.name}|{f}|{t}|{src}|{m}|{flags}')
 " > "$TMPDIR/random_routes.txt" 2>/dev/null; then
     # Dedup: skip routes whose from|to|source already appears in fixed set
     for route in "${ROUTES[@]}"; do
@@ -155,7 +180,18 @@ for route in "${ROUTES[@]}"; do
       echo -e "${BOLD}Phase 2: Random routes ($((${#ROUTES[@]} - FIXED_COUNT)))${NC}\n"
     fi
   fi
-  IFS='|' read -r label from to source ml <<< "$route"
+  IFS='|' read -r label from to source ml flags <<< "$route"
+  flags="${flags:-}"
+
+  # Skip weekday-only routes on weekends
+  if [[ "$IS_WEEKEND" == "true" && "$flags" == *w* ]]; then
+    echo -e "${YELLOW}--- $label ($from -> $to) ---${NC}"
+    skip "$label (weekday-only, today is $DOW_NAME)"
+    echo ""
+    IDX=$((IDX + 1))
+    continue
+  fi
+
   echo -e "${YELLOW}--- $label ($from -> $to) ---${NC}"
 
   # 1. DEPARTURES (iOS: fetchDepartures)
@@ -163,6 +199,7 @@ for route in "${ROUTES[@]}"; do
   if [[ "$code" != "200" ]]; then
     fail "Departures: HTTP $code"
     echo ""
+    IDX=$((IDX + 1))
     continue
   fi
   cp "$TMPDIR/resp.json" "$TMPDIR/dep.json"
@@ -171,15 +208,22 @@ for route in "${ROUTES[@]}"; do
   if [[ "$count" -eq 0 ]]; then
     fail "Departures: 0 trains"
     echo ""
+    IDX=$((IDX + 1))
     continue
   fi
   pass "Departures: $count trains"
 
-  # Both SCHEDULED and OBSERVED must be present
+  # Check observation type mix
   sched=$(jq '[.departures[] | select(.observation_type == "SCHEDULED")] | length' "$TMPDIR/dep.json")
   obs=$(jq '[.departures[] | select(.observation_type == "OBSERVED")] | length' "$TMPDIR/dep.json")
-  if [[ "$sched" -eq 0 ]]; then
+  if [[ "$flags" == *s* ]]; then
+    # Schedule-only source (e.g., PATCO) — OBSERVED trains are never expected
+    pass "Schedule-only: $sched scheduled"
+  elif [[ "$sched" -eq 0 ]]; then
     fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
+  elif [[ "$obs" -eq 0 && "$count" -le 4 ]]; then
+    # Low-frequency routes (1-4 daily trains) may not have OBSERVED data yet
+    warn "No OBSERVED trains ($sched scheduled) — low-frequency route"
   elif [[ "$obs" -eq 0 ]]; then
     fail "No OBSERVED trains ($sched scheduled, 0 observed)"
   else
@@ -228,13 +272,15 @@ for route in "${ROUTES[@]}"; do
   if [[ -z "$train_id" ]]; then
     fail "All trains cancelled - cannot test detail"
     echo ""
+    IDX=$((IDX + 1))
     continue
   fi
 
-  code=$(api "$API/trains/${train_id}?date=${j_date}&include_predictions=true&from_station=${from}&data_source=${source}")
+  code=$(api "$API/trains/$(urlencode "$train_id")?date=${j_date}&include_predictions=true&from_station=${from}&data_source=${source}")
   if [[ "$code" != "200" ]]; then
     fail "Detail ($train_id): HTTP $code"
     echo ""
+    IDX=$((IDX + 1))
     continue
   fi
   cp "$TMPDIR/resp.json" "$TMPDIR/detail.json"
@@ -309,6 +355,8 @@ echo -e "${BOLD}========== SUMMARY ==========${NC}"
 total=$((PASS + FAIL))
 echo -e "  ${GREEN}PASS${NC}: $PASS"
 echo -e "  ${RED}FAIL${NC}: $FAIL"
+[[ "$WARN" -gt 0 ]] && echo -e "  ${YELLOW}WARN${NC}: $WARN"
+[[ "$SKIP" -gt 0 ]] && echo -e "  ${YELLOW}SKIP${NC}: $SKIP (weekday-only routes, today is $DOW_NAME)"
 echo -e "  Total: $total checks across ${#ROUTES[@]} routes"
 if [[ "${#ROUTES[@]}" -gt "$FIXED_COUNT" ]]; then
   echo -e "  Fixed: $FIXED_COUNT | Random: $((${#ROUTES[@]} - FIXED_COUNT))"
