@@ -434,7 +434,7 @@ struct RouteTopology {
             id: "lirr-west-hempstead",
             name: "West Hempstead Branch",
             dataSource: "LIRR",
-            stationCodes: ["JAM", "LLMR", "LSAB", "LWWD", "LMVN", "LLVW", "HGN", "WHD"]
+            stationCodes: ["JAM", "LSAB", "VSM", "LWWD", "LMVN", "LLVW", "HGN", "WHD"]
         ),
 
         // Port Washington Branch (doesn't go through Jamaica)
