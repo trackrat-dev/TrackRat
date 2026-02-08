@@ -1,24 +1,39 @@
 #!/usr/bin/env bash
 # e2e-api-test.sh - End-to-end API validation mimicking iOS app behavior
 #
-# Tests ~22 routes across NJT, Amtrak, PATH, LIRR, and Metro-North by
-# replicating the exact API call sequence the iOS app makes:
+# Phase 1: Tests ~22 fixed routes across NJT, Amtrak, PATH, LIRR, and
+# Metro-North by replicating the exact API call sequence the iOS app makes:
 #   1. Fetch departures for a route
 #   2. Fetch train detail (with predictions) for the first active train
 #   3. Fetch track + delay predictions at ML-enabled stations
+# Phase 2: Randomly selects additional routes from the backend route topology
+# and runs the same validation. Deduplicates against fixed routes.
 #
-# Usage: ./scripts/e2e-api-test.sh [base_url]
-#   base_url defaults to https://staging.apiv2.trackrat.net
+# Usage: ./scripts/e2e-api-test.sh [base_url] [--no-random] [--seed N]
+#   base_url     defaults to https://staging.apiv2.trackrat.net
+#   --no-random  skip random route phase
+#   --seed N     reproducible random selection
 
 set -euo pipefail
 
-BASE="${1:-https://staging.apiv2.trackrat.net}"
+BASE="https://staging.apiv2.trackrat.net"
+NO_RANDOM=false
+SEED=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --no-random) NO_RANDOM=true; shift ;;
+    --seed) SEED="$2"; shift 2 ;;
+    *) BASE="$1"; shift ;;
+  esac
+done
 API="$BASE/api/v2"
 TODAY=$(date +%Y-%m-%d)
 PASS=0
 FAIL=0
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -84,9 +99,62 @@ ROUTES=(
   "MNR Hudson Short|GCT|MCRN|MNR|GCT"
 )
 
+# --- Random routes (Phase 2) ---
+
+FIXED_COUNT=${#ROUTES[@]}
+
+if [[ "$NO_RANDOM" != "true" ]]; then
+  seed_arg=""
+  if [[ -n "$SEED" ]]; then seed_arg="random.seed($SEED)"; fi
+
+  if python3 -c "
+import random, importlib.util, os, sys
+root = '${REPO_ROOT}/backend_v2/src/trackrat/config'
+def _load(name):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(root, name + '.py'))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+rt = _load('route_topology')
+sc = _load('station_configs')
+${seed_arg}
+ml = set(sc.get_ml_enabled_stations())
+for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('PATCO',1)]:
+    routes = rt.get_routes_for_data_source(src)
+    for r in random.sample(routes, min(n, len(routes))):
+        f, t = r.stations[0], r.stations[-1]
+        m = next((s for s in [f, t] if s in ml), '')
+        print(f'{src} {r.name}|{f}|{t}|{src}|{m}')
+" > "$TMPDIR/random_routes.txt" 2>/dev/null; then
+    # Dedup: skip routes whose from|to|source already appears in fixed set
+    for route in "${ROUTES[@]}"; do
+      IFS='|' read -r _ from to source _ <<< "$route"
+      echo "${from}|${to}|${source}"
+    done > "$TMPDIR/fixed.keys"
+
+    while IFS= read -r line; do
+      IFS='|' read -r _ from to source _ <<< "$line"
+      if ! grep -qxF "${from}|${to}|${source}" "$TMPDIR/fixed.keys"; then
+        ROUTES+=("$line")
+      fi
+    done < "$TMPDIR/random_routes.txt"
+  else
+    echo -e "  ${YELLOW}Skipping random routes (backend not importable)${NC}\n"
+  fi
+fi
+
 # --- Test loop ---
 
+IDX=0
 for route in "${ROUTES[@]}"; do
+  if [[ "${#ROUTES[@]}" -gt "$FIXED_COUNT" ]]; then
+    if [[ "$IDX" -eq 0 ]]; then
+      echo -e "${BOLD}Phase 1: Fixed routes ($FIXED_COUNT)${NC}\n"
+    elif [[ "$IDX" -eq "$FIXED_COUNT" ]]; then
+      echo -e "${BOLD}Phase 2: Random routes ($((${#ROUTES[@]} - FIXED_COUNT)))${NC}\n"
+    fi
+  fi
   IFS='|' read -r label from to source ml <<< "$route"
   echo -e "${YELLOW}--- $label ($from -> $to) ---${NC}"
 
@@ -232,6 +300,7 @@ for route in "${ROUTES[@]}"; do
   fi
 
   echo ""
+  IDX=$((IDX + 1))
 done
 
 # --- Summary ---
@@ -241,6 +310,9 @@ total=$((PASS + FAIL))
 echo -e "  ${GREEN}PASS${NC}: $PASS"
 echo -e "  ${RED}FAIL${NC}: $FAIL"
 echo -e "  Total: $total checks across ${#ROUTES[@]} routes"
+if [[ "${#ROUTES[@]}" -gt "$FIXED_COUNT" ]]; then
+  echo -e "  Fixed: $FIXED_COUNT | Random: $((${#ROUTES[@]} - FIXED_COUNT))"
+fi
 
 if [[ "$FAIL" -gt 0 ]]; then
   echo -e "\n${RED}FAILED${NC}"
