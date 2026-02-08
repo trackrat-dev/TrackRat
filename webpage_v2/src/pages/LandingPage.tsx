@@ -1,5 +1,3 @@
-import { Link } from 'react-router-dom';
-
 // Matches the base path in vite.config.ts and BrowserRouter basename
 const BASE = '/TrackRat/';
 
@@ -51,13 +49,6 @@ const transitSystems = [
   'PATCO',
   'LIRR',
   'Metro-North',
-];
-
-const techStack = [
-  { name: 'Python', detail: 'FastAPI backend' },
-  { name: 'Swift', detail: 'iOS app' },
-  { name: 'React', detail: 'Web app' },
-  { name: 'PostgreSQL', detail: 'Database' },
 ];
 
 const faqs = [
@@ -113,18 +104,9 @@ export function LandingPage() {
           TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-secondary mb-8 max-w-xl mx-auto">
-          Real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North
+          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North
         </p>
-        <div className="mx-auto mb-8 rounded-2xl overflow-hidden shadow-lg" style={{ width: 270, height: 480 }}>
-          <iframe
-            src="https://www.youtube.com/embed/t_L41jYpTA4"
-            title="TrackRat demo"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-            className="w-full h-full"
-          />
-        </div>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+        <div className="flex items-center justify-center mb-6">
           <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer">
             <img
               src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
@@ -132,12 +114,6 @@ export function LandingPage() {
               className="h-12"
             />
           </a>
-          <Link
-            to="/departures"
-            className="inline-flex items-center px-8 py-3 bg-accent text-white font-semibold rounded-xl hover:opacity-90 transition-opacity text-lg"
-          >
-            Web App (beta)
-          </Link>
         </div>
         <div className="flex items-center justify-center gap-4">
           <a
@@ -166,7 +142,7 @@ export function LandingPage() {
       </section>
 
       {/* Feature Showcase */}
-      <section className="px-6 py-12 max-w-5xl mx-auto">
+      <section className="px-6 py-12 max-w-3xl mx-auto">
         {features.map((feature, i) => (
           <div
             key={feature.title}
@@ -175,7 +151,7 @@ export function LandingPage() {
             <img
               src={feature.image}
               alt={feature.title}
-              className="w-64 rounded-2xl shadow-lg"
+              className="w-48 rounded-2xl shadow-lg"
               loading="lazy"
             />
             <div className="text-center md:text-left flex-1">
@@ -196,7 +172,7 @@ export function LandingPage() {
           <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
             Supported Transit Systems
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
             {transitSystems.map((name) => (
               <div
                 key={name}
@@ -206,47 +182,79 @@ export function LandingPage() {
               </div>
             ))}
           </div>
+          <p className="text-text-secondary text-center">
+            Have an idea for another transit system?{' '}
+            <a
+              href={FEEDBACK_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              Send us your suggestions
+            </a>
+          </p>
         </div>
       </section>
 
-      {/* Built in the Open */}
-      <section className="px-6 py-12 max-w-4xl mx-auto text-center">
-        <h2 className="text-2xl md:text-3xl font-bold mb-4">
-          Built in the Open
+      {/* Open Source */}
+      <section className="px-6 py-12 max-w-4xl mx-auto">
+        <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
+          Open Source
         </h2>
-        <p className="text-text-secondary text-lg mb-8 max-w-2xl mx-auto">
-          TrackRat is open source under the Apache 2.0 license. The entire
-          codebase — backend, iOS app, and web app — is available on GitHub.
-          The{' '}
+        <div className="space-y-8 max-w-2xl mx-auto">
+          <div>
+            <h3 className="font-semibold text-lg mb-2">Apache 2.0 Licensed</h3>
+            <p className="text-text-secondary leading-relaxed">
+              TrackRat is fully open source under the Apache 2.0 license. You
+              can read, fork, and contribute to every part of the project on
+              GitHub.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-lg mb-2">Public REST API</h3>
+            <p className="text-text-secondary leading-relaxed">
+              The{' '}
+              <a
+                href={API_DOCS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                REST API
+              </a>{' '}
+              is open for anyone to use. Build your own transit tools, run
+              analyses, or integrate TrackRat data into your projects.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-lg mb-2">iOS App</h3>
+            <p className="text-text-secondary leading-relaxed">
+              The Swift/SwiftUI iOS app includes Live Activities, track
+              predictions, and multi-carrier support. The full source is on
+              GitHub.
+            </p>
+          </div>
+          <div>
+            <h3 className="font-semibold text-lg mb-2">Web App</h3>
+            <p className="text-text-secondary leading-relaxed">
+              The React/TypeScript web app provides departure lookups and
+              real-time train status from any browser. Also fully open source.
+            </p>
+          </div>
+        </div>
+        <div className="text-center mt-8">
           <a
-            href={API_DOCS_URL}
+            href={GITHUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-accent hover:underline"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-text-primary text-background font-semibold rounded-xl hover:opacity-90 transition-opacity"
           >
-            REST API
-          </a>{' '}
-          is also open for anyone to use in their own projects.
-        </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {techStack.map((tech) => (
-            <div key={tech.name} className="text-center">
-              <p className="font-semibold">{tech.name}</p>
-              <p className="text-text-muted text-sm">{tech.detail}</p>
-            </div>
-          ))}
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+            </svg>
+            View on GitHub
+          </a>
         </div>
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 px-6 py-3 bg-text-primary text-background font-semibold rounded-xl hover:opacity-90 transition-opacity"
-        >
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-          </svg>
-          View on GitHub
-        </a>
       </section>
 
       {/* FAQ */}
