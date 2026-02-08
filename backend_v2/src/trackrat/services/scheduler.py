@@ -5,7 +5,7 @@ Uses APScheduler to run periodic tasks within the FastAPI application.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, cast
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -699,6 +699,8 @@ class SchedulerService:
         )
 
         # Get candidates without timezone-sensitive comparisons
+        # Only consider today and yesterday (for midnight-crossing trains)
+        min_journey_date = current_time.date() - timedelta(days=1)
         stmt = (
             select(TrainJourney)
             .where(
@@ -708,6 +710,7 @@ class SchedulerService:
                     TrainJourney.is_cancelled.is_not(True),
                     TrainJourney.is_completed.is_not(True),
                     TrainJourney.is_expired.is_not(True),  # Exclude expired trains
+                    TrainJourney.journey_date >= min_journey_date,
                 )
             )
             .limit(50)
@@ -775,8 +778,9 @@ class SchedulerService:
 
             # Use the safe collection method that handles greenlet issues
             # This wraps the collection in a new async task to ensure proper context
+            j_date = journey_date.date() if isinstance(journey_date, datetime) else journey_date
             result = await asyncio.create_task(
-                self._collect_single_njt_journey_safe(train_id)
+                self._collect_single_njt_journey_safe(train_id, j_date)
             )
 
             if result:
@@ -956,7 +960,7 @@ class SchedulerService:
         self.scheduler.add_job(
             self.collect_njt_journeys_batch,
             trigger=DateTrigger(run_date=run_time),
-            args=[trains_to_collect],
+            args=[trains_to_collect, current_date],
             id=job_id,
             name=f"NJT batch collection ({len(trains_to_collect)} trains)",
             replace_existing=True,
@@ -1374,7 +1378,7 @@ class SchedulerService:
         return "COMPLETED"
 
     async def _collect_single_njt_journey_safe(
-        self, train_id: str
+        self, train_id: str, journey_date: date | None = None
     ) -> dict[str, Any] | None:
         """Safely collect a single NJT journey using synchronous database operations.
 
@@ -1383,6 +1387,7 @@ class SchedulerService:
 
         Args:
             train_id: The train ID to collect
+            journey_date: The journey date to filter by (defaults to today if not provided)
 
         Returns:
             Dict with journey info if successful, None if failed
@@ -1395,7 +1400,11 @@ class SchedulerService:
 
             from trackrat.collectors.njt.client import TrainNotFoundError
             from trackrat.models.database import JourneySnapshot, JourneyStop
-            from trackrat.utils.time import parse_njt_time
+            from trackrat.utils.time import now_et, parse_njt_time
+
+            # Default to today's date if not provided
+            if journey_date is None:
+                journey_date = now_et().date()
 
             # Create synchronous database connection
             db_url = str(self.settings.database_url).replace(
@@ -1408,12 +1417,13 @@ class SchedulerService:
             SyncSession = sessionmaker(sync_engine)
 
             with SyncSession() as session:
-                # Find the journey for this train (eager load stops)
+                # Find the journey for this train on the specific date (eager load stops)
                 stmt = (
                     select(TrainJourney)
                     .where(
                         and_(
                             TrainJourney.train_id == train_id,
+                            TrainJourney.journey_date == journey_date,
                             TrainJourney.data_source == "NJT",
                         )
                     )
@@ -1658,11 +1668,12 @@ class SchedulerService:
             if sync_engine is not None:
                 sync_engine.dispose()
 
-    async def collect_njt_journeys_batch(self, train_ids: list[str]) -> None:
+    async def collect_njt_journeys_batch(self, train_ids: list[str], journey_date: date | None = None) -> None:
         """Collect journey data for multiple NJ Transit trains in batch.
 
         Args:
             train_ids: List of NJ Transit train IDs to collect
+            journey_date: The journey date for these trains (defaults to today)
         """
         if not train_ids:
             logger.info("no_njt_trains_to_collect")
@@ -1702,7 +1713,7 @@ class SchedulerService:
                     # Process each train in a fresh async context to avoid greenlet issues
                     # This creates a new task for each collection to ensure proper context
                     result = await asyncio.create_task(
-                        self._collect_single_njt_journey_safe(train_id)
+                        self._collect_single_njt_journey_safe(train_id, journey_date)
                     )
 
                     if result:
@@ -1715,7 +1726,7 @@ class SchedulerService:
                             )
                             await asyncio.sleep(1.0)  # Wait a bit before retry
                             retry_result = await asyncio.create_task(
-                                self._collect_single_njt_journey_safe(train_id)
+                                self._collect_single_njt_journey_safe(train_id, journey_date)
                             )
                             if retry_result and retry_result.get("success"):
                                 success_count += 1
