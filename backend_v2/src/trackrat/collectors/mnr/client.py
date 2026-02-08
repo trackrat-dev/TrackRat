@@ -165,9 +165,12 @@ class MNRClient:
                         if dep.HasField("time"):
                             departure_time = datetime.fromtimestamp(dep.time, tz=UTC)
 
-                    # Skip if no arrival time
+                    # GTFS-RT origins may only have departure (no arrival).
+                    # Use departure_time as fallback to keep the stop.
                     if arrival_time is None:
-                        continue
+                        if departure_time is None:
+                            continue
+                        arrival_time = departure_time
 
                     # Extract track from MTA Railroad GTFS-RT extension (field 1005)
                     track = extract_mta_track(stu)
