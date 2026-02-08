@@ -947,8 +947,8 @@ class TestPathCollectorUpdate:
     async def test_collect_journey_details_marks_expired_after_errors(
         self, collector, mock_client, sample_journey
     ):
-        """Test journey is marked expired after 2 API errors."""
-        sample_journey.api_error_count = 1  # Already had one error
+        """Test journey is marked expired after 3 API errors."""
+        sample_journey.api_error_count = 2  # Already had two errors
         mock_client.get_all_arrivals.side_effect = Exception("API Error")
 
         mock_session = AsyncMock()
@@ -956,7 +956,7 @@ class TestPathCollectorUpdate:
 
         await collector.collect_journey_details(mock_session, sample_journey)
 
-        assert sample_journey.api_error_count == 2
+        assert sample_journey.api_error_count == 3
         assert sample_journey.is_expired
 
 

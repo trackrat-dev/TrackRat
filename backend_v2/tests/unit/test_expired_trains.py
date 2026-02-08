@@ -12,8 +12,8 @@ from trackrat.utils.time import now_et
 
 
 @pytest.mark.asyncio
-async def test_train_expiry_after_two_failures():
-    """Test that trains are marked as expired after 2 TrainNotFoundError failures."""
+async def test_train_expiry_after_three_failures():
+    """Test that trains are marked as expired after 3 TrainNotFoundError failures."""
     # Create a mock journey
     journey = TrainJourney(
         id=1,
@@ -49,10 +49,16 @@ async def test_train_expiry_after_two_failures():
     assert journey.is_expired is False
     assert session.flush.called
 
-    # Second failure - should expire the train
+    # Second failure - should increment but still not expire
     await collector.collect_journey_details(session, journey)
 
     assert journey.api_error_count == 2
+    assert journey.is_expired is False
+
+    # Third failure - should expire the train
+    await collector.collect_journey_details(session, journey)
+
+    assert journey.api_error_count == 3
     assert journey.is_expired is True
     assert journey.last_updated_at is not None
 
@@ -216,7 +222,7 @@ async def test_train_not_found_counted_as_success_in_batch():
         terminal_station_code="TR",
         scheduled_departure=now_et() - timedelta(hours=1),
         data_source="NJT",
-        api_error_count=1,
+        api_error_count=2,
         is_expired=False,
     )
 
@@ -329,5 +335,5 @@ async def test_train_not_found_counted_as_success_in_batch():
     assert len(results["errors"]) == 0
 
     # Journey2 should have incremented error count and be expired
-    assert journey2.api_error_count == 2
+    assert journey2.api_error_count == 3
     assert journey2.is_expired is True

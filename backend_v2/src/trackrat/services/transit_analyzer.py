@@ -26,7 +26,7 @@ class TransitAnalyzer:
 
     # Track invalid segments we've already warned about to avoid log spam.
     # Key: (journey_id, from_station, to_station). Resets on process restart.
-    _warned_invalid_segments: set[tuple[int, str, str]] = set()
+    _warned_invalid_segments: set[tuple[int | None, str | None, str | None]] = set()
 
     async def analyze_journey(self, db: AsyncSession, journey: TrainJourney) -> None:
         """
@@ -159,8 +159,16 @@ class TransitAnalyzer:
 
             # Skip invalid times (non-positive seconds or unreasonably long)
             if actual_seconds <= 0 or actual_minutes > 300:
-                warn_key = (journey.id, current_stop.station_code, next_stop.station_code)
-                log = logger.warning if warn_key not in self._warned_invalid_segments else logger.debug
+                warn_key = (
+                    journey.id,
+                    current_stop.station_code,
+                    next_stop.station_code,
+                )
+                log = (
+                    logger.warning
+                    if warn_key not in self._warned_invalid_segments
+                    else logger.debug
+                )
                 log(
                     "invalid_transit_time",
                     journey_id=journey.id,
@@ -465,8 +473,16 @@ class TransitAnalyzer:
 
             # Skip invalid times (non-positive seconds or unreasonably long)
             if actual_seconds <= 0 or actual_minutes > 300:
-                warn_key = (journey.id, current_stop.station_code, next_stop.station_code)
-                log = logger.warning if warn_key not in self._warned_invalid_segments else logger.debug
+                warn_key = (
+                    journey.id,
+                    current_stop.station_code,
+                    next_stop.station_code,
+                )
+                log = (
+                    logger.warning
+                    if warn_key not in self._warned_invalid_segments
+                    else logger.debug
+                )
                 log(
                     "invalid_transit_time",
                     journey_id=journey.id,
