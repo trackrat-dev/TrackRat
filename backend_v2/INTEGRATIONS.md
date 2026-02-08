@@ -77,7 +77,8 @@ collectors/njt/
 
 **Discovery Collector** (`discovery.py`):
 - Polls 7 major hub stations (NY, NP, PJ, TR, LB, PL, DN)
-- Uses `getDepartureVisionData` API method
+- Uses `getTrainSchedule` API method (with embedded stops)
+- Checks `getDepartureVisionData` for cancellation alerts
 - Returns list of discovered train IDs
 - Runs every 30 minutes via scheduler
 

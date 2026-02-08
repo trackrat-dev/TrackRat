@@ -629,9 +629,10 @@ class DepartureService:
 
                         journey = journeys_by_id.get(train_id)
                         if not journey:
-                            # Only log warning for non-Amtrak trains
+                            # Train in NJT schedule API without a journey record —
+                            # expected for undiscovered or cancelled trains
                             if not is_amtrak:
-                                logger.warning(
+                                logger.debug(
                                     "journey_not_found_during_station_refresh",
                                     train_id=train_id,
                                     station_code=station_code,

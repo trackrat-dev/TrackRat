@@ -482,8 +482,8 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             journey.api_error_count = (journey.api_error_count or 0) + 1
             journey.last_updated_at = now_et()
 
-            # After 2 failed attempts, mark as expired
-            if journey.api_error_count >= 2:
+            # After 3 failed attempts, mark as expired
+            if journey.api_error_count >= 3:
                 journey.is_expired = True
                 logger.warning(
                     "amtrak_train_marked_expired",

@@ -768,7 +768,7 @@ class PathCollector:
                     # No arrivals matched - train may have disappeared from API
                     # Increment error count to track consecutive misses
                     journey.api_error_count = (journey.api_error_count or 0) + 1
-                    if journey.api_error_count >= 2:
+                    if journey.api_error_count >= 3:
                         journey.is_expired = True
                         logger.info(
                             "path_journey_expired_no_arrivals",
@@ -1164,7 +1164,7 @@ class PathCollector:
             journey.api_error_count = (journey.api_error_count or 0) + 1
             journey.last_updated_at = now_et()
 
-            if journey.api_error_count >= 2:
+            if journey.api_error_count >= 3:
                 journey.is_expired = True
 
         await session.flush()

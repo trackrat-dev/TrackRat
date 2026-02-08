@@ -1457,8 +1457,8 @@ class SchedulerService:
                         journey.last_updated_at = now_et()
                         journey.update_count = (journey.update_count or 0) + 1
 
-                        # After 2 failed attempts, mark as expired
-                        if journey.api_error_count >= 2:
+                        # After 3 failed attempts, mark as expired
+                        if journey.api_error_count >= 3:
                             journey.is_expired = True
                             logger.warning(
                                 "train_marked_expired_sync",
