@@ -96,13 +96,21 @@ class DepartureService:
                 from_station=from_station,
                 to_station=to_station,
             )
-            return await gtfs_service.get_scheduled_departures(
+            response = await gtfs_service.get_scheduled_departures(
                 db=db,
                 from_station=from_station,
                 to_station=to_station,
                 target_date=target_date,
                 limit=limit,
             )
+            if data_sources:
+                response.departures = [
+                    d
+                    for d in response.departures
+                    if d.data_source in data_sources
+                ]
+                response.metadata["count"] = len(response.departures)
+            return response
 
         # For today or past dates, use real-time data
         # Set default time range
@@ -350,6 +358,7 @@ class DepartureService:
                     for dep in gtfs_response.departures
                     if dep.departure.scheduled_time
                     and dep.departure.scheduled_time > current_time
+                    and dep.data_source in allowed_sources
                     and (
                         # Non-PATH: include all future departures
                         dep.data_source != "PATH"

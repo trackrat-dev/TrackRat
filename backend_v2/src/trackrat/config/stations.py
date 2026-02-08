@@ -1248,6 +1248,14 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "DET": "DET",  # Detroit
     "GRR": "GRR",  # Grand Rapids
     "PGH": "PGH",  # Pittsburgh
+    # Empire Corridor (Hudson Valley)
+    "CRT": "CRT",  # Croton-Harmon
+    "YNY": "YNY",  # Yonkers
+    "POU": "POU",  # Poughkeepsie
+    "RHI": "RHI",  # Rhinecliff
+    "HUD": "HUD",  # Hudson
+    "SDY": "SDY",  # Schenectady
+    "SAR": "SAR",  # Saratoga Springs
     # Northeast extensions
     "ALB": "ALB",  # Albany-Rensselaer
     "SYR": "SYR",  # Syracuse
@@ -1856,6 +1864,14 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "DET": "DET",  # Detroit
     "GRR": "GRR",  # Grand Rapids
     "PGH": "PGH",  # Pittsburgh
+    # Empire Corridor (Hudson Valley)
+    "CRT": "CRT",  # Croton-Harmon
+    "YNY": "YNY",  # Yonkers
+    "POU": "POU",  # Poughkeepsie
+    "RHI": "RHI",  # Rhinecliff
+    "HUD": "HUD",  # Hudson
+    "SDY": "SDY",  # Schenectady
+    "SAR": "SAR",  # Saratoga Springs
     # Northeast extensions
     "ALB": "ALB",  # Albany-Rensselaer
     "SYR": "SYR",  # Syracuse
