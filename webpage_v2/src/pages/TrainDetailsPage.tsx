@@ -126,12 +126,13 @@ export function TrainDetailsPage() {
   const supportedStations = new Set(['NY', 'NP', 'ND', 'HB', 'MP', 'ST', 'TR', 'PH', 'DV', 'DN', 'PL', 'LB', 'JA', 'JAM', 'GCT']);
 
   // Check if we should show track predictions
-  // Show for supported station departures without track assignment
-  const originStop = train.stops.find(s => s.station.code === train.route.origin_code);
+  // Use the user's boarding station (from route params), not the train's origin
+  const predictionStationCode = from?.toUpperCase() || train.route.origin_code;
+  const predictionStop = train.stops.find(s => s.station.code === predictionStationCode);
   const shouldShowPredictions =
-    supportedStations.has(train.route.origin_code) &&  // Supported station
-    !originStop?.track &&                               // No track assigned
-    !train.is_cancelled;                                // Not cancelled
+    supportedStations.has(predictionStationCode) &&  // Supported station
+    !predictionStop?.track &&                        // No track assigned
+    !train.is_cancelled;                             // Not cancelled
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -182,12 +183,12 @@ export function TrainDetailsPage() {
         <div className="text-sm text-text-muted">{train.data_source}</div>
       </div>
 
-      {/* Track predictions for NY Penn Station */}
+      {/* Track predictions */}
       {shouldShowPredictions && (
         <div className="mb-6">
           <TrackPredictionBar
             trainId={train.train_id}
-            originStationCode={train.route.origin_code}
+            originStationCode={predictionStationCode}
             journeyDate={train.journey_date}
           />
         </div>

@@ -2,7 +2,6 @@
 Station-specific configurations for ML track predictions.
 
 This module defines which stations support ML predictions and their track configurations.
-All stations use a minimum of 100 samples for training.
 """
 
 from typing import Any
@@ -12,7 +11,6 @@ from typing import Any
 STATION_ML_CONFIGS = {
     "NY": {
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": [
             "1",
             "2",
@@ -62,19 +60,16 @@ STATION_ML_CONFIGS = {
     },
     "NP": {  # Newark Penn - 761 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2", "3", "4", "5", "A"],
         "platform_mappings": None,  # Track = Platform
     },
     "ND": {  # 565 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2", "3"],
         "platform_mappings": None,
     },
     "HB": {  # Hoboken - 389 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": [
             "1",
             "2",
@@ -98,67 +93,56 @@ STATION_ML_CONFIGS = {
     },
     "MP": {  # Metropark - 369 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "4"],
         "platform_mappings": None,
     },
     "ST": {  # 349 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["0", "1", "2", "W"],
         "platform_mappings": None,
     },
     "TR": {  # Trenton - 338 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2", "4", "5"],
         "platform_mappings": None,
     },
     "PH": {  # Princeton/Philadelphia? - 275 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["2", "3", "4", "5", "6", "7", "9"],
         "platform_mappings": None,
     },
     "DV": {  # 249 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2", "Sing+"],
         "platform_mappings": None,
     },
     "DN": {  # 137 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "PL": {  # 132 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "LB": {  # 118 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "JA": {  # Jersey Avenue (NJT) - 113 records
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "JAM": {  # Jamaica (LIRR) - busiest junction in the system
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": ["2", "6", "7", "8", "11", "12"],
         "platform_mappings": None,
     },
     "GCT": {  # Grand Central - MNR Terminal (tracks 13-114) + LIRR Madison (tracks 201-304)
         "ml_enabled": True,
-        "min_samples_required": 100,
         "tracks": [
             # MNR Grand Central Terminal
             "13",
@@ -200,7 +184,6 @@ STATION_ML_CONFIGS = {
     # Default configuration for stations not explicitly listed
     "_default": {
         "ml_enabled": False,
-        "min_samples_required": 100,
         "tracks": [],
         "platform_mappings": None,
     },
