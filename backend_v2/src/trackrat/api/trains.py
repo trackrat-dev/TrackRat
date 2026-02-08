@@ -32,6 +32,7 @@ from trackrat.models.api import (
     TrainHistoryResponse,
     TrainPosition,
 )
+from trackrat.config.stations import canonical_station_code, expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.departure import DepartureService
@@ -108,8 +109,8 @@ async def get_departures(
 
     if use_cache:
         cache_params = {
-            "from_station": from_station,
-            "to_station": to_station,
+            "from_station": canonical_station_code(from_station),
+            "to_station": canonical_station_code(to_station) if to_station else None,
             "date": None,
             "limit": limit,
             "hide_departed": hide_departed,
@@ -373,10 +374,11 @@ async def get_train_details(
     if include_predictions and from_station:
         from trackrat.config.station_configs import station_has_ml_predictions
 
+        from_station_codes = set(expand_station_codes(from_station))
         if station_has_ml_predictions(from_station):
             # Check if the origin stop has a track assigned
             origin_stop = next(
-                (s for s in stops if s.station.code == from_station), None
+                (s for s in stops if s.station.code in from_station_codes), None
             )
             if origin_stop and origin_stop.track is None and journey.train_id:
                 try:
@@ -478,17 +480,20 @@ async def get_train_history(
         from_stop_alias = aliased(JourneyStop, name="from_stop")
         to_stop_alias = aliased(JourneyStop, name="to_stop")
 
+        from_codes = expand_station_codes(from_station)
+        to_codes = expand_station_codes(to_station)
+
         # Subquery: journey has from_station with stop_sequence < to_station's sequence
         route_filter = exists(
             select(from_stop_alias.id).where(
                 and_(
                     from_stop_alias.journey_id == TrainJourney.id,
-                    from_stop_alias.station_code == from_station,
+                    from_stop_alias.station_code.in_(from_codes),
                     exists(
                         select(to_stop_alias.id).where(
                             and_(
                                 to_stop_alias.journey_id == TrainJourney.id,
-                                to_stop_alias.station_code == to_station,
+                                to_stop_alias.station_code.in_(to_codes),
                                 to_stop_alias.stop_sequence
                                 > from_stop_alias.stop_sequence,
                             )
@@ -532,6 +537,10 @@ async def get_train_history(
     # Track usage statistics
     track_usage_counts = {}
 
+    # Precompute expanded code sets for Python-level filtering
+    from_code_set = set(expand_station_codes(from_station)) if from_station else set()
+    to_code_set = set(expand_station_codes(to_station)) if to_station else set()
+
     for journey in journeys:
         # Filter by station route if specified
         if from_station and to_station:
@@ -540,9 +549,9 @@ async def get_train_history(
             to_stop = None
 
             for stop in journey.stops:
-                if stop.station_code == from_station:
+                if stop.station_code in from_code_set:
                     from_stop = stop
-                elif stop.station_code == to_station:
+                elif stop.station_code in to_code_set:
                     to_stop = stop
 
             # Skip if either station is not found, or if they're in wrong order
@@ -696,9 +705,9 @@ async def get_train_history(
                 to_stop = None
 
                 for stop in journey.stops:
-                    if stop.station_code == from_station:
+                    if stop.station_code in from_code_set:
                         from_stop = stop
-                    elif stop.station_code == to_station:
+                    elif stop.station_code in to_code_set:
                         to_stop = stop
 
                 if not from_stop or not to_stop:

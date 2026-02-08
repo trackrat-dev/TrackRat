@@ -14,7 +14,7 @@ from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import get_db
 from trackrat.models.api import (
     AggregateStats,
@@ -85,17 +85,20 @@ async def get_route_history(
     from_stop_alias = aliased(JourneyStop, name="from_stop")
     to_stop_alias = aliased(JourneyStop, name="to_stop")
 
+    from_codes = expand_station_codes(from_station)
+    to_codes = expand_station_codes(to_station)
+
     # Subquery: journey has from_station with stop_sequence < to_station's sequence
     route_filter = exists(
         select(from_stop_alias.id).where(
             and_(
                 from_stop_alias.journey_id == TrainJourney.id,
-                from_stop_alias.station_code == from_station,
+                from_stop_alias.station_code.in_(from_codes),
                 exists(
                     select(to_stop_alias.id).where(
                         and_(
                             to_stop_alias.journey_id == TrainJourney.id,
-                            to_stop_alias.station_code == to_station,
+                            to_stop_alias.station_code.in_(to_codes),
                             to_stop_alias.stop_sequence > from_stop_alias.stop_sequence,
                         )
                     )
@@ -186,6 +189,7 @@ def _calculate_route_stats(
     cancelled_count = 0
     delay_categories = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
     track_usage_counts: dict[str, int] = {}
+    origin_codes = set(expand_station_codes(origin_station))
 
     for journey in journeys:
         # Get last stop for delay calculation
@@ -220,7 +224,7 @@ def _calculate_route_stats(
 
         # Count track usage ONLY at origin station
         for stop in journey.stops:
-            if stop.station_code == origin_station and stop.track:
+            if stop.station_code in origin_codes and stop.track:
                 if stop.track not in track_usage_counts:
                     track_usage_counts[stop.track] = 0
                 track_usage_counts[stop.track] += 1
@@ -529,6 +533,9 @@ async def get_segment_train_details(
     from_stop = aliased(JourneyStop, name="from_stop")
     to_stop = aliased(JourneyStop, name="to_stop")
 
+    seg_from_codes = expand_station_codes(from_station)
+    seg_to_codes = expand_station_codes(to_station)
+
     # Build base conditions
     conditions = [
         # Filter by when the train departs from_station (not journey origin)
@@ -539,7 +546,7 @@ async def get_segment_train_details(
             select(to_stop.id).where(
                 and_(
                     to_stop.journey_id == TrainJourney.id,
-                    to_stop.station_code == to_station,
+                    to_stop.station_code.in_(seg_to_codes),
                     to_stop.stop_sequence > from_stop.stop_sequence,
                 )
             )
@@ -556,7 +563,7 @@ async def get_segment_train_details(
             from_stop,
             and_(
                 from_stop.journey_id == TrainJourney.id,
-                from_stop.station_code == from_station,
+                from_stop.station_code.in_(seg_from_codes),
             ),
         )
         .where(and_(*conditions))
@@ -609,11 +616,13 @@ async def _extract_segment_detail(
     # Find the from and to stops
     from_stop = None
     to_stop = None
+    seg_from_codes = set(expand_station_codes(from_station))
+    seg_to_codes = set(expand_station_codes(to_station))
 
     for stop in journey.stops:
-        if stop.station_code == from_station:
+        if stop.station_code in seg_from_codes:
             from_stop = stop
-        elif stop.station_code == to_station:
+        elif stop.station_code in seg_to_codes:
             to_stop = stop
 
     # Verify stops exist and are in correct order

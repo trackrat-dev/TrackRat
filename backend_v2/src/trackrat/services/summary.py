@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
+from trackrat.config.stations import expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
 
@@ -274,13 +275,16 @@ class SummaryService:
         # Prioritize journeys with actual departure data over scheduled-only
         # This ensures when deduplicating by train_id, we keep the most accurate record
         today = current_time.date()
+        from_codes = expand_station_codes(from_station)
+        to_codes_set = set(expand_station_codes(to_station))
+        from_codes_set = set(from_codes)
         stmt = (
             select(TrainJourney)
             .join(
                 JourneyStop,
                 and_(
                     JourneyStop.journey_id == TrainJourney.id,
-                    JourneyStop.station_code == from_station,
+                    JourneyStop.station_code.in_(from_codes),
                 ),
             )
             .where(and_(*conditions))
@@ -313,9 +317,9 @@ class SummaryService:
             from_stop = None
             to_stop = None
             for stop in journey.stops:
-                if stop.station_code == from_station:
+                if stop.station_code in from_codes_set:
                     from_stop = stop
-                elif stop.station_code == to_station:
+                elif stop.station_code in to_codes_set:
                     to_stop = stop
 
             if (
@@ -360,13 +364,16 @@ class SummaryService:
         # Query trains that departed from the origin station within the time window
         # Must be: >= cutoff_time AND <= now (already departed, not future scheduled)
         # Use actual_departure if available, otherwise scheduled_departure
+        sim_from_codes = expand_station_codes(from_station)
+        sim_from_codes_set = set(sim_from_codes)
+        sim_to_codes_set = set(expand_station_codes(to_station))
         stmt = (
             select(TrainJourney)
             .join(
                 JourneyStop,
                 and_(
                     JourneyStop.journey_id == TrainJourney.id,
-                    JourneyStop.station_code == from_station,
+                    JourneyStop.station_code.in_(sim_from_codes),
                 ),
             )
             .where(
@@ -416,9 +423,9 @@ class SummaryService:
             from_stop = None
             to_stop = None
             for stop in journey.stops:
-                if stop.station_code == from_station:
+                if stop.station_code in sim_from_codes_set:
                     from_stop = stop
-                elif stop.station_code == to_station:
+                elif stop.station_code in sim_to_codes_set:
                     to_stop = stop
 
             if (
@@ -753,6 +760,8 @@ class SummaryService:
         if current_time is None:
             current_time = now_et()
 
+        from_codes_set = set(expand_station_codes(from_station))
+
         on_time_count = 0
         cancellation_count = 0
         total_delay = 0.0
@@ -775,7 +784,8 @@ class SummaryService:
                 cancellation_count += 1
                 # Find scheduled departure for cancelled trains
                 from_stop = next(
-                    (s for s in journey.stops if s.station_code == from_station), None
+                    (s for s in journey.stops if s.station_code in from_codes_set),
+                    None,
                 )
                 if from_stop and from_stop.scheduled_departure:
                     trains_by_category[DELAY_CATEGORY_CANCELLED].append(
@@ -790,7 +800,8 @@ class SummaryService:
 
             # Find the origin stop for departure delay calculation
             from_stop = next(
-                (s for s in journey.stops if s.station_code == from_station), None
+                (s for s in journey.stops if s.station_code in from_codes_set),
+                None,
             )
 
             if from_stop and from_stop.scheduled_departure:
@@ -891,6 +902,7 @@ class SummaryService:
         on_time_count = 0
         total_delay = 0.0
         counted_trains = 0
+        to_codes_set = set(expand_station_codes(to_station))
 
         for journey in journeys:
             # Skip cancelled journeys
@@ -899,7 +911,7 @@ class SummaryService:
 
             # Find the destination stop for arrival delay calculation
             to_stop = next(
-                (s for s in journey.stops if s.station_code == to_station), None
+                (s for s in journey.stops if s.station_code in to_codes_set), None
             )
 
             if to_stop and to_stop.scheduled_arrival and to_stop.actual_arrival:

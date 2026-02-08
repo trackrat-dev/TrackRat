@@ -10,7 +10,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import OccupiedTracksResponse
 from trackrat.models.database import JourneyStop, TrainJourney
@@ -115,7 +115,9 @@ class TrackOccupancyService:
             .join(TrainJourney)
             .where(
                 and_(
-                    JourneyStop.station_code == station_code,
+                    JourneyStop.station_code.in_(
+                        expand_station_codes(station_code)
+                    ),
                     JourneyStop.track.is_not(None),
                     JourneyStop.has_departed_station.is_not(True),
                     JourneyStop.scheduled_departure >= current_time,
