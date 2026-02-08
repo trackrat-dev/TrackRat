@@ -393,14 +393,15 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 existing = await session.scalar(stmt)
 
                 if existing:
-                    # Don't re-activate expired trains
+                    # Re-activate expired trains that reappear in discovery
                     if existing.is_expired:
-                        logger.debug(
-                            "skipping_expired_train_discovery",
+                        existing.is_expired = False
+                        existing.api_error_count = 0
+                        logger.info(
+                            "reactivated_expired_train",
                             train_id=train_id,
                             journey_date=journey_date,
                         )
-                        continue
 
                     # Update last seen time
                     existing.last_updated_at = now_et()

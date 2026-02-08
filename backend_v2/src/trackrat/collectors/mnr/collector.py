@@ -167,7 +167,7 @@ class MNRCollector:
             )
             for journey in stale_result.scalars():
                 journey.api_error_count = (journey.api_error_count or 0) + 1
-                if journey.api_error_count >= 2:
+                if journey.api_error_count >= 3:
                     journey.is_expired = True
                     stats["expired"] += 1
                     logger.info(

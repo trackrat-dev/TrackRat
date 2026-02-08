@@ -363,20 +363,23 @@ class CongestionAnalyzer:
             """
         WITH stop_pairs AS (
             -- Pair each stop with its next stop using LEAD window function.
+            -- Pre-filter by journey_date to avoid scanning the entire history.
             -- Handles non-consecutive stop_sequence values (common in GTFS
             -- static data from MTA feeds like MNR/LIRR) by ordering by
             -- stop_sequence and taking the actual next mapped stop.
             SELECT
-                journey_id,
-                station_code as from_station,
-                actual_departure as from_actual_departure,
-                scheduled_departure as from_scheduled_departure,
-                LEAD(station_code) OVER w as to_station,
-                LEAD(actual_arrival) OVER w as to_actual_arrival,
-                LEAD(scheduled_arrival) OVER w as to_scheduled_arrival
-            FROM journey_stops
-            WHERE station_code IS NOT NULL
-            WINDOW w AS (PARTITION BY journey_id ORDER BY stop_sequence)
+                js.journey_id,
+                js.station_code as from_station,
+                js.actual_departure as from_actual_departure,
+                js.scheduled_departure as from_scheduled_departure,
+                LEAD(js.station_code) OVER w as to_station,
+                LEAD(js.actual_arrival) OVER w as to_actual_arrival,
+                LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival
+            FROM journey_stops js
+            JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
+            WHERE js.station_code IS NOT NULL
+              AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+            WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
         ),
         segment_data AS (
             -- Calculate segment transit times from paired stops
@@ -653,17 +656,20 @@ class CongestionAnalyzer:
             query = text(
                 """
             WITH stop_pairs AS (
+                -- Pre-filter by journey_date to avoid scanning entire history
                 SELECT
-                    journey_id,
-                    station_code as from_station,
-                    actual_departure as from_actual_departure,
-                    scheduled_departure as from_scheduled_departure,
-                    LEAD(station_code) OVER w as to_station,
-                    LEAD(actual_arrival) OVER w as to_actual_arrival,
-                    LEAD(scheduled_arrival) OVER w as to_scheduled_arrival
-                FROM journey_stops
-                WHERE station_code IS NOT NULL
-                WINDOW w AS (PARTITION BY journey_id ORDER BY stop_sequence)
+                    js.journey_id,
+                    js.station_code as from_station,
+                    js.actual_departure as from_actual_departure,
+                    js.scheduled_departure as from_scheduled_departure,
+                    LEAD(js.station_code) OVER w as to_station,
+                    LEAD(js.actual_arrival) OVER w as to_actual_arrival,
+                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival
+                FROM journey_stops js
+                JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
+                WHERE js.station_code IS NOT NULL
+                  AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+                WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
                 -- Calculate individual train segments between adjacent stops
@@ -752,17 +758,20 @@ class CongestionAnalyzer:
             query = text(
                 """
             WITH stop_pairs AS (
+                -- Pre-filter by journey_date to avoid scanning entire history
                 SELECT
-                    journey_id,
-                    station_code as from_station,
-                    actual_departure as from_actual_departure,
-                    scheduled_departure as from_scheduled_departure,
-                    LEAD(station_code) OVER w as to_station,
-                    LEAD(actual_arrival) OVER w as to_actual_arrival,
-                    LEAD(scheduled_arrival) OVER w as to_scheduled_arrival
-                FROM journey_stops
-                WHERE station_code IS NOT NULL
-                WINDOW w AS (PARTITION BY journey_id ORDER BY stop_sequence)
+                    js.journey_id,
+                    js.station_code as from_station,
+                    js.actual_departure as from_actual_departure,
+                    js.scheduled_departure as from_scheduled_departure,
+                    LEAD(js.station_code) OVER w as to_station,
+                    LEAD(js.actual_arrival) OVER w as to_actual_arrival,
+                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival
+                FROM journey_stops js
+                JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
+                WHERE js.station_code IS NOT NULL
+                  AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+                WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
                 -- Calculate individual train segments between adjacent stops

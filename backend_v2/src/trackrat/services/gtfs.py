@@ -1887,12 +1887,24 @@ class GTFSService:
         """
         service_ids = await self.get_active_service_ids(db, data_source, target_date)
         if not service_ids:
+            logger.warning(
+                "gtfs_static_no_active_services",
+                data_source=data_source,
+                target_date=str(target_date),
+            )
             return None
 
         trip_row = await self._find_trip_in_source(
             db, gtfs_trip_id, data_source, service_ids, "trip_id"
         )
         if not trip_row:
+            logger.debug(
+                "gtfs_static_trip_not_found",
+                data_source=data_source,
+                trip_id=gtfs_trip_id,
+                target_date=str(target_date),
+                service_id_count=len(service_ids),
+            )
             return None
 
         db_trip_id = trip_row.id

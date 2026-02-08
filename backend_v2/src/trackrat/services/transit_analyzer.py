@@ -24,6 +24,10 @@ logger = get_logger(__name__)
 class TransitAnalyzer:
     """Analyzes transit times and station dwell times from journey data."""
 
+    # Track invalid segments we've already warned about to avoid log spam.
+    # Key: (journey_id, from_station, to_station). Resets on process restart.
+    _warned_invalid_segments: set[tuple[int, str, str]] = set()
+
     async def analyze_journey(self, db: AsyncSession, journey: TrainJourney) -> None:
         """
         Analyze and store transit metrics for a journey.
@@ -150,16 +154,25 @@ class TransitAnalyzer:
             actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(
                 departure_time
             )
-            actual_minutes = int(actual_delta.total_seconds() / 60)
+            actual_seconds = actual_delta.total_seconds()
+            actual_minutes = round(actual_seconds / 60)
 
-            # Skip invalid times (negative or unreasonably long)
-            if actual_minutes <= 0 or actual_minutes > 300:
-                logger.warning(
+            # Skip invalid times (non-positive seconds or unreasonably long)
+            if actual_seconds <= 0 or actual_minutes > 300:
+                warn_key = (journey.id, current_stop.station_code, next_stop.station_code)
+                log = logger.warning if warn_key not in self._warned_invalid_segments else logger.debug
+                log(
                     "invalid_transit_time",
                     journey_id=journey.id,
+                    train_id=journey.train_id,
+                    data_source=journey.data_source,
+                    line_code=journey.line_code,
                     segment=f"{current_stop.station_code}-{next_stop.station_code}",
-                    minutes=actual_minutes,
+                    actual_seconds=round(actual_seconds, 1),
+                    departure_time=departure_time.isoformat(),
+                    arrival_time=arrival_time.isoformat(),
                 )
+                self._warned_invalid_segments.add(warn_key)
                 continue
 
             # Create segment record
@@ -447,16 +460,25 @@ class TransitAnalyzer:
             actual_delta = ensure_timezone_aware(arrival_time) - ensure_timezone_aware(
                 departure_time
             )
-            actual_minutes = int(actual_delta.total_seconds() / 60)
+            actual_seconds = actual_delta.total_seconds()
+            actual_minutes = round(actual_seconds / 60)
 
-            # Skip invalid times (negative or unreasonably long)
-            if actual_minutes <= 0 or actual_minutes > 300:
-                logger.warning(
-                    "invalid_transit_time_sync",
+            # Skip invalid times (non-positive seconds or unreasonably long)
+            if actual_seconds <= 0 or actual_minutes > 300:
+                warn_key = (journey.id, current_stop.station_code, next_stop.station_code)
+                log = logger.warning if warn_key not in self._warned_invalid_segments else logger.debug
+                log(
+                    "invalid_transit_time",
                     journey_id=journey.id,
+                    train_id=journey.train_id,
+                    data_source=journey.data_source,
+                    line_code=journey.line_code,
                     segment=f"{current_stop.station_code}-{next_stop.station_code}",
-                    minutes=actual_minutes,
+                    actual_seconds=round(actual_seconds, 1),
+                    departure_time=departure_time.isoformat(),
+                    arrival_time=arrival_time.isoformat(),
                 )
+                self._warned_invalid_segments.add(warn_key)
                 continue
 
             # Create segment record
