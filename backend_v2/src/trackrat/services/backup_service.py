@@ -86,13 +86,7 @@ class BackupService:
             return False
 
         try:
-            # Create timestamped backup name (commented out for now)
-            # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            # timestamped_name = f"trackrat-{self.environment}-{timestamp}.db"
-
-            # Upload only to latest.db (no timestamped files for now)
             await self._upload_file("latest.db")
-            # await self._upload_file(timestamped_name)  # Commented out
 
             logger.info("Successfully created backup: latest.db")
             return True

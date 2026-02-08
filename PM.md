@@ -13,7 +13,7 @@ Daily standup notes are recorded in `standup-notes/`.
 ## Current Phase: Phase 1 — Fix the Funnel, Open-Source Prep & Launch
 
 **Board target:** Week of Feb 9, 2026
-**Status:** In progress — backend stabilization complete, prep work remains
+**Status:** In progress — landing page done, secrets audit done, open-source prep nearing completion
 
 ### Phase 1 Execution Checklist
 
@@ -21,12 +21,12 @@ Daily standup notes are recorded in `standup-notes/`.
 
 | Task | Owner | Status |
 |------|-------|--------|
-| Take 6-8 iPhone screenshots | Andy | Not started |
-| Record 30-second screen recording | Andy | Not started |
-| Gather 2-3 user testimonials | Andy | Not started |
-| Redesign trackrat.net (hero, App Store badge, GitHub link, FAQ, SEO) | Claude | Not started |
-| Add structured data (JSON-LD) | Claude | Not started |
-| Add App Store smart banner meta tag | Claude | Not started |
+| Take 6-8 iPhone screenshots | Andy | Done |
+| Record 30-second screen recording | Andy | Done |
+| Gather 2-3 user testimonials | Andy | Done |
+| Redesign trackrat.net (hero, App Store badge, GitHub link, FAQ, SEO) | Claude | Done |
+| Add structured data (JSON-LD) | Claude | Done |
+| Add App Store smart banner meta tag | Claude | Done |
 
 #### 1.2 App Store Optimization (#409)
 
@@ -44,20 +44,20 @@ Daily standup notes are recorded in `standup-notes/`.
 |------|-------|--------|
 | Merge PR #368 (LIRR + Metro-North) | Claude | Done |
 | Stabilize LIRR/MNR collectors (bug fixes) | Claude | Done |
-| Move Android to separate private repo (#410) | Andy/Claude | Not started |
-| Complete #339 (secrets audit, CORS, env docs) | Claude | Not started |
+| Move Android to separate private repo (#410) | Andy | Skipped (new repo instead) |
+| Complete #339 (secrets audit, CORS, env docs) | Claude | Done |
 | License: Apache 2.0 | Joint | Done (resolved 2026-02-06) |
-| Write README.md | Claude | Not started |
-| Write CONTRIBUTING.md | Claude | Not started |
-| Clean up repo (dead code, TODOs) | Claude | Not started |
+| Write README.md | Claude | Done |
+| Write CONTRIBUTING.md | Claude | Done |
+| Clean up repo (dead code, TODOs) | Claude | Done |
 | Build sharing deep links (#411) | Claude | Not started |
-| Resolve Dependabot alerts (3 alerts) | Claude | Not started |
+| Resolve Dependabot alerts (3 alerts) | Claude | Done |
 
 #### 1.4 Open-Source Launch & Growth (#412)
 
 | Task | Owner | Status |
 |------|-------|--------|
-| Landing page live with open-source framing | Claude | Blocked (1.1) |
+| Landing page live with open-source framing | Claude | Not started |
 | Sharing deep links functional | Claude | Blocked (1.3) |
 | Web app footer link to GitHub | Claude | Not started |
 | Make repo public | Andy | Blocked (1.3) |
@@ -85,9 +85,7 @@ Recent work (last 7 days) has focused on backend stability for LIRR/Metro-North:
 
 ## Blockers
 
-1. **Andy's content tasks** — Screenshots, videos, testimonials needed before landing page can ship. These are blocking 1.1 and by extension 1.4.
-2. **Android repo move** — Needs to happen before repo goes public. Requires Andy's GitHub access or joint coordination.
-3. **Secrets audit (#339)** — Must verify no API keys, credentials, or sensitive config leak when repo goes public.
+1. **Repo cleanup** — Dead code, TODOs, and Dependabot alerts still need attention before going public.
 
 ---
 

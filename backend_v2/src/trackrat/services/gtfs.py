@@ -505,13 +505,9 @@ class GTFSService:
 
                 headsign = row.get("trip_headsign", "")
 
-                # Extract train_id: prefer block_id (NJT train number), fall back to others
-                block_id = row.get("block_id", "")
-                train_id = self._extract_train_id_from_block_id(block_id)
-                if not train_id:
-                    # Fallback: try trip_short_name or extract from headsign
-                    short_name = row.get("trip_short_name", "")
-                    train_id = short_name or self._extract_train_id(headsign)
+                # Extract train_id from trip_short_name or headsign
+                short_name = row.get("trip_short_name", "")
+                train_id = short_name or self._extract_train_id(headsign)
 
                 direction_str = row.get("direction_id", "")
                 direction_id = int(direction_str) if direction_str.isdigit() else None
@@ -625,31 +621,6 @@ class GTFSService:
 
         match = re.search(r"\b(\d{2,4})\b", headsign)
         return match.group(1) if match else None
-
-    def _extract_train_id_from_block_id(self, block_id: str) -> str | None:
-        """Extract train number from GTFS block_id.
-
-        NOTE: This method is DEPRECATED and returns None for all inputs.
-
-        GTFS block_id is an equipment/vehicle identifier, NOT a train number.
-        The same block_id can be assigned to multiple trips throughout the day
-        (representing the same physical train set running different services).
-
-        For NJT and other sources, we use gtfs_trip_id as the unique identifier
-        for GTFS-based lookups instead.
-
-        Args:
-            block_id: The block_id from GTFS trips.txt
-
-        Returns:
-            Always None - block_id should not be used as train_id
-        """
-        # block_id is NOT a train number - it's an equipment identifier
-        # that can be reused across multiple trips per day.
-        # Using it as train_id causes:
-        # 1. Wrong train numbers displayed (equipment ID != train number)
-        # 2. Lookup failures when multiple trips share the same block_id
-        return None
 
     def _parse_gtfs_time(self, time_str: str, target_date: date) -> datetime | None:
         """Parse GTFS time string (HH:MM:SS, can be >24:00) to datetime.
