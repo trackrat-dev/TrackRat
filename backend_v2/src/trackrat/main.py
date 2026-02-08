@@ -179,13 +179,13 @@ async def suppress_health_check_logs(
 
 
 # Include routers
-app.include_router(feedback.router)
-app.include_router(health.router)
-app.include_router(live_activities.router)
+app.include_router(feedback.router, include_in_schema=False)
+app.include_router(health.router, include_in_schema=False)
+app.include_router(live_activities.router, include_in_schema=False)
 app.include_router(predictions.router)
 app.include_router(routes.router)
 app.include_router(trains.router)
-app.include_router(validation.router)
+app.include_router(validation.router, include_in_schema=False)
 
 # Mount Prometheus metrics endpoint if enabled
 settings = get_settings()
