@@ -497,28 +497,43 @@ struct RouteTopology {
             stationCodes: ["GCT", "M125", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR", "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG", "MSTM", "MNOH", "MDAR", "MROW", "MSNW", "MENW", "MWPT", "MGRF", "MSPT", "MFFD", "MFBR", "MBGP", "MSTR", "MMIL", "MWHN", "MNHV", "MNSS"]
         ),
 
-        // New Canaan Branch
+        // New Canaan Branch (includes New Haven trunk: GCT to Stamford junction)
         RouteLine(
             id: "mnr-new-canaan",
             name: "New Canaan Branch",
             dataSource: "MNR",
-            stationCodes: ["MSTM", "MGLB", "MSPD", "MTMH", "MNCA"]
+            stationCodes: [
+                "GCT", "M125", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR",
+                "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG",
+                "MSTM", "MGLB", "MSPD", "MTMH", "MNCA"
+            ]
         ),
 
-        // Danbury Branch
+        // Danbury Branch (includes New Haven trunk: GCT to South Norwalk junction)
         RouteLine(
             id: "mnr-danbury",
             name: "Danbury Branch",
             dataSource: "MNR",
-            stationCodes: ["MSNW", "MMR7", "MWIL", "MCAN", "MBVL", "MRED", "MBTH", "MDBY"]
+            stationCodes: [
+                "GCT", "M125", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR",
+                "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG", "MSTM", "MNOH",
+                "MDAR", "MROW",
+                "MSNW", "MMR7", "MWIL", "MCAN", "MBVL", "MRED", "MBTH", "MDBY"
+            ]
         ),
 
-        // Waterbury Branch
+        // Waterbury Branch (includes New Haven trunk: GCT to Bridgeport junction)
         RouteLine(
             id: "mnr-waterbury",
             name: "Waterbury Branch",
             dataSource: "MNR",
-            stationCodes: ["MBGP", "MSTR", "MDBS", "MANS", "MSYM", "MBCF", "MNAU", "MWTB"]
+            stationCodes: [
+                "GCT", "M125", "MMVE", "MPEL", "MNRC", "MLRM", "MMAM", "MHRR",
+                "MRYE", "MPCH", "MGRN", "MCOC", "MRSD", "MODG", "MSTM", "MNOH",
+                "MDAR", "MROW", "MSNW", "MENW", "MWPT", "MGRF", "MSPT", "MFFD",
+                "MFBR",
+                "MBGP", "MSTR", "MDBS", "MANS", "MSYM", "MBCF", "MNAU", "MWTB"
+            ]
         )
     ]
 
