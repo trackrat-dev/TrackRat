@@ -484,7 +484,7 @@ AMTRAK_KEYSTONE = Route(
         "EXT",
         "DOW",
         "COT",
-        "PKB",
+        "PAR",
         "LNC",
         "HAR",
     ),
