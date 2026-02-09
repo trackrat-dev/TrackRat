@@ -64,6 +64,24 @@ npm run build                        # TypeScript compile + build check
 # Note: No automated tests yet (MVP phase)
 ```
 
+**Staging Validation:**
+
+After deploying to staging (or when reviewing staging health), run these in order:
+
+```bash
+# 1. Verify deployment health (reachability, scheduler, metrics)
+bash scripts/verify-deployment.sh https://staging.apiv2.trackrat.net
+
+# 2. Run E2E API tests (mimics iOS app call sequence across all providers)
+bash scripts/e2e-api-test.sh https://staging.apiv2.trackrat.net --no-random
+
+# 3. Check backend logs for errors
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env staging --errors
+```
+
+When E2E fails, correlate with logs using the route and timestamp from the failure output.
+The E2E script prints response bodies on HTTP errors and flags slow responses (>5s).
+
 ### Architecture Patterns
 
 **Backend Data Collection (NJT/Amtrak - Multi-Phase):**

@@ -47,6 +47,9 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+FAILED_ROUTES=()
+SLOW_THRESHOLD=5  # seconds
+
 pass() { printf "  ${GREEN}PASS${NC} %s\n" "$1"; PASS=$((PASS + 1)); }
 fail() { printf "  ${RED}FAIL${NC} %s\n" "$1"; FAIL=$((FAIL + 1)); }
 fail_v() { printf "  ${RED}FAIL${NC} %s\n       %s\n" "$1" "$2"; FAIL=$((FAIL + 1)); }
@@ -54,8 +57,36 @@ warn() { printf "  ${YELLOW}WARN${NC} %s\n" "$1"; WARN=$((WARN + 1)); }
 skip() { printf "  ${YELLOW}SKIP${NC} %s\n" "$1"; SKIP=$((SKIP + 1)); }
 urlencode() { jq -rn --arg v "$1" '$v | @uri'; }
 
-# Fetch URL, write body to $TMPDIR/resp.json, print HTTP status code (000 on timeout/error)
-api() { curl -s -o "$TMPDIR/resp.json" -w "%{http_code}" --max-time 15 "$1" 2>/dev/null || echo "000"; }
+# Fetch URL, write body to $TMPDIR/resp.json, print HTTP status code.
+# Also writes response time (seconds) to $TMPDIR/last_time.txt for check_timing().
+api() {
+  local result
+  result=$(curl -s -o "$TMPDIR/resp.json" -w "%{http_code} %{time_total}" --max-time 15 "$1" 2>/dev/null) || result="000 0"
+  echo "${result#* }" > "$TMPDIR/last_time.txt"
+  echo "${result%% *}"
+}
+
+# Print response body snippet on error (first 200 chars of JSON message or raw body)
+print_error_body() {
+  if [[ -f "$TMPDIR/resp.json" ]]; then
+    local msg
+    msg=$(jq -r '.detail // .message // .error // empty' "$TMPDIR/resp.json" 2>/dev/null)
+    if [[ -n "$msg" ]]; then
+      printf "       Body: %.200s\n" "$msg"
+    else
+      printf "       Body: %.200s\n" "$(head -c 200 "$TMPDIR/resp.json" 2>/dev/null)"
+    fi
+  fi
+}
+
+# Print timing warning if response was slow
+check_timing() {
+  local t
+  t=$(cat "$TMPDIR/last_time.txt" 2>/dev/null) || t="0"
+  if [[ -n "$t" ]] && awk "BEGIN{exit !($t > $SLOW_THRESHOLD)}" 2>/dev/null; then
+    printf "  ${YELLOW}SLOW${NC} %.1fs (threshold: ${SLOW_THRESHOLD}s)\n" "$t"
+  fi
+}
 
 # --- Preflight ---
 
@@ -151,7 +182,7 @@ for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('PATCO',1
             t = stations[-1]
         m = next((s for s in [f, t] if s in ml), '')
         print(f'{src} {r.name}|{f}|{t}|{src}|{m}|{flags}')
-" > "$TMPDIR/random_routes.txt" 2>/dev/null; then
+" > "$TMPDIR/random_routes.txt" 2>"$TMPDIR/random_routes_err.txt"; then
     # Dedup: skip routes whose from|to|source already appears in fixed set
     for route in "${ROUTES[@]}"; do
       IFS='|' read -r _ from to source _ <<< "$route"
@@ -165,7 +196,10 @@ for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('PATCO',1
       fi
     done < "$TMPDIR/random_routes.txt"
   else
-    echo -e "  ${YELLOW}Skipping random routes (backend not importable)${NC}\n"
+    err_msg=$(head -c 200 "$TMPDIR/random_routes_err.txt" 2>/dev/null)
+    echo -e "  ${YELLOW}Skipping random routes (backend not importable)${NC}"
+    [[ -n "$err_msg" ]] && echo -e "  ${YELLOW}Error: $err_msg${NC}"
+    echo ""
   fi
 fi
 
@@ -195,9 +229,13 @@ for route in "${ROUTES[@]}"; do
   echo -e "${YELLOW}--- $label ($from -> $to) ---${NC}"
 
   # 1. DEPARTURES (iOS: fetchDepartures)
-  code=$(api "$API/trains/departures?from=$from&to=$to&limit=50&hide_departed=true&data_sources=$source")
+  dep_url="$API/trains/departures?from=$from&to=$to&limit=50&hide_departed=true&data_sources=$source"
+  code=$(api "$dep_url")
+  check_timing
   if [[ "$code" != "200" ]]; then
     fail "Departures: HTTP $code"
+    print_error_body
+    FAILED_ROUTES+=("$label ($from -> $to): Departures HTTP $code")
     echo ""
     IDX=$((IDX + 1))
     continue
@@ -207,6 +245,7 @@ for route in "${ROUTES[@]}"; do
   count=$(jq '.departures | length' "$TMPDIR/dep.json")
   if [[ "$count" -eq 0 ]]; then
     fail "Departures: 0 trains"
+    FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
     echo ""
     IDX=$((IDX + 1))
     continue
@@ -221,11 +260,13 @@ for route in "${ROUTES[@]}"; do
     pass "Schedule-only: $sched scheduled"
   elif [[ "$sched" -eq 0 ]]; then
     fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
+    FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")
   elif [[ "$obs" -eq 0 && "$count" -le 4 ]]; then
     # Low-frequency routes (1-4 daily trains) may not have OBSERVED data yet
     warn "No OBSERVED trains ($sched scheduled) — low-frequency route"
   elif [[ "$obs" -eq 0 ]]; then
     fail "No OBSERVED trains ($sched scheduled, 0 observed)"
+    FAILED_ROUTES+=("$label ($from -> $to): 0 OBSERVED trains")
   else
     pass "Mix: $sched scheduled + $obs observed"
   fi
@@ -271,14 +312,19 @@ for route in "${ROUTES[@]}"; do
 
   if [[ -z "$train_id" ]]; then
     fail "All trains cancelled - cannot test detail"
+    FAILED_ROUTES+=("$label ($from -> $to): All trains cancelled")
     echo ""
     IDX=$((IDX + 1))
     continue
   fi
 
-  code=$(api "$API/trains/$(urlencode "$train_id")?date=${j_date}&include_predictions=true&from_station=${from}&data_source=${source}")
+  detail_url="$API/trains/$(urlencode "$train_id")?date=${j_date}&include_predictions=true&from_station=${from}&data_source=${source}"
+  code=$(api "$detail_url")
+  check_timing
   if [[ "$code" != "200" ]]; then
     fail "Detail ($train_id): HTTP $code"
+    print_error_body
+    FAILED_ROUTES+=("$label ($from -> $to): Detail HTTP $code")
     echo ""
     IDX=$((IDX + 1))
     continue
@@ -313,6 +359,7 @@ for route in "${ROUTES[@]}"; do
   if [[ -n "$ml" ]]; then
     # Track prediction
     code=$(api "$API/predictions/track?station_code=${ml}&train_id=${train_id}&journey_date=${j_date}")
+    check_timing
     if [[ "$code" == "200" ]]; then
       primary=$(jq -r '.primary_prediction // "null"' "$TMPDIR/resp.json")
       conf=$(jq '.confidence // 0' "$TMPDIR/resp.json")
@@ -321,15 +368,19 @@ for route in "${ROUTES[@]}"; do
         pass "Track prediction: $primary (conf: $conf, $plats platforms)"
       else
         fail "Track prediction: empty response"
+        FAILED_ROUTES+=("$label ($from -> $to): Track prediction empty")
       fi
     elif [[ "$code" == "404" || "$code" == "400" ]]; then
       pass "Track prediction: N/A ($code)"
     else
       fail "Track prediction: HTTP $code"
+      print_error_body
+      FAILED_ROUTES+=("$label ($from -> $to): Track prediction HTTP $code")
     fi
 
     # Delay prediction
     code=$(api "$API/predictions/delay?train_id=${train_id}&station_code=${ml}&journey_date=${j_date}")
+    check_timing
     if [[ "$code" == "200" ]]; then
       samples=$(jq '.sample_count // 0' "$TMPDIR/resp.json")
       on_time=$(jq '.delay_probabilities.on_time // 0' "$TMPDIR/resp.json")
@@ -337,11 +388,14 @@ for route in "${ROUTES[@]}"; do
         pass "Delay prediction: $samples samples, on-time: $on_time"
       else
         fail "Delay prediction: 0 samples"
+        FAILED_ROUTES+=("$label ($from -> $to): Delay prediction 0 samples")
       fi
     elif [[ "$code" == "404" || "$code" == "400" ]]; then
       pass "Delay prediction: N/A ($code)"
     else
       fail "Delay prediction: HTTP $code"
+      print_error_body
+      FAILED_ROUTES+=("$label ($from -> $to): Delay prediction HTTP $code")
     fi
   fi
 
@@ -363,6 +417,10 @@ if [[ "${#ROUTES[@]}" -gt "$FIXED_COUNT" ]]; then
 fi
 
 if [[ "$FAIL" -gt 0 ]]; then
+  echo -e "\n${BOLD}Failed routes:${NC}"
+  for f in "${FAILED_ROUTES[@]}"; do
+    echo -e "  ${RED}-${NC} $f"
+  done
   echo -e "\n${RED}FAILED${NC}"
   exit 1
 else
