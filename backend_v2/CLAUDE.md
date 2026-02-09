@@ -73,7 +73,7 @@ The V2 backend eliminates the complexity of V1 by:
    - Provides future train visibility beyond 30-60 minute window
 
 2. **Discovery Phase** (Every 30 minutes, configurable)
-   - **NJT**: Polls 7 major stations (NY, NP, PJ, TR, LB, PL, DN) via `getTrainSchedule`; checks `getDepartureVisionData` for cancellation alerts
+   - **NJT**: Polls 7 major stations (NY, NP, PJ, TR, LB, PL, DN) via `getTrainSchedule`
    - **Amtrak**: Polls major stations for active trains
    - Updates journey records from SCHEDULED to OBSERVED when trains appear
 

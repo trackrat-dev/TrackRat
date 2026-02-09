@@ -149,7 +149,7 @@ struct RouteTopology {
             id: "amtrak-keystone",
             name: "Keystone Service",
             dataSource: "AMTRAK",
-            stationCodes: ["NY", "NP", "TR", "PH", "PAO", "EXT", "DOW", "COT", "PKB", "LNC", "HAR"]
+            stationCodes: ["NY", "NP", "TR", "PH", "PAO", "EXT", "DOW", "COT", "PAR", "LNC", "HAR"]
         ),
 
         // Silver Service / Carolinian (NEC to Southeast)

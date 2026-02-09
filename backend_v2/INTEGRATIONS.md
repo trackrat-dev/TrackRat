@@ -78,7 +78,6 @@ collectors/njt/
 **Discovery Collector** (`discovery.py`):
 - Polls 7 major hub stations (NY, NP, PJ, TR, LB, PL, DN)
 - Uses `getTrainSchedule` API method (with embedded stops)
-- Checks `getDepartureVisionData` for cancellation alerts
 - Returns list of discovered train IDs
 - Runs every 30 minutes via scheduler
 
@@ -96,9 +95,13 @@ class NJTDiscoveryCollector(BaseDiscoveryCollector):
     async def discover_trains(self) -> list[str]:
         train_ids = []
         for station in DISCOVERY_STATIONS:
-            response = await self.client.get_departure_vision_data(station)
-            train_ids.extend(self._parse_train_ids(response))
-        return list(set(train_ids))
+            response = await self.njt_client.get_train_schedule_with_stops(station)
+            trains_data = response.get("ITEMS") or []
+            for train_data in trains_data:
+                train_id = train_data.get("TRAIN_ID", "").strip()
+                if train_id and train_id not in train_ids:
+                    train_ids.append(train_id)
+        return train_ids
 
 # Journey pattern - fetch complete journey for each train
 class NJTJourneyCollector(BaseJourneyCollector):

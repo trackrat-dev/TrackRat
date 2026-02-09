@@ -187,7 +187,7 @@ export const STATIONS: Station[] = [
   { code: 'MIDPA', name: 'Middletown PA' },
   { code: 'ELT', name: 'Elizabethtown' },
   { code: 'MJY', name: 'Mount Joy' },
-  { code: 'PKB', name: 'Parkesburg' },
+  { code: 'PAR', name: 'Parkesburg' },
   { code: 'COT', name: 'Coatesville' },
   { code: 'DOW', name: 'Downingtown' },
   { code: 'EXT', name: 'Exton' },

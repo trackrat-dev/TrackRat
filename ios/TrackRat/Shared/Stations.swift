@@ -476,7 +476,7 @@ struct Stations {
         "Middletown PA": "MIDPA",  // Renamed to avoid conflict with Middletown NJ
         "Elizabethtown": "ELT",
         "Mount Joy": "MJY",
-        "Parkesburg": "PKB",
+        "Parkesburg": "PAR",
         "Coatesville": "COT",
         "Downingtown": "DOW",
         "Exton": "EXT",
@@ -1367,7 +1367,7 @@ struct Stations {
         "EXT": CLLocationCoordinate2D(latitude: 40.0131, longitude: -75.6233),  // Exton, PA (Keystone)
         "DOW": CLLocationCoordinate2D(latitude: 40.0003, longitude: -75.7042),  // Downingtown, PA (Keystone)
         "COT": CLLocationCoordinate2D(latitude: 39.9823, longitude: -75.8233),  // Coatesville, PA (Keystone)
-        "PKB": CLLocationCoordinate2D(latitude: 39.9612, longitude: -75.9193),  // Parkesburg, PA (Keystone)
+
         "MJY": CLLocationCoordinate2D(latitude: 40.1071, longitude: -76.5033),  // Mount Joy, PA (Keystone)
         "ELT": CLLocationCoordinate2D(latitude: 40.1524, longitude: -76.5258),  // Elizabethtown, PA (Keystone)
         "MIDPA": CLLocationCoordinate2D(latitude: 40.1996, longitude: -76.7322),  // Middletown, PA (Keystone)
