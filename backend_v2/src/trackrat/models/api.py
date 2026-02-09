@@ -367,6 +367,11 @@ class NJTransitStopData(BaseModel):
     TIME_UTC_FORMAT: str | None = None
     TRACK: str | None = None
     STOP_LINES: list[dict[str, str]] | None = None
+    # Original schedule times (immutable, from NJT schedule data).
+    # These are the true scheduled times, unlike TIME/DEP_TIME which have
+    # different semantics at origin vs intermediate stops.
+    SCHED_ARR_DATE: str | None = None
+    SCHED_DEP_DATE: str | None = None
 
 
 class NJTransitTrainData(BaseModel):

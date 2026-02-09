@@ -12,10 +12,14 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     """
     Get the effective observation type for display.
 
-    For SCHEDULED trains, we upgrade to OBSERVED if the train's origin
-    departure time has passed. This prevents showing "Scheduled" for
-    trains that are likely already running but haven't been confirmed
-    via real-time data yet (common with Amtrak pattern-based schedules).
+    For SCHEDULED trains from systems without real-time discovery (e.g. PATCO),
+    we upgrade to OBSERVED if the origin departure time has passed and a stop
+    has actually departed. This prevents showing "Scheduled" for trains that
+    are running but lack real-time confirmation.
+
+    For real-time systems (NJT, Amtrak, PATH, LIRR, MNR), SCHEDULED trains
+    that were never observed should NOT be promoted — they are likely cancelled.
+    The reconciliation job will eventually mark them as such.
 
     Args:
         journey: The train journey record
@@ -28,14 +32,20 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     if journey.observation_type != "SCHEDULED":
         return journey.observation_type or "OBSERVED"
 
-    # Find the first stop (train's actual origin)
+    # For systems with real-time discovery, don't promote SCHEDULED trains
+    # that have no evidence of actually running. If they were running,
+    # discovery would have upgraded them to OBSERVED.
+    REAL_TIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR"}
+    if journey.data_source in REAL_TIME_SOURCES:
+        return "SCHEDULED"
+
+    # For schedule-only systems (PATCO): promote if departure time has passed
     if not journey.stops:
         return "SCHEDULED"
 
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
     first_stop = sorted_stops[0]
 
-    # Check if the origin departure time has passed
     origin_departure = first_stop.scheduled_departure or first_stop.scheduled_arrival
     if origin_departure and origin_departure <= now_et():
         return "OBSERVED"

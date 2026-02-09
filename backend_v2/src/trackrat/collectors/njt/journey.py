@@ -267,6 +267,9 @@ class JourneyCollector(BaseJourneyCollector):
         # Clean up old journeys to prevent database clutter
         await self._expire_old_journeys(session)
 
+        # Mark SCHEDULED trains that were never observed as likely cancelled
+        await self._reconcile_unobserved_trains(session)
+
         logger.info("journey_collection_complete", **results)
         return results
 
@@ -294,6 +297,48 @@ class JourneyCollector(BaseJourneyCollector):
                 "expired_old_journeys",
                 count=result.rowcount,
                 cutoff_date=cutoff_date.isoformat(),
+            )
+
+    async def _reconcile_unobserved_trains(self, session: AsyncSession) -> None:
+        """Mark SCHEDULED trains as cancelled if they were never observed.
+
+        If a train from the NJT schedule was never upgraded to OBSERVED by
+        discovery and its origin departure time is more than 60 minutes ago,
+        it almost certainly did not run. Discovery polls 7+ stations every
+        30 minutes, so 60 minutes gives two full discovery cycles.
+
+        This fills a gap where NJT silently cancels trains by removing them
+        from the real-time feed rather than explicitly flagging stops as
+        "Cancelled".
+        """
+        cutoff_time = now_et() - timedelta(minutes=60)
+
+        stmt = (
+            update(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == now_et().date(),
+                    TrainJourney.observation_type == "SCHEDULED",
+                    TrainJourney.is_cancelled.is_(False),
+                    TrainJourney.is_expired.is_(False),
+                    TrainJourney.is_completed.is_(False),
+                    TrainJourney.scheduled_departure < cutoff_time,
+                )
+            )
+            .values(
+                is_cancelled=True,
+                cancellation_reason="Not observed in real-time feed",
+            )
+        )
+
+        result = cast(CursorResult[tuple[()]], await session.execute(stmt))
+
+        if result.rowcount and result.rowcount > 0:
+            logger.info(
+                "reconciled_unobserved_trains",
+                count=result.rowcount,
+                cutoff_time=cutoff_time.isoformat(),
             )
 
     async def find_trains_needing_collection(
@@ -1079,6 +1124,21 @@ class JourneyCollector(BaseJourneyCollector):
                 parse_njt_time(stop_data.DEP_TIME) if stop_data.DEP_TIME else None
             )
 
+            # Parse immutable schedule fields if available.
+            # SCHED_ARR_DATE / SCHED_DEP_DATE are the true original schedule
+            # times, unlike TIME/DEP_TIME which have inverted semantics and
+            # live-updating behavior.
+            sched_arr = (
+                parse_njt_time(stop_data.SCHED_ARR_DATE)
+                if stop_data.SCHED_ARR_DATE
+                else None
+            )
+            sched_dep = (
+                parse_njt_time(stop_data.SCHED_DEP_DATE)
+                if stop_data.SCHED_DEP_DATE
+                else None
+            )
+
             # Determine if this is the origin station
             # Use journey's origin_station_code for reliable detection
             is_origin = stop_data.STATION_2CHAR == journey.origin_station_code
@@ -1089,6 +1149,13 @@ class JourneyCollector(BaseJourneyCollector):
             normalized = normalize_njt_stop_times(
                 time_field, dep_time_field, is_origin, has_departed
             )
+
+            # For scheduled times, prefer the immutable SCHED_*_DATE fields
+            # over the normalized values derived from TIME/DEP_TIME. The
+            # normalized values are live estimates at intermediate stops,
+            # which drift as NJT revises predictions.
+            best_scheduled_arrival = sched_arr or normalized["scheduled_arrival"]
+            best_scheduled_departure = sched_dep or normalized["scheduled_departure"]
 
             # Find existing stop or create new
             stmt = select(JourneyStop).where(
@@ -1107,9 +1174,8 @@ class JourneyCollector(BaseJourneyCollector):
                     station_name=stop_data.STATIONNAME
                     or get_station_name(stop_data.STATION_2CHAR or ""),
                     stop_sequence=sequence,
-                    # Use normalized scheduled times (set once, immutable)
-                    scheduled_arrival=normalized["scheduled_arrival"],
-                    scheduled_departure=normalized["scheduled_departure"],
+                    scheduled_arrival=best_scheduled_arrival,
+                    scheduled_departure=best_scheduled_departure,
                 )
                 session.add(stop)
                 logger.debug(
@@ -1130,8 +1196,8 @@ class JourneyCollector(BaseJourneyCollector):
                 )
             else:
                 # EXISTING STOP - Never update scheduled times unless they're NULL
-                if stop.scheduled_arrival is None and normalized["scheduled_arrival"]:
-                    stop.scheduled_arrival = normalized["scheduled_arrival"]
+                if stop.scheduled_arrival is None and best_scheduled_arrival:
+                    stop.scheduled_arrival = best_scheduled_arrival
                     logger.info(
                         "recovered_missing_scheduled_arrival",
                         train_id=journey.train_id,
@@ -1141,9 +1207,9 @@ class JourneyCollector(BaseJourneyCollector):
 
                 if (
                     stop.scheduled_departure is None
-                    and normalized["scheduled_departure"]
+                    and best_scheduled_departure
                 ):
-                    stop.scheduled_departure = normalized["scheduled_departure"]
+                    stop.scheduled_departure = best_scheduled_departure
                     logger.info(
                         "recovered_missing_scheduled_departure",
                         train_id=journey.train_id,
@@ -1164,7 +1230,12 @@ class JourneyCollector(BaseJourneyCollector):
 
             # Update actual_arrival with normalized value
             # At origin: None (no arrival), at intermediate: TIME field (live estimate)
-            stop.actual_arrival = normalized["actual_arrival"]
+            # Once a train has departed a stop, freeze the arrival time to preserve
+            # the value recorded when the train was actually at/near the station.
+            # Without this guard, later collection cycles overwrite with stale NJT
+            # estimates, producing anomalous delays (e.g., +99m or -13m).
+            if not stop.has_departed_station or stop.actual_arrival is None:
+                stop.actual_arrival = normalized["actual_arrival"]
 
             # Update "updated" times for backward compatibility (deprecated fields)
             # These use raw API fields for legacy compatibility
@@ -1184,16 +1255,17 @@ class JourneyCollector(BaseJourneyCollector):
 
             # Tier 2: Sequential inference (very reliable)
             elif sequence < max_departed_sequence:
-                # If a later stop has departed, this one must have too
-                # Use the appropriate field based on stop type
-                if is_origin:
-                    # At origin, use DEP_TIME for departure
-                    stop.actual_departure = dep_time_field or stop.scheduled_departure
-                else:
-                    # At intermediate, use TIME for departure
-                    stop.actual_departure = time_field or stop.scheduled_departure
+                # If a later stop has departed, this one must have too.
+                # Only set actual_departure if not already recorded, to avoid
+                # overwriting a value captured when the train was at this stop
+                # with a stale NJT timestamp from a later collection cycle.
+                if not stop.actual_departure:
+                    if is_origin:
+                        stop.actual_departure = dep_time_field or stop.scheduled_departure
+                    else:
+                        stop.actual_departure = time_field or stop.scheduled_departure
                 stop.has_departed_station = True
-                stop.departure_source = "sequential_inference"
+                stop.departure_source = stop.departure_source or "sequential_inference"
 
             # Tier 3: Time-based inference (moderately reliable)
             elif (
@@ -1201,10 +1273,11 @@ class JourneyCollector(BaseJourneyCollector):
                 and stop.scheduled_departure < now_et() - timedelta(minutes=5)
             ):
                 # Train should have departed by now (5-minute grace period)
-                if is_origin:
-                    stop.actual_departure = dep_time_field or stop.scheduled_departure
-                else:
-                    stop.actual_departure = time_field or stop.scheduled_departure
+                if not stop.actual_departure:
+                    if is_origin:
+                        stop.actual_departure = dep_time_field or stop.scheduled_departure
+                    else:
+                        stop.actual_departure = time_field or stop.scheduled_departure
                 stop.has_departed_station = True
                 stop.departure_source = "time_inference"
 
@@ -1627,6 +1700,7 @@ class JourneyCollector(BaseJourneyCollector):
 
         if cancelled_stops == len(stops_data):
             journey.is_cancelled = True
+            journey.cancellation_reason = "All stops cancelled by NJT"
             logger.info("journey_cancelled", train_id=journey.train_id)
 
         # Set journey actual_departure from first departed stop (if not already set)
@@ -1759,44 +1833,6 @@ class JourneyCollector(BaseJourneyCollector):
                 origin_station=journey.origin_station_code,
                 error=str(e),
             )
-
-    async def check_journey_completion_v2(
-        self,
-        session: AsyncSession,
-        journey: TrainJourney,
-        stops_data: list[NJTransitStopData],
-    ) -> None:
-        """Check if journey is complete and update status accordingly.
-
-        Args:
-            session: Database session
-            journey: Journey to check
-            stops_data: List of stop data
-        """
-        if not stops_data:
-            return
-
-        # Check if cancelled (all stops show "Cancelled" status)
-        # Note: Don't set is_completed=True for cancelled trains - they should
-        # remain visible in departures with is_cancelled=True
-        if all(stop.STOP_STATUS == "Cancelled" for stop in stops_data):
-            journey.is_cancelled = True
-            return
-
-        # Check if all stops have been departed
-        all_departed = all(stop.DEPARTED == "YES" for stop in stops_data)
-        if all_departed:
-            journey.is_completed = True
-
-            # Set actual arrival time from last stop
-            last_stop = stops_data[-1]
-            if last_stop.TIME:
-                journey.actual_arrival = parse_njt_time(last_stop.TIME)
-
-            # Set actual departure time from first stop
-            first_stop = stops_data[0]
-            if first_stop.DEP_TIME:
-                journey.actual_departure = parse_njt_time(first_stop.DEP_TIME)
 
     def determine_train_status(self, stops_data: list[NJTransitStopData]) -> str:
         """Determine overall train status from stops.
