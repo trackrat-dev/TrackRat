@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 // Matches the base path in vite.config.ts and BrowserRouter basename
 const BASE = '/TrackRat/';
 
@@ -13,31 +15,31 @@ const features = [
   {
     title: 'See delays at a glance',
     description:
-      'Color-coded routes showing real-time delay status across the entire network. Know before you leave whether your line is running smoothly.',
+      'Visualize real-time departure and arrival delays across the network.',
     image: `${BASE}images/1.webp`,
   },
   {
     title: 'NJ Transit and Amtrak, together',
     description:
-      'One view for all trains on your route, regardless of carrier. Compare times, see which trains are running on time, and pick the best option.',
+      'One view for all trains travelling your route, regardless of carrier.',
     image: `${BASE}images/2.webp`,
   },
   {
     title: 'Know your track early',
     description:
-      'AI-powered platform predictions at Penn Station and other major hubs. Get to the right platform before the announcement.',
+      'Platform predictions at Penn Station and other major hubs.',
     image: `${BASE}images/3.webp`,
   },
   {
     title: 'Your commute, on your Lock Screen',
     description:
-      'Live Activities show real-time train status right on your Lock Screen and Dynamic Island. No need to open the app.',
+      'Live Activities show train status right on your Lock Screen and Dynamic Island.',
     image: `${BASE}images/4.webp`,
   },
   {
     title: 'PATH, PATCO, and more',
     description:
-      'Not just NJ Transit and Amtrak. Track PATH trains between New York and New Jersey, PATCO between Philadelphia and Camden, plus LIRR and Metro-North.',
+      'Not just NJ Transit and Amtrak! Track PATH, PATCO, LIRR, Metro-North, and more.',
     image: `${BASE}images/5.webp`,
   },
 ];
@@ -54,15 +56,15 @@ const transitSystems = [
 const faqs = [
   {
     q: 'Is TrackRat free?',
-    a: 'Yes. TrackRat is completely free to use with no ads, no account required, and no data collection.',
+    a: 'Yes. The core features of TrackRat are completely free to use with no ads, no account, and no data collected. Some of the more advanced features require a TrackRat Pro subscription to be purchased through the App Store.',
   },
   {
     q: 'How does track prediction work?',
-    a: 'TrackRat uses historical data to predict which platform your train will arrive at. Predictions are available at Penn Station New York and other major hubs.',
+    a: 'TrackRat uses historical data and live track activity to predict which platform your train will depart from. Predictions are available at Penn Station New York and other major hubs.',
   },
   {
     q: 'Which trains are supported?',
-    a: 'NJ Transit commuter rail, Amtrak (Northeast Corridor and long-distance), PATH, PATCO, LIRR, and Metro-North.',
+    a: 'NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North are currently supported.',
   },
   {
     q: 'How real-time is the data?',
@@ -239,6 +241,18 @@ export function LandingPage() {
             <p className="text-text-secondary leading-relaxed">
               The React/TypeScript web app provides departure lookups and
               real-time train status from any browser. Also fully open source.
+            </p>
+            <Link
+              to="/departures"
+              className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-accent/20 text-accent font-medium rounded-lg hover:bg-accent/30 transition-colors"
+            >
+              Try the Web App
+              <span className="text-xs px-2 py-0.5 bg-accent/30 rounded-full">
+                Alpha
+              </span>
+            </Link>
+            <p className="text-text-muted text-sm mt-2">
+              Experimental — features may change or break.
             </p>
           </div>
         </div>

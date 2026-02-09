@@ -8,7 +8,7 @@ export function Layout() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <h1 className="text-2xl font-bold">
             <Link
-              to="/departures"
+              to="/"
               className="bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent hover:opacity-80 transition-opacity"
             >
               TrackRat
