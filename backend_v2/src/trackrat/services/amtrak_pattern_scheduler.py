@@ -9,6 +9,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from sqlalchemy import and_, delete, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
@@ -408,9 +409,7 @@ class AmtrakPatternScheduler:
         recent_journey = result.scalar_one_or_none()
 
         if recent_journey and recent_journey.stops:
-            return sorted(
-                recent_journey.stops, key=lambda s: s.stop_sequence or 0
-            )
+            return sorted(recent_journey.stops, key=lambda s: s.stop_sequence or 0)
         return None
 
     async def _build_scheduled_stops(
