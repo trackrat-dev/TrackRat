@@ -173,8 +173,8 @@ async def test_high_variance_filter(pattern_scheduler):
 
 
 @pytest.mark.asyncio
-async def test_create_scheduled_journeys(pattern_scheduler):
-    """Test creation of scheduled journey records from patterns."""
+async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
+    """Test that SCHEDULED journeys copy full stop list from recent OBSERVED journey."""
     target_date = date(2024, 1, 25)
 
     patterns = [
@@ -191,14 +191,60 @@ async def test_create_scheduled_journeys(pattern_scheduler):
         }
     ]
 
+    # Build a mock recent OBSERVED journey with full stops
+    recent_journey = MagicMock()
+    recent_journey.stops = [
+        MagicMock(
+            station_code="NYP",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=datetime(2024, 1, 22, 15, 3),
+            scheduled_arrival=datetime(2024, 1, 22, 15, 3),
+        ),
+        MagicMock(
+            station_code="NWK",
+            station_name="Newark Penn Station",
+            stop_sequence=1,
+            scheduled_departure=datetime(2024, 1, 22, 15, 22),
+            scheduled_arrival=datetime(2024, 1, 22, 15, 20),
+        ),
+        MagicMock(
+            station_code="TRE",
+            station_name="Trenton",
+            stop_sequence=2,
+            scheduled_departure=datetime(2024, 1, 22, 15, 55),
+            scheduled_arrival=datetime(2024, 1, 22, 15, 53),
+        ),
+        MagicMock(
+            station_code="PH",
+            station_name="Philadelphia 30th Street",
+            stop_sequence=3,
+            scheduled_departure=datetime(2024, 1, 22, 16, 25),
+            scheduled_arrival=datetime(2024, 1, 22, 16, 22),
+        ),
+        MagicMock(
+            station_code="WS",
+            station_name="Washington Union Station",
+            stop_sequence=4,
+            scheduled_departure=None,
+            scheduled_arrival=datetime(2024, 1, 22, 18, 30),
+        ),
+    ]
+
     with patch(
         "trackrat.services.amtrak_pattern_scheduler.get_session"
     ) as mock_session:
-        # Mock checking for existing journey
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_execute = AsyncMock(return_value=mock_result)
+        # First execute call: check for existing journey (returns None)
+        # Second execute call: fetch recent journey with stops
+        mock_no_existing = MagicMock()
+        mock_no_existing.scalar_one_or_none.return_value = None
 
+        mock_recent_result = MagicMock()
+        mock_recent_result.scalar_one_or_none.return_value = recent_journey
+
+        mock_execute = AsyncMock(
+            side_effect=[mock_no_existing, mock_recent_result]
+        )
         mock_session.return_value.__aenter__.return_value.execute = mock_execute
 
         scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
@@ -222,10 +268,75 @@ async def test_create_scheduled_journeys(pattern_scheduler):
         assert journey.line_name == "Northeast Regional"
         assert journey.scheduled_departure == datetime.combine(target_date, time(15, 5))
 
-        # Check stop properties
+        # Should have all 5 stops from the recent journey, not just origin
+        assert len(stops) == 5
+        assert journey.stops_count == 5
+
+        # Verify station codes match the full route
+        station_codes = [s.station_code for s in stops]
+        assert station_codes == ["NYP", "NWK", "TRE", "PH", "WS"]
+
+        # Verify time offset was applied correctly
+        # Recent origin departed at 15:03, pattern median is 15:05 -> offset = +2 min
+        # (plus 3-day date shift from Jan 22 to Jan 25)
+        assert stops[0].scheduled_departure == datetime(2024, 1, 25, 15, 5)
+        assert stops[1].scheduled_departure == datetime(2024, 1, 25, 15, 24)
+        assert stops[2].scheduled_departure == datetime(2024, 1, 25, 15, 57)
+        assert stops[3].scheduled_departure == datetime(2024, 1, 25, 16, 27)
+        assert stops[4].scheduled_departure is None  # Terminal has no departure
+
+        # Verify arrivals also shifted
+        assert stops[0].scheduled_arrival == datetime(2024, 1, 25, 15, 5)
+        assert stops[4].scheduled_arrival == datetime(2024, 1, 25, 18, 32)
+
+
+@pytest.mark.asyncio
+async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
+    """Test fallback to origin-only stop when no recent OBSERVED journey exists."""
+    target_date = date(2024, 1, 25)
+
+    patterns = [
+        {
+            "train_number": "9999",
+            "median_departure": time(10, 0),
+            "occurrence_count": 2,
+            "origin": "NYP",
+            "destination": "Albany",
+            "terminal": "ALB",
+            "line_name": "Empire Service",
+            "time_variance": 1.0,
+            "sample_dates": ["2024-01-11", "2024-01-18"],
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        # First: no existing journey; Second: no recent journey found
+        mock_no_existing = MagicMock()
+        mock_no_existing.scalar_one_or_none.return_value = None
+
+        mock_no_recent = MagicMock()
+        mock_no_recent.scalar_one_or_none.return_value = None
+
+        mock_execute = AsyncMock(
+            side_effect=[mock_no_existing, mock_no_recent]
+        )
+        mock_session.return_value.__aenter__.return_value.execute = mock_execute
+
+        scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
+            patterns, target_date
+        )
+
+        assert len(scheduled_journeys) == 1
+        stops = scheduled_journeys[0]["stops"]
+
+        # Falls back to single origin stop
         assert len(stops) == 1
         assert stops[0].station_code == "NYP"
-        assert stops[0].scheduled_departure == journey.scheduled_departure
+        assert stops[0].scheduled_departure == datetime.combine(
+            target_date, time(10, 0)
+        )
 
 
 @pytest.mark.asyncio
@@ -332,6 +443,105 @@ async def test_save_scheduled_journeys_new(pattern_scheduler):
 
         # Verify journey and stop were added
         assert mock_add.call_count == 2  # Journey + stop
+
+
+@pytest.mark.asyncio
+async def test_save_scheduled_journeys_update_replaces_stops(pattern_scheduler):
+    """Test that updating an existing SCHEDULED record also replaces its stops."""
+    journey = TrainJourney(
+        train_id="2150",
+        journey_date=date(2024, 1, 25),
+        data_source="AMTRAK",
+        observation_type="SCHEDULED",
+        origin_station_code="NYP",
+        terminal_station_code="WAS",
+        destination="Washington",
+        line_name="Regional",
+        line_code="AM",
+        scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        has_complete_journey=False,
+        stops_count=3,
+    )
+
+    stops = [
+        JourneyStop(
+            journey=journey,
+            station_code="NYP",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        ),
+        JourneyStop(
+            journey=journey,
+            station_code="PH",
+            station_name="Philadelphia 30th Street",
+            stop_sequence=1,
+            scheduled_departure=datetime(2024, 1, 25, 16, 25),
+        ),
+        JourneyStop(
+            journey=journey,
+            station_code="WS",
+            station_name="Washington Union Station",
+            stop_sequence=2,
+            scheduled_arrival=datetime(2024, 1, 25, 18, 30),
+        ),
+    ]
+
+    scheduled_journeys = [
+        {
+            "journey": journey,
+            "stops": stops,
+            "pattern_info": {
+                "occurrences": 3,
+                "variance_minutes": 2.5,
+                "sample_dates": ["2024-01-18"],
+            },
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        # Mock finding an existing SCHEDULED journey
+        existing_journey = MagicMock()
+        existing_journey.id = 42
+        existing_journey.observation_type = "SCHEDULED"
+        existing_journey.update_count = 1
+
+        mock_select_result = MagicMock()
+        mock_select_result.scalar_one_or_none.return_value = existing_journey
+
+        mock_delete_result = MagicMock()
+
+        mock_execute = AsyncMock(
+            side_effect=[mock_select_result, mock_delete_result]
+        )
+
+        mock_add = MagicMock()
+        mock_flush = AsyncMock()
+        mock_commit = AsyncMock()
+
+        session_mock = mock_session.return_value.__aenter__.return_value
+        session_mock.execute = mock_execute
+        session_mock.add = mock_add
+        session_mock.flush = mock_flush
+        session_mock.commit = mock_commit
+
+        stats = await pattern_scheduler.save_scheduled_journeys(scheduled_journeys)
+
+        assert stats["created"] == 0
+        assert stats["updated"] == 1
+        assert stats["errors"] == 0
+
+        # Verify old stops were deleted (second execute call is the DELETE)
+        assert mock_execute.call_count == 2
+
+        # Verify new stops were added (3 stops)
+        assert mock_add.call_count == 3
+
+        # Verify journey metadata was updated
+        assert existing_journey.stops_count == 3
+        assert existing_journey.update_count == 2
 
 
 @pytest.mark.asyncio
