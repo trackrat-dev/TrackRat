@@ -1,6 +1,6 @@
 # TrackRat iOS App 🚂
 
-A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains with Live Activities, real-time updates, intelligent track predictions, and innovative navigation features.
+A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North trains with Live Activities, real-time updates, intelligent track predictions, and innovative navigation features.
 
 ## 🎯 Key Features
 
@@ -16,8 +16,10 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains 
 - **PATCO Speedline**: 14 stations (Lindenwold to Center City Philadelphia)
 - **Southeast Corridor**: 40+ Amtrak stations across NC, SC, GA, FL, VA
 - **Keystone Service**: 8 Pennsylvania stations
-- **Total Coverage**: 250+ stations across the Eastern United States
-- **Train Services**: NJ Transit, Amtrak (Silver Star, Silver Meteor, Carolinian, Piedmont, Crescent), PATH, PATCO
+- **LIRR**: All branches via MTA GTFS-RT
+- **Metro-North**: All branches via MTA GTFS-RT
+- **Total Coverage**: 1,000+ stations across the Eastern United States
+- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North
 
 ### Intelligent Features
 - **🦉 Owl Track Predictions**: AI-powered track predictions with confidence levels
@@ -64,7 +66,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, and PATCO trains 
 
 ### Technology Stack
 - **Language**: Swift 5.9+
-- **UI Framework**: SwiftUI (iOS 17.0+)
+- **UI Framework**: SwiftUI (iOS 18.0+)
 - **Concurrency**: Swift Async/Await
 - **Reactive**: Combine framework
 - **Activities**: ActivityKit for Live Activities
@@ -316,12 +318,14 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 - [ ] iPad optimization
 - [ ] macOS Catalyst app
 - [ ] CarPlay support
-- [ ] Additional transit systems (LIRR, Metro-North, SEPTA)
+- [ ] Additional transit systems (SEPTA)
 - [ ] Social features (trip sharing)
 
 ## 📝 License
 
-Copyright © 2025-2026 TrackRat. All rights reserved.
+Licensed under the Apache License, Version 2.0. See [LICENSE](../LICENSE) for details.
+
+Copyright 2025-2026 Andrew Martin
 
 ## 🤝 Acknowledgments
 
@@ -333,8 +337,8 @@ Copyright © 2025-2026 TrackRat. All rights reserved.
 ## 📧 Contact
 
 For questions or support:
-- GitHub Issues: [Report bugs](https://github.com/yourusername/TrackRat/issues)
-- Email: support@trackrat.net
+- GitHub Issues: [Report bugs](https://github.com/bokonon1/TrackRat/issues)
+- Email: trackrat@andymartin.cc
 
 ---
 

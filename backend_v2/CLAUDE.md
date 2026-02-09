@@ -2,9 +2,9 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** January 24, 2026
+**Last Updated:** February 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
-**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO), ML predictions, API caching, schedule generation, GTFS integration
+**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North), ML predictions, API caching, schedule generation, GTFS integration
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
-- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, and PATCO data sources with extensible architecture
+- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North data sources with extensible architecture
 - **ML-Powered Features**: Track predictions, arrival forecasting, and congestion analysis
 - **API Response Caching**: Intelligent caching system for performance optimization
 
@@ -42,12 +42,12 @@ The V2 backend eliminates the complexity of V1 by:
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │ Transit APIs    │────▶│  Backend V2     │────▶│  Client Apps    │
 │ • NJ Transit    │     │ • Discovery     │     │ • iOS App       │
-│ • Amtrak        │     │ • Schedule Gen  │     │ • Web App       │
-│ • PATH (GTFS)   │     │ • JIT Updates   │     │ • Live Activities│
-│ • PATCO (GTFS)  │     │ • ML Predictions│     └─────────────────┘
-└─────────────────┘     │ • GTFS Feed     │
-                        │ • API Caching   │
-                        │ • Analytics     │
+│ • Amtrak        │     │ • Schedule Gen  │     │ • Android App   │
+│ • PATH          │     │ • JIT Updates   │     │ • Web App       │
+│ • PATCO (GTFS)  │     │ • ML Predictions│     │ • Live Activities│
+│ • LIRR (GTFS-RT)│     │ • GTFS Feed     │     └─────────────────┘
+│ • MNR (GTFS-RT) │     │ • API Caching   │
+└─────────────────┘     │ • Analytics     │
                         │ • Validation    │
                         └────────┬────────┘
                                  │
@@ -99,7 +99,7 @@ The V2 backend eliminates the complexity of V1 by:
 train_journeys (
     id, train_id, journey_date, line_code, line_name, line_color,
     destination, origin_station_code, terminal_station_code,
-    data_source (NJT/AMTRAK), observation_type (OBSERVED/SCHEDULED),
+    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR), observation_type (OBSERVED/SCHEDULED),
     scheduled_departure, scheduled_arrival, actual_departure, actual_arrival,
     has_complete_journey, stops_count, is_cancelled, is_completed,
     api_error_count, is_expired, discovery_track, discovery_station_code
@@ -223,7 +223,7 @@ The APScheduler runs in-process and handles:
 - **Freshness checking**: Tasks check last run time before executing to prevent duplicates
 - **Safe intervals**: Tasks use 90% of scheduled interval with 2-minute buffer to prevent over-execution
 - **Row-level locking**: PostgreSQL `WITH FOR UPDATE SKIP LOCKED` prevents race conditions
-- **Instance tracking**: Cloud Run revision ID tracked for debugging (`K_REVISION` env var)
+- **Instance tracking**: GCE instance hostname tracked for debugging
 
 ### 5. Advanced Service Architecture
 
@@ -290,11 +290,14 @@ The system now includes comprehensive transit time analysis:
    - **NOTE**: Migrations run automatically during application startup (after backup restore)
 
 3. **Collector Changes**:
-   - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py)
+   - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py, schedule.py)
    - Amtrak collectors in `collectors/amtrak/` (discovery.py, journey.py, client.py)
+   - PATH collector in `collectors/path/` (collector.py, client.py, ridepath_client.py)
+   - LIRR collector in `collectors/lirr/` (collector.py, client.py)
+   - Metro-North collector in `collectors/mnr/` (collector.py, client.py)
+   - MTA shared logic in `collectors/mta_common.py` and `collectors/mta_extensions.py`
    - Base classes in `collectors/base.py`
-   - Test with mock data in `tests/unit/collectors/`
-   - Note: SEPTA, PATH, LIRR collectors have placeholder directories only
+   - Test with data in `tests/unit/collectors/`
 
 ### Code Style & Quality
 
@@ -365,8 +368,8 @@ TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY=20      # Max missing trains to verify
 TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS=true  # Database-aggregated patterns
 TRACKRAT_ENABLE_SQL_LOGGING=false                    # SQLAlchemy query logging
 
-# Cloud Run Configuration (for horizontal scaling)
-K_REVISION=revision-name                 # Automatically set by Cloud Run
+# GCE Instance Configuration (for horizontal scaling)
+# Instance hostname is automatically set by GCE MIG
 ```
 
 ### Settings Management
@@ -566,7 +569,7 @@ asyncio.run(check_tasks())
 
 1. **Enhanced Track Prediction Models**: Improved ML models with occupancy detection
 2. **WebSocket Support**: Real-time updates for clients
-3. **Additional Transit Systems**: LIRR, Metro-North, SEPTA (placeholder directories exist)
+3. **Additional Transit Systems**: SEPTA regional rail
 4. **Advanced Analytics**: Enhanced journey pattern analysis
 5. **GraphQL API**: More efficient client queries
 
@@ -628,7 +631,10 @@ The backend is organized into service classes for better maintainability:
 
 ## Recent Improvements & Known Issues
 
-### Recent Improvements (January 2026)
+### Recent Improvements (January-February 2026)
+- ✅ Added LIRR support with unified GTFS-RT collector
+- ✅ Added Metro-North support with unified GTFS-RT collector
+- ✅ Shared MTA logic in `mta_common.py` for stop merging, departure inference, completion detection
 - ✅ Added PATH train support with full GTFS integration
 - ✅ Added PATCO Speedline support with schedule-based GTFS data (14 stations)
 - ✅ Implemented GTFS future date schedule viewing for all transit systems

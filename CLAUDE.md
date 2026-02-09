@@ -7,10 +7,9 @@
 TrackRat is an open-source transit tracking framework (Apache 2.0) with:
 - **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
+- **Android**: Kotlin (Jetpack Compose + Hilt + Retrofit) in `android/`
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
-
-Note: Android is in a separate private repository.
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
 

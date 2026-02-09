@@ -4,12 +4,12 @@
 
 ## Technology Stack
 
-- **Framework**: React 18.3 + TypeScript 5.5
-- **Build Tool**: Vite 5.4 (fast dev server, optimized builds)
+- **Framework**: React 19.2 + TypeScript 5.5
+- **Build Tool**: Vite 7.2 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 3.4 (utility-first, custom design system)
-- **State Management**: Zustand 4.5 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 6.26
-- **Date Handling**: date-fns 3.6
+- **State Management**: Zustand 5.0 (lightweight, no boilerplate)
+- **Routing**: React Router DOM 6.30
+- **Date Handling**: date-fns 4.1
 - **HTTP Client**: Native `fetch` (no axios)
 - **Deployment**: GitHub Pages (automated via Actions)
 
@@ -248,7 +248,7 @@ interface Train {
   arrival: StationTiming;     // Destination timing
   train_position?: { ... };   // Current location
   data_freshness: { ... };    // Last updated info
-  data_source: 'NJT' | 'AMTRAK';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR';
   observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
 }
@@ -264,7 +264,7 @@ interface TrainDetails {
   train_position?: { ... };
   stops: Stop[];              // All stops on route
   data_freshness: { ... };
-  data_source: 'NJT' | 'AMTRAK';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR';
   is_cancelled: boolean;
   is_completed: boolean;
 }
@@ -340,7 +340,7 @@ interface PlatformPrediction {
 
 | Feature | iOS/Android | Web |
 |---------|-------------|-----|
-| **Real-time Updates** | WebSocket | 30s polling |
+| **Real-time Updates** | 30s polling + push | 30s polling |
 | **Notifications** | APNs/FCM push | None |
 | **Live Activities** | WidgetKit/Widgets | None |
 | **Offline Mode** | Core Data cache | None |

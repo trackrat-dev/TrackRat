@@ -218,7 +218,7 @@ gcloud compute instance-groups managed rolling-action replace \
 
 ## Cloud Functions
 
-### feedback_notifier
+### feedback_notifier (Cloud Function)
 Sends user feedback to Slack via webhook.
 
 **Trigger**: Pub/Sub message from application logs
@@ -232,6 +232,11 @@ gcloud functions deploy feedback-notifier \
   --trigger-topic=user-feedback \
   --entry-point=notify_feedback
 ```
+
+### train-follow-notifier (Cloud Run)
+Sends push notifications when followed trains have status updates.
+
+Deployed as a Cloud Run service, triggered by Pub/Sub messages from the backend.
 
 ## Cost Optimization
 
@@ -298,5 +303,7 @@ infra_v2/
     ├── loadbalancer.tf          # HTTPS LB, SSL cert, forwarding rules
     ├── storage.tf               # Artifact Registry, persistent disk, GCS
     ├── secrets.tf               # Secret Manager refs, IAM, service account
+    ├── metrics.tf               # Custom metrics and dashboards
+    ├── monitoring.tf            # Alerting policies and notification channels
     └── backup.tf                # Snapshot schedule and policy
 ```

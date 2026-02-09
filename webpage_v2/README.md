@@ -1,6 +1,6 @@
 # TrackRat Web
 
-A mobile-first web application for tracking NJ Transit and Amtrak trains in real-time.
+A mobile-first web application for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North trains in real-time.
 
 ## Features
 
@@ -13,12 +13,12 @@ A mobile-first web application for tracking NJ Transit and Amtrak trains in real
 
 ## Tech Stack
 
-- React 18 + TypeScript
-- Vite (build tool)
-- Tailwind CSS (styling)
-- Zustand (state management)
+- React 19 + TypeScript
+- Vite 7 (build tool)
+- Tailwind CSS 3 (styling)
+- Zustand 5 (state management)
 - React Router v6 (routing)
-- date-fns (date formatting)
+- date-fns 4 (date formatting)
 
 ## Getting Started
 
@@ -66,6 +66,7 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 - `GET /trains/departures` - Get train departures
 - `GET /trains/{id}` - Get train details
+- `GET /predictions/track` - ML platform predictions
 - `GET /health` - Health check
 
 ## Development
@@ -117,4 +118,4 @@ npm run build
 
 ## License
 
-MIT
+Licensed under the Apache License, Version 2.0. See [LICENSE](../LICENSE) for details.

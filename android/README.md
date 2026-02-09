@@ -21,7 +21,7 @@
 #### Data Models
 - **Complete V2 Models**: TrainV2, StatusV2, Progress, PredictionData, Stop models matching backend
 - **Response Models**: DeparturesResponse, TrainDetailsResponse for API responses
-- **Station Data**: All 5 major stations (NY, NP, TR, PJ, MP) plus extended Amtrak stations
+- **Station Data**: Major NJ Transit stations (NY, NP, TR, PJ, MP) plus Amtrak, PATH, and PATCO stations
 - **Proper Field Mapping**: JSON annotations for snake_case to camelCase conversion
 
 #### User Interface
@@ -154,9 +154,9 @@
    - Quick access shortcuts
 
 2. **Additional Transit Systems**
-   - LIRR support
-   - Metro-North support
-   - SEPTA/PATH integration
+   - LIRR support (backend ready)
+   - Metro-North support (backend ready)
+   - SEPTA integration
 
 3. **Accessibility Improvements**
    - Screen reader optimization
@@ -355,7 +355,7 @@ See `backend_v2/CLAUDE.md` for complete API documentation.
 ### Testing Guidelines
 
 - Write unit tests for ViewModels and repositories
-- Mock API responses for testing
+- Use test fixtures for API response testing
 - Test edge cases and error states
 - Aim for >70% code coverage
 - Use test fixtures for common data
