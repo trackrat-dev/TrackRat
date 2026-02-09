@@ -104,8 +104,6 @@
 		A1D92A722F0AEFFC0098897F /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */; };
 		A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
 		A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
-		A1EA529D2F23A2450023CC09 /* Configuration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = A1EA529C2F23A2450023CC09 /* Configuration.storekit */; };
-		A1EA529E2F23A2450023CC09 /* Configuration.storekit in Resources */ = {isa = PBXBuildFile; fileRef = A1EA529C2F23A2450023CC09 /* Configuration.storekit */; };
 		A1EF6A802F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */; };
 		A1EF6A812F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */; };
 		A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
@@ -602,7 +600,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A1EA529E2F23A2450023CC09 /* Configuration.storekit in Resources */,
 				1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */,
 				A16D6EF02E1703C7008C6996 /* rat-train-icon@2x.png in Resources */,
 				A16D6EF12E1703C7008C6996 /* rat-train-icon@3x.png in Resources */,
@@ -616,7 +613,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A1EA529D2F23A2450023CC09 /* Configuration.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
