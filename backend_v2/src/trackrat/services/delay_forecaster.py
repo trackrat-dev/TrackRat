@@ -3,17 +3,22 @@ Delay and cancellation forecaster service.
 
 Uses hierarchical historical data to predict delays and cancellations.
 Pattern follows HistoricalTrackPredictor with train_id -> line_code -> data_source fallbacks.
+
+Supports both origin-level (TrainJourney) and stop-level (JourneyStop) queries.
+When the user's boarding station differs from the train's origin, stop-level data
+is tried first for more accurate station-specific predictions.
 """
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import ColumnElement, Row, and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import SQLCoreOperations
 from structlog import get_logger
 
-from trackrat.models.database import TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.utils.time import now_et
 
@@ -66,23 +71,101 @@ class DelayForecaster:
     """
     Delay and cancellation forecaster using historical patterns.
 
-    Hierarchical approach (same as track predictor):
-    1. Try exact train ID (if >= 10 records)
-    2. Fallback to line code (if >= 25 records)
-    3. Fallback to data source (if >= 250 records)
-    4. Fallback to static defaults
+    Hierarchical approach:
+    1. Stop-level stats at user's boarding station (if different from origin)
+       a. train_id at stop (>= 10 records)
+       b. line_code at stop (>= 25 records)
+       c. data_source at stop (>= 250 records)
+    2. Origin-level stats (existing behavior)
+       a. train_id at origin (>= 10 records)
+       b. line_code at origin (>= 25 records)
+       c. data_source at origin (>= 250 records)
+    3. Static fallback
 
-    Then apply live congestion multiplier if available.
+    Then apply hour/day-of-week adjustment and live congestion multiplier.
     """
 
     def __init__(self) -> None:
         """Initialize the forecaster."""
         self.congestion_analyzer = CongestionAnalyzer()
 
+    @staticmethod
+    def _delay_stats_columns(
+        actual_dep: SQLCoreOperations[Any],
+        scheduled_dep: SQLCoreOperations[Any],
+        count_col: SQLCoreOperations[Any],
+        is_cancelled: SQLCoreOperations[Any],
+    ) -> list[ColumnElement[Any]]:
+        """Build column expressions for delay statistics queries.
+
+        Parameterized to work with both TrainJourney (origin-level)
+        and JourneyStop (stop-level) columns.
+        """
+        delay_secs = func.extract("epoch", actual_dep) - func.extract(
+            "epoch", scheduled_dep
+        )
+        has_times = and_(
+            is_cancelled.is_not(True),
+            actual_dep.is_not(None),
+            scheduled_dep.is_not(None),
+        )
+
+        return [
+            func.count(count_col).label("total"),
+            func.count(count_col).filter(is_cancelled.is_(True)).label("cancelled"),
+            func.count(count_col)
+            .filter(and_(has_times, delay_secs <= ON_TIME_THRESHOLD * 60))
+            .label("on_time"),
+            func.count(count_col)
+            .filter(
+                and_(
+                    has_times,
+                    delay_secs > ON_TIME_THRESHOLD * 60,
+                    delay_secs <= SLIGHT_DELAY_THRESHOLD * 60,
+                )
+            )
+            .label("slight"),
+            func.count(count_col)
+            .filter(
+                and_(
+                    has_times,
+                    delay_secs > SLIGHT_DELAY_THRESHOLD * 60,
+                    delay_secs <= SIGNIFICANT_DELAY_THRESHOLD * 60,
+                )
+            )
+            .label("significant"),
+            func.count(count_col)
+            .filter(and_(has_times, delay_secs > SIGNIFICANT_DELAY_THRESHOLD * 60))
+            .label("major"),
+            func.sum(
+                case(
+                    (has_times, func.greatest(0, delay_secs / 60)),
+                    else_=0,
+                )
+            ).label("total_delay"),
+        ]
+
+    @staticmethod
+    def _row_to_delay_stats(row: Row[Any] | None, level: str) -> DelayStats | None:
+        """Convert a query result row to DelayStats."""
+        if not row or row.total == 0:
+            return None
+        return DelayStats(
+            sample_count=row.total,
+            cancellation_count=row.cancelled or 0,
+            on_time_count=row.on_time or 0,
+            slight_delay_count=row.slight or 0,
+            significant_delay_count=row.significant or 0,
+            major_delay_count=row.major or 0,
+            total_delay_minutes=int(row.total_delay or 0),
+            level=level,
+        )
+
     async def forecast(
         self,
         train_id: str,
         station_code: str,
+        origin_station_code: str,
         line_code: str | None,
         data_source: str,
         journey_date: date,
@@ -94,9 +177,10 @@ class DelayForecaster:
 
         Args:
             train_id: Train identifier (e.g., '3427')
-            station_code: Origin station code (e.g., 'NY')
+            station_code: User's boarding station code (e.g., 'NP', 'JAM')
+            origin_station_code: Train's origin station code (e.g., 'NY')
             line_code: Line code (e.g., 'NE', 'Mo')
-            data_source: Service provider ('NJT' or 'AMTRAK')
+            data_source: Service provider ('NJT', 'AMTRAK', 'PATH', etc.)
             journey_date: Date of journey
             scheduled_departure: Scheduled departure time
             db: Database session
@@ -108,57 +192,99 @@ class DelayForecaster:
             "delay_forecast_start",
             train_id=train_id,
             station_code=station_code,
+            origin_station_code=origin_station_code,
             line_code=line_code,
             data_source=data_source,
         )
 
         factors: list[str] = []
-
-        # Step 1: Get historical stats at each hierarchy level
-        train_id_stats = await self._get_train_id_stats(
-            db, train_id, station_code, data_source
-        )
-        line_code_stats = None
-        if line_code:
-            line_code_stats = await self._get_line_code_stats(
-                db, line_code, station_code, data_source
-            )
-        data_source_stats = await self._get_data_source_stats(
-            db, station_code, data_source
-        )
-
-        # Step 2: Select which stats to use (hierarchical)
         selected_stats: DelayStats | None = None
 
-        if train_id_stats and train_id_stats.sample_count >= MIN_TRAIN_ID_SAMPLES:
-            selected_stats = train_id_stats
-            factors.append("train_history")
-            logger.info(
-                "using_train_id_stats",
-                train_id=train_id,
-                samples=train_id_stats.sample_count,
+        # Phase 1: Stop-level stats (only for mid-route stations)
+        if station_code != origin_station_code:
+            stats = await self._get_stop_train_id_stats(
+                db, train_id, station_code, data_source
             )
-        elif line_code_stats and line_code_stats.sample_count >= MIN_LINE_CODE_SAMPLES:
-            selected_stats = line_code_stats
-            factors.append("line_pattern")
-            logger.info(
-                "using_line_code_stats",
-                line_code=line_code,
-                samples=line_code_stats.sample_count,
+            if stats and stats.sample_count >= MIN_TRAIN_ID_SAMPLES:
+                selected_stats = stats
+                factors.extend(["train_history", "stop_level"])
+                logger.info(
+                    "using_stop_train_id_stats",
+                    train_id=train_id,
+                    station_code=station_code,
+                    samples=stats.sample_count,
+                )
+
+            if not selected_stats and line_code:
+                stats = await self._get_stop_line_code_stats(
+                    db, line_code, station_code, data_source
+                )
+                if stats and stats.sample_count >= MIN_LINE_CODE_SAMPLES:
+                    selected_stats = stats
+                    factors.extend(["line_pattern", "stop_level"])
+                    logger.info(
+                        "using_stop_line_code_stats",
+                        line_code=line_code,
+                        station_code=station_code,
+                        samples=stats.sample_count,
+                    )
+
+            if not selected_stats:
+                stats = await self._get_stop_data_source_stats(
+                    db, station_code, data_source
+                )
+                if stats and stats.sample_count >= MIN_DATA_SOURCE_SAMPLES:
+                    selected_stats = stats
+                    factors.extend(["service_pattern", "stop_level"])
+                    logger.info(
+                        "using_stop_data_source_stats",
+                        data_source=data_source,
+                        station_code=station_code,
+                        samples=stats.sample_count,
+                    )
+
+        # Phase 2: Origin-level stats
+        if not selected_stats:
+            stats = await self._get_train_id_stats(
+                db, train_id, origin_station_code, data_source
             )
-        elif (
-            data_source_stats
-            and data_source_stats.sample_count >= MIN_DATA_SOURCE_SAMPLES
-        ):
-            selected_stats = data_source_stats
-            factors.append("service_pattern")
-            logger.info(
-                "using_data_source_stats",
-                data_source=data_source,
-                samples=data_source_stats.sample_count,
+            if stats and stats.sample_count >= MIN_TRAIN_ID_SAMPLES:
+                selected_stats = stats
+                factors.append("train_history")
+                logger.info(
+                    "using_train_id_stats",
+                    train_id=train_id,
+                    samples=stats.sample_count,
+                )
+
+        if not selected_stats and line_code:
+            stats = await self._get_line_code_stats(
+                db, line_code, origin_station_code, data_source
             )
-        else:
-            # Use static fallback
+            if stats and stats.sample_count >= MIN_LINE_CODE_SAMPLES:
+                selected_stats = stats
+                factors.append("line_pattern")
+                logger.info(
+                    "using_line_code_stats",
+                    line_code=line_code,
+                    samples=stats.sample_count,
+                )
+
+        if not selected_stats:
+            stats = await self._get_data_source_stats(
+                db, origin_station_code, data_source
+            )
+            if stats and stats.sample_count >= MIN_DATA_SOURCE_SAMPLES:
+                selected_stats = stats
+                factors.append("service_pattern")
+                logger.info(
+                    "using_data_source_stats",
+                    data_source=data_source,
+                    samples=stats.sample_count,
+                )
+
+        # Phase 3: Static fallback
+        if not selected_stats:
             logger.info(
                 "using_static_fallback",
                 train_id=train_id,
@@ -167,14 +293,14 @@ class DelayForecaster:
             )
             return self._create_static_fallback(data_source)
 
-        # Step 3: Calculate base probabilities from historical stats
+        # Calculate base probabilities from historical stats
         forecast = self._calculate_probabilities(selected_stats)
         forecast.factors = factors
 
-        # Step 4: Apply hour/day-of-week adjustment
+        # Apply hour/day-of-week adjustment (uses origin station for time patterns)
         hour_adjustment = await self._get_hour_day_adjustment(
             db,
-            station_code,
+            origin_station_code,
             data_source,
             scheduled_departure.hour,
             scheduled_departure.weekday(),
@@ -183,7 +309,7 @@ class DelayForecaster:
             forecast = self._apply_adjustment(forecast, hour_adjustment)
             factors.append("time_pattern")
 
-        # Step 5: Apply live congestion multiplier
+        # Apply live congestion multiplier (uses user's boarding station)
         congestion_multiplier = await self._get_congestion_multiplier(
             db, station_code, data_source
         )
@@ -207,6 +333,10 @@ class DelayForecaster:
 
         return forecast
 
+    # -------------------------------------------------------------------------
+    # Origin-level query methods (query TrainJourney table)
+    # -------------------------------------------------------------------------
+
     async def _get_train_id_stats(
         self,
         db: AsyncSession,
@@ -214,91 +344,15 @@ class DelayForecaster:
         station_code: str,
         data_source: str,
     ) -> DelayStats | None:
-        """Get delay stats for a specific train ID."""
+        """Get delay stats for a specific train ID at its origin station."""
         cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
-
-        query = select(
-            func.count(TrainJourney.id).label("total"),
-            func.count(TrainJourney.id)
-            .filter(TrainJourney.is_cancelled.is_(True))
-            .label("cancelled"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= ON_TIME_THRESHOLD * 60,
-                )
-            )
-            .label("on_time"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > ON_TIME_THRESHOLD * 60,
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= SLIGHT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("slight"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > SLIGHT_DELAY_THRESHOLD * 60,
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= SIGNIFICANT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("significant"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > SIGNIFICANT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("major"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            TrainJourney.is_cancelled.is_not(True),
-                            TrainJourney.actual_departure.is_not(None),
-                            TrainJourney.scheduled_departure.is_not(None),
-                        ),
-                        func.greatest(
-                            0,
-                            (
-                                func.extract("epoch", TrainJourney.actual_departure)
-                                - func.extract(
-                                    "epoch", TrainJourney.scheduled_departure
-                                )
-                            )
-                            / 60,
-                        ),
-                    ),
-                    else_=0,
-                )
-            ).label("total_delay"),
-        ).where(
+        cols = self._delay_stats_columns(
+            TrainJourney.actual_departure,
+            TrainJourney.scheduled_departure,
+            TrainJourney.id,
+            TrainJourney.is_cancelled,
+        )
+        query = select(*cols).where(
             and_(
                 TrainJourney.train_id == train_id,
                 TrainJourney.origin_station_code == station_code,
@@ -308,21 +362,7 @@ class DelayForecaster:
         )
 
         result = await db.execute(query)
-        row = result.one_or_none()
-
-        if not row or row.total == 0:
-            return None
-
-        return DelayStats(
-            sample_count=row.total,
-            cancellation_count=row.cancelled or 0,
-            on_time_count=row.on_time or 0,
-            slight_delay_count=row.slight or 0,
-            significant_delay_count=row.significant or 0,
-            major_delay_count=row.major or 0,
-            total_delay_minutes=int(row.total_delay or 0),
-            level="train_id",
-        )
+        return self._row_to_delay_stats(result.one_or_none(), "train_id")
 
     async def _get_line_code_stats(
         self,
@@ -331,91 +371,15 @@ class DelayForecaster:
         station_code: str,
         data_source: str,
     ) -> DelayStats | None:
-        """Get delay stats for a line code."""
+        """Get delay stats for a line code at an origin station."""
         cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
-
-        query = select(
-            func.count(TrainJourney.id).label("total"),
-            func.count(TrainJourney.id)
-            .filter(TrainJourney.is_cancelled.is_(True))
-            .label("cancelled"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= ON_TIME_THRESHOLD * 60,
-                )
-            )
-            .label("on_time"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > ON_TIME_THRESHOLD * 60,
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= SLIGHT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("slight"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > SLIGHT_DELAY_THRESHOLD * 60,
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= SIGNIFICANT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("significant"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > SIGNIFICANT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("major"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            TrainJourney.is_cancelled.is_not(True),
-                            TrainJourney.actual_departure.is_not(None),
-                            TrainJourney.scheduled_departure.is_not(None),
-                        ),
-                        func.greatest(
-                            0,
-                            (
-                                func.extract("epoch", TrainJourney.actual_departure)
-                                - func.extract(
-                                    "epoch", TrainJourney.scheduled_departure
-                                )
-                            )
-                            / 60,
-                        ),
-                    ),
-                    else_=0,
-                )
-            ).label("total_delay"),
-        ).where(
+        cols = self._delay_stats_columns(
+            TrainJourney.actual_departure,
+            TrainJourney.scheduled_departure,
+            TrainJourney.id,
+            TrainJourney.is_cancelled,
+        )
+        query = select(*cols).where(
             and_(
                 TrainJourney.line_code == line_code,
                 TrainJourney.origin_station_code == station_code,
@@ -425,21 +389,7 @@ class DelayForecaster:
         )
 
         result = await db.execute(query)
-        row = result.one_or_none()
-
-        if not row or row.total == 0:
-            return None
-
-        return DelayStats(
-            sample_count=row.total,
-            cancellation_count=row.cancelled or 0,
-            on_time_count=row.on_time or 0,
-            slight_delay_count=row.slight or 0,
-            significant_delay_count=row.significant or 0,
-            major_delay_count=row.major or 0,
-            total_delay_minutes=int(row.total_delay or 0),
-            level="line_code",
-        )
+        return self._row_to_delay_stats(result.one_or_none(), "line_code")
 
     async def _get_data_source_stats(
         self,
@@ -447,91 +397,15 @@ class DelayForecaster:
         station_code: str,
         data_source: str,
     ) -> DelayStats | None:
-        """Get delay stats for a data source (NJT or AMTRAK)."""
+        """Get delay stats for a data source at an origin station."""
         cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
-
-        query = select(
-            func.count(TrainJourney.id).label("total"),
-            func.count(TrainJourney.id)
-            .filter(TrainJourney.is_cancelled.is_(True))
-            .label("cancelled"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= ON_TIME_THRESHOLD * 60,
-                )
-            )
-            .label("on_time"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > ON_TIME_THRESHOLD * 60,
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= SLIGHT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("slight"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > SLIGHT_DELAY_THRESHOLD * 60,
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    <= SIGNIFICANT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("significant"),
-            func.count(TrainJourney.id)
-            .filter(
-                and_(
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.actual_departure.is_not(None),
-                    TrainJourney.scheduled_departure.is_not(None),
-                    func.extract("epoch", TrainJourney.actual_departure)
-                    - func.extract("epoch", TrainJourney.scheduled_departure)
-                    > SIGNIFICANT_DELAY_THRESHOLD * 60,
-                )
-            )
-            .label("major"),
-            func.sum(
-                case(
-                    (
-                        and_(
-                            TrainJourney.is_cancelled.is_not(True),
-                            TrainJourney.actual_departure.is_not(None),
-                            TrainJourney.scheduled_departure.is_not(None),
-                        ),
-                        func.greatest(
-                            0,
-                            (
-                                func.extract("epoch", TrainJourney.actual_departure)
-                                - func.extract(
-                                    "epoch", TrainJourney.scheduled_departure
-                                )
-                            )
-                            / 60,
-                        ),
-                    ),
-                    else_=0,
-                )
-            ).label("total_delay"),
-        ).where(
+        cols = self._delay_stats_columns(
+            TrainJourney.actual_departure,
+            TrainJourney.scheduled_departure,
+            TrainJourney.id,
+            TrainJourney.is_cancelled,
+        )
+        query = select(*cols).where(
             and_(
                 TrainJourney.origin_station_code == station_code,
                 TrainJourney.data_source == data_source,
@@ -540,21 +414,109 @@ class DelayForecaster:
         )
 
         result = await db.execute(query)
-        row = result.one_or_none()
+        return self._row_to_delay_stats(result.one_or_none(), "data_source")
 
-        if not row or row.total == 0:
-            return None
+    # -------------------------------------------------------------------------
+    # Stop-level query methods (query JourneyStop joined to TrainJourney)
+    # -------------------------------------------------------------------------
 
-        return DelayStats(
-            sample_count=row.total,
-            cancellation_count=row.cancelled or 0,
-            on_time_count=row.on_time or 0,
-            slight_delay_count=row.slight or 0,
-            significant_delay_count=row.significant or 0,
-            major_delay_count=row.major or 0,
-            total_delay_minutes=int(row.total_delay or 0),
-            level="data_source",
+    async def _get_stop_train_id_stats(
+        self,
+        db: AsyncSession,
+        train_id: str,
+        station_code: str,
+        data_source: str,
+    ) -> DelayStats | None:
+        """Get delay stats for a specific train ID at a specific stop."""
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+        cols = self._delay_stats_columns(
+            JourneyStop.actual_departure,
+            JourneyStop.scheduled_departure,
+            JourneyStop.id,
+            TrainJourney.is_cancelled,
         )
+        query = (
+            select(*cols)
+            .select_from(JourneyStop)
+            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code == station_code,
+                    TrainJourney.train_id == train_id,
+                    TrainJourney.data_source == data_source,
+                    TrainJourney.journey_date >= cutoff_date,
+                )
+            )
+        )
+
+        result = await db.execute(query)
+        return self._row_to_delay_stats(result.one_or_none(), "train_id")
+
+    async def _get_stop_line_code_stats(
+        self,
+        db: AsyncSession,
+        line_code: str,
+        station_code: str,
+        data_source: str,
+    ) -> DelayStats | None:
+        """Get delay stats for a line code at a specific stop."""
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+        cols = self._delay_stats_columns(
+            JourneyStop.actual_departure,
+            JourneyStop.scheduled_departure,
+            JourneyStop.id,
+            TrainJourney.is_cancelled,
+        )
+        query = (
+            select(*cols)
+            .select_from(JourneyStop)
+            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code == station_code,
+                    TrainJourney.line_code == line_code,
+                    TrainJourney.data_source == data_source,
+                    TrainJourney.journey_date >= cutoff_date,
+                )
+            )
+        )
+
+        result = await db.execute(query)
+        return self._row_to_delay_stats(result.one_or_none(), "line_code")
+
+    async def _get_stop_data_source_stats(
+        self,
+        db: AsyncSession,
+        station_code: str,
+        data_source: str,
+    ) -> DelayStats | None:
+        """Get delay stats for a data source at a specific stop."""
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+        cols = self._delay_stats_columns(
+            JourneyStop.actual_departure,
+            JourneyStop.scheduled_departure,
+            JourneyStop.id,
+            TrainJourney.is_cancelled,
+        )
+        query = (
+            select(*cols)
+            .select_from(JourneyStop)
+            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code == station_code,
+                    TrainJourney.data_source == data_source,
+                    TrainJourney.journey_date >= cutoff_date,
+                )
+            )
+        )
+
+        result = await db.execute(query)
+        return self._row_to_delay_stats(result.one_or_none(), "data_source")
+
+    # -------------------------------------------------------------------------
+    # Adjustment methods
+    # -------------------------------------------------------------------------
 
     async def _get_hour_day_adjustment(
         self,
@@ -664,7 +626,7 @@ class DelayForecaster:
         data_source: str,
     ) -> float:
         """
-        Get live congestion multiplier for the origin station.
+        Get live congestion multiplier for a station.
 
         Uses the congestion analyzer to check current network conditions.
         """
@@ -694,6 +656,10 @@ class DelayForecaster:
         except Exception as e:
             logger.warning("congestion_multiplier_failed", error=str(e))
             return 1.0
+
+    # -------------------------------------------------------------------------
+    # Probability calculation and adjustment
+    # -------------------------------------------------------------------------
 
     def _calculate_probabilities(self, stats: DelayStats) -> DelayForecast:
         """Calculate probabilities from delay stats."""

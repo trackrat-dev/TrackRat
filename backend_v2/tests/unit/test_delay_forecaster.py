@@ -2,7 +2,7 @@
 Unit tests for the delay forecaster service.
 
 Tests the DelayForecaster which predicts delays and cancellations
-using hierarchical historical data.
+using hierarchical historical data, including stop-level predictions.
 """
 
 from datetime import date, datetime, timedelta
@@ -224,6 +224,7 @@ class TestDelayForecaster:
             forecast = await forecaster.forecast(
                 train_id="TEST123",
                 station_code="NY",
+                origin_station_code="NY",
                 line_code="NE",
                 data_source="NJT",
                 journey_date=date.today(),
@@ -274,6 +275,7 @@ class TestDelayForecaster:
             forecast = await forecaster.forecast(
                 train_id="TEST123",
                 station_code="NY",
+                origin_station_code="NY",
                 line_code="NE",
                 data_source="NJT",
                 journey_date=date.today(),
@@ -317,6 +319,7 @@ class TestDelayForecaster:
             forecast = await forecaster.forecast(
                 train_id="TEST123",
                 station_code="NY",
+                origin_station_code="NY",
                 line_code="NE",
                 data_source="NJT",
                 journey_date=date.today(),
@@ -353,6 +356,7 @@ class TestDelayForecaster:
             forecast = await forecaster.forecast(
                 train_id="TEST123",
                 station_code="NY",
+                origin_station_code="NY",
                 line_code="NE",
                 data_source="NJT",
                 journey_date=date.today(),
@@ -388,6 +392,7 @@ class TestDelayForecaster:
             forecast = await forecaster.forecast(
                 train_id="TEST123",
                 station_code="NY",
+                origin_station_code="NY",
                 line_code="NE",
                 data_source="NJT",
                 journey_date=date.today(),
@@ -582,3 +587,486 @@ class TestEdgeCases:
             + adjusted.major_delay_probability
         )
         assert total == pytest.approx(1.0, rel=0.01)
+
+
+class TestHelperMethods:
+    """Test the extracted helper methods."""
+
+    def test_row_to_delay_stats_returns_none_for_none_row(self, forecaster):
+        """Test that None row returns None."""
+        assert forecaster._row_to_delay_stats(None, "train_id") is None
+
+    def test_row_to_delay_stats_returns_none_for_zero_total(self, forecaster):
+        """Test that row with total=0 returns None."""
+        mock_row = MagicMock()
+        mock_row.total = 0
+        assert forecaster._row_to_delay_stats(mock_row, "train_id") is None
+
+    def test_row_to_delay_stats_converts_valid_row(self, forecaster):
+        """Test that valid row is converted to DelayStats correctly."""
+        mock_row = MagicMock()
+        mock_row.total = 100
+        mock_row.cancelled = 5
+        mock_row.on_time = 70
+        mock_row.slight = 15
+        mock_row.significant = 7
+        mock_row.major = 3
+        mock_row.total_delay = 400
+
+        stats = forecaster._row_to_delay_stats(mock_row, "line_code")
+
+        assert stats is not None
+        assert stats.sample_count == 100
+        assert stats.cancellation_count == 5
+        assert stats.on_time_count == 70
+        assert stats.slight_delay_count == 15
+        assert stats.significant_delay_count == 7
+        assert stats.major_delay_count == 3
+        assert stats.total_delay_minutes == 400
+        assert stats.level == "line_code"
+
+    def test_row_to_delay_stats_handles_none_values(self, forecaster):
+        """Test that None values in row columns default to 0."""
+        mock_row = MagicMock()
+        mock_row.total = 10
+        mock_row.cancelled = None
+        mock_row.on_time = None
+        mock_row.slight = None
+        mock_row.significant = None
+        mock_row.major = None
+        mock_row.total_delay = None
+
+        stats = forecaster._row_to_delay_stats(mock_row, "data_source")
+
+        assert stats is not None
+        assert stats.cancellation_count == 0
+        assert stats.on_time_count == 0
+        assert stats.total_delay_minutes == 0
+
+
+class TestStopLevelForecasting:
+    """Test the stop-level forecasting hierarchy."""
+
+    @pytest.mark.asyncio
+    async def test_mid_route_station_uses_stop_level_stats(self, forecaster, mock_db):
+        """Test that a mid-route station tries stop-level stats first."""
+        stop_stats = DelayStats(
+            sample_count=30,  # Above MIN_TRAIN_ID_SAMPLES
+            cancellation_count=1,
+            on_time_count=20,
+            slight_delay_count=6,
+            significant_delay_count=2,
+            major_delay_count=1,
+            total_delay_minutes=80,
+            level="train_id",
+        )
+
+        with (
+            patch.object(
+                forecaster, "_get_stop_train_id_stats", return_value=stop_stats
+            ) as mock_stop,
+            # Origin-level methods should NOT be called
+            patch.object(
+                forecaster, "_get_train_id_stats", return_value=None
+            ) as mock_origin,
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NP",  # Newark Penn (mid-route)
+                origin_station_code="NY",  # NY Penn (origin)
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            # Should use stop-level stats
+            assert "train_history" in forecast.factors
+            assert "stop_level" in forecast.factors
+            assert forecast.confidence == "high"
+            mock_stop.assert_called_once()
+            # Origin-level should not be called since stop-level succeeded
+            mock_origin.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mid_route_falls_back_to_stop_line_code(self, forecaster, mock_db):
+        """Test fallback from stop train_id to stop line_code."""
+        stop_line_stats = DelayStats(
+            sample_count=100,  # Above MIN_LINE_CODE_SAMPLES
+            cancellation_count=5,
+            on_time_count=70,
+            slight_delay_count=15,
+            significant_delay_count=7,
+            major_delay_count=3,
+            total_delay_minutes=500,
+            level="line_code",
+        )
+
+        with (
+            patch.object(forecaster, "_get_stop_train_id_stats", return_value=None),
+            patch.object(
+                forecaster, "_get_stop_line_code_stats", return_value=stop_line_stats
+            ) as mock_stop_line,
+            patch.object(forecaster, "_get_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NP",
+                origin_station_code="NY",
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            assert "line_pattern" in forecast.factors
+            assert "stop_level" in forecast.factors
+            assert forecast.confidence == "medium"
+            mock_stop_line.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_mid_route_falls_back_to_origin_level(self, forecaster, mock_db):
+        """Test that insufficient stop-level data falls back to origin-level."""
+        origin_stats = DelayStats(
+            sample_count=50,  # Above MIN_TRAIN_ID_SAMPLES
+            cancellation_count=2,
+            on_time_count=40,
+            slight_delay_count=5,
+            significant_delay_count=2,
+            major_delay_count=1,
+            total_delay_minutes=100,
+            level="train_id",
+        )
+
+        with (
+            # All stop-level methods return insufficient data
+            patch.object(forecaster, "_get_stop_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_data_source_stats", return_value=None),
+            # Origin-level succeeds
+            patch.object(
+                forecaster, "_get_train_id_stats", return_value=origin_stats
+            ) as mock_origin,
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NP",
+                origin_station_code="NY",
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            # Should use origin-level, NOT stop-level
+            assert "train_history" in forecast.factors
+            assert "stop_level" not in forecast.factors
+            assert forecast.confidence == "high"
+            mock_origin.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_origin_station_skips_stop_level(self, forecaster, mock_db):
+        """Test that when station == origin, stop-level queries are skipped entirely."""
+        origin_stats = DelayStats(
+            sample_count=50,
+            cancellation_count=2,
+            on_time_count=40,
+            slight_delay_count=5,
+            significant_delay_count=2,
+            major_delay_count=1,
+            total_delay_minutes=100,
+            level="train_id",
+        )
+
+        with (
+            # Stop-level methods should NOT be called
+            patch.object(
+                forecaster, "_get_stop_train_id_stats", return_value=None
+            ) as mock_stop_train,
+            patch.object(
+                forecaster, "_get_stop_line_code_stats", return_value=None
+            ) as mock_stop_line,
+            patch.object(
+                forecaster, "_get_stop_data_source_stats", return_value=None
+            ) as mock_stop_ds,
+            # Origin-level succeeds
+            patch.object(forecaster, "_get_train_id_stats", return_value=origin_stats),
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NY",  # Same as origin
+                origin_station_code="NY",
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            # Stop-level should never be called
+            mock_stop_train.assert_not_called()
+            mock_stop_line.assert_not_called()
+            mock_stop_ds.assert_not_called()
+
+            # Should use origin-level without stop_level factor
+            assert "train_history" in forecast.factors
+            assert "stop_level" not in forecast.factors
+
+    @pytest.mark.asyncio
+    async def test_mid_route_uses_stop_data_source_stats(self, forecaster, mock_db):
+        """Test fallback to stop-level data_source stats."""
+        stop_ds_stats = DelayStats(
+            sample_count=500,  # Above MIN_DATA_SOURCE_SAMPLES
+            cancellation_count=15,
+            on_time_count=350,
+            slight_delay_count=100,
+            significant_delay_count=25,
+            major_delay_count=10,
+            total_delay_minutes=2000,
+            level="data_source",
+        )
+
+        with (
+            patch.object(forecaster, "_get_stop_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_line_code_stats", return_value=None),
+            patch.object(
+                forecaster, "_get_stop_data_source_stats", return_value=stop_ds_stats
+            ),
+            patch.object(forecaster, "_get_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="JAM",
+                origin_station_code="NY",
+                line_code="OyBay",
+                data_source="LIRR",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            assert "service_pattern" in forecast.factors
+            assert "stop_level" in forecast.factors
+            assert forecast.confidence == "low"
+
+    @pytest.mark.asyncio
+    async def test_congestion_uses_boarding_station(self, forecaster, mock_db):
+        """Test that congestion multiplier uses the user's boarding station, not origin."""
+        origin_stats = DelayStats(
+            sample_count=50,
+            cancellation_count=2,
+            on_time_count=40,
+            slight_delay_count=5,
+            significant_delay_count=2,
+            major_delay_count=1,
+            total_delay_minutes=100,
+            level="train_id",
+        )
+
+        with (
+            patch.object(forecaster, "_get_stop_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_train_id_stats", return_value=origin_stats),
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_hour_day_adjustment", return_value=1.0),
+            patch.object(
+                forecaster, "_get_congestion_multiplier", return_value=1.3
+            ) as mock_congestion,
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NP",  # User boards at Newark
+                origin_station_code="NY",  # Train origin is NY Penn
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            # Congestion should be called with NP (user's station), not NY (origin)
+            mock_congestion.assert_called_once_with(mock_db, "NP", "NJT")
+            assert "live_congestion" in forecast.factors
+
+    @pytest.mark.asyncio
+    async def test_hour_day_uses_origin_station(self, forecaster, mock_db):
+        """Test that hour/day adjustment uses the origin station for time patterns."""
+        origin_stats = DelayStats(
+            sample_count=50,
+            cancellation_count=2,
+            on_time_count=40,
+            slight_delay_count=5,
+            significant_delay_count=2,
+            major_delay_count=1,
+            total_delay_minutes=100,
+            level="train_id",
+        )
+
+        with (
+            patch.object(forecaster, "_get_stop_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_train_id_stats", return_value=origin_stats),
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+            patch.object(
+                forecaster, "_get_hour_day_adjustment", return_value=1.2
+            ) as mock_hour_day,
+            patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
+        ):
+            sched_dep = datetime(2026, 2, 8, 8, 30)  # 8:30 AM on a Sunday (dow=6)
+
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NP",
+                origin_station_code="NY",
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=sched_dep,
+                db=mock_db,
+            )
+
+            # Hour/day should be called with NY (origin), not NP (user's station)
+            mock_hour_day.assert_called_once_with(
+                mock_db, "NY", "NJT", sched_dep.hour, sched_dep.weekday()
+            )
+            assert "time_pattern" in forecast.factors
+
+    @pytest.mark.asyncio
+    async def test_stop_level_insufficient_falls_through_entire_chain(
+        self, forecaster, mock_db
+    ):
+        """Test that insufficient stop AND origin data falls to static."""
+        with (
+            patch.object(forecaster, "_get_stop_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_stop_data_source_stats", return_value=None),
+            patch.object(forecaster, "_get_train_id_stats", return_value=None),
+            patch.object(forecaster, "_get_line_code_stats", return_value=None),
+            patch.object(forecaster, "_get_data_source_stats", return_value=None),
+        ):
+            forecast = await forecaster.forecast(
+                train_id="TEST123",
+                station_code="NP",
+                origin_station_code="NY",
+                line_code="NE",
+                data_source="NJT",
+                journey_date=date.today(),
+                scheduled_departure=datetime.now(),
+                db=mock_db,
+            )
+
+            assert "static_fallback" in forecast.factors
+            assert forecast.confidence == "low"
+            assert forecast.sample_count == 0
+
+
+class TestStopLevelQueries:
+    """Test the stop-level database query methods."""
+
+    @pytest.mark.asyncio
+    async def test_get_stop_train_id_stats_returns_none_for_no_data(self, forecaster):
+        """Test that missing stop-level data returns None."""
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        mock_result = MagicMock()
+        mock_result.one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        stats = await forecaster._get_stop_train_id_stats(
+            mock_db, "NONEXISTENT", "XX", "NJT"
+        )
+
+        assert stats is None
+
+    @pytest.mark.asyncio
+    async def test_get_stop_train_id_stats_returns_stats_for_valid_data(
+        self, forecaster
+    ):
+        """Test that valid stop-level data returns DelayStats."""
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        mock_row = MagicMock()
+        mock_row.total = 30
+        mock_row.cancelled = 1
+        mock_row.on_time = 20
+        mock_row.slight = 6
+        mock_row.significant = 2
+        mock_row.major = 1
+        mock_row.total_delay = 80
+
+        mock_result = MagicMock()
+        mock_result.one_or_none.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        stats = await forecaster._get_stop_train_id_stats(
+            mock_db, "TEST123", "NP", "NJT"
+        )
+
+        assert stats is not None
+        assert stats.sample_count == 30
+        assert stats.cancellation_count == 1
+        assert stats.level == "train_id"
+
+    @pytest.mark.asyncio
+    async def test_get_stop_line_code_stats_returns_none_for_no_data(self, forecaster):
+        """Test that missing stop-level line data returns None."""
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        mock_result = MagicMock()
+        mock_result.one_or_none.return_value = None
+        mock_db.execute.return_value = mock_result
+
+        stats = await forecaster._get_stop_line_code_stats(mock_db, "NE", "XX", "NJT")
+
+        assert stats is None
+
+    @pytest.mark.asyncio
+    async def test_get_stop_data_source_stats_returns_stats(self, forecaster):
+        """Test that stop-level data source stats work correctly."""
+        mock_db = AsyncMock(spec=AsyncSession)
+
+        mock_row = MagicMock()
+        mock_row.total = 500
+        mock_row.cancelled = 15
+        mock_row.on_time = 350
+        mock_row.slight = 100
+        mock_row.significant = 25
+        mock_row.major = 10
+        mock_row.total_delay = 2000
+
+        mock_result = MagicMock()
+        mock_result.one_or_none.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        stats = await forecaster._get_stop_data_source_stats(mock_db, "JAM", "LIRR")
+
+        assert stats is not None
+        assert stats.sample_count == 500
+        assert stats.level == "data_source"

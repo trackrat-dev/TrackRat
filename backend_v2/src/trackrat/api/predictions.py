@@ -282,23 +282,24 @@ async def get_supported_stations() -> SupportedStationsResponse:
 @handle_errors
 async def predict_delay(
     train_id: str = Query(..., description="Train ID (e.g., '3123' or 'A2301')"),
-    station_code: str = Query(..., description="Origin station code (e.g., 'NY')"),
+    station_code: str = Query(
+        ..., description="Station code (e.g., 'NY', 'NP', 'JAM')"
+    ),
     journey_date: date = Query(..., description="Date of journey (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
 ) -> DelayForecastResponse:
     """
     Get delay and cancellation forecast for a train.
 
-    Uses hierarchical historical data:
-    1. Exact train ID (if >= 10 records)
-    2. Line code (if >= 25 records)
-    3. Service provider fallback
+    Uses hierarchical historical data with stop-level and origin-level fallbacks.
+    When the user's station differs from the train's origin, stop-level data from
+    journey_stops is tried first for station-specific predictions.
 
     Adjusts for time-of-day patterns and live congestion.
 
     Args:
         train_id: Train identifier
-        station_code: Origin station code
+        station_code: User's boarding station code
         journey_date: Date of the journey
 
     Returns:
@@ -350,14 +351,10 @@ async def predict_delay(
     scheduled_departure = train_journey.scheduled_departure or now_et()
     data_source = train_journey.data_source or "NJT"
 
-    # Use the train's actual origin station for historical lookup, not the user's
-    # boarding station. The forecaster queries by origin_station_code, so passing
-    # a mid-route hub (e.g., JAM for LIRR) would return 0 historical matches.
-    origin_station = train_journey.origin_station_code or station_code
-
     forecast = await delay_forecaster.forecast(
         train_id=train_id,
-        station_code=origin_station,
+        station_code=station_code,
+        origin_station_code=train_journey.origin_station_code or station_code,
         line_code=train_journey.line_code,
         data_source=data_source,
         journey_date=journey_date,

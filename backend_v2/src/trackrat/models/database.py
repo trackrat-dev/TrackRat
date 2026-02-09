@@ -183,6 +183,9 @@ class JourneyStop(Base):
         # Performance optimization: composite index for track distribution queries
         # Used by historical_track_predictor.py for GROUP BY aggregations
         Index("idx_stop_track_distribution", "station_code", "track"),
+        # Performance optimization: composite index for stop-level delay forecaster joins
+        # Used by delay_forecaster.py to join journey_stops to train_journeys
+        Index("idx_stop_delay_forecaster", "station_code", "journey_id"),
     )
 
 
