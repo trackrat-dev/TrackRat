@@ -5,12 +5,27 @@ Tests the TrainDiscoveryCollector class with focus on the new batch collection f
 """
 
 import pytest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime, date
 
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.models.database import TrainJourney, DiscoveryRun
 from trackrat.utils.time import now_et
+
+
+@asynccontextmanager
+async def _mock_savepoint():
+    """Mock async context manager for session.begin_nested()."""
+    yield
+
+
+def _make_session_mock():
+    """Create an AsyncMock session that supports begin_nested() as async CM."""
+    mock_session = AsyncMock()
+    mock_session.add = Mock()
+    mock_session.begin_nested = lambda: _mock_savepoint()
+    return mock_session
 
 
 @pytest.fixture
@@ -320,10 +335,7 @@ class TestTrainDiscoveryCollector:
         self, discovery_collector, sample_train_data
     ):
         """Test that process_discovered_trains creates journey records correctly."""
-        mock_session = AsyncMock()
-
-        # Mock synchronous database operations
-        mock_session.add = Mock()
+        mock_session = _make_session_mock()
 
         # Mock database query to return no existing journeys (all are new)
         mock_session.scalar = AsyncMock(return_value=None)
@@ -356,10 +368,7 @@ class TestTrainDiscoveryCollector:
         self, discovery_collector
     ):
         """Test that Amtrak trains are skipped during NJT discovery."""
-        mock_session = AsyncMock()
-
-        # Mock synchronous database operations
-        mock_session.add = Mock()
+        mock_session = _make_session_mock()
 
         mock_session.scalar = AsyncMock(return_value=None)  # No existing journey
 
@@ -419,10 +428,7 @@ class TestTrainDiscoveryCollector:
     @pytest.mark.asyncio
     async def test_amtrak_train_id_patterns(self, discovery_collector):
         """Test that various Amtrak train ID patterns are correctly identified."""
-        mock_session = AsyncMock()
-
-        # Mock synchronous database operations
-        mock_session.add = Mock()
+        mock_session = _make_session_mock()
 
         mock_session.scalar = AsyncMock(return_value=None)
 

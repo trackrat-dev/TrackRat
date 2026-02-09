@@ -274,6 +274,7 @@ class DirectArrivalForecaster:
                     JourneyStop.station_code.in_(unique_codes),
                     # Narrow scan to recent journeys only
                     TrainJourney.journey_date >= (now_et() - timedelta(days=1)).date(),
+                    JourneyStop.stop_sequence.isnot(None),
                 )
             )
         )

@@ -757,7 +757,11 @@ class DepartureService:
                     async def refresh_journey(jid: int = journey_id) -> None:
                         # Re-query to get fresh state after potential rollback
                         # Default param captures journey_id at definition time
-                        fresh = await db.get(TrainJourney, jid)
+                        fresh = await db.get(
+                            TrainJourney,
+                            jid,
+                            options=[selectinload(TrainJourney.stops)],
+                        )
                         if fresh:
                             await njt_collector.collect_journey_details(db, fresh)
 

@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ET, now_et
 
 
 @pytest.fixture
@@ -198,36 +198,36 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
             station_code="NYP",
             station_name="New York Penn Station",
             stop_sequence=0,
-            scheduled_departure=datetime(2024, 1, 22, 15, 3),
-            scheduled_arrival=datetime(2024, 1, 22, 15, 3),
+            scheduled_departure=ET.localize(datetime(2024, 1, 22, 15, 3)),
+            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 15, 3)),
         ),
         MagicMock(
             station_code="NWK",
             station_name="Newark Penn Station",
             stop_sequence=1,
-            scheduled_departure=datetime(2024, 1, 22, 15, 22),
-            scheduled_arrival=datetime(2024, 1, 22, 15, 20),
+            scheduled_departure=ET.localize(datetime(2024, 1, 22, 15, 22)),
+            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 15, 20)),
         ),
         MagicMock(
             station_code="TRE",
             station_name="Trenton",
             stop_sequence=2,
-            scheduled_departure=datetime(2024, 1, 22, 15, 55),
-            scheduled_arrival=datetime(2024, 1, 22, 15, 53),
+            scheduled_departure=ET.localize(datetime(2024, 1, 22, 15, 55)),
+            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 15, 53)),
         ),
         MagicMock(
             station_code="PH",
             station_name="Philadelphia 30th Street",
             stop_sequence=3,
-            scheduled_departure=datetime(2024, 1, 22, 16, 25),
-            scheduled_arrival=datetime(2024, 1, 22, 16, 22),
+            scheduled_departure=ET.localize(datetime(2024, 1, 22, 16, 25)),
+            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 16, 22)),
         ),
         MagicMock(
             station_code="WS",
             station_name="Washington Union Station",
             stop_sequence=4,
             scheduled_departure=None,
-            scheduled_arrival=datetime(2024, 1, 22, 18, 30),
+            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 18, 30)),
         ),
     ]
 
@@ -264,7 +264,9 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         assert journey.terminal_station_code == "WAS"
         assert journey.destination == "Washington Union Station"
         assert journey.line_name == "Northeast Regional"
-        assert journey.scheduled_departure == datetime.combine(target_date, time(15, 5))
+        assert journey.scheduled_departure == ET.localize(
+            datetime.combine(target_date, time(15, 5))
+        )
 
         # Should have all 5 stops from the recent journey, not just origin
         assert len(stops) == 5
@@ -277,15 +279,15 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         # Verify time offset was applied correctly
         # Recent origin departed at 15:03, pattern median is 15:05 -> offset = +2 min
         # (plus 3-day date shift from Jan 22 to Jan 25)
-        assert stops[0].scheduled_departure == datetime(2024, 1, 25, 15, 5)
-        assert stops[1].scheduled_departure == datetime(2024, 1, 25, 15, 24)
-        assert stops[2].scheduled_departure == datetime(2024, 1, 25, 15, 57)
-        assert stops[3].scheduled_departure == datetime(2024, 1, 25, 16, 27)
+        assert stops[0].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 5))
+        assert stops[1].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 24))
+        assert stops[2].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 57))
+        assert stops[3].scheduled_departure == ET.localize(datetime(2024, 1, 25, 16, 27))
         assert stops[4].scheduled_departure is None  # Terminal has no departure
 
         # Verify arrivals also shifted
-        assert stops[0].scheduled_arrival == datetime(2024, 1, 25, 15, 5)
-        assert stops[4].scheduled_arrival == datetime(2024, 1, 25, 18, 32)
+        assert stops[0].scheduled_arrival == ET.localize(datetime(2024, 1, 25, 15, 5))
+        assert stops[4].scheduled_arrival == ET.localize(datetime(2024, 1, 25, 18, 32))
 
 
 @pytest.mark.asyncio
@@ -330,8 +332,8 @@ async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
         # Falls back to single origin stop
         assert len(stops) == 1
         assert stops[0].station_code == "NYP"
-        assert stops[0].scheduled_departure == datetime.combine(
-            target_date, time(10, 0)
+        assert stops[0].scheduled_departure == ET.localize(
+            datetime.combine(target_date, time(10, 0))
         )
 
 

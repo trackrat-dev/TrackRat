@@ -17,7 +17,7 @@ from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.settings import get_settings
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ET, now_et
 
 logger = get_logger(__name__)
 
@@ -545,8 +545,8 @@ class AmtrakPatternScheduler:
                     continue
 
                 # Combine date and time for scheduled departure
-                scheduled_departure = datetime.combine(
-                    target_date, pattern["median_departure"]
+                scheduled_departure = ET.localize(
+                    datetime.combine(target_date, pattern["median_departure"])
                 )
 
                 # Create scheduled journey
