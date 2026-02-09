@@ -421,6 +421,10 @@ class TestDepartureInference:
                 DEP_TIME="11:00:00 AM",
                 ARR_TIME=None,
                 TRACK="7",
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
             MagicMock(
                 ITEM="NP | Newark Penn",
@@ -431,6 +435,10 @@ class TestDepartureInference:
                 DEP_TIME="11:35:00 AM",
                 ARR_TIME="11:30:00 AM",
                 TRACK="2",
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
         ]
 
@@ -566,6 +574,10 @@ class TestDepartureInference:
                 DEP_TIME="02:00:00 PM",
                 ARR_TIME=None,
                 TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
             MagicMock(
                 ITEM="TR | Trenton",
@@ -576,6 +588,10 @@ class TestDepartureInference:
                 DEP_TIME=None,
                 ARR_TIME="03:00:00 PM",
                 TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
         ]
 

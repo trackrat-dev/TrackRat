@@ -28,7 +28,6 @@ from trackrat.utils.time import ET, now_et
 
 from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 
-
 # ---------------------------------------------------------------------------
 # SQLite in-memory fixtures (avoids PostgreSQL requirement)
 # ---------------------------------------------------------------------------
@@ -38,51 +37,61 @@ from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 async def sqlite_engine():
     """Create an in-memory SQLite engine for testing.
 
-    Configures SQLite to handle timezone-aware datetimes correctly
-    by patching the DateTime type adapter at the connection level.
-    Without this, SQLite strips timezone info and _resequence_stops()
-    fails comparing naive datetimes against DATETIME_MAX_ET (tz-aware).
+    Uses a connection-level event listener to convert timezone-aware datetimes
+    to UTC-naive on write and back to ET on read. This is more robust than
+    monkey-patching column types, which breaks when SQLAlchemy caches type
+    references on AnnotatedColumn objects during ORM class mapping.
     """
-    from sqlalchemy import TypeDecorator, DateTime as SADateTime
     import pytz
 
-    # Register a custom type for DateTime(timezone=True) that preserves ET
     _ET = pytz.timezone("America/New_York")
-
-    class TZDateTime(TypeDecorator):
-        impl = SADateTime
-        cache_ok = True
-
-        def process_bind_param(self, value, dialect):
-            if value is not None and value.tzinfo is not None:
-                # Store as UTC-naive for SQLite
-                return value.astimezone(pytz.utc).replace(tzinfo=None)
-            return value
-
-        def process_result_value(self, value, dialect):
-            if value is not None:
-                # Re-attach UTC then convert to ET
-                return pytz.utc.localize(value).astimezone(_ET)
-            return value
-
-    # Monkey-patch all DateTime(timezone=True) columns to use TZDateTime
-    # This is test-only; production uses PostgreSQL which handles TZ natively.
-    for table in Base.metadata.tables.values():
-        for column in table.columns:
-            if isinstance(column.type, SADateTime) and column.type.timezone:
-                column.type = TZDateTime()
 
     engine = create_async_engine(
         "sqlite+aiosqlite:///:memory:",
         echo=False,
     )
 
-    # Enable foreign keys for SQLite
     @event.listens_for(engine.sync_engine, "connect")
     def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
+
+    # SQLite DateTime handling strategy:
+    #
+    # The pysqlite dialect's bind_processor converts datetimes to strings
+    # by extracting naive components (year, month, day, hour, minute, second),
+    # IGNORING timezone info entirely. This happens BEFORE any event listeners
+    # fire, so before_cursor_execute cannot intercept datetime values.
+    #
+    # Since all input datetimes are in ET (from now_et() / parse_njt_time()),
+    # they are stored as ET-naive strings (e.g., "2026-02-09 08:20:00").
+    # On read, we re-attach the ET timezone. No UTC conversion needed.
+    #
+    # This approach is consistent regardless of whether a column uses our
+    # patched TZDateTime type or the original DateTime type (AnnotatedColumn
+    # caching means some columns bypass the patch).
+    from sqlalchemy import TypeDecorator, DateTime as SADateTime
+
+    class TZDateTime(TypeDecorator):
+        impl = SADateTime
+        cache_ok = True
+
+        def process_bind_param(self, value, dialect):
+            # No conversion needed: the dialect's bind_processor extracts
+            # naive components from the datetime, so timezone is irrelevant.
+            return value
+
+        def process_result_value(self, value, dialect):
+            if value is not None:
+                # Stored values are ET-naive; re-attach ET timezone
+                return _ET.localize(value)
+            return value
+
+    for table in Base.metadata.tables.values():
+        for column in table.columns:
+            if isinstance(column.type, SADateTime) and column.type.timezone:
+                column.type = TZDateTime()
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -121,10 +130,18 @@ def journey_collector(mock_njt_client):
     return JourneyCollector(mock_njt_client)
 
 
-def _make_stop_with_sched_fields(builder, station_code, station_name, dep_time,
-                                  arr_time=None, departed=False, track=None,
-                                  cancelled=False, sched_arr_date=None,
-                                  sched_dep_date=None):
+def _make_stop_with_sched_fields(
+    builder,
+    station_code,
+    station_name,
+    dep_time,
+    arr_time=None,
+    departed=False,
+    track=None,
+    cancelled=False,
+    sched_arr_date=None,
+    sched_dep_date=None,
+):
     """Build a stop mock and explicitly set SCHED_ARR_DATE / SCHED_DEP_DATE.
 
     MagicMock auto-generates attributes as Mock objects on access, which
@@ -132,8 +149,13 @@ def _make_stop_with_sched_fields(builder, station_code, station_name, dep_time,
     provided ensures `if stop_data.SCHED_ARR_DATE` evaluates correctly.
     """
     stop = builder.build_stop(
-        station_code, station_name, dep_time,
-        arr_time=arr_time, departed=departed, track=track, cancelled=cancelled,
+        station_code,
+        station_name,
+        dep_time,
+        arr_time=arr_time,
+        departed=departed,
+        track=track,
+        cancelled=cancelled,
     )
     stop.SCHED_ARR_DATE = sched_arr_date
     stop.SCHED_DEP_DATE = sched_dep_date
@@ -158,7 +180,7 @@ class TestReconcileUnobservedTrains:
 
         journey = TrainJourney(
             train_id="2532",
-            journey_date=date.today(),
+            journey_date=now_et().date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="NEW YORK PENN STATION",
@@ -196,7 +218,7 @@ class TestReconcileUnobservedTrains:
 
         journey = TrainJourney(
             train_id="2534",
-            journey_date=date.today(),
+            journey_date=now_et().date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="NEW YORK PENN STATION",
@@ -230,7 +252,7 @@ class TestReconcileUnobservedTrains:
 
         journey = TrainJourney(
             train_id="3920",
-            journey_date=date.today(),
+            journey_date=now_et().date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="New York",
@@ -249,9 +271,9 @@ class TestReconcileUnobservedTrains:
         await journey_collector._reconcile_unobserved_trains(sqlite_session)
         await sqlite_session.refresh(journey)
 
-        assert journey.is_cancelled is False, (
-            "OBSERVED trains should never be cancelled by reconciliation"
-        )
+        assert (
+            journey.is_cancelled is False
+        ), "OBSERVED trains should never be cancelled by reconciliation"
 
     @pytest.mark.asyncio
     async def test_does_not_cancel_future_scheduled_trains(
@@ -262,7 +284,7 @@ class TestReconcileUnobservedTrains:
 
         journey = TrainJourney(
             train_id="2536",
-            journey_date=date.today(),
+            journey_date=now_et().date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="NEW YORK PENN STATION",
@@ -281,9 +303,9 @@ class TestReconcileUnobservedTrains:
         await journey_collector._reconcile_unobserved_trains(sqlite_session)
         await sqlite_session.refresh(journey)
 
-        assert journey.is_cancelled is False, (
-            "Future SCHEDULED trains should not be cancelled"
-        )
+        assert (
+            journey.is_cancelled is False
+        ), "Future SCHEDULED trains should not be cancelled"
 
     @pytest.mark.asyncio
     async def test_does_not_re_cancel_already_cancelled(
@@ -294,7 +316,7 @@ class TestReconcileUnobservedTrains:
 
         journey = TrainJourney(
             train_id="2538",
-            journey_date=date.today(),
+            journey_date=now_et().date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="NEW YORK PENN STATION",
@@ -363,18 +385,26 @@ class TestArrivalTimeFreezing:
         builder = StopBuilder()
         stops_cycle_1 = [
             _make_stop_with_sched_fields(
-                builder, "TR", "Trenton",
+                builder,
+                "TR",
+                "Trenton",
                 dep_time=base_time.strftime(NJT_TIME_FORMAT),
-                departed=True, track="2",
+                departed=True,
+                track="2",
             ),
             _make_stop_with_sched_fields(
-                builder, "NP", "Newark Penn",
+                builder,
+                "NP",
+                "Newark Penn",
                 dep_time=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
                 arr_time=np_arr_time_1.strftime(NJT_TIME_FORMAT),
-                departed=True, track="1",
+                departed=True,
+                track="1",
             ),
             _make_stop_with_sched_fields(
-                builder, "NY", "New York Penn",
+                builder,
+                "NY",
+                "New York Penn",
                 dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
                 arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
                 departed=False,
@@ -403,18 +433,26 @@ class TestArrivalTimeFreezing:
         np_arr_time_2 = base_time + timedelta(minutes=25)  # revised by NJT
         stops_cycle_2 = [
             _make_stop_with_sched_fields(
-                builder, "TR", "Trenton",
+                builder,
+                "TR",
+                "Trenton",
                 dep_time=base_time.strftime(NJT_TIME_FORMAT),
-                departed=True, track="2",
+                departed=True,
+                track="2",
             ),
             _make_stop_with_sched_fields(
-                builder, "NP", "Newark Penn",
+                builder,
+                "NP",
+                "Newark Penn",
                 dep_time=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
                 arr_time=np_arr_time_2.strftime(NJT_TIME_FORMAT),  # revised!
-                departed=True, track="1",
+                departed=True,
+                track="1",
             ),
             _make_stop_with_sched_fields(
-                builder, "NY", "New York Penn",
+                builder,
+                "NY",
+                "New York Penn",
                 dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
                 arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
                 departed=False,
@@ -472,18 +510,25 @@ class TestScheduleBasedArrival:
         builder = StopBuilder()
 
         tr_stop = _make_stop_with_sched_fields(
-            builder, "TR", "Trenton",
+            builder,
+            "TR",
+            "Trenton",
             dep_time=base_time.strftime(NJT_TIME_FORMAT),
-            departed=False, track="1",
+            departed=False,
+            track="1",
             sched_dep_date=base_time.strftime(NJT_TIME_FORMAT),
         )
         np_stop_data = _make_stop_with_sched_fields(
-            builder, "NP", "Newark Penn",
+            builder,
+            "NP",
+            "Newark Penn",
             dep_time=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
             arr_time=live_arr.strftime(NJT_TIME_FORMAT),  # TIME = delayed estimate
             departed=False,
             sched_arr_date=sched_arr.strftime(NJT_TIME_FORMAT),
-            sched_dep_date=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
+            sched_dep_date=(base_time + timedelta(minutes=22)).strftime(
+                NJT_TIME_FORMAT
+            ),
         )
 
         stops = [tr_stop, np_stop_data]
@@ -530,12 +575,16 @@ class TestScheduleBasedArrival:
         live_arr = base_time + timedelta(minutes=20)
         builder = StopBuilder()
         tr_stop = _make_stop_with_sched_fields(
-            builder, "TR", "Trenton",
+            builder,
+            "TR",
+            "Trenton",
             dep_time=base_time.strftime(NJT_TIME_FORMAT),
             departed=False,
         )
         np_stop_data = _make_stop_with_sched_fields(
-            builder, "NP", "Newark Penn",
+            builder,
+            "NP",
+            "Newark Penn",
             dep_time=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
             arr_time=live_arr.strftime(NJT_TIME_FORMAT),
             departed=False,
@@ -565,7 +614,232 @@ class TestScheduleBasedArrival:
 
 
 class TestBulkInferenceGuard:
-    """Test that Tier 2/3 don't overwrite existing actual_departure."""
+    """Test that Tier 2/3 don't overwrite existing actual_departure or departure_source."""
+
+    @pytest.mark.asyncio
+    async def test_tier3_does_not_overwrite_departure_source(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """When time-based inference (Tier 3) runs on a stop that already has
+        departure_source='api_explicit' from a previous cycle, it should preserve
+        the original source.
+
+        This prevents departure_source downgrades that corrupt arrival forecast
+        buffers in DirectArrivalForecaster (api_explicit=1min vs time_inference=5min).
+        """
+        # Use a time 2 hours in the past so Tier 3's 5-minute threshold is
+        # always exceeded regardless of when the test suite runs.
+        base_time = (now_et() - timedelta(hours=2)).replace(second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3922C",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+
+        # First cycle: NP explicitly departed, gets api_explicit source
+        np_dep_time = base_time + timedelta(minutes=20)
+        stops_cycle_1 = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+                track="2",
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=np_dep_time.strftime(NJT_TIME_FORMAT),
+                arr_time=np_dep_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+                track="1",
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn",
+                dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, stops_cycle_1
+        )
+        await sqlite_session.flush()
+
+        np_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NP",
+            )
+        )
+        assert np_stop is not None
+        assert np_stop.departure_source == "api_explicit", (
+            f"First cycle should set departure_source to api_explicit, "
+            f"got {np_stop.departure_source!r}"
+        )
+
+        # Second cycle: NJT no longer reports DEPARTED=YES for NP, and NY
+        # is also not departed. NP's scheduled_departure is >5min ago, so
+        # Tier 3 (time_inference) fires. departure_source must be preserved.
+        stops_cycle_2 = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+                track="2",
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=np_dep_time.strftime(NJT_TIME_FORMAT),
+                arr_time=np_dep_time.strftime(NJT_TIME_FORMAT),
+                departed=False,  # NJT stopped reporting DEPARTED=YES
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn",
+                dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
+                departed=False,  # NY also not departed -> no Tier 2
+            ),
+        ]
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, stops_cycle_2
+        )
+        await sqlite_session.flush()
+
+        await sqlite_session.refresh(np_stop)
+        assert np_stop.departure_source == "api_explicit", (
+            f"Tier 3 should not downgrade departure_source from 'api_explicit', "
+            f"got {np_stop.departure_source!r}"
+        )
+        assert np_stop.actual_departure == np_dep_time, (
+            f"Tier 3 should not overwrite actual_departure either, "
+            f"got {np_stop.actual_departure}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_has_departed_not_reverted_to_false(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Once a stop has has_departed_station=True, it should never revert
+        to False even if the API temporarily stops reporting departure data.
+
+        This prevents a previously-departed stop from appearing as not-departed
+        when NJT data is transiently inconsistent."""
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3922D",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+
+        # First cycle: TR explicitly departed
+        stops_cycle_1 = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+                track="2",
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=(base_time + timedelta(minutes=20)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=18)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, stops_cycle_1
+        )
+        await sqlite_session.flush()
+
+        tr_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "TR",
+            )
+        )
+        assert tr_stop is not None
+        assert tr_stop.has_departed_station is True
+        assert tr_stop.departure_source == "api_explicit"
+
+        # Second cycle: NJT glitch — TR no longer reported as DEPARTED,
+        # and no other stop is departed either. The else branch fires.
+        # TR's scheduled_departure is in the future (to avoid Tier 3).
+        future_dep = now_et() + timedelta(hours=1)
+        stops_cycle_2 = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=future_dep.strftime(NJT_TIME_FORMAT),
+                departed=False,  # NJT glitch
+                track="2",
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=(future_dep + timedelta(minutes=20)).strftime(NJT_TIME_FORMAT),
+                arr_time=(future_dep + timedelta(minutes=18)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, stops_cycle_2
+        )
+        await sqlite_session.flush()
+
+        await sqlite_session.refresh(tr_stop)
+        assert tr_stop.has_departed_station is True, (
+            f"has_departed_station should never revert from True to False, "
+            f"got {tr_stop.has_departed_station}"
+        )
+        assert tr_stop.departure_source == "api_explicit", (
+            f"departure_source should be preserved when has_departed is not reverted, "
+            f"got {tr_stop.departure_source!r}"
+        )
 
     @pytest.mark.asyncio
     async def test_tier2_does_not_overwrite_existing_departure(
@@ -601,18 +875,26 @@ class TestBulkInferenceGuard:
         np_dep_time_1 = base_time + timedelta(minutes=20)
         stops_cycle_1 = [
             _make_stop_with_sched_fields(
-                builder, "TR", "Trenton",
+                builder,
+                "TR",
+                "Trenton",
                 dep_time=base_time.strftime(NJT_TIME_FORMAT),
-                departed=True, track="2",
+                departed=True,
+                track="2",
             ),
             _make_stop_with_sched_fields(
-                builder, "NP", "Newark Penn",
+                builder,
+                "NP",
+                "Newark Penn",
                 dep_time=np_dep_time_1.strftime(NJT_TIME_FORMAT),
                 arr_time=np_dep_time_1.strftime(NJT_TIME_FORMAT),
-                departed=True, track="1",
+                departed=True,
+                track="1",
             ),
             _make_stop_with_sched_fields(
-                builder, "NY", "New York Penn",
+                builder,
+                "NY",
+                "New York Penn",
                 dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
                 arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
                 departed=False,
@@ -640,18 +922,25 @@ class TestBulkInferenceGuard:
         stale_np_time = base_time + timedelta(minutes=50)  # wrong stale value
         stops_cycle_2 = [
             _make_stop_with_sched_fields(
-                builder, "TR", "Trenton",
+                builder,
+                "TR",
+                "Trenton",
                 dep_time=base_time.strftime(NJT_TIME_FORMAT),
-                departed=True, track="2",
+                departed=True,
+                track="2",
             ),
             _make_stop_with_sched_fields(
-                builder, "NP", "Newark Penn",
+                builder,
+                "NP",
+                "Newark Penn",
                 dep_time=np_dep_time_1.strftime(NJT_TIME_FORMAT),
                 arr_time=stale_np_time.strftime(NJT_TIME_FORMAT),  # stale!
                 departed=False,  # NJT no longer says YES
             ),
             _make_stop_with_sched_fields(
-                builder, "NY", "New York Penn",
+                builder,
+                "NY",
+                "New York Penn",
                 dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
                 arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
                 departed=True,  # NY departed -> triggers Tier 2 for NP
@@ -688,9 +977,9 @@ class TestEffectiveObservationType:
         journey.data_source = "NJT"
 
         result = get_effective_observation_type(journey)
-        assert result == "SCHEDULED", (
-            f"NJT SCHEDULED train should not be promoted, got {result}"
-        )
+        assert (
+            result == "SCHEDULED"
+        ), f"NJT SCHEDULED train should not be promoted, got {result}"
 
     def test_observed_train_stays_observed(self):
         """An OBSERVED train should always return OBSERVED."""
@@ -702,6 +991,31 @@ class TestEffectiveObservationType:
 
         result = get_effective_observation_type(journey)
         assert result == "OBSERVED"
+
+    def test_amtrak_scheduled_still_promoted(self):
+        """An Amtrak SCHEDULED train should still be promoted to OBSERVED
+        after departure time passes. Amtrak uses pattern-based scheduling
+        and relies on auto-promotion for trains that haven't been discovered
+        yet. Unlike NJT, Amtrak has no reconciliation job."""
+        from trackrat.utils.train import get_effective_observation_type
+
+        past_time = now_et() - timedelta(hours=1)
+
+        journey = MagicMock()
+        journey.observation_type = "SCHEDULED"
+        journey.data_source = "AMTRAK"
+
+        stop = MagicMock()
+        stop.stop_sequence = 0
+        stop.scheduled_departure = past_time
+        stop.scheduled_arrival = None
+        journey.stops = [stop]
+
+        result = get_effective_observation_type(journey)
+        assert result == "OBSERVED", (
+            f"Amtrak SCHEDULED train should still be promoted after departure, "
+            f"got {result}"
+        )
 
     def test_patco_scheduled_promoted_after_departure(self):
         """A PATCO SCHEDULED train (no real-time API) should still be promoted
@@ -721,9 +1035,9 @@ class TestEffectiveObservationType:
         journey.stops = [stop]
 
         result = get_effective_observation_type(journey)
-        assert result == "OBSERVED", (
-            f"PATCO SCHEDULED train should be promoted after departure, got {result}"
-        )
+        assert (
+            result == "OBSERVED"
+        ), f"PATCO SCHEDULED train should be promoted after departure, got {result}"
 
 
 # ---------------------------------------------------------------------------
@@ -775,12 +1089,16 @@ class TestExplicitCancellationReason:
         builder = StopBuilder()
         stops_data = [
             _make_stop_with_sched_fields(
-                builder, "TR", "Trenton",
+                builder,
+                "TR",
+                "Trenton",
                 dep_time=base_time.strftime(NJT_TIME_FORMAT),
                 cancelled=True,
             ),
             _make_stop_with_sched_fields(
-                builder, "NY", "New York",
+                builder,
+                "NY",
+                "New York",
                 dep_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
                 arr_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
                 cancelled=True,

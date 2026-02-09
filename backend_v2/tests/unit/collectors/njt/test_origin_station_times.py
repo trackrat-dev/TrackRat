@@ -243,6 +243,8 @@ class TestOriginStationDelayCalculation:
         origin_stop.PICKUP = None
         origin_stop.DROPOFF = None
         origin_stop.STOP_STATUS = "BOARDING"
+        origin_stop.SCHED_ARR_DATE = None
+        origin_stop.SCHED_DEP_DATE = None
 
         intermediate_stop = MagicMock()
         intermediate_stop.STATION_2CHAR = "SE"
@@ -254,6 +256,8 @@ class TestOriginStationDelayCalculation:
         intermediate_stop.PICKUP = None
         intermediate_stop.DROPOFF = None
         intermediate_stop.STOP_STATUS = "Late"
+        intermediate_stop.SCHED_ARR_DATE = None
+        intermediate_stop.SCHED_DEP_DATE = None
 
         api_response = create_stop_list_response(
             train_id="3871",
@@ -338,6 +342,8 @@ class TestOriginStationDelayCalculation:
         origin_stop.PICKUP = None
         origin_stop.DROPOFF = None
         origin_stop.STOP_STATUS = "BOARDING"
+        origin_stop.SCHED_ARR_DATE = None
+        origin_stop.SCHED_DEP_DATE = None
 
         intermediate_stop = MagicMock()
         intermediate_stop.STATION_2CHAR = "SE"
@@ -351,6 +357,8 @@ class TestOriginStationDelayCalculation:
         intermediate_stop.PICKUP = None
         intermediate_stop.DROPOFF = None
         intermediate_stop.STOP_STATUS = "Late"
+        intermediate_stop.SCHED_ARR_DATE = None
+        intermediate_stop.SCHED_DEP_DATE = None
 
         api_response = create_stop_list_response(
             train_id="3871",
@@ -425,6 +433,8 @@ class TestOriginStationDelayCalculation:
         origin_stop.PICKUP = None
         origin_stop.DROPOFF = None
         origin_stop.STOP_STATUS = "BOARDING"
+        origin_stop.SCHED_ARR_DATE = None
+        origin_stop.SCHED_DEP_DATE = None
 
         api_response = create_stop_list_response(
             train_id="3875",
@@ -494,6 +504,8 @@ class TestOriginStationDelayCalculation:
         origin_stop.PICKUP = None
         origin_stop.DROPOFF = None
         origin_stop.STOP_STATUS = "ON TIME"
+        origin_stop.SCHED_ARR_DATE = None
+        origin_stop.SCHED_DEP_DATE = None
 
         api_response = create_stop_list_response(
             train_id="3880",

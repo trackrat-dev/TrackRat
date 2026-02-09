@@ -79,6 +79,8 @@ class StopBuilder:
         stop.CONNECTING = None
         stop.PICKUP = None
         stop.DROPOFF = None
+        stop.SCHED_ARR_DATE = None
+        stop.SCHED_DEP_DATE = None
 
         return stop
 

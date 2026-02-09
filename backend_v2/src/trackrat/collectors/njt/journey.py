@@ -303,22 +303,24 @@ class JourneyCollector(BaseJourneyCollector):
         """Mark SCHEDULED trains as cancelled if they were never observed.
 
         If a train from the NJT schedule was never upgraded to OBSERVED by
-        discovery and its origin departure time is more than 60 minutes ago,
+        discovery and its origin departure time is more than 50 minutes ago,
         it almost certainly did not run. Discovery polls 7+ stations every
-        30 minutes, so 60 minutes gives two full discovery cycles.
+        30 minutes, so 50 minutes gives at least one full discovery cycle
+        with margin.
 
         This fills a gap where NJT silently cancels trains by removing them
         from the real-time feed rather than explicitly flagging stops as
         "Cancelled".
         """
-        cutoff_time = now_et() - timedelta(minutes=60)
+        now = now_et()
+        cutoff_time = now - timedelta(minutes=50)
 
         stmt = (
             update(TrainJourney)
             .where(
                 and_(
                     TrainJourney.data_source == "NJT",
-                    TrainJourney.journey_date == now_et().date(),
+                    TrainJourney.journey_date == now.date(),
                     TrainJourney.observation_type == "SCHEDULED",
                     TrainJourney.is_cancelled.is_(False),
                     TrainJourney.is_expired.is_(False),
@@ -1205,10 +1207,7 @@ class JourneyCollector(BaseJourneyCollector):
                         is_origin=is_origin,
                     )
 
-                if (
-                    stop.scheduled_departure is None
-                    and best_scheduled_departure
-                ):
+                if stop.scheduled_departure is None and best_scheduled_departure:
                     stop.scheduled_departure = best_scheduled_departure
                     logger.info(
                         "recovered_missing_scheduled_departure",
@@ -1261,7 +1260,9 @@ class JourneyCollector(BaseJourneyCollector):
                 # with a stale NJT timestamp from a later collection cycle.
                 if not stop.actual_departure:
                     if is_origin:
-                        stop.actual_departure = dep_time_field or stop.scheduled_departure
+                        stop.actual_departure = (
+                            dep_time_field or stop.scheduled_departure
+                        )
                     else:
                         stop.actual_departure = time_field or stop.scheduled_departure
                 stop.has_departed_station = True
@@ -1275,16 +1276,20 @@ class JourneyCollector(BaseJourneyCollector):
                 # Train should have departed by now (5-minute grace period)
                 if not stop.actual_departure:
                     if is_origin:
-                        stop.actual_departure = dep_time_field or stop.scheduled_departure
+                        stop.actual_departure = (
+                            dep_time_field or stop.scheduled_departure
+                        )
                     else:
                         stop.actual_departure = time_field or stop.scheduled_departure
                 stop.has_departed_station = True
-                stop.departure_source = "time_inference"
+                stop.departure_source = stop.departure_source or "time_inference"
 
             else:
-                # Not yet departed
-                stop.has_departed_station = False
-                stop.departure_source = None
+                # Not yet departed — but never revert a stop that was
+                # previously marked as departed (API data can be inconsistent)
+                if not stop.has_departed_station:
+                    stop.has_departed_station = False
+                    stop.departure_source = None
 
             # Update raw status information
             stop.raw_njt_departed_flag = stop_data.DEPARTED
