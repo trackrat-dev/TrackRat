@@ -304,6 +304,62 @@ class TestGetCanonicalSegments:
             ("MSPD", "MTMH"),
         ]
 
+    def test_canonical_mnr_gct_to_waterbury(self):
+        """Test that GCT -> MWTB expands through trunk + Waterbury branch.
+
+        This is the core bug scenario: without trunk stations in the branch
+        route, this segment could not be resolved and would pass through
+        as a direct GCT -> MWTB line on the congestion map.
+        """
+        segments = get_canonical_segments("MNR", "GCT", "MWTB")
+        # Should expand to many intermediate segments, not a direct pair
+        assert len(segments) > 2, (
+            f"GCT -> MWTB should expand through trunk + branch, "
+            f"got only {len(segments)} segments: {segments}"
+        )
+        # First segment should start from GCT
+        assert segments[0][0] == "GCT"
+        # Last segment should end at MWTB
+        assert segments[-1][1] == "MWTB"
+        # Should pass through Bridgeport (MBGP), the junction station
+        all_stations = [s[0] for s in segments] + [segments[-1][1]]
+        assert "MBGP" in all_stations, (
+            f"GCT -> MWTB expansion should pass through Bridgeport (MBGP), "
+            f"stations: {all_stations}"
+        )
+
+    def test_canonical_mnr_gct_to_danbury(self):
+        """Test that GCT -> MDBY expands through trunk + Danbury branch."""
+        segments = get_canonical_segments("MNR", "GCT", "MDBY")
+        assert len(segments) > 2
+        assert segments[0][0] == "GCT"
+        assert segments[-1][1] == "MDBY"
+        # Should pass through South Norwalk (MSNW), the junction station
+        all_stations = [s[0] for s in segments] + [segments[-1][1]]
+        assert "MSNW" in all_stations
+
+    def test_canonical_mnr_gct_to_new_canaan(self):
+        """Test that GCT -> MNCA expands through trunk + New Canaan branch."""
+        segments = get_canonical_segments("MNR", "GCT", "MNCA")
+        assert len(segments) > 2
+        assert segments[0][0] == "GCT"
+        assert segments[-1][1] == "MNCA"
+        # Should pass through Stamford (MSTM), the junction station
+        all_stations = [s[0] for s in segments] + [segments[-1][1]]
+        assert "MSTM" in all_stations
+
+    def test_canonical_mnr_gct_to_mid_branch_station(self):
+        """Test that GCT to a mid-branch station also expands correctly.
+
+        When GTFS static backfill fails and only a few RT stops are visible,
+        the synthetic GCT origin pairs with the first visible branch stop.
+        """
+        # GCT -> MANS (Ansonia, mid-Waterbury branch) should expand
+        segments = get_canonical_segments("MNR", "GCT", "MANS")
+        assert len(segments) > 2
+        assert segments[0][0] == "GCT"
+        assert segments[-1][1] == "MANS"
+
 
 class TestAllRoutesConsistency:
     """Test that all routes are properly configured."""
@@ -398,17 +454,32 @@ class TestAllRoutesConsistency:
             montauk_stations
         ), "Montauk route missing Babylon Branch stations"
 
-    def test_mnr_branches_start_from_main_line(self):
-        """Test MNR branch routes start from a main line junction station."""
+    def test_mnr_branches_include_trunk(self):
+        """Test MNR branch routes include New Haven trunk from GCT to junction.
+
+        Branch routes must include the full trunk so that segments spanning
+        the trunk and branch (e.g., GCT -> MWTB) can be resolved by a single
+        route lookup.  This mirrors how LIRR routes include NY -> JAM trunk.
+        """
         from trackrat.config.route_topology import (
             MNR_NEW_CANAAN,
             MNR_DANBURY,
             MNR_WATERBURY,
         )
 
-        # New Canaan branches from Stamford (on New Haven Line)
-        assert MNR_NEW_CANAAN.stations[0] == "MSTM"
-        # Danbury branches from South Norwalk (on New Haven Line)
-        assert MNR_DANBURY.stations[0] == "MSNW"
-        # Waterbury branches from Bridgeport (on New Haven Line)
-        assert MNR_WATERBURY.stations[0] == "MBGP"
+        # All branches start from GCT
+        assert MNR_NEW_CANAAN.stations[0] == "GCT"
+        assert MNR_DANBURY.stations[0] == "GCT"
+        assert MNR_WATERBURY.stations[0] == "GCT"
+
+        # New Canaan includes trunk to Stamford then branch to New Canaan
+        assert "MSTM" in MNR_NEW_CANAAN.stations
+        assert MNR_NEW_CANAAN.stations[-1] == "MNCA"
+
+        # Danbury includes trunk to South Norwalk then branch to Danbury
+        assert "MSNW" in MNR_DANBURY.stations
+        assert MNR_DANBURY.stations[-1] == "MDBY"
+
+        # Waterbury includes trunk to Bridgeport then branch to Waterbury
+        assert "MBGP" in MNR_WATERBURY.stations
+        assert MNR_WATERBURY.stations[-1] == "MWTB"
