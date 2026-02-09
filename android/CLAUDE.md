@@ -3,8 +3,12 @@
 ## Java Setup (Required)
 
 ```bash
-# Set up Java (run each session or add to ~/.zshrc)
+# macOS (Homebrew)
 export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export PATH=$JAVA_HOME/bin:$PATH
+
+# Linux
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 export PATH=$JAVA_HOME/bin:$PATH
 ```
 

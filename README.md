@@ -92,7 +92,7 @@ npm run build        # Production build
 
 ### iOS App (Swift / SwiftUI)
 
-**Prerequisites:** macOS 14+, Xcode 15+, iOS 17.0+ deployment target
+**Prerequisites:** macOS 14+, Xcode 15+, iOS 18.0+ deployment target
 
 ```bash
 cd ios

@@ -2,7 +2,7 @@
 
 ## Overview
 
-SwiftUI app for tracking NJ Transit, Amtrak, PATH, and PATCO trains. Features Live Activities, track predictions (Owl), and Pro subscription.
+SwiftUI app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North trains. Features Live Activities, track predictions (Owl), and Pro subscription.
 
 - **iOS 18.0+** deployment target
 - **Xcode 15.0+** required
@@ -59,6 +59,7 @@ Key endpoints:
 - `GET /v2/trains/departures?from=X&to=Y` - Search trains
 - `GET /v2/trains/{id}?include_predictions=true` - Train details
 - `GET /v2/predictions/track?station_code=X&train_id=Y` - Owl predictions
+- `GET /v2/predictions/delay` - Delay/cancellation forecasts
 - `GET /v2/routes/congestion` - Network congestion
 - `POST /v2/live-activities/register` - Register Live Activity
 

@@ -1,8 +1,8 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, and PATCO built with FastAPI, PostgreSQL, and modern Python.
+A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North built with FastAPI, PostgreSQL, and modern Python.
 
-**Version:** 2.0.0 (December 2025)
+**Version:** 2.1.0 (February 2026)
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Python:** 3.11+ with strict type checking
 
@@ -18,7 +18,7 @@ A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, and 
 - **📊 Built-in Monitoring**: Health checks, metrics, validation, and structured logging
 - **🤖 ML Predictions**: Track assignment predictions with confidence scoring
 - **📱 Live Activities**: Push notification support for iOS Live Activity updates
-- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, and PATCO with extensible architecture
+- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North with extensible architecture
 - **🔍 Coverage Validation**: Hourly validation ensures complete train coverage
 - **💾 API Caching**: Intelligent response caching with pre-computation
 - **🔄 Horizontal Scaling**: Database-coordinated task execution across replicas
@@ -80,11 +80,13 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 30 minutes**: Train discovery for NJT and Amtrak
 - **Every 15 minutes**: Journey collection for active NJT/Amtrak trains
 - **Every 4 minutes**: PATH train collection (unified discovery + updates)
+- **Every 4 minutes**: LIRR train collection (unified GTFS-RT collector)
+- **Every 4 minutes**: Metro-North train collection (unified GTFS-RT collector)
 - **Every 5 minutes**: Update checks for active journeys
 - **Hourly at :05**: Validation across key routes
 - Monitor scheduler status at `/scheduler/status` endpoint
 
-**Note**: PATH uses a unified collector that handles both discovery and journey updates in a single pass. PATCO uses GTFS static schedules only (no real-time API).
+**Note**: PATH, LIRR, and Metro-North each use unified collectors that handle both discovery and journey updates in a single pass. LIRR and Metro-North use MTA's GTFS-RT feeds with shared logic in `mta_common.py`. PATCO uses GTFS static schedules only (no real-time API).
 
 ## Configuration
 
@@ -147,7 +149,7 @@ GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL&hide_depart
 Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
-- `data_source`: NJT, AMTRAK, PATH, PATCO, or ALL
+- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, or ALL
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
@@ -364,6 +366,12 @@ The system uses a sophisticated multi-phase approach:
 - Infers train origin from route when seen mid-journey
 - Calculates consistent train_id for deduplication across stations
 
+#### LIRR / Metro-North Collection (Every 4 minutes - Unified GTFS-RT)
+- Single unified collector per system using MTA's official GTFS-RT feeds
+- Shared logic in `mta_common.py` for stop merging, departure inference, completion detection
+- GTFS static schedules backfill stops that GTFS-RT omits (e.g., origin terminals)
+- Handles discovery and journey updates in one pass
+
 #### PATCO Collection (Schedule-based only)
 - Uses GTFS static schedules from SEPTA feed
 - 14 stations from Lindenwold to 15-16th & Locust
@@ -391,7 +399,7 @@ The scheduler supports multiple replicas:
 - **Database coordination** via `scheduler_task_runs` table
 - **Row-level locking** prevents duplicate execution
 - **Freshness checks** ensure tasks run at correct intervals
-- **Instance tracking** via Cloud Run revision IDs
+- **Instance tracking** via GCE instance hostname
 
 ### Key Services
 
@@ -401,6 +409,9 @@ The scheduler supports multiple replicas:
 - **AmtrakPatternScheduler**: Pattern-based Amtrak schedules
 - **PathCollector**: Unified PATH discovery + journey collection using RidePATH API
 - **RidePathClient**: Native PATH API client with 30-second caching
+- **LIRRCollector**: Unified LIRR collector using MTA GTFS-RT feeds
+- **MNRCollector**: Unified Metro-North collector using MTA GTFS-RT feeds
+- **MTA Common**: Shared MTA logic for stop merging, departure inference, completion detection
 - **JustInTimeUpdateService**: On-demand data refresh (supports NJT, Amtrak, PATH)
 
 **Note**: PATCO uses GTFS static schedules only (no dedicated collector).
@@ -557,90 +568,20 @@ Test the validation:
   - Memory/CPU thresholds
 
 #### Scaling
-- Use Cloud Run or Kubernetes for auto-scaling
+- GCE Managed Instance Groups with auto-healing
 - Configure appropriate replica counts
 - Monitor database connection limits
 - Consider Redis for future caching layer
 
-## 🛣️ Next Steps & Roadmap
+## 🛣️ Roadmap
 
-### Immediate Next Steps (Ready to Implement)
+### Future Enhancements
 
-1. **🔧 NJ Transit API Integration**
-   - Verify API endpoint URLs with latest NJ Transit documentation
-   - Test token format and authentication method
-   - Implement rate limiting based on API terms of service
-
-2. **📱 iOS App Integration**
-   - Update iOS app to use `/api/v2/` endpoints
-   - Test backward compatibility mode if needed
-   - Migrate Live Activities to use new data format
-
-3. **🧪 Enhanced Testing**
-   - Add integration tests with live database
-   - Create API endpoint tests with mocked external services
-   - Add performance benchmarks and load testing
-
-### Short Term Enhancements (1-2 weeks)
-
-4. **📊 Advanced Monitoring**
-   - Set up Grafana dashboards for Prometheus metrics
-   - Add alerting for API failures and data staleness
-   - Implement distributed tracing for debugging
-
-5. **🔍 Data Quality Improvements**
-   - Add data validation and anomaly detection
-   - Implement train journey conflict resolution
-   - Create data quality metrics and reporting
-
-6. **⚡ Performance Optimizations**
-   - Add Redis caching layer for frequent queries
-   - Implement database query optimization
-   - Add connection pooling configuration
-
-### Medium Term Features (1-2 months)
-
-7. **🌐 Extended Coverage**
-   - Add Amtrak integration back with new architecture
-   - Support additional NJ Transit stations
-   - Implement cross-regional train tracking
-
-8. **🤖 ML/AI Features**
-   - Retrain track prediction models with new data format
-   - Add delay prediction algorithms
-   - Implement arrival time estimation improvements
-
-9. **🔄 Advanced Scheduling**
-   - Add holiday and weekend schedule adjustments
-   - Implement dynamic polling based on train activity
-   - Create smart batch processing for related trains
-
-### Long Term Vision (3-6 months)
-
-10. **📈 Analytics Platform**
-    - Build comprehensive reporting dashboard
-    - Add historical trend analysis
-    - Create passenger flow insights
-
-11. **🌟 Advanced API Features**
-    - Implement GraphQL endpoint for flexible queries
-    - Add WebSocket support for real-time updates
-    - Create webhook system for external integrations
-
-12. **🏗️ Infrastructure Scaling**
-    - Design multi-region deployment strategy
-    - Implement database sharding for scale
-    - Add CDN for static content and caching
-
-### 🔍 Investigation Needed
-
-- **API Rate Limits**: Determine optimal polling frequencies
-- **Data Retention**: Define archival and cleanup policies  
-- **Error Recovery**: Design resilient failure handling
-- **Security**: Implement API authentication and authorization
-- **Database Migrations**: Check `src/trackrat/db/migrations/versions/` for recent schema changes
-- **Schedule Features**: New SCHEDULED vs OBSERVED journey types for future visibility
-- **Validation System**: Hourly coverage checks ensure data completeness
+1. **🌐 Additional Transit Systems**: SEPTA regional rail and other Northeast Corridor systems
+2. **🤖 Enhanced ML**: Improved track prediction models with occupancy detection
+3. **📊 Advanced Monitoring**: Grafana dashboards for Prometheus metrics
+4. **⚡ Performance**: Redis caching layer for frequent queries
+5. **🌟 Advanced API**: WebSocket support for real-time updates
 
 ### 🤝 Contributing
 
@@ -675,10 +616,8 @@ The V2 backend is designed for easy contribution:
 ### Future Enhancements
 1. **WebSocket Support**: Real-time updates for connected clients
 2. **GraphQL API**: More flexible querying for complex data needs
-3. **Additional Transit**: LIRR, Metro-North, SEPTA support
-4. **Advanced ML**: Delay prediction and passenger flow analysis
-
-Ready to enhance train tracking for millions of commuters! 🚂
+3. **Additional Transit**: SEPTA regional rail support
+4. **Advanced ML**: Passenger flow analysis and enhanced predictions
 
 ## System Requirements
 
