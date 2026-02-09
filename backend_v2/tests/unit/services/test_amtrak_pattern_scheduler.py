@@ -242,9 +242,7 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         mock_recent_result = MagicMock()
         mock_recent_result.scalar_one_or_none.return_value = recent_journey
 
-        mock_execute = AsyncMock(
-            side_effect=[mock_no_existing, mock_recent_result]
-        )
+        mock_execute = AsyncMock(side_effect=[mock_no_existing, mock_recent_result])
         mock_session.return_value.__aenter__.return_value.execute = mock_execute
 
         scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
@@ -319,9 +317,7 @@ async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
         mock_no_recent = MagicMock()
         mock_no_recent.scalar_one_or_none.return_value = None
 
-        mock_execute = AsyncMock(
-            side_effect=[mock_no_existing, mock_no_recent]
-        )
+        mock_execute = AsyncMock(side_effect=[mock_no_existing, mock_no_recent])
         mock_session.return_value.__aenter__.return_value.execute = mock_execute
 
         scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
@@ -513,9 +509,7 @@ async def test_save_scheduled_journeys_update_replaces_stops(pattern_scheduler):
 
         mock_delete_result = MagicMock()
 
-        mock_execute = AsyncMock(
-            side_effect=[mock_select_result, mock_delete_result]
-        )
+        mock_execute = AsyncMock(side_effect=[mock_select_result, mock_delete_result])
 
         mock_add = MagicMock()
         mock_flush = AsyncMock()
