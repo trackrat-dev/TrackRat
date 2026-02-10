@@ -36,13 +36,18 @@ const features = [
       'Live Activities show train status right on your Lock Screen and Dynamic Island.',
     image: `${BASE}images/4.webp`,
   },
-  {
-    title: 'PATH, PATCO, and more',
-    description:
-      'Not just NJ Transit and Amtrak! Track PATH, PATCO, LIRR, Metro-North, and more.',
-    image: `${BASE}images/5.webp`,
-  },
 ];
+
+const unifiedFeature = {
+  title: 'Unified Features & Support',
+  description:
+    'Use with PATH, LIRR, Metro-North, and PATCO too.',
+  images: [
+    `${BASE}images/mtn.webp`,
+    `${BASE}images/5.webp`,
+    `${BASE}images/lirr.webp`,
+  ],
+};
 
 const transitSystems = [
   'NJ Transit',
@@ -150,7 +155,7 @@ export function LandingPage() {
         {features.map((feature, i) => (
           <div
             key={feature.title}
-            className={`flex flex-col ${i % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'} items-center gap-8 mb-16 last:mb-0`}
+            className={`flex flex-col ${i % 2 === 0 ? 'md:flex-row' : 'md:flex-row-reverse'} items-center gap-8 mb-16`}
           >
             <img
               src={feature.image}
@@ -159,7 +164,7 @@ export function LandingPage() {
               loading="lazy"
             />
             <div className="text-center md:text-left flex-1">
-              <h2 className="text-2xl md:text-3xl font-bold mb-3">
+              <h2 className="text-2xl md:text-3xl font-bold mb-3 text-black">
                 {feature.title}
               </h2>
               <p className="text-text-muted text-lg leading-relaxed">
@@ -168,12 +173,33 @@ export function LandingPage() {
             </div>
           </div>
         ))}
+
+        {/* Unified Feature - full width with three images */}
+        <div className="text-center mb-6">
+          <h2 className="text-2xl md:text-3xl font-bold mb-3 text-black">
+            {unifiedFeature.title}
+          </h2>
+          <p className="text-text-muted text-lg leading-relaxed max-w-xl mx-auto">
+            {unifiedFeature.description}
+          </p>
+        </div>
+        <div className="flex justify-center gap-4">
+          {unifiedFeature.images.map((src) => (
+            <img
+              key={src}
+              src={src}
+              alt={unifiedFeature.title}
+              className="w-36 md:w-48 rounded-2xl shadow-lg"
+              loading="lazy"
+            />
+          ))}
+        </div>
       </section>
 
       {/* Supported Transit Systems */}
       <section className="px-6 py-12 bg-surface/50">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-black">
             Supported Transit Systems
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -202,8 +228,8 @@ export function LandingPage() {
 
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
-        <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
-          Open Source & Free to Use
+        <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-black">
+          Open Source
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
           <div>
@@ -286,7 +312,7 @@ export function LandingPage() {
       {/* FAQ */}
       <section className="px-6 py-12 bg-surface/50">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-black">
             FAQ
           </h2>
           <div className="space-y-6">
