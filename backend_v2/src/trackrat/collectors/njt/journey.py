@@ -943,12 +943,16 @@ class JourneyCollector(BaseJourneyCollector):
         for stop in reversed(train_data.STOPS):
             if stop.DEPARTED == "YES" and stop.STOP_STATUS:
                 # Parse delay from status if available
-                if "Late" in stop.STOP_STATUS:
-                    # Extract delay if in format "X minutes late"
+                if "late" in (stop.STOP_STATUS or "").lower():
+                    # Extract delay if in format "X minutes late" or "X MINS LATE"
                     try:
-                        parts = stop.STOP_STATUS.split()
+                        parts = stop.STOP_STATUS.lower().split()
                         if "minutes" in parts:
                             idx = parts.index("minutes")
+                            if idx > 0:
+                                delay_minutes = int(parts[idx - 1])
+                        elif "mins" in parts:
+                            idx = parts.index("mins")
                             if idx > 0:
                                 delay_minutes = int(parts[idx - 1])
                     except (ValueError, IndexError):
@@ -1700,7 +1704,7 @@ class JourneyCollector(BaseJourneyCollector):
 
         # Check for cancellation (all stops cancelled)
         cancelled_stops = sum(
-            1 for stop in stops_data if stop.STOP_STATUS == "Cancelled"
+            1 for stop in stops_data if (stop.STOP_STATUS or "").upper() == "CANCELLED"
         )
 
         if cancelled_stops == len(stops_data):
@@ -1852,7 +1856,7 @@ class JourneyCollector(BaseJourneyCollector):
             return "UNKNOWN"
 
         # Check if all stops are cancelled
-        if all(stop.STOP_STATUS == "Cancelled" for stop in stops_data):
+        if all((stop.STOP_STATUS or "").upper() == "CANCELLED" for stop in stops_data):
             return "CANCELLED"
 
         # Find current position

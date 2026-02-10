@@ -1114,3 +1114,222 @@ class TestExplicitCancellationReason:
             f"Expected reason 'All stops cancelled by NJT', "
             f"got {journey.cancellation_reason!r}"
         )
+
+    @pytest.mark.asyncio
+    async def test_uppercase_cancelled_detected(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """NJT sometimes returns STOP_STATUS='CANCELLED' (all uppercase) instead
+        of 'Cancelled' (title case). Both variants must be detected.
+
+        Real-world example: trains 3883 and 3885 on 2026-02-09 had all stops
+        with STOP_STATUS='CANCELLED' but were reported as is_cancelled=false
+        because the code only checked for exact match 'Cancelled'."""
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3883",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Create stops in DB first (check_journey_completion queries the DB)
+        for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=i,
+                scheduled_departure=base_time + timedelta(minutes=i * 30),
+            )
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        # NJT returns UPPERCASE 'CANCELLED' for all stops
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                cancelled=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York",
+                dep_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                cancelled=True,
+            ),
+        ]
+        # Override STOP_STATUS to uppercase (simulating real NJT API behavior)
+        for stop in stops_data:
+            stop.STOP_STATUS = "CANCELLED"
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_cancelled is True, (
+            f"Expected is_cancelled=True for uppercase 'CANCELLED' stops, "
+            f"got {journey.is_cancelled}"
+        )
+        assert journey.cancellation_reason == "All stops cancelled by NJT", (
+            f"Expected reason 'All stops cancelled by NJT', "
+            f"got {journey.cancellation_reason!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_mixed_case_cancelled_detected(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """NJT sometimes mixes casing: first stop 'CANCELLED', rest 'Cancelled'.
+        Real-world example: train 3885 on 2026-02-09."""
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3885",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        for i, (code, name) in enumerate([("TR", "Trenton"), ("NP", "Newark"), ("NY", "New York")]):
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=i,
+                scheduled_departure=base_time + timedelta(minutes=i * 15),
+            )
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                cancelled=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark",
+                dep_time=(base_time + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
+                cancelled=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York",
+                dep_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                cancelled=True,
+            ),
+        ]
+        # Mixed casing: first stop uppercase, rest title case
+        stops_data[0].STOP_STATUS = "CANCELLED"
+        # stops_data[1] and [2] keep "Cancelled" from StopBuilder
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_cancelled is True, (
+            f"Expected is_cancelled=True for mixed-case cancelled stops, "
+            f"got {journey.is_cancelled}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_null_stop_status_not_treated_as_cancelled(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """A stop with STOP_STATUS=None should not be counted as cancelled.
+        The (stop.STOP_STATUS or '').upper() guard must handle None safely."""
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="NULL_STATUS",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=i,
+                scheduled_departure=base_time + timedelta(minutes=i * 30),
+            )
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                cancelled=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York",
+                dep_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+        # First stop cancelled, second has None STOP_STATUS
+        stops_data[0].STOP_STATUS = "CANCELLED"
+        stops_data[1].STOP_STATUS = None
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_cancelled is False, (
+            f"Journey should NOT be cancelled when only some stops are cancelled, "
+            f"got is_cancelled={journey.is_cancelled}"
+        )
