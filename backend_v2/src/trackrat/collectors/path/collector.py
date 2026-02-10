@@ -765,16 +765,24 @@ class PathCollector:
                     # Train is still visible in API - reset error count
                     journey.api_error_count = 0
                 else:
-                    # No arrivals matched - train may have disappeared from API
-                    # Increment error count to track consecutive misses
-                    journey.api_error_count = (journey.api_error_count or 0) + 1
-                    if journey.api_error_count >= 3:
-                        journey.is_expired = True
-                        logger.info(
-                            "path_journey_expired_no_arrivals",
-                            train_id=journey.train_id,
-                            error_count=journey.api_error_count,
-                        )
+                    # No arrivals matched - but don't penalize trains that
+                    # haven't departed yet. Trains with long ETAs (e.g. HOB-33
+                    # at 8-18 min) can't match intermediate station arrivals
+                    # until they actually start moving.
+                    now = now_et()
+                    origin_departed = (
+                        journey.scheduled_departure
+                        and journey.scheduled_departure <= now
+                    )
+                    if origin_departed:
+                        journey.api_error_count = (journey.api_error_count or 0) + 1
+                        if journey.api_error_count >= 3:
+                            journey.is_expired = True
+                            logger.info(
+                                "path_journey_expired_no_arrivals",
+                                train_id=journey.train_id,
+                                error_count=journey.api_error_count,
+                            )
 
                 if journey.is_completed:
                     completed += 1

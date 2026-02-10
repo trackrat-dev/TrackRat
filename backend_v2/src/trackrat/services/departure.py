@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, case, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -661,7 +662,7 @@ class DepartureService:
                         stops_data = train_data.get("STOPS", [])
                         if stops_data:
                             await self._update_stops_from_embedded_data(
-                                journey, stops_data
+                                db, journey, stops_data
                             )
                             journey.has_complete_journey = True
                             journey.stops_count = len(stops_data)
@@ -804,29 +805,49 @@ class DepartureService:
             await njt_client.close()
 
     async def _update_stops_from_embedded_data(
-        self, journey: TrainJourney, stops_data: list[dict[str, Any]]
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+        stops_data: list[dict[str, Any]],
     ) -> None:
-        """Update journey stops from embedded STOPS data in getTrainSchedule response."""
+        """Update journey stops from embedded STOPS data in getTrainSchedule response.
 
-        # Create a map of existing stops by station code
-        existing_stops = {stop.station_code: stop for stop in journey.stops}
+        Uses PostgreSQL ON CONFLICT to safely handle concurrent updates from
+        multiple sessions (e.g., cache precomputation vs user request).
+        """
 
-        # Update or create stops from embedded data
         for i, stop_data in enumerate(stops_data):
             station_code = stop_data.get("STATION_2CHAR")
             if not station_code:
                 continue
 
-            # Get existing stop or create new one
-            stop = existing_stops.get(station_code)
-            if not stop:
-                stop = JourneyStop(
+            # Upsert: insert or fetch existing stop (race-safe)
+            stmt = (
+                pg_insert(JourneyStop)
+                .values(
                     journey_id=journey.id,
                     station_code=station_code,
                     station_name=stop_data.get("STATIONNAME", ""),
                     stop_sequence=i,
                 )
-                journey.stops.append(stop)
+                .on_conflict_do_nothing(constraint="unique_journey_stop")
+                .returning(JourneyStop.id)
+            )
+            result = await session.execute(stmt)
+            inserted_id = result.scalar_one_or_none()
+
+            if inserted_id:
+                # New row inserted — fetch the ORM object
+                stop = await session.get(JourneyStop, inserted_id)
+            else:
+                # Already existed — fetch by unique key
+                existing = await session.execute(
+                    select(JourneyStop).where(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.station_code == station_code,
+                    )
+                )
+                stop = existing.scalar_one()
 
             # Update stop data from schedule
             if arrival_time_str := stop_data.get("TIME"):
