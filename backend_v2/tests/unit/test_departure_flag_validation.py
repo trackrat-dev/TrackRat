@@ -57,7 +57,7 @@ class TestDepartureFlagValidation:
 
         journey = MagicMock(spec=TrainJourney)
         journey.train_id = "3201"
-        journey.stops = []
+        journey.id = 1
 
         # Past train with DEPARTED=YES
         stops_data = [
@@ -71,14 +71,30 @@ class TestDepartureFlagValidation:
             }
         ]
 
+        # Mock session: simulate successful insert, then return a real JourneyStop
+        stop = JourneyStop(
+            journey_id=1,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+        )
+        stop.actual_departure = None
+        insert_result = MagicMock()
+        insert_result.scalar_one_or_none.return_value = 1
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=insert_result)
+        mock_session.get = AsyncMock(return_value=stop)
+
         with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time
 
             import asyncio
 
-            asyncio.run(service._update_stops_from_embedded_data(journey, stops_data))
-
-        stop = journey.stops[0]
+            asyncio.run(
+                service._update_stops_from_embedded_data(
+                    mock_session, journey, stops_data
+                )
+            )
 
         # Past train should be marked as departed
         assert stop.has_departed_station == True
@@ -97,7 +113,7 @@ class TestDepartureFlagValidation:
 
         journey = MagicMock(spec=TrainJourney)
         journey.train_id = "7845"
-        journey.stops = []
+        journey.id = 2
 
         # Train with DEPARTED=YES and no existing actual_departure
         stops_data = [
@@ -111,14 +127,30 @@ class TestDepartureFlagValidation:
             }
         ]
 
+        # Mock session: simulate successful insert, then return a real JourneyStop
+        stop = JourneyStop(
+            journey_id=2,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+        )
+        stop.actual_departure = None
+        insert_result = MagicMock()
+        insert_result.scalar_one_or_none.return_value = 1
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(return_value=insert_result)
+        mock_session.get = AsyncMock(return_value=stop)
+
         with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time
 
             import asyncio
 
-            asyncio.run(service._update_stops_from_embedded_data(journey, stops_data))
-
-        stop = journey.stops[0]
+            asyncio.run(
+                service._update_stops_from_embedded_data(
+                    mock_session, journey, stops_data
+                )
+            )
 
         # Both fields must be set together for data consistency
         assert stop.has_departed_station == True
@@ -135,14 +167,19 @@ class TestDepartureFlagValidation:
 
         journey = MagicMock(spec=TrainJourney)
         journey.train_id = "7845"
+        journey.id = 3
 
         # Create an existing stop with actual_departure already set
         existing_actual = self.past_time - timedelta(minutes=5)
-        existing_stop = MagicMock(spec=JourneyStop)
-        existing_stop.station_code = "NY"
+        existing_stop = JourneyStop(
+            journey_id=3,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+        )
         existing_stop.actual_departure = existing_actual
-        existing_stop.stop_sequence = None
-        journey.stops = [existing_stop]
+        existing_stop.track = None
+        existing_stop.track_assigned_at = None
 
         stops_data = [
             {
@@ -155,12 +192,24 @@ class TestDepartureFlagValidation:
             }
         ]
 
+        # Mock session: simulate conflict (stop already exists), return existing_stop
+        insert_result = MagicMock()
+        insert_result.scalar_one_or_none.return_value = None
+        select_result = MagicMock()
+        select_result.scalar_one.return_value = existing_stop
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[insert_result, select_result])
+
         with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time
 
             import asyncio
 
-            asyncio.run(service._update_stops_from_embedded_data(journey, stops_data))
+            asyncio.run(
+                service._update_stops_from_embedded_data(
+                    mock_session, journey, stops_data
+                )
+            )
 
         # actual_departure should NOT be overwritten
         assert existing_stop.actual_departure == existing_actual
