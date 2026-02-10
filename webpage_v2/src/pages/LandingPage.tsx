@@ -21,7 +21,7 @@ const features = [
   {
     title: 'NJ Transit and Amtrak, together',
     description:
-      'One view for all trains traveling your route, regardless of carrier.',
+      'Browse the schedules for all trains travelling your route, regardless of carrier.',
     image: `${BASE}images/2.webp`,
   },
   {
@@ -94,7 +94,7 @@ const faqs = [
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-text-primary">
+    <div className="min-h-screen bg-background text-text-muted">
       {/* Hero */}
       <section className="px-6 pt-12 pb-16 text-center max-w-3xl mx-auto">
         <img
@@ -105,7 +105,7 @@ export function LandingPage() {
         <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent">
           TrackRat
         </h1>
-        <p className="text-lg md:text-xl text-text-secondary mb-8 max-w-xl mx-auto">
+        <p className="text-lg md:text-xl text-text-muted mb-8 max-w-xl mx-auto">
           Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and more!
         </p>
         <div className="flex items-center justify-center gap-4">
@@ -113,7 +113,7 @@ export function LandingPage() {
             href={APP_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-text-muted hover:text-accent transition-colors"
+            className="text-text-muted hover:text-black transition-colors"
             aria-label="Download on the App Store"
           >
             <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
@@ -162,7 +162,7 @@ export function LandingPage() {
               <h2 className="text-2xl md:text-3xl font-bold mb-3">
                 {feature.title}
               </h2>
-              <p className="text-text-secondary text-lg leading-relaxed">
+              <p className="text-text-muted text-lg leading-relaxed">
                 {feature.description}
               </p>
             </div>
@@ -186,7 +186,7 @@ export function LandingPage() {
               </div>
             ))}
           </div>
-          <p className="text-text-secondary text-center">
+          <p className="text-text-muted text-center">
             Have an idea for another transit system?{' '}
             <a
               href={FEEDBACK_URL}
@@ -203,12 +203,12 @@ export function LandingPage() {
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
-          Open Source & Publicly Available
+          Open Source & Free to Use
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
           <div>
             <h3 className="font-semibold text-lg mb-2">Apache 2.0 Licensed</h3>
-            <p className="text-text-secondary leading-relaxed">
+            <p className="text-text-muted leading-relaxed">
               TrackRat is fully open source under the Apache 2.0 license. You
               can read, fork, and contribute to every part of the project on
               GitHub.
@@ -230,7 +230,7 @@ export function LandingPage() {
 
           <div>
             <h3 className="font-semibold text-lg mb-2">Public REST API</h3>
-            <p className="text-text-secondary leading-relaxed">
+            <p className="text-text-muted leading-relaxed">
               The{' '}
               <a
                 href={API_DOCS_URL}
@@ -245,17 +245,40 @@ export function LandingPage() {
             </p>
           </div>
           <div>
+            <h3 className="font-semibold text-lg mb-2">iOS App</h3>
+            <p className="text-text-muted leading-relaxed">
+              The core features of TrackRat — real-time departures, delay visualization, and
+              track predictions — are completely free to use. No ads, no accounts, no data
+              collection. The full source code is available on GitHub under the Apache 2.0 license.
+            </p>
+            <div className="text-center mt-3">
+              <a
+                href={APP_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <img
+                  src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+                  alt="Download on the App Store"
+                  className="h-10 inline-block"
+                />
+              </a>
+            </div>
+          </div>
+          <div>
             <h3 className="font-semibold text-lg mb-2">Web App (experimental)</h3>
-            <p className="text-text-secondary leading-relaxed">
+            <p className="text-text-muted leading-relaxed">
               The experimental web app provides cross-platform support for departure lookups and
               real-time train status. This is under development!
             </p>
-            <Link
-              to="/departures"
-              className="inline-flex text-center items-center gap-2 mt-3 px-4 py-2 bg-accent/20 text-accent font-medium rounded-lg hover:bg-accent/30 transition-colors"
-            >
-              Try the Web App
-            </Link>
+            <div className="text-center mt-3">
+              <Link
+                to="/departures"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-accent/20 text-accent font-medium rounded-lg hover:bg-accent/30 transition-colors"
+              >
+                Try the Web App
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -270,7 +293,7 @@ export function LandingPage() {
             {faqs.map((faq) => (
               <div key={faq.q}>
                 <h3 className="font-semibold text-lg mb-1">{faq.q}</h3>
-                <p className="text-text-secondary">{faq.a}</p>
+                <p className="text-text-muted">{faq.a}</p>
               </div>
             ))}
           </div>
