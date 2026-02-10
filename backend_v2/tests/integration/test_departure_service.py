@@ -572,6 +572,7 @@ class TestDepartureServiceIntegration:
         updated_journeys = await db_session.execute(
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
+            .execution_options(populate_existing=True)
             .where(
                 and_(
                     TrainJourney.train_id.in_(train_ids),
