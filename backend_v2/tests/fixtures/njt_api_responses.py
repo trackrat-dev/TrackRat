@@ -70,7 +70,8 @@ class StopBuilder:
         stop.TRACK = track
         stop.CANCELLED = "YES" if cancelled else "NO"
         # STOP_STATUS is used for cancellation detection and delay parsing
-        stop.STOP_STATUS = "Cancelled" if cancelled else "OK"
+        # NJT API returns "CANCELLED" (uppercase) in production
+        stop.STOP_STATUS = "CANCELLED" if cancelled else "OK"
 
         # Additional fields from real API
         stop.LINE = "LINE_1"

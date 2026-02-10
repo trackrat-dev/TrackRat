@@ -1617,9 +1617,10 @@ class SchedulerService:
                         session.add(snapshot)
 
                         # Update journey status from stops
-                        is_completed = all(
-                            stop.STOP_STATUS in ["DEPARTED", "COMPLETED"]
-                            for stop in train_data.STOPS
+                        # Check if last stop has departed (matches async path logic)
+                        is_completed = bool(
+                            train_data.STOPS
+                            and train_data.STOPS[-1].DEPARTED == "YES"
                         )
                         journey.is_completed = is_completed
 
