@@ -849,6 +849,8 @@ class DepartureService:
                 )
                 stop = existing.scalar_one()
 
+            assert stop is not None  # Just inserted or fetched by unique key
+
             # Update stop data from schedule
             if arrival_time_str := stop_data.get("TIME"):
                 stop.scheduled_arrival = parse_njt_time(arrival_time_str)
