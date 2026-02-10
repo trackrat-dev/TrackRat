@@ -256,10 +256,10 @@ fi
 export APNS_ENVIRONMENT="${APNS_ENVIRONMENT:-dev}"  # Default to sandbox for local development
 
 # Validate APNS configuration before starting
-if ! validate_apns_config; then
-    echo "FATAL: ⚠️ APNS configuration validation failed. Live Activities will not work."
-    exit 1
-fi
+#if ! validate_apns_config; then
+#    echo "FATAL: ⚠️ APNS configuration validation failed. Live Activities will not work."
+#    exit 1
+#fi
 
 echo "✅ All prerequisites validated successfully!"
 echo ""

@@ -15,13 +15,13 @@ const features = [
   {
     title: 'See delays at a glance',
     description:
-      'Visualize real-time departure and arrival delays across the network.',
+      'Visualize real-time departure and arrival delays on your route as well as across the network.',
     image: `${BASE}images/1.webp`,
   },
   {
     title: 'NJ Transit and Amtrak, together',
     description:
-      'One view for all trains travelling your route, regardless of carrier.',
+      'One view for all trains traveling your route, regardless of carrier.',
     image: `${BASE}images/2.webp`,
   },
   {
@@ -31,7 +31,7 @@ const features = [
     image: `${BASE}images/3.webp`,
   },
   {
-    title: 'Your commute, on your Lock Screen',
+    title: 'On your Lock Screen',
     description:
       'Live Activities show train status right on your Lock Screen and Dynamic Island.',
     image: `${BASE}images/4.webp`,
@@ -56,7 +56,7 @@ const transitSystems = [
 const faqs = [
   {
     q: 'Is TrackRat free?',
-    a: 'Yes. The core features of TrackRat are completely free to use with no ads, no account, and no data collected. Some of the more advanced features require a TrackRat Pro subscription to be purchased through the App Store.',
+    a: 'Yes. The core features of TrackRat are completely free to use. Some of the more advanced features require a TrackRat Pro subscription to be purchased through the App Store. In both cases, there are no ads, no accounts, and no data collected.',
   },
   {
     q: 'How does track prediction work?',
@@ -106,7 +106,7 @@ export function LandingPage() {
           TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-secondary mb-8 max-w-xl mx-auto">
-          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North
+          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and more!
         </p>
         <div className="flex items-center justify-center gap-4">
           <a
@@ -203,7 +203,7 @@ export function LandingPage() {
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-8">
-          Open Source
+          Open Source & Publicly Available
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
           <div>
@@ -213,7 +213,21 @@ export function LandingPage() {
               can read, fork, and contribute to every part of the project on
               GitHub.
             </p>
+        <div className="text-center mt-8">
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-text-primary text-background font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
+            </svg>
+            View on GitHub
+          </a>
+        </div>
           </div>
+
           <div>
             <h3 className="font-semibold text-lg mb-2">Public REST API</h3>
             <p className="text-text-secondary leading-relaxed">
@@ -231,45 +245,18 @@ export function LandingPage() {
             </p>
           </div>
           <div>
-            <h3 className="font-semibold text-lg mb-2">iOS App</h3>
+            <h3 className="font-semibold text-lg mb-2">Web App (experimental)</h3>
             <p className="text-text-secondary leading-relaxed">
-              The Swift/SwiftUI iOS app includes Live Activities, track
-              predictions, and multi-carrier support. The full source is on
-              GitHub.
-            </p>
-          </div>
-          <div>
-            <h3 className="font-semibold text-lg mb-2">Web App</h3>
-            <p className="text-text-secondary leading-relaxed">
-              The React/TypeScript web app provides departure lookups and
-              real-time train status from any browser. Also fully open source.
+              The experimental web app provides cross-platform support for departure lookups and
+              real-time train status. This is under development!
             </p>
             <Link
               to="/departures"
-              className="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-accent/20 text-accent font-medium rounded-lg hover:bg-accent/30 transition-colors"
+              className="inline-flex text-center items-center gap-2 mt-3 px-4 py-2 bg-accent/20 text-accent font-medium rounded-lg hover:bg-accent/30 transition-colors"
             >
               Try the Web App
-              <span className="text-xs px-2 py-0.5 bg-accent/30 rounded-full">
-                Alpha
-              </span>
             </Link>
-            <p className="text-text-muted text-sm mt-2">
-              Experimental — features may change or break.
-            </p>
           </div>
-        </div>
-        <div className="text-center mt-8">
-          <a
-            href={GITHUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-text-primary text-background font-semibold rounded-xl hover:opacity-90 transition-opacity"
-          >
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-            </svg>
-            View on GitHub
-          </a>
         </div>
       </section>
 
