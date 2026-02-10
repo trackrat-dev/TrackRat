@@ -373,6 +373,7 @@ class NJTransitStopData(BaseModel):
     @classmethod
     def normalize_stop_status(cls, v: str | None) -> str | None:
         return v.upper() if v else v
+
     DEP_TIME: str | None = None
     TIME_UTC_FORMAT: str | None = None
     TRACK: str | None = None

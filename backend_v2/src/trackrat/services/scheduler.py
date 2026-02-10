@@ -1619,8 +1619,7 @@ class SchedulerService:
                         # Update journey status from stops
                         # Check if last stop has departed (matches async path logic)
                         is_completed = bool(
-                            train_data.STOPS
-                            and train_data.STOPS[-1].DEPARTED == "YES"
+                            train_data.STOPS and train_data.STOPS[-1].DEPARTED == "YES"
                         )
                         journey.is_completed = is_completed
 

@@ -280,9 +280,15 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         # Recent origin departed at 15:03, pattern median is 15:05 -> offset = +2 min
         # (plus 3-day date shift from Jan 22 to Jan 25)
         assert stops[0].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 5))
-        assert stops[1].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 24))
-        assert stops[2].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 57))
-        assert stops[3].scheduled_departure == ET.localize(datetime(2024, 1, 25, 16, 27))
+        assert stops[1].scheduled_departure == ET.localize(
+            datetime(2024, 1, 25, 15, 24)
+        )
+        assert stops[2].scheduled_departure == ET.localize(
+            datetime(2024, 1, 25, 15, 57)
+        )
+        assert stops[3].scheduled_departure == ET.localize(
+            datetime(2024, 1, 25, 16, 27)
+        )
         assert stops[4].scheduled_departure is None  # Terminal has no departure
 
         # Verify arrivals also shifted

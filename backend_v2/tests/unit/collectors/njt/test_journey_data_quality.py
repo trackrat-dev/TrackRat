@@ -1217,7 +1217,9 @@ class TestExplicitCancellationReason:
         sqlite_session.add(journey)
         await sqlite_session.flush()
 
-        for i, (code, name) in enumerate([("TR", "Trenton"), ("NP", "Newark"), ("NY", "New York")]):
+        for i, (code, name) in enumerate(
+            [("TR", "Trenton"), ("NP", "Newark"), ("NY", "New York")]
+        ):
             stop = JourneyStop(
                 journey_id=journey.id,
                 station_code=code,
@@ -1350,9 +1352,9 @@ class TestNJTransitStopDataNormalization:
         from trackrat.models.api import NJTransitStopData
 
         stop = NJTransitStopData(DEPARTED="yes")
-        assert stop.DEPARTED == "YES", (
-            f"Expected DEPARTED='YES' after normalization, got {stop.DEPARTED!r}"
-        )
+        assert (
+            stop.DEPARTED == "YES"
+        ), f"Expected DEPARTED='YES' after normalization, got {stop.DEPARTED!r}"
 
     def test_stop_status_normalized_to_uppercase(self):
         """STOP_STATUS field should be normalized to uppercase on parse."""
@@ -1377,6 +1379,6 @@ class TestNJTransitStopDataNormalization:
         from trackrat.models.api import NJTransitStopData
 
         stop = NJTransitStopData(STOP_STATUS="5 Minutes Late")
-        assert stop.STOP_STATUS == "5 MINUTES LATE", (
-            f"Expected '5 MINUTES LATE', got {stop.STOP_STATUS!r}"
-        )
+        assert (
+            stop.STOP_STATUS == "5 MINUTES LATE"
+        ), f"Expected '5 MINUTES LATE', got {stop.STOP_STATUS!r}"
