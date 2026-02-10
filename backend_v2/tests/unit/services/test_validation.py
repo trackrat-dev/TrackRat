@@ -448,7 +448,7 @@ class TestTrainValidationService:
             assert added_record.missing_trains == ["5678"]
             assert added_record.details["missing_train_details"] == missing_details
 
-            mock_db.commit.assert_called_once()
+            # Note: commit is handled by get_session() context manager, not explicitly
 
     @pytest.mark.asyncio
     async def test_save_validation_result_handles_errors(self, validation_service):
@@ -463,7 +463,7 @@ class TestTrainValidationService:
 
         with patch("trackrat.services.validation.get_session") as mock_get_session:
             mock_db = AsyncMock(spec=AsyncSession)
-            mock_db.commit.side_effect = Exception("Database error")
+            mock_db.add.side_effect = Exception("Database error")
             mock_get_session.return_value.__aenter__.return_value = mock_db
 
             # Should not raise, just log error

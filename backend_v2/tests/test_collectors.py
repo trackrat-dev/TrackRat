@@ -46,12 +46,20 @@ async def test_train_discovery_collector(db_session):
     mock_njt_client.__aenter__ = AsyncMock(return_value=mock_njt_client)
     mock_njt_client.__aexit__ = AsyncMock(return_value=None)
 
-    # Patch DISCOVERY_STATIONS to only test NY
+    # Patch DISCOVERY_STATIONS to only test NY, and patch get_session to use test db_session
     from unittest.mock import patch
+    from contextlib import asynccontextmanager
 
-    with patch("trackrat.collectors.njt.discovery.DISCOVERY_STATIONS", ["NY"]):
+    @asynccontextmanager
+    async def mock_get_session():
+        yield db_session
+
+    with (
+        patch("trackrat.collectors.njt.discovery.DISCOVERY_STATIONS", ["NY"]),
+        patch("trackrat.collectors.njt.discovery.get_session", mock_get_session),
+    ):
         collector = TrainDiscoveryCollector(mock_njt_client)
-        result = await collector.collect(db_session)
+        result = await collector.collect()
 
     assert result["stations_processed"] == 1
     assert result["total_discovered"] == 1
