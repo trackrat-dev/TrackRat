@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.client import AmtrakClient
@@ -326,7 +327,11 @@ class TrainValidationService:
             }
 
     async def validate_route(
-        self, from_station: str, to_station: str, sources: list[str]
+        self,
+        from_station: str,
+        to_station: str,
+        sources: list[str],
+        db: AsyncSession | None = None,
     ) -> list[ValidationResult]:
         """Validate a single route for all specified sources."""
         results = []
@@ -433,42 +438,53 @@ class TrainValidationService:
             results.append(result)
 
             # Save to database for persistence
-            await self._save_validation_result(result, missing_details)
+            await self._save_validation_result(result, missing_details, db=db)
 
         return results
 
     async def _save_validation_result(
-        self, result: ValidationResult, missing_details: dict[str, Any] | None = None
+        self,
+        result: ValidationResult,
+        missing_details: dict[str, Any] | None = None,
+        db: AsyncSession | None = None,
     ) -> None:
-        """Save validation result to database for persistence and monitoring."""
-        try:
-            async with get_session() as db:
-                db_result: ValidationResultDB = ValidationResultDB(
-                    route=result.route,
-                    source=result.source,
-                    transit_train_count=len(result.transit_trains),
-                    api_train_count=len(result.api_trains),
-                    coverage_percent=float(result.coverage_percent),  # type: ignore[arg-type]
-                    missing_trains=(
-                        list(result.missing_trains) if result.missing_trains else []
-                    ),
-                    extra_trains=(
-                        list(result.extra_trains) if result.extra_trains else []
-                    ),
-                    details={
-                        "missing_train_details": missing_details or {},
-                        "timestamp": result.timestamp.isoformat(),
-                    },
-                )
-                db.add(db_result)
-                await db.commit()
+        """Save validation result to database for persistence and monitoring.
 
-                logger.debug(
-                    "validation_result_saved",
-                    route=result.route,
-                    source=result.source,
-                    coverage=result.coverage_percent,
-                )
+        Args:
+            result: Validation result to save
+            missing_details: Optional details about missing trains
+            db: Optional pre-created session (avoids greenlet issues in scheduler context)
+        """
+        try:
+            db_result: ValidationResultDB = ValidationResultDB(
+                route=result.route,
+                source=result.source,
+                transit_train_count=len(result.transit_trains),
+                api_train_count=len(result.api_trains),
+                coverage_percent=float(result.coverage_percent),  # type: ignore[arg-type]
+                missing_trains=(
+                    list(result.missing_trains) if result.missing_trains else []
+                ),
+                extra_trains=(list(result.extra_trains) if result.extra_trains else []),
+                details={
+                    "missing_train_details": missing_details or {},
+                    "timestamp": result.timestamp.isoformat(),
+                },
+            )
+
+            if db:
+                db.add(db_result)
+                await db.flush()
+            else:
+                async with get_session() as session:
+                    session.add(db_result)
+
+            logger.debug(
+                "validation_result_saved",
+                route=result.route,
+                source=result.source,
+                coverage=result.coverage_percent,
+            )
         except Exception as e:
             logger.error(
                 "failed_to_save_validation_result",
@@ -477,8 +493,14 @@ class TrainValidationService:
                 error=str(e),
             )
 
-    async def run_validation(self) -> list[ValidationResult]:
-        """Run validation for all monitored routes."""
+    async def run_validation(
+        self, db: AsyncSession | None = None
+    ) -> list[ValidationResult]:
+        """Run validation for all monitored routes.
+
+        Args:
+            db: Optional pre-created session (avoids greenlet issues in scheduler context)
+        """
         logger.info("starting_train_validation", routes=self.MONITORED_ROUTES)
 
         all_results = []
@@ -486,7 +508,7 @@ class TrainValidationService:
 
         for from_st, to_st, sources in self.MONITORED_ROUTES:
             try:
-                results = await self.validate_route(from_st, to_st, sources)
+                results = await self.validate_route(from_st, to_st, sources, db=db)
                 all_results.extend(results)
             except Exception as e:
                 validation_status = "failure"
