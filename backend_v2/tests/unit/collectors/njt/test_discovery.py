@@ -308,15 +308,22 @@ class TestTrainDiscoveryCollector:
 
         mock_session = AsyncMock()
 
-        with patch.object(
-            discovery_collector, "discover_station_trains"
-        ) as mock_discover:
+        @asynccontextmanager
+        async def mock_get_session():
+            yield mock_session
+
+        with (
+            patch("trackrat.collectors.njt.discovery.get_session", mock_get_session),
+            patch.object(
+                discovery_collector, "discover_station_trains"
+            ) as mock_discover,
+        ):
             # Return different results for each station
             mock_discover.side_effect = lambda session, station: station_results[
                 station
             ]
 
-            result = await discovery_collector.collect(mock_session)
+            result = await discovery_collector.collect()
 
         # Verify aggregation
         assert result["stations_processed"] == 17  # Updated discovery stations count

@@ -60,19 +60,18 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         return discovered_ids
 
     async def run(self) -> dict[str, Any]:
-        """Run the collector with a database session.
+        """Run the collector.
 
         Returns:
             Collection results
         """
-        async with get_session() as session:
-            return await self.collect(session)
+        return await self.collect()
 
-    async def collect(self, session: AsyncSession) -> dict[str, Any]:
+    async def collect(self) -> dict[str, Any]:
         """Run discovery for all configured stations.
 
-        Args:
-            session: Database session
+        Uses a separate database session per station to minimize lock hold time
+        and prevent deadlocks with concurrent journey collection.
 
         Returns:
             Discovery results summary
@@ -84,7 +83,8 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         station_results = {}
 
         for station_code in DISCOVERY_STATIONS:
-            result = await self.discover_station_trains(session, station_code)
+            async with get_session() as session:
+                result = await self.discover_station_trains(session, station_code)
             station_results[station_code] = result
             total_discovered += result["trains_discovered"]
             total_new += result["new_trains"]

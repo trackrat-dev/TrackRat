@@ -2799,21 +2799,24 @@ class SchedulerService:
                     self._running_tasks[task_id] = task
 
                 # Import and run validation
+                # Create session here (before HTTP I/O) to avoid greenlet issues
+                # when _save_validation_result needs DB access deep in the call chain
                 from trackrat.services.validation import TrainValidationService
 
-                async with TrainValidationService(self.settings) as validator:
-                    results = await validator.run_validation()
+                async with get_session() as validation_db:
+                    async with TrainValidationService(self.settings) as validator:
+                        results = await validator.run_validation(db=validation_db)
 
-                    # Summary metrics
-                    total_missing = sum(len(r.missing_trains) for r in results)
-                    routes_with_issues = sum(1 for r in results if r.missing_trains)
+                        # Summary metrics
+                        total_missing = sum(len(r.missing_trains) for r in results)
+                        routes_with_issues = sum(1 for r in results if r.missing_trains)
 
-                    logger.info(
-                        "train_validation_completed",
-                        total_routes_checked=len(results),
-                        routes_with_issues=routes_with_issues,
-                        total_missing_trains=total_missing,
-                    )
+                        logger.info(
+                            "train_validation_completed",
+                            total_routes_checked=len(results),
+                            routes_with_issues=routes_with_issues,
+                            total_missing_trains=total_missing,
+                        )
 
             except Exception as e:
                 logger.error(
