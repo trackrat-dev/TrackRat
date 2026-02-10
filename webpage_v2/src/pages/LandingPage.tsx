@@ -14,34 +14,24 @@ const SUPPORT_EMAIL = 'mailto:trackrat@andymartin.cc';
 const features = [
   {
     title: 'See delays at a glance',
-    description:
-      'Visualize real-time departure and arrival delays on your route as well as across the network.',
     image: `${BASE}images/1.webp`,
   },
   {
     title: 'NJ Transit and Amtrak, together',
-    description:
-      'Browse the schedules for all trains travelling your route, regardless of carrier.',
     image: `${BASE}images/2.webp`,
   },
   {
     title: 'Know your track early',
-    description:
-      'Platform predictions at Penn Station and other major hubs.',
     image: `${BASE}images/3.webp`,
   },
   {
     title: 'On your Lock Screen',
-    description:
-      'Live Activities show train status right on your Lock Screen and Dynamic Island.',
     image: `${BASE}images/4.webp`,
   },
 ];
 
 const unifiedFeature = {
   title: 'Unified Features & Support',
-  description:
-    'Use with PATH, LIRR, Metro-North, and PATCO too.',
   images: [
     `${BASE}images/mtn.webp`,
     `${BASE}images/5.webp`,
@@ -61,14 +51,14 @@ const transitSystems = [
 const faqs = [
   {
     q: 'Is TrackRat free?',
-    a: 'Yes. The core features of TrackRat are completely free to use. Some of the more advanced features require a TrackRat Pro subscription to be purchased through the App Store. In both cases, there are no ads, no accounts, and no data collected.',
+    a: 'Yes. The core features of TrackRat are free to use. Some of the more advanced features require a TrackRat Pro subscription to be purchased through the App Store. In both cases, there are no ads and no accounts required.',
   },
   {
     q: 'How does track prediction work?',
     a: 'TrackRat uses historical data and live track activity to predict which platform your train will depart from. Predictions are available at Penn Station New York and other major hubs.',
   },
   {
-    q: 'Which trains are supported?',
+    q: 'Which train systems are supported?',
     a: 'NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North are currently supported.',
   },
   {
@@ -90,10 +80,6 @@ const faqs = [
   {
     q: 'Why are some trains showing as SCHEDULED instead of real-time?',
     a: 'TrackRat combines scheduled timetable data with real-time feeds from transit agencies. Trains show as SCHEDULED until the agency\'s real-time feed confirms they are active. Once a train appears in the real-time feed, it switches to OBSERVED with live position and delay information.',
-  },
-  {
-    q: 'Do I need to create an account?',
-    a: 'No. TrackRat works without any account or sign-up. There is no login, no personal data collection, and no tracking. Just open the app or website and start looking up trains.',
   },
 ];
 
@@ -167,9 +153,6 @@ export function LandingPage() {
               <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
                 {feature.title}
               </h2>
-              <p className="text-text-muted text-lg leading-relaxed">
-                {feature.description}
-              </p>
             </div>
           </div>
         ))}
@@ -179,9 +162,6 @@ export function LandingPage() {
           <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
             {unifiedFeature.title}
           </h2>
-          <p className="text-text-muted text-lg leading-relaxed max-w-xl mx-auto">
-            {unifiedFeature.description}
-          </p>
         </div>
         <div className="flex justify-center gap-4">
           {unifiedFeature.images.map((src) => (
@@ -229,13 +209,13 @@ export function LandingPage() {
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
-          Open Source
+          A Public Resource
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
           <div>
-            <h3 className="font-semibold text-lg mb-2">Apache 2.0 Licensed</h3>
+            <h3 className="font-semibold text-lg mb-2">Open Source</h3>
             <p className="text-text-muted leading-relaxed">
-              TrackRat is fully open source under the Apache 2.0 license. You
+              TrackRat is open source under the Apache 2.0 license. You
               can read, fork, and contribute to every part of the project on
               GitHub.
             </p>
@@ -273,9 +253,8 @@ export function LandingPage() {
           <div>
             <h3 className="font-semibold text-lg mb-2">iOS App</h3>
             <p className="text-text-muted leading-relaxed">
-              The core features of TrackRat — real-time departures, delay visualization, and
-              track predictions — are completely free to use. No ads, no accounts, no data
-              collection. The full source code is available on GitHub under the Apache 2.0 license.
+              The core features of TrackRat are free to use. No ads, no account required, no data
+              collection.
             </p>
             <div className="text-center mt-3">
               <a
@@ -295,7 +274,7 @@ export function LandingPage() {
             <h3 className="font-semibold text-lg mb-2">Web App (experimental)</h3>
             <p className="text-text-muted leading-relaxed">
               The experimental web app provides cross-platform support for departure lookups and
-              real-time train status. This is under development!
+              real-time train status. (This is buggy and still under development!)
             </p>
             <div className="text-center mt-3">
               <Link
