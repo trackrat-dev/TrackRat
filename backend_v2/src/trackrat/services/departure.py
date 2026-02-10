@@ -836,7 +836,7 @@ class DepartureService:
                 stop.scheduled_departure = parse_njt_time(departure_time_str)
 
             # Update departure status with time validation
-            departed = stop_data.get("DEPARTED")
+            departed = (stop_data.get("DEPARTED") or "").upper() or None
             stop.raw_njt_departed_flag = departed
 
             # Never mark as departed if scheduled departure is in the future

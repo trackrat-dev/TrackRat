@@ -1119,12 +1119,11 @@ class TestExplicitCancellationReason:
     async def test_uppercase_cancelled_detected(
         self, sqlite_session: AsyncSession, journey_collector
     ):
-        """NJT sometimes returns STOP_STATUS='CANCELLED' (all uppercase) instead
-        of 'Cancelled' (title case). Both variants must be detected.
+        """STOP_STATUS='CANCELLED' (uppercase) is the normalized form after
+        the Pydantic field_validator on NJTransitStopData.
 
-        Real-world example: trains 3883 and 3885 on 2026-02-09 had all stops
-        with STOP_STATUS='CANCELLED' but were reported as is_cancelled=false
-        because the code only checked for exact match 'Cancelled'."""
+        Since tests use MagicMock (bypassing Pydantic), we set STOP_STATUS
+        to uppercase directly to simulate the post-normalization state."""
         base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         journey = TrainJourney(
@@ -1196,8 +1195,9 @@ class TestExplicitCancellationReason:
     async def test_mixed_case_cancelled_detected(
         self, sqlite_session: AsyncSession, journey_collector
     ):
-        """NJT sometimes mixes casing: first stop 'CANCELLED', rest 'Cancelled'.
-        Real-world example: train 3885 on 2026-02-09."""
+        """All stops with STOP_STATUS='CANCELLED' after Pydantic normalization.
+        In production, NJT mixed casing (e.g., 'Cancelled', 'CANCELLED') is
+        normalized to uppercase by NJTransitStopData.normalize_stop_status."""
         base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         journey = TrainJourney(
@@ -1254,9 +1254,10 @@ class TestExplicitCancellationReason:
                 cancelled=True,
             ),
         ]
-        # Mixed casing: first stop uppercase, rest title case
-        stops_data[0].STOP_STATUS = "CANCELLED"
-        # stops_data[1] and [2] keep "Cancelled" from StopBuilder
+        # All stops uppercase (post-normalization state)
+        # StopBuilder already uses "CANCELLED"; explicit override for clarity
+        for stop in stops_data:
+            stop.STOP_STATUS = "CANCELLED"
 
         await journey_collector.check_journey_completion(
             sqlite_session, journey, stops_data
@@ -1272,7 +1273,8 @@ class TestExplicitCancellationReason:
         self, sqlite_session: AsyncSession, journey_collector
     ):
         """A stop with STOP_STATUS=None should not be counted as cancelled.
-        The (stop.STOP_STATUS or '').upper() guard must handle None safely."""
+        The Pydantic validator passes None through unchanged; the
+        (stop.STOP_STATUS or '') guard handles it safely downstream."""
         base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         journey = TrainJourney(
@@ -1332,4 +1334,49 @@ class TestExplicitCancellationReason:
         assert journey.is_cancelled is False, (
             f"Journey should NOT be cancelled when only some stops are cancelled, "
             f"got is_cancelled={journey.is_cancelled}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 7. Pydantic field validators normalize NJT API values
+# ---------------------------------------------------------------------------
+
+
+class TestNJTransitStopDataNormalization:
+    """Test that NJTransitStopData normalizes DEPARTED and STOP_STATUS to uppercase."""
+
+    def test_departed_normalized_to_uppercase(self):
+        """DEPARTED field should be normalized to uppercase on parse."""
+        from trackrat.models.api import NJTransitStopData
+
+        stop = NJTransitStopData(DEPARTED="yes")
+        assert stop.DEPARTED == "YES", (
+            f"Expected DEPARTED='YES' after normalization, got {stop.DEPARTED!r}"
+        )
+
+    def test_stop_status_normalized_to_uppercase(self):
+        """STOP_STATUS field should be normalized to uppercase on parse."""
+        from trackrat.models.api import NJTransitStopData
+
+        stop = NJTransitStopData(STOP_STATUS="Cancelled")
+        assert stop.STOP_STATUS == "CANCELLED", (
+            f"Expected STOP_STATUS='CANCELLED' after normalization, "
+            f"got {stop.STOP_STATUS!r}"
+        )
+
+    def test_none_values_pass_through(self):
+        """None values should not be modified by validators."""
+        from trackrat.models.api import NJTransitStopData
+
+        stop = NJTransitStopData(DEPARTED=None, STOP_STATUS=None)
+        assert stop.DEPARTED is None
+        assert stop.STOP_STATUS is None
+
+    def test_mixed_case_stop_status_normalized(self):
+        """Mixed case like '5 Minutes Late' should become '5 MINUTES LATE'."""
+        from trackrat.models.api import NJTransitStopData
+
+        stop = NJTransitStopData(STOP_STATUS="5 Minutes Late")
+        assert stop.STOP_STATUS == "5 MINUTES LATE", (
+            f"Expected '5 MINUTES LATE', got {stop.STOP_STATUS!r}"
         )

@@ -8,7 +8,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 
 # Custom serializer for Eastern Time datetimes
@@ -363,6 +363,16 @@ class NJTransitStopData(BaseModel):
     DROPOFF: str | None = None
     DEPARTED: str | None = None
     STOP_STATUS: str | None = None
+
+    @field_validator("DEPARTED", mode="before")
+    @classmethod
+    def normalize_departed(cls, v: str | None) -> str | None:
+        return v.upper() if v else v
+
+    @field_validator("STOP_STATUS", mode="before")
+    @classmethod
+    def normalize_stop_status(cls, v: str | None) -> str | None:
+        return v.upper() if v else v
     DEP_TIME: str | None = None
     TIME_UTC_FORMAT: str | None = None
     TRACK: str | None = None

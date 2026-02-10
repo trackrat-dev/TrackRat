@@ -670,7 +670,9 @@ async def get_train_history(
     statistics = {
         "total_journeys": total_journeys,
         "on_time_percentage": (
-            (on_time_count / total_journeys * 100) if total_journeys > 0 else 0
+            (on_time_count / non_cancelled_journeys * 100)
+            if non_cancelled_journeys > 0
+            else 0
         ),
         "average_delay_minutes": (
             (total_delay / non_cancelled_journeys) if non_cancelled_journeys > 0 else 0
@@ -830,8 +832,8 @@ async def get_train_history(
         route_statistics = {
             "total_journeys": route_total_journeys,
             "on_time_percentage": (
-                (route_on_time_count / route_total_journeys * 100)
-                if route_total_journeys > 0
+                (route_on_time_count / route_non_cancelled_journeys * 100)
+                if route_non_cancelled_journeys > 0
                 else 0
             ),
             "average_delay_minutes": (

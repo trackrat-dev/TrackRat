@@ -1364,7 +1364,7 @@ class SchedulerService:
             return "UNKNOWN"
 
         # Check if all stops are cancelled
-        if all((stop.STOP_STATUS or "").upper() == "CANCELLED" for stop in stops_data):
+        if all((stop.STOP_STATUS or "") == "CANCELLED" for stop in stops_data):
             return "CANCELLED"
 
         # Find current position
@@ -1584,15 +1584,15 @@ class SchedulerService:
                         delay_minutes = 0
                         for stop in reversed(train_data.STOPS):
                             if stop.DEPARTED == "YES" and stop.STOP_STATUS:
-                                if "late" in (stop.STOP_STATUS or "").lower():
+                                if "LATE" in (stop.STOP_STATUS or ""):
                                     try:
-                                        parts = stop.STOP_STATUS.lower().split()
-                                        if "minutes" in parts:
-                                            idx = parts.index("minutes")
+                                        parts = stop.STOP_STATUS.split()
+                                        if "MINUTES" in parts:
+                                            idx = parts.index("MINUTES")
                                             if idx > 0:
                                                 delay_minutes = int(parts[idx - 1])
-                                        elif "mins" in parts:
-                                            idx = parts.index("mins")
+                                        elif "MINS" in parts:
+                                            idx = parts.index("MINS")
                                             if idx > 0:
                                                 delay_minutes = int(parts[idx - 1])
                                     except (ValueError, IndexError):
@@ -1626,7 +1626,7 @@ class SchedulerService:
 
                         # Check for cancellation
                         is_cancelled = all(
-                            (stop.STOP_STATUS or "").upper() == "CANCELLED"
+                            (stop.STOP_STATUS or "") == "CANCELLED"
                             for stop in train_data.STOPS
                         )
                         if is_cancelled:

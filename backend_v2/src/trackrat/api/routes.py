@@ -260,7 +260,9 @@ def _calculate_route_stats(
 
     return {
         "on_time_percentage": (
-            (on_time_count / total_journeys * 100) if total_journeys > 0 else 0
+            (on_time_count / non_cancelled_journeys * 100)
+            if non_cancelled_journeys > 0
+            else 0
         ),
         "average_delay_minutes": (
             (total_delay / non_cancelled_journeys) if non_cancelled_journeys > 0 else 0
