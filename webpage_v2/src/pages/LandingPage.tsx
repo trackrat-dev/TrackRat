@@ -107,7 +107,7 @@ export function LandingPage() {
           alt="TrackRat"
           className="w-24 h-24 rounded-[22px] mx-auto mb-6 shadow-lg"
         />
-        <h1 className="text-4xl md:text-5xl font-bold mb-4 bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent">
+        <h1 className="text-4xl md:text-5xl font-bold mb-4 text-text-primary">
           TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-muted mb-8 max-w-xl mx-auto">
@@ -118,7 +118,7 @@ export function LandingPage() {
             href={APP_STORE_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-text-muted hover:text-black transition-colors"
+            className="text-text-muted hover:text-text-primary transition-colors"
             aria-label="Download on the App Store"
           >
             <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 24 24">
@@ -164,7 +164,7 @@ export function LandingPage() {
               loading="lazy"
             />
             <div className="text-center md:text-left flex-1">
-              <h2 className="text-2xl md:text-3xl font-bold mb-3 text-black">
+              <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
                 {feature.title}
               </h2>
               <p className="text-text-muted text-lg leading-relaxed">
@@ -176,7 +176,7 @@ export function LandingPage() {
 
         {/* Unified Feature - full width with three images */}
         <div className="text-center mb-6">
-          <h2 className="text-2xl md:text-3xl font-bold mb-3 text-black">
+          <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
             {unifiedFeature.title}
           </h2>
           <p className="text-text-muted text-lg leading-relaxed max-w-xl mx-auto">
@@ -199,7 +199,7 @@ export function LandingPage() {
       {/* Supported Transit Systems */}
       <section className="px-6 py-12 bg-surface/50">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-black">
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
             Supported Transit Systems
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -228,7 +228,7 @@ export function LandingPage() {
 
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
-        <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-black">
+        <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
           Open Source
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
@@ -312,7 +312,7 @@ export function LandingPage() {
       {/* FAQ */}
       <section className="px-6 py-12 bg-surface/50">
         <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-black">
+          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
             FAQ
           </h2>
           <div className="space-y-6">
