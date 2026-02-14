@@ -63,7 +63,7 @@ sqlalchemy = {extras = ["mypy"], version = "^2.0.25"}
 # Code Quality
 black = "^26.1.0"
 ruff = "^0.1.14"
-types-cachetools = "^6.1.0.20250717"
+types-cachetools = "^6.2.0.20251022"
 aiosqlite = "^0.22.1"
 
 [build-system]
