@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -1183,32 +1184,46 @@ class JourneyCollector(BaseJourneyCollector):
 
             if not stop:
                 # NEW STOP - Set scheduled times (immutable)
-                stop = JourneyStop(
-                    journey_id=journey.id,
-                    station_code=stop_data.STATION_2CHAR,
-                    station_name=stop_data.STATIONNAME
-                    or get_station_name(stop_data.STATION_2CHAR or ""),
-                    stop_sequence=sequence,
-                    scheduled_arrival=best_scheduled_arrival,
-                    scheduled_departure=best_scheduled_departure,
-                )
-                session.add(stop)
-                logger.debug(
-                    "created_stop_with_scheduled_times",
-                    train_id=journey.train_id,
-                    station=stop_data.STATION_2CHAR,
-                    is_origin=is_origin,
-                    scheduled_arrival=(
-                        normalized["scheduled_arrival"].isoformat()
-                        if normalized["scheduled_arrival"]
-                        else None
-                    ),
-                    scheduled_departure=(
-                        normalized["scheduled_departure"].isoformat()
-                        if normalized["scheduled_departure"]
-                        else None
-                    ),
-                )
+                # Use savepoint to handle race with discovery creating the same stop
+                try:
+                    async with session.begin_nested():
+                        stop = JourneyStop(
+                            journey_id=journey.id,
+                            station_code=stop_data.STATION_2CHAR,
+                            station_name=stop_data.STATIONNAME
+                            or get_station_name(stop_data.STATION_2CHAR or ""),
+                            stop_sequence=sequence,
+                            scheduled_arrival=best_scheduled_arrival,
+                            scheduled_departure=best_scheduled_departure,
+                        )
+                        session.add(stop)
+                        await session.flush()
+                    logger.debug(
+                        "created_stop_with_scheduled_times",
+                        train_id=journey.train_id,
+                        station=stop_data.STATION_2CHAR,
+                        is_origin=is_origin,
+                        scheduled_arrival=(
+                            normalized["scheduled_arrival"].isoformat()
+                            if normalized["scheduled_arrival"]
+                            else None
+                        ),
+                        scheduled_departure=(
+                            normalized["scheduled_departure"].isoformat()
+                            if normalized["scheduled_departure"]
+                            else None
+                        ),
+                    )
+                except IntegrityError:
+                    # Race condition: discovery created this stop concurrently
+                    stop = await session.scalar(stmt)
+                    if not stop:
+                        raise  # Should not happen — re-raise if stop truly missing
+                    logger.info(
+                        "stop_created_by_concurrent_process",
+                        train_id=journey.train_id,
+                        station=stop_data.STATION_2CHAR,
+                    )
             else:
                 # EXISTING STOP - Never update scheduled times unless they're NULL
                 if stop.scheduled_arrival is None and best_scheduled_arrival:

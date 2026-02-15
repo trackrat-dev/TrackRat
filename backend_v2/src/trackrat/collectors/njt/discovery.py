@@ -7,6 +7,7 @@ Discovers active trains by polling station departure boards.
 from typing import Any
 
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -217,25 +218,42 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     )
         else:
             # Stop doesn't exist - create it with the track
+            # Use savepoint to handle race with journey collector creating the same stop
             from trackrat.config.stations import get_station_name
 
             sanitized_track = sanitize_track(track)
             if sanitized_track:
-                stop = JourneyStop(
-                    journey_id=journey.id,
-                    station_code=station_code,
-                    station_name=get_station_name(station_code),
-                    # Don't set stop_sequence - let journey collector handle it exclusively
-                    track=sanitized_track,
-                    track_assigned_at=now_et(),
-                )
-                session.add(stop)
-                logger.info(
-                    "created_stop_with_track_during_discovery",
-                    train_id=journey.train_id,
-                    station_code=station_code,
-                    track=sanitized_track,
-                )
+                try:
+                    async with session.begin_nested():
+                        stop = JourneyStop(
+                            journey_id=journey.id,
+                            station_code=station_code,
+                            station_name=get_station_name(station_code),
+                            # Don't set stop_sequence - let journey collector handle it exclusively
+                            track=sanitized_track,
+                            track_assigned_at=now_et(),
+                        )
+                        session.add(stop)
+                        await session.flush()
+                    logger.info(
+                        "created_stop_with_track_during_discovery",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        track=sanitized_track,
+                    )
+                except IntegrityError:
+                    # Race: journey collector created this stop concurrently
+                    # Re-query and update track on the existing stop
+                    stop = await session.scalar(stmt)
+                    if stop and not stop.track:
+                        stop.track = sanitized_track
+                        stop.track_assigned_at = now_et()
+                    logger.info(
+                        "stop_created_by_concurrent_process_updating_track",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        track=sanitized_track,
+                    )
 
     async def process_discovered_trains(
         self,
