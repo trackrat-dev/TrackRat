@@ -507,7 +507,10 @@ class JourneyCollector(BaseJourneyCollector):
         return normalized
 
     async def _is_same_journey(
-        self, stored_journey: TrainJourney, api_train_data: NJTransitTrainData
+        self,
+        session: AsyncSession,
+        stored_journey: TrainJourney,
+        api_train_data: NJTransitTrainData,
     ) -> bool:
         """
         Verify if API data represents the same journey as our stored record.
@@ -586,13 +589,19 @@ class JourneyCollector(BaseJourneyCollector):
                         stored_journey.origin_station_code
                         and stored_journey.origin_station_code
                         != first_stop.STATION_2CHAR
-                        and stored_journey.stops
                     ):
-                        # Check if our stored stops have a different first station
-                        db_stops_sorted = sorted(
-                            stored_journey.stops,
-                            key=lambda s: s.stop_sequence if s.stop_sequence else 0,
+                        # Query stops explicitly to avoid lazy-load greenlet error
+                        stops_stmt = (
+                            select(JourneyStop)
+                            .where(JourneyStop.journey_id == stored_journey.id)
+                            .order_by(
+                                JourneyStop.stop_sequence.asc().nulls_last()
+                            )
                         )
+                        stops_result = await session.execute(stops_stmt)
+                        db_stops_sorted = list(stops_result.scalars().all())
+
+                        # Check if our stored stops have a different first station
                         if db_stops_sorted:
                             first_db_stop = db_stops_sorted[0]
                             if (
@@ -817,7 +826,7 @@ class JourneyCollector(BaseJourneyCollector):
         )
 
         # Verify this API data matches our stored journey
-        if not await self._is_same_journey(journey, train_data):
+        if not await self._is_same_journey(session, journey, train_data):
             # API returned data for a different journey - mark this one as expired
             journey.is_expired = True
             journey.api_error_count = 99  # High value to prevent retry
