@@ -111,10 +111,6 @@ class TestStaleOriginDetection:
 
         await db_session.flush()
 
-        # Refresh journey to load stops relationship in async context
-        # (accessing journey.stops directly would trigger sync lazy load and fail)
-        await db_session.refresh(journey, ["stops"])
-
         # Create API response with correct origin (NY Penn at 7:20 PM)
         builder = StopBuilder()
         api_response = create_stop_list_response(
@@ -145,7 +141,9 @@ class TestStaleOriginDetection:
 
         # Without the fix, this would return False (86 min > 10 min tolerance)
         # With the fix, it should return True (uses stops table departure)
-        result = await journey_collector._is_same_journey(journey, api_response)
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
 
         assert result is True, (
             "Journey should be recognized as same journey when stops table has "
@@ -195,9 +193,6 @@ class TestStaleOriginDetection:
         db_session.add(stop)
         await db_session.flush()
 
-        # Refresh journey to load stops relationship in async context
-        await db_session.refresh(journey, ["stops"])
-
         # API response for a DIFFERENT journey (different destination)
         builder = StopBuilder()
         api_response = create_stop_list_response(
@@ -212,7 +207,9 @@ class TestStaleOriginDetection:
         )
 
         # Should return False - different destination
-        result = await journey_collector._is_same_journey(journey, api_response)
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
 
         assert result is False, "Different destination should be detected as mismatch"
 
@@ -257,9 +254,6 @@ class TestStaleOriginDetection:
         db_session.add(stop)
         await db_session.flush()
 
-        # Refresh journey to load stops relationship in async context
-        await db_session.refresh(journey, ["stops"])
-
         # API response matching the journey
         builder = StopBuilder()
         api_response = create_stop_list_response(
@@ -274,7 +268,9 @@ class TestStaleOriginDetection:
         )
 
         # Should return True - everything matches
-        result = await journey_collector._is_same_journey(journey, api_response)
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
 
         assert result is True, "Matching journey should be recognized"
 
@@ -323,6 +319,8 @@ class TestStaleOriginDetection:
         )
 
         # Should return True - incomplete journey skips departure check
-        result = await journey_collector._is_same_journey(journey, api_response)
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
 
         assert result is True, "Incomplete journey should skip departure time check"
