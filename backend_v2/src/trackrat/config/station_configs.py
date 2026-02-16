@@ -7,7 +7,8 @@ This module defines which stations support ML predictions and their track config
 from typing import Any
 
 # Station configurations for ML track predictions
-# Note: Only NY has platform groupings. All other stations use track = platform
+# Note: Stations with platform_mappings group adjacent tracks sharing an island platform.
+# Currently NY (Penn Station) and GCT (Grand Central) have platform groupings.
 STATION_ML_CONFIGS = {
     "NY": {
         "ml_enabled": True,
@@ -179,7 +180,50 @@ STATION_ML_CONFIGS = {
             "302",
             "304",
         ],
-        "platform_mappings": None,
+        "platform_mappings": {
+            # Upper Level - island platform pairs
+            "11": "11 & 13",
+            "13": "11 & 13",
+            "14": "14 & 15",
+            "15": "14 & 15",
+            "16": "16 & 17",
+            "17": "16 & 17",
+            "18": "18 & 19",
+            "19": "18 & 19",
+            "20": "20 & 21",
+            "21": "20 & 21",
+            "23": "23 & 24",
+            "24": "23 & 24",
+            "25": "25 & 26",
+            "26": "25 & 26",
+            "27": "27 & 28",
+            "28": "27 & 28",
+            "29": "29 & 30",
+            "30": "29 & 30",
+            "32": "32 & 33",
+            "33": "32 & 33",
+            "34": "34 & 35",
+            "35": "34 & 35",
+            "36": "36 & 37",
+            "37": "36 & 37",
+            "38": "38",
+            "39": "39 & 40",
+            "40": "39 & 40",
+            "41": "41 & 42",
+            "42": "41 & 42",
+            # Lower Level - island platform pairs
+            "102": "102 & 103",
+            "103": "102 & 103",
+            "104": "104 & 105",
+            "105": "104 & 105",
+            "106": "106 & 107",
+            "107": "106 & 107",
+            "111": "111 & 112",
+            "112": "111 & 112",
+            "113": "113 & 114",
+            "114": "113 & 114",
+            # LIRR Madison tracks - no platform grouping data
+        },
     },
     # Default configuration for stations not explicitly listed
     "_default": {
@@ -226,12 +270,11 @@ def get_platform_for_track(station_code: str, track: str) -> str:
         track: Track identifier (e.g., '1', 'A')
 
     Returns:
-        Platform name (may be same as track for non-NY stations)
+        Platform name (may be same as track for stations without platform mappings)
     """
     config = get_station_config(station_code)
 
     if config["platform_mappings"]:
-        # Station has platform mappings (currently only NY)
         return str(config["platform_mappings"].get(track, track))
     else:
         # For stations without platform mappings, platform = track

@@ -12,6 +12,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from trackrat.config.station_configs import get_station_config
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.track_occupancy import TrackOccupancyService
 
@@ -41,21 +42,6 @@ class HistoricalTrackPredictor:
     def __init__(self) -> None:
         """Initialize the predictor."""
         self.occupancy_service = TrackOccupancyService()
-
-        # NY Penn platform mappings (tracks that share the same platform)
-        self.ny_platform_mappings = {
-            "1 & 2": ["1", "2"],
-            "3 & 4": ["3", "4"],
-            "5 & 6": ["5", "6"],
-            "7 & 8": ["7", "8"],
-            "9 & 10": ["9", "10"],
-            "11 & 12": ["11", "12"],
-            "13 & 14": ["13", "14"],
-            "15 & 16": ["15", "16"],
-            "17": ["17"],
-            "18 & 19": ["18", "19"],
-            "20 & 21": ["20", "21"],
-        }
 
     async def predict_track(
         self,
@@ -474,34 +460,40 @@ class HistoricalTrackPredictor:
         """
         Convert individual track probabilities to platform probabilities.
 
-        For NY Penn, tracks are grouped into platforms (e.g., tracks 1 & 2 share a platform).
-        For other stations, return tracks as-is since they don't have platform groupings.
+        For stations with platform_mappings in station_configs (e.g., NY Penn, GCT),
+        tracks sharing an island platform are grouped and their probabilities summed.
+        For stations without platform_mappings, tracks are returned as-is.
 
         Args:
             track_probabilities: Dictionary of track -> probability
-            station_code: Station code (e.g., 'NY')
+            station_code: Station code (e.g., 'NY', 'GCT')
 
         Returns:
             Dictionary of platform -> probability
         """
-        # Only NY Penn has platform groupings
-        if station_code != "NY":
-            # For non-NY stations, each track is its own "platform"
+        config = get_station_config(station_code)
+        platform_mappings = config.get("platform_mappings")
+
+        if not platform_mappings:
             return track_probabilities
 
-        # Convert tracks to platforms for NY Penn
-        platform_probabilities = {}
+        # Build inverse mapping: platform_name -> [track, ...]
+        inverse: dict[str, list[str]] = {}
+        for track, platform_name in platform_mappings.items():
+            inverse.setdefault(platform_name, []).append(track)
 
-        for platform_name, tracks in self.ny_platform_mappings.items():
-            # Sum probabilities for all tracks in this platform
-            total_prob = 0.0
-            for track in tracks:
-                if track in track_probabilities:
-                    total_prob += track_probabilities[track]
+        platform_probabilities: dict[str, float] = {}
 
-            # Only add platform if it has non-zero probability
+        for platform_name, tracks in inverse.items():
+            total_prob = sum(track_probabilities.get(track, 0.0) for track in tracks)
             if total_prob > 0:
                 platform_probabilities[platform_name] = total_prob
+
+        # Include tracks not in any platform mapping (e.g., LIRR Madison tracks at GCT)
+        mapped_tracks = set(platform_mappings.keys())
+        for track, prob in track_probabilities.items():
+            if track not in mapped_tracks and prob > 0:
+                platform_probabilities[track] = prob
 
         return platform_probabilities
 
