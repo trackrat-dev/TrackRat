@@ -25,7 +25,7 @@ const features = [
     image: `${BASE}images/3.webp`,
   },
   {
-    title: 'On your Lock Screen',
+    title: 'Right on your Lock Screen',
     image: `${BASE}images/4.webp`,
   },
 ];
@@ -172,6 +172,7 @@ export function LandingPage() {
       </section>
 
       {/* Open Source */}
+      {/*
       <section className="px-6 py-12 max-w-4xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
           Public Resource
@@ -250,7 +251,7 @@ export function LandingPage() {
           </div>
         </div>
       </section>
-
+      */}
       {/* Footer */}
       <footer className="px-6 py-12 text-center">
         <div className="max-w-4xl mx-auto">
