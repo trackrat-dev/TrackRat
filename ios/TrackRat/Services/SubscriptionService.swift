@@ -80,7 +80,7 @@ enum PaywallContext {
         case .congestionMap:
             return "See real-time train congestion across the network"
         case .generic:
-            return "Your subscription supports bug fixes and new features"
+            return "Your subscription supports new experiments"
         }
     }
 }
