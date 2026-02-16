@@ -9,6 +9,7 @@ from typing import Any, cast
 
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -507,7 +508,10 @@ class JourneyCollector(BaseJourneyCollector):
         return normalized
 
     async def _is_same_journey(
-        self, stored_journey: TrainJourney, api_train_data: NJTransitTrainData
+        self,
+        session: AsyncSession,
+        stored_journey: TrainJourney,
+        api_train_data: NJTransitTrainData,
     ) -> bool:
         """
         Verify if API data represents the same journey as our stored record.
@@ -586,13 +590,19 @@ class JourneyCollector(BaseJourneyCollector):
                         stored_journey.origin_station_code
                         and stored_journey.origin_station_code
                         != first_stop.STATION_2CHAR
-                        and stored_journey.stops
                     ):
-                        # Check if our stored stops have a different first station
-                        db_stops_sorted = sorted(
-                            stored_journey.stops,
-                            key=lambda s: s.stop_sequence if s.stop_sequence else 0,
+                        # Query stops explicitly to avoid lazy-load greenlet error
+                        stops_stmt = (
+                            select(JourneyStop)
+                            .where(JourneyStop.journey_id == stored_journey.id)
+                            .order_by(
+                                JourneyStop.stop_sequence.asc().nulls_last()
+                            )
                         )
+                        stops_result = await session.execute(stops_stmt)
+                        db_stops_sorted = list(stops_result.scalars().all())
+
+                        # Check if our stored stops have a different first station
                         if db_stops_sorted:
                             first_db_stop = db_stops_sorted[0]
                             if (
@@ -817,7 +827,7 @@ class JourneyCollector(BaseJourneyCollector):
         )
 
         # Verify this API data matches our stored journey
-        if not await self._is_same_journey(journey, train_data):
+        if not await self._is_same_journey(session, journey, train_data):
             # API returned data for a different journey - mark this one as expired
             journey.is_expired = True
             journey.api_error_count = 99  # High value to prevent retry
@@ -1174,32 +1184,46 @@ class JourneyCollector(BaseJourneyCollector):
 
             if not stop:
                 # NEW STOP - Set scheduled times (immutable)
-                stop = JourneyStop(
-                    journey_id=journey.id,
-                    station_code=stop_data.STATION_2CHAR,
-                    station_name=stop_data.STATIONNAME
-                    or get_station_name(stop_data.STATION_2CHAR or ""),
-                    stop_sequence=sequence,
-                    scheduled_arrival=best_scheduled_arrival,
-                    scheduled_departure=best_scheduled_departure,
-                )
-                session.add(stop)
-                logger.debug(
-                    "created_stop_with_scheduled_times",
-                    train_id=journey.train_id,
-                    station=stop_data.STATION_2CHAR,
-                    is_origin=is_origin,
-                    scheduled_arrival=(
-                        normalized["scheduled_arrival"].isoformat()
-                        if normalized["scheduled_arrival"]
-                        else None
-                    ),
-                    scheduled_departure=(
-                        normalized["scheduled_departure"].isoformat()
-                        if normalized["scheduled_departure"]
-                        else None
-                    ),
-                )
+                # Use savepoint to handle race with discovery creating the same stop
+                try:
+                    async with session.begin_nested():
+                        stop = JourneyStop(
+                            journey_id=journey.id,
+                            station_code=stop_data.STATION_2CHAR,
+                            station_name=stop_data.STATIONNAME
+                            or get_station_name(stop_data.STATION_2CHAR or ""),
+                            stop_sequence=sequence,
+                            scheduled_arrival=best_scheduled_arrival,
+                            scheduled_departure=best_scheduled_departure,
+                        )
+                        session.add(stop)
+                        await session.flush()
+                    logger.debug(
+                        "created_stop_with_scheduled_times",
+                        train_id=journey.train_id,
+                        station=stop_data.STATION_2CHAR,
+                        is_origin=is_origin,
+                        scheduled_arrival=(
+                            normalized["scheduled_arrival"].isoformat()
+                            if normalized["scheduled_arrival"]
+                            else None
+                        ),
+                        scheduled_departure=(
+                            normalized["scheduled_departure"].isoformat()
+                            if normalized["scheduled_departure"]
+                            else None
+                        ),
+                    )
+                except IntegrityError:
+                    # Race condition: discovery created this stop concurrently
+                    stop = await session.scalar(stmt)
+                    if not stop:
+                        raise  # Should not happen — re-raise if stop truly missing
+                    logger.info(
+                        "stop_created_by_concurrent_process",
+                        train_id=journey.train_id,
+                        station=stop_data.STATION_2CHAR,
+                    )
             else:
                 # EXISTING STOP - Never update scheduled times unless they're NULL
                 if stop.scheduled_arrival is None and best_scheduled_arrival:

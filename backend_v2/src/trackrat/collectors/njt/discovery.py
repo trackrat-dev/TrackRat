@@ -7,6 +7,7 @@ Discovers active trains by polling station departure boards.
 from typing import Any
 
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -217,25 +218,42 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     )
         else:
             # Stop doesn't exist - create it with the track
+            # Use savepoint to handle race with journey collector creating the same stop
             from trackrat.config.stations import get_station_name
 
             sanitized_track = sanitize_track(track)
             if sanitized_track:
-                stop = JourneyStop(
-                    journey_id=journey.id,
-                    station_code=station_code,
-                    station_name=get_station_name(station_code),
-                    # Don't set stop_sequence - let journey collector handle it exclusively
-                    track=sanitized_track,
-                    track_assigned_at=now_et(),
-                )
-                session.add(stop)
-                logger.info(
-                    "created_stop_with_track_during_discovery",
-                    train_id=journey.train_id,
-                    station_code=station_code,
-                    track=sanitized_track,
-                )
+                try:
+                    async with session.begin_nested():
+                        stop = JourneyStop(
+                            journey_id=journey.id,
+                            station_code=station_code,
+                            station_name=get_station_name(station_code),
+                            # Don't set stop_sequence - let journey collector handle it exclusively
+                            track=sanitized_track,
+                            track_assigned_at=now_et(),
+                        )
+                        session.add(stop)
+                        await session.flush()
+                    logger.info(
+                        "created_stop_with_track_during_discovery",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        track=sanitized_track,
+                    )
+                except IntegrityError:
+                    # Race: journey collector created this stop concurrently
+                    # Re-query and update track on the existing stop
+                    stop = await session.scalar(stmt)
+                    if stop and not stop.track:
+                        stop.track = sanitized_track
+                        stop.track_assigned_at = now_et()
+                    logger.info(
+                        "stop_created_by_concurrent_process_updating_track",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        track=sanitized_track,
+                    )
 
     async def process_discovered_trains(
         self,
@@ -285,92 +303,96 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 scheduled_departure = parse_njt_time(sched_dep_str)
                 journey_date = scheduled_departure.date()
 
+                # Disable autoflush inside savepoint to prevent implicit
+                # lock acquisition during SELECTs that can deadlock with
+                # concurrent journey collection. Explicit flush() still works.
                 async with session.begin_nested():
-                    # Check if journey already exists
-                    stmt = select(TrainJourney).where(
-                        TrainJourney.train_id == train_id,
-                        TrainJourney.journey_date == journey_date,
-                        TrainJourney.data_source == "NJT",
-                    )
-                    existing = await session.scalar(stmt)
+                    with session.no_autoflush:
+                        # Check if journey already exists
+                        stmt = select(TrainJourney).where(
+                            TrainJourney.train_id == train_id,
+                            TrainJourney.journey_date == journey_date,
+                            TrainJourney.data_source == "NJT",
+                        )
+                        existing = await session.scalar(stmt)
 
-                    if existing:
-                        # Re-activate expired trains that reappear in discovery
-                        if existing.is_expired:
-                            existing.is_expired = False
-                            existing.api_error_count = 0
-                            logger.info(
-                                "reactivated_expired_train",
-                                train_id=train_id,
-                                journey_date=journey_date,
-                            )
+                        if existing:
+                            # Re-activate expired trains that reappear in discovery
+                            if existing.is_expired:
+                                existing.is_expired = False
+                                existing.api_error_count = 0
+                                logger.info(
+                                    "reactivated_expired_train",
+                                    train_id=train_id,
+                                    journey_date=journey_date,
+                                )
 
-                        # Update last seen time
-                        existing.last_updated_at = now_et()
+                            # Update last seen time
+                            existing.last_updated_at = now_et()
 
-                        # Mark as observed if it was previously scheduled
-                        if existing.observation_type == "SCHEDULED":
-                            existing.observation_type = "OBSERVED"
-                            logger.info(
-                                "upgraded_scheduled_to_observed",
-                                train_id=train_id,
-                                journey_date=journey_date,
-                            )
+                            # Mark as observed if it was previously scheduled
+                            if existing.observation_type == "SCHEDULED":
+                                existing.observation_type = "OBSERVED"
+                                logger.info(
+                                    "upgraded_scheduled_to_observed",
+                                    train_id=train_id,
+                                    journey_date=journey_date,
+                                )
+
+                            # Update track directly in journey stop
+                            track = train_data.get("TRACK")
+                            if track and station_code:
+                                await self._update_stop_track_if_needed(
+                                    session, existing, station_code, track
+                                )
+
+                            continue
+
+                        # Create new journey
+                        # NOTE: We temporarily use the discovery station as origin,
+                        # but this might be an intermediate stop. The journey
+                        # collector will correct this when it fetches full details.
+                        journey = TrainJourney(
+                            train_id=train_id,
+                            journey_date=journey_date,
+                            line_code=train_data.get("LINE", "").strip()[:2],
+                            line_name=train_data.get("LINE_NAME", ""),
+                            destination=train_data.get("DESTINATION", "").strip(),
+                            origin_station_code=station_code,
+                            terminal_station_code=station_code,
+                            scheduled_departure=scheduled_departure,
+                            data_source="NJT",
+                            observation_type="OBSERVED",
+                            first_seen_at=now_et(),
+                            last_updated_at=now_et(),
+                            has_complete_journey=False,
+                            update_count=1,
+                        )
+
+                        # Extract line color if available
+                        if "BACKCOLOR" in train_data:
+                            journey.line_color = train_data["BACKCOLOR"].strip()
+
+                        session.add(journey)
+                        await session.flush()  # Ensure journey has ID
+                        new_train_ids.add(train_id)
 
                         # Update track directly in journey stop
                         track = train_data.get("TRACK")
                         if track and station_code:
                             await self._update_stop_track_if_needed(
-                                session, existing, station_code, track
+                                session, journey, station_code, track
                             )
 
-                        continue
-
-                    # Create new journey
-                    # NOTE: We temporarily use the discovery station as origin, but this might be
-                    # an intermediate stop. The journey collector will correct this when it fetches
-                    # the full journey details (see journey.py lines 685-694).
-                    journey = TrainJourney(
-                        train_id=train_id,
-                        journey_date=journey_date,
-                        line_code=train_data.get("LINE", "").strip()[:2],
-                        line_name=train_data.get("LINE_NAME", ""),
-                        destination=train_data.get("DESTINATION", "").strip(),
-                        origin_station_code=station_code,  # May be wrong - journey collector will fix
-                        terminal_station_code=station_code,  # Will be updated later
-                        scheduled_departure=scheduled_departure,  # May be wrong - journey collector will fix
-                        data_source="NJT",
-                        observation_type="OBSERVED",  # Real-time discovery data
-                        first_seen_at=now_et(),
-                        last_updated_at=now_et(),
-                        has_complete_journey=False,
-                        update_count=1,
-                    )
-
-                    # Extract line color if available
-                    if "BACKCOLOR" in train_data:
-                        journey.line_color = train_data["BACKCOLOR"].strip()
-
-                    session.add(journey)
-                    await session.flush()  # Ensure journey has ID before creating stops
-                    new_train_ids.add(train_id)
-
-                    # Update track directly in journey stop
-                    track = train_data.get("TRACK")
-                    if track and station_code:
-                        await self._update_stop_track_if_needed(
-                            session, journey, station_code, track
+                        logger.debug(
+                            "new_journey_discovered",
+                            train_id=train_id,
+                            journey_date=journey_date,
+                            line=journey.line_code,
+                            destination=journey.destination,
+                            departure=scheduled_departure.isoformat(),
+                            track=track,
                         )
-
-                    logger.debug(
-                        "new_journey_discovered",
-                        train_id=train_id,
-                        journey_date=journey_date,
-                        line=journey.line_code,
-                        destination=journey.destination,
-                        departure=scheduled_departure.isoformat(),
-                        track=track,
-                    )
 
             except Exception as e:
                 logger.error(
