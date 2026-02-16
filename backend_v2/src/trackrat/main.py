@@ -12,6 +12,7 @@ from typing import Any
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
 from structlog import get_logger
 
@@ -114,6 +115,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Allow all origins — public API
 app.add_middleware(
