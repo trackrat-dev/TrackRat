@@ -324,23 +324,7 @@ struct CongestionMapView: View {
                 }
 
                 // Cancellation legend
-                HStack(spacing: 4) {
-                    Rectangle()
-                        .fill(.red)
-                        .frame(width: 20, height: 2)
-                        .overlay(
-                            HStack(spacing: 2) {
-                                ForEach(0..<4, id: \.self) { _ in
-                                    Rectangle()
-                                        .fill(.black)
-                                        .frame(width: 2, height: 2)
-                                }
-                            }
-                        )
-                    Text("High Cancellations")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
+                LegendItem(color: .red, label: "Cancellations")
             }
             .padding()
             .background(
@@ -1238,11 +1222,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let renderer = MKPolylineRenderer(polyline: polyline)
 
                 if let segment = polyline.individualSegment {
-                    // Check if this individual train is cancelled - make it stand out
+                    // Check if this individual train is cancelled
                     if segment.isCancelled {
                         renderer.strokeColor = UIColor.systemRed
-                        renderer.lineWidth = 5.0 // Wider than normal individual lines
-                        renderer.lineDashPattern = [3, 3]
+                        renderer.lineWidth = 3.0
                         renderer.alpha = 0.9 // Keep cancelled trains highly visible
                     } else {
                         // Use highlight mode to determine color
@@ -1266,11 +1249,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let renderer = MKPolylineRenderer(polyline: polyline)
 
                 if let segment = polyline.segment {
-                    // Check if this segment has cancellations - treat as severe + dashed
+                    // Check if this segment has cancellations
                     if segment.cancellationRate > 0 {
                         renderer.strokeColor = UIColor.systemRed
-                        renderer.lineWidth = 11 // Same as severe congestion
-                        renderer.lineDashPattern = [3, 3]
+                        renderer.lineWidth = 10
                     } else {
                         // Use highlight mode to determine color
                         renderer.strokeColor = getColorForSegment(segment)

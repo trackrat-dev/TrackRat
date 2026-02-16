@@ -429,11 +429,10 @@ struct CongestionMapKitView: UIViewRepresentable {
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 
-                // Check if this segment has cancellations - dark gray + dashed
+                // Check if this segment has cancellations
                 if let segment = polyline.segment, segment.cancellationRate > 0 {
                     renderer.strokeColor = UIColor.darkGray
-                    renderer.lineWidth = 11 // Same as severe congestion
-                    renderer.lineDashPattern = [3, 3]
+                    renderer.lineWidth = 10
                 } else if let segment = polyline.segment {
                     renderer.strokeColor = getUIColor(for: segment.congestionFactor)
                     renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
