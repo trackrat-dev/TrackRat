@@ -395,7 +395,7 @@ class AmtrakPatternScheduler:
             .options(selectinload(TrainJourney.stops))
             .where(
                 and_(
-                    TrainJourney.train_id.like(f"{train_number}%"),
+                    TrainJourney.train_id == train_number,
                     TrainJourney.data_source == "AMTRAK",
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),
@@ -526,8 +526,7 @@ class AmtrakPatternScheduler:
                 # Check if journey already exists for this train today
                 stmt = select(TrainJourney).where(
                     and_(
-                        # Use LIKE to match any train_id starting with the train number
-                        TrainJourney.train_id.like(f"{pattern['train_number']}%"),
+                        TrainJourney.train_id == pattern["train_number"],
                         TrainJourney.journey_date == target_date,
                         TrainJourney.data_source == "AMTRAK",
                     )

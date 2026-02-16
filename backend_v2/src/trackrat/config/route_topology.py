@@ -201,7 +201,7 @@ NJT_RARITAN_VALLEY = Route(
     id="njt-rvl",
     name="Raritan Valley Line",
     data_source="NJT",
-    line_codes=frozenset({"RV"}),
+    line_codes=frozenset({"RV", "Ra"}),
     stations=(
         "NP",
         "EZ",
