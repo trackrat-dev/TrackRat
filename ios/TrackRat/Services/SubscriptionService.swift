@@ -19,7 +19,6 @@ enum SubscriptionStatus: Equatable {
 enum PremiumFeature: String, CaseIterable {
     case supportDevelopment = "Support Active Development"
     case liveActivities = "Live Activities"
-    case trackPredictions = "Track Predictions"
     case delayForecasts = "Delay Forecasts"
     case congestionMap = "Live Congestion Map"
     case historicalData = "Historical Analytics"
@@ -31,7 +30,6 @@ enum PremiumFeature: String, CaseIterable {
     var iconName: String {
         switch self {
         case .liveActivities: return "pin.fill"
-        case .trackPredictions: return "number.circle.fill"
         case .delayForecasts: return "chart.line.uptrend.xyaxis"
         case .congestionMap: return "map.circle.fill"
         case .historicalData: return "clock.arrow.circlepath"
@@ -46,7 +44,6 @@ enum PremiumFeature: String, CaseIterable {
 
 enum PaywallContext {
     case liveActivities
-    case trackPredictions
     case delayForecasts
     case historicalData
     case tripStatistics
@@ -58,8 +55,6 @@ enum PaywallContext {
         switch self {
         case .liveActivities:
             return "Track on Lock Screen"
-        case .trackPredictions:
-            return "Know Your Track"
         case .delayForecasts:
             return "See What's Coming"
         case .historicalData:
@@ -79,8 +74,6 @@ enum PaywallContext {
         switch self {
         case .liveActivities:
             return "Follow your train in real-time without opening the app"
-        case .trackPredictions:
-            return "Know the odds for which platform your train will depart from"
         case .delayForecasts:
             return "Get delay and cancellation forecasts before you leave"
         case .historicalData:

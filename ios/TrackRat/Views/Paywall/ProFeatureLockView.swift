@@ -191,8 +191,8 @@ extension View {
 #Preview("ProFeatureLockView") {
     VStack {
         ProFeatureLockView(
-            feature: .trackPredictions,
-            context: .trackPredictions,
+            feature: .historicalData,
+            context: .historicalData,
             showingPaywall: .constant(false)
         )
         .padding()

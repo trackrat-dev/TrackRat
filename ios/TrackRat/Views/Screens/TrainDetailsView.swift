@@ -377,23 +377,13 @@ struct CombinedDetailsCard: View {
                     }
                 }
                 
-                // Track predictions section (Pro feature)
+                // Track predictions section
                 if shouldShowPredictions {
-                    if subscriptionService.isPro {
-                        SegmentedTrackPredictionView(
-                            train: train,
-                            prefetchedPredictions: prefetchedTrackPrediction
-                        )
-                        .allowsHitTesting(true)  // Ensure predictions card is interactive
-                    } else {
-                        // Locked track predictions for free users
-                        ProFeatureLockView(
-                            feature: .trackPredictions,
-                            context: .trackPredictions,
-                            showingPaywall: $showingPaywall,
-                            useLightBackground: true
-                        )
-                    }
+                    SegmentedTrackPredictionView(
+                        train: train,
+                        prefetchedPredictions: prefetchedTrackPrediction
+                    )
+                    .allowsHitTesting(true)  // Ensure predictions card is interactive
                 }
             }
             .padding([.horizontal, .top])
