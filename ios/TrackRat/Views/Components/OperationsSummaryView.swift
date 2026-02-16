@@ -40,11 +40,8 @@ struct OperationsSummaryView: View {
         self.ratSenseRoute = ratSenseRoute
     }
 
-    /// Combined display text: network summary or route summary (Pro only)
+    /// Combined display text: network summary or route summary
     private var combinedBodyText: String? {
-        // Congestion summary overlay is a Pro feature
-        guard SubscriptionService.shared.isPro else { return nil }
-
         guard let summary = summary, !summary.body.isEmpty else { return nil }
 
         // Show route-specific summary if available
@@ -107,12 +104,6 @@ struct OperationsSummaryView: View {
     }
 
     private func fetchSummaries() async {
-        // Skip API calls for non-Pro users - view won't display anyway
-        guard SubscriptionService.shared.isPro else {
-            isLoading = false
-            return
-        }
-
         isLoading = true
         hasError = false
 
