@@ -972,8 +972,9 @@ class TrainDetailsViewModel: ObservableObject {
         print("🌐 No cache available - fetching from network")
         isLoading = true
 
-        // Start secondary data fetch in parallel (summary, delay forecast, track prediction)
-        let secondaryTask = Task {
+        // Start secondary data fetch in parallel — fire and forget since
+        // child views observe @Published properties and update reactively
+        Task {
             await self.prefetchSecondaryData(
                 trainId: trainNumber ?? "",
                 fromStation: fromStationCode,
@@ -1002,11 +1003,7 @@ class TrainDetailsViewModel: ObservableObject {
             // Update all computed properties after setting train
             updateComputedProperties()
 
-            // Wait for secondary data before clearing loading state
-            await secondaryTask.value
-
         } catch {
-            secondaryTask.cancel()
             // Handle APIError.noData specifically
             if let apiError = error as? APIError {
                 switch apiError {
