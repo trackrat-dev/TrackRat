@@ -523,17 +523,24 @@ class AmtrakPatternScheduler:
 
         async with get_session() as session:
             for pattern in patterns:
-                # Check if journey already exists for this train today
-                stmt = select(TrainJourney).where(
-                    and_(
-                        # Use LIKE to match any train_id starting with the train number
-                        TrainJourney.train_id.like(f"{pattern['train_number']}%"),
-                        TrainJourney.journey_date == target_date,
-                        TrainJourney.data_source == "AMTRAK",
+                # Check if journey already exists for this train today.
+                # LIKE can match multiple rows (e.g. "69%" matches "69", "690"),
+                # so use .first() with OBSERVED sorted first to detect real data.
+                stmt = (
+                    select(TrainJourney)
+                    .where(
+                        and_(
+                            TrainJourney.train_id.like(
+                                f"{pattern['train_number']}%"
+                            ),
+                            TrainJourney.journey_date == target_date,
+                            TrainJourney.data_source == "AMTRAK",
+                        )
                     )
+                    .order_by(TrainJourney.observation_type)
                 )
                 result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
+                existing = result.scalars().first()
 
                 if existing and existing.observation_type == "OBSERVED":
                     # Skip - we already have real data
