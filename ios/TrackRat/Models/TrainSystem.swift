@@ -86,10 +86,9 @@ extension Set where Element == TrainSystem {
         Set(TrainSystem.allCases)
     }
 
-    /// Default enabled systems (NJT and Amtrak only)
-    /// PATH and PATCO must be explicitly enabled in Advanced Configuration
+    /// No systems enabled by default — user picks during onboarding
     static var defaultEnabled: Set<TrainSystem> {
-        [.njt, .amtrak]
+        []
     }
 
     /// Converts to raw string set for use with Stations filtering

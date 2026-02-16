@@ -165,7 +165,7 @@ struct OnboardingView: View {
 
             // Continue button and helper text
             VStack(spacing: 12) {
-                Button(appState.selectedSystems == .all ? "Confirm All" : "Continue") {
+                Button("Continue") {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         showSystemSelection = false
                     }
@@ -175,9 +175,10 @@ struct OnboardingView: View {
                 .foregroundColor(.white)
                 .frame(height: 50)
                 .frame(minWidth: 160)
-                .background(Color.orange)
+                .background(appState.selectedSystems.isEmpty ? Color.gray : Color.orange)
                 .cornerRadius(TrackRatTheme.CornerRadius.md)
                 .buttonStyle(.plain)
+                .disabled(appState.selectedSystems.isEmpty)
 
                 Text("Change later in Map → Layers")
                     .font(.caption)
