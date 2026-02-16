@@ -122,17 +122,11 @@ struct OnboardingView: View {
             Spacer()
 
             // Header
-            VStack(spacing: 16) {
-                Text("Train Systems")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
-
-                Text("Which do you use?")
-                    .font(.body)
-                    .foregroundColor(.white.opacity(0.8))
-                    .multilineTextAlignment(.center)
-            }
+            Text("Which train systems\ndo you use?")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
 
             // System selection cards
             VStack(spacing: 12) {
