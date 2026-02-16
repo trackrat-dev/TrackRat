@@ -137,35 +137,25 @@ struct TrainListView: View {
                         if !isFutureDate,
                            !departureStationCode.isEmpty,
                            let destinationCode = Stations.getStationCode(destination) {
-                            if subscriptionService.isPro {
-                                OperationsSummaryView(
-                                    scope: .route,
-                                    fromStation: departureStationCode,
-                                    toStation: destinationCode,
-                                    isExpandable: true,
-                                    onTrainTap: { selectedTrainId in
-                                        // Navigate to the selected train's detail view
-                                        // Note: dataSource not available from this callback, backend uses two-phase search
-                                        appState.navigationPath.append(
-                                            NavigationDestination.trainDetailsFlexible(
-                                                trainNumber: selectedTrainId,
-                                                fromStation: departureStationCode,
-                                                journeyDate: nil,
-                                                dataSource: nil
-                                            )
+                            OperationsSummaryView(
+                                scope: .route,
+                                fromStation: departureStationCode,
+                                toStation: destinationCode,
+                                isExpandable: true,
+                                onTrainTap: { selectedTrainId in
+                                    // Navigate to the selected train's detail view
+                                    // Note: dataSource not available from this callback, backend uses two-phase search
+                                    appState.navigationPath.append(
+                                        NavigationDestination.trainDetailsFlexible(
+                                            trainNumber: selectedTrainId,
+                                            fromStation: departureStationCode,
+                                            journeyDate: nil,
+                                            dataSource: nil
                                         )
-                                    }
-                                )
-                                .padding(.bottom, 4)
-                            } else {
-                                // Locked route summary for free users
-                                ProFeatureLockView(
-                                    feature: .historicalData,
-                                    context: .historicalData,
-                                    showingPaywall: $showingPaywall
-                                )
-                                .padding(.bottom, 4)
-                            }
+                                    )
+                                }
+                            )
+                            .padding(.bottom, 4)
                         }
 
                         ForEach(viewModel.trains) { train in
