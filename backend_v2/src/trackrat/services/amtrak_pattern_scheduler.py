@@ -395,7 +395,7 @@ class AmtrakPatternScheduler:
             .options(selectinload(TrainJourney.stops))
             .where(
                 and_(
-                    TrainJourney.train_id.like(f"{train_number}%"),
+                    TrainJourney.train_id == train_number,
                     TrainJourney.data_source == "AMTRAK",
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),

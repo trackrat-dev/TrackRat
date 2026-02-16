@@ -267,6 +267,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             stop_sequence = 0
             last_tracked_code = origin_code
             new_stops = []  # Track processed stops for metadata updates
+            time_corrections = 0
 
             for amtrak_stop in train_data.stations:
                 internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
@@ -298,29 +299,14 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     else None
                 )
 
-                # Safety check: trains never depart before scheduled time
+                # Clamp actual times to scheduled if earlier (timezone normalization artifacts)
                 if actual_dep and sched_dep and actual_dep < sched_dep:
-                    logger.warning(
-                        "amtrak_early_departure_corrected",
-                        train_id=train_id,
-                        station=amtrak_stop.code,
-                        scheduled=sched_dep.isoformat(),
-                        actual=actual_dep.isoformat(),
-                        status=amtrak_stop.status,
-                    )
                     actual_dep = sched_dep
+                    time_corrections += 1
 
-                # Safety check: trains never arrive before scheduled time
                 if actual_arr and sched_arr and actual_arr < sched_arr:
-                    logger.warning(
-                        "amtrak_early_arrival_corrected",
-                        train_id=train_id,
-                        station=amtrak_stop.code,
-                        scheduled=sched_arr.isoformat(),
-                        actual=actual_arr.isoformat(),
-                        status=amtrak_stop.status,
-                    )
                     actual_arr = sched_arr
+                    time_corrections += 1
 
                 # Prepare stop data for upsert
                 # Apply time validation to prevent future trains being marked as departed
@@ -351,6 +337,13 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 new_stops.append(journey_stop)
 
                 stop_sequence += 1
+
+            if time_corrections > 0:
+                logger.info(
+                    "amtrak_stop_times_corrected",
+                    train_id=train_id,
+                    corrections=time_corrections,
+                )
 
             # Update terminal station and other fields using our local data
             journey.terminal_station_code = last_tracked_code
@@ -512,6 +505,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         # Update stops
         stop_sequence = 0
         tracked_stops = []
+        time_corrections = 0
 
         for amtrak_stop in train_data.stations:
             internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
@@ -547,37 +541,23 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 self._parse_amtrak_time(amtrak_stop.dep) if amtrak_stop.dep else None
             )
 
-            # Safety check: trains never depart before scheduled time
+            # Clamp actual times to scheduled if earlier (timezone normalization artifacts)
             if (
                 actual_departure
                 and scheduled_departure
                 and actual_departure < scheduled_departure
             ):
-                logger.warning(
-                    "amtrak_early_departure_corrected_refresh",
-                    train_id=journey.train_id,
-                    station=amtrak_stop.code,
-                    scheduled=scheduled_departure.isoformat(),
-                    actual=actual_departure.isoformat(),
-                    status=amtrak_stop.status,
-                )
                 actual_departure = scheduled_departure
+                time_corrections += 1
 
-            # Safety check: trains never arrive before scheduled time
             if (
                 actual_arrival
                 and scheduled_arrival
                 and actual_arrival < scheduled_arrival
             ):
-                logger.warning(
-                    "amtrak_early_arrival_corrected_refresh",
-                    train_id=journey.train_id,
-                    station=amtrak_stop.code,
-                    scheduled=scheduled_arrival.isoformat(),
-                    actual=actual_arrival.isoformat(),
-                    status=amtrak_stop.status,
-                )
                 actual_arrival = scheduled_arrival
+                time_corrections += 1
+
             # Validate against scheduled time to prevent stale data issues
             departed: bool = amtrak_stop.status == "Departed" and (
                 not scheduled_departure or scheduled_departure <= now_et()
@@ -629,6 +609,13 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 tracked_stops.append(new_stop)
 
             stop_sequence += 1
+
+        if time_corrections > 0:
+            logger.info(
+                "amtrak_stop_times_corrected",
+                train_id=journey.train_id,
+                corrections=time_corrections,
+            )
 
         # Update journey metadata
         journey.stops_count = len(tracked_stops)
