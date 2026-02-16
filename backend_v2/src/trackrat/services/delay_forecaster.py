@@ -688,6 +688,13 @@ class DelayForecaster:
             slight_prob /= delay_total
             significant_prob /= delay_total
             major_prob /= delay_total
+        else:
+            # Records exist but none have actual departure times yet;
+            # use the same conservative defaults as the non_cancelled == 0 case
+            on_time_prob = 0.8
+            slight_prob = 0.15
+            significant_prob = 0.04
+            major_prob = 0.01
 
         # Expected delay (average of non-cancelled journeys)
         if non_cancelled > 0:
@@ -739,6 +746,8 @@ class DelayForecaster:
 
         # Normalize
         total = new_on_time + new_slight + new_significant + new_major
+        if total <= 0:
+            return forecast
         new_on_time /= total
         new_slight /= total
         new_significant /= total

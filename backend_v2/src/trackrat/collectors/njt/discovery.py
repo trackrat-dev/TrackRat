@@ -308,11 +308,17 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 # concurrent journey collection. Explicit flush() still works.
                 async with session.begin_nested():
                     with session.no_autoflush:
-                        # Check if journey already exists
-                        stmt = select(TrainJourney).where(
-                            TrainJourney.train_id == train_id,
-                            TrainJourney.journey_date == journey_date,
-                            TrainJourney.data_source == "NJT",
+                        # Check if journey already exists.
+                        # ORDER BY id ensures consistent lock ordering to
+                        # reduce deadlocks with concurrent collection.
+                        stmt = (
+                            select(TrainJourney)
+                            .where(
+                                TrainJourney.train_id == train_id,
+                                TrainJourney.journey_date == journey_date,
+                                TrainJourney.data_source == "NJT",
+                            )
+                            .order_by(TrainJourney.id)
                         )
                         existing = await session.scalar(stmt)
 

@@ -237,7 +237,7 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         # First execute call: check for existing journey (returns None)
         # Second execute call: fetch recent journey with stops
         mock_no_existing = MagicMock()
-        mock_no_existing.scalar_one_or_none.return_value = None
+        mock_no_existing.scalars.return_value.first.return_value = None
 
         mock_recent_result = MagicMock()
         mock_recent_result.scalar_one_or_none.return_value = recent_journey
@@ -320,7 +320,7 @@ async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
     ) as mock_session:
         # First: no existing journey; Second: no recent journey found
         mock_no_existing = MagicMock()
-        mock_no_existing.scalar_one_or_none.return_value = None
+        mock_no_existing.scalars.return_value.first.return_value = None
 
         mock_no_recent = MagicMock()
         mock_no_recent.scalar_one_or_none.return_value = None
@@ -369,8 +369,10 @@ async def test_skip_already_observed_trains(pattern_scheduler):
         existing_journey = MagicMock()
         existing_journey.observation_type = "OBSERVED"
 
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = existing_journey
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing_journey
+        mock_result.scalars.return_value = mock_scalars
         mock_execute = AsyncMock(return_value=mock_result)
 
         mock_session.return_value.__aenter__.return_value.execute = mock_execute
