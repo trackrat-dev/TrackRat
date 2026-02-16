@@ -76,6 +76,7 @@ struct OperationsSummaryView: View {
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(2)
+                        .frame(maxWidth: .infinity)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 12)
                         .background(
