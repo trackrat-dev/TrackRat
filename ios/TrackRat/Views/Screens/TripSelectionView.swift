@@ -23,6 +23,20 @@ struct TripSelectionView: View {
     @State private var trainValidationStates: [String: TrainValidationState] = [:]
     @State private var validationTasks: [String: Task<Void, Never>] = [:]
 
+    // Whether the RatSense suggestion button should be visible
+    private var isRatSenseSuggestionVisible: Bool {
+        guard subscriptionService.isPro,
+              let suggestion = ratSenseService.suggestedJourney,
+              Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems),
+              Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems),
+              !liveActivityService.isActivityActive,
+              !isSearching,
+              !showingProfile else {
+            return false
+        }
+        return true
+    }
+
     // Get favorite stations filtered by selected systems
     private var favoriteStations: [FavoriteStation] {
         return appState.favoriteStations.filter { station in
@@ -90,13 +104,8 @@ struct TripSelectionView: View {
             VStack(spacing: 8) {
                     // RatSense AI suggestion at the top (Pro feature - hidden for free users)
                     // Only show if both from/to stations are visible for selected systems
-                    if subscriptionService.isPro,
-                       let suggestion = ratSenseService.suggestedJourney,
-                       Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems),
-                       Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems),
-                       !liveActivityService.isActivityActive,
-                       !isSearching,
-                       !showingProfile {
+                    if isRatSenseSuggestionVisible,
+                       let suggestion = ratSenseService.suggestedJourney {
                         Button {
                             selectRatSenseSuggestion(suggestion)
                         } label: {
@@ -129,7 +138,7 @@ struct TripSelectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
-                .padding(.top, (subscriptionService.isPro && ratSenseService.suggestedJourney != nil && !liveActivityService.isActivityActive && !isSearching && !showingProfile) ? 8 : 28)
+                .padding(.top, isRatSenseSuggestionVisible ? 8 : 28)
                 
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
