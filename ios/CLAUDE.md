@@ -130,7 +130,7 @@ Use `LiveActivityDebugView` for testing Live Activity states in simulator.
 
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
-- Pro subscription has 16-hour preview period for new users
+- Pro subscription offers 1-week free trial via Apple introductory offer
 - `debugOverrideEnabled = true` gives all users Pro features during soft launch
 
 ---

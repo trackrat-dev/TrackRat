@@ -102,8 +102,6 @@
 		A1D92A722F0AEFFC0098897F /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */; };
 		A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
 		A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
-		A1EF6A802F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */; };
-		A1EF6A812F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */; };
 		A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F0BAAB2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
@@ -237,7 +235,6 @@
 		A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = TrackRat/Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
 		A1D92A732F0AF01E0098897F /* CompletedTrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompletedTrip.swift; path = TrackRat/Models/CompletedTrip.swift; sourceTree = "<group>"; };
 		A1EA529C2F23A2450023CC09 /* Configuration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Configuration.storekit; path = TrackRat/Configuration.storekit; sourceTree = "<group>"; };
-		A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SoftTrialBannerView.swift; path = TrackRat/Views/Components/SoftTrialBannerView.swift; sourceTree = "<group>"; };
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
 		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
 		A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainSystem.swift; path = TrackRat/Models/TrainSystem.swift; sourceTree = "<group>"; };
@@ -326,7 +323,6 @@
 				A12C314C2F1DB9D100CAF76D /* JourneyCongestionMapView.swift */,
 				A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */,
 				A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */,
-				A1EF6A7F2F1ED24300AB1FDE /* SoftTrialBannerView.swift */,
 				A1EA529C2F23A2450023CC09 /* Configuration.storekit */,
 			);
 			sourceTree = "<group>";
@@ -656,7 +652,6 @@
 				A10E97FA2DE39F0F002F3215 /* RatSenseService.swift in Sources */,
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */,
-				A1EF6A802F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */,
 				A1D88F632F27083000111466 /* RouteTopology.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
@@ -704,7 +699,6 @@
 				A12C314A2F1DA64A00CAF76D /* SubscriptionService.swift in Sources */,
 				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
-				A1EF6A812F1ED24300AB1FDE /* SoftTrialBannerView.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
 				A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
 				A12C31472F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,

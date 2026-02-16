@@ -366,16 +366,6 @@ struct MyProfileView: View {
             }
             .navigationBarHidden(true)
         }
-        .onAppear {
-            // Show paywall if soft trial expired and user is not subscribed
-            // Skip if debug mode is enabled
-            if !subscriptionService.debugOverrideEnabled,
-               subscriptionService.softTrialExpired,
-               !subscriptionService.subscriptionStatus.isActive {
-                paywallContext = .trialExpired
-                showingPaywall = true
-            }
-        }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
         }
@@ -682,9 +672,6 @@ struct SubscriptionStatusSection: View {
         } else if subscriptionService.subscriptionStatus.isActive {
             // Actual subscriber (StoreKit trial or paid) - show appreciation
             ProUserCard()
-        } else if subscriptionService.isInSoftTrial {
-            // Soft trial active (preview period) - show timer + subscribe CTA
-            SoftTrialProCard(showingPaywall: $showingPaywall)
         } else {
             // Not subscribed, no soft trial - show upgrade prompt
             UpgradePromptCard(
@@ -760,86 +747,6 @@ struct ProUserCard: View {
                         .stroke(.orange.opacity(0.3), lineWidth: 1)
                 )
         )
-    }
-}
-
-// MARK: - Soft Trial Pro Card
-
-struct SoftTrialProCard: View {
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @Binding var showingPaywall: Bool
-    @State private var currentTime = Date()
-
-    private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-
-    private var hoursRemaining: Int {
-        subscriptionService.softTrialHoursRemaining ?? 0
-    }
-
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "star.fill")
-                    .foregroundColor(.orange)
-                Text("TrackRat Pro")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Spacer()
-            }
-
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.fill")
-                            .font(.subheadline)
-                            .foregroundColor(.orange)
-                        Text("\(hoursRemaining) \(hoursRemaining == 1 ? "hour" : "hours") remaining")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(.white)
-                    }
-
-                    Text("Subscribe to keep using Pro features")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-
-                Spacer()
-
-                Button {
-                    showingPaywall = true
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Text("Subscribe")
-                        .font(.caption.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(.orange)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(
-                    LinearGradient(
-                        colors: [.orange.opacity(0.15), .orange.opacity(0.05)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.orange.opacity(0.3), lineWidth: 1)
-                )
-        )
-        .onReceive(timer) { time in
-            currentTime = time
-        }
     }
 }
 

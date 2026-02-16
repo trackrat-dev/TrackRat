@@ -162,7 +162,7 @@ struct PaywallView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                     .scaleEffect(0.8)
                             } else {
-                                Text("Subscribe")
+                                Text(hasFreeTrial ? "Start Free Trial" : "Subscribe")
                                     .fontWeight(.semibold)
                             }
                         }
@@ -207,7 +207,7 @@ struct PaywallView: View {
                     }
 
                     // Legal text
-                    Text("Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period.")
+                    Text(legalText)
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.4))
                         .multilineTextAlignment(.center)
@@ -250,6 +250,26 @@ struct PaywallView: View {
                 selectedProduct = monthly
             }
         }
+    }
+
+    /// Whether the selected product has a free trial introductory offer
+    private var hasFreeTrial: Bool {
+        guard let product = selectedProduct,
+              let subscription = product.subscription,
+              let introOffer = subscription.introductoryOffer,
+              introOffer.paymentMode == .freeTrial else {
+            return false
+        }
+        return true
+    }
+
+    /// Legal disclaimer text, adjusted for free trial when available
+    private var legalText: String {
+        let renewalText = "Subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period."
+        if hasFreeTrial {
+            return "Free trial begins at confirmation. If you don't cancel before the trial ends, your Apple ID will be charged. \(renewalText)"
+        }
+        return "Payment will be charged to your Apple ID account at the confirmation of purchase. \(renewalText)"
     }
 
     /// Format the trial period from product subscription info

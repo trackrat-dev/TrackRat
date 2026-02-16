@@ -34,11 +34,9 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and 
 - **Historical Analytics**: Performance data, delay statistics, and track usage patterns
 - **Penn Station Boarding Guide**: Interactive navigation assistance
 - **Delay Forecasts**: AI-powered delay predictions
-- **16-Hour Preview Period**: New users get full Pro access for 16 hours with countdown banner
+- **1-Week Free Trial**: Apple introductory offer for new subscribers
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
-- **SoftTrialBannerView**: Countdown timer during preview period linking to paywall
-- **Monthly-Only Subscription**: $3.99/month pricing (yearly option removed)
-- **Soft Launch Mode**: Debug override currently enabled - all users get Pro features free
+- **Monthly-Only Subscription**: $2.99/month pricing after trial
 
 ### Train System Filtering
 - **Opt-in PATH/PATCO**: Users can enable/disable transit systems in Advanced Configuration
@@ -133,7 +131,7 @@ TrackRat/
 │       ├── OperationsSummaryView.swift  # Operations summary
 │       ├── TrainStatsSummaryView.swift  # Train performance
 │       ├── TrainDistributionChart.swift # Delay visualization
-│       └── SoftTrialBannerView.swift    # 16-hour preview countdown
+│       └── ...
 │
 ├── Views/Paywall/               # Subscription UI
 │   ├── PaywallView.swift        # Subscription purchase flow
