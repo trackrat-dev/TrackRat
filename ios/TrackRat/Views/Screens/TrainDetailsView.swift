@@ -382,7 +382,6 @@ struct CombinedDetailsCard: View {
                     if subscriptionService.isPro {
                         SegmentedTrackPredictionView(
                             train: train,
-                            isDepartingFromNYPenn: appState.departureStationCode == "NY",
                             prefetchedPredictions: prefetchedTrackPrediction
                         )
                         .allowsHitTesting(true)  // Ensure predictions card is interactive
@@ -1249,11 +1248,9 @@ struct TrainProgressIndicator: View {
 // MARK: - Segmented Track Prediction View
 struct SegmentedTrackPredictionView: View {
     let train: TrainV2
-    let isDepartingFromNYPenn: Bool
     let prefetchedPredictions: PredictionData?
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
-    @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
         print("🔍 [TrackPredictionView] Computing prediction segments")
@@ -1332,11 +1329,6 @@ struct SegmentedTrackPredictionView: View {
                     .padding(.top, 4)
                 }
 
-                // Penn Station waiting guide link for NY departures
-                if isDepartingFromNYPenn && showWaitingLink {
-                    PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
             }
             .padding()
             .background(Color.orange.opacity(0.05))
@@ -1349,11 +1341,6 @@ struct SegmentedTrackPredictionView: View {
                 if let prefetched = prefetchedPredictions, train.track == nil, adjustedPredictions == nil {
                     adjustedPredictions = prefetched
                     isLoadingPredictions = false
-                    if isDepartingFromNYPenn {
-                        withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
-                            showWaitingLink = true
-                        }
-                    }
                 } else {
                     await loadAdjustedPredictions()
                 }
@@ -1364,7 +1351,6 @@ struct SegmentedTrackPredictionView: View {
     private func loadAdjustedPredictions() async {
         print("🔄 [TrainDetailsView] Loading predictions for train \(train.trainId)")
         print("   - Origin: \(train.originStationCode ?? "nil" as String)")
-        print("   - Is NY Penn: \(isDepartingFromNYPenn)")
 
         isLoadingPredictions = true
 
@@ -1384,13 +1370,6 @@ struct SegmentedTrackPredictionView: View {
             print("✅ [TrainDetailsView] Got predictions with \(trackCount) tracks")
         } else {
             print("⚠️ [TrainDetailsView] No predictions returned")
-        }
-
-        // Show the waiting link with animation after predictions load
-        if isDepartingFromNYPenn {
-            withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
-                showWaitingLink = true
-            }
         }
     }
     
@@ -1580,57 +1559,6 @@ enum TrackLabelPosition {
     case inside
     case above
     case none
-}
-
-// MARK: - Penn Station Waiting Link
-struct PennStationWaitingLink: View {
-    let isAmtrak: Bool
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @State private var showingGuide = false
-    @State private var showingPaywall = false
-
-    var body: some View {
-        HStack {
-            Spacer()
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if subscriptionService.isPro {
-                    showingGuide = true
-                } else {
-                    showingPaywall = true
-                }
-            }) {
-                HStack(spacing: 3) {
-                    if !subscriptionService.isPro {
-                        Image(systemName: "lock.fill")
-                            .font(.caption2)
-                    }
-                    Text("where should I wait?")
-                        .font(TrackRatTheme.Typography.caption)
-                        .fontWeight(.medium)
-                        .textProtected()
-                }
-                .foregroundColor(.white)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.black.opacity(0.9))
-                )
-            }
-            .buttonStyle(.plain)
-            Spacer()
-        }
-        .padding(.top, 8)
-        .sheet(isPresented: $showingGuide) {
-            PennStationGuideView(isAmtrak: isAmtrak)
-        }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .pennStationGuide)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-    }
 }
 
 // MARK: - Prediction Explanation Sheet

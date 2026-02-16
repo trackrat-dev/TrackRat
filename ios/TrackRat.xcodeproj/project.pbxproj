@@ -80,7 +80,6 @@
 		A1AA1BB32DEF00BB001FA904 /* TrackRatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */; };
 		A1AA1BB52DEF00CC001FA904 /* TrackRatLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */; };
 		A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */; };
-		A1AC62B02E60A30300D1A16C /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AC62AF2E60A30300D1A16C /* PennStationGuideView.swift */; };
 		A1AD0D092E106D1B003DA39F /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D082E106D1B003DA39F /* Stations.swift */; };
 		A1AD0D0A2E106D1B003DA39F /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D082E106D1B003DA39F /* Stations.swift */; };
 		A1AD0D0C2E106D32003DA39F /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */; };
@@ -220,7 +219,6 @@
 		A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatTheme.swift; path = Theme/TrackRatTheme.swift; sourceTree = "<group>"; };
 		A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatLoadingView.swift; path = Views/Components/TrackRatLoadingView.swift; sourceTree = "<group>"; };
 		A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatMascot.swift; path = Views/Components/TrackRatMascot.swift; sourceTree = "<group>"; };
-		A1AC62AF2E60A30300D1A16C /* PennStationGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PennStationGuideView.swift; path = Views/Screens/PennStationGuideView.swift; sourceTree = "<group>"; };
 		A1AD0D082E106D1B003DA39F /* Stations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stations.swift; sourceTree = "<group>"; };
 		A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityModels.swift; sourceTree = "<group>"; };
 		A1B2375C2F002DCF0011A16E /* TrackTrainInlineButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackTrainInlineButton.swift; path = TrackRat/Views/Components/TrackTrainInlineButton.swift; sourceTree = "<group>"; };
@@ -380,7 +378,6 @@
 				A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */,
 				A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */,
 				A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */,
-				A1AC62AF2E60A30300D1A16C /* PennStationGuideView.swift */,
 				A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */,
 				A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */,
 				A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */,
@@ -684,7 +681,6 @@
 				A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */,
 				A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */,
 				A17329672E54A8B1006BF187 /* StationRow.swift in Sources */,
-				A1AC62B02E60A30300D1A16C /* PennStationGuideView.swift in Sources */,
 				A1D92A6F2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
 				A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */,
 				A12C31422F1DA61700CAF76D /* PaywallView.swift in Sources */,

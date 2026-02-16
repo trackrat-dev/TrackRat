@@ -25,7 +25,6 @@ enum PremiumFeature: String, CaseIterable {
     case historicalData = "Historical Analytics"
     case tripStatistics = "Trip History (beta)"
     case ratSense = "RatSense AI"
-    case pennStationGuide = "Penn Station Boarding Guide"
 
     var displayName: String { rawValue }
 
@@ -38,7 +37,6 @@ enum PremiumFeature: String, CaseIterable {
         case .historicalData: return "clock.arrow.circlepath"
         case .tripStatistics: return "chart.bar.fill"
         case .ratSense: return "brain.head.profile"
-        case .pennStationGuide: return "map.fill"
         case .supportDevelopment: return "heart.fill"
         }
     }
@@ -52,7 +50,6 @@ enum PaywallContext {
     case delayForecasts
     case historicalData
     case tripStatistics
-    case pennStationGuide
     case congestionMap
     case generic
     case trialExpired
@@ -69,8 +66,6 @@ enum PaywallContext {
             return "Learn Your Route"
         case .tripStatistics:
             return "Your Commute Story"
-        case .pennStationGuide:
-            return "Navigate Penn Station"
         case .congestionMap:
             return "Network Traffic"
         case .generic:
@@ -92,8 +87,6 @@ enum PaywallContext {
             return "Leverage past performance and patterns"
         case .tripStatistics:
             return "Track every trip and see your on-time percentage"
-        case .pennStationGuide:
-            return "Platform guides to avoid the crowd"
         case .congestionMap:
             return "See real-time train congestion across the network"
         case .generic:
