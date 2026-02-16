@@ -12,8 +12,8 @@ from typing import Any
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
+from starlette.middleware.gzip import GZipMiddleware
 from structlog import get_logger
 
 from trackrat.api import (

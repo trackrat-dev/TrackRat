@@ -197,9 +197,9 @@ class TestGCTPlatformMappingsConfig:
         mappings = config["platform_mappings"]
         lirr_tracks = ["201", "202", "204", "301", "302", "304"]
         for track in lirr_tracks:
-            assert track not in mappings, (
-                f"LIRR track {track} should not be in platform_mappings"
-            )
+            assert (
+                track not in mappings
+            ), f"LIRR track {track} should not be in platform_mappings"
 
     def test_get_platform_for_track_gct(self) -> None:
         """get_platform_for_track should work for GCT tracks."""
