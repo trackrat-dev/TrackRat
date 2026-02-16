@@ -993,6 +993,7 @@ private struct TrainSystemRow: View {
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
                 }
                 .padding()
+                .contentShape(Rectangle())
 
                 if !isLast {
                     Divider()
