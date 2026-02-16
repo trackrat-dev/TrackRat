@@ -8,7 +8,7 @@ No ML models required - just SQL queries and simple logic.
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -20,10 +20,14 @@ logger = get_logger(__name__)
 
 # Configuration thresholds
 MIN_TRAIN_ID_RECORDS = 10  # Need at least 10 historical records for train ID
+MIN_TIME_LINE_RECORDS = 10  # Need at least 10 historical records for time+line code
 MIN_LINE_CODE_RECORDS = 25  # Need at least 25 historical records for line code
 MIN_SERVICE_PROVIDER_RECORDS = (
     250  # Need at least 250 historical records for service provider
 )
+
+# Time window for time+line code matching (±30 minutes)
+TIME_WINDOW_MINUTES = 30
 
 
 class HistoricalTrackPredictor:
@@ -32,9 +36,10 @@ class HistoricalTrackPredictor:
 
     Hierarchical approach:
     1. Try exact train ID (if >= 10 records)
-    2. Fallback to line code (if >= 25 records)
-    3. Fallback to service provider (if >= 250 records)
-    4. Fallback to static distribution (configurable values)
+    2. Fallback to time-of-day + line code within ±30 min window (if >= 10 records)
+    3. Fallback to line code (if >= 25 records)
+    4. Fallback to service provider (if >= 250 records)
+    5. Fallback to static distribution (configurable values)
 
     Then remove occupied tracks and renormalize probabilities.
     """
@@ -81,6 +86,12 @@ class HistoricalTrackPredictor:
             db, station_code, train_id
         )
 
+        time_line_dist = None
+        if line_code and scheduled_departure:
+            time_line_dist = await self._get_time_line_distribution(
+                db, station_code, line_code, scheduled_departure
+            )
+
         line_code_dist = None
         if line_code:
             line_code_dist = await self._get_line_code_distribution(
@@ -102,6 +113,17 @@ class HistoricalTrackPredictor:
                 "using_train_id_prediction",
                 train_id=train_id,
                 records=train_id_dist["total_records"],
+            )
+        elif (
+            time_line_dist
+            and time_line_dist["total_records"] >= MIN_TIME_LINE_RECORDS
+        ):
+            selected_dist = time_line_dist
+            prediction_level = "time_line_code"
+            logger.info(
+                "using_time_line_prediction",
+                line_code=line_code,
+                records=time_line_dist["total_records"],
             )
         elif (
             line_code_dist and line_code_dist["total_records"] >= MIN_LINE_CODE_RECORDS
@@ -245,6 +267,69 @@ class HistoricalTrackPredictor:
         logger.debug(
             "train_id_distribution",
             train_id=train_id,
+            total_records=total,
+            unique_tracks=len(probabilities),
+        )
+
+        return {"track_probabilities": probabilities, "total_records": total}
+
+    async def _get_time_line_distribution(
+        self,
+        db: AsyncSession,
+        station_code: str,
+        line_code: str,
+        scheduled_departure: datetime,
+    ) -> dict[str, Any] | None:
+        """Get track distribution for trains on this line at a similar time of day.
+
+        Matches stops where the scheduled departure is within ±TIME_WINDOW_MINUTES
+        of the target time, handling midnight wraparound.
+        """
+
+        target_minutes = scheduled_departure.hour * 60 + scheduled_departure.minute
+
+        stop_minutes = (
+            func.extract("hour", JourneyStop.scheduled_departure) * 60
+            + func.extract("minute", JourneyStop.scheduled_departure)
+        )
+
+        # Absolute difference in minutes, handling midnight wraparound via
+        # LEAST(|diff|, 1440 - |diff|)
+        raw_diff = func.abs(stop_minutes - target_minutes)
+        circular_diff = case(
+            (raw_diff <= 720, raw_diff),
+            else_=1440 - raw_diff,
+        )
+
+        query = (
+            select(JourneyStop.track, func.count(JourneyStop.id).label("count"))
+            .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code == station_code,
+                    TrainJourney.line_code == line_code,
+                    JourneyStop.track.is_not(None),
+                    JourneyStop.scheduled_departure.is_not(None),
+                    circular_diff <= TIME_WINDOW_MINUTES,
+                )
+            )
+            .group_by(JourneyStop.track)
+            .order_by(func.count(JourneyStop.id).desc())
+        )
+
+        result = await db.execute(query)
+        rows = result.all()
+
+        if not rows:
+            return None
+
+        total = sum(row[1] for row in rows)
+        probabilities = {row[0]: row[1] / total for row in rows}
+
+        logger.debug(
+            "time_line_distribution",
+            line_code=line_code,
+            target_minutes=target_minutes,
             total_records=total,
             unique_tracks=len(probabilities),
         )

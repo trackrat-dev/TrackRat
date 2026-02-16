@@ -386,10 +386,16 @@ async def get_train_details(
                         historical_track_predictor,
                     )
 
+                    # Use stop-level departure at from_station for better
+                    # time-of-day matching, falling back to journey-level.
+                    stop_departure = None
+                    if origin_stop and origin_stop.scheduled_departure:
+                        stop_departure = origin_stop.scheduled_departure
+
                     scheduled_departure = (
-                        journey.scheduled_departure
-                        if journey.scheduled_departure
-                        else now_et()
+                        stop_departure
+                        or journey.scheduled_departure
+                        or now_et()
                     )
                     data_source = journey.data_source or "NJT"
 

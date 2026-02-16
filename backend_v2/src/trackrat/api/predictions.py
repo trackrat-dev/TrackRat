@@ -20,7 +20,7 @@ from trackrat.config.station_configs import (
 )
 from trackrat.db.engine import get_db
 from trackrat.models.api import DelayBreakdownProbabilities, DelayForecastResponse
-from trackrat.models.database import TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.delay_forecaster import delay_forecaster
 from trackrat.services.historical_track_predictor import historical_track_predictor
 
@@ -135,11 +135,26 @@ async def predict_track(
 
     prediction_start = time.time()
 
-    # Use scheduled departure from the journey if available
+    # Look up stop-level departure at the target station for better time-of-day matching.
+    # Falls back to journey-level scheduled_departure (origin time) if stop not found.
+    stop_query = (
+        select(JourneyStop.scheduled_departure)
+        .where(
+            and_(
+                JourneyStop.journey_id == train_journey.id,
+                JourneyStop.station_code == station_code,
+                JourneyStop.scheduled_departure.is_not(None),
+            )
+        )
+        .limit(1)
+    )
+    stop_result = await db.execute(stop_query)
+    stop_departure = stop_result.scalar_one_or_none()
+
     scheduled_departure = (
-        train_journey.scheduled_departure
-        if train_journey.scheduled_departure
-        else datetime.now(UTC)
+        stop_departure
+        or train_journey.scheduled_departure
+        or datetime.now(UTC)
     )
 
     # data_source is non-nullable in database but MyPy doesn't know this
