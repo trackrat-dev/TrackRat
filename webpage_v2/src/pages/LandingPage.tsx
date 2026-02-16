@@ -31,7 +31,7 @@ const features = [
 ];
 
 const unifiedFeature = {
-  title: 'Unified Features & Support',
+  title: 'Metro-North, PATH, LIRR, and more!',
   images: [
     `${BASE}images/mtn.webp`,
     `${BASE}images/5.webp`,
@@ -48,41 +48,6 @@ const transitSystems = [
   'Metro-North',
 ];
 
-const faqs = [
-  {
-    q: 'Is TrackRat free?',
-    a: 'Yes. The core features of TrackRat are free to use. Some of the more advanced features require a TrackRat Pro subscription to be purchased through the App Store. In both cases, there are no ads and no accounts required.',
-  },
-  {
-    q: 'How does track prediction work?',
-    a: 'TrackRat uses historical data and live track activity to predict which platform your train will depart from. Predictions are available at Penn Station New York and other major hubs.',
-  },
-  {
-    q: 'Which train systems are supported?',
-    a: 'NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North are currently supported.',
-  },
-  {
-    q: 'How real-time is the data?',
-    a: 'Train positions and status update every 15–30 seconds from transit agency feeds. The web app polls every 30 seconds.',
-  },
-  {
-    q: 'Is TrackRat open source?',
-    a: 'Yes. The backend, iOS app, and web app are all open source under the Apache 2.0 license on GitHub.',
-  },
-  {
-    q: 'Can I build my own app with TrackRat data?',
-    a: 'Yes! The API is open and documented. However, we are still actively developing and occasionally making breaking changes to the API. If you are planning to use it in a production application, please get in touch so we can coordinate and avoid surprises.',
-  },
-  {
-    q: 'Does TrackRat work on Android?',
-    a: "Not yet. An Android app is something we'd love to build, but we haven't had the bandwidth. If you're an Android developer interested in leading this effort, we'd love to hear from you — please get in touch!",
-  },
-  {
-    q: 'Why are some trains showing as SCHEDULED instead of real-time?',
-    a: 'TrackRat combines scheduled timetable data with real-time feeds from transit agencies. Trains show as SCHEDULED until the agency\'s real-time feed confirms they are active. Once a train appears in the real-time feed, it switches to OBSERVED with live position and delay information.',
-  },
-];
-
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-text-muted">
@@ -97,7 +62,7 @@ export function LandingPage() {
           TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-muted mb-8 max-w-xl mx-auto">
-          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and more!
+          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North!
         </p>
         <div className="flex items-center justify-center gap-4">
           <a
@@ -209,15 +174,14 @@ export function LandingPage() {
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
-          A Public Resource
+          Public Resource
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
           <div>
             <h3 className="font-semibold text-lg mb-2">Open Source</h3>
             <p className="text-text-muted leading-relaxed">
               TrackRat is open source under the Apache 2.0 license. You
-              can read, fork, and contribute to every part of the project on
-              GitHub.
+              can read, fork, and contribute to it on GitHub.
             </p>
         <div className="text-center mt-8">
           <a
@@ -246,15 +210,14 @@ export function LandingPage() {
               >
                 REST API
               </a>{' '}
-              is open for anyone to use. Build your own transit tools, run
+              is free for anyone to use. Build your own transit tools, run
               analyses, or integrate TrackRat data into your projects.
             </p>
           </div>
           <div>
             <h3 className="font-semibold text-lg mb-2">iOS App</h3>
             <p className="text-text-muted leading-relaxed">
-              The core features of TrackRat are free to use. No ads, no account required, no data
-              collection.
+              The most polished way to use TrackRat is through the iOS app. The core features of TrackRat will always be free.
             </p>
             <div className="text-center mt-3">
               <a
@@ -284,23 +247,6 @@ export function LandingPage() {
                 Try the Web App
               </Link>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className="px-6 py-12 bg-surface/50">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
-            FAQ
-          </h2>
-          <div className="space-y-6">
-            {faqs.map((faq) => (
-              <div key={faq.q}>
-                <h3 className="font-semibold text-lg mb-1">{faq.q}</h3>
-                <p className="text-text-muted">{faq.a}</p>
-              </div>
-            ))}
           </div>
         </div>
       </section>
