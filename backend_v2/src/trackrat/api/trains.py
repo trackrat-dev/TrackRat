@@ -393,9 +393,7 @@ async def get_train_details(
                         stop_departure = origin_stop.scheduled_departure
 
                     scheduled_departure = (
-                        stop_departure
-                        or journey.scheduled_departure
-                        or now_et()
+                        stop_departure or journey.scheduled_departure or now_et()
                     )
                     data_source = journey.data_source or "NJT"
 

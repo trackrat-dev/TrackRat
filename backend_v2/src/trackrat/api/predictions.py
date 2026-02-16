@@ -152,9 +152,7 @@ async def predict_track(
     stop_departure = stop_result.scalar_one_or_none()
 
     scheduled_departure = (
-        stop_departure
-        or train_journey.scheduled_departure
-        or datetime.now(UTC)
+        stop_departure or train_journey.scheduled_departure or datetime.now(UTC)
     )
 
     # data_source is non-nullable in database but MyPy doesn't know this

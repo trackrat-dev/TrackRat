@@ -115,8 +115,7 @@ class HistoricalTrackPredictor:
                 records=train_id_dist["total_records"],
             )
         elif (
-            time_line_dist
-            and time_line_dist["total_records"] >= MIN_TIME_LINE_RECORDS
+            time_line_dist and time_line_dist["total_records"] >= MIN_TIME_LINE_RECORDS
         ):
             selected_dist = time_line_dist
             prediction_level = "time_line_code"
@@ -288,10 +287,9 @@ class HistoricalTrackPredictor:
 
         target_minutes = scheduled_departure.hour * 60 + scheduled_departure.minute
 
-        stop_minutes = (
-            func.extract("hour", JourneyStop.scheduled_departure) * 60
-            + func.extract("minute", JourneyStop.scheduled_departure)
-        )
+        stop_minutes = func.extract(
+            "hour", JourneyStop.scheduled_departure
+        ) * 60 + func.extract("minute", JourneyStop.scheduled_departure)
 
         # Absolute difference in minutes, handling midnight wraparound via
         # LEAST(|diff|, 1440 - |diff|)
