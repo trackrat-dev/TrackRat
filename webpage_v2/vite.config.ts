@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
 export default defineConfig({
-  base: '/TrackRat/', // GitHub Pages base path
+  base: '/', // Root path for trackrat.net hosting
   plugins: [
     react(),
     VitePWA({
@@ -18,8 +18,8 @@ export default defineConfig({
         background_color: '#F5F1E8',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/TrackRat/',
-        start_url: '/TrackRat/',
+        scope: '/',
+        start_url: '/',
         icons: [
           {
             src: 'icon.png',

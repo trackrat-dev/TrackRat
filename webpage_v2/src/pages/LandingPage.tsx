@@ -1,7 +1,7 @@
 // import { Link } from 'react-router-dom';
 
 // Matches the base path in vite.config.ts and BrowserRouter basename
-const BASE = '/TrackRat/';
+const BASE = '/';
 
 const APP_STORE_URL = 'https://apps.apple.com/us/app/trackrat/id6746423610';
 const YOUTUBE_URL = 'https://www.youtube.com/@TrackRat-App/shorts';
