@@ -511,105 +511,6 @@ struct SettingsSection: View {
 
             // Debug/TestFlight-only settings
             if showDebugSections {
-            // Health Indicator - row-based selection
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Health Indicator")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                }
-                .padding()
-
-                Divider()
-                    .background(Color.white.opacity(0.1))
-
-                let orderedModes: [SegmentHighlightMode] = [.delays, .health, .off]
-                ForEach(orderedModes, id: \.self) { mode in
-                    HealthIndicatorRow(
-                        mode: mode,
-                        isSelected: appState.mapHighlightMode == mode,
-                        isLast: mode == orderedModes.last
-                    ) {
-                        appState.mapHighlightMode = mode
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-
-            // Stations Toggle
-            Button {
-                appState.showMapStations.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "mappin.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show Stations")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $appState.showMapStations)
-                        .labelsHidden()
-                        .tint(.orange)
-                        .allowsHitTesting(false)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Departure Odds Toggle (Beta)
-            Button {
-                appState.showDepartureOdds.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "percent")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Show Departure Odds (beta)")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $appState.showDepartureOdds)
-                        .labelsHidden()
-                        .tint(.orange)
-                        .allowsHitTesting(false)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
             // Advanced Configuration
             Button {
                 navigationPath.append(ProfileDestination.advancedConfiguration)
@@ -1006,7 +907,7 @@ private struct TrainSystemRow: View {
     }
 }
 
-private struct HealthIndicatorRow: View {
+struct HealthIndicatorRow: View {
     let mode: SegmentHighlightMode
     let isSelected: Bool
     let isLast: Bool

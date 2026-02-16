@@ -25,6 +25,7 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
+                    createMapSettingsSection()
                     createSubscriptionDebugSection()
                     createServerEnvironmentSection()
                     createHealthCheckSection()
@@ -111,6 +112,104 @@ struct AdvancedConfigurationView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - Map Settings Section
+    @ViewBuilder
+    private func createMapSettingsSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Map Settings")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            // Health Indicator
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Health Indicator")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                }
+                .padding()
+
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
+                let orderedModes: [SegmentHighlightMode] = [.delays, .health, .off]
+                ForEach(orderedModes, id: \.self) { mode in
+                    HealthIndicatorRow(
+                        mode: mode,
+                        isSelected: appState.mapHighlightMode == mode,
+                        isLast: mode == orderedModes.last
+                    ) {
+                        appState.mapHighlightMode = mode
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
+            // Show Stations toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Show Stations")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $appState.showMapStations)
+                    .labelsHidden()
+                    .tint(.orange)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.white.opacity(0.1), lineWidth: 1)
+                    )
+            )
+
+            // Show Departure Odds toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Show Departure Odds (beta)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $appState.showDepartureOdds)
+                    .labelsHidden()
+                    .tint(.orange)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.white.opacity(0.1), lineWidth: 1)
+                    )
+            )
         }
         .padding()
         .background(
