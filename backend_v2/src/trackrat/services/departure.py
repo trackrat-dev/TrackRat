@@ -186,9 +186,20 @@ class DepartureService:
         # up-to-date departure times. This prevents stale data from causing
         # incorrect delay calculations in the response.
         jit_start = time.perf_counter()
-        await self._ensure_fresh_station_data(
-            db, from_station, target_date, skip_individual_refresh, hide_departed
-        )
+        try:
+            await self._ensure_fresh_station_data(
+                db, from_station, target_date, skip_individual_refresh, hide_departed
+            )
+        except Exception as e:
+            logger.warning(
+                "jit_refresh_failed_serving_stale",
+                station_code=from_station,
+                error=str(e),
+            )
+            try:
+                await db.rollback()
+            except Exception:
+                pass
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
         query_start = time.perf_counter()
@@ -261,8 +272,8 @@ class DepartureService:
                 train_id=journey.train_id,
                 journey_date=journey.journey_date,
                 line=LineInfo(
-                    code=journey.line_code,
-                    name=journey.line_name or journey.line_code,
+                    code=journey.line_code or "UNK",
+                    name=journey.line_name or journey.line_code or "Unknown",
                     color=(journey.line_color or "#000000").strip(),
                 ),
                 destination=journey.destination,
@@ -799,7 +810,10 @@ class DepartureService:
             logger.error(
                 "station_refresh_failed", station_code=station_code, error=str(e)
             )
-            await db.rollback()
+            try:
+                await db.rollback()
+            except Exception:
+                pass
             raise
         finally:
             await njt_client.close()

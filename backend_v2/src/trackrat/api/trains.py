@@ -336,8 +336,8 @@ async def get_train_details(
         train_id=journey.train_id,
         journey_date=journey.journey_date,
         line=LineInfo(
-            code=journey.line_code,
-            name=journey.line_name or journey.line_code,
+            code=journey.line_code or "UNK",
+            name=journey.line_name or journey.line_code or "Unknown",
             color=(journey.line_color or "#000000").strip(),
         ),
         route=RouteInfo(
