@@ -530,9 +530,7 @@ class AmtrakPatternScheduler:
                     select(TrainJourney)
                     .where(
                         and_(
-                            TrainJourney.train_id.like(
-                                f"{pattern['train_number']}%"
-                            ),
+                            TrainJourney.train_id.like(f"{pattern['train_number']}%"),
                             TrainJourney.journey_date == target_date,
                             TrainJourney.data_source == "AMTRAK",
                         )

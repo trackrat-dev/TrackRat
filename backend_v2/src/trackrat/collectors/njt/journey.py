@@ -595,9 +595,7 @@ class JourneyCollector(BaseJourneyCollector):
                         stops_stmt = (
                             select(JourneyStop)
                             .where(JourneyStop.journey_id == stored_journey.id)
-                            .order_by(
-                                JourneyStop.stop_sequence.asc().nulls_last()
-                            )
+                            .order_by(JourneyStop.stop_sequence.asc().nulls_last())
                         )
                         stops_result = await session.execute(stops_stmt)
                         db_stops_sorted = list(stops_result.scalars().all())
