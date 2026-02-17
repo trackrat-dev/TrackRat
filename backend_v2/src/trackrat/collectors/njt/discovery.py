@@ -6,7 +6,7 @@ Discovers active trains by polling station departure boards.
 
 from typing import Any
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -309,8 +309,10 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 async with session.begin_nested():
                     with session.no_autoflush:
                         # Check if journey already exists.
-                        # ORDER BY id ensures consistent lock ordering to
-                        # reduce deadlocks with concurrent collection.
+                        # FOR UPDATE SKIP LOCKED prevents deadlocks with
+                        # concurrent journey collection by skipping rows
+                        # that are locked by another process, matching the
+                        # pattern used by PATH and Amtrak collectors.
                         stmt = (
                             select(TrainJourney)
                             .where(
@@ -319,8 +321,32 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                 TrainJourney.data_source == "NJT",
                             )
                             .order_by(TrainJourney.id)
+                            .with_for_update(skip_locked=True)
                         )
                         existing = await session.scalar(stmt)
+
+                        if existing is None:
+                            # Distinguish "row doesn't exist" from "row is
+                            # locked by another process" (skip_locked).
+                            # A non-locking existence check avoids inserting
+                            # a duplicate that would violate unique_train_journey.
+                            row_exists = await session.scalar(
+                                select(
+                                    exists().where(
+                                        TrainJourney.train_id == train_id,
+                                        TrainJourney.journey_date == journey_date,
+                                        TrainJourney.data_source == "NJT",
+                                    )
+                                )
+                            )
+                            if row_exists:
+                                # Row is locked by concurrent collection — skip
+                                logger.debug(
+                                    "discovery_skipped_locked_row",
+                                    train_id=train_id,
+                                    journey_date=journey_date,
+                                )
+                                continue
 
                         if existing:
                             # Re-activate expired trains that reappear in discovery

@@ -4,8 +4,25 @@ Train-related utility functions for TrackRat V2.
 
 from typing import TYPE_CHECKING
 
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm.base import NO_VALUE
+
 if TYPE_CHECKING:
     from trackrat.models.database import TrainJourney
+
+
+def _stops_loaded(journey: "TrainJourney") -> bool:
+    """Check if the stops relationship is eagerly loaded (safe to access in sync context).
+
+    Accessing a lazy-loaded relationship in a sync function within an async
+    SQLAlchemy session triggers MissingGreenlet. This helper uses SQLAlchemy's
+    instance inspection to check whether stops were eagerly loaded (via
+    selectinload/joinedload) without triggering a lazy load.
+    """
+    state = sa_inspect(journey, raiseerr=False)
+    if state is None:
+        return False
+    return state.attrs.stops.loaded_value is not NO_VALUE
 
 
 def get_effective_observation_type(journey: "TrainJourney") -> str:
@@ -42,8 +59,10 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     if journey.data_source == "NJT":
         return "SCHEDULED"
 
-    # For schedule-only systems (PATCO): promote if departure time has passed
-    if not journey.stops:
+    # For schedule-only systems (PATCO): promote if departure time has passed.
+    # Guard against lazy-load in sync context — if stops weren't eagerly loaded,
+    # fall back to SCHEDULED rather than triggering MissingGreenlet.
+    if not _stops_loaded(journey) or not journey.stops:
         return "SCHEDULED"
 
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
