@@ -16,7 +16,6 @@ struct TripSelectionView: View {
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var searchTask: Task<Void, Never>?
 
     // Train validation state - now supports multiple train results
@@ -25,8 +24,7 @@ struct TripSelectionView: View {
 
     // Whether the RatSense suggestion button should be visible
     private var isRatSenseSuggestionVisible: Bool {
-        guard subscriptionService.isPro,
-              let suggestion = ratSenseService.suggestedJourney,
+        guard let suggestion = ratSenseService.suggestedJourney,
               Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems),
               Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems),
               !liveActivityService.isActivityActive,
@@ -102,7 +100,7 @@ struct TripSelectionView: View {
         // Native sheet handles scrolling automatically
         ScrollView {
             VStack(spacing: 8) {
-                    // RatSense AI suggestion at the top (Pro feature - hidden for free users)
+                    // RatSense AI suggestion at the top
                     // Only show if both from/to stations are visible for selected systems
                     if isRatSenseSuggestionVisible,
                        let suggestion = ratSenseService.suggestedJourney {
