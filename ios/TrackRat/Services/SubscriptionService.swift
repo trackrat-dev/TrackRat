@@ -74,7 +74,7 @@ enum PaywallContext {
         case .delayForecasts:
             return "Get delay and cancellation forecasts before you leave"
         case .historicalData:
-            return "Leverage past performance and patterns"
+            return "See this week's train schedule"
         case .tripStatistics:
             return "Track every trip and see your on-time percentage"
         case .congestionMap:
