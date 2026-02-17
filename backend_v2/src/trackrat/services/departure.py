@@ -452,8 +452,11 @@ class DepartureService:
                 ),
             )
 
-        # Fallback: Calculate from stops if progress not available
-        if not journey.stops:
+        # Fallback: Calculate from stops if progress not available.
+        # Guard against lazy-load in sync context — if stops weren't eagerly
+        # loaded, return empty position rather than triggering MissingGreenlet.
+        stops_value = state.attrs.stops.loaded_value if state else NO_VALUE
+        if stops_value is NO_VALUE or not journey.stops:
             return TrainPosition()
 
         # Sort stops by sequence
