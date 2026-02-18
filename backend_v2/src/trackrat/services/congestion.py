@@ -136,7 +136,7 @@ class CongestionAnalyzer:
 
         # Use SQL-based individual segments calculation for better performance and accuracy
         individual_segments = []
-        if max_per_segment >= 0:  # 0 means unlimited, positive means limited
+        if max_per_segment > 0:  # positive means limited; 0 or negative means skip
             individual_segments = await self.get_individual_segments_optimized(
                 db, time_window_hours, max_per_segment, data_source
             )

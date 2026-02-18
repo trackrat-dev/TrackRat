@@ -293,6 +293,16 @@ async def get_route_congestion(
 ) -> CongestionMapResponse:
     """Get current congestion levels with individual journey segments."""
 
+    # Enforce minimum 2-hour window for meaningful congestion data across all systems
+    effective_time_window = max(time_window_hours, 2)
+
+    # Cache key uses effective values so precomputed entries match
+    cache_params = {
+        "time_window_hours": effective_time_window,
+        "max_per_segment": max_per_segment,
+        "data_source": data_source,
+    }
+
     # Try to serve from cache first (unless force_refresh is requested)
     if not force_refresh:
         from trackrat.services.api_cache import ApiCacheService
@@ -301,11 +311,7 @@ async def get_route_congestion(
         cached_response = await cache_service.get_cached_response(
             db=db,
             endpoint="/api/v2/routes/congestion",
-            params={
-                "time_window_hours": time_window_hours,
-                "max_per_segment": max_per_segment,
-                "data_source": data_source,
-            },
+            params=cache_params,
         )
 
         if cached_response:
@@ -316,11 +322,7 @@ async def get_route_congestion(
                 logger.warning(
                     "cache_deserialization_failed",
                     endpoint="/api/v2/routes/congestion",
-                    params={
-                        "time_window_hours": time_window_hours,
-                        "max_per_segment": max_per_segment,
-                        "data_source": data_source,
-                    },
+                    params=cache_params,
                     error=str(e),
                     error_type=type(e).__name__,
                 )
@@ -328,16 +330,8 @@ async def get_route_congestion(
                 await cache_service.invalidate_cache_entry(
                     db,
                     "/api/v2/routes/congestion",
-                    {
-                        "time_window_hours": time_window_hours,
-                        "max_per_segment": max_per_segment,
-                        "data_source": data_source,
-                    },
+                    cache_params,
                 )
-
-    # Cache miss or force refresh - compute the response
-    # Enforce minimum 2-hour window for meaningful congestion data across all systems
-    effective_time_window = max(time_window_hours, 2)
 
     analyzer = CongestionAnalyzer()
     aggregated_segments, journeys, individual_segments = (
@@ -426,7 +420,7 @@ async def get_route_congestion(
         aggregated_segments=aggregated_api_segments,
         train_positions=train_positions,
         generated_at=now_et(),
-        time_window_hours=time_window_hours,
+        time_window_hours=effective_time_window,
         max_per_segment=max_per_segment,
         metadata={
             "total_individual_segments": len(individual_segments),
@@ -473,11 +467,7 @@ async def get_route_congestion(
         await cache_service.store_cached_response(
             db=db,
             endpoint="/api/v2/routes/congestion",
-            params={
-                "time_window_hours": time_window_hours,
-                "max_per_segment": max_per_segment,
-                "data_source": data_source,
-            },
+            params=cache_params,
             response=response.model_dump(mode="json"),
             ttl_seconds=600,  # 10 minutes (longer than 15-min refresh to avoid gaps)
         )

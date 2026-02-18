@@ -254,17 +254,17 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should compute for 4 default parameter combinations
-                assert mock_compute.call_count == 4
+                # Should compute for 6 default parameter combinations
+                assert mock_compute.call_count == 6
 
                 # Should store each computed response
-                assert mock_store.call_count == 4
+                assert mock_store.call_count == 6
 
                 # Verify the parameter combinations
                 expected_params = [
                     {
-                        "time_window_hours": 3,
-                        "max_per_segment": 100,
+                        "time_window_hours": 2,
+                        "max_per_segment": 0,
                         "data_source": None,
                     },
                     {
@@ -275,10 +275,20 @@ class TestApiCacheService:
                     {
                         "time_window_hours": 3,
                         "max_per_segment": 100,
+                        "data_source": None,
+                    },
+                    {
+                        "time_window_hours": 3,
+                        "max_per_segment": 0,
+                        "data_source": None,
+                    },
+                    {
+                        "time_window_hours": 2,
+                        "max_per_segment": 0,
                         "data_source": "NJT",
                     },
                     {
-                        "time_window_hours": 2,
+                        "time_window_hours": 3,
                         "max_per_segment": 100,
                         "data_source": "NJT",
                     },
@@ -306,16 +316,18 @@ class TestApiCacheService:
                 {"data": "response2"},
                 {"data": "response3"},
                 {"data": "response4"},
+                {"data": "response5"},
+                {"data": "response6"},
             ]
 
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should try to compute all 4
-                assert mock_compute.call_count == 4
+                # Should try to compute all 6
+                assert mock_compute.call_count == 6
 
-                # Should only store the 3 successful ones
-                assert mock_store.call_count == 3
+                # Should only store the 5 successful ones
+                assert mock_store.call_count == 5
 
     @pytest.mark.asyncio
     async def test_compute_congestion_response(self, cache_service, mock_db):
@@ -336,6 +348,10 @@ class TestApiCacheService:
                 avg_transit_minutes=15.5,
                 cancellation_count=0,
                 cancellation_rate=0.0,
+                train_count=10,
+                baseline_train_count=12,
+                frequency_factor=0.83,
+                frequency_level="healthy",
             )
         ]
         mock_individual = []
@@ -413,6 +429,10 @@ class TestApiCacheService:
                 avg_transit_minutes=15,
                 cancellation_count=0,
                 cancellation_rate=0,
+                train_count=10,
+                baseline_train_count=12,
+                frequency_factor=0.83,
+                frequency_level="healthy",
             ),
         ]
         mock_individual = []
