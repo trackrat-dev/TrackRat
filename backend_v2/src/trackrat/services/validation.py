@@ -137,7 +137,7 @@ class TrainValidationService:
                 "njt_route_scan_failed",
                 from_station=from_station,
                 to_station=to_station,
-                error=str(e),
+                error=repr(e),
             )
             return set()
 
@@ -236,7 +236,7 @@ class TrainValidationService:
                 "amtrak_route_scan_failed",
                 from_station=from_station,
                 to_station=to_station,
-                error=str(e),
+                error=repr(e),
             )
             return set()
 
@@ -287,7 +287,7 @@ class TrainValidationService:
                 "api_scan_failed",
                 from_station=from_station,
                 to_station=to_station,
-                error=str(e),
+                error=repr(e),
             )
             return set()
 
@@ -323,7 +323,7 @@ class TrainValidationService:
         except Exception as e:
             return {
                 "accessible": False,
-                "error": str(e),
+                "error": repr(e),
             }
 
     async def validate_route(
@@ -490,7 +490,7 @@ class TrainValidationService:
                 "failed_to_save_validation_result",
                 route=result.route,
                 source=result.source,
-                error=str(e),
+                error=repr(e),
             )
 
     async def run_validation(
@@ -517,7 +517,7 @@ class TrainValidationService:
                     from_station=from_st,
                     to_station=to_st,
                     sources=sources,
-                    error=str(e),
+                    error=repr(e),
                 )
 
         # Record overall validation run metric
