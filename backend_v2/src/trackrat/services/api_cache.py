@@ -143,14 +143,18 @@ class ApiCacheService:
         """Pre-compute congestion responses for common parameter combinations used by iOS app."""
 
         # Parameter combinations based on iOS app usage analysis
+        # Cache keys use effective time window (minimum 2h enforced by API endpoint)
         param_sets: list[dict[str, Any]] = [
-            # Default API call: timeWindowHours=3, maxPerSegment=100, dataSource=nil
-            {"time_window_hours": 3, "max_per_segment": 100, "data_source": None},
-            # Journey view call: timeWindowHours=2, maxPerSegment=100, dataSource=nil
+            # iOS summary mode (default): timeWindowHours=1 -> effective 2, maxPerSegment=0
+            {"time_window_hours": 2, "max_per_segment": 0, "data_source": None},
+            # iOS trains mode: timeWindowHours=1 -> effective 2, maxPerSegment=100
             {"time_window_hours": 2, "max_per_segment": 100, "data_source": None},
+            # Longer window views
+            {"time_window_hours": 3, "max_per_segment": 100, "data_source": None},
+            {"time_window_hours": 3, "max_per_segment": 0, "data_source": None},
             # User filtering with NJT only
+            {"time_window_hours": 2, "max_per_segment": 0, "data_source": "NJT"},
             {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "NJT"},
         ]
 
         logger.info("precomputing_congestion_responses", param_count=len(param_sets))
@@ -200,6 +204,18 @@ class ApiCacheService:
             )
         )
 
+        # Filter out SAN station code collision (same as routes.py)
+        aggregated_segments = [
+            s
+            for s in aggregated_segments
+            if s.from_station != "SAN" and s.to_station != "SAN"
+        ]
+        individual_segments = [
+            s
+            for s in individual_segments
+            if s.from_station != "SAN" and s.to_station != "SAN"
+        ]
+
         # Extract train positions from journeys (same logic as routes.py)
         train_positions = []
         for journey in journeys:
@@ -246,6 +262,10 @@ class ApiCacheService:
                 current_average_minutes=segment.avg_transit_minutes,
                 cancellation_count=segment.cancellation_count,
                 cancellation_rate=segment.cancellation_rate,
+                train_count=segment.train_count,
+                baseline_train_count=segment.baseline_train_count,
+                frequency_factor=segment.frequency_factor,
+                frequency_level=segment.frequency_level,
             )
             aggregated_api_segments.append(segment_model)
 
