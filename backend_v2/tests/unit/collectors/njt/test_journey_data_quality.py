@@ -548,11 +548,14 @@ class TestScheduleBasedArrival:
         )
 
     @pytest.mark.asyncio
-    async def test_falls_back_to_time_when_no_sched_arr_date(
+    async def test_no_sched_arr_date_leaves_scheduled_arrival_none(
         self, sqlite_session: AsyncSession, journey_collector
     ):
-        """When SCHED_ARR_DATE is absent, scheduled_arrival should use the
-        normalized TIME field as before (backward compatibility)."""
+        """When SCHED_ARR_DATE is absent, scheduled_arrival should be None.
+
+        TIME is a live estimate that drifts with delays, causing inversions
+        with scheduled_departure. It should NOT be stored as scheduled_arrival.
+        """
         base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         journey = TrainJourney(
@@ -589,7 +592,7 @@ class TestScheduleBasedArrival:
             arr_time=live_arr.strftime(NJT_TIME_FORMAT),
             departed=False,
         )
-        # No SCHED_ARR_DATE -- should use TIME
+        # No SCHED_ARR_DATE — scheduled_arrival should remain None
 
         stops = [tr_stop, np_stop_data]
         await journey_collector.update_journey_stops(sqlite_session, journey, stops)
@@ -602,9 +605,9 @@ class TestScheduleBasedArrival:
             )
         )
         assert np_stop is not None
-        assert np_stop.scheduled_arrival == live_arr, (
-            f"Without SCHED_ARR_DATE, scheduled_arrival should fall back to "
-            f"TIME ({live_arr}), got {np_stop.scheduled_arrival}"
+        assert np_stop.scheduled_arrival is None, (
+            f"Without SCHED_ARR_DATE, scheduled_arrival should be None "
+            f"(TIME is a live estimate, not a schedule), got {np_stop.scheduled_arrival}"
         )
 
 

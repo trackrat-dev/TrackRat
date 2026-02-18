@@ -13,14 +13,19 @@ from pydantic import BaseModel, Field, field_serializer, field_validator
 
 # Custom serializer for Eastern Time datetimes
 def serialize_eastern_datetime(dt: datetime | None) -> str | None:
-    """Serialize datetime as Eastern Time without 'Z' suffix.
+    """Serialize datetime consistently in Eastern Time.
 
-    The backend stores naive datetimes in Eastern time.
-    We serialize without timezone suffix to indicate local times,
-    avoiding confusion with UTC (which would have 'Z' suffix).
+    Normalizes timezone-aware datetimes to Eastern Time before
+    serialization to ensure consistent offset representation
+    (-05:00 EST / -04:00 EDT), regardless of how the datetime
+    was stored internally (e.g., UTC from PostgreSQL roundtrip).
     """
     if dt is None:
         return None
+    if dt.tzinfo is not None:
+        from trackrat.utils.time import normalize_to_et
+
+        dt = normalize_to_et(dt)
     return dt.isoformat()
 
 
