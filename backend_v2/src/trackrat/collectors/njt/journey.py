@@ -1127,10 +1127,30 @@ class JourneyCollector(BaseJourneyCollector):
 
         stops_data = sorted(stops_data, key=get_stop_sort_time)
 
-        # First pass: Find the furthest departed stop for sequential inference
+        # Load existing departed stops from DB so Tier 2 inference accounts for
+        # stops that were confirmed departed in previous collection cycles —
+        # even if the NJT API flips DEPARTED back to NO (known inconsistency).
+        db_departed_codes: set[str] = set()
+        departed_stmt = select(JourneyStop.station_code).where(
+            and_(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.has_departed_station.is_(True),
+            )
+        )
+        db_departed_result = await session.execute(departed_stmt)
+        db_departed_codes = set(
+            db_departed_result.scalars().all()
+        )
+
+        # First pass: Find the furthest departed stop for sequential inference.
+        # Combines current API flags with DB state to handle NJT's inconsistent
+        # DEPARTED flag (can flip between YES/NO across collection cycles).
         max_departed_sequence = -1
         for sequence, stop_data in enumerate(stops_data):
-            if stop_data.DEPARTED == "YES":
+            if (
+                stop_data.DEPARTED == "YES"
+                or stop_data.STATION_2CHAR in db_departed_codes
+            ):
                 max_departed_sequence = max(max_departed_sequence, sequence)
 
         # Second pass: Process each stop
@@ -1318,8 +1338,20 @@ class JourneyCollector(BaseJourneyCollector):
             # showing arrival times the train hasn't achieved yet.
             # Once set, actual_arrival is frozen to preserve the value captured
             # when the train was at/near the station.
-            if stop.has_departed_station and stop.actual_arrival is None:
-                stop.actual_arrival = normalized["actual_arrival"]
+            if stop.has_departed_station:
+                if stop.actual_arrival is None:
+                    stop.actual_arrival = normalized["actual_arrival"]
+            else:
+                # Clear any stale actual_arrival from legacy code that wrote
+                # it unconditionally. Non-departed stops shouldn't show arrival.
+                if stop.actual_arrival is not None:
+                    logger.info(
+                        "clearing_stale_actual_arrival",
+                        train_id=journey.train_id,
+                        station=stop_data.STATION_2CHAR,
+                        stale_value=stop.actual_arrival.isoformat(),
+                    )
+                    stop.actual_arrival = None
 
             # Update raw status information
             stop.raw_njt_departed_flag = stop_data.DEPARTED
