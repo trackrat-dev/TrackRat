@@ -114,10 +114,11 @@ class TestNormalizeNjtStopTimes:
             has_departed=True,
         )
 
-        # At intermediate: scheduled = DEP_TIME, actual = TIME
+        # At intermediate: scheduled_arrival is None (deferred to SCHED_ARR_DATE),
+        # TIME is a live estimate that drifts with delays
         assert (
-            result["scheduled_arrival"] == time_field
-        )  # First observation captures live estimate
+            result["scheduled_arrival"] is None
+        )  # TIME excluded — use SCHED_ARR_DATE for immutable schedule
         assert (
             result["scheduled_departure"] == dep_time_field
         )  # 6:00 PM (original schedule)

@@ -64,9 +64,9 @@ def normalize_njt_stop_times(
 
     Returns:
         Dict with normalized times:
-        - scheduled_arrival: When train is scheduled to arrive (None at origin)
+        - scheduled_arrival: None (caller uses SCHED_ARR_DATE for immutable schedule)
         - scheduled_departure: Original scheduled departure time
-        - actual_arrival: Current arrival estimate (None at origin)
+        - actual_arrival: Live arrival estimate at intermediate stops (None at origin)
         - actual_departure: Actual departure time (only set when departed)
     """
     if is_origin_station:
@@ -79,8 +79,11 @@ def normalize_njt_stop_times(
         }
     else:
         # At intermediate: TIME = actual/estimate, DEP_TIME = original schedule
+        # Don't use TIME as scheduled_arrival — it's a live estimate that drifts
+        # with delays, causing inversions with scheduled_departure (DEP_TIME).
+        # The caller uses SCHED_ARR_DATE for immutable scheduled arrival instead.
         return {
-            "scheduled_arrival": time_field,
+            "scheduled_arrival": None,
             "scheduled_departure": dep_time_field,
             "actual_arrival": time_field,
             "actual_departure": time_field if has_departed else None,
@@ -1253,15 +1256,6 @@ class JourneyCollector(BaseJourneyCollector):
                     )
                 stop.stop_sequence = sequence
 
-            # Update actual_arrival with normalized value
-            # At origin: None (no arrival), at intermediate: TIME field (live estimate)
-            # Once a train has departed a stop, freeze the arrival time to preserve
-            # the value recorded when the train was actually at/near the station.
-            # Without this guard, later collection cycles overwrite with stale NJT
-            # estimates, producing anomalous delays (e.g., +99m or -13m).
-            if not stop.has_departed_station or stop.actual_arrival is None:
-                stop.actual_arrival = normalized["actual_arrival"]
-
             # Update "updated" times for backward compatibility (deprecated fields)
             # These use raw API fields for legacy compatibility
             stop.updated_arrival = time_field
@@ -1316,6 +1310,16 @@ class JourneyCollector(BaseJourneyCollector):
                 if not stop.has_departed_station:
                     stop.has_departed_station = False
                     stop.departure_source = None
+
+            # Update actual_arrival — only for stops the train has reached.
+            # After the three-tier departure inference above, has_departed_station
+            # reflects whether the train has passed this stop. We only write
+            # actual_arrival for confirmed stops to prevent future stops from
+            # showing arrival times the train hasn't achieved yet.
+            # Once set, actual_arrival is frozen to preserve the value captured
+            # when the train was at/near the station.
+            if stop.has_departed_station and stop.actual_arrival is None:
+                stop.actual_arrival = normalized["actual_arrival"]
 
             # Update raw status information
             stop.raw_njt_departed_flag = stop_data.DEPARTED
