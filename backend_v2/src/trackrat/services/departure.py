@@ -895,9 +895,16 @@ class DepartureService:
             departed = (stop_data.get("DEPARTED") or "").upper() or None
             stop.raw_njt_departed_flag = departed
 
+            # Cancelled stops never physically departed
+            stop_status = (stop_data.get("STOP_STATUS") or "").upper()
+            is_stop_cancelled = stop_status == "CANCELLED"
+
+            if is_stop_cancelled:
+                if not stop.has_departed_station:
+                    stop.has_departed_station = False
             # Never mark as departed if scheduled departure is in the future
             # This prevents stale NJT data from incorrectly marking future trains as departed
-            if stop.scheduled_departure and stop.scheduled_departure > now_et():
+            elif stop.scheduled_departure and stop.scheduled_departure > now_et():
                 stop.has_departed_station = False
                 if departed == "YES":
                     logger.debug(
