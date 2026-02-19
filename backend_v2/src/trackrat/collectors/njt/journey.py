@@ -64,9 +64,9 @@ def normalize_njt_stop_times(
 
     Returns:
         Dict with normalized times:
-        - scheduled_arrival: When train is scheduled to arrive (None at origin)
+        - scheduled_arrival: None (caller uses SCHED_ARR_DATE for immutable schedule)
         - scheduled_departure: Original scheduled departure time
-        - actual_arrival: Current arrival estimate (None at origin)
+        - actual_arrival: Live arrival estimate at intermediate stops (None at origin)
         - actual_departure: Actual departure time (only set when departed)
     """
     if is_origin_station:
@@ -1319,7 +1319,7 @@ class JourneyCollector(BaseJourneyCollector):
             # Once set, actual_arrival is frozen to preserve the value captured
             # when the train was at/near the station.
             if stop.has_departed_station and stop.actual_arrival is None:
-                stop.actual_arrival = normalized["actual_arrival"] or time_field
+                stop.actual_arrival = normalized["actual_arrival"]
 
             # Update raw status information
             stop.raw_njt_departed_flag = stop_data.DEPARTED
