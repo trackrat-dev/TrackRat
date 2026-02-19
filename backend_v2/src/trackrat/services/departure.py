@@ -6,7 +6,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -176,8 +176,15 @@ class DepartureService:
 
         # PERFORMANCE: Filter out trains that have already departed from origin station
         # This reduces payload size significantly when using hide_departed=true
+        # Always show cancelled trains — users need to see cancellations even if
+        # the stop was time-inferred as "departed" (cancelled trains never ran)
         if hide_departed:
-            departure_filters.append(JourneyStop.has_departed_station.is_(False))
+            departure_filters.append(
+                or_(
+                    JourneyStop.has_departed_station.is_(False),
+                    TrainJourney.is_cancelled.is_(True),
+                )
+            )
 
         # PERFORMANCE: Track timing for observability
         perf_start = time.perf_counter()

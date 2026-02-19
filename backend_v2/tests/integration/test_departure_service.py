@@ -398,6 +398,114 @@ class TestDepartureServiceIntegration:
         assert cancelled_train.is_cancelled is True
         assert active_train.is_cancelled is False
 
+    async def test_cancelled_trains_visible_with_hide_departed(
+        self, db_session: AsyncSession
+    ):
+        """Test that cancelled trains are shown even when hide_departed=True
+        and the stop has has_departed_station=True (set by Tier 3 time inference).
+
+        Bug: Tier 3 time-based inference sets has_departed_station=True on
+        cancelled stops whose scheduled departure has passed. Combined with
+        hide_departed=True (sent by iOS app), this hides cancelled trains
+        from users who need to see cancellation notices.
+        """
+        service = DepartureService()
+
+        # Create a cancelled NJT journey whose scheduled departure has passed
+        # Simulate: train was scheduled 30 min ago but was cancelled
+        cancelled_journey = create_amtrak_journey(
+            train_id="3873",
+            data_source="NJT",
+            is_cancelled=True,
+            line_code="NE",
+            line_name="Northeast Corridor",
+            scheduled_departure=now_et() - timedelta(minutes=30),
+        )
+        # Stop has has_departed_station=True from Tier 3 time inference
+        # even though the train never actually ran
+        cancelled_stop = create_amtrak_journey_stop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now_et() - timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=True,  # Set by Tier 3 inference (the bug)
+        )
+        cancelled_journey.stops = [cancelled_stop]
+
+        # Create an active train that has NOT departed
+        active_journey = create_amtrak_journey(
+            train_id="3875",
+            data_source="NJT",
+            is_cancelled=False,
+            line_code="NE",
+            line_name="Northeast Corridor",
+            scheduled_departure=now_et() + timedelta(hours=1),
+        )
+        active_stop = create_amtrak_journey_stop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now_et() + timedelta(hours=1),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        active_journey.stops = [active_stop]
+
+        # Create a non-cancelled train that HAS departed (should be hidden)
+        departed_journey = create_amtrak_journey(
+            train_id="3871",
+            data_source="NJT",
+            is_cancelled=False,
+            line_code="NE",
+            line_name="Northeast Corridor",
+            scheduled_departure=now_et() - timedelta(minutes=30),
+        )
+        departed_stop = create_amtrak_journey_stop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now_et() - timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=True,
+        )
+        departed_journey.stops = [departed_stop]
+
+        db_session.add(cancelled_journey)
+        db_session.add(active_journey)
+        db_session.add(departed_journey)
+        await db_session.commit()
+
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
+
+            response = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                time_from=now_et() - timedelta(hours=1),
+                time_to=now_et() + timedelta(hours=3),
+                hide_departed=True,
+            )
+
+        # Should return cancelled train + active train, but NOT the departed train
+        train_ids = [d.train_id for d in response.departures]
+        assert "3873" in train_ids, (
+            f"Cancelled train 3873 should be visible with hide_departed=True, "
+            f"got: {train_ids}"
+        )
+        assert "3875" in train_ids, (
+            f"Active train 3875 should be visible, got: {train_ids}"
+        )
+        assert "3871" not in train_ids, (
+            f"Departed non-cancelled train 3871 should be hidden, got: {train_ids}"
+        )
+
+        # Verify the cancelled train has proper cancellation info
+        cancelled_dep = next(d for d in response.departures if d.train_id == "3873")
+        assert cancelled_dep.is_cancelled is True
+
     async def test_departure_time_filtering(self, db_session: AsyncSession):
         """Test filtering departures by time range."""
         service = DepartureService()

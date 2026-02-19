@@ -1282,8 +1282,15 @@ class JourneyCollector(BaseJourneyCollector):
             stop.updated_departure = dep_time_field
 
             # Three-tier actual DEPARTURE inference
+            # Cancelled stops never physically departed — skip all inference
+            is_stop_cancelled = (stop_data.STOP_STATUS or "") == "CANCELLED"
+
             # Tier 1: Explicit DEPARTED flag from API (most reliable)
-            if stop_data.DEPARTED == "YES":
+            if is_stop_cancelled:
+                if not stop.has_departed_station:
+                    stop.has_departed_station = False
+                    stop.departure_source = None
+            elif stop_data.DEPARTED == "YES":
                 # Use normalized actual_departure which handles origin vs intermediate
                 # At origin: DEP_TIME (actual departure), at intermediate: TIME (actual)
                 stop.actual_departure = (

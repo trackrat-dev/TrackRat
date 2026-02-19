@@ -1385,3 +1385,167 @@ class TestNJTransitStopDataNormalization:
         assert (
             stop.STOP_STATUS == "5 MINUTES LATE"
         ), f"Expected '5 MINUTES LATE', got {stop.STOP_STATUS!r}"
+
+
+# ---------------------------------------------------------------------------
+# 8. Cancelled stops skip Tier 3 time-based departure inference
+# ---------------------------------------------------------------------------
+
+
+class TestCancelledStopsDepartureInference:
+    """Test that cancelled stops are not marked as departed by Tier 3 inference.
+
+    Bug: When NJT cancels a train, all stops get STOP_STATUS="CANCELLED" and
+    DEPARTED="NO". However, Tier 3 time-based inference sets has_departed_station=True
+    on any stop whose scheduled departure is >5 min in the past. This causes
+    hide_departed=true to filter out the cancelled train, making it invisible
+    to users who need to see the cancellation.
+    """
+
+    @pytest.mark.asyncio
+    async def test_cancelled_stops_not_marked_departed_by_tier3(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Stops with STOP_STATUS='CANCELLED' should NOT have has_departed_station
+        set to True by Tier 3 time inference, even if scheduled departure is past."""
+        # Use a time well in the past so Tier 3 threshold (5 min) is exceeded
+        base_time = (now_et() - timedelta(hours=1)).replace(second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3873",
+            journey_date=now_et().date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Hamilton",
+            origin_station_code="NY",
+            terminal_station_code="HA",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,  # Not yet set — happens in check_journey_completion
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # All stops cancelled by NJT: DEPARTED="NO", STOP_STATUS="CANCELLED"
+        builder = StopBuilder()
+        cancelled_stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=False,
+                cancelled=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=(base_time + timedelta(minutes=20)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=18)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+                cancelled=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "HA",
+                "Hamilton",
+                dep_time=(base_time + timedelta(minutes=50)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=48)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+                cancelled=True,
+            ),
+        ]
+
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, cancelled_stops
+        )
+        await sqlite_session.flush()
+
+        # Verify NO stop was marked as departed
+        all_stops = (
+            await sqlite_session.execute(
+                select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+            )
+        ).scalars().all()
+
+        for stop in all_stops:
+            assert stop.has_departed_station is False, (
+                f"Cancelled stop {stop.station_code} should have "
+                f"has_departed_station=False, but got True "
+                f"(departure_source={stop.departure_source!r}). "
+                f"Tier 3 time inference should skip cancelled stops."
+            )
+
+    @pytest.mark.asyncio
+    async def test_non_cancelled_stops_still_inferred_by_tier3(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Non-cancelled stops with DEPARTED='NO' should still get Tier 3
+        inference when scheduled departure is past. This verifies the fix
+        doesn't break normal Tier 3 behavior."""
+        base_time = (now_et() - timedelta(hours=1)).replace(second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3875",
+            journey_date=now_et().date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Hamilton",
+            origin_station_code="NY",
+            terminal_station_code="HA",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Normal stops (not cancelled) with DEPARTED="NO" and past departure
+        builder = StopBuilder()
+        normal_stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=False,
+                cancelled=False,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=(base_time + timedelta(minutes=20)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=18)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+                cancelled=False,
+            ),
+        ]
+
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, normal_stops
+        )
+        await sqlite_session.flush()
+
+        # Verify stops WERE marked as departed by Tier 3
+        all_stops = (
+            await sqlite_session.execute(
+                select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+            )
+        ).scalars().all()
+
+        for stop in all_stops:
+            assert stop.has_departed_station is True, (
+                f"Non-cancelled stop {stop.station_code} should have "
+                f"has_departed_station=True from Tier 3 inference, but got False. "
+                f"The cancelled-stop fix should not affect normal stops."
+            )
+            assert stop.departure_source == "time_inference", (
+                f"Non-cancelled stop {stop.station_code} departure_source should be "
+                f"'time_inference', got {stop.departure_source!r}"
+            )
