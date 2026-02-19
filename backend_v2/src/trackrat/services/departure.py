@@ -833,6 +833,15 @@ class DepartureService:
         multiple sessions (e.g., cache precomputation vs user request).
         """
 
+        # First pass: find the furthest departed stop for sequential inference.
+        # NJT's DEPARTED flag is inconsistent across API calls — a later stop
+        # can show DEPARTED=YES while an earlier one shows NO, even though the
+        # train must have passed the earlier stop.
+        max_departed_idx = -1
+        for idx, sd in enumerate(stops_data):
+            if (sd.get("DEPARTED") or "").upper() == "YES":
+                max_departed_idx = max(max_departed_idx, idx)
+
         for i, stop_data in enumerate(stops_data):
             station_code = stop_data.get("STATION_2CHAR")
             if not station_code:
@@ -899,8 +908,19 @@ class DepartureService:
                     stop.actual_departure = (
                         stop.scheduled_arrival or stop.scheduled_departure
                     )
+            elif i < max_departed_idx:
+                # Sequential inference: a later stop has DEPARTED=YES,
+                # so this earlier stop must have departed too.
+                stop.has_departed_station = True
+                if stop.actual_departure is None:
+                    stop.actual_departure = (
+                        stop.scheduled_arrival or stop.scheduled_departure
+                    )
             else:
-                stop.has_departed_station = False
+                # Not departed — but never revert a stop previously marked
+                # as departed (NJT API DEPARTED flag is inconsistent)
+                if not stop.has_departed_station:
+                    stop.has_departed_station = False
 
             # Update stop sequence if not set
             if stop.stop_sequence is None:
