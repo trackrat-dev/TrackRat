@@ -930,10 +930,13 @@ class TrainDetailsViewModel: ObservableObject {
         let effectiveDate = journeyDate ?? Date()
 
         // PRIORITY 1: Check cache first (will have full train data with stops from previous visits)
+        // Skip stale cache (>60s) to avoid showing outdated data when resuming from background
+        // (e.g., tapping Live Activity after app was suspended — polling timer doesn't fire in background)
         if !trainIdentifier.isEmpty,
-           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
+           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate),
+           cached.ageSeconds <= 60 {
             // Load from cache immediately - NO loading indicator
-            print("📦 Loading from cache - instant display")
+            print("📦 Loading from cache (\(cached.ageSeconds)s old) - instant display")
             train = cached.train
             updateComputedProperties()
 
