@@ -1,6 +1,19 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-primary-start: #8B5A3C;
+  --color-primary-end: #D4753E;
+  --color-accent: #CC5500;
+  --color-background: #F5F1E8;
+  --color-surface: #EAE3D2;
+  --color-success: #6B8E23;
+  --color-warning: #D4753E;
+  --color-error: #A52A2A;
+  --color-text-primary: #2D1B0E;
+  --color-text-secondary: #4A3728;
+  --color-text-muted: #7B6C5D;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
 
 @layer base {
   body {
