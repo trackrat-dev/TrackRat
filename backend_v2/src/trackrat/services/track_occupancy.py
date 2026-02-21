@@ -133,5 +133,12 @@ class TrackOccupancyService:
         return {str(track) for track in tracks if track is not None}
 
 
-# Singleton instance
-track_occupancy_service = TrackOccupancyService()
+# Lazy singleton instance
+_track_occupancy_service: TrackOccupancyService | None = None
+
+
+def get_track_occupancy_service() -> TrackOccupancyService:
+    global _track_occupancy_service
+    if _track_occupancy_service is None:
+        _track_occupancy_service = TrackOccupancyService()
+    return _track_occupancy_service

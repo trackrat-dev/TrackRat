@@ -14,7 +14,7 @@ from structlog import get_logger
 
 from trackrat.config.station_configs import get_station_config
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.track_occupancy import TrackOccupancyService
+from trackrat.services.track_occupancy import get_track_occupancy_service
 
 logger = get_logger(__name__)
 
@@ -46,7 +46,13 @@ class HistoricalTrackPredictor:
 
     def __init__(self) -> None:
         """Initialize the predictor."""
-        self.occupancy_service = TrackOccupancyService()
+        self._occupancy_service: Any = None
+
+    @property
+    def occupancy_service(self) -> Any:
+        if self._occupancy_service is None:
+            self._occupancy_service = get_track_occupancy_service()
+        return self._occupancy_service
 
     async def predict_track(
         self,

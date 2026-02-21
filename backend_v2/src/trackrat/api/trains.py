@@ -890,9 +890,9 @@ async def get_occupied_tracks(
     """Get currently occupied tracks at a station based on recent train activity."""
     logger.info("get_occupied_tracks_request", station_code=station_code)
 
-    from trackrat.services.track_occupancy import track_occupancy_service
+    from trackrat.services.track_occupancy import get_track_occupancy_service
 
-    return await track_occupancy_service.get_occupied_tracks(station_code)
+    return await get_track_occupancy_service().get_occupied_tracks(station_code)
 
 
 # Helper functions

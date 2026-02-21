@@ -6,6 +6,7 @@ Uses Pydantic Settings for type-safe configuration with environment variable sup
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
@@ -52,7 +53,23 @@ class Settings(BaseSettings):
         default="https://raildata.njtransit.com/api",
         description="NJ Transit API base URL",
     )
-    njt_api_token: str = Field(description="NJ Transit API token", min_length=1)
+    njt_api_token: str = Field(default="", description="NJ Transit API token")
+
+    @field_validator("njt_api_token", mode="before")
+    @classmethod
+    def load_njt_token_from_file(cls, v: str) -> str:
+        """Load NJT API token from .njt-token file if not set via env."""
+        if v:
+            return v
+        # Walk up from this file to find .njt-token in the repo root
+        for parent in Path(__file__).resolve().parents:
+            token_file = parent / ".njt-token"
+            if token_file.is_file():
+                token = token_file.read_text().strip()
+                if token:
+                    return token
+                break
+        return v
 
     # Collection Settings
     discovery_interval_minutes: int = Field(
