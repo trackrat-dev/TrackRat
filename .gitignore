@@ -37,6 +37,7 @@ tfplan
 *.p8
 certs/
 env.sh
+.njt-token
 
 # Python
 __pycache__/

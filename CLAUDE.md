@@ -81,6 +81,36 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env sta
 When E2E fails, correlate with logs using the route and timestamp from the failure output.
 The E2E script prints response bodies on HTTP errors and flags slow responses (>5s).
 
+**Ground Truth Validation:**
+
+Compares TrackRat departures against raw transit provider APIs to verify data quality.
+Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR.
+
+```bash
+cd backend_v2
+
+# PATH (no auth needed)
+poetry run python3 ../scripts/ground-truth-validate.py --provider PATH --verbose
+
+# NJT (needs token from .njt-token in repo root)
+TRACKRAT_NJT_API_TOKEN=$(cat ../.njt-token) poetry run python3 ../scripts/ground-truth-validate.py --provider NJT --verbose
+
+# Amtrak (no auth needed)
+poetry run python3 ../scripts/ground-truth-validate.py --provider AMTRAK --verbose
+
+# LIRR (no auth needed)
+poetry run python3 ../scripts/ground-truth-validate.py --provider LIRR --verbose
+
+# MNR (no auth needed)
+poetry run python3 ../scripts/ground-truth-validate.py --provider MNR --verbose
+```
+
+Options: `--tolerance N` (minutes, default 3), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
+Default target is staging; pass a URL as first positional arg for production.
+
+The NJT API token is stored in `.njt-token` (gitignored). When running NJT validation,
+read it with `$(cat ../.njt-token)` or `$(cat .njt-token)` depending on your cwd.
+
 ### Architecture Patterns
 
 **Backend Data Collection (NJT/Amtrak - Multi-Phase):**
