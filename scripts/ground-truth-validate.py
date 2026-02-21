@@ -6,6 +6,7 @@ Run from the repo root using the backend poetry environment:
 """
 
 import argparse
+import asyncio
 import sys
 import os
 from dataclasses import dataclass, field
@@ -23,9 +24,14 @@ from trackrat.collectors.path.collector import (  # noqa: E402
 from trackrat.collectors.path.ridepath_client import RIDEPATH_API_URL  # noqa: E402
 from trackrat.config.route_topology import get_routes_for_data_source  # noqa: E402
 from trackrat.config.stations import (  # noqa: E402
+    DISCOVERY_STATIONS,
+    AMTRAK_TO_INTERNAL_STATION_MAP,
     PATH_RIDEPATH_API_TO_INTERNAL_MAP,
+    get_station_code_by_name,
     get_station_name,
+    map_amtrak_station_code,
 )
+from trackrat.utils.time import parse_njt_time  # noqa: E402
 
 # --- ANSI colors (matching e2e-api-test.sh) ---
 RED = "\033[0;31m"
@@ -189,11 +195,287 @@ def fetch_ridepath_arrivals(client: httpx.Client) -> tuple[list[GroundTruthArriv
     return arrivals, oldest_updated
 
 
+# --- Fetch ground truth from NJ Transit ---
+
+
+def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from NJ Transit API.
+
+    Polls DISCOVERY_STATIONS using NJTransitClient.get_train_schedule_with_stops().
+    Requires TRACKRAT_NJT_API_TOKEN env var.
+    """
+    from trackrat.collectors.njt.client import NJTransitClient
+
+    arrivals: list[GroundTruthArrival] = []
+    seen: set[tuple[str, str]] = set()  # (train_id, station_code) dedup
+
+    async def _fetch() -> list[GroundTruthArrival]:
+        async with NJTransitClient() as client:
+            for station_code in DISCOVERY_STATIONS:
+                try:
+                    data = await client.get_train_schedule_with_stops(station_code)
+                except Exception as e:
+                    log_warn(f"NJT API failed for station {station_code}: {e}")
+                    continue
+
+                items = data.get("ITEMS") or []
+                for item in items:
+                    train_id = item.get("TRAIN_ID", "").strip()
+                    if not train_id:
+                        continue
+
+                    # Skip Amtrak trains (format: A + digits)
+                    if train_id.startswith("A") and len(train_id) > 1 and train_id[1:].isdigit():
+                        continue
+
+                    # Dedup by train_id + station
+                    if (train_id, station_code) in seen:
+                        continue
+                    seen.add((train_id, station_code))
+
+                    # Parse scheduled departure time
+                    sched_dep_str = item.get("SCHED_DEP_DATE", "")
+                    if not sched_dep_str:
+                        continue
+                    try:
+                        expected_time = parse_njt_time(sched_dep_str)
+                    except Exception:
+                        continue
+
+                    # Resolve destination from STOPS (last stop's STATION_2CHAR)
+                    stops = item.get("STOPS") or []
+                    dest_code = None
+                    if stops:
+                        # Last stop with a station code is the terminal
+                        for stop in reversed(stops):
+                            code = stop.get("STATION_2CHAR", "").strip()
+                            if code:
+                                dest_code = code
+                                break
+
+                    # Fallback: try resolving DESTINATION name to code
+                    if not dest_code:
+                        dest_name = item.get("DESTINATION", "").strip()
+                        if dest_name:
+                            dest_code = get_station_code_by_name(dest_name)
+
+                    if not dest_code:
+                        continue
+
+                    line_color = item.get("BACKCOLOR", "").strip()
+                    destination_name = item.get("DESTINATION", "").strip()
+                    headsign = f"{train_id} to {destination_name}"
+
+                    # Compute minutes_away from now
+                    now = datetime.now(expected_time.tzinfo)
+                    minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
+
+                    arrivals.append(
+                        GroundTruthArrival(
+                            station_code=station_code,
+                            destination_code=dest_code,
+                            expected_time=expected_time,
+                            line_color=line_color,
+                            headsign=headsign,
+                            minutes_away=minutes_away,
+                        )
+                    )
+
+        return arrivals
+
+    return asyncio.run(_fetch())
+
+
+# --- Fetch ground truth from Amtrak ---
+
+
+def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from Amtrak API.
+
+    Uses AmtrakClient.get_all_trains() and filters to NEC stations
+    (those with internal station code mappings).
+    """
+    from trackrat.collectors.amtrak.client import AmtrakClient
+
+    arrivals: list[GroundTruthArrival] = []
+
+    async def _fetch() -> list[GroundTruthArrival]:
+        async with AmtrakClient() as client:
+            trains_by_num = await client.get_all_trains()
+
+        for train_num, train_list in trains_by_num.items():
+            for train in train_list:
+                stations = train.stations
+                if not stations:
+                    continue
+
+                # Find the last station with a mapped internal code as destination
+                dest_code = None
+                for stop in reversed(stations):
+                    mapped = map_amtrak_station_code(stop.code)
+                    if mapped:
+                        dest_code = mapped
+                        break
+
+                if not dest_code:
+                    continue
+
+                headsign = f"{train.trainNum} {train.routeName}"
+
+                for stop in stations:
+                    internal_code = map_amtrak_station_code(stop.code)
+                    if not internal_code:
+                        continue
+
+                    # Skip the terminal station itself (no departure)
+                    if internal_code == dest_code and stop == stations[-1]:
+                        continue
+
+                    # Use actual departure > scheduled departure
+                    time_str = stop.dep or stop.schDep
+                    if not time_str:
+                        continue
+
+                    try:
+                        # Amtrak times are ISO format with timezone offset
+                        if "Z" in time_str:
+                            time_str = time_str.replace("Z", "+00:00")
+                        expected_time = datetime.fromisoformat(time_str)
+                    except ValueError:
+                        continue
+
+                    # Ensure timezone-aware
+                    if expected_time.tzinfo is None:
+                        expected_time = expected_time.replace(tzinfo=timezone.utc)
+
+                    now = datetime.now(timezone.utc)
+                    minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
+
+                    arrivals.append(
+                        GroundTruthArrival(
+                            station_code=internal_code,
+                            destination_code=dest_code,
+                            expected_time=expected_time,
+                            line_color="",
+                            headsign=headsign,
+                            minutes_away=minutes_away,
+                        )
+                    )
+
+        return arrivals
+
+    return asyncio.run(_fetch())
+
+
+# --- Fetch ground truth from LIRR ---
+
+
+def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from LIRR GTFS-RT feed."""
+    from trackrat.collectors.lirr.client import LIRRClient
+
+    arrivals: list[GroundTruthArrival] = []
+
+    async def _fetch() -> list[GroundTruthArrival]:
+        async with LIRRClient() as client:
+            all_arrivals = await client.get_all_arrivals()
+
+        # Group by trip_id to find destination (last stop)
+        trips: dict[str, list] = {}
+        for arr in all_arrivals:
+            trips.setdefault(arr.trip_id, []).append(arr)
+
+        # Find destination for each trip (stop with latest arrival_time)
+        trip_dest: dict[str, str] = {}
+        for trip_id, stops in trips.items():
+            last_stop = max(stops, key=lambda s: s.arrival_time)
+            trip_dest[trip_id] = last_stop.station_code
+
+        for arr in all_arrivals:
+            dest_code = trip_dest.get(arr.trip_id)
+            if not dest_code:
+                continue
+
+            # Skip terminal arrivals (no departure from terminal)
+            if arr.station_code == dest_code and arr.departure_time is None:
+                continue
+
+            expected_time = arr.departure_time or arr.arrival_time
+            now = datetime.now(timezone.utc)
+            minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
+
+            arrivals.append(
+                GroundTruthArrival(
+                    station_code=arr.station_code,
+                    destination_code=dest_code,
+                    expected_time=expected_time,
+                    line_color="",
+                    headsign=arr.trip_id,
+                    minutes_away=minutes_away,
+                )
+            )
+
+        return arrivals
+
+    return asyncio.run(_fetch())
+
+
+# --- Fetch ground truth from Metro-North ---
+
+
+def fetch_mnr_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from Metro-North GTFS-RT feed."""
+    from trackrat.collectors.mnr.client import MNRClient
+
+    arrivals: list[GroundTruthArrival] = []
+
+    async def _fetch() -> list[GroundTruthArrival]:
+        async with MNRClient() as client:
+            all_arrivals = await client.get_all_arrivals()
+
+        # Group by trip_id to find destination (last stop)
+        trips: dict[str, list] = {}
+        for arr in all_arrivals:
+            trips.setdefault(arr.trip_id, []).append(arr)
+
+        trip_dest: dict[str, str] = {}
+        for trip_id, stops in trips.items():
+            last_stop = max(stops, key=lambda s: s.arrival_time)
+            trip_dest[trip_id] = last_stop.station_code
+
+        for arr in all_arrivals:
+            dest_code = trip_dest.get(arr.trip_id)
+            if not dest_code:
+                continue
+
+            if arr.station_code == dest_code and arr.departure_time is None:
+                continue
+
+            expected_time = arr.departure_time or arr.arrival_time
+            now = datetime.now(timezone.utc)
+            minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
+
+            arrivals.append(
+                GroundTruthArrival(
+                    station_code=arr.station_code,
+                    destination_code=dest_code,
+                    expected_time=expected_time,
+                    line_color="",
+                    headsign=arr.trip_id,
+                    minutes_away=minutes_away,
+                )
+            )
+
+        return arrivals
+
+    return asyncio.run(_fetch())
+
+
 # --- Fetch TrackRat departures ---
 
 
 def fetch_trackrat_departures(
-    client: httpx.Client, base_url: str, origin: str, destination: str
+    client: httpx.Client, base_url: str, origin: str, destination: str, data_source: str
 ) -> list[TrackRatDeparture]:
     """Fetch departures from TrackRat API for a specific origin->destination."""
     url = f"{base_url.rstrip('/')}/api/v2/trains/departures"
@@ -202,7 +484,7 @@ def fetch_trackrat_departures(
         "to": destination,
         "limit": 50,
         "hide_departed": "false",
-        "data_sources": "PATH",
+        "data_sources": data_source,
     }
     try:
         resp = client.get(url, params=params, timeout=15)
@@ -315,7 +597,7 @@ def compare_route(
     return result
 
 
-# --- Main ---
+# --- Shared validation logic ---
 
 
 def _deduplicated_route_directions(routes: list) -> list[tuple[str, str, str]]:
@@ -338,48 +620,39 @@ def _deduplicated_route_directions(routes: list) -> list[tuple[str, str, str]]:
     return directions
 
 
-def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
-    """Run ground truth validation for PATH."""
+def print_summary(route_directions_tested: int) -> None:
+    """Print pass/fail/warn/skip summary."""
+    total = PASS_COUNT + FAIL_COUNT + WARN_COUNT + SKIP_COUNT
+    print(f"\n{BOLD}========== SUMMARY =========={NC}")
+    print(f"  {GREEN}PASS{NC}: {PASS_COUNT}")
+    print(f"  {RED}FAIL{NC}: {FAIL_COUNT}")
+    if WARN_COUNT > 0:
+        print(f"  {YELLOW}WARN{NC}: {WARN_COUNT}")
+    if SKIP_COUNT > 0:
+        print(f"  {YELLOW}SKIP{NC}: {SKIP_COUNT}")
+    print(f"  Total: {total} checks across {route_directions_tested} route directions")
+
+    if FAIL_COUNT == 0:
+        print(f"\n  {GREEN}{BOLD}ALL PASSED{NC}")
+    else:
+        print(f"\n  {RED}{BOLD}FAILED{NC} ({FAIL_COUNT} failure{'s' if FAIL_COUNT != 1 else ''})")
+
+
+def run_validation_loop(
+    gt_arrivals: list[GroundTruthArrival],
+    data_source: str,
+    base_url: str,
+    tolerance: int,
+    verbose: bool,
+) -> int:
+    """Iterate route directions, compare GT vs TrackRat, print results. Returns count of directions tested."""
     et = timezone(timedelta(hours=-5))
-    now_et = datetime.now(et)
-    print(f"\n{BOLD}Ground Truth Validation{NC}")
-    print(f"Target: {base_url}")
-    print(f"Provider: PATH")
-    print(f"Tolerance: {tolerance} min")
-    print(f"Time: {now_et.strftime('%Y-%m-%d %H:%M')} ET\n")
+    routes = get_routes_for_data_source(data_source)
+    directions = _deduplicated_route_directions(routes)
+    route_directions_tested = 0
 
     client = httpx.Client()
     try:
-        # 1. Fetch ground truth
-        gt_arrivals, oldest_updated = fetch_ridepath_arrivals(client)
-        if not gt_arrivals:
-            if FAIL_COUNT == 0:
-                # API didn't fail, just no trains
-                log_warn("No arrivals from RidePATH API (off-peak / late night?)")
-            print(f"\nNote: Fetched 0 arrivals from RidePATH API")
-            return
-        print(f"Note: Fetched {len(gt_arrivals)} arrivals from RidePATH API")
-
-        if verbose:
-            print(f"\n{BOLD}--- Ground Truth Arrivals ---{NC}")
-            for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
-                time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
-                print(
-                    f"  {a.station_code} -> {a.destination_code}  "
-                    f'{time_str} ({a.minutes_away}min)  "{a.headsign}"  color={a.line_color}'
-                )
-
-        # Check staleness
-        if oldest_updated:
-            staleness = (datetime.now(timezone.utc) - oldest_updated.astimezone(timezone.utc)).total_seconds()
-            if staleness > 120:
-                log_warn(f"RidePATH data may be stale (oldest update: {int(staleness)}s ago)")
-
-        # 2. Get PATH routes and test each direction (deduplicated)
-        routes = get_routes_for_data_source("PATH")
-        directions = _deduplicated_route_directions(routes)
-        route_directions_tested = 0
-
         for from_st, to_st, label in directions:
             # Filter GT arrivals for this direction
             relevant_gt = [
@@ -393,7 +666,7 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) ->
                 continue
 
             # Fetch TrackRat departures
-            tr_departures = fetch_trackrat_departures(client, base_url, from_st, to_st)
+            tr_departures = fetch_trackrat_departures(client, base_url, from_st, to_st, data_source)
 
             print(f"\n{YELLOW}--- {label} ---{NC}")
 
@@ -432,7 +705,6 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) ->
             # Report missing
             for gt in result.missing:
                 time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
-                # In verbose mode, show nearest TrackRat departure for debugging
                 detail = ""
                 if verbose and tr_departures:
                     nearest = min(
@@ -451,8 +723,8 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) ->
                     detail=detail,
                 )
 
-            # Report phantoms (only OBSERVED trains or those departing within the
-            # RidePATH window ~30min; SCHEDULED trains further out are expected noise)
+            # Report phantoms (only OBSERVED trains or those departing within a
+            # reasonable window; SCHEDULED trains further out are expected noise)
             now_utc = datetime.now(timezone.utc)
             phantom_window = timedelta(minutes=35)
             for tr in result.phantoms:
@@ -461,25 +733,180 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) ->
                 if tr.observation_type == "OBSERVED" or is_near:
                     log_warn(f"TrackRat train {tr.train_id} @ {time_str} has no ground truth match")
                 # Silently skip far-future SCHEDULED trains
-
     finally:
         client.close()
 
-    # Summary
-    total = PASS_COUNT + FAIL_COUNT + WARN_COUNT + SKIP_COUNT
-    print(f"\n{BOLD}========== SUMMARY =========={NC}")
-    print(f"  {GREEN}PASS{NC}: {PASS_COUNT}")
-    print(f"  {RED}FAIL{NC}: {FAIL_COUNT}")
-    if WARN_COUNT > 0:
-        print(f"  {YELLOW}WARN{NC}: {WARN_COUNT}")
-    if SKIP_COUNT > 0:
-        print(f"  {YELLOW}SKIP{NC}: {SKIP_COUNT}")
-    print(f"  Total: {total} checks across {route_directions_tested} route directions")
+    return route_directions_tested
 
-    if FAIL_COUNT == 0:
-        print(f"\n  {GREEN}{BOLD}ALL PASSED{NC}")
-    else:
-        print(f"\n  {RED}{BOLD}FAILED{NC} ({FAIL_COUNT} failure{'s' if FAIL_COUNT != 1 else ''})")
+
+def _print_header(provider: str, base_url: str, tolerance: int) -> None:
+    """Print validation header."""
+    et = timezone(timedelta(hours=-5))
+    now_et = datetime.now(et)
+    print(f"\n{BOLD}Ground Truth Validation{NC}")
+    print(f"Target: {base_url}")
+    print(f"Provider: {provider}")
+    print(f"Tolerance: {tolerance} min")
+    print(f"Time: {now_et.strftime('%Y-%m-%d %H:%M')} ET\n")
+
+
+# --- Provider-specific runners ---
+
+
+def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+    """Run ground truth validation for PATH."""
+    _print_header("PATH", base_url, tolerance)
+    et = timezone(timedelta(hours=-5))
+
+    client = httpx.Client()
+    try:
+        # 1. Fetch ground truth
+        gt_arrivals, oldest_updated = fetch_ridepath_arrivals(client)
+        if not gt_arrivals:
+            if FAIL_COUNT == 0:
+                log_warn("No arrivals from RidePATH API (off-peak / late night?)")
+            print(f"\nNote: Fetched 0 arrivals from RidePATH API")
+            print_summary(0)
+            return
+        print(f"Note: Fetched {len(gt_arrivals)} arrivals from RidePATH API")
+
+        if verbose:
+            print(f"\n{BOLD}--- Ground Truth Arrivals ---{NC}")
+            for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+                time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+                print(
+                    f"  {a.station_code} -> {a.destination_code}  "
+                    f'{time_str} ({a.minutes_away}min)  "{a.headsign}"  color={a.line_color}'
+                )
+
+        # Check staleness
+        if oldest_updated:
+            staleness = (datetime.now(timezone.utc) - oldest_updated.astimezone(timezone.utc)).total_seconds()
+            if staleness > 120:
+                log_warn(f"RidePATH data may be stale (oldest update: {int(staleness)}s ago)")
+    finally:
+        client.close()
+
+    # 2. Validate against routes
+    route_directions_tested = run_validation_loop(gt_arrivals, "PATH", base_url, tolerance, verbose)
+    print_summary(route_directions_tested)
+
+
+def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+    """Run ground truth validation for NJ Transit."""
+    # Check for required env var
+    token = os.environ.get("TRACKRAT_NJT_API_TOKEN")
+    if not token:
+        print(f"{YELLOW}WARN{NC} TRACKRAT_NJT_API_TOKEN not set, skipping NJT validation")
+        return
+
+    _print_header("NJT", base_url, tolerance)
+    et = timezone(timedelta(hours=-5))
+
+    gt_arrivals = fetch_njt_ground_truth()
+    if not gt_arrivals:
+        if FAIL_COUNT == 0:
+            log_warn("No departures from NJ Transit API (off-peak / late night?)")
+        print(f"\nNote: Fetched 0 departures from NJ Transit API")
+        print_summary(0)
+        return
+    print(f"Note: Fetched {len(gt_arrivals)} departures from NJ Transit API across {len(DISCOVERY_STATIONS)} stations")
+
+    if verbose:
+        print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
+        for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+            time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            print(
+                f"  {a.station_code} -> {a.destination_code}  "
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+            )
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "NJT", base_url, tolerance, verbose)
+    print_summary(route_directions_tested)
+
+
+def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+    """Run ground truth validation for Amtrak (NEC scope)."""
+    _print_header("AMTRAK", base_url, tolerance)
+    et = timezone(timedelta(hours=-5))
+
+    gt_arrivals = fetch_amtrak_ground_truth()
+    if not gt_arrivals:
+        if FAIL_COUNT == 0:
+            log_warn("No trains from Amtrak API")
+        print(f"\nNote: Fetched 0 departures from Amtrak API")
+        print_summary(0)
+        return
+    print(f"Note: Fetched {len(gt_arrivals)} departures from Amtrak API (NEC-mapped stations)")
+
+    if verbose:
+        print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
+        for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+            time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            print(
+                f"  {a.station_code} -> {a.destination_code}  "
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+            )
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "AMTRAK", base_url, tolerance, verbose)
+    print_summary(route_directions_tested)
+
+
+def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+    """Run ground truth validation for LIRR."""
+    _print_header("LIRR", base_url, tolerance)
+    et = timezone(timedelta(hours=-5))
+
+    gt_arrivals = fetch_lirr_ground_truth()
+    if not gt_arrivals:
+        if FAIL_COUNT == 0:
+            log_warn("No arrivals from LIRR GTFS-RT feed")
+        print(f"\nNote: Fetched 0 departures from LIRR GTFS-RT")
+        print_summary(0)
+        return
+    print(f"Note: Fetched {len(gt_arrivals)} departures from LIRR GTFS-RT")
+
+    if verbose:
+        print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
+        for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+            time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            print(
+                f"  {a.station_code} -> {a.destination_code}  "
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+            )
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "LIRR", base_url, tolerance, verbose)
+    print_summary(route_directions_tested)
+
+
+def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+    """Run ground truth validation for Metro-North."""
+    _print_header("MNR", base_url, tolerance)
+    et = timezone(timedelta(hours=-5))
+
+    gt_arrivals = fetch_mnr_ground_truth()
+    if not gt_arrivals:
+        if FAIL_COUNT == 0:
+            log_warn("No arrivals from Metro-North GTFS-RT feed")
+        print(f"\nNote: Fetched 0 departures from MNR GTFS-RT")
+        print_summary(0)
+        return
+    print(f"Note: Fetched {len(gt_arrivals)} departures from MNR GTFS-RT")
+
+    if verbose:
+        print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
+        for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+            time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            print(
+                f"  {a.station_code} -> {a.destination_code}  "
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+            )
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "MNR", base_url, tolerance, verbose)
+    print_summary(route_directions_tested)
+
+
+# --- Main ---
 
 
 def main() -> None:
@@ -495,7 +922,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         default="PATH",
-        choices=["PATH"],
+        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR"],
         help="Transit provider to validate (default: PATH)",
     )
     parser.add_argument(
@@ -511,8 +938,17 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if args.provider == "PATH":
-        run_path_validation(args.base_url, args.tolerance, verbose=args.verbose)
+    runners = {
+        "PATH": run_path_validation,
+        "NJT": run_njt_validation,
+        "AMTRAK": run_amtrak_validation,
+        "LIRR": run_lirr_validation,
+        "MNR": run_mnr_validation,
+    }
+
+    runner = runners.get(args.provider)
+    if runner:
+        runner(args.base_url, args.tolerance, verbose=args.verbose)
     else:
         print(f"{RED}FAIL{NC} Unsupported provider: {args.provider}")
         sys.exit(1)
