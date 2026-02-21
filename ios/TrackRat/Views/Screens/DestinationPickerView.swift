@@ -17,19 +17,12 @@ struct DestinationPickerView: View {
             return Stations.isStationVisible(code, withSystems: appState.selectedSystems)
         }
     }
-    
-    
-    private var filteredPopularDestinations: [(name: String, code: String)] {
-        // Filter out popular destinations that are the same as departure station
-        Stations.popularDestinations.filter { destination in
-            destination.code != appState.departureStationCode
-        }
-    }
-    
-    // Get favorite stations (filtered to exclude departure station)
+
+    // Get favorite stations (filtered to exclude departure station and non-selected systems)
     private var favoriteStations: [FavoriteStation] {
         return appState.favoriteStations.filter { station in
-            station.id != appState.departureStationCode
+            station.id != appState.departureStationCode &&
+            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems)
         }
     }
     
