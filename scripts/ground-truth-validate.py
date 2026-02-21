@@ -11,6 +11,7 @@ import sys
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -19,7 +20,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend_v2", "
 
 from trackrat.collectors.path.collector import (  # noqa: E402
     _get_destination_station_from_headsign,
-    _get_line_info_from_headsign,
 )
 from trackrat.collectors.path.ridepath_client import RIDEPATH_API_URL  # noqa: E402
 from trackrat.config.route_topology import get_routes_for_data_source  # noqa: E402
@@ -84,6 +84,7 @@ class GroundTruthArrival:
     line_color: str
     headsign: str
     minutes_away: int
+    train_id: str = ""  # Provider train ID for cross-validation (NJT, Amtrak)
 
 
 @dataclass
@@ -298,6 +299,7 @@ def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
                             line_color=line_color,
                             headsign=headsign,
                             minutes_away=minutes_away,
+                            train_id=train_id,
                         )
                     )
 
@@ -379,6 +381,7 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
                             line_color="",
                             headsign=headsign,
                             minutes_away=minutes_away,
+                            train_id=str(train.trainNum),
                         )
                     )
 
@@ -387,17 +390,15 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
     return asyncio.run(_fetch())
 
 
-# --- Fetch ground truth from LIRR ---
+# --- Fetch ground truth from GTFS-RT (LIRR / Metro-North) ---
 
 
-def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
-    """Fetch ground truth departures from LIRR GTFS-RT feed."""
-    from trackrat.collectors.lirr.client import LIRRClient
-
+def _fetch_gtfsrt_ground_truth(client_class: type) -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from a GTFS-RT feed (shared by LIRR and MNR)."""
     arrivals: list[GroundTruthArrival] = []
 
     async def _fetch() -> list[GroundTruthArrival]:
-        async with LIRRClient() as client:
+        async with client_class() as client:
             all_arrivals = await client.get_all_arrivals()
 
         # Group by trip_id to find destination (last stop)
@@ -440,55 +441,18 @@ def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
     return asyncio.run(_fetch())
 
 
-# --- Fetch ground truth from Metro-North ---
+def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from LIRR GTFS-RT feed."""
+    from trackrat.collectors.lirr.client import LIRRClient
+
+    return _fetch_gtfsrt_ground_truth(LIRRClient)
 
 
 def fetch_mnr_ground_truth() -> list[GroundTruthArrival]:
     """Fetch ground truth departures from Metro-North GTFS-RT feed."""
     from trackrat.collectors.mnr.client import MNRClient
 
-    arrivals: list[GroundTruthArrival] = []
-
-    async def _fetch() -> list[GroundTruthArrival]:
-        async with MNRClient() as client:
-            all_arrivals = await client.get_all_arrivals()
-
-        # Group by trip_id to find destination (last stop)
-        trips: dict[str, list] = {}
-        for arr in all_arrivals:
-            trips.setdefault(arr.trip_id, []).append(arr)
-
-        trip_dest: dict[str, str] = {}
-        for trip_id, stops in trips.items():
-            last_stop = max(stops, key=lambda s: s.arrival_time)
-            trip_dest[trip_id] = last_stop.station_code
-
-        for arr in all_arrivals:
-            dest_code = trip_dest.get(arr.trip_id)
-            if not dest_code:
-                continue
-
-            if arr.station_code == dest_code and arr.departure_time is None:
-                continue
-
-            expected_time = arr.departure_time or arr.arrival_time
-            now = datetime.now(timezone.utc)
-            minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
-
-            arrivals.append(
-                GroundTruthArrival(
-                    station_code=arr.station_code,
-                    destination_code=dest_code,
-                    expected_time=expected_time,
-                    line_color="",
-                    headsign=arr.trip_id,
-                    minutes_away=minutes_away,
-                )
-            )
-
-        return arrivals
-
-    return asyncio.run(_fetch())
+    return _fetch_gtfsrt_ground_truth(MNRClient)
 
 
 # --- Fetch TrackRat departures ---
@@ -590,14 +554,22 @@ def compare_route(
     for gt in relevant_gt:
         best_idx: int | None = None
         best_delta = tolerance_secs + 1
+        best_id_match = False
 
         for i, tr in enumerate(tr_departures):
             if i in used_tr_indices:
                 continue
             delta = abs(int((tr.departure_time - gt.expected_time).total_seconds()))
-            if delta < best_delta:
-                best_delta = delta
-                best_idx = i
+            # Train ID match is a strong signal: prefer ID-matched candidates
+            id_match = bool(gt.train_id and gt.train_id == tr.train_id)
+            if delta <= tolerance_secs:
+                # Prefer: (1) ID match over non-match, (2) smaller delta as tiebreaker
+                if (id_match and not best_id_match) or (
+                    id_match == best_id_match and delta < best_delta
+                ):
+                    best_delta = delta
+                    best_idx = i
+                    best_id_match = id_match
 
         if best_idx is not None and best_delta <= tolerance_secs:
             used_tr_indices.add(best_idx)
@@ -664,12 +636,23 @@ def run_validation_loop(
     base_url: str,
     tolerance: int,
     verbose: bool,
+    gt_window_minutes: int = 120,
 ) -> int:
     """Iterate route directions, compare GT vs TrackRat, print results. Returns count of directions tested."""
-    et = timezone(timedelta(hours=-5))
+    et = ZoneInfo("America/New_York")
     routes = get_routes_for_data_source(data_source)
     directions = _deduplicated_route_directions(routes)
     route_directions_tested = 0
+
+    # Filter GT arrivals to a reasonable time window to avoid false FAILs
+    # from far-future departures that TrackRat wouldn't return
+    now_utc = datetime.now(timezone.utc)
+    window_cutoff = now_utc + timedelta(minutes=gt_window_minutes)
+    original_count = len(gt_arrivals)
+    gt_arrivals = [a for a in gt_arrivals if a.expected_time <= window_cutoff]
+    filtered_count = original_count - len(gt_arrivals)
+    if filtered_count > 0 and verbose:
+        print(f"  Note: Filtered {filtered_count} GT arrivals beyond {gt_window_minutes}-min window")
 
     client = httpx.Client()
     try:
@@ -759,24 +742,24 @@ def run_validation_loop(
     return route_directions_tested
 
 
-def _print_header(provider: str, base_url: str, tolerance: int) -> None:
+def _print_header(provider: str, base_url: str, tolerance: int, gt_window: int = 120) -> None:
     """Print validation header."""
-    et = timezone(timedelta(hours=-5))
+    et = ZoneInfo("America/New_York")
     now_et = datetime.now(et)
     print(f"\n{BOLD}Ground Truth Validation{NC}")
     print(f"Target: {base_url}")
     print(f"Provider: {provider}")
-    print(f"Tolerance: {tolerance} min")
+    print(f"Tolerance: {tolerance} min, Window: {gt_window} min")
     print(f"Time: {now_et.strftime('%Y-%m-%d %H:%M')} ET\n")
 
 
 # --- Provider-specific runners ---
 
 
-def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+def run_path_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for PATH."""
-    _print_header("PATH", base_url, tolerance)
-    et = timezone(timedelta(hours=-5))
+    _print_header("PATH", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
 
     client = httpx.Client()
     try:
@@ -808,11 +791,11 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) ->
         client.close()
 
     # 2. Validate against routes
-    route_directions_tested = run_validation_loop(gt_arrivals, "PATH", base_url, tolerance, verbose)
+    route_directions_tested = run_validation_loop(gt_arrivals, "PATH", base_url, tolerance, verbose, gt_window)
     print_summary(route_directions_tested)
 
 
-def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for NJ Transit."""
     # Check for required env var
     token = os.environ.get("TRACKRAT_NJT_API_TOKEN")
@@ -820,8 +803,8 @@ def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False) -> 
         print(f"{YELLOW}WARN{NC} TRACKRAT_NJT_API_TOKEN not set, skipping NJT validation")
         return
 
-    _print_header("NJT", base_url, tolerance)
-    et = timezone(timedelta(hours=-5))
+    _print_header("NJT", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
 
     gt_arrivals = fetch_njt_ground_truth()
     if not gt_arrivals:
@@ -841,14 +824,14 @@ def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False) -> 
                 f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
             )
 
-    route_directions_tested = run_validation_loop(gt_arrivals, "NJT", base_url, tolerance, verbose)
+    route_directions_tested = run_validation_loop(gt_arrivals, "NJT", base_url, tolerance, verbose, gt_window)
     print_summary(route_directions_tested)
 
 
-def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for Amtrak (NEC scope)."""
-    _print_header("AMTRAK", base_url, tolerance)
-    et = timezone(timedelta(hours=-5))
+    _print_header("AMTRAK", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
 
     gt_arrivals = fetch_amtrak_ground_truth()
     if not gt_arrivals:
@@ -868,14 +851,14 @@ def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False) 
                 f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
             )
 
-    route_directions_tested = run_validation_loop(gt_arrivals, "AMTRAK", base_url, tolerance, verbose)
+    route_directions_tested = run_validation_loop(gt_arrivals, "AMTRAK", base_url, tolerance, verbose, gt_window)
     print_summary(route_directions_tested)
 
 
-def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for LIRR."""
-    _print_header("LIRR", base_url, tolerance)
-    et = timezone(timedelta(hours=-5))
+    _print_header("LIRR", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
 
     gt_arrivals = fetch_lirr_ground_truth()
     if not gt_arrivals:
@@ -895,14 +878,14 @@ def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False) ->
                 f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
             )
 
-    route_directions_tested = run_validation_loop(gt_arrivals, "LIRR", base_url, tolerance, verbose)
+    route_directions_tested = run_validation_loop(gt_arrivals, "LIRR", base_url, tolerance, verbose, gt_window)
     print_summary(route_directions_tested)
 
 
-def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
+def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for Metro-North."""
-    _print_header("MNR", base_url, tolerance)
-    et = timezone(timedelta(hours=-5))
+    _print_header("MNR", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
 
     gt_arrivals = fetch_mnr_ground_truth()
     if not gt_arrivals:
@@ -922,7 +905,7 @@ def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False) -> 
                 f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
             )
 
-    route_directions_tested = run_validation_loop(gt_arrivals, "MNR", base_url, tolerance, verbose)
+    route_directions_tested = run_validation_loop(gt_arrivals, "MNR", base_url, tolerance, verbose, gt_window)
     print_summary(route_directions_tested)
 
 
@@ -952,6 +935,12 @@ def main() -> None:
         help="Matching tolerance in minutes (default: 3)",
     )
     parser.add_argument(
+        "--window",
+        type=int,
+        default=120,
+        help="GT time window in minutes; ignore GT departures beyond this (default: 120)",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Show raw GT arrivals, TR departures, and nearest-match details on FAILs",
@@ -968,7 +957,7 @@ def main() -> None:
 
     runner = runners.get(args.provider)
     if runner:
-        runner(args.base_url, args.tolerance, verbose=args.verbose)
+        runner(args.base_url, args.tolerance, verbose=args.verbose, gt_window=args.window)
     else:
         print(f"{RED}FAIL{NC} Unsupported provider: {args.provider}")
         sys.exit(1)
