@@ -168,18 +168,26 @@ class TestScheduleCollectorDuplicateStops:
         base = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         stops = [
-            _build_stop_with_sched_times("NY", "New York", (base).strftime(NJT_TIME_FORMAT)),
             _build_stop_with_sched_times(
-                "NP", "Newark Penn", (base + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
+                "NY", "New York", (base).strftime(NJT_TIME_FORMAT)
+            ),
+            _build_stop_with_sched_times(
+                "NP",
+                "Newark Penn",
+                (base + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=14)).strftime(NJT_TIME_FORMAT),
             ),
             _build_stop_with_sched_times(
-                "OL", "Mount Olive", (base + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT),
+                "OL",
+                "Mount Olive",
+                (base + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=59)).strftime(NJT_TIME_FORMAT),
             ),
             # Duplicate OL -- this is what NJT API sometimes returns
             _build_stop_with_sched_times(
-                "OL", "Mount Olive", (base + timedelta(minutes=62)).strftime(NJT_TIME_FORMAT),
+                "OL",
+                "Mount Olive",
+                (base + timedelta(minutes=62)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=61)).strftime(NJT_TIME_FORMAT),
             ),
         ]
@@ -204,9 +212,9 @@ class TestScheduleCollectorDuplicateStops:
         )
 
         station_codes = [s.station_code for s in inserted_stops]
-        assert station_codes.count("OL") == 1, (
-            f"Expected exactly 1 OL stop after dedup, got {station_codes.count('OL')}"
-        )
+        assert (
+            station_codes.count("OL") == 1
+        ), f"Expected exactly 1 OL stop after dedup, got {station_codes.count('OL')}"
 
     @pytest.mark.asyncio
     async def test_duplicate_dedup_keeps_first_occurrence(
@@ -222,9 +230,15 @@ class TestScheduleCollectorDuplicateStops:
         second_time = (base + timedelta(minutes=62)).strftime(NJT_TIME_FORMAT)
 
         stops = [
-            _build_stop_with_sched_times("NY", "New York", base.strftime(NJT_TIME_FORMAT)),
-            _build_stop_with_sched_times("OL", "Mount Olive", first_time, arr_time_str=first_time),
-            _build_stop_with_sched_times("OL", "Mount Olive", second_time, arr_time_str=second_time),
+            _build_stop_with_sched_times(
+                "NY", "New York", base.strftime(NJT_TIME_FORMAT)
+            ),
+            _build_stop_with_sched_times(
+                "OL", "Mount Olive", first_time, arr_time_str=first_time
+            ),
+            _build_stop_with_sched_times(
+                "OL", "Mount Olive", second_time, arr_time_str=second_time
+            ),
         ]
 
         train_data = _make_train_data_with_stops(stops)
@@ -260,13 +274,19 @@ class TestScheduleCollectorDuplicateStops:
         base = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         stops = [
-            _build_stop_with_sched_times("NY", "New York", base.strftime(NJT_TIME_FORMAT)),
             _build_stop_with_sched_times(
-                "NP", "Newark Penn", (base + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
+                "NY", "New York", base.strftime(NJT_TIME_FORMAT)
+            ),
+            _build_stop_with_sched_times(
+                "NP",
+                "Newark Penn",
+                (base + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=14)).strftime(NJT_TIME_FORMAT),
             ),
             _build_stop_with_sched_times(
-                "OL", "Mount Olive", (base + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT),
+                "OL",
+                "Mount Olive",
+                (base + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=59)).strftime(NJT_TIME_FORMAT),
             ),
         ]
@@ -283,9 +303,9 @@ class TestScheduleCollectorDuplicateStops:
         )
         inserted_stops = result.scalars().all()
 
-        assert len(inserted_stops) == 3, (
-            f"Expected 3 stops (no dedup needed), got {len(inserted_stops)}"
-        )
+        assert (
+            len(inserted_stops) == 3
+        ), f"Expected 3 stops (no dedup needed), got {len(inserted_stops)}"
 
         # Verify journey metadata was updated correctly
         assert journey.has_complete_journey is True
@@ -305,18 +325,26 @@ class TestScheduleCollectorDuplicateStops:
         base = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
 
         stops = [
-            _build_stop_with_sched_times("NY", "New York", base.strftime(NJT_TIME_FORMAT)),
             _build_stop_with_sched_times(
-                "NP", "Newark Penn", (base + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
+                "NY", "New York", base.strftime(NJT_TIME_FORMAT)
+            ),
+            _build_stop_with_sched_times(
+                "NP",
+                "Newark Penn",
+                (base + timedelta(minutes=15)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=14)).strftime(NJT_TIME_FORMAT),
             ),
             _build_stop_with_sched_times(
-                "OL", "Mount Olive", (base + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT),
+                "OL",
+                "Mount Olive",
+                (base + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=59)).strftime(NJT_TIME_FORMAT),
             ),
             # Duplicate OL
             _build_stop_with_sched_times(
-                "OL", "Mount Olive", (base + timedelta(minutes=62)).strftime(NJT_TIME_FORMAT),
+                "OL",
+                "Mount Olive",
+                (base + timedelta(minutes=62)).strftime(NJT_TIME_FORMAT),
                 arr_time_str=(base + timedelta(minutes=61)).strftime(NJT_TIME_FORMAT),
             ),
         ]
@@ -328,13 +356,13 @@ class TestScheduleCollectorDuplicateStops:
         )
         await sqlite_session.flush()
 
-        assert journey.stops_count == 3, (
-            f"Expected stops_count=3 after dedup, got {journey.stops_count}"
-        )
-        assert journey.origin_station_code == "NY", (
-            f"Expected origin=NY, got {journey.origin_station_code}"
-        )
-        assert journey.terminal_station_code == "OL", (
-            f"Expected terminal=OL, got {journey.terminal_station_code}"
-        )
+        assert (
+            journey.stops_count == 3
+        ), f"Expected stops_count=3 after dedup, got {journey.stops_count}"
+        assert (
+            journey.origin_station_code == "NY"
+        ), f"Expected origin=NY, got {journey.origin_station_code}"
+        assert (
+            journey.terminal_station_code == "OL"
+        ), f"Expected terminal=OL, got {journey.terminal_station_code}"
         assert journey.has_complete_journey is True
