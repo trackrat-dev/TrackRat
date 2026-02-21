@@ -9,7 +9,7 @@ Runs every 4 minutes for responsive tracking with single API call.
 """
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, delete, select
@@ -17,9 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.path.ridepath_client import PathArrival, RidePathClient
+from trackrat.collectors.path.segment_times import (
+    SegmentTimesMap,
+    get_cumulative_time,
+    get_segment_times,
+)
 from trackrat.config.stations import (
     PATH_ROUTE_STOPS,
-    get_path_stops_by_origin_destination,
+    get_path_route_and_stops,
     get_station_name,
 )
 from trackrat.db.engine import get_session
@@ -306,11 +311,14 @@ class PathCollector:
                 "completed": 0,
             }
 
+        # === LOAD GTFS SEGMENT TIMES ===
+        segment_times = await get_segment_times(session)
+
         # === PHASE 1: DISCOVERY ===
-        discovery_stats = await self._discover_trains(session, arrivals)
+        discovery_stats = await self._discover_trains(session, arrivals, segment_times)
 
         # === PHASE 2: UPDATES ===
-        update_stats = await self._update_journeys(session, arrivals)
+        update_stats = await self._update_journeys(session, arrivals, segment_times)
 
         await session.commit()
 
@@ -334,7 +342,10 @@ class PathCollector:
     # =========================================================================
 
     async def _discover_trains(
-        self, session: AsyncSession, arrivals: list[PathArrival]
+        self,
+        session: AsyncSession,
+        arrivals: list[PathArrival],
+        segment_times: SegmentTimesMap,
     ) -> dict[str, Any]:
         """Discovery phase - create journeys for new trains.
 
@@ -344,6 +355,7 @@ class PathCollector:
         Args:
             session: Database session
             arrivals: All arrivals from API
+            segment_times: GTFS-based segment travel times
 
         Returns:
             Discovery statistics
@@ -368,7 +380,9 @@ class PathCollector:
                 continue
 
             # Process this departure (may be at terminus or mid-route)
-            created = await self._process_arrival_for_discovery(session, arrival)
+            created = await self._process_arrival_for_discovery(
+                session, arrival, segment_times
+            )
             if created:
                 station_results[arrival.station_code]["new_journeys"] += 1
                 new_journeys += 1
@@ -383,6 +397,7 @@ class PathCollector:
         self,
         session: AsyncSession,
         arrival: PathArrival,
+        segment_times: SegmentTimesMap,
     ) -> bool:
         """Process a single arrival and create journey record if new.
 
@@ -393,6 +408,7 @@ class PathCollector:
         Args:
             session: Database session
             arrival: Arrival data from RidePATH
+            segment_times: GTFS-based segment travel times
 
         Returns:
             True if a new journey was created, False if existing/skipped
@@ -423,12 +439,10 @@ class PathCollector:
             discovered_at_station, destination_station
         )
 
-        # Get full route from origin to destination
-        route_stops = get_path_stops_by_origin_destination(
-            origin_station, destination_station
-        )
+        # Get full route (with route_id) from origin to destination
+        route_result = get_path_route_and_stops(origin_station, destination_station)
 
-        if not route_stops or len(route_stops) < 2:
+        if not route_result or len(route_result[1]) < 2:
             logger.debug(
                 "path_skip_no_route",
                 origin=origin_station,
@@ -436,11 +450,14 @@ class PathCollector:
             )
             return False
 
+        route_id, route_stops = route_result
+
         # Calculate origin departure time by working backwards from discovery station
-        minutes_per_segment = 3
         if discovered_at_station in route_stops:
             stops_from_origin = route_stops.index(discovered_at_station)
-            minutes_from_origin = stops_from_origin * minutes_per_segment
+            minutes_from_origin = get_cumulative_time(
+                segment_times, route_stops, 0, stops_from_origin, route_id
+            )
             origin_departure_time = discovered_arrival_time - timedelta(
                 minutes=minutes_from_origin
             )
@@ -497,9 +514,11 @@ class PathCollector:
             existing_by_schedule.last_updated_at = now_et()
             return False
 
-        # Calculate terminal arrival time
+        # Calculate terminal arrival time using GTFS segment times
         terminal_station = route_stops[-1]
-        total_travel_minutes = (len(route_stops) - 1) * minutes_per_segment
+        total_travel_minutes = get_cumulative_time(
+            segment_times, route_stops, 0, len(route_stops) - 1, route_id
+        )
         terminal_arrival = origin_departure_time + timedelta(
             minutes=total_travel_minutes
         )
@@ -536,6 +555,8 @@ class PathCollector:
             origin_departure_time,
             destination_station,
             discovered_at_station=discovered_at_station,
+            segment_times=segment_times,
+            route_id=route_id,
         )
 
         is_mid_route = origin_station != discovered_at_station
@@ -560,6 +581,8 @@ class PathCollector:
         departure_time: Any,
         destination_station: str | None,
         discovered_at_station: str | None = None,
+        segment_times: SegmentTimesMap | None = None,
+        route_id: str | None = None,
     ) -> None:
         """Create journey stop records.
 
@@ -573,8 +596,11 @@ class PathCollector:
             departure_time: Departure time from origin
             destination_station: Destination station code
             discovered_at_station: Station where train was discovered (for mid-route)
+            segment_times: GTFS-based segment travel times
+            route_id: GTFS route ID for segment time lookup
         """
-        minutes_per_segment = 3
+        if segment_times is None:
+            segment_times = {}
 
         if route_stops and len(route_stops) >= 2:
             # Find the index of the discovery station for mid-route handling
@@ -585,11 +611,13 @@ class PathCollector:
             for sequence, station_code in enumerate(route_stops, start=1):
                 is_origin = sequence == 1
                 is_terminus = sequence == len(route_stops)
-                minutes_from_origin = (sequence - 1) * minutes_per_segment
+                stop_idx = sequence - 1  # 0-based index
+                minutes_from_origin = get_cumulative_time(
+                    segment_times, route_stops, 0, stop_idx, route_id
+                )
                 stop_time = departure_time + timedelta(minutes=minutes_from_origin)
 
                 # Determine if this stop is before the discovery station (already passed)
-                stop_idx = sequence - 1  # 0-based index
                 is_before_discovery = (
                     discovered_idx is not None and stop_idx < discovered_idx
                 )
@@ -702,13 +730,17 @@ class PathCollector:
     # =========================================================================
 
     async def _update_journeys(
-        self, session: AsyncSession, arrivals: list[PathArrival]
+        self,
+        session: AsyncSession,
+        arrivals: list[PathArrival],
+        segment_times: SegmentTimesMap,
     ) -> dict[str, Any]:
         """Update phase - refresh active journeys with arrival data.
 
         Args:
             session: Database session
             arrivals: All arrivals from API
+            segment_times: GTFS-based segment travel times
 
         Returns:
             Update statistics
@@ -762,7 +794,7 @@ class PathCollector:
 
                 stops = await self._get_journey_stops(session, journey)
                 had_matching_arrivals = await self._update_stops_from_arrivals(
-                    session, journey, stops, matching
+                    session, journey, stops, matching, segment_times
                 )
 
                 journey.last_updated_at = now_et()
@@ -953,19 +985,27 @@ class PathCollector:
         journey: TrainJourney,
         stops: list[JourneyStop],
         arrivals: list[PathArrival],
+        segment_times: SegmentTimesMap | None = None,
     ) -> bool:
         """Match arrivals to stops and update actual times.
+
+        After matching arrivals, computes a weighted-average implied origin
+        departure from all observed stops (closer = higher weight) and
+        recomputes updated_arrival/updated_departure for non-departed stops.
 
         Args:
             session: Database session
             journey: Journey being updated
             stops: List of journey stops
             arrivals: List of matching arrivals from API
+            segment_times: GTFS-based segment travel times
 
         Returns:
             True if any arrivals matched stops, False otherwise.
             Used to determine if train is still visible in API.
         """
+        if segment_times is None:
+            segment_times = {}
         if not stops:
             return False
 
@@ -1029,6 +1069,23 @@ class PathCollector:
                             )
 
             stop.updated_at = now
+
+        # Multi-observation averaging: compute weighted-average origin departure
+        # from all observed stops, then recompute updated times for non-departed stops
+        if matched_arrival_count > 0:
+            route_result = get_path_route_and_stops(
+                journey.origin_station_code or "",
+                journey.terminal_station_code or "",
+            )
+            if route_result:
+                avg_route_id, route_stops = route_result
+                averaged_origin = self._compute_averaged_origin_departure(
+                    stops, route_stops, segment_times, avg_route_id
+                )
+                if averaged_origin:
+                    self._recompute_stop_times(
+                        stops, route_stops, averaged_origin, segment_times, avg_route_id
+                    )
 
         # Enforce sequential consistency: if a later stop is departed,
         # all earlier stops must also be departed (train can't skip stations)
@@ -1108,6 +1165,115 @@ class PathCollector:
 
         # Return whether any arrivals matched - used to detect train disappearance
         return matched_arrival_count > 0
+
+    def _compute_averaged_origin_departure(
+        self,
+        stops: list[JourneyStop],
+        route_stops: list[str],
+        segment_times: SegmentTimesMap,
+        route_id: str,
+    ) -> Any:
+        """Compute weighted-average implied origin departure from observed stops.
+
+        Each stop with an actual_arrival implies an origin departure time:
+          implied_origin = actual_arrival - cumulative_time(origin, stop)
+
+        Closer stops get higher weight (1/cumulative_minutes) since their
+        countdown is shorter and thus more precise.
+
+        Args:
+            stops: Journey stops with actual times
+            route_stops: Ordered station codes for this route
+            segment_times: GTFS segment time data
+            route_id: GTFS route ID
+
+        Returns:
+            Averaged origin departure datetime, or None if no observations
+        """
+        weighted_sum = 0.0
+        total_weight = 0.0
+
+        for stop in stops:
+            observed_time = stop.actual_arrival or stop.actual_departure
+            if not observed_time:
+                continue
+
+            station_code = stop.station_code or ""
+            if station_code not in route_stops:
+                continue
+
+            stop_idx = route_stops.index(station_code)
+            if stop_idx == 0:
+                # Origin stop — direct observation of departure
+                cumulative_min = 0.0
+                weight = 10.0  # Highest weight for direct origin observation
+            else:
+                cumulative_min = get_cumulative_time(
+                    segment_times, route_stops, 0, stop_idx, route_id
+                )
+                weight = 1.0 / max(cumulative_min, 1.0)
+
+            implied_origin = observed_time - timedelta(minutes=cumulative_min)
+            weighted_sum += implied_origin.timestamp() * weight
+            total_weight += weight
+
+        if total_weight == 0:
+            return None
+
+        avg_timestamp = weighted_sum / total_weight
+        # Reconstruct datetime with same tzinfo as the first observed time
+        reference_time = None
+        for stop in stops:
+            reference_time = stop.actual_arrival or stop.actual_departure
+            if reference_time:
+                break
+
+        if reference_time is None:
+            return None
+
+        return datetime.fromtimestamp(avg_timestamp, tz=reference_time.tzinfo)
+
+    def _recompute_stop_times(
+        self,
+        stops: list[JourneyStop],
+        route_stops: list[str],
+        origin_departure: Any,
+        segment_times: SegmentTimesMap,
+        route_id: str,
+    ) -> None:
+        """Recompute updated_arrival/updated_departure for non-departed stops.
+
+        Uses the averaged origin departure and GTFS segment times to set
+        more precise predicted times for stops the train hasn't reached yet.
+
+        Args:
+            stops: Journey stops (modified in place)
+            route_stops: Ordered station codes for this route
+            origin_departure: Averaged origin departure time
+            segment_times: GTFS segment time data
+            route_id: GTFS route ID
+        """
+        for stop in stops:
+            if stop.has_departed_station:
+                continue
+
+            station_code = stop.station_code or ""
+            if station_code not in route_stops:
+                continue
+
+            stop_idx = route_stops.index(station_code)
+            is_origin = stop_idx == 0
+            is_terminus = stop_idx == len(route_stops) - 1
+
+            cumulative_min = get_cumulative_time(
+                segment_times, route_stops, 0, stop_idx, route_id
+            )
+            predicted_time = origin_departure + timedelta(minutes=cumulative_min)
+
+            if not is_origin:
+                stop.updated_arrival = predicted_time
+            if not is_terminus:
+                stop.updated_departure = predicted_time
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney

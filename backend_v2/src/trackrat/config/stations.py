@@ -3118,6 +3118,35 @@ def get_path_route_stops(route_id: str, terminus_station: str) -> list[str]:
     return [terminus_station]
 
 
+def get_path_route_and_stops(
+    origin_station: str, destination_station: str
+) -> tuple[str, list[str]] | None:
+    """Get route ID and ordered stops for a PATH journey.
+
+    Finds the appropriate route by matching origin and destination stations
+    against all known PATH routes. Returns the route ID and the subset of
+    stops from origin to destination (inclusive).
+
+    Args:
+        origin_station: Station code where train departs (e.g., 'PHO')
+        destination_station: Station code for destination (e.g., 'P33')
+
+    Returns:
+        Tuple of (route_id, stops) or None if no route found
+    """
+    for route_id, stops in PATH_ROUTE_STOPS.items():
+        if origin_station in stops and destination_station in stops:
+            origin_idx = stops.index(origin_station)
+            dest_idx = stops.index(destination_station)
+
+            if origin_idx < dest_idx:
+                return (route_id, stops[origin_idx : dest_idx + 1])
+            else:
+                return (route_id, list(reversed(stops[dest_idx : origin_idx + 1])))
+
+    return None
+
+
 def get_path_stops_by_origin_destination(
     origin_station: str, destination_station: str
 ) -> list[str] | None:
@@ -3134,21 +3163,10 @@ def get_path_stops_by_origin_destination(
     Returns:
         List of station codes from origin to destination, or None if no route found
     """
-    for stops in PATH_ROUTE_STOPS.values():
-        # Check if both stations are in this route
-        if origin_station in stops and destination_station in stops:
-            origin_idx = stops.index(origin_station)
-            dest_idx = stops.index(destination_station)
-
-            if origin_idx < dest_idx:
-                # Origin comes before destination - return slice
-                return stops[origin_idx : dest_idx + 1]
-            else:
-                # Origin comes after destination - reverse direction
-                return list(reversed(stops[dest_idx : origin_idx + 1]))
-
-    # No matching route found
-    return None
+    result = get_path_route_and_stops(origin_station, destination_station)
+    if result is None:
+        return None
+    return result[1]
 
 
 def map_path_station_code(transiter_stop_id: str) -> str | None:

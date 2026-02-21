@@ -482,7 +482,7 @@ class TestPathCollectorDiscovery:
             ),
         ]
 
-        result = await collector._discover_trains(mock_session, arrivals)
+        result = await collector._discover_trains(mock_session, arrivals, {})
 
         # Both arrivals should be processed (no longer filtering by station)
         assert result["discovery_arrivals"] == 2
@@ -513,7 +513,7 @@ class TestPathCollectorDiscovery:
             ),
         ]
 
-        result = await collector._discover_trains(mock_session, arrivals)
+        result = await collector._discover_trains(mock_session, arrivals, {})
 
         # Both are at discovery stations but only one is departing
         assert result["discovery_arrivals"] == 2
@@ -537,7 +537,7 @@ class TestPathCollectorDiscovery:
             ),
         ]
 
-        result = await collector._discover_trains(mock_session, arrivals)
+        result = await collector._discover_trains(mock_session, arrivals, {})
 
         # This train should NOT be skipped - it's departing Hoboken
         assert result["new_journeys"] == 1
@@ -555,7 +555,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        created = await collector._process_arrival_for_discovery(mock_session, arrival)
+        created = await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         assert created is True
         mock_session.add.assert_called()
@@ -579,7 +579,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        created = await collector._process_arrival_for_discovery(mock_session, arrival)
+        created = await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         assert created is False
 
@@ -598,7 +598,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival)
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         add_call = mock_session.add.call_args_list[0]
         journey = add_call[0][0]
@@ -621,7 +621,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival)
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         # Get the journey that was added
         journey_add_call = mock_session.add.call_args_list[0]
@@ -652,7 +652,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival)
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         journey_add_call = mock_session.add.call_args_list[0]
         journey = journey_add_call[0][0]
@@ -681,7 +681,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival)
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         # Collect all JourneyStop objects that were added
         stops = [
@@ -720,7 +720,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival)
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
 
         stops = [
             call[0][0]
@@ -764,7 +764,7 @@ class TestPathCollectorDiscovery:
         )
 
         # Process terminus discovery
-        await collector._process_arrival_for_discovery(mock_session, terminus_arrival)
+        await collector._process_arrival_for_discovery(mock_session, terminus_arrival, {})
         terminus_journey = mock_session.add.call_args_list[0][0][0]
         terminus_train_id = terminus_journey.train_id
 
@@ -772,7 +772,7 @@ class TestPathCollectorDiscovery:
         mock_session.reset_mock()
 
         # Process mid-route discovery
-        await collector._process_arrival_for_discovery(mock_session, midroute_arrival)
+        await collector._process_arrival_for_discovery(mock_session, midroute_arrival, {})
         midroute_journey = mock_session.add.call_args_list[0][0][0]
         midroute_train_id = midroute_journey.train_id
 
@@ -1191,7 +1191,7 @@ class TestBatchUpdate:
 
         with patch("trackrat.collectors.path.collector.now_et") as mock_now:
             mock_now.return_value = mock_datetime
-            result = await collector._update_journeys(mock_session, [])
+            result = await collector._update_journeys(mock_session, [], {})
 
         assert result["updated"] == 0
         assert result["completed"] == 0
@@ -2262,7 +2262,7 @@ class TestLineColorFiltering:
                 with patch(
                     "trackrat.collectors.path.collector.now_et", return_value=now
                 ):
-                    await collector._update_journeys(mock_session, arrivals)
+                    await collector._update_journeys(mock_session, arrivals, {})
 
                 # Check that _update_stops_from_arrivals was called
                 if mock_update.called:
