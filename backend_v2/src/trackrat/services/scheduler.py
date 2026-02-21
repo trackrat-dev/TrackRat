@@ -2027,8 +2027,8 @@ class SchedulerService:
                 origin_stop = stop
                 # Convert to ISO8601 string for iOS
                 scheduled_departure_time = (
-                    stop.scheduled_departure.isoformat()
-                    if stop.scheduled_departure
+                    (stop.updated_departure or stop.scheduled_departure).isoformat()
+                    if (stop.updated_departure or stop.scheduled_departure)
                     else None
                 )
                 # Check if departed
@@ -2046,8 +2046,8 @@ class SchedulerService:
                 destination_stop = stop
                 # Convert to ISO8601 string for iOS
                 scheduled_arrival_time = (
-                    stop.scheduled_arrival.isoformat()
-                    if stop.scheduled_arrival
+                    (stop.updated_arrival or stop.scheduled_arrival).isoformat()
+                    if (stop.updated_arrival or stop.scheduled_arrival)
                     else None
                 )
 
@@ -2055,8 +2055,8 @@ class SchedulerService:
         if next_stop:
             # Convert to ISO8601 string for iOS
             next_stop_arrival_time = (
-                next_stop.scheduled_arrival.isoformat()
-                if next_stop.scheduled_arrival
+                (next_stop.updated_arrival or next_stop.scheduled_arrival).isoformat()
+                if (next_stop.updated_arrival or next_stop.scheduled_arrival)
                 else None
             )
 
