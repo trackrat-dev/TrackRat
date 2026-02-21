@@ -1,8 +1,7 @@
 """
 User feedback API endpoint.
 
-Simple endpoint to collect user feedback about data issues.
-Feedback is logged with structured data for easy filtering in GCP Logs Explorer.
+Collects user feedback about data issues and logs it for review.
 """
 
 from datetime import datetime
@@ -39,13 +38,7 @@ class FeedbackResponse(BaseModel):
 
 @router.post("", response_model=FeedbackResponse)
 async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
-    """
-    Submit user feedback about data issues.
-
-    Feedback is logged with structured data for easy filtering:
-    - In GCP Logs Explorer, filter by: jsonPayload.event="user_feedback_submitted"
-    - Or filter by logger: jsonPayload.logger="trackrat.api.feedback"
-    """
+    """Submit user feedback about data accuracy or other issues."""
     logger.info(
         "user_feedback_submitted",
         message=request.message,

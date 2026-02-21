@@ -57,7 +57,12 @@ async def get_route_history(
     highlight_train: str | None = Query(None, description="Train ID to highlight"),
     db: AsyncSession = Depends(get_db),
 ) -> RouteHistoryResponse:
-    """Get historical data for all trains on a route."""
+    """Get aggregate historical performance for all trains on a route.
+
+    Returns on-time percentage, delay breakdown, cancellation rate, and track usage
+    at the origin station. Optionally highlights a specific train for comparison
+    against the route-wide statistics.
+    """
     logger.info(
         "get_route_history_request",
         from_station=from_station,
@@ -291,7 +296,12 @@ async def get_route_congestion(
     force_refresh: bool = Query(False, description="Force bypass cache and recompute"),
     db: AsyncSession = Depends(get_db),
 ) -> CongestionMapResponse:
-    """Get current congestion levels with individual journey segments."""
+    """Get network congestion levels based on recent train performance.
+
+    Analyzes train journeys within a lookback window (minimum 2 hours) and returns
+    per-segment congestion factors, aggregated congestion levels, and live train
+    positions. Results are cached for 10 minutes.
+    """
 
     # Enforce minimum 2-hour window for meaningful congestion data across all systems
     effective_time_window = max(time_window_hours, 2)
@@ -497,7 +507,12 @@ async def get_segment_train_details(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> SegmentTrainDetailsResponse:
-    """Get detailed train records for a specific route segment using on-the-fly calculation."""
+    """Get individual train records for a specific route segment.
+
+    Returns per-train departure/arrival times, delays, and congestion factors
+    for trains that traversed the segment within the specified time window
+    (defaults to the last 2 hours). Filterable by delay status.
+    """
 
     # Default time window to 2 hours ago (longer window for Amtrak long-haul trains)
     if not end_time:

@@ -84,7 +84,11 @@ async def get_departures(
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
-    """Get train departures between stations."""
+    """Get upcoming train departures from a station, optionally filtered by destination.
+
+    Returns cached results for default time parameters. For future dates, falls back
+    to GTFS static schedule data. Supports filtering by data source (NJT, AMTRAK, PATH, PATCO).
+    """
     logger.info(
         "get_departures_request",
         from_station=from_station,
@@ -185,7 +189,12 @@ async def get_train_details(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> TrainDetailsResponse:
-    """Get detailed information for a specific train."""
+    """Get full journey details for a specific train including all stops and times.
+
+    For future dates, returns GTFS static schedule data. For today, refreshes stale
+    data on demand via JIT updates. Optionally includes per-stop arrival predictions
+    and inline track predictions when the boarding station track is unassigned.
+    """
     logger.info(
         "get_train_details_request",
         train_id=train_id,
@@ -441,7 +450,12 @@ async def get_train_history(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> TrainHistoryResponse:
-    """Get historical data for a train."""
+    """Get historical performance data for a specific train over a date range.
+
+    Returns per-journey details, delay breakdown, track usage, and cancellation rates.
+    Optionally includes aggregate statistics for all trains on the same route when
+    from_station, to_station, and include_route_trains are provided.
+    """
     logger.info(
         "get_train_history_request",
         train_id=train_id,
@@ -873,7 +887,7 @@ async def get_occupied_tracks(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> OccupiedTracksResponse:
-    """Get occupied tracks at a station."""
+    """Get currently occupied tracks at a station based on recent train activity."""
     logger.info("get_occupied_tracks_request", station_code=station_code)
 
     from trackrat.services.track_occupancy import track_occupancy_service

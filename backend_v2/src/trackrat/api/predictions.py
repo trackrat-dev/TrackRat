@@ -1,7 +1,7 @@
 """
-Machine Learning platform prediction API endpoints.
+Prediction API endpoints.
 
-Provides ML-based platform predictions for supported stations.
+Provides track predictions and delay forecasts for supported stations.
 """
 
 from datetime import UTC, date
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/api/v2/predictions", tags=["predictions"])
 
 
 class TrackPredictionResponse(BaseModel):
-    """Response model for platform predictions."""
+    """Response model for track predictions."""
 
     platform_probabilities: dict[str, float]
     primary_prediction: str
@@ -43,7 +43,7 @@ class TrackPredictionResponse(BaseModel):
 
 
 class StationMLSupport(BaseModel):
-    """Information about ML prediction support for a station."""
+    """Information about prediction support for a station."""
 
     code: str
     name: str
@@ -66,23 +66,11 @@ async def predict_track(
     journey_date: date = Query(..., description="Date of journey (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
 ) -> TrackPredictionResponse:
-    """
-    Get historical-based track prediction for a train at a station.
+    """Get track prediction for a train at a station.
 
-    Uses hierarchical historical data:
-    1. Exact train ID (if >= 10 records)
-    2. Line code (if >= 25 records)
-    3. Service provider fallback
-
-    Automatically removes occupied tracks and renormalizes probabilities.
-
-    Args:
-        station_code: Station code (e.g., 'NY', 'NP', 'TR')
-        train_id: Train identifier
-        journey_date: Date of the journey
-
-    Returns:
-        Track prediction with probabilities and confidence
+    Returns probability distribution across tracks with a primary prediction and
+    confidence score. Occupied tracks are automatically excluded and probabilities
+    renormalized. Returns 400 for unsupported stations, 404 for insufficient data.
     """
 
     logger.info(
@@ -231,11 +219,10 @@ async def predict_track(
 @router.get("/supported-stations", response_model=SupportedStationsResponse)
 @handle_errors
 async def get_supported_stations() -> SupportedStationsResponse:
-    """
-    Get list of stations that support ML track predictions.
+    """Get list of stations that support track predictions.
 
-    Returns information about which stations have ML predictions available,
-    allowing clients to show/hide prediction features appropriately.
+    Returns each station's prediction availability and track count, allowing
+    clients to show or hide prediction features appropriately.
     """
 
     # Station name mappings
@@ -301,22 +288,12 @@ async def predict_delay(
     journey_date: date = Query(..., description="Date of journey (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
 ) -> DelayForecastResponse:
-    """
-    Get delay and cancellation forecast for a train.
+    """Get delay and cancellation forecast for a train at a boarding station.
 
-    Uses hierarchical historical data with stop-level and origin-level fallbacks.
-    When the user's station differs from the train's origin, stop-level data from
-    journey_stops is tried first for station-specific predictions.
-
-    Adjusts for time-of-day patterns and live congestion.
-
-    Args:
-        train_id: Train identifier
-        station_code: User's boarding station code
-        journey_date: Date of the journey
-
-    Returns:
-        Delay forecast with probabilities and confidence
+    Returns probability distribution across delay categories (on-time, slight,
+    significant, major), cancellation probability, and expected delay minutes.
+    Predictions are station-specific when the boarding station differs from the
+    train's origin. Adjusts for time-of-day patterns and live congestion.
     """
     import time
 

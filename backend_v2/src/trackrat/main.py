@@ -109,7 +109,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # Create FastAPI app
 app = FastAPI(
     title="TrackRat V2 API",
-    description="Simplified train tracking system for NJ Transit",
+    description="Train tracking and forecasting system for NJ Transit, Amtrak, PATH, Metro North, LIRR, and more!",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs",

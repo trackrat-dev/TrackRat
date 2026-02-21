@@ -28,10 +28,10 @@ async def get_validation_status(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """
-    Get validation status and recent results.
+    """Get validation status and recent results.
 
-    Returns coverage metrics, missing trains, and trends over the specified time period.
+    Returns per-route coverage metrics, missing/extra trains, and trends over the
+    specified time period. Overall health is derived from average coverage percentage.
     """
     try:
         # Calculate time window
@@ -174,10 +174,10 @@ async def get_route_validation_details(
     ),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """
-    Get detailed validation results for a specific route and source.
+    """Get detailed validation results for a specific route and source.
 
-    Includes missing train details and accessibility check results.
+    Returns recent validation runs with coverage percentages, train counts,
+    and lists of missing/extra trains.
     """
     try:
         # Query validation results for this route/source

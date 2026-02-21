@@ -25,7 +25,7 @@ router = APIRouter(tags=["health"])
 async def health_check(
     db: AsyncSession = Depends(get_db), settings: Settings = Depends(get_settings)
 ) -> dict[str, Any]:
-    """Comprehensive health check endpoint."""
+    """Comprehensive health check covering database, scheduler, data freshness, and discovery."""
     # Health check logging handled by middleware to reduce noise
 
     health_status: dict[str, Any] = {
@@ -150,7 +150,7 @@ async def liveness_probe() -> dict[str, str]:
 
 @router.get("/health/ready")
 async def readiness_probe(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
-    """Readiness probe to check if service can handle requests."""
+    """Readiness probe that verifies database connectivity and scheduler status."""
     try:
         # Quick database check
         await db.execute(select(1))
@@ -168,6 +168,6 @@ async def readiness_probe(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
 
 @router.get("/scheduler/status")
 async def scheduler_status() -> dict[str, Any]:
-    """Get detailed scheduler status."""
+    """Get detailed scheduler status including job list, run counts, and active tasks."""
     scheduler = get_scheduler()
     return scheduler.get_status()

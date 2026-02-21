@@ -44,7 +44,11 @@ class RegisterResponse(BaseModel):
 async def register_live_activity(
     request: RegisterRequest, db: AsyncSession = Depends(get_db)
 ) -> RegisterResponse:
-    """Register a new Live Activity for tracking."""
+    """Register or update an iOS Live Activity for push notifications.
+
+    If a token already exists, updates the associated train and stations.
+    Registrations expire after 6 hours.
+    """
     # Simple expiration: 6 hours from now
     expires_at = now_et() + timedelta(hours=6)
 
@@ -92,7 +96,7 @@ async def register_live_activity(
 async def unregister_live_activity(
     push_token: str, db: AsyncSession = Depends(get_db)
 ) -> dict[str, str]:
-    """Stop tracking a Live Activity."""
+    """Unregister a Live Activity by push token. Returns 404 if token not found."""
     result = cast(
         CursorResult[tuple[()]],
         await db.execute(
