@@ -1466,10 +1466,14 @@ class TestCancelledStopsDepartureInference:
 
         # Verify NO stop was marked as departed
         all_stops = (
-            await sqlite_session.execute(
-                select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+            (
+                await sqlite_session.execute(
+                    select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for stop in all_stops:
             assert stop.has_departed_station is False, (
@@ -1534,10 +1538,14 @@ class TestCancelledStopsDepartureInference:
 
         # Verify stops WERE marked as departed by Tier 3
         all_stops = (
-            await sqlite_session.execute(
-                select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+            (
+                await sqlite_session.execute(
+                    select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for stop in all_stops:
             assert stop.has_departed_station is True, (

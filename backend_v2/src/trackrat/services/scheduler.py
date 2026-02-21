@@ -1532,7 +1532,9 @@ class SchedulerService:
 
                             # For NJT API, actual times are same as scheduled when DEPARTED = YES
                             # Cancelled stops never physically departed
-                            is_stop_cancelled = (stop_data.STOP_STATUS or "") == "CANCELLED"
+                            is_stop_cancelled = (
+                                stop_data.STOP_STATUS or ""
+                            ) == "CANCELLED"
                             actual_arrival = None
                             actual_departure = None
                             if stop_data.DEPARTED == "YES" and not is_stop_cancelled:

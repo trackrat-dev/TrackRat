@@ -495,12 +495,12 @@ class TestDepartureServiceIntegration:
             f"Cancelled train 3873 should be visible with hide_departed=True, "
             f"got: {train_ids}"
         )
-        assert "3875" in train_ids, (
-            f"Active train 3875 should be visible, got: {train_ids}"
-        )
-        assert "3871" not in train_ids, (
-            f"Departed non-cancelled train 3871 should be hidden, got: {train_ids}"
-        )
+        assert (
+            "3875" in train_ids
+        ), f"Active train 3875 should be visible, got: {train_ids}"
+        assert (
+            "3871" not in train_ids
+        ), f"Departed non-cancelled train 3871 should be hidden, got: {train_ids}"
 
         # Verify the cancelled train has proper cancellation info
         cancelled_dep = next(d for d in response.departures if d.train_id == "3873")
