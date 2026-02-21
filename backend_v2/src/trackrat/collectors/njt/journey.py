@@ -1138,9 +1138,9 @@ class JourneyCollector(BaseJourneyCollector):
             )
         )
         db_departed_result = await session.execute(departed_stmt)
-        db_departed_codes = set(
-            db_departed_result.scalars().all()
-        )
+        db_departed_codes = {
+            c for c in db_departed_result.scalars().all() if c is not None
+        }
 
         # First pass: Find the furthest departed stop for sequential inference.
         # Combines current API flags with DB state to handle NJT's inconsistent
