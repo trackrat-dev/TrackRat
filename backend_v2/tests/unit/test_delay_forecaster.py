@@ -305,7 +305,7 @@ class TestDelayForecaster:
                 forecaster,
                 "_get_data_source_stats",
                 return_value=DelayStats(
-                    sample_count=100,  # Below MIN_DATA_SOURCE_SAMPLES (250)
+                    sample_count=30,  # Below MIN_DATA_SOURCE_SAMPLES (50)
                     cancellation_count=5,
                     on_time_count=70,
                     slight_delay_count=15,
