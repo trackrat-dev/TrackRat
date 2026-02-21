@@ -700,12 +700,19 @@ final class AppState: ObservableObject {
             selectedSystems.remove(system)
         } else {
             selectedSystems.insert(system)
+            // Mutual exclusivity: full Amtrak and NEC-only can't coexist
+            switch system {
+            case .amtrak:    selectedSystems.remove(.amtrakNEC)
+            case .amtrakNEC: selectedSystems.remove(.amtrak)
+            default: break
+            }
         }
     }
 
     /// Select all systems
     func selectAllSystems() {
-        selectedSystems = Set(TrainSystem.allCases)
+        // Exclude .amtrakNEC since .amtrak is its superset
+        selectedSystems = Set(TrainSystem.allCases.filter { $0 != .amtrakNEC })
     }
 
     // MARK: - Map Settings

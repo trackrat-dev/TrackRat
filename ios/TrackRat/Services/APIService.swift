@@ -118,7 +118,7 @@ final class APIService: ObservableObject {
 
         // Add data_sources filter if specified (comma-separated)
         if let dataSources = dataSources, !dataSources.isEmpty {
-            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.commaSeparated))
+            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.apiDataSources))
         }
 
         components.queryItems = queryItems

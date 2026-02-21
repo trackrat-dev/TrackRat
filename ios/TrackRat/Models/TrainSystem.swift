@@ -4,6 +4,7 @@ import Foundation
 enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case njt = "NJT"
     case amtrak = "AMTRAK"
+    case amtrakNEC = "AMTRAK_NEC"
     case path = "PATH"
     case patco = "PATCO"
     case lirr = "LIRR"
@@ -11,11 +12,28 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Backend data source string (e.g. .amtrakNEC shares "AMTRAK")
+    var dataSource: String {
+        switch self {
+        case .amtrakNEC: return "AMTRAK"
+        default: return rawValue
+        }
+    }
+
+    /// Route IDs this system is restricted to, or nil for no restriction
+    var routeIds: [String]? {
+        switch self {
+        case .amtrakNEC: return ["amtrak-nec", "amtrak-keystone"]
+        default: return nil
+        }
+    }
+
     /// Human-readable display name
     var displayName: String {
         switch self {
         case .njt: return "NJ Transit"
         case .amtrak: return "Amtrak"
+        case .amtrakNEC: return "Amtrak (NEC)"
         case .path: return "PATH"
         case .patco: return "PATCO"
         case .lirr: return "LIRR"
@@ -28,6 +46,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .njt: return "New Jersey commuter rail"
         case .amtrak: return "National passenger rail"
+        case .amtrakNEC: return "Northeast Corridor & Keystone"
         case .path: return "NY-NJ rapid transit"
         case .patco: return "Philly-South Jersey"
         case .lirr: return "Long Island commuter rail"
@@ -39,7 +58,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     var icon: String {
         switch self {
         case .njt: return "tram.fill"
-        case .amtrak: return "train.side.front.car"
+        case .amtrak, .amtrakNEC: return "train.side.front.car"
         case .path: return "tram"
         case .patco: return "lightrail.fill"
         case .lirr: return "train.side.rear.car"
@@ -51,7 +70,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     var color: String {
         switch self {
         case .njt: return "#004D6E"   // NJ Transit blue
-        case .amtrak: return "#004B87" // Amtrak blue
+        case .amtrak, .amtrakNEC: return "#004B87" // Amtrak blue
         case .path: return "#FF5722"  // PATH orange
         case .patco: return "#0072CE" // PATCO blue
         case .lirr: return "#0039A6"  // MTA LIRR blue
@@ -91,11 +110,16 @@ extension Set where Element == TrainSystem {
         []
     }
 
-    /// Converts to raw string set for use with Stations filtering
+    /// Deduplicated data source strings for API calls (e.g. both .amtrak and .amtrakNEC → "AMTRAK")
+    var apiDataSources: String {
+        Set<String>(self.map(\.dataSource)).sorted().joined(separator: ",")
+    }
+
+    /// Converts to raw data source string set for use with Stations/route filtering
     var asRawStrings: Set<String> {
         var result = Set<String>()
         for system in self {
-            result.insert(system.rawValue)
+            result.insert(system.dataSource)
         }
         return result
     }
@@ -104,6 +128,21 @@ extension Set where Element == TrainSystem {
 // MARK: - Stations Extensions (TrainSystem-aware wrappers)
 
 extension Stations {
+    /// Cached mapping of route-filtered system rawValues to their allowed station codes.
+    /// For systems like .amtrakNEC that restrict to specific routes.
+    static let routeFilteredStations: [String: Set<String>] = {
+        var result: [String: Set<String>] = [:]
+        for system in TrainSystem.allCases {
+            guard let routeIds = system.routeIds else { continue }
+            var codes = Set<String>()
+            for route in RouteTopology.allRoutes where routeIds.contains(route.id) {
+                codes.formUnion(route.stationCodes)
+            }
+            result[system.rawValue] = codes
+        }
+        return result
+    }()
+
     /// Returns the train systems that serve a given station
     /// Defaults to NJT + Amtrak if not explicitly mapped (most NJT commuter stations)
     static func systemsForStation(_ code: String) -> Set<TrainSystem> {
@@ -114,6 +153,14 @@ extension Stations {
     /// Check if a station should be visible based on selected systems
     /// A station is visible if ANY of the selected systems serve it
     static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>) -> Bool {
-        return isStationVisible(code, withSystemStrings: selectedSystems.asRawStrings)
+        for system in selectedSystems {
+            if let allowedStations = routeFilteredStations[system.rawValue] {
+                if allowedStations.contains(code) { return true }
+            } else {
+                let stationSystems = systemStringsForStation(code)
+                if stationSystems.contains(system.dataSource) { return true }
+            }
+        }
+        return false
     }
 }
