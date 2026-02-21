@@ -381,10 +381,10 @@ async def get_train_details(
     # Compute inline track prediction when track is unassigned at the user's origin
     track_prediction = None
     if include_predictions and from_station:
-        from trackrat.config.station_configs import station_has_ml_predictions
+        from trackrat.config.station_configs import station_has_predictions
 
         from_station_codes = set(expand_station_codes(from_station))
-        if station_has_ml_predictions(from_station):
+        if station_has_predictions(from_station):
             # Check if the origin stop has a track assigned
             origin_stop = next(
                 (s for s in stops if s.station.code in from_station_codes), None

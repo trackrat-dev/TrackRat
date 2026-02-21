@@ -1,11 +1,11 @@
 import Foundation
 
-/// Dynamic service providing ML-based track probability predictions for supported stations
+/// Dynamic service providing track probability predictions for supported stations
 /// Uses platform predictions from the backend and converts them to track probabilities
 class StaticTrackDistributionService {
     static let shared = StaticTrackDistributionService()
 
-    /// Stations that support track predictions (backend has ml_enabled: true for these)
+    /// Stations that support track predictions (backend has predictions_enabled: true for these)
     /// The backend controls the actual list - this is for early filtering to avoid unnecessary API calls
     static let supportedStations: Set<String> = ["NY", "NP", "ND", "HB", "MP", "ST", "TR", "PH", "DV", "DN", "PL", "LB", "JA", "JAM", "GCT"]
 

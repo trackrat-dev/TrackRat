@@ -1,17 +1,17 @@
 """
-Station-specific configurations for ML track predictions.
+Station-specific configurations for track predictions.
 
-This module defines which stations support ML predictions and their track configurations.
+This module defines which stations support track predictions and their track configurations.
 """
 
 from typing import Any
 
-# Station configurations for ML track predictions
+# Station configurations for track predictions
 # Note: Stations with platform_mappings group adjacent tracks sharing an island platform.
 # Currently NY (Penn Station) and GCT (Grand Central) have platform groupings.
-STATION_ML_CONFIGS = {
+STATION_PREDICTION_CONFIGS = {
     "NY": {
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": [
             "1",
             "2",
@@ -60,17 +60,17 @@ STATION_ML_CONFIGS = {
         },
     },
     "NP": {  # Newark Penn - 761 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2", "3", "4", "5", "A"],
         "platform_mappings": None,  # Track = Platform
     },
     "ND": {  # 565 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2", "3"],
         "platform_mappings": None,
     },
     "HB": {  # Hoboken - 389 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": [
             "1",
             "2",
@@ -93,57 +93,57 @@ STATION_ML_CONFIGS = {
         "platform_mappings": None,
     },
     "MP": {  # Metropark - 369 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "4"],
         "platform_mappings": None,
     },
     "ST": {  # 349 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["0", "1", "2", "W"],
         "platform_mappings": None,
     },
     "TR": {  # Trenton - 338 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2", "4", "5"],
         "platform_mappings": None,
     },
     "PH": {  # Princeton/Philadelphia? - 275 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["2", "3", "4", "5", "6", "7", "9"],
         "platform_mappings": None,
     },
     "DV": {  # 249 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2", "Sing+"],
         "platform_mappings": None,
     },
     "DN": {  # 137 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "PL": {  # 132 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "LB": {  # 118 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "JA": {  # Jersey Avenue (NJT) - 113 records
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["1", "2"],
         "platform_mappings": None,
     },
     "JAM": {  # Jamaica (LIRR) - busiest junction in the system
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": ["2", "6", "7", "8", "11", "12"],
         "platform_mappings": None,
     },
     "GCT": {  # Grand Central - MNR Terminal (tracks 13-114) + LIRR Madison (tracks 201-304)
-        "ml_enabled": True,
+        "predictions_enabled": True,
         "tracks": [
             # MNR Grand Central Terminal
             "13",
@@ -227,7 +227,7 @@ STATION_ML_CONFIGS = {
     },
     # Default configuration for stations not explicitly listed
     "_default": {
-        "ml_enabled": False,
+        "predictions_enabled": False,
         "tracks": [],
         "platform_mappings": None,
     },
@@ -236,7 +236,7 @@ STATION_ML_CONFIGS = {
 
 def get_station_config(station_code: str) -> dict[str, Any]:
     """
-    Get ML configuration for a station.
+    Get prediction configuration for a station.
 
     Args:
         station_code: Station code (e.g., 'NY', 'NP')
@@ -244,21 +244,13 @@ def get_station_config(station_code: str) -> dict[str, Any]:
     Returns:
         Dictionary with station configuration
     """
-    return STATION_ML_CONFIGS.get(station_code, STATION_ML_CONFIGS["_default"])
+    return STATION_PREDICTION_CONFIGS.get(station_code, STATION_PREDICTION_CONFIGS["_default"])
 
 
-def station_has_ml_predictions(station_code: str) -> bool:
-    """
-    Check if station has ML predictions enabled.
-
-    Args:
-        station_code: Station code (e.g., 'NY', 'NP')
-
-    Returns:
-        True if ML predictions are enabled for this station
-    """
+def station_has_predictions(station_code: str) -> bool:
+    """Check if station has track predictions enabled."""
     config = get_station_config(station_code)
-    return bool(config["ml_enabled"])
+    return bool(config["predictions_enabled"])
 
 
 def get_platform_for_track(station_code: str, track: str) -> str:
@@ -295,15 +287,10 @@ def get_tracks_for_station(station_code: str) -> list[str]:
     return list(config.get("tracks", []))
 
 
-def get_ml_enabled_stations() -> list[str]:
-    """
-    Get list of all stations with ML predictions enabled.
-
-    Returns:
-        List of station codes that have ML enabled
-    """
+def get_prediction_enabled_stations() -> list[str]:
+    """Get list of all stations with track predictions enabled."""
     return [
         code
-        for code, config in STATION_ML_CONFIGS.items()
-        if code != "_default" and config.get("ml_enabled", False)
+        for code, config in STATION_PREDICTION_CONFIGS.items()
+        if code != "_default" and config.get("predictions_enabled", False)
     ]

@@ -14,9 +14,9 @@ from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
 from trackrat.config.station_configs import (
-    STATION_ML_CONFIGS,
+    STATION_PREDICTION_CONFIGS,
     get_tracks_for_station,
-    station_has_ml_predictions,
+    station_has_predictions,
 )
 from trackrat.db.engine import get_db
 from trackrat.models.api import DelayBreakdownProbabilities, DelayForecastResponse
@@ -42,20 +42,20 @@ class TrackPredictionResponse(BaseModel):
     features_used: dict[str, Any] | None = None
 
 
-class StationMLSupport(BaseModel):
+class StationPredictionSupport(BaseModel):
     """Information about prediction support for a station."""
 
     code: str
     name: str
-    ml_predictions_available: bool
+    predictions_available: bool
     track_count: int | None = None
 
 
 class SupportedStationsResponse(BaseModel):
     """Response model for supported stations endpoint."""
 
-    stations: list[StationMLSupport]
-    total_ml_enabled: int
+    stations: list[StationPredictionSupport]
+    total_predictions_enabled: int
 
 
 @router.get("/track", response_model=TrackPredictionResponse)
@@ -81,7 +81,7 @@ async def predict_track(
     )
 
     # Check if station supports predictions (for now, keep this check)
-    if not station_has_ml_predictions(station_code):
+    if not station_has_predictions(station_code):
         raise HTTPException(
             status_code=400,
             detail=f"Track predictions not available for station {station_code}",
@@ -245,22 +245,22 @@ async def get_supported_stations() -> SupportedStationsResponse:
     }
 
     stations = []
-    ml_enabled_count = 0
+    predictions_enabled_count = 0
 
-    for code, config in STATION_ML_CONFIGS.items():
+    for code, config in STATION_PREDICTION_CONFIGS.items():
         if code == "_default":
             continue
 
-        ml_enabled = config.get("ml_enabled", False)
-        if ml_enabled:
-            ml_enabled_count += 1
+        enabled = config.get("predictions_enabled", False)
+        if enabled:
+            predictions_enabled_count += 1
 
         stations.append(
-            StationMLSupport(
+            StationPredictionSupport(
                 code=code,
                 name=STATION_NAMES.get(code, code),
-                ml_predictions_available=ml_enabled,
-                track_count=len(get_tracks_for_station(code)) if ml_enabled else None,
+                predictions_available=enabled,
+                track_count=len(get_tracks_for_station(code)) if enabled else None,
             )
         )
 
@@ -270,11 +270,11 @@ async def get_supported_stations() -> SupportedStationsResponse:
     logger.info(
         "supported_stations_requested",
         total_stations=len(stations),
-        ml_enabled=ml_enabled_count,
+        predictions_enabled=predictions_enabled_count,
     )
 
     return SupportedStationsResponse(
-        stations=stations, total_ml_enabled=ml_enabled_count
+        stations=stations, total_predictions_enabled=predictions_enabled_count
     )
 
 
