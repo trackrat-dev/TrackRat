@@ -198,19 +198,39 @@ def fetch_ridepath_arrivals(client: httpx.Client) -> tuple[list[GroundTruthArriv
 # --- Fetch ground truth from NJ Transit ---
 
 
+def _create_njt_client():
+    """Create NJTransitClient without requiring full backend Settings.
+
+    NJTransitClient.__init__ needs a Settings object which requires DATABASE_URL
+    and other backend config. Since the validation script only needs the NJT API,
+    we construct the client manually with just base_url, token, and _client.
+    """
+    from trackrat.collectors.njt.client import NJTransitClient
+
+    token = os.environ["TRACKRAT_NJT_API_TOKEN"]
+    client = object.__new__(NJTransitClient)
+    client.base_url = "https://raildata.njtransit.com/api"
+    client.token = token
+    client._client = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0),
+        follow_redirects=True,
+        transport=httpx.AsyncHTTPTransport(retries=3, verify=True),
+        limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
+    )
+    return client
+
+
 def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
     """Fetch ground truth departures from NJ Transit API.
 
     Polls DISCOVERY_STATIONS using NJTransitClient.get_train_schedule_with_stops().
     Requires TRACKRAT_NJT_API_TOKEN env var.
     """
-    from trackrat.collectors.njt.client import NJTransitClient
-
     arrivals: list[GroundTruthArrival] = []
     seen: set[tuple[str, str]] = set()  # (train_id, station_code) dedup
 
     async def _fetch() -> list[GroundTruthArrival]:
-        async with NJTransitClient() as client:
+        async with _create_njt_client() as client:
             for station_code in DISCOVERY_STATIONS:
                 try:
                     data = await client.get_train_schedule_with_stops(station_code)
