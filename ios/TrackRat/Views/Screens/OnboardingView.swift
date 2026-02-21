@@ -691,10 +691,11 @@ struct StationPickerSheet: View {
         }
 
         if searchText.isEmpty {
-            // Show NY Penn Station first (if visible), then all others alphabetically
-            let nyPenn = allStations.first { $0.code == "NY" }
-            let otherStations = allStations.filter { $0.code != "NY" }.sorted { $0.name < $1.name }
-            return [nyPenn].compactMap { $0 } + otherStations
+            // Show popular stations first (if visible), then all others alphabetically
+            let pinnedCodes = ["NY", "GCT", "PWC", "HB"]
+            let pinned = pinnedCodes.compactMap { code in allStations.first { $0.code == code } }
+            let otherStations = allStations.filter { !pinnedCodes.contains($0.code) }.sorted { $0.name < $1.name }
+            return pinned + otherStations
         } else {
             return allStations.filter { station in
                 station.name.localizedCaseInsensitiveContains(searchText) ||
