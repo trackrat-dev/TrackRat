@@ -429,9 +429,29 @@ class NJTScheduleCollector:
             delete(JourneyStop).where(JourneyStop.journey_id == journey.id)
         )
 
+        # Deduplicate stops by station code (NJT API sometimes returns duplicates)
+        api_stops = train_data.STOPS
+        station_codes = [s.STATION_2CHAR for s in api_stops if s.STATION_2CHAR]
+        duplicate_stations = {c for c in station_codes if station_codes.count(c) > 1}
+        if duplicate_stations:
+            logger.warning(
+                "api_response_contains_duplicate_stations",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                duplicates=list(duplicate_stations),
+                total_stops=len(api_stops),
+            )
+            seen: set[str] = set()
+            filtered = []
+            for s in api_stops:
+                if s.STATION_2CHAR not in seen:
+                    seen.add(s.STATION_2CHAR)
+                    filtered.append(s)
+            api_stops = filtered
+
         # Add all the stops from the API
         stops = []
-        for idx, stop in enumerate(train_data.STOPS):
+        for idx, stop in enumerate(api_stops):
             # Parse times
             scheduled_arrival = (
                 parse_njt_time(stop.SCHED_ARR_DATE) if stop.SCHED_ARR_DATE else None
