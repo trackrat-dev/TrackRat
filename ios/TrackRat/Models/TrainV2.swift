@@ -289,6 +289,9 @@ struct TrainV2: Identifiable, Codable {
     
     // Check if train has already departed from the specified station
     func hasAlreadyDeparted(fromStationCode: String) -> Bool {
+        // Cancelled trains never physically departed — keep them visible
+        if isCancelled { return false }
+
         let now = Date()
         
         // First priority: Use existing stop data method (most accurate)

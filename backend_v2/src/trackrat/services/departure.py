@@ -6,7 +6,7 @@ import time
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -176,8 +176,15 @@ class DepartureService:
 
         # PERFORMANCE: Filter out trains that have already departed from origin station
         # This reduces payload size significantly when using hide_departed=true
+        # Always show cancelled trains — users need to see cancellations even if
+        # the stop was time-inferred as "departed" (cancelled trains never ran)
         if hide_departed:
-            departure_filters.append(JourneyStop.has_departed_station.is_(False))
+            departure_filters.append(
+                or_(
+                    JourneyStop.has_departed_station.is_(False),
+                    TrainJourney.is_cancelled.is_(True),
+                )
+            )
 
         # PERFORMANCE: Track timing for observability
         perf_start = time.perf_counter()
@@ -888,9 +895,16 @@ class DepartureService:
             departed = (stop_data.get("DEPARTED") or "").upper() or None
             stop.raw_njt_departed_flag = departed
 
+            # Cancelled stops never physically departed
+            stop_status = (stop_data.get("STOP_STATUS") or "").upper()
+            is_stop_cancelled = stop_status == "CANCELLED"
+
+            if is_stop_cancelled:
+                if not stop.has_departed_station:
+                    stop.has_departed_station = False
             # Never mark as departed if scheduled departure is in the future
             # This prevents stale NJT data from incorrectly marking future trains as departed
-            if stop.scheduled_departure and stop.scheduled_departure > now_et():
+            elif stop.scheduled_departure and stop.scheduled_departure > now_et():
                 stop.has_departed_station = False
                 if departed == "YES":
                     logger.debug(

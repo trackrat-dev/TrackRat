@@ -1531,9 +1531,11 @@ class SchedulerService:
                             )
 
                             # For NJT API, actual times are same as scheduled when DEPARTED = YES
+                            # Cancelled stops never physically departed
+                            is_stop_cancelled = (stop_data.STOP_STATUS or "") == "CANCELLED"
                             actual_arrival = None
                             actual_departure = None
-                            if stop_data.DEPARTED == "YES":
+                            if stop_data.DEPARTED == "YES" and not is_stop_cancelled:
                                 actual_arrival = scheduled_arrival
                                 actual_departure = scheduled_departure
 
@@ -1550,8 +1552,10 @@ class SchedulerService:
                                 track_assigned_at=now_et() if stop_data.TRACK else None,
                                 raw_njt_departed_flag=stop_data.DEPARTED,
                                 # Time validation: Never mark as departed if scheduled time is in future
+                                # Cancelled stops never departed regardless of DEPARTED flag
                                 has_departed_station=(
                                     stop_data.DEPARTED == "YES"
+                                    and not is_stop_cancelled
                                     and (
                                         not scheduled_departure
                                         or scheduled_departure <= now_et()
@@ -1568,9 +1572,12 @@ class SchedulerService:
                             )
                         )
 
-                        # Calculate completed stops
+                        # Calculate completed stops (exclude cancelled stops)
                         completed_stops = sum(
-                            1 for stop in train_data.STOPS if stop.DEPARTED == "YES"
+                            1
+                            for stop in train_data.STOPS
+                            if stop.DEPARTED == "YES"
+                            and (stop.STOP_STATUS or "") != "CANCELLED"
                         )
 
                         # Extract track assignments
