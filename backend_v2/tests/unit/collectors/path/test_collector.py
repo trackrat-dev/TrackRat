@@ -88,6 +88,24 @@ class TestGetLineInfoFromHeadsign:
         code, name, color = _get_line_info_from_headsign("Journal Square")
         assert code == "JSQ-33"
 
+    def test_33rd_street_via_hoboken_headsign(self):
+        """Test '33rd Street via Hoboken' returns JSQ-33H line, not HOB-33."""
+        code, name, color = _get_line_info_from_headsign("33rd Street via Hoboken")
+        assert code == "JSQ-33H", f"Expected JSQ-33H but got {code}"
+        assert "via Hoboken" in name
+        assert color == "#ff9900"
+
+    def test_journal_square_via_hoboken_headsign(self):
+        """Test 'Journal Square via Hoboken' returns JSQ-33H line, not HOB-33."""
+        code, name, color = _get_line_info_from_headsign("Journal Square via Hoboken")
+        assert code == "JSQ-33H", f"Expected JSQ-33H but got {code}"
+        assert "via Hoboken" in name
+
+    def test_plain_hoboken_still_hob33(self):
+        """Test plain 'Hoboken' still returns HOB-33 (not affected by via hoboken entry)."""
+        code, name, color = _get_line_info_from_headsign("Hoboken")
+        assert code == "HOB-33", f"Expected HOB-33 but got {code}"
+
     def test_unknown_headsign_fallback(self):
         """Test unknown headsign returns generic PATH line."""
         code, name, color = _get_line_info_from_headsign("Unknown Destination")
@@ -199,6 +217,11 @@ class TestNormalizeHeadsign:
         assert _normalize_headsign("33rd Street") == "33rd_street"
         assert _normalize_headsign("33rd Street via Hoboken") == "33rd_street"
         assert _normalize_headsign("33 St") == "33rd_street"
+
+    def test_journal_square_via_hoboken(self):
+        """Test 'Journal Square via Hoboken' normalizes to journal_square, not hoboken."""
+        result = _normalize_headsign("Journal Square via Hoboken")
+        assert result == "journal_square", f"Expected journal_square but got {result}"
 
     def test_terminal_stations(self):
         """Test terminal station headsign normalization."""
@@ -424,6 +447,11 @@ class TestPathCollectorDiscovery:
         """Create a mock database session."""
         session = AsyncMock()
         session.scalar = AsyncMock(return_value=None)
+        # _find_matching_journey uses session.scalars() which returns
+        # an object with .all() — mock it to return empty list (no match)
+        mock_scalars_obj = MagicMock()
+        mock_scalars_obj.all.return_value = []
+        session.scalars = AsyncMock(return_value=mock_scalars_obj)
         session.add = MagicMock()
         session.flush = AsyncMock()
         return session

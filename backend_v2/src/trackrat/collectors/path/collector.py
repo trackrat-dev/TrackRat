@@ -57,6 +57,7 @@ HEADSIGN_TO_STATION_MAP: dict[str, str] = {
 
 # Mapping from headsign to line info (line_code, line_name, line_color)
 HEADSIGN_TO_LINE_INFO: dict[str, tuple[str, str, str]] = {
+    "via hoboken": ("JSQ-33H", "Journal Square - 33rd Street via Hoboken", "#ff9900"),
     "hoboken": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
     "33rd street": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
     "33rd st": ("HOB-33", "Hoboken - 33rd Street", "#4d92fb"),
@@ -188,12 +189,12 @@ def _normalize_headsign(headsign: str) -> str:
         return "world_trade_center"
     if "33rd" in h or "33 st" in h or "33s" in h:
         return "33rd_street"
+    if "journal" in h:
+        return "journal_square"
     if "hoboken" in h:
         return "hoboken"
     if "newark" in h:
         return "newark"
-    if "journal" in h:
-        return "journal_square"
     if "grove" in h:
         return "grove_street"
     if "harrison" in h:
@@ -679,7 +680,6 @@ class PathCollector:
                     TrainJourney.journey_date == journey_date,
                     TrainJourney.line_code == line_code,
                     TrainJourney.origin_station_code == origin_station,
-                    TrainJourney.destination == destination,
                     TrainJourney.scheduled_departure >= time_min,
                     TrainJourney.scheduled_departure <= time_max,
                 )
@@ -687,8 +687,15 @@ class PathCollector:
             .with_for_update(skip_locked=True)
         )
 
-        result = await session.scalar(stmt)
-        return result if isinstance(result, TrainJourney) else None
+        candidates = (await session.scalars(stmt)).all()
+
+        # Filter by normalized destination to handle headsign variants
+        normalized_dest = _normalize_headsign(destination)
+        for candidate in candidates:
+            if _normalize_headsign(candidate.destination) == normalized_dest:
+                return candidate
+
+        return None
 
     # =========================================================================
     # PHASE 2: UPDATES
