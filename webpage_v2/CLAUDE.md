@@ -4,14 +4,14 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 5.5
-- **Build Tool**: Vite 7.2 (fast dev server, optimized builds)
-- **Styling**: Tailwind CSS 3.4 (utility-first, custom design system)
+- **Framework**: React 19.2 + TypeScript 5.5 + PWA (vite-plugin-pwa)
+- **Build Tool**: Vite 7.3 (fast dev server, optimized builds)
+- **Styling**: Tailwind CSS 4.1 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 6.30
+- **Routing**: React Router DOM 7.13
 - **Date Handling**: date-fns 4.1
 - **HTTP Client**: Native `fetch` (no axios)
-- **Deployment**: GitHub Pages (automated via Actions)
+- **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)
 
 ## Architecture Patterns
 
@@ -130,7 +130,7 @@ webpage_v2/
 │       └── formatting.ts   # Text/color utilities
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
-├── vite.config.ts         # Build config (GitHub Pages base path)
+├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
 └── tailwind.config.js     # Design system tokens
 ```
 
@@ -141,7 +141,7 @@ webpage_v2/
 - `/train/:trainId/:from?/:to?` - Train details with stops
 - `/favorites` - Manage favorite stations
 
-**Base Path**: `/TrackRat/` (for GitHub Pages hosting)
+**Base Path**: `/` (hosted at `trackrat.net`)
 
 ## Development Workflow
 
@@ -159,10 +159,10 @@ npm run preview    # Preview production build locally
 ```
 
 ### Deployment
-- **Automatic**: Push to `main` branch triggers GitHub Actions
-- **Workflow**: `.github/workflows/deploy-webpage.yml`
-- **Output**: `dist/` → `gh-pages` branch
-- **URL**: `https://bokonon1.github.io/TrackRat/`
+- **Manual**: Run `./scripts/deploy-webpage.sh` from repo root
+- **Dry run**: `./scripts/deploy-webpage.sh --dry-run` to preview changes
+- **Target**: `gs://trackrat-links-2caf78c68fded156/` → `https://trackrat.net`
+- **Cache**: `index.html` and service worker get `no-cache`; hashed assets get `max-age=1yr`
 
 ## Common Patterns
 
@@ -210,7 +210,6 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
-- **No PWA** - No service worker, no offline mode
 - **No Push Notifications** - Browser notifications not implemented
 - **No Maps** - No Leaflet/Mapbox integration
 - **No Charts** - No historical performance visualization
@@ -343,19 +342,17 @@ interface PlatformPrediction {
 | **Real-time Updates** | 30s polling + push | 30s polling |
 | **Notifications** | APNs/FCM push | None |
 | **Live Activities** | WidgetKit/Widgets | None |
-| **Offline Mode** | Core Data cache | None |
+| **Offline Mode** | Core Data cache | PWA service worker (Workbox) |
 | **Maps** | MapKit/Google Maps | None |
 | **Background Refresh** | Yes | No |
-| **Install** | App Store | Browser bookmark |
+| **Install** | App Store | PWA install prompt |
 | **Auth** | Potential | None |
 
 ## Future Enhancements (Not Planned for MVP)
 
-- Service Worker for offline mode
 - WebSocket for real-time updates
 - Browser push notifications
 - Historical performance charts
 - Network congestion visualization
-- Progressive Web App (PWA) manifest
 - Code splitting for faster initial load
 - Automated testing suite

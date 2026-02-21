@@ -228,9 +228,8 @@ npm run build        # TypeScript compile + Vite build
 npm run preview      # Preview production build locally
 ```
 
-**Deployment:** Automatic via GitHub Actions on push to `main`
-- Workflow: `.github/workflows/deploy-webpage.yml`
-- Output: Deployed to GitHub Pages at `https://bokonon1.github.io/TrackRat/`
+**Deployment:** Manual via `./scripts/deploy-webpage.sh` (syncs to GCS → `https://trackrat.net`)
+- Dry run: `./scripts/deploy-webpage.sh --dry-run`
 
 ### Infrastructure Management
 ```bash
