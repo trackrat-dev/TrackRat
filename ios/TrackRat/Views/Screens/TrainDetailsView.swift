@@ -250,13 +250,13 @@ struct CombinedDetailsCard: View {
     private var shouldShowJourneyPredictions: Bool {
         return displayableTrainStops.contains { stop in
             guard let predictedArrival = stop.predictedArrival,
-                  let scheduledArrival = stop.scheduledArrival,
+                  let bestKnown = stop.bestKnownArrival,
                   let samples = stop.predictedArrivalSamples,
                   samples > 0,
                   !stop.hasDepartedStation else {
                 return false
             }
-            return predictedArrival.timeIntervalSince(scheduledArrival) > 240
+            return predictedArrival.timeIntervalSince(bestKnown) > 240
         }
     }
     
@@ -682,11 +682,11 @@ struct StopRowV2: View {
             
             // Show prediction if available and samples > 0
             if let predictedArrival = stop.predictedArrival,
-               let scheduledArrival = stop.scheduledArrival,
+               let bestKnown = stop.bestKnownArrival,
                let samples = stop.predictedArrivalSamples,
                samples > 0,
                !stop.hasDepartedStation,
-               predictedArrival.timeIntervalSince(scheduledArrival) > 240,
+               predictedArrival.timeIntervalSince(bestKnown) > 240,
                shouldShowJourneyPredictions {
                 HStack(spacing: 4) {
                     Text("🐀✨")
@@ -694,7 +694,7 @@ struct StopRowV2: View {
                     Text(DateFormatter.easternTimeShort.string(from: predictedArrival))
                         .font(.caption)
                         .fontWeight(.medium)
-                        .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.scheduledArrival))
+                        .foregroundColor(predictionDelayColor(predicted: predictedArrival, scheduled: stop.bestKnownArrival))
                 }
                 .frame(maxHeight: .infinity, alignment: .center)
                 .onTapGesture {

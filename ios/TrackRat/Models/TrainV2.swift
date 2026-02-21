@@ -440,6 +440,11 @@ struct StopV2: Identifiable, Codable {
         "\(stationCode)-\(sequence)"
     }
     
+    /// The most accurate arrival time available: actual > updated > scheduled.
+    var bestKnownArrival: Date? {
+        actualArrival ?? updatedArrival ?? scheduledArrival
+    }
+
     // Computed delay based on updated vs scheduled times
     var delayMinutes: Int {
         if let updated = updatedDeparture ?? updatedArrival,
