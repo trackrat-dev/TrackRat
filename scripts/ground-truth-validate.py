@@ -318,7 +318,27 @@ def compare_route(
 # --- Main ---
 
 
-def run_path_validation(base_url: str, tolerance: int) -> None:
+def _deduplicated_route_directions(routes: list) -> list[tuple[str, str, str]]:
+    """Build unique (origin, terminal, label) tuples from routes, avoiding duplicate station pairs."""
+    seen: set[tuple[str, str]] = set()
+    directions: list[tuple[str, str, str]] = []
+    for route in routes:
+        stations = list(route.stations)
+        if len(stations) < 2:
+            continue
+        origin, terminal = stations[0], stations[-1]
+        for from_st, to_st in [(origin, terminal), (terminal, origin)]:
+            if (from_st, to_st) in seen:
+                continue
+            seen.add((from_st, to_st))
+            from_name = get_station_name(from_st)
+            to_name = get_station_name(to_st)
+            label = f"{from_name} -> {to_name} ({from_st} -> {to_st})"
+            directions.append((from_st, to_st, label))
+    return directions
+
+
+def run_path_validation(base_url: str, tolerance: int, verbose: bool = False) -> None:
     """Run ground truth validation for PATH."""
     et = timezone(timedelta(hours=-5))
     now_et = datetime.now(et)
@@ -340,83 +360,107 @@ def run_path_validation(base_url: str, tolerance: int) -> None:
             return
         print(f"Note: Fetched {len(gt_arrivals)} arrivals from RidePATH API")
 
+        if verbose:
+            print(f"\n{BOLD}--- Ground Truth Arrivals ---{NC}")
+            for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+                time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+                print(
+                    f"  {a.station_code} -> {a.destination_code}  "
+                    f'{time_str} ({a.minutes_away}min)  "{a.headsign}"  color={a.line_color}'
+                )
+
         # Check staleness
         if oldest_updated:
             staleness = (datetime.now(timezone.utc) - oldest_updated.astimezone(timezone.utc)).total_seconds()
             if staleness > 120:
                 log_warn(f"RidePATH data may be stale (oldest update: {int(staleness)}s ago)")
 
-        # 2. Get PATH routes and test each direction
+        # 2. Get PATH routes and test each direction (deduplicated)
         routes = get_routes_for_data_source("PATH")
+        directions = _deduplicated_route_directions(routes)
         route_directions_tested = 0
 
-        for route in routes:
-            stations = list(route.stations)
-            if len(stations) < 2:
+        for from_st, to_st, label in directions:
+            # Filter GT arrivals for this direction
+            relevant_gt = [
+                a for a in gt_arrivals if a.station_code == from_st and a.destination_code == to_st
+            ]
+
+            if not relevant_gt:
+                print(f"\n{YELLOW}--- {label} ---{NC}")
+                log_skip(f"No ground truth arrivals at {from_st} heading to {to_st}")
+                route_directions_tested += 1
                 continue
 
-            origin = stations[0]
-            terminal = stations[-1]
+            # Fetch TrackRat departures
+            tr_departures = fetch_trackrat_departures(client, base_url, from_st, to_st)
 
-            # Test both directions: origin->terminal and terminal->origin
-            for from_st, to_st in [(origin, terminal), (terminal, origin)]:
-                from_name = get_station_name(from_st)
-                to_name = get_station_name(to_st)
-                label = f"{from_name} -> {to_name} ({from_st} -> {to_st})"
+            print(f"\n{YELLOW}--- {label} ---{NC}")
 
-                # Filter GT arrivals for this direction
-                relevant_gt = [
-                    a for a in gt_arrivals if a.station_code == from_st and a.destination_code == to_st
-                ]
-
-                if not relevant_gt:
-                    print(f"\n{YELLOW}--- {label} ---{NC}")
-                    log_skip(f"No ground truth arrivals at {from_st} heading to {to_st}")
-                    route_directions_tested += 1
-                    continue
-
-                # Fetch TrackRat departures
-                tr_departures = fetch_trackrat_departures(client, base_url, from_st, to_st)
-
-                print(f"\n{YELLOW}--- {label} ---{NC}")
-
-                result = compare_route(gt_arrivals, tr_departures, from_st, to_st, tolerance)
-                route_directions_tested += 1
-
-                # Report matches
-                for m in result.matches:
-                    time_str = m.gt.expected_time.astimezone(et).strftime("%H:%M")
-                    log_pass(
-                        f'Train "{m.gt.headsign}" @ {time_str} matched '
-                        f"({chr(0x394)} {format_delta(m.delta_seconds)})"
+            if verbose:
+                print(f"  GT arrivals: {len(relevant_gt)}, TR departures: {len(tr_departures)}")
+                for tr in sorted(tr_departures, key=lambda x: x.departure_time):
+                    time_str = tr.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    print(
+                        f"    TR: {time_str}  {tr.train_id}  "
+                        f"line={tr.line_code}  obs={tr.observation_type}"
                     )
 
-                # Report arriving-but-unmatched (gray zone)
-                for gt in result.arriving_unmatched:
-                    time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
-                    log_warn(
-                        f'Train "{gt.headsign}" @ {time_str} (arriving) not matched '
-                        f"(may have already departed)"
-                    )
+            result = compare_route(gt_arrivals, tr_departures, from_st, to_st, tolerance)
+            route_directions_tested += 1
 
-                # Report missing
-                for gt in result.missing:
-                    time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
-                    log_fail(
-                        f'Train "{gt.headsign}" @ {time_str} ({gt.minutes_away} min away) '
-                        f"not found in TrackRat"
-                    )
+            # Report matches
+            for m in result.matches:
+                time_str = m.gt.expected_time.astimezone(et).strftime("%H:%M")
+                detail = ""
+                if verbose:
+                    tr_time = m.tr.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    detail = f" -> {m.tr.train_id} @ {tr_time} ({m.tr.observation_type})"
+                log_pass(
+                    f'Train "{m.gt.headsign}" @ {time_str} matched '
+                    f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}"
+                )
 
-                # Report phantoms (only OBSERVED trains or those departing within the
-                # RidePATH window ~30min; SCHEDULED trains further out are expected noise)
-                now_utc = datetime.now(timezone.utc)
-                phantom_window = timedelta(minutes=35)
-                for tr in result.phantoms:
-                    time_str = tr.departure_time.astimezone(et).strftime("%H:%M")
-                    is_near = abs((tr.departure_time - now_utc).total_seconds()) < phantom_window.total_seconds()
-                    if tr.observation_type == "OBSERVED" or is_near:
-                        log_warn(f"TrackRat train {tr.train_id} @ {time_str} has no ground truth match")
-                    # Silently skip far-future SCHEDULED trains
+            # Report arriving-but-unmatched (gray zone)
+            for gt in result.arriving_unmatched:
+                time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
+                log_warn(
+                    f'Train "{gt.headsign}" @ {time_str} (arriving) not matched '
+                    f"(may have already departed)"
+                )
+
+            # Report missing
+            for gt in result.missing:
+                time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
+                # In verbose mode, show nearest TrackRat departure for debugging
+                detail = ""
+                if verbose and tr_departures:
+                    nearest = min(
+                        tr_departures,
+                        key=lambda tr: abs((tr.departure_time - gt.expected_time).total_seconds()),
+                    )
+                    nearest_delta = int((nearest.departure_time - gt.expected_time).total_seconds())
+                    nearest_time = nearest.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    detail = (
+                        f"Nearest TR: {nearest.train_id} @ {nearest_time} "
+                        f"({chr(0x394)} {format_delta(abs(nearest_delta))}, {nearest.observation_type})"
+                    )
+                log_fail(
+                    f'Train "{gt.headsign}" @ {time_str} ({gt.minutes_away} min away) '
+                    f"not found in TrackRat",
+                    detail=detail,
+                )
+
+            # Report phantoms (only OBSERVED trains or those departing within the
+            # RidePATH window ~30min; SCHEDULED trains further out are expected noise)
+            now_utc = datetime.now(timezone.utc)
+            phantom_window = timedelta(minutes=35)
+            for tr in result.phantoms:
+                time_str = tr.departure_time.astimezone(et).strftime("%H:%M")
+                is_near = abs((tr.departure_time - now_utc).total_seconds()) < phantom_window.total_seconds()
+                if tr.observation_type == "OBSERVED" or is_near:
+                    log_warn(f"TrackRat train {tr.train_id} @ {time_str} has no ground truth match")
+                # Silently skip far-future SCHEDULED trains
 
     finally:
         client.close()
@@ -457,13 +501,18 @@ def main() -> None:
     parser.add_argument(
         "--tolerance",
         type=int,
-        default=5,
-        help="Matching tolerance in minutes (default: 5)",
+        default=3,
+        help="Matching tolerance in minutes (default: 3)",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show raw GT arrivals, TR departures, and nearest-match details on FAILs",
     )
     args = parser.parse_args()
 
     if args.provider == "PATH":
-        run_path_validation(args.base_url, args.tolerance)
+        run_path_validation(args.base_url, args.tolerance, verbose=args.verbose)
     else:
         print(f"{RED}FAIL{NC} Unsupported provider: {args.provider}")
         sys.exit(1)
