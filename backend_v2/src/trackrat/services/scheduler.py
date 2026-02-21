@@ -2479,9 +2479,15 @@ class SchedulerService:
 
                 from trackrat.services.api_cache import ApiCacheService
 
-                async with get_session() as session:
-                    cache_service = ApiCacheService()
-                    await cache_service.precompute_departure_responses(session)
+                # Wrap in create_task to ensure fresh greenlet context
+                # APScheduler's AsyncIOExecutor doesn't reliably initialize
+                # SQLAlchemy's greenlet bridge (see also line 1734)
+                async def _inner() -> None:
+                    async with get_session() as session:
+                        cache_service = ApiCacheService()
+                        await cache_service.precompute_departure_responses(session)
+
+                await asyncio.create_task(_inner())
 
                 logger.info("departure_cache_precomputation_completed")
 
