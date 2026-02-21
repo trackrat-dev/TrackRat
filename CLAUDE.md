@@ -65,11 +65,28 @@ npm run build                        # TypeScript compile + build check
 
 **Staging Validation:**
 
-After deploying to staging (or when reviewing staging health), run these in order:
+After deploying to staging (or when reviewing staging health), use the unified script:
+
+```bash
+# All-in-one: health check + E2E API tests + error log check
+# Auto-installs Python dependencies for log checking if missing
+bash scripts/validate-staging.sh
+
+# Common flags:
+bash scripts/validate-staging.sh --no-wait              # Skip 30s stabilization sleep
+bash scripts/validate-staging.sh --no-random             # Skip Phase 2 random routes
+bash scripts/validate-staging.sh --skip-logs             # Skip GCP log check (no creds needed)
+bash scripts/validate-staging.sh --no-wait --no-random   # Fast: health + fixed routes only
+
+# Against production:
+bash scripts/validate-staging.sh https://apiv2.trackrat.net
+```
+
+The individual steps can still be run separately if needed:
 
 ```bash
 # 1. Verify deployment health (reachability, scheduler, metrics)
-bash scripts/verify-deployment.sh https://staging.apiv2.trackrat.net
+bash scripts/verify-deployment.sh https://staging.apiv2.trackrat.net [--no-wait]
 
 # 2. Run E2E API tests (mimics iOS app call sequence across all providers)
 bash scripts/e2e-api-test.sh https://staging.apiv2.trackrat.net --no-random
