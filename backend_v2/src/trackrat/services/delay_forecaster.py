@@ -24,10 +24,10 @@ from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
-# Configuration thresholds (same as track predictor)
+# Configuration thresholds
 MIN_TRAIN_ID_SAMPLES = 10
 MIN_LINE_CODE_SAMPLES = 25
-MIN_DATA_SOURCE_SAMPLES = 250
+MIN_DATA_SOURCE_SAMPLES = 50
 
 # Delay category thresholds (in minutes)
 ON_TIME_THRESHOLD = 5

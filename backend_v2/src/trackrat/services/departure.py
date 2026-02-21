@@ -59,7 +59,9 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
 # Minutes before departure to hide SCHEDULED trains that weren't discovered.
 # If a train hasn't been OBSERVED by this point, it's likely not running
 # or we can't provide reliable information about it.
-SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 30
+# Must be less than the discovery interval (30min) so SCHEDULED trains remain
+# visible for at least one discovery cycle before being filtered out.
+SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
 
 class DepartureService:

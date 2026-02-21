@@ -214,9 +214,9 @@ def _infer_origin_station(
 ) -> str:
     """Infer the origin station for a train seen mid-route.
 
-    Finds all routes where current_station appears before destination_station,
-    then picks the one where current_station is closest to the start
-    (giving us the most complete journey).
+    Finds all routes containing both current_station and destination_station
+    (in either direction), then picks the one where current_station is closest
+    to the start (giving us the most complete journey).
 
     Args:
         current_station: Station code where the train was seen
@@ -235,10 +235,14 @@ def _infer_origin_station(
         current_idx = stops.index(current_station)
         dest_idx = stops.index(destination_station)
 
-        # Route must go from current to destination (not reverse)
         if current_idx < dest_idx:
-            # Store route with position of current_station (lower = more complete)
+            # Forward direction
             matching_routes.append((route_id, stops, current_idx))
+        elif current_idx > dest_idx:
+            # Reverse direction - flip the stops so origin is first
+            reversed_stops = list(reversed(stops))
+            rev_current_idx = reversed_stops.index(current_station)
+            matching_routes.append((route_id, reversed_stops, rev_current_idx))
 
     if not matching_routes:
         # No matching route - use current station as origin
