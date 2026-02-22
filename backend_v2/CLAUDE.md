@@ -47,6 +47,7 @@ The V2 backend eliminates the complexity of V1 by:
 │ • PATCO (GTFS)  │     │ • ML Predictions│     │ • Live Activities│
 │ • LIRR (GTFS-RT)│     │ • GTFS Feed     │     └─────────────────┘
 │ • MNR (GTFS-RT) │     │ • API Caching   │
+│ • Subway(GTFS-RT)│     │ • Route Alerts  │
 └─────────────────┘     │ • Analytics     │
                         │ • Validation    │
                         └────────┬────────┘
@@ -181,10 +182,15 @@ GET /routes/congestion?time_window_hours=3&data_source=NJT                 # Rea
 GET /routes/summary                                   # Natural language operations summary
 GET /routes/segments/{from}/{to}/trains?hours=24      # Segment train records
 
-# ML Predictions
+# Predictions
 GET /predictions/track?station_code=NY&train_id=1234&journey_date=2024-01-01  # Track prediction
 GET /predictions/delay?train_id=1234&station_code=NY&journey_date=2024-01-01  # Delay/cancellation forecast
-GET /predictions/supported-stations                   # ML-enabled stations list
+GET /predictions/supported-stations                   # Stations with predictions
+
+# Route Alerts
+POST /devices/register                               # Register APNS device token
+PUT  /alerts/subscriptions                           # Sync route alert subscriptions
+GET  /alerts/subscriptions                           # Get current alert subscriptions
 
 # Validation
 GET /validation/status                               # Validation status and recent results
@@ -216,6 +222,7 @@ The APScheduler runs in-process and handles:
 - **Every 15 min**: API cache pre-computation for congestion endpoints
 - **Hourly at :05**: Train validation across key routes
 - **Every 30 min**: Live Activity push notification updates
+- **Every 5 min**: Route alert evaluation and push notifications
 - **Automatic startup**: Begins when FastAPI app starts
 
 **Horizontal Scaling Support:**
@@ -292,7 +299,7 @@ The system now includes comprehensive transit time analysis:
 3. **Collector Changes**:
    - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py, schedule.py)
    - Amtrak collectors in `collectors/amtrak/` (discovery.py, journey.py, client.py)
-   - PATH collector in `collectors/path/` (collector.py, client.py, ridepath_client.py)
+   - PATH collector in `collectors/path/` (collector.py, client.py, ridepath_client.py, segment_times.py)
    - LIRR collector in `collectors/lirr/` (collector.py, client.py)
    - Metro-North collector in `collectors/mnr/` (collector.py, client.py)
    - NYC Subway collector in `collectors/subway/` (collector.py, client.py)
@@ -570,7 +577,7 @@ asyncio.run(check_tasks())
 
 1. **Enhanced Track Prediction Models**: Improved ML models with occupancy detection
 2. **WebSocket Support**: Real-time updates for clients
-3. **Additional Transit Systems**: SEPTA regional rail
+3. **Additional Transit Systems**: SEPTA regional rail, NJ Light Rail
 4. **Advanced Analytics**: Enhanced journey pattern analysis
 5. **GraphQL API**: More efficient client queries
 
@@ -626,13 +633,26 @@ The backend is organized into service classes for better maintainability:
 - **TrackOccupancyService** (`services/track_occupancy.py`): Real-time track availability
 - **DelayForecaster** (`services/delay_forecaster.py`): ML-powered delay and cancellation forecasting using hierarchical historical data
 
+#### Route Alerts
+- **AlertEvaluatorService** (`services/alert_evaluator.py`): Evaluates delay/cancellation conditions for route alert push notifications
+- **AlertsAPI** (`api/alerts.py`): Device registration and alert subscription management endpoints
+
 #### Infrastructure
-- **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities
+- **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities and Route Alerts
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
 
 ### Recent Improvements (January-February 2026)
+- ✅ Added NYC Subway (MTA) support: 472 stations, 36 routes, 8 GTFS-RT feeds
+- ✅ Added route-based delay & cancellation alert system with APNS push notifications
+- ✅ Added Amtrak NEC train system for Northeast Corridor filtering
+- ✅ PATH departure time precision improvements with GTFS segment times
+- ✅ Split station config into per-provider `stations/` package (njt, amtrak, path, patco, lirr, mnr, subway)
+- ✅ Subway station complex aggregation via STATION_EQUIVALENTS
+- ✅ Renamed ML-prefixed identifiers to prediction-agnostic names
+- ✅ Ground truth validation expanded to include SUBWAY provider
+- ✅ Amtrak delay propagation: parse depCmnt/arrCmnt into updated times
 - ✅ Added LIRR support with unified GTFS-RT collector
 - ✅ Added Metro-North support with unified GTFS-RT collector
 - ✅ Shared MTA logic in `mta_common.py` for stop merging, departure inference, completion detection
@@ -642,7 +662,7 @@ The backend is organized into service classes for better maintainability:
 - ✅ Added headsign fallback lookup for PATH/PATCO train details
 - ✅ Fixed train lookup for systems without numeric train IDs
 - ✅ Simplified route summary body text format with natural language
-- ✅ Added delay and cancellation forecasting with ML-powered predictions
+- ✅ Added delay and cancellation forecasting with predictions
 - ✅ Expanded track predictions to support multiple stations beyond NY Penn
 - ✅ Added hot train updates for reduced event latency
 - ✅ Implemented `hide_departed` parameter for departures endpoint

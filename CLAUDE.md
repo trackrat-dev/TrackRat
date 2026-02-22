@@ -101,7 +101,7 @@ The E2E script prints response bodies on HTTP errors and flags slow responses (>
 **Ground Truth Validation:**
 
 Compares TrackRat departures against raw transit provider APIs to verify data quality.
-Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR.
+Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY.
 
 ```bash
 cd backend_v2
@@ -120,6 +120,9 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider LIRR --verbose
 
 # MNR (no auth needed)
 poetry run python3 ../scripts/ground-truth-validate.py --provider MNR --verbose
+
+# SUBWAY (no auth needed)
+poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbose
 ```
 
 Options: `--tolerance N` (minutes, default 3), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
@@ -148,6 +151,12 @@ read it with `$(cat ../.njt-token)` or `$(cat .njt-token)` depending on your cwd
 - Uses MTA's official GTFS-RT feeds directly (not Transiter)
 - Shared logic in `mta_common.py` (stop merging, departure inference, completion detection)
 - GTFS static schedules backfill stops that GTFS-RT omits (e.g., origin terminals)
+
+**Backend Data Collection (NYC Subway - Unified GTFS-RT):**
+- Single collector processes 8 GTFS-RT feeds covering 36 routes and 472 stations
+- Uses MTA's official GTFS-RT feeds with shared logic from `mta_common.py`
+- Station complexes aggregated via `STATION_EQUIVALENTS` mapping
+- Full trip_id used as train ID (not truncated)
 
 **Backend Data Collection (PATCO - Schedule-only):**
 - Uses GTFS static schedules from SEPTA feed
@@ -357,7 +366,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
 - Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway)
-- Backend config: `backend_v2/src/trackrat/config/` (stations, route_topology, station_configs)
+- Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs)
 - Backend tests: `backend_v2/tests/`
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
 - iOS services: `ios/TrackRat/Services/`
@@ -385,10 +394,14 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /api/v2/routes/summary             # Natural language operations summary
 /api/v2/routes/segments/{from}/{to}/trains  # Segment train details
 
-# ML Predictions
-/api/v2/predictions/track          # ML platform predictions (Web, iOS)
+# Predictions
+/api/v2/predictions/track          # Track/platform predictions (Web, iOS)
 /api/v2/predictions/delay          # Delay/cancellation forecasts (iOS)
-/api/v2/predictions/supported-stations  # Stations with ML predictions
+/api/v2/predictions/supported-stations  # Stations with predictions
+
+# Route Alerts
+/api/v2/devices/register           # Register APNS device token
+/api/v2/alerts/subscriptions       # Sync route alert subscriptions (PUT)
 
 # System Operations
 /api/v2/live-activities/register   # iOS Live Activity registration
