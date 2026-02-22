@@ -19,6 +19,7 @@ import argparse
 import csv
 import io
 import os
+import re
 import urllib.request
 import zipfile
 from collections import defaultdict
@@ -227,6 +228,155 @@ def build_station_complexes(transfers: list[dict], stations: list[dict]) -> list
     return complexes
 
 
+# Curated display names for complexes where the default (first code's stripped name)
+# isn't the best choice. Key: frozenset of station codes → chosen display name.
+# Complexes not listed here use the stripped name of their first (sorted) member.
+# These frozensets must match the actual output of build_station_complexes().
+COMPLEX_DISPLAY_NAMES: dict[frozenset[str], str] = {
+    frozenset({"S228", "SA36", "SE01", "SR25"}): "Chambers St-WTC",  # Park Place / Chambers St / WTC / Cortlandt St → searchable
+    frozenset({"S112", "SA09"}): "168 St",                        # 168 St-Washington Hts / 168 St → shorter
+    frozenset({"S239", "SS04"}): "Franklin Av",                   # Franklin Av-Medgar Evers College / Botanic Garden → shorter
+    frozenset({"S254", "SL26"}): "Livonia Av",                    # Junius St / Livonia Av → L train name more prominent
+    frozenset({"S629", "SB08", "SR11"}): "Lexington Av/59 St",   # 59 St / Lex-63 St / Lex-59 St → standard name
+    frozenset({"S630", "SF11"}): "Lexington Av/53 St",            # 51 St / Lex-53 St → standard name
+    frozenset({"S637", "SD21"}): "Broadway-Lafayette St",          # Bleecker St / Broadway-Lafayette St → more prominent
+    frozenset({"S710", "SG14"}): "Jackson Hts-Roosevelt Av",      # 74 St-Broadway / Jackson Hts-Roosevelt Av
+    frozenset({"S724", "SD16"}): "42 St-Bryant Pk",               # 5 Av / 42 St-Bryant Pk → more prominent
+    frozenset({"SB16", "SN04"}): "New Utrecht Av",                # 62 St / New Utrecht Av → more recognizable
+}
+
+
+def strip_route_suffix(name: str) -> str:
+    """Strip trailing route suffix like '(1/2/3)' or '(A/C/E)' from station name.
+
+    Also handles patterns like '(SA63)' station code suffixes and ' - 1' style suffixes.
+    """
+    # Strip " (X/Y/Z)" or " (X)" style suffixes where contents are route letters/numbers/slashes
+    name = re.sub(r"\s*\([A-Za-z0-9/]+\)\s*$", "", name)
+    # Strip " - X" style suffixes (e.g., "Cathedral Pkwy (110 St) - 1")
+    name = re.sub(r"\s*-\s*[A-Z0-9/]+\s*$", "", name)
+    return name.strip()
+
+
+def build_consolidated_stations(
+    stations: list[dict], complexes: list[set[str]]
+) -> list[dict]:
+    """Build consolidated station list: one entry per complex + standalone stations.
+
+    Returns list of dicts with keys:
+      - name: display name (route suffix stripped)
+      - canonical_code: the code to use in stationCodes
+      - all_codes: set of all codes in this group (for equivalence mapping)
+    """
+    code_to_station = {s["code"]: s for s in stations}
+
+    # Build code → complex mapping
+    code_to_complex: dict[str, set[str]] = {}
+    for group in complexes:
+        for code in group:
+            code_to_complex[code] = group
+
+    consolidated = []
+    seen_codes: set[str] = set()
+
+    for group in complexes:
+        frozen = frozenset(group)
+        # Use curated name if available, otherwise strip suffix from first station
+        if frozen in COMPLEX_DISPLAY_NAMES:
+            display_name = COMPLEX_DISPLAY_NAMES[frozen]
+        else:
+            # Pick the name from the first code (sorted) and strip suffix
+            first_code = sorted(group)[0]
+            display_name = strip_route_suffix(code_to_station[first_code]["name"])
+
+        canonical_code = sorted(group)[0]  # Alphabetically first code
+        consolidated.append({
+            "name": display_name,
+            "canonical_code": canonical_code,
+            "all_codes": group,
+        })
+        seen_codes.update(group)
+
+    # Add standalone stations
+    for s in stations:
+        if s["code"] not in seen_codes:
+            consolidated.append({
+                "name": strip_route_suffix(s["name"]),
+                "canonical_code": s["code"],
+                "all_codes": {s["code"]},
+            })
+
+    consolidated.sort(key=lambda e: e["canonical_code"])
+    return consolidated
+
+
+def build_station_routes(
+    trips: list[dict], stop_times: list[dict], stations: list[dict]
+) -> dict[str, set[str]]:
+    """Build mapping of internal station code → set of route IDs that serve it."""
+    gtfs_to_internal = {s["gtfs_id"]: s["code"] for s in stations}
+
+    # trip_id → route_id
+    trip_route: dict[str, str] = {}
+    for trip in trips:
+        trip_route[trip["trip_id"]] = trip["route_id"]
+
+    station_routes: dict[str, set[str]] = defaultdict(set)
+    for st in stop_times:
+        route_id = trip_route.get(st["trip_id"])
+        if not route_id:
+            continue
+        stop_id = st["stop_id"]
+        parent_id = stop_id.rstrip("NS") if stop_id[-1] in ("N", "S") else stop_id
+        code = gtfs_to_internal.get(parent_id)
+        if code:
+            station_routes[code].add(route_id)
+
+    return dict(station_routes)
+
+
+def resolve_name_collisions(
+    consolidated: list[dict], station_routes: dict[str, set[str]]
+) -> None:
+    """Add minimal route suffixes to disambiguate entries sharing the same display name.
+
+    Uses actual route-serving data (which lines stop at each station) to build
+    human-readable suffixes like "(1/2/3)" or "(A/C/E)".
+    """
+    # Group by display name
+    name_groups: dict[str, list[dict]] = defaultdict(list)
+    for entry in consolidated:
+        name_groups[entry["name"]].append(entry)
+
+    for name, entries in name_groups.items():
+        if len(entries) <= 1:
+            continue
+        # Multiple entries share this name — disambiguate with route info
+        for entry in entries:
+            # Collect all routes serving any station in this group
+            routes: set[str] = set()
+            for code in entry["all_codes"]:
+                routes.update(station_routes.get(code, set()))
+
+            # Filter out express variants (6X, 7X, FX) and shuttles for cleaner display
+            display_routes = set()
+            for r in routes:
+                if r.endswith("X"):
+                    continue  # Skip express variants (6X → already have 6)
+                display_routes.add(r)
+
+            if display_routes:
+                # Sort: numbers first (ascending), then letters (alphabetical)
+                sorted_routes = sorted(
+                    display_routes,
+                    key=lambda r: (not r[0].isdigit(), int(r) if r.isdigit() else 0, r),
+                )
+                entry["name"] = f"{name} ({'/'.join(sorted_routes)})"
+            else:
+                # No route info available — use canonical code as fallback
+                entry["name"] = f"{name} ({entry['canonical_code']})"
+
+
 def generate_python_stations(
     stations: list[dict], routes: list[dict], route_sequences: dict,
     complexes: list[set[str]] | None = None,
@@ -301,15 +451,24 @@ def generate_python_stations(
     hubs = [
         ("S127", "Times Sq-42 St"),
         ("S635", "14 St-Union Sq"),
-        ("SA41", "Atlantic Av-Barclays Ctr"),  # Will verify
-        ("SA27", "Fulton St"),
+        ("SD24", "Atlantic Av-Barclays Ctr"),
+        ("SA38", "Fulton St"),
         ("SD17", "34 St-Herald Sq"),
-        ("SA38", "Jay St-MetroTech"),
+        ("SA41", "Jay St-MetroTech"),
         ("S225", "125 St"),
         ("SG14", "Jackson Hts-Roosevelt Av"),
-        ("S726", "Flushing-Main St"),
+        ("S701", "Flushing-Main St"),
         ("SA24", "59 St-Columbus Circle"),
     ]
+    # Verify hub codes match actual station names
+    station_names = {s["code"]: s["name"] for s in stations}
+    for code, expected in hubs:
+        actual = station_names.get(code)
+        if actual is None:
+            print(f"  WARNING: Hub code {code} not found in station data")
+        elif expected.lower() not in actual.lower():
+            print(f"  WARNING: Hub {code} expected '{expected}' but found '{actual}'")
+
     for code, name in hubs:
         lines.append(f'    "{code}",  # {name}')
     lines.append("]")
@@ -376,7 +535,7 @@ def generate_python_coordinates(stations: list[dict]) -> str:
 
 
 def generate_swift_station_data(stations: list[dict]) -> str:
-    """Generate Swift entries for StationData.swift."""
+    """Generate Swift entries for StationData.swift (unconsolidated, one per GTFS station)."""
     lines = [
         "// MARK: - Subway Stations",
         "// Auto-generated by scripts/generate_subway_data.py",
@@ -398,6 +557,56 @@ def generate_swift_station_data(stations: list[dict]) -> str:
     for s in stations:
         name = s["name"].replace('"', '\\"')
         lines.append(f'    "{s["code"]}": "{name}",')
+
+    return "\n".join(lines)
+
+
+def generate_swift_consolidated_station_data(
+    consolidated: list[dict],
+) -> str:
+    """Generate consolidated Swift entries for StationData.swift.
+
+    Produces three sections:
+    1. Stations.all — one entry per consolidated station
+    2. stationCodes — consolidated name → canonical code
+    3. stationCodeToName equivalents — maps non-canonical codes → canonical code's name
+    """
+    lines = [
+        "// MARK: - Consolidated Subway Stations",
+        "// Auto-generated by scripts/generate_subway_data.py",
+        "// Complexes are consolidated into single entries; backend expand_station_codes() handles expansion.",
+        "",
+        "// ---- Stations.all array entries ----",
+    ]
+    for entry in consolidated:
+        name = entry["name"].replace('"', '\\"')
+        lines.append(f'        "{name}",')
+
+    lines.append("")
+    lines.append("// ---- stationCodes dict entries ----")
+    for entry in consolidated:
+        name = entry["name"].replace('"', '\\"')
+        lines.append(f'        "{name}": "{entry["canonical_code"]}",')
+
+    lines.append("")
+    lines.append("// ---- stationCodeToName subway complex equivalents ----")
+    lines.append("// Add inside stationCodeToName computed property, after amtrakEquivalents block.")
+    lines.append("// Maps non-canonical complex codes to the canonical code so all resolve to the same name.")
+    lines.append("        let subwayComplexEquivalents: [(alternateCode: String, canonicalCode: String)] = [")
+    for entry in consolidated:
+        if len(entry["all_codes"]) <= 1:
+            continue
+        canonical = entry["canonical_code"]
+        for code in sorted(entry["all_codes"]):
+            if code != canonical:
+                name = entry["name"].replace('"', '\\"')
+                lines.append(f'            ("{code}", "{canonical}"),  // {name}')
+    lines.append("        ]")
+    lines.append("        for (alternateCode, canonicalCode) in subwayComplexEquivalents {")
+    lines.append("            if let name = result[canonicalCode] {")
+    lines.append("                result[alternateCode] = name")
+    lines.append("            }")
+    lines.append("        }")
 
     return "\n".join(lines)
 
@@ -554,6 +763,13 @@ def main():
     complexes = build_station_complexes(data["transfers"], stations)
     print(f"Found {len(complexes)} station complexes (multi-platform groups)")
 
+    # Build consolidated stations for iOS
+    consolidated = build_consolidated_stations(stations, complexes)
+    station_routes = build_station_routes(data["trips"], data["stop_times"], stations)
+    resolve_name_collisions(consolidated, station_routes)
+    print(f"Consolidated to {len(consolidated)} station entries "
+          f"({len(stations) - len(consolidated)} fewer than raw GTFS)")
+
     # Verify discovery stations
     print()
     print(generate_discovery_station_verification(stations))
@@ -563,6 +779,7 @@ def main():
         "subway.py": generate_python_stations(stations, routes, route_sequences, complexes),
         "subway_coordinates.py": generate_python_coordinates(stations),
         "StationData_subway.swift": generate_swift_station_data(stations),
+        "StationData_subway_consolidated.swift": generate_swift_consolidated_station_data(consolidated),
         "StationCoordinates_subway.swift": generate_swift_coordinates(stations),
         "route_topology_subway.py": generate_route_topology_python(routes, route_sequences),
         "RouteTopology_subway.swift": generate_swift_route_topology(routes, route_sequences, stations),
