@@ -4,7 +4,7 @@ This guide provides comprehensive information for Claude Code when working with 
 
 **Last Updated:** February 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
-**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway), ML predictions, API caching, schedule generation, GTFS integration
+**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
 - **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway data sources with extensible architecture
-- **ML-Powered Features**: Track predictions, arrival forecasting, and congestion analysis
+- **Prediction Features**: Track predictions, arrival forecasting, delay/cancellation forecasting, and congestion analysis
 - **API Response Caching**: Intelligent caching system for performance optimization
 
 ### System Architecture
@@ -44,7 +44,7 @@ The V2 backend eliminates the complexity of V1 by:
 │ • NJ Transit    │     │ • Discovery     │     │ • iOS App       │
 │ • Amtrak        │     │ • Schedule Gen  │     │ • Android App   │
 │ • PATH          │     │ • JIT Updates   │     │ • Web App       │
-│ • PATCO (GTFS)  │     │ • ML Predictions│     │ • Live Activities│
+│ • PATCO (GTFS)  │     │ • Predictions   │     │ • Live Activities│
 │ • LIRR (GTFS-RT)│     │ • GTFS Feed     │     └─────────────────┘
 │ • MNR (GTFS-RT) │     │ • API Caching   │
 │ • Subway(GTFS-RT)│     │ • Route Alerts  │
@@ -163,6 +163,18 @@ validation_results (
     expected_trains, found_trains, missing_trains,
     coverage_percent, validation_time
 )
+
+-- Device tokens for push notifications
+device_tokens (
+    id, device_token, platform, created_at, updated_at
+)
+
+-- Route alert subscriptions
+alert_subscriptions (
+    id, device_token_id, route, data_source,
+    delay_threshold_minutes, notify_cancellations,
+    created_at, updated_at
+)
 ```
 
 ### 3. API Endpoints
@@ -267,8 +279,8 @@ The system now includes comprehensive transit time analysis:
 - `/api/v2/trains/{train_id}` - Enhanced details with progress and arrival forecasting
 - `/api/v2/trains/{train_id}/history` - Historical train performance
 - `/api/v2/trains/stations/{station_code}/tracks/occupied` - Real-time track availability
-- `/api/v2/predictions/track` - ML-powered track predictions
-- `/api/v2/predictions/supported-stations` - ML-enabled stations list
+- `/api/v2/predictions/track` - Track/platform predictions
+- `/api/v2/predictions/supported-stations` - Stations with predictions
 - `/api/v2/validation/status` - Validation status and recent results
 - `/api/v2/validation/results/{route}/{source}` - Route-specific validation details
 - `/api/v2/feedback` - User feedback submission
@@ -631,7 +643,7 @@ The backend is organized into service classes for better maintainability:
 - **DirectArrivalForecaster** (`services/direct_forecaster.py`): Direct arrival predictions from recent data
 - **HistoricalTrackPredictor** (`services/historical_track_predictor.py`): Historical pattern-based track predictions
 - **TrackOccupancyService** (`services/track_occupancy.py`): Real-time track availability
-- **DelayForecaster** (`services/delay_forecaster.py`): ML-powered delay and cancellation forecasting using hierarchical historical data
+- **DelayForecaster** (`services/delay_forecaster.py`): Delay and cancellation forecasting using hierarchical historical data
 
 #### Route Alerts
 - **AlertEvaluatorService** (`services/alert_evaluator.py`): Evaluates delay/cancellation conditions for route alert push notifications

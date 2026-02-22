@@ -69,6 +69,8 @@ Key endpoints:
 - `GET /v2/predictions/delay` - Delay/cancellation forecasts
 - `GET /v2/routes/congestion` - Network congestion
 - `POST /v2/live-activities/register` - Register Live Activity
+- `POST /v2/devices/register` - Register APNS device for route alerts
+- `PUT /v2/alerts/subscriptions` - Sync route alert subscriptions
 
 ## Development Commands
 
