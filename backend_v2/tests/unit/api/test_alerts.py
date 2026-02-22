@@ -123,6 +123,76 @@ class TestSyncSubscriptions:
         assert get_resp.json()["subscriptions"] == []
 
 
+class TestSubscriptionValidation:
+    """Pydantic validation on SubscriptionItem."""
+
+    def test_missing_both_line_and_stations_returns_422(self, e2e_client: TestClient):
+        """Subscription with no line_id and no station codes is rejected."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-val-1", "apns_token": "tok-val"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-val-1",
+                "subscriptions": [{"data_source": "NJT"}],
+            },
+        )
+        assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.json()}"
+
+    def test_partial_station_codes_returns_422(self, e2e_client: TestClient):
+        """Subscription with only from_station_code but no to_station_code is rejected."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-val-2", "apns_token": "tok-val2"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-val-2",
+                "subscriptions": [
+                    {"data_source": "NJT", "from_station_code": "NY"},
+                ],
+            },
+        )
+        assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.json()}"
+
+    def test_line_id_alone_is_valid(self, e2e_client: TestClient):
+        """Subscription with just line_id is accepted."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-val-3", "apns_token": "tok-val3"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-val-3",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "njt-nec"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+    def test_both_station_codes_is_valid(self, e2e_client: TestClient):
+        """Subscription with both station codes is accepted."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-val-4", "apns_token": "tok-val4"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-val-4",
+                "subscriptions": [
+                    {"data_source": "NJT", "from_station_code": "NY", "to_station_code": "TR"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+
 class TestGetSubscriptions:
     """GET /api/v2/alerts/subscriptions/{device_id}"""
 

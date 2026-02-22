@@ -6,7 +6,7 @@ alert subscriptions for delay/cancellation events on specific routes.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -42,6 +42,15 @@ class SubscriptionItem(BaseModel):
     line_name: str | None = None
     from_station_code: str | None = None
     to_station_code: str | None = None
+
+    @model_validator(mode="after")
+    def check_subscription_type(self) -> "SubscriptionItem":
+        """Require either line_id or both station codes."""
+        if not self.line_id and not (self.from_station_code and self.to_station_code):
+            raise ValueError(
+                "Must provide either line_id or both from_station_code and to_station_code"
+            )
+        return self
 
 
 class SyncSubscriptionsRequest(BaseModel):

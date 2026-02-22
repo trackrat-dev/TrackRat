@@ -186,17 +186,26 @@ async def _query_journeys_for_subscription(
             return direct_matches
 
         # Fall back: journeys that pass through both stations in order
-        from_stop = JourneyStop.station_code == sub.from_station_code
-        to_stop = JourneyStop.station_code == sub.to_station_code
+        from_stop = JourneyStop.__table__.alias("from_stop")
+        to_stop = JourneyStop.__table__.alias("to_stop")
 
-        subq_from = (
-            select(JourneyStop.journey_id)
-            .where(from_stop)
-            .scalar_subquery()
-        )
-        subq_to = (
-            select(JourneyStop.journey_id)
-            .where(to_stop)
+        subq = (
+            select(from_stop.c.journey_id)
+            .join(
+                to_stop,
+                and_(
+                    from_stop.c.journey_id == to_stop.c.journey_id,
+                    from_stop.c.stop_sequence < to_stop.c.stop_sequence,
+                ),
+            )
+            .where(
+                and_(
+                    from_stop.c.station_code == sub.from_station_code,
+                    to_stop.c.station_code == sub.to_station_code,
+                    from_stop.c.stop_sequence.isnot(None),
+                    to_stop.c.stop_sequence.isnot(None),
+                )
+            )
             .scalar_subquery()
         )
 
@@ -204,8 +213,7 @@ async def _query_journeys_for_subscription(
             select(TrainJourney).where(
                 and_(
                     *base_conditions,
-                    TrainJourney.id.in_(subq_from),
-                    TrainJourney.id.in_(subq_to),
+                    TrainJourney.id.in_(subq),
                 )
             )
         )
