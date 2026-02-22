@@ -14,6 +14,7 @@ struct AdvancedConfigurationView: View {
     @State private var selectedEnvironment: ServerEnvironment = StorageService().loadServerEnvironment()
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
+    @State private var showingTripsPaywall = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +26,7 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
+                    createMyTripsSection()
                     createMapSettingsSection()
                     createSubscriptionDebugSection()
                     createServerEnvironmentSection()
@@ -61,6 +63,9 @@ struct AdvancedConfigurationView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: resetDataSuccessMessage)
+        .sheet(isPresented: $showingTripsPaywall) {
+            PaywallView(context: .generic)
+        }
     }
 
     @ViewBuilder
@@ -122,6 +127,68 @@ struct AdvancedConfigurationView: View {
                         .stroke(.white.opacity(0.2), lineWidth: 1)
                 )
         )
+    }
+
+    // MARK: - My Trips Section
+    @ViewBuilder
+    private func createMyTripsSection() -> some View {
+        let tripsContent = HStack(spacing: 16) {
+            Image(systemName: "chart.bar.fill")
+                .font(.title2)
+                .foregroundColor(.orange)
+                .frame(width: 24, height: 24)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("My Trips (beta)")
+                    .font(.headline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+            }
+
+            Spacer()
+
+            if !subscriptionService.isPro {
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.fill")
+                        .font(.caption2)
+                    Text("PRO")
+                        .font(.caption2.bold())
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(.orange.opacity(0.2))
+                )
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+        )
+
+        if subscriptionService.isPro {
+            NavigationLink(value: ProfileDestination.tripHistory) {
+                tripsContent
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button {
+                showingTripsPaywall = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                tripsContent
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     // MARK: - Map Settings Section

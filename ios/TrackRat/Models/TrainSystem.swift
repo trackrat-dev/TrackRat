@@ -34,7 +34,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .njt: return "NJ Transit"
         case .amtrak: return "Amtrak"
-        case .amtrakNEC: return "Amtrak (NEC)"
+        case .amtrakNEC: return "Amtrak (NEC Only)"
         case .path: return "PATH"
         case .patco: return "PATCO"
         case .lirr: return "LIRR"
@@ -90,7 +90,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
         switch self {
-        case .path, .lirr, .mnr, .subway: return true
+        case .subway: return true
         default: return false
         }
     }

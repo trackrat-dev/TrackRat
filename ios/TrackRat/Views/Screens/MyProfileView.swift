@@ -456,60 +456,6 @@ struct SettingsSection: View {
             }
             .buttonStyle(.plain)
 
-            // My Trips
-            Button {
-                if subscriptionService.isPro {
-                    navigationPath.append(ProfileDestination.tripHistory)
-                } else {
-                    showingPaywall = true
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("My Trips (beta)")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    if !subscriptionService.isPro {
-                        HStack(spacing: 4) {
-                            Image(systemName: "lock.fill")
-                                .font(.caption2)
-                            Text("PRO")
-                                .font(.caption2.bold())
-                        }
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(.orange.opacity(0.2))
-                        )
-                    } else {
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
             // Debug/TestFlight-only settings
             if showDebugSections {
             // Advanced Configuration
