@@ -81,6 +81,12 @@
 		A1AA1BB92DEF00EE001FA904 /* TrackRatMascot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */; };
 		A1AD0D092E106D1B003DA39F /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D082E106D1B003DA39F /* Stations.swift */; };
 		A1AD0D0A2E106D1B003DA39F /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D082E106D1B003DA39F /* Stations.swift */; };
+		A1AD0D112E106D1B003DA39F /* StationData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D102E106D1B003DA39F /* StationData.swift */; };
+		A1AD0D162E106D1B003DA39F /* StationData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D102E106D1B003DA39F /* StationData.swift */; };
+		A1AD0D132E106D1B003DA39F /* StationCoordinates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */; };
+		A1AD0D172E106D1B003DA39F /* StationCoordinates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */; };
+		A1AD0D152E106D1B003DA39F /* StationDepartures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D142E106D1B003DA39F /* StationDepartures.swift */; };
+		A1AD0D182E106D1B003DA39F /* StationDepartures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D142E106D1B003DA39F /* StationDepartures.swift */; };
 		A1AD0D0C2E106D32003DA39F /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */; };
 		A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */; };
 		A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E42DFC73650002FB39 /* BuildTests.swift */; };
@@ -216,6 +222,9 @@
 		A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatLoadingView.swift; path = Views/Components/TrackRatLoadingView.swift; sourceTree = "<group>"; };
 		A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatMascot.swift; path = Views/Components/TrackRatMascot.swift; sourceTree = "<group>"; };
 		A1AD0D082E106D1B003DA39F /* Stations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stations.swift; sourceTree = "<group>"; };
+		A1AD0D102E106D1B003DA39F /* StationData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationData.swift; sourceTree = "<group>"; };
+		A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationCoordinates.swift; sourceTree = "<group>"; };
+		A1AD0D142E106D1B003DA39F /* StationDepartures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationDepartures.swift; sourceTree = "<group>"; };
 		A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityModels.swift; sourceTree = "<group>"; };
 		A1B2375C2F002DCF0011A16E /* TrackTrainInlineButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackTrainInlineButton.swift; path = TrackRat/Views/Components/TrackTrainInlineButton.swift; sourceTree = "<group>"; };
 		A1BA60DB2DFC73650002FB39 /* TrackRatTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TrackRatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -453,6 +462,9 @@
 			isa = PBXGroup;
 			children = (
 				A1AD0D082E106D1B003DA39F /* Stations.swift */,
+				A1AD0D102E106D1B003DA39F /* StationData.swift */,
+				A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */,
+				A1AD0D142E106D1B003DA39F /* StationDepartures.swift */,
 				A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */,
 			);
 			path = Shared;
@@ -644,6 +656,9 @@
 				A183B7E12E6352E80024FADC /* LegacySheetAwareScrollView.swift in Sources */,
 				A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */,
 				A1AD0D092E106D1B003DA39F /* Stations.swift in Sources */,
+				A1AD0D112E106D1B003DA39F /* StationData.swift in Sources */,
+				A1AD0D132E106D1B003DA39F /* StationCoordinates.swift in Sources */,
+				A1AD0D152E106D1B003DA39F /* StationDepartures.swift in Sources */,
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
 				A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */,
 				A12C314D2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */,
@@ -731,6 +746,9 @@
 				A1AD0D0C2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
 				A1WIDGET152DFC73650002FB39 /* Train.swift in Sources */,
 				A1AD0D0A2E106D1B003DA39F /* Stations.swift in Sources */,
+				A1AD0D162E106D1B003DA39F /* StationData.swift in Sources */,
+				A1AD0D172E106D1B003DA39F /* StationCoordinates.swift in Sources */,
+				A1AD0D182E106D1B003DA39F /* StationDepartures.swift in Sources */,
 				A1D88F612F27083000111466 /* RouteTopology.swift in Sources */,
 				A1WIDGET172DFC73650002FB39 /* Extensions.swift in Sources */,
 				A1WIDGET342DFC73650002FB39 /* LiveActivityWidget.swift in Sources */,

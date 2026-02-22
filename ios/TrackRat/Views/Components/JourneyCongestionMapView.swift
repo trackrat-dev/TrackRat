@@ -1286,12 +1286,12 @@ private struct SegmentTrainDetailCard: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     // Trains with synthetic IDs display line (route) instead of train ID
-                    Text(["PATH", "PATCO", "LIRR", "MNR"].contains(train.dataSource) ? train.line : "Train \(train.trainId)")
+                    Text(TrainSystem.syntheticTrainIdSources.contains(train.dataSource) ? train.line : "Train \(train.trainId)")
                         .font(.headline)
                         .fontWeight(.semibold)
 
-                    // Only show line as subtitle for non-PATH/PATCO trains
-                    if train.dataSource != "PATH" && train.dataSource != "PATCO" {
+                    // Only show line as subtitle when header shows train ID (not line)
+                    if !TrainSystem.syntheticTrainIdSources.contains(train.dataSource) {
                         Text(train.line)
                             .font(.caption)
                             .foregroundColor(.secondary)

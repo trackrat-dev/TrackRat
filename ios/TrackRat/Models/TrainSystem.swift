@@ -9,6 +9,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case patco = "PATCO"
     case lirr = "LIRR"
     case mnr = "MNR"
+    case subway = "SUBWAY"
 
     var id: String { rawValue }
 
@@ -38,6 +39,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .patco: return "PATCO"
         case .lirr: return "LIRR"
         case .mnr: return "Metro-North"
+        case .subway: return "NYC Subway"
         }
     }
 
@@ -51,6 +53,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .patco: return "Philly-South Jersey"
         case .lirr: return "Long Island commuter rail"
         case .mnr: return "NYC-Hudson Valley rail"
+        case .subway: return "NYC rapid transit"
         }
     }
 
@@ -63,6 +66,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .patco: return "lightrail.fill"
         case .lirr: return "train.side.rear.car"
         case .mnr: return "train.side.front.car"
+        case .subway: return "tram.fill"
         }
     }
 
@@ -75,13 +79,18 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .patco: return "#0072CE" // PATCO blue
         case .lirr: return "#0039A6"  // MTA LIRR blue
         case .mnr: return "#0039A6"   // MTA Metro-North blue
+        case .subway: return "#0039A6"  // MTA blue
         }
     }
+
+    /// Whether this system uses synthetic (non-user-facing) train IDs.
+    /// These systems should display destination or line name instead of raw train ID.
+    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
 
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
         switch self {
-        case .path, .lirr, .mnr: return true
+        case .path, .lirr, .mnr, .subway: return true
         default: return false
         }
     }

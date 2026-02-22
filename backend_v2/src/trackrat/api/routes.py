@@ -52,7 +52,9 @@ async def get_route_history(
     to_station: str = Query(
         ..., min_length=1, max_length=10, description="Destination station code"
     ),
-    data_source: str = Query(..., description="Data source (NJT or AMTRAK)"),
+    data_source: str = Query(
+        ..., description="Data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY)"
+    ),
     days: int = Query(30, ge=1, le=365, description="Number of days of history"),
     highlight_train: str | None = Query(None, description="Train ID to highlight"),
     db: AsyncSession = Depends(get_db),
@@ -73,7 +75,7 @@ async def get_route_history(
     )
 
     # Validate data_source
-    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
     if data_source not in valid_sources:
         raise HTTPException(
             status_code=400,
@@ -291,7 +293,8 @@ async def get_route_congestion(
         description="Max individual journeys per segment (0 = unlimited)",
     ),
     data_source: str | None = Query(
-        None, description="Filter by data source (NJT or AMTRAK)"
+        None,
+        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY)",
     ),
     force_refresh: bool = Query(False, description="Force bypass cache and recompute"),
     db: AsyncSession = Depends(get_db),
@@ -496,7 +499,10 @@ async def get_route_congestion(
 async def get_segment_train_details(
     from_station: str,
     to_station: str,
-    data_source: str | None = Query(None, description="Filter by NJT or AMTRAK"),
+    data_source: str | None = Query(
+        None,
+        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY)",
+    ),
     start_time: datetime | None = Query(None, description="Start time (ISO format)"),
     end_time: datetime | None = Query(None, description="End time (ISO format)"),
     limit: int = Query(50, ge=1, le=200, description="Maximum trains to return"),
@@ -762,7 +768,10 @@ async def get_operations_summary(
         description="Destination station code (for route)",
     ),
     train_id: str | None = Query(None, description="Train ID (for train scope)"),
-    data_source: str | None = Query(None, description="Filter by NJT or AMTRAK"),
+    data_source: str | None = Query(
+        None,
+        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY)",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> OperationsSummaryResponse:
     """

@@ -6,7 +6,7 @@ import CoreLocation
 struct RouteLine: Identifiable {
     let id: String
     let name: String
-    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"
+    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"
     let stationCodes: [String]
 
     /// Returns coordinate pairs for drawing polylines between consecutive stations.
@@ -31,7 +31,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -535,6 +535,214 @@ struct RouteTopology {
                 "MBGP", "MSTR", "MDBS", "MANS", "MSYM", "MBCF", "MNAU", "MWTB"
             ]
         )
+    ]
+
+    // MARK: - NYC Subway Routes
+
+    static let subwayRoutes: [RouteLine] = [
+        RouteLine(
+            id: "subway-1",
+            name: "1 Broadway - 7 Avenue Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["S142", "S139", "S138", "S137", "S136", "S135", "S134", "S133", "S132", "S131", "S130", "S129", "S128", "S127", "S126", "S125", "S124", "S123", "S122", "S121", "S120", "S119", "S118", "S117", "S116", "S115", "S114", "S113", "S112", "S111", "S110", "S109", "S108", "S107", "S106", "S104", "S103", "S101"]
+        ),
+
+        RouteLine(
+            id: "subway-2",
+            name: "2 7 Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["S247", "S246", "S245", "S244", "S243", "S242", "S241", "S239", "S238", "S237", "S236", "S235", "S234", "S233", "S232", "S231", "S230", "S229", "S228", "S137", "S136", "S135", "S134", "S133", "S132", "S131", "S130", "S129", "S128", "S127", "S126", "S125", "S124", "S123", "S122", "S121", "S120", "S227", "S226", "S225", "S224", "S222", "S221", "S220", "S219", "S218", "S217", "S216", "S215", "S214", "S213", "S212", "S211", "S210", "S209", "S208", "S207", "S206", "S205", "S204", "S201"]
+        ),
+
+        RouteLine(
+            id: "subway-3",
+            name: "3 7 Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["S257", "S256", "S255", "S254", "S253", "S252", "S251", "S250", "S249", "S248", "S239", "S238", "S237", "S236", "S235", "S234", "S233", "S232", "S231", "S230", "S229", "S228", "S137", "S132", "S128", "S127", "S123", "S120", "S227", "S226", "S225", "S224", "S302", "S301"]
+        ),
+
+        RouteLine(
+            id: "subway-4",
+            name: "4 Lexington Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["S257", "S256", "S255", "S254", "S253", "S252", "S251", "S250", "S249", "S248", "S239", "S238", "S237", "S236", "S235", "S234", "S423", "S420", "S419", "S418", "S640", "S639", "S638", "S637", "S636", "S635", "S634", "S633", "S632", "S631", "S630", "S629", "S628", "S627", "S626", "S625", "S624", "S623", "S622", "S621", "S416", "S415", "S414", "S413", "S412", "S411", "S410", "S409", "S408", "S407", "S406", "S405", "S402", "S401"]
+        ),
+
+        RouteLine(
+            id: "subway-5",
+            name: "5 Lexington Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["S420", "S419", "S418", "S640", "S635", "S631", "S629", "S626", "S621", "S416", "S222", "S221", "S220", "S219", "S218", "S217", "S216", "S215", "S214", "S213", "S505", "S504", "S503", "S502", "S501"]
+        ),
+
+        RouteLine(
+            id: "subway-6",
+            name: "6 Lexington Avenue Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["S640", "S639", "S638", "S637", "S636", "S635", "S634", "S633", "S632", "S631", "S630", "S629", "S628", "S627", "S626", "S625", "S624", "S623", "S622", "S621", "S619", "S618", "S617", "S616", "S615", "S614", "S613", "S612", "S611", "S610", "S609", "S608", "S607", "S606", "S604", "S603", "S602", "S601"]
+        ),
+
+        RouteLine(
+            id: "subway-6x",
+            name: "6X Pelham Bay Park Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["S640", "S639", "S638", "S637", "S636", "S635", "S634", "S633", "S632", "S631", "S630", "S629", "S628", "S627", "S626", "S625", "S624", "S623", "S622", "S621", "S619", "S613", "S608", "S607", "S606", "S604", "S603", "S602", "S601"]
+        ),
+
+        RouteLine(
+            id: "subway-7",
+            name: "7 Flushing Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["S726", "S725", "S724", "S723", "S721", "S720", "S719", "S718", "S716", "S715", "S714", "S713", "S712", "S711", "S710", "S709", "S708", "S707", "S706", "S705", "S702", "S701"]
+        ),
+
+        RouteLine(
+            id: "subway-7x",
+            name: "7X Flushing Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["S726", "S725", "S724", "S723", "S721", "S720", "S719", "S718", "S716", "S715", "S714", "S713", "S712", "S711", "S710", "S707", "S702", "S701"]
+        ),
+
+        RouteLine(
+            id: "subway-a",
+            name: "A 8 Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["SH11", "SH10", "SH09", "SH08", "SH07", "SH06", "SH04", "SH03", "SH02", "SH01", "SA61", "SA60", "SA59", "SA57", "SA55", "SA54", "SA53", "SA52", "SA51", "SA50", "SA49", "SA48", "SA47", "SA46", "SA45", "SA44", "SA43", "SA42", "SA41", "SA40", "SA38", "SA36", "SA34", "SA33", "SA32", "SA31", "SA30", "SA28", "SA27", "SA25", "SA24", "SA22", "SA21", "SA20", "SA19", "SA18", "SA17", "SA16", "SA15", "SA14", "SA12", "SA11", "SA10", "SA09", "SA07", "SA06", "SA05", "SA03", "SA02"]
+        ),
+
+        RouteLine(
+            id: "subway-b",
+            name: "B 6 Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD40", "SD39", "SD35", "SD31", "SD28", "SD26", "SD25", "SD24", "SR30", "SD22", "SD21", "SD20", "SD17", "SD16", "SD15", "SD14", "SA24", "SA22", "SA21", "SA20", "SA19", "SA18", "SA17", "SA16", "SA15", "SA14", "SD13", "SD12", "SD11", "SD10", "SD09", "SD08", "SD07", "SD06", "SD05", "SD04", "SD03"]
+        ),
+
+        RouteLine(
+            id: "subway-c",
+            name: "C 8 Avenue Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SA55", "SA54", "SA53", "SA52", "SA51", "SA50", "SA49", "SA48", "SA47", "SA46", "SA45", "SA44", "SA43", "SA42", "SA41", "SA40", "SA38", "SA36", "SA34", "SA33", "SA32", "SA31", "SA30", "SA28", "SA27", "SA25", "SA24", "SA22", "SA21", "SA20", "SA19", "SA18", "SA17", "SA16", "SA15", "SA14", "SA12", "SA11", "SA10", "SA09"]
+        ),
+
+        RouteLine(
+            id: "subway-d",
+            name: "D 6 Avenue Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD43", "SB23", "SB22", "SB21", "SB20", "SB19", "SB18", "SB17", "SB16", "SB15", "SB14", "SB13", "SB12", "SR36", "SR35", "SR34", "SR33", "SR32", "SR31", "SR30", "SD22", "SD21", "SD20", "SD17", "SD16", "SD15", "SD14", "SA24", "SA15", "SD13", "SD12", "SD11", "SD10", "SD09", "SD08", "SD07", "SD06", "SD05", "SD04", "SD03", "SD01"]
+        ),
+
+        RouteLine(
+            id: "subway-e",
+            name: "E 8 Avenue Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SE01", "SA34", "SA33", "SA32", "SA31", "SA30", "SA28", "SA27", "SA25", "SD14", "SF12", "SF11", "SF09", "SG21", "SG20", "SG19", "SG18", "SG16", "SG15", "SG14", "SG13", "SG12", "SG11", "SG10", "SG09", "SG08", "SF07", "SF06", "SF05", "SG07", "SG06", "SG05"]
+        ),
+
+        RouteLine(
+            id: "subway-f",
+            name: "F Queens Blvd Express/6 Av Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD43", "SD42", "SF39", "SF38", "SF36", "SF35", "SF34", "SF33", "SF32", "SF31", "SF30", "SF29", "SF27", "SF26", "SF25", "SF24", "SF23", "SF22", "SF21", "SF20", "SA41", "SF18", "SF16", "SF15", "SF14", "SD21", "SD20", "SD19", "SD18", "SD17", "SD16", "SD15", "SB10", "SB08", "SB06", "SB04", "SG20", "SG19", "SG18", "SG16", "SG15", "SG14", "SG13", "SG12", "SG11", "SG10", "SG09", "SG08", "SF07", "SF06", "SF05", "SF04", "SF03", "SF02", "SF01"]
+        ),
+
+        RouteLine(
+            id: "subway-fx",
+            name: "FX Brooklyn F Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD43", "SD42", "SF39", "SF38", "SF36", "SF35", "SF34", "SF33", "SF32", "SF31", "SF30", "SF29", "SF27", "SF24", "SA41", "SF18", "SF16", "SF15", "SF14", "SD21", "SD20", "SD19", "SD18", "SD17", "SD16", "SD15", "SF12", "SF11", "SF09", "SG21", "SG14", "SG08", "SF07", "SF06", "SF05", "SF04", "SF03", "SF02", "SF01"]
+        ),
+
+        RouteLine(
+            id: "subway-fs",
+            name: "S Franklin Avenue Shuttle",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD26", "SS04", "SS03", "SS01"]
+        ),
+
+        RouteLine(
+            id: "subway-g",
+            name: "G Brooklyn-Queens Crosstown",
+            dataSource: "SUBWAY",
+            stationCodes: ["SF27", "SF26", "SF25", "SF24", "SF23", "SF22", "SF21", "SF20", "SA42", "SG36", "SG35", "SG34", "SG33", "SG32", "SG31", "SG30", "SG29", "SG28", "SG26", "SG24", "SG22"]
+        ),
+
+        RouteLine(
+            id: "subway-gs",
+            name: "S 42 St Shuttle",
+            dataSource: "SUBWAY",
+            stationCodes: ["S901", "S902"]
+        ),
+
+        RouteLine(
+            id: "subway-h",
+            name: "S Rockaway Park Shuttle",
+            dataSource: "SUBWAY",
+            stationCodes: ["SH15", "SH14", "SH13", "SH12", "SH04"]
+        ),
+
+        RouteLine(
+            id: "subway-j",
+            name: "J Nassau St Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SM23", "SM22", "SM21", "SM20", "SM19", "SM18", "SM16", "SM14", "SM13", "SM12", "SM11", "SJ31", "SJ30", "SJ29", "SJ28", "SJ27", "SJ24", "SJ23", "SJ22", "SJ21", "SJ20", "SJ19", "SJ17", "SJ16", "SJ15", "SJ14", "SJ13", "SJ12", "SG06", "SG05"]
+        ),
+
+        RouteLine(
+            id: "subway-l",
+            name: "L 14 St-Canarsie Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SL29", "SL28", "SL27", "SL26", "SL25", "SL24", "SL22", "SL21", "SL20", "SL19", "SL17", "SL16", "SL15", "SL14", "SL13", "SL12", "SL11", "SL10", "SL08", "SL06", "SL05", "SL03", "SL02", "SL01"]
+        ),
+
+        RouteLine(
+            id: "subway-m",
+            name: "M Queens Blvd Local/6 Av Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SM01", "SM04", "SM05", "SM06", "SM08", "SM09", "SM10", "SM11", "SM12", "SM13", "SM14", "SM16", "SM18", "SD21", "SD20", "SD19", "SD18", "SD17", "SD16", "SD15", "SD14"]
+        ),
+
+        RouteLine(
+            id: "subway-n",
+            name: "N Broadway Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD43", "SN10", "SN09", "SN08", "SN07", "SN06", "SN05", "SN04", "SN03", "SN02", "SR41", "SR40", "SR39", "SR36", "SR35", "SR34", "SR33", "SR32", "SR31", "SR30", "SR29", "SR28", "SR27", "SR26", "SR25", "SR24", "SR23", "SR22", "SR21", "SR20", "SR19", "SR18", "SR17", "SR16", "SR15", "SR14", "SR13", "SR11", "SR09", "SR08", "SR06", "SR05", "SR04", "SR03", "SR01"]
+        ),
+
+        RouteLine(
+            id: "subway-q",
+            name: "Q Broadway Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["SD43", "SD42", "SD41", "SD40", "SD39", "SD38", "SD37", "SD35", "SD34", "SD33", "SD32", "SD31", "SD30", "SD29", "SD28", "SD27", "SD26", "SD25", "SD24", "SR30", "SQ01", "SR22", "SR21", "SR20", "SR19", "SR18", "SR17", "SR16", "SR15", "SR14", "SB08", "SQ03", "SQ04", "SQ05"]
+        ),
+
+        RouteLine(
+            id: "subway-r",
+            name: "R Broadway Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SR45", "SR44", "SR43", "SR42", "SR41", "SR40", "SR39", "SR36", "SR35", "SR34", "SR33", "SR32", "SR31", "SR30", "SR29", "SR28", "SR27", "SR26", "SR25", "SR24", "SR23", "SR22", "SR21", "SR20", "SR19", "SR18", "SR17", "SR16", "SR15", "SR14", "SR13", "SR11", "SG21", "SG20", "SG19", "SG18", "SG16", "SG15", "SG14", "SG13", "SG12", "SG11", "SG10", "SG09", "SG08"]
+        ),
+
+        RouteLine(
+            id: "subway-w",
+            name: "W Broadway Local",
+            dataSource: "SUBWAY",
+            stationCodes: ["SN10", "SN09", "SN08", "SN07", "SN06", "SN05", "SN04", "SN03", "SN02", "SR41", "SR40", "SR39", "SR36", "SR35", "SR34", "SR33", "SR32", "SR31", "SR30", "SR29", "SR28", "SR27", "SR26", "SR25", "SR24", "SR23", "SR22", "SR21", "SR20", "SR19", "SR18", "SR17", "SR16", "SR15", "SR14", "SR13", "SR11", "SR09", "SR08", "SR06", "SR05", "SR04", "SR03", "SR01"]
+        ),
+
+        RouteLine(
+            id: "subway-si",
+            name: "SIR Staten Island Railway",
+            dataSource: "SUBWAY",
+            stationCodes: ["SS09", "SS11", "SS13", "SS14", "SS15", "SS16", "SS17", "SS18", "SS19", "SS20", "SS21", "SS22", "SS23", "SS24", "SS25", "SS26", "SS27", "SS28", "SS29", "SS30", "SS31"]
+        ),
+
+        RouteLine(
+            id: "subway-z",
+            name: "Z Nassau St Express",
+            dataSource: "SUBWAY",
+            stationCodes: ["SM23", "SM22", "SM21", "SM20", "SM19", "SM18", "SM16", "SM11", "SJ30", "SJ28", "SJ27", "SJ24", "SJ23", "SJ21", "SJ20", "SJ17", "SJ15", "SJ14", "SJ12", "SG06", "SG05"]
+        ),
+
     ]
 
     // MARK: - Station Expansion

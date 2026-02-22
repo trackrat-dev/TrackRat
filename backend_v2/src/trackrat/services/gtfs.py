@@ -56,6 +56,7 @@ GTFS_FEED_URLS = {
     "PATCO": "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip",
     "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
+    "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -69,6 +70,7 @@ DEFAULT_LINE_COLORS = {
     "PATCO": "#BC0035",  # PATCO red
     "LIRR": "#0039A6",  # LIRR blue (MTA blue)
     "MNR": "#0039A6",  # Metro-North blue (MTA blue)
+    "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
 }
 
 # NJT GTFS route_short_name to API line code mapping
@@ -1155,6 +1157,7 @@ class GTFSService:
         patco_services = await self.get_active_service_ids(db, "PATCO", target_date)
         lirr_services = await self.get_active_service_ids(db, "LIRR", target_date)
         mnr_services = await self.get_active_service_ids(db, "MNR", target_date)
+        subway_services = await self.get_active_service_ids(db, "SUBWAY", target_date)
 
         all_services = {
             "NJT": njt_services,
@@ -1163,6 +1166,7 @@ class GTFSService:
             "PATCO": patco_services,
             "LIRR": lirr_services,
             "MNR": mnr_services,
+            "SUBWAY": subway_services,
         }
 
         for data_source, service_ids in all_services.items():
@@ -1365,6 +1369,22 @@ class GTFSService:
                         if route_color
                         else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
                     )
+            elif data_source == "SUBWAY":
+                from trackrat.config.stations import get_subway_route_info
+
+                subway_route_info = get_subway_route_info(gtfs_route_id)
+                if subway_route_info:
+                    line_code, line_name, line_color = subway_route_info
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    line_code = route_short or f"SUBWAY-{gtfs_route_id}"
+                    line_name = route_long or route_short or f"Subway {gtfs_route_id}"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
+                    )
             else:
                 # For NJT, map GTFS route_short_name to API line codes for deduplication
                 if data_source == "NJT" and route_short:
@@ -1400,6 +1420,17 @@ class GTFSService:
             # Add "M" prefix for MNR to match real-time format (e.g., "631700" -> "M631700")
             if data_source == "MNR" and effective_train_id:
                 effective_train_id = _mnr_train_id_from_gtfs(effective_train_id)
+
+            # Add "S{route}-" prefix for SUBWAY to distinguish from other systems.
+            # Note: GTFS static trip IDs don't map to real-time NYCT train IDs,
+            # so this just ensures subway schedule entries are identifiable.
+            if (
+                data_source == "SUBWAY"
+                and effective_train_id
+                and not effective_train_id.startswith("S")
+            ):
+                route_prefix = route_short or "X"
+                effective_train_id = f"S{route_prefix}-{effective_train_id[:6]}"
 
             departure = TrainDeparture(
                 train_id=effective_train_id,
@@ -1559,7 +1590,7 @@ class GTFSService:
         if data_source == "MNR" and train_id.startswith("M") and train_id[1:].isdigit():
             search_train_id = train_id[1:]
 
-        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
         sources_to_search = [data_source] if data_source else all_sources
 
         # Cache service_ids per source to avoid repeated queries
@@ -1719,6 +1750,14 @@ class GTFSService:
         # Add "M" prefix for MNR to match real-time format (e.g., "631700" -> "M631700")
         if matched_source == "MNR" and effective_train_id:
             effective_train_id = _mnr_train_id_from_gtfs(effective_train_id)
+
+        # Add "S{route}-" prefix for SUBWAY
+        if (
+            matched_source == "SUBWAY"
+            and effective_train_id
+            and not effective_train_id.startswith("S")
+        ):
+            effective_train_id = f"S{route_short or 'X'}-{effective_train_id[:6]}"
 
         # Build line info
         # PATH and PATCO routes need special handling for proper line codes/colors

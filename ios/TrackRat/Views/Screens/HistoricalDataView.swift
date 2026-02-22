@@ -144,12 +144,10 @@ struct PerformanceSection: View {
     }
 
     private static func serviceDisplayName(for source: String) -> String {
-        switch source {
-        case "AMTRAK": return "All Amtrak trains"
-        case "PATH": return "All PATH trains"
-        case "PATCO": return "All PATCO trains"
-        default: return "All NJ Transit trains"
+        if let system = TrainSystem(rawValue: source) {
+            return "All \(system.displayName) trains"
         }
+        return "All NJ Transit trains"
     }
 
     var body: some View {
@@ -221,12 +219,10 @@ struct TrackUsageSection: View {
     }
 
     private static func serviceDisplayName(for source: String) -> String {
-        switch source {
-        case "AMTRAK": return "All Amtrak trains"
-        case "PATH": return "All PATH trains"
-        case "PATCO": return "All PATCO trains"
-        default: return "All NJ Transit trains"
+        if let system = TrainSystem(rawValue: source) {
+            return "All \(system.displayName) trains"
         }
+        return "All NJ Transit trains"
     }
 
     var body: some View {
@@ -867,13 +863,7 @@ class CongestionDataViewModel: ObservableObject {
             return
         }
         
-        // Determine expected data source based on train type
-        let expectedDataSource: String
-        if train.trainClass == "Amtrak" {
-            expectedDataSource = "AMTRAK"
-        } else {
-            expectedDataSource = "NJT"
-        }
+        let expectedDataSource = train.dataSource
         
         // Extract user's journey segment if available, otherwise use full route
         let journeyStops = extractUserJourneyStops(from: allStops) ?? allStops

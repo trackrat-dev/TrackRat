@@ -106,10 +106,17 @@ struct TrainDistributionChart: View {
     }
 
     /// Returns a short display label for a train ID.
-    /// PATH/PATCO synthetic IDs (e.g., "PATH_PHO_33rd_1737900000") show just the prefix.
+    /// Synthetic IDs (e.g., "PATH_PHO_33rd_1737900000", "S6-010123") show a short label.
     private func displayLabel(for trainId: String) -> String {
         if trainId.hasPrefix("PATH_") { return "PATH" }
         if trainId.hasPrefix("PATCO_") { return "PATCO" }
+        if trainId.hasPrefix("LIRR_") { return "LIRR" }
+        if trainId.hasPrefix("MNR_") { return "MNR" }
+        // Subway IDs: "S{route}-{digits}" e.g. "S6-010123" → "6 train"
+        if trainId.hasPrefix("S"), let dashIdx = trainId.firstIndex(of: "-"), dashIdx > trainId.startIndex {
+            let route = trainId[trainId.index(after: trainId.startIndex)..<dashIdx]
+            return "\(route) train"
+        }
         return trainId
     }
 }

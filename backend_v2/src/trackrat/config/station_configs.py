@@ -244,7 +244,9 @@ def get_station_config(station_code: str) -> dict[str, Any]:
     Returns:
         Dictionary with station configuration
     """
-    return STATION_PREDICTION_CONFIGS.get(station_code, STATION_PREDICTION_CONFIGS["_default"])
+    return STATION_PREDICTION_CONFIGS.get(
+        station_code, STATION_PREDICTION_CONFIGS["_default"]
+    )
 
 
 def station_has_predictions(station_code: str) -> bool:

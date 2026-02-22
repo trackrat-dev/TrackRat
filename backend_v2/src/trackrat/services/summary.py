@@ -52,6 +52,7 @@ CARRIER_DISPLAY_NAMES: dict[str, str] = {
     "PATCO": "PATCO",
     "LIRR": "LIRR",
     "MNR": "Metro-North",
+    "SUBWAY": "NYC Subway",
 }
 
 
@@ -1397,7 +1398,10 @@ class SummaryService:
         # Historical stats for this train
         # For PATH/PATCO/LIRR/MNR, use destination instead of synthetic train_id
         if train_stats.has_data:
-            if data_source in ("PATH", "PATCO", "LIRR", "MNR") and destination:
+            if (
+                data_source in ("PATH", "PATCO", "LIRR", "MNR", "SUBWAY")
+                and destination
+            ):
                 train_display = f"This {destination} train"
             else:
                 train_display = f"Train {train_id}"

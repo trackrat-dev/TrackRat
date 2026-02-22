@@ -53,7 +53,7 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
 # SCHEDULED trains from these sources should be hidden when close to departure
 # if they haven't been upgraded to OBSERVED by discovery.
 REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
-    {"NJT", "AMTRAK", "PATH", "LIRR", "MNR"}
+    {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
 )
 
 # Minutes before departure to hide SCHEDULED trains that weren't discovered.
@@ -161,7 +161,7 @@ class DepartureService:
         allowed_sources = (
             data_sources
             if data_sources
-            else ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+            else ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
         )
 
         departure_filters = [

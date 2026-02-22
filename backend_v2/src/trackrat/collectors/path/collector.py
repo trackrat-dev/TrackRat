@@ -724,7 +724,7 @@ class PathCollector:
         # Filter by normalized destination to handle headsign variants
         normalized_dest = _normalize_headsign(destination)
         for candidate in candidates:
-            if _normalize_headsign(candidate.destination) == normalized_dest:
+            if _normalize_headsign(candidate.destination or "") == normalized_dest:
                 return candidate
 
         return None

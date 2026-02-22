@@ -954,7 +954,7 @@ extension IndividualJourneySegment {
     
     var trainDisplayName: String {
         // For trains with synthetic IDs (GTFS-derived), show destination instead
-        if ["PATH", "PATCO", "LIRR", "MNR"].contains(dataSource) {
+        if TrainSystem.syntheticTrainIdSources.contains(dataSource) {
             return toStationName.isEmpty ? Stations.displayName(for: toStation) : toStationName
         }
         return "Train \(trainId)"

@@ -5,15 +5,13 @@ hardcoded 3 min/segment approximation. Uses one representative trip
 per PATH route to extract inter-stop travel time ratios.
 """
 
-from datetime import timedelta
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.config.stations import PATH_ROUTE_STOPS
-from trackrat.models.database import GTFSRoute, GTFSStopTime, GTFSTrip
+from trackrat.models.database import GTFSRoute, GTFSTrip
 
 logger = get_logger(__name__)
 
@@ -66,6 +64,8 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
 
     for route in routes:
         route_id_str = route.route_id
+        if not route_id_str:
+            continue
         expected_stops = PATH_ROUTE_STOPS.get(route_id_str)
         if not expected_stops:
             continue
@@ -82,7 +82,7 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
             continue
 
         # Sort stop_times by sequence
-        sorted_times = sorted(trip.stop_times, key=lambda st: st.stop_sequence)
+        sorted_times = sorted(trip.stop_times, key=lambda st: st.stop_sequence or 0)
 
         # Build station_code -> departure_time_seconds map
         station_times: dict[str, int] = {}
@@ -99,9 +99,7 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
         # Check if GTFS stop order matches our expected order
         # If reversed, we still extract correct segment times by matching
         # against expected_stops order
-        gtfs_station_order = [
-            st.station_code for st in sorted_times if st.station_code
-        ]
+        gtfs_station_order = [st.station_code for st in sorted_times if st.station_code]
 
         # Determine if GTFS trip is in reverse direction
         if len(gtfs_station_order) >= 2 and len(expected_stops) >= 2:
@@ -121,9 +119,7 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
             to_station = expected_stops[i + 1]
 
             if from_station in station_times and to_station in station_times:
-                time_diff = abs(
-                    station_times[to_station] - station_times[from_station]
-                )
+                time_diff = abs(station_times[to_station] - station_times[from_station])
                 minutes = time_diff / 60.0
                 # Sanity check: segment time should be 1-15 minutes
                 if 0.5 <= minutes <= 15.0:
@@ -141,9 +137,7 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
                     )
             else:
                 # Missing station in GTFS data - use default
-                segments.append(
-                    (from_station, to_station, DEFAULT_MINUTES_PER_SEGMENT)
-                )
+                segments.append((from_station, to_station, DEFAULT_MINUTES_PER_SEGMENT))
 
         if segments:
             result[route_id_str] = segments

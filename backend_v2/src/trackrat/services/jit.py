@@ -18,6 +18,7 @@ from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.db.engine import retry_on_deadlock
 from trackrat.models.database import TrainJourney
 from trackrat.settings import get_settings
@@ -42,6 +43,7 @@ class JustInTimeUpdateService:
         self._path_collector: PathCollector | None = None
         self._lirr_collector: LIRRCollector | None = None
         self._mnr_collector: MNRCollector | None = None
+        self._subway_collector: SubwayCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -63,6 +65,9 @@ class JustInTimeUpdateService:
         if self._mnr_collector:
             await self._mnr_collector.client.close()
             self._mnr_collector = None
+        if self._subway_collector:
+            await self._subway_collector.client.close()
+            self._subway_collector = None
         # AmtrakJourneyCollector doesn't have a close method - no cleanup needed
         self._amtrak_collector = None
 
@@ -103,6 +108,13 @@ class JustInTimeUpdateService:
             self._mnr_collector = MNRCollector()
         return self._mnr_collector
 
+    @property
+    def subway_collector(self) -> SubwayCollector:
+        """Get or create Subway journey collector."""
+        if self._subway_collector is None:
+            self._subway_collector = SubwayCollector()
+        return self._subway_collector
+
     async def get_collector_for_journey(
         self, journey: TrainJourney
     ) -> (
@@ -111,6 +123,7 @@ class JustInTimeUpdateService:
         | PathCollector
         | LIRRCollector
         | MNRCollector
+        | SubwayCollector
         | None
     ):
         """Get the appropriate collector for a journey based on its data source.
@@ -132,6 +145,8 @@ class JustInTimeUpdateService:
             return self.lirr_collector
         elif journey.data_source == "MNR":
             return self.mnr_collector
+        elif journey.data_source == "SUBWAY":
+            return self.subway_collector
         elif journey.data_source == "PATCO":
             # PATCO is schedule-only (GTFS static), no real-time API available
             return None

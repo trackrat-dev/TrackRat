@@ -24,6 +24,7 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
@@ -130,6 +131,17 @@ class SchedulerService:
             trigger=IntervalTrigger(minutes=4),
             id="mnr_collection",
             name="MNR Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        # Schedule Subway collection (every 4 minutes)
+        self.scheduler.add_job(
+            self.run_subway_collection,
+            trigger=IntervalTrigger(minutes=4),
+            id="subway_collection",
+            name="Subway Collection",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=120,
@@ -251,6 +263,7 @@ class SchedulerService:
         asyncio.create_task(self.run_path_collection())
         asyncio.create_task(self.run_lirr_collection())
         asyncio.create_task(self.run_mnr_collection())
+        asyncio.create_task(self.run_subway_collection())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -536,6 +549,50 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("mnr_collection_skipped_still_fresh")
+
+    async def run_subway_collection(self) -> None:
+        """Run unified NYC Subway collection (discovery + journey updates)."""
+        task_id = f"subway_collection_{now_et().isoformat()}"
+
+        async def do_subway_collection_work() -> dict[str, Any]:
+            """The actual Subway collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_subway_collection")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                collector = SubwayCollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "subway_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="subway_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_subway_collection_work,
+            )
+
+            if not executed:
+                logger.debug("subway_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -2026,11 +2083,8 @@ class SchedulerService:
             if stop.station_code == token.origin_code:
                 origin_stop = stop
                 # Convert to ISO8601 string for iOS
-                scheduled_departure_time = (
-                    (stop.updated_departure or stop.scheduled_departure).isoformat()
-                    if (stop.updated_departure or stop.scheduled_departure)
-                    else None
-                )
+                dep_time = stop.updated_departure or stop.scheduled_departure
+                scheduled_departure_time = dep_time.isoformat() if dep_time else None
                 # Check if departed
 
                 # Use has_departed_station as authoritative source
@@ -2045,19 +2099,15 @@ class SchedulerService:
             if stop.station_code == token.destination_code:
                 destination_stop = stop
                 # Convert to ISO8601 string for iOS
-                scheduled_arrival_time = (
-                    (stop.updated_arrival or stop.scheduled_arrival).isoformat()
-                    if (stop.updated_arrival or stop.scheduled_arrival)
-                    else None
-                )
+                arr_time = stop.updated_arrival or stop.scheduled_arrival
+                scheduled_arrival_time = arr_time.isoformat() if arr_time else None
 
         # Get next stop arrival time
         if next_stop:
             # Convert to ISO8601 string for iOS
+            next_arr_time = next_stop.updated_arrival or next_stop.scheduled_arrival
             next_stop_arrival_time = (
-                (next_stop.updated_arrival or next_stop.scheduled_arrival).isoformat()
-                if (next_stop.updated_arrival or next_stop.scheduled_arrival)
-                else None
+                next_arr_time.isoformat() if next_arr_time else None
             )
 
         # Determine status based on user's journey context
@@ -2232,8 +2282,11 @@ class SchedulerService:
                 error_type=type(e).__name__,
             )
 
+    # All GTFS feed sources — add new systems here
+    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY")
+
     async def refresh_gtfs_feeds(self) -> None:
-        """Refresh GTFS static schedule data for NJT, Amtrak, and PATH.
+        """Refresh GTFS static schedule data for all transit systems.
 
         This downloads and parses GTFS feeds to enable future date schedule queries.
         The GTFSService handles rate limiting (max once per 24 hours per source).
@@ -2253,39 +2306,19 @@ class SchedulerService:
 
                 gtfs_service = GTFSService()
 
+                results: dict[str, bool] = {}
                 async with get_session() as db:
-                    # Refresh NJT feed
-                    njt_result = await gtfs_service.refresh_feed(db, "NJT")
-                    logger.info("gtfs_njt_refresh_complete", refreshed=njt_result)
-
-                    # Refresh Amtrak feed
-                    amtrak_result = await gtfs_service.refresh_feed(db, "AMTRAK")
-                    logger.info("gtfs_amtrak_refresh_complete", refreshed=amtrak_result)
-
-                    # Refresh PATH feed
-                    path_result = await gtfs_service.refresh_feed(db, "PATH")
-                    logger.info("gtfs_path_refresh_complete", refreshed=path_result)
-
-                    # Refresh PATCO feed (schedule-only, no real-time data)
-                    patco_result = await gtfs_service.refresh_feed(db, "PATCO")
-                    logger.info("gtfs_patco_refresh_complete", refreshed=patco_result)
-
-                    # Refresh LIRR feed
-                    lirr_result = await gtfs_service.refresh_feed(db, "LIRR")
-                    logger.info("gtfs_lirr_refresh_complete", refreshed=lirr_result)
-
-                    # Refresh MNR feed
-                    mnr_result = await gtfs_service.refresh_feed(db, "MNR")
-                    logger.info("gtfs_mnr_refresh_complete", refreshed=mnr_result)
+                    for source in self.GTFS_SOURCES:
+                        result = await gtfs_service.refresh_feed(db, source)
+                        results[source] = result
+                        logger.info(
+                            f"gtfs_{source.lower()}_refresh_complete",
+                            refreshed=result,
+                        )
 
                 logger.info(
                     "gtfs_feed_refresh_complete",
-                    njt_refreshed=njt_result,
-                    amtrak_refreshed=amtrak_result,
-                    path_refreshed=path_result,
-                    patco_refreshed=patco_result,
-                    lirr_refreshed=lirr_result,
-                    mnr_refreshed=mnr_result,
+                    **{f"{s.lower()}_refreshed": r for s, r in results.items()},
                 )
 
             except Exception as e:
@@ -2324,87 +2357,31 @@ class SchedulerService:
             gtfs_service = GTFSService()
 
             async with get_session() as db:
-                # Check if GTFS data is available for all sources
-                njt_available = await gtfs_service.is_feed_available(db, "NJT")
-                amtrak_available = await gtfs_service.is_feed_available(db, "AMTRAK")
-                path_available = await gtfs_service.is_feed_available(db, "PATH")
-                patco_available = await gtfs_service.is_feed_available(db, "PATCO")
-                lirr_available = await gtfs_service.is_feed_available(db, "LIRR")
-                mnr_available = await gtfs_service.is_feed_available(db, "MNR")
+                availability: dict[str, bool] = {}
+                for source in self.GTFS_SOURCES:
+                    availability[source] = await gtfs_service.is_feed_available(
+                        db, source
+                    )
 
-                if (
-                    njt_available
-                    and amtrak_available
-                    and path_available
-                    and patco_available
-                    and lirr_available
-                    and mnr_available
-                ):
+                if all(availability.values()):
                     logger.info(
                         "gtfs_data_already_available",
-                        njt=njt_available,
-                        amtrak=amtrak_available,
-                        path=path_available,
-                        patco=patco_available,
-                        lirr=lirr_available,
-                        mnr=mnr_available,
+                        **{s.lower(): v for s, v in availability.items()},
                     )
                     return
 
-                # Data is missing - trigger initial download
                 logger.info(
                     "gtfs_data_missing_triggering_initial_download",
-                    njt_available=njt_available,
-                    amtrak_available=amtrak_available,
-                    path_available=path_available,
-                    patco_available=patco_available,
-                    lirr_available=lirr_available,
-                    mnr_available=mnr_available,
+                    **{f"{s.lower()}_available": v for s, v in availability.items()},
                 )
 
-                if not njt_available:
-                    njt_result = await gtfs_service.refresh_feed(db, "NJT", force=True)
-                    logger.info(
-                        "gtfs_njt_initial_download_complete", success=njt_result
-                    )
-
-                if not amtrak_available:
-                    amtrak_result = await gtfs_service.refresh_feed(
-                        db, "AMTRAK", force=True
-                    )
-                    logger.info(
-                        "gtfs_amtrak_initial_download_complete", success=amtrak_result
-                    )
-
-                if not path_available:
-                    path_result = await gtfs_service.refresh_feed(
-                        db, "PATH", force=True
-                    )
-                    logger.info(
-                        "gtfs_path_initial_download_complete", success=path_result
-                    )
-
-                if not patco_available:
-                    patco_result = await gtfs_service.refresh_feed(
-                        db, "PATCO", force=True
-                    )
-                    logger.info(
-                        "gtfs_patco_initial_download_complete", success=patco_result
-                    )
-
-                if not lirr_available:
-                    lirr_result = await gtfs_service.refresh_feed(
-                        db, "LIRR", force=True
-                    )
-                    logger.info(
-                        "gtfs_lirr_initial_download_complete", success=lirr_result
-                    )
-
-                if not mnr_available:
-                    mnr_result = await gtfs_service.refresh_feed(db, "MNR", force=True)
-                    logger.info(
-                        "gtfs_mnr_initial_download_complete", success=mnr_result
-                    )
+                for source, available in availability.items():
+                    if not available:
+                        result = await gtfs_service.refresh_feed(db, source, force=True)
+                        logger.info(
+                            f"gtfs_{source.lower()}_initial_download_complete",
+                            success=result,
+                        )
 
         except Exception as e:
             logger.error(

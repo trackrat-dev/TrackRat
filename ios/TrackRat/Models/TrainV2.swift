@@ -649,6 +649,8 @@ extension TrainV2 {
             return "LIRR"
         case "MNR":
             return "Metro-North"
+        case "SUBWAY":
+            return "NYC Subway"
         default:
             return "NJ Transit"
         }
@@ -660,8 +662,8 @@ extension TrainV2 {
     }
 
     /// Whether this train uses synthetic IDs (not user-friendly numeric train numbers)
-    /// PATH, PATCO, LIRR, and MNR use GTFS-derived IDs rather than public train numbers
+    /// PATH, PATCO, LIRR, MNR, and SUBWAY use GTFS-derived IDs rather than public train numbers
     var usesSyntheticTrainId: Bool {
-        return dataSource == "PATH" || dataSource == "PATCO" || dataSource == "LIRR" || dataSource == "MNR"
+        return TrainSystem.syntheticTrainIdSources.contains(dataSource)
     }
 }

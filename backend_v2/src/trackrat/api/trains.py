@@ -79,7 +79,7 @@ async def get_departures(
     ),
     data_sources: str | None = Query(
         None,
-        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO. Default: all",
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY. Default: all",
     ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),

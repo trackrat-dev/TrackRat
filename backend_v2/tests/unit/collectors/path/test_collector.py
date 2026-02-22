@@ -555,7 +555,9 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        created = await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        created = await collector._process_arrival_for_discovery(
+            mock_session, arrival, {}
+        )
 
         assert created is True
         mock_session.add.assert_called()
@@ -579,7 +581,9 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        created = await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        created = await collector._process_arrival_for_discovery(
+            mock_session, arrival, {}
+        )
 
         assert created is False
 
@@ -764,7 +768,9 @@ class TestPathCollectorDiscovery:
         )
 
         # Process terminus discovery
-        await collector._process_arrival_for_discovery(mock_session, terminus_arrival, {})
+        await collector._process_arrival_for_discovery(
+            mock_session, terminus_arrival, {}
+        )
         terminus_journey = mock_session.add.call_args_list[0][0][0]
         terminus_train_id = terminus_journey.train_id
 
@@ -772,7 +778,9 @@ class TestPathCollectorDiscovery:
         mock_session.reset_mock()
 
         # Process mid-route discovery
-        await collector._process_arrival_for_discovery(mock_session, midroute_arrival, {})
+        await collector._process_arrival_for_discovery(
+            mock_session, midroute_arrival, {}
+        )
         midroute_journey = mock_session.add.call_args_list[0][0][0]
         midroute_train_id = midroute_journey.train_id
 

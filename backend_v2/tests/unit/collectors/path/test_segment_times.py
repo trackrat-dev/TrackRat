@@ -18,7 +18,6 @@ from trackrat.collectors.path.segment_times import (
 )
 from trackrat.models.database import JourneyStop
 
-
 # =============================================================================
 # TEST DATA
 # =============================================================================
@@ -95,9 +94,7 @@ class TestGetCumulativeTime:
 
     def test_reversed_indices_handled(self):
         """Reversed from/to indices still return correct time."""
-        forward = get_cumulative_time(
-            SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 3, "862"
-        )
+        forward = get_cumulative_time(SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 3, "862")
         reversed_result = get_cumulative_time(
             SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 3, 0, "862"
         )
@@ -105,16 +102,12 @@ class TestGetCumulativeTime:
 
     def test_fallback_when_no_route_data(self):
         """Falls back to DEFAULT_MINUTES_PER_SEGMENT when route not in map."""
-        result = get_cumulative_time(
-            SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 3, "99999"
-        )
+        result = get_cumulative_time(SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 3, "99999")
         assert result == 3 * DEFAULT_MINUTES_PER_SEGMENT
 
     def test_fallback_when_route_id_none(self):
         """Falls back to default when route_id is None."""
-        result = get_cumulative_time(
-            SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 3, None
-        )
+        result = get_cumulative_time(SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 3, None)
         assert result == 3 * DEFAULT_MINUTES_PER_SEGMENT
 
     def test_fallback_when_empty_segment_times(self):
@@ -137,9 +130,9 @@ class TestGetCumulativeTime:
         gtfs_result = get_cumulative_time(
             SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 0, 5, "862"
         )
-        assert gtfs_result != flat_3_min, (
-            f"GTFS result ({gtfs_result}) should differ from flat 3min ({flat_3_min})"
-        )
+        assert (
+            gtfs_result != flat_3_min
+        ), f"GTFS result ({gtfs_result}) should differ from flat 3min ({flat_3_min})"
 
 
 # =============================================================================
@@ -208,12 +201,14 @@ class TestComputeAveragedOriginDeparture:
         stops = [
             self._make_stop("PNK", 1),
             self._make_stop(
-                "PHR", 2,
+                "PHR",
+                2,
                 actual_arrival=datetime(2026, 1, 19, 10, 4, 0, tzinfo=ET),
                 has_departed=True,
             ),
             self._make_stop(
-                "PJS", 3,
+                "PJS",
+                3,
                 actual_arrival=datetime(2026, 1, 19, 10, 10, 0, tzinfo=ET),
                 has_departed=True,
             ),
@@ -247,9 +242,7 @@ class TestComputeAveragedOriginDeparture:
             self._make_stop("PJS", 3),
             self._make_stop("PGR", 4),
             self._make_stop("PEX", 5),
-            self._make_stop(
-                "PWC", 6, actual_arrival=far_time, has_departed=True
-            ),
+            self._make_stop("PWC", 6, actual_arrival=far_time, has_departed=True),
         ]
 
         result = self.collector._compute_averaged_origin_departure(
@@ -262,9 +255,9 @@ class TestComputeAveragedOriginDeparture:
         # Result should be much closer to 10:00 than 10:02
         implied_phr = datetime(2026, 1, 19, 10, 0, 0, tzinfo=ET)
         diff_seconds = abs((result - implied_phr).total_seconds())
-        assert diff_seconds < 30, (
-            f"Result should be within 30s of PHR implication, was {diff_seconds}s away"
-        )
+        assert (
+            diff_seconds < 30
+        ), f"Result should be within 30s of PHR implication, was {diff_seconds}s away"
 
     def test_no_observations_returns_none(self):
         """Returns None when no stops have actual times."""
@@ -285,9 +278,7 @@ class TestComputeAveragedOriginDeparture:
         far_time = datetime(2026, 1, 19, 10, 18, 0, tzinfo=ET)  # implies 10:02
 
         stops = [
-            self._make_stop(
-                "PNK", 1, actual_departure=origin_time, has_departed=True
-            ),
+            self._make_stop("PNK", 1, actual_departure=origin_time, has_departed=True),
             self._make_stop("PHR", 2),
             self._make_stop("PJS", 3),
             self._make_stop("PGR", 4),
@@ -303,9 +294,9 @@ class TestComputeAveragedOriginDeparture:
         # Origin weight is 10.0, PWC weight is 1/16 = 0.0625
         # Should be extremely close to 10:00
         diff_seconds = abs((result - origin_time).total_seconds())
-        assert diff_seconds < 2, (
-            f"Origin observation should dominate, was {diff_seconds}s away"
-        )
+        assert (
+            diff_seconds < 2
+        ), f"Origin observation should dominate, was {diff_seconds}s away"
 
 
 class TestRecomputeStopTimes:
@@ -373,7 +364,9 @@ class TestRecomputeStopTimes:
         stops = [
             self._make_stop("PNK", 1, has_departed=True),
             self._make_stop(
-                "PHR", 2, has_departed=True,
+                "PHR",
+                2,
+                has_departed=True,
                 updated_arrival=departed_arrival,
             ),
             self._make_stop("PJS", 3, has_departed=False),

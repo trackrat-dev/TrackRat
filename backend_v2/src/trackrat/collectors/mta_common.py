@@ -1,5 +1,5 @@
 """
-Shared utilities for MTA GTFS-RT based collectors (LIRR and Metro-North).
+Shared utilities for MTA GTFS-RT based collectors (LIRR, Metro-North, and NYC Subway).
 
 Provides time-based departure inference, journey metadata tracking,
 and completion detection — logic that both collectors need but that
@@ -22,9 +22,12 @@ logger = logging.getLogger(__name__)
 LIRR_ORIGIN_TERMINALS = frozenset({"NY", "LAT", "GCT", "HPA"})
 MNR_ORIGIN_TERMINALS = frozenset({"GCT"})
 
-_ORIGIN_TERMINAL_CONFIG: dict[str, tuple[frozenset[str], str]] = {
+_ORIGIN_TERMINAL_CONFIG: dict[str, tuple[frozenset[str], str | None]] = {
     "LIRR": (LIRR_ORIGIN_TERMINALS, "NY"),  # Penn Station is most common
     "MNR": (MNR_ORIGIN_TERMINALS, "GCT"),  # Grand Central is the only terminal
+    # Subway has too many terminals for a single default; origin inference
+    # is best-effort since GTFS-RT usually includes all stops for subway trips.
+    "SUBWAY": (frozenset(), None),
 }
 
 # Rough estimate of travel time from origin terminal to first visible RT stop.

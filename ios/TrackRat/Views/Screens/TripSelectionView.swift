@@ -467,6 +467,8 @@ struct TripSelectionView: View {
     private func trainSystemName(for trainNumber: String) -> String {
         if trainNumber.hasPrefix("A") {
             return "AMTRAK"
+        } else if trainNumber.hasPrefix("S") {
+            return "SUBWAY"
         } else if trainNumber.hasPrefix("L") {
             return "LIRR"
         } else if trainNumber.hasPrefix("M") {
@@ -479,6 +481,8 @@ struct TripSelectionView: View {
     private func trainSystemColor(for trainNumber: String) -> Color {
         if trainNumber.hasPrefix("A") {
             return Color(hex: TrainSystem.amtrak.color) ?? .gray
+        } else if trainNumber.hasPrefix("S") {
+            return Color(hex: TrainSystem.subway.color) ?? .gray
         } else if trainNumber.hasPrefix("L") {
             return Color(hex: TrainSystem.lirr.color) ?? .gray
         } else if trainNumber.hasPrefix("M") {

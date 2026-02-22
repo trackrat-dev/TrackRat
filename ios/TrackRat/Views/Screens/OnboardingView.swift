@@ -677,33 +677,108 @@ struct StationPickerSheet: View {
 
     @State private var searchText = ""
 
-    private var filteredStations: [Station] {
+    /// All visible stations filtered by selected systems.
+    private var visibleStations: [Station] {
         var allStations = Stations.all.compactMap { name -> Station? in
             guard let code = Stations.getStationCode(name) else { return nil }
             return Station(code: code, name: name)
         }
 
-        // Filter by selected systems if provided
         if let systems = selectedSystems {
             allStations = allStations.filter { station in
                 Stations.isStationVisible(station.code, withSystems: systems)
             }
         }
 
-        if searchText.isEmpty {
-            // Show popular stations first (if visible), then all others alphabetically
-            let pinnedCodes = ["NY", "GCT", "PWC", "HB"]
-            let pinned = pinnedCodes.compactMap { code in allStations.first { $0.code == code } }
-            let otherStations = allStations.filter { !pinnedCodes.contains($0.code) }.sorted { $0.name < $1.name }
-            return pinned + otherStations
-        } else {
-            return allStations.filter { station in
-                station.name.localizedCaseInsensitiveContains(searchText) ||
-                station.code.localizedCaseInsensitiveContains(searchText)
+        return allStations
+    }
+
+    /// Search results using ranked search (prefix > substring).
+    private var searchResults: [Station] {
+        guard !searchText.isEmpty else { return [] }
+        let q = searchText.lowercased()
+        let stations = visibleStations
+        let prefixMatches = stations.filter { $0.name.lowercased().hasPrefix(q) }
+        let substringMatches = stations.filter {
+            !$0.name.lowercased().hasPrefix(q) &&
+            ($0.name.localizedCaseInsensitiveContains(searchText) ||
+             $0.code.localizedCaseInsensitiveContains(searchText))
+        }
+        return Array((prefixMatches + substringMatches).prefix(20))
+    }
+
+    /// Stations grouped by system for the browse view (when search is empty).
+    private var groupedStations: [(system: String, stations: [Station])] {
+        let systemOrder: [(raw: String, label: String)] = [
+            ("NJT", "NJ Transit"),
+            ("AMTRAK", "Amtrak"),
+            ("PATH", "PATH"),
+            ("PATCO", "PATCO"),
+            ("LIRR", "LIRR"),
+            ("MNR", "Metro-North"),
+            ("SUBWAY", "NYC Subway"),
+        ]
+
+        let stations = visibleStations
+        var groups: [(system: String, stations: [Station])] = []
+
+        // Pinned section first
+        let pinnedCodes = ["NY", "GCT", "PWC", "HB", "S127", "JAM"]
+        let pinned = pinnedCodes.compactMap { code in stations.first { $0.code == code } }
+        if !pinned.isEmpty {
+            groups.append((system: "Popular", stations: pinned))
+        }
+
+        // Group remaining by system
+        let pinnedSet = Set(pinnedCodes)
+        for (raw, label) in systemOrder {
+            let systemStations = stations
+                .filter { !pinnedSet.contains($0.code) && Stations.systemStringsForStation($0.code).contains(raw) }
+                .sorted { $0.name < $1.name }
+            if !systemStations.isEmpty {
+                groups.append((system: label, stations: systemStations))
             }
         }
+
+        return groups
     }
-    
+
+    @ViewBuilder
+    private func stationRow(_ station: Station) -> some View {
+        let isDisabled = disabledStation?.code == station.code
+
+        Button {
+            if !isDisabled {
+                selectedStation = station
+                onStationSelected(station)
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(station.name)
+                        .font(.headline)
+                        .foregroundColor(isDisabled ? .white.opacity(0.4) : .white)
+
+                    if isDisabled {
+                        Text("Already selected")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+                Spacer()
+
+                if station.code == selectedStation?.code {
+                    Image(systemName: "checkmark")
+                        .foregroundColor(.orange)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(isDisabled)
+        .listRowBackground(Color.clear)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -727,42 +802,30 @@ struct StationPickerSheet: View {
                 )
                 .padding()
 
-                List(filteredStations) { station in
-                    let isDisabled = disabledStation?.code == station.code
-
-                    Button {
-                        if !isDisabled {
-                            selectedStation = station
-                            onStationSelected(station)
-                        }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(station.name)
-                                    .font(.headline)
-                                    .foregroundColor(isDisabled ? .white.opacity(0.4) : .white)
-
-                                if isDisabled {
-                                    Text("Already selected")
-                                        .font(.caption)
-                                        .foregroundColor(.orange)
+                if searchText.isEmpty {
+                    List {
+                        ForEach(groupedStations, id: \.system) { group in
+                            Section {
+                                ForEach(group.stations) { station in
+                                    stationRow(station)
                                 }
-                            }
-                            Spacer()
-
-                            if station.code == selectedStation?.code {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.orange)
+                            } header: {
+                                Text(group.system)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .textCase(nil)
                             }
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(isDisabled)
-                    .listRowBackground(Color.clear)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                } else {
+                    List(searchResults) { station in
+                        stationRow(station)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
             }
             .background(.ultraThinMaterial)
             .navigationTitle("Select Station")

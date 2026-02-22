@@ -469,7 +469,7 @@ class HistoricalRouteInfo(BaseModel):
     from_station: str = Field(..., min_length=1, max_length=4)
     to_station: str = Field(..., min_length=1, max_length=4)
     total_trains: int = Field(..., ge=0)
-    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
 
 
 class DelayBreakdown(BaseModel):
@@ -521,7 +521,7 @@ class TrainLocationData(BaseModel):
 
     train_id: str
     line: str
-    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR"]
+    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
 
     # GPS coordinates (Amtrak only)
     lat: float | None = None

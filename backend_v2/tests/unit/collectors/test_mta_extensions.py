@@ -11,7 +11,10 @@ from google.transit import gtfs_realtime_pb2
 from trackrat.collectors.mta_extensions import (
     _decode_varint,
     _find_length_delimited_field,
+    _find_varint_field,
     extract_mta_track,
+    extract_nyct_stop_time_update,
+    extract_nyct_trip_descriptor,
 )
 
 # MTA Railroad extension: field 1005, wire type 2 (length-delimited)
@@ -232,3 +235,235 @@ class TestExtractMtaTrack:
             assert (
                 result == expected_track
             ), f"Expected track '{expected_track}', got '{result}'"
+
+
+# =========================================================================
+# NYCT Subway Extension Tests
+# =========================================================================
+
+# NYCT extension: field 1001, wire type 2 (length-delimited)
+# Tag varint for (1001 << 3) | 2 = 8010 encodes as [0xCA, 0x3E]
+_NYCT_TAG = b"\xca\x3e"
+
+
+class TestFindVarintField:
+    """Tests for the varint field finder."""
+
+    def test_find_existing_field(self):
+        """Find a varint field value."""
+        # Field 2, wire type 0 (varint), value 1
+        data = b"\x10\x01"
+        result = _find_varint_field(data, 2)
+        assert result == 1
+
+    def test_field_not_found(self):
+        """Return None when field doesn't exist."""
+        data = b"\x10\x01"
+        result = _find_varint_field(data, 99)
+        assert result is None
+
+    def test_skip_length_delimited(self):
+        """Skip length-delimited fields to find varint target."""
+        # Field 1 (string "abc"), then field 3 (varint 42)
+        data = b"\x0a\x03abc\x18\x2a"
+        result = _find_varint_field(data, 3)
+        assert result == 42
+
+    def test_zero_value(self):
+        """Zero varint value is found (not confused with missing)."""
+        # Field 2, wire type 0, value 0
+        data = b"\x10\x00"
+        result = _find_varint_field(data, 2)
+        assert result == 0
+
+    def test_empty_data(self):
+        """Return None for empty input."""
+        result = _find_varint_field(b"", 1)
+        assert result is None
+
+
+def _build_nyct_trip_descriptor_extension(
+    train_id: str | None = None,
+    is_assigned: bool | None = None,
+    direction: int | None = None,
+) -> bytes:
+    """Build raw protobuf bytes for NyctTripDescriptor extension.
+
+    Constructs field 1001 on TripDescriptor containing the NyctTripDescriptor
+    sub-message with optional train_id, is_assigned, and direction fields.
+    """
+    sub_msg = b""
+    if train_id is not None:
+        tid = train_id.encode("utf-8")
+        sub_msg += b"\x0a" + bytes([len(tid)]) + tid  # field 1, string
+    if is_assigned is not None:
+        sub_msg += b"\x10" + (b"\x01" if is_assigned else b"\x00")  # field 2, bool
+    if direction is not None:
+        sub_msg += b"\x18" + bytes([direction])  # field 3, varint
+    return _NYCT_TAG + bytes([len(sub_msg)]) + sub_msg
+
+
+def _build_nyct_stop_time_extension(
+    scheduled_track: str | None = None,
+    actual_track: str | None = None,
+) -> bytes:
+    """Build raw protobuf bytes for NyctStopTimeUpdate extension."""
+    sub_msg = b""
+    if scheduled_track is not None:
+        st = scheduled_track.encode("utf-8")
+        sub_msg += b"\x0a" + bytes([len(st)]) + st  # field 1, string
+    if actual_track is not None:
+        at = actual_track.encode("utf-8")
+        sub_msg += b"\x12" + bytes([len(at)]) + at  # field 2, string
+    return _NYCT_TAG + bytes([len(sub_msg)]) + sub_msg
+
+
+def _make_trip_update_with_nyct_extension(
+    trip_id: str = "070200_6..N",
+    route_id: str = "6",
+    ext_bytes: bytes | None = None,
+) -> gtfs_realtime_pb2.TripUpdate:
+    """Create a TripUpdate with NyctTripDescriptor extension on TripDescriptor."""
+    tu = gtfs_realtime_pb2.TripUpdate()
+    tu.trip.trip_id = trip_id
+    tu.trip.route_id = route_id
+
+    if ext_bytes is None:
+        return tu
+
+    # Serialize TripDescriptor, append extension, re-parse into TripUpdate
+    trip_raw = tu.trip.SerializeToString()
+    combined_trip = trip_raw + ext_bytes
+    tu.trip.ParseFromString(combined_trip)
+    return tu
+
+
+class TestExtractNyctTripDescriptor:
+    """Tests for NYC Subway NyctTripDescriptor extraction."""
+
+    def test_full_descriptor(self):
+        """Extract all fields: train_id, is_assigned, direction."""
+        ext = _build_nyct_trip_descriptor_extension(
+            train_id="01 0123+ PEL/BBR",
+            is_assigned=True,
+            direction=3,  # SOUTH
+        )
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=ext)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result is not None
+        assert result["train_id"] == "01 0123+ PEL/BBR"
+        assert result["is_assigned"] is True
+        assert result["direction"] == 3
+
+    def test_train_id_only(self):
+        """Extract when only train_id is present."""
+        ext = _build_nyct_trip_descriptor_extension(train_id="05 1234")
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=ext)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result is not None
+        assert result["train_id"] == "05 1234"
+        assert result["is_assigned"] is False  # default
+        assert result["direction"] is None
+
+    def test_is_assigned_false(self):
+        """Explicitly false is_assigned."""
+        ext = _build_nyct_trip_descriptor_extension(
+            train_id="01 0001", is_assigned=False
+        )
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=ext)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result is not None
+        assert result["is_assigned"] is False
+
+    def test_direction_north(self):
+        """Direction NORTH = 1."""
+        ext = _build_nyct_trip_descriptor_extension(direction=1)
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=ext)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result["direction"] == 1
+
+    def test_direction_east(self):
+        """Direction EAST = 2 (used by L train, shuttles)."""
+        ext = _build_nyct_trip_descriptor_extension(direction=2)
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=ext)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result["direction"] == 2
+
+    def test_direction_west(self):
+        """Direction WEST = 4."""
+        ext = _build_nyct_trip_descriptor_extension(direction=4)
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=ext)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result["direction"] == 4
+
+    def test_no_extension(self):
+        """Return None when no NYCT extension present."""
+        tu = _make_trip_update_with_nyct_extension(ext_bytes=None)
+        result = extract_nyct_trip_descriptor(tu)
+        assert result is None
+
+    def test_serialize_error(self):
+        """Return None if serialization fails."""
+
+        class BadTU:
+            class trip:
+                @staticmethod
+                def SerializeToString():
+                    raise RuntimeError("fail")
+
+        assert extract_nyct_trip_descriptor(BadTU()) is None
+
+
+class TestExtractNyctStopTimeUpdate:
+    """Tests for NYC Subway NyctStopTimeUpdate extraction."""
+
+    def test_both_tracks(self):
+        """Extract both scheduled and actual track."""
+        ext = _build_nyct_stop_time_extension(scheduled_track="2", actual_track="1")
+        stu = _make_stu_with_extension(ext_bytes=ext)
+        result = extract_nyct_stop_time_update(stu)
+        assert result is not None
+        assert result["scheduled_track"] == "2"
+        assert result["actual_track"] == "1"
+
+    def test_scheduled_track_only(self):
+        """Extract when only scheduled_track is present."""
+        ext = _build_nyct_stop_time_extension(scheduled_track="4")
+        stu = _make_stu_with_extension(ext_bytes=ext)
+        result = extract_nyct_stop_time_update(stu)
+        assert result is not None
+        assert result["scheduled_track"] == "4"
+        assert result["actual_track"] is None
+
+    def test_actual_track_only(self):
+        """Extract when only actual_track is present."""
+        ext = _build_nyct_stop_time_extension(actual_track="3")
+        stu = _make_stu_with_extension(ext_bytes=ext)
+        result = extract_nyct_stop_time_update(stu)
+        assert result is not None
+        assert result["scheduled_track"] is None
+        assert result["actual_track"] == "3"
+
+    def test_no_extension(self):
+        """Return None when no NYCT extension present."""
+        stu = _make_stu_with_extension(ext_bytes=None)
+        result = extract_nyct_stop_time_update(stu)
+        assert result is None
+
+    def test_empty_extension(self):
+        """Handle extension with empty sub-message."""
+        ext = _NYCT_TAG + b"\x00"  # field 1001, length 0
+        stu = _make_stu_with_extension(ext_bytes=ext)
+        result = extract_nyct_stop_time_update(stu)
+        assert result is not None
+        assert result["scheduled_track"] is None
+        assert result["actual_track"] is None
+
+    def test_serialize_error(self):
+        """Return None if serialization fails."""
+
+        class BadSTU:
+            def SerializeToString(self):
+                raise RuntimeError("fail")
+
+        assert extract_nyct_stop_time_update(BadSTU()) is None

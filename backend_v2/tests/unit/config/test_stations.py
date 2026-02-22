@@ -452,7 +452,12 @@ class TestNJTStationCoordinates:
             if len(codes) > 1:
                 # Allow Secaucus variants to share coordinates
                 non_secaucus = [c for c in codes if c not in secaucus_codes]
-                assert len(non_secaucus) <= 1, (
+                # Allow subway stations to share coordinates (multiple complexes
+                # at the same physical location, e.g., Queensboro Plaza)
+                non_secaucus_non_subway = [
+                    c for c in non_secaucus if not c.startswith("S") or len(c) <= 2
+                ]
+                assert len(non_secaucus_non_subway) <= 1, (
                     f"Stations {codes} share coordinates {coord}: "
                     f"{[STATION_NAMES.get(c, '???') for c in codes]}"
                 )
