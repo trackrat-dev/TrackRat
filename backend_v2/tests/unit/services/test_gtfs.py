@@ -573,6 +573,98 @@ class TestEffectiveTrainId:
         assert effective_train_id == "2508"
 
 
+class TestSubwayTrainIdPrefixing:
+    """Tests for subway GTFS train ID prefix/strip logic.
+
+    Subway GTFS departures use the full trip_id (not truncated) with an
+    S{route}- prefix so the detail endpoint can reverse-lookup the trip.
+    This differs from LIRR/MNR where train numbers are shared between
+    real-time and GTFS data.
+
+    The prefix format is: S{route_short_name}-{full_gtfs_trip_id}
+    Example: S1-AFA25GEN-1079-Sunday-00_000600_1..N03R
+    """
+
+    def test_subway_prefix_uses_full_trip_id(self):
+        """Subway prefix must use full GTFS trip_id, not truncated.
+
+        Truncating to 6 chars (the old behavior) made IDs like S1-AFA25G
+        that couldn't be resolved back to the original trip for detail lookup.
+        """
+        gtfs_trip_id = "AFA25GEN-1079-Sunday-00_000600_1..N03R"
+        train_id = None  # Subway GTFS has no trip_short_name
+        effective_train_id = train_id if train_id else gtfs_trip_id
+
+        # Simulate the prefix logic from gtfs.py get_departures_for_date
+        route_short = "1"
+        if not effective_train_id.startswith("S"):
+            effective_train_id = f"S{route_short}-{effective_train_id}"
+
+        assert effective_train_id == "S1-AFA25GEN-1079-Sunday-00_000600_1..N03R"
+        # Verify it's NOT truncated
+        assert "AFA25GEN-1079-Sunday-00_000600_1..N03R" in effective_train_id
+
+    def test_subway_prefix_strip_recovers_trip_id(self):
+        """Stripping S{route}- prefix recovers the original GTFS trip_id.
+
+        The detail endpoint strips the prefix to search GTFSTrip.trip_id.
+        """
+        prefixed_id = "S1-AFA25GEN-1079-Sunday-00_000600_1..N03R"
+        original_trip_id = "AFA25GEN-1079-Sunday-00_000600_1..N03R"
+
+        # Simulate the strip logic from gtfs.py get_train_details
+        search_train_id = prefixed_id
+        if prefixed_id.startswith("S"):
+            dash_idx = prefixed_id.find("-")
+            if dash_idx != -1:
+                search_train_id = prefixed_id[dash_idx + 1 :]
+
+        assert search_train_id == original_trip_id
+
+    def test_subway_prefix_strip_with_multi_char_route(self):
+        """Route names can be multi-character (e.g., 'SIR' for Staten Island)."""
+        prefixed_id = "SSIR-trip_abc_123"
+        search_train_id = prefixed_id
+        if prefixed_id.startswith("S"):
+            dash_idx = prefixed_id.find("-")
+            if dash_idx != -1:
+                search_train_id = prefixed_id[dash_idx + 1 :]
+
+        assert search_train_id == "trip_abc_123"
+
+    def test_subway_prefix_not_applied_twice(self):
+        """If effective_train_id already starts with S, skip prefixing."""
+        effective_train_id = "S6-010123"  # Already prefixed (from real-time)
+        route_short = "6"
+
+        if not effective_train_id.startswith("S"):
+            effective_train_id = f"S{route_short}-{effective_train_id}"
+
+        # Should remain unchanged
+        assert effective_train_id == "S6-010123"
+
+    def test_subway_prefix_roundtrip(self):
+        """Full roundtrip: prefix in departures, strip in detail lookup."""
+        original_trip_id = "BFA30GEN-1079-Weekday-00_043200_A..N04R"
+        route_short = "A"
+
+        # Step 1: Prefix (departure listing)
+        effective_train_id = original_trip_id
+        if not effective_train_id.startswith("S"):
+            effective_train_id = f"S{route_short}-{effective_train_id}"
+        assert effective_train_id == "SA-BFA30GEN-1079-Weekday-00_043200_A..N04R"
+
+        # Step 2: Strip (detail endpoint)
+        search_id = effective_train_id
+        if search_id.startswith("S"):
+            dash_idx = search_id.find("-")
+            if dash_idx != -1:
+                search_id = search_id[dash_idx + 1 :]
+
+        # Recovered trip_id matches original
+        assert search_id == original_trip_id
+
+
 class TestDataSourceFiltering:
     """Tests for data_source filtering in train details lookup.
 

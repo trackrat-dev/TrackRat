@@ -1422,15 +1422,15 @@ class GTFSService:
                 effective_train_id = _mnr_train_id_from_gtfs(effective_train_id)
 
             # Add "S{route}-" prefix for SUBWAY to distinguish from other systems.
-            # Note: GTFS static trip IDs don't map to real-time NYCT train IDs,
-            # so this just ensures subway schedule entries are identifiable.
+            # Use full GTFS trip_id (not truncated) so detail endpoint can
+            # reverse-lookup the trip by stripping the prefix.
             if (
                 data_source == "SUBWAY"
                 and effective_train_id
                 and not effective_train_id.startswith("S")
             ):
                 route_prefix = route_short or "X"
-                effective_train_id = f"S{route_prefix}-{effective_train_id[:6]}"
+                effective_train_id = f"S{route_prefix}-{effective_train_id}"
 
             departure = TrainDeparture(
                 train_id=effective_train_id,
@@ -1589,6 +1589,11 @@ class GTFSService:
             search_train_id = train_id[1:]
         if data_source == "MNR" and train_id.startswith("M") and train_id[1:].isdigit():
             search_train_id = train_id[1:]
+        # Strip "S{route}-" prefix for SUBWAY to recover the original GTFS trip_id
+        if data_source == "SUBWAY" and train_id.startswith("S"):
+            dash_idx = train_id.find("-")
+            if dash_idx != -1:
+                search_train_id = train_id[dash_idx + 1 :]
 
         all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
         sources_to_search = [data_source] if data_source else all_sources
@@ -1620,9 +1625,11 @@ class GTFSService:
             # Two-phase search: prioritize train_id (real numbers) over trip_id (GTFS IDs)
             # Phase 1: Search all sources for train_id match
             for source, service_ids in source_service_ids.items():
-                # For Amtrak/LIRR/MNR, use prefix-stripped ID for lookup
+                # For prefixed sources, use prefix-stripped ID for lookup
                 lookup_id = (
-                    search_train_id if source in ("AMTRAK", "LIRR", "MNR") else train_id
+                    search_train_id
+                    if source in ("AMTRAK", "LIRR", "MNR", "SUBWAY")
+                    else train_id
                 )
                 trip_row = await self._find_trip_in_source(
                     db, lookup_id, source, service_ids, "train_id"
@@ -1636,7 +1643,7 @@ class GTFSService:
                 for source, service_ids in source_service_ids.items():
                     lookup_id = (
                         search_train_id
-                        if source in ("AMTRAK", "LIRR", "MNR")
+                        if source in ("AMTRAK", "LIRR", "MNR", "SUBWAY")
                         else train_id
                     )
                     trip_row = await self._find_trip_in_source(
@@ -1751,13 +1758,13 @@ class GTFSService:
         if matched_source == "MNR" and effective_train_id:
             effective_train_id = _mnr_train_id_from_gtfs(effective_train_id)
 
-        # Add "S{route}-" prefix for SUBWAY
+        # Add "S{route}-" prefix for SUBWAY (full trip_id, not truncated)
         if (
             matched_source == "SUBWAY"
             and effective_train_id
             and not effective_train_id.startswith("S")
         ):
-            effective_train_id = f"S{route_short or 'X'}-{effective_train_id[:6]}"
+            effective_train_id = f"S{route_short or 'X'}-{effective_train_id}"
 
         # Build line info
         # PATH and PATCO routes need special handling for proper line codes/colors
