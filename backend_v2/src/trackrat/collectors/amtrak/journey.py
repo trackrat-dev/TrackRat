@@ -4,7 +4,8 @@ Amtrak journey collection for TrackRat V2.
 Collects complete journey details for Amtrak trains.
 """
 
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, delete, select
@@ -319,8 +320,8 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     "stop_sequence": stop_sequence,
                     "scheduled_arrival": sched_arr,
                     "scheduled_departure": sched_dep,
-                    "updated_arrival": sched_arr,  # For Amtrak, use scheduled since no estimates
-                    "updated_departure": sched_dep,
+                    "updated_arrival": self._compute_estimated_time(sched_arr, amtrak_stop.arrCmnt),
+                    "updated_departure": self._compute_estimated_time(sched_dep, amtrak_stop.depCmnt),
                     "actual_arrival": actual_arr,
                     "actual_departure": actual_dep,
                     "raw_amtrak_status": amtrak_stop.status,
@@ -429,6 +430,31 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         except Exception as e:
             logger.warning("amtrak_time_parse_failed", time_str=time_str, error=str(e))
             return None
+
+    @staticmethod
+    def _compute_estimated_time(
+        scheduled: datetime | None, comment: str
+    ) -> datetime | None:
+        """Compute estimated time from scheduled time and Amtrak delay comment.
+
+        The Amtrak API provides delay info in depCmnt/arrCmnt fields as strings
+        like "5 Min Late", "64 Min Late", "On Time", "Cancelled", or "".
+
+        Returns scheduled + delay if a delay is parsed, otherwise returns scheduled.
+        """
+        if not scheduled or not comment:
+            return scheduled
+
+        match = re.match(r"(\d+)\s*min\s*late", comment, re.IGNORECASE)
+        if match:
+            return scheduled + timedelta(minutes=int(match.group(1)))
+
+        match = re.match(r"(\d+)\s*min\s*early", comment, re.IGNORECASE)
+        if match:
+            return scheduled - timedelta(minutes=int(match.group(1)))
+
+        # "On Time", "Cancelled", or unrecognized — return scheduled as-is
+        return scheduled
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
@@ -571,8 +597,8 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 "stop_sequence": stop_sequence,
                 "scheduled_arrival": scheduled_arrival,
                 "scheduled_departure": scheduled_departure,
-                "updated_arrival": scheduled_arrival,  # For Amtrak, use scheduled since no estimates
-                "updated_departure": scheduled_departure,
+                "updated_arrival": self._compute_estimated_time(scheduled_arrival, amtrak_stop.arrCmnt),
+                "updated_departure": self._compute_estimated_time(scheduled_departure, amtrak_stop.depCmnt),
                 "actual_arrival": actual_arrival,
                 "actual_departure": actual_departure,
                 "raw_amtrak_status": amtrak_stop.status,

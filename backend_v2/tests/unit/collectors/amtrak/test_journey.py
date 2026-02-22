@@ -475,3 +475,67 @@ class TestAmtrakJourneyCollector:
         """Test train state mapping with various inputs."""
         result = journey_collector.TRAIN_STATE_MAP.get(train_state, "UNKNOWN")
         assert result == expected
+
+
+class TestComputeEstimatedTime:
+    """Tests for _compute_estimated_time delay comment parsing."""
+
+    SCHEDULED = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
+
+    @pytest.mark.parametrize(
+        "comment,expected_offset_min,description",
+        [
+            ("5 Min Late", 5, "standard delay format"),
+            ("64 Min Late", 64, "large delay"),
+            ("1 min late", 1, "lowercase format"),
+            ("120 MIN LATE", 120, "uppercase format"),
+            ("5  min  late", 5, "extra whitespace"),
+            ("10 Min Early", -10, "early arrival"),
+            ("3 min early", -3, "lowercase early"),
+        ],
+    )
+    def test_delay_comments(self, comment, expected_offset_min, description):
+        """Test that delay/early comments correctly shift the scheduled time.
+
+        Validates: {description}
+        """
+        from datetime import timedelta
+
+        result = AmtrakJourneyCollector._compute_estimated_time(
+            self.SCHEDULED, comment
+        )
+        expected = self.SCHEDULED + timedelta(minutes=expected_offset_min)
+        assert result == expected, (
+            f"comment={comment!r}: expected {expected}, got {result}"
+        )
+
+    @pytest.mark.parametrize(
+        "comment,description",
+        [
+            ("On Time", "on-time returns scheduled"),
+            ("Cancelled", "cancelled returns scheduled"),
+            ("", "empty string returns scheduled"),
+            ("Next Stop", "unrecognized comment returns scheduled"),
+        ],
+    )
+    def test_no_shift_comments(self, comment, description):
+        """Test that non-delay comments return scheduled time unchanged.
+
+        Validates: {description}
+        """
+        result = AmtrakJourneyCollector._compute_estimated_time(
+            self.SCHEDULED, comment
+        )
+        assert result == self.SCHEDULED, (
+            f"comment={comment!r}: expected scheduled time unchanged, got {result}"
+        )
+
+    def test_none_scheduled_returns_none(self):
+        """Test that None scheduled time returns None regardless of comment."""
+        result = AmtrakJourneyCollector._compute_estimated_time(None, "5 Min Late")
+        assert result is None
+
+    def test_none_scheduled_empty_comment_returns_none(self):
+        """Test that None scheduled with empty comment returns None."""
+        result = AmtrakJourneyCollector._compute_estimated_time(None, "")
+        assert result is None
