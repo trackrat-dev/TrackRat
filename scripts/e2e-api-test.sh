@@ -142,6 +142,12 @@ ROUTES=(
   "MNR New Haven|GCT|MSTM|MNR|GCT|"
   "MNR New Haven Main|GCT|MNHV|MNR|GCT|"
   "MNR Hudson Short|GCT|MCRH|MNR|GCT|"
+  # Subway
+  "Subway 1|S101|S142|SUBWAY||"
+  "Subway A|SH11|SA02|SUBWAY||"
+  "Subway L|SL29|SL01|SUBWAY||"
+  "Subway 7|S701|S726|SUBWAY||"
+  "Subway N|SN01|SR44|SUBWAY||"
   # PATCO - schedule-only (no real-time API available)
   "PATCO Speedline|LND|FFL|PATCO||s"
 )
@@ -168,7 +174,7 @@ sc = _load('station_configs')
 ${seed_arg}
 ml = set(sc.get_ml_enabled_stations())
 is_weekend = datetime.date.today().weekday() >= 5
-for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('PATCO',1)]:
+for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('SUBWAY',2),('PATCO',1)]:
     routes = rt.get_routes_for_data_source(src)
     flags = 's' if src == 'PATCO' else ''
     for r in random.sample(routes, min(n, len(routes))):

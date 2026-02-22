@@ -455,6 +455,13 @@ def fetch_mnr_ground_truth() -> list[GroundTruthArrival]:
     return _fetch_gtfsrt_ground_truth(MNRClient)
 
 
+def fetch_subway_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from NYC Subway GTFS-RT feeds."""
+    from trackrat.collectors.subway.client import SubwayClient
+
+    return _fetch_gtfsrt_ground_truth(SubwayClient)
+
+
 # --- Fetch TrackRat departures ---
 
 
@@ -909,6 +916,33 @@ def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
     print_summary(route_directions_tested)
 
 
+def run_subway_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+    """Run ground truth validation for NYC Subway."""
+    _print_header("SUBWAY", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
+
+    gt_arrivals = fetch_subway_ground_truth()
+    if not gt_arrivals:
+        if FAIL_COUNT == 0:
+            log_warn("No arrivals from Subway GTFS-RT feeds")
+        print(f"\nNote: Fetched 0 departures from Subway GTFS-RT")
+        print_summary(0)
+        return
+    print(f"Note: Fetched {len(gt_arrivals)} departures from Subway GTFS-RT")
+
+    if verbose:
+        print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
+        for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+            time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            print(
+                f"  {a.station_code} -> {a.destination_code}  "
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+            )
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "SUBWAY", base_url, tolerance, verbose, gt_window)
+    print_summary(route_directions_tested)
+
+
 # --- Main ---
 
 
@@ -925,7 +959,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         default="PATH",
-        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR"],
+        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR", "SUBWAY"],
         help="Transit provider to validate (default: PATH)",
     )
     parser.add_argument(
@@ -953,6 +987,7 @@ def main() -> None:
         "AMTRAK": run_amtrak_validation,
         "LIRR": run_lirr_validation,
         "MNR": run_mnr_validation,
+        "SUBWAY": run_subway_validation,
     }
 
     runner = runners.get(args.provider)
