@@ -85,6 +85,7 @@ class GroundTruthArrival:
     headsign: str
     minutes_away: int
     train_id: str = ""  # Provider train ID for cross-validation (NJT, Amtrak)
+    track: str | None = None  # Track/platform assignment from provider
 
 
 @dataclass
@@ -96,6 +97,8 @@ class TrackRatDeparture:
     line_code: str
     line_color: str
     observation_type: str
+    track: str | None = None  # Track/platform from TrackRat API
+    is_cancelled: bool = False  # Whether TrackRat reports this train as cancelled
 
 
 @dataclass
@@ -103,6 +106,7 @@ class MatchResult:
     gt: GroundTruthArrival
     tr: TrackRatDeparture
     delta_seconds: int
+    track_mismatch: bool = False  # True if both have track and they differ
 
 
 @dataclass
@@ -114,6 +118,7 @@ class ComparisonResult:
     missing: list[GroundTruthArrival] = field(default_factory=list)
     phantoms: list[TrackRatDeparture] = field(default_factory=list)
     arriving_unmatched: list[GroundTruthArrival] = field(default_factory=list)
+    cancelled_in_tr: list[TrackRatDeparture] = field(default_factory=list)  # Cancelled in TR but not in GT
 
 
 # --- RidePATH parsing (copied from RidePathClient._parse_minutes) ---
@@ -200,25 +205,11 @@ def fetch_ridepath_arrivals(client: httpx.Client) -> tuple[list[GroundTruthArriv
 
 
 def _create_njt_client():
-    """Create NJTransitClient without requiring full backend Settings.
-
-    NJTransitClient.__init__ needs a Settings object which requires DATABASE_URL
-    and other backend config. Since the validation script only needs the NJT API,
-    we construct the client manually with just base_url, token, and _client.
-    """
+    """Create NJTransitClient without requiring full backend Settings."""
     from trackrat.collectors.njt.client import NJTransitClient
 
     token = os.environ["TRACKRAT_NJT_API_TOKEN"]
-    client = object.__new__(NJTransitClient)
-    client.base_url = "https://raildata.njtransit.com/api"
-    client.token = token
-    client._client = httpx.AsyncClient(
-        timeout=httpx.Timeout(30.0),
-        follow_redirects=True,
-        transport=httpx.AsyncHTTPTransport(retries=3, verify=True),
-        limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
-    )
-    return client
+    return NJTransitClient.from_token(token)
 
 
 def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
@@ -286,6 +277,7 @@ def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
                     line_color = item.get("BACKCOLOR", "").strip()
                     destination_name = item.get("DESTINATION", "").strip()
                     headsign = f"{train_id} to {destination_name}"
+                    track = item.get("TRACK", "").strip() or None
 
                     # Compute minutes_away from now
                     now = datetime.now(expected_time.tzinfo)
@@ -300,6 +292,7 @@ def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
                             headsign=headsign,
                             minutes_away=minutes_away,
                             train_id=train_id,
+                            track=track,
                         )
                     )
 
@@ -372,6 +365,7 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
 
                     now = datetime.now(timezone.utc)
                     minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
+                    platform = stop.platform if stop.platform else None
 
                     arrivals.append(
                         GroundTruthArrival(
@@ -382,6 +376,7 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
                             headsign=headsign,
                             minutes_away=minutes_away,
                             train_id=str(train.trainNum),
+                            track=platform,
                         )
                     )
 
@@ -433,6 +428,7 @@ def _fetch_gtfsrt_ground_truth(client_class: type) -> list[GroundTruthArrival]:
                     line_color="",
                     headsign=arr.trip_id,
                     minutes_away=minutes_away,
+                    track=arr.track,
                 )
             )
 
@@ -495,6 +491,7 @@ def fetch_trackrat_departures(
         # Resolve destination code from the arrival station info if available
         arrival = dep.get("arrival", {})
         dest_code = arrival.get("code", "") if arrival else ""
+        dep_track = dep_info.get("track") or None
 
         departures.append(
             TrackRatDeparture(
@@ -505,6 +502,8 @@ def fetch_trackrat_departures(
                 line_code=line.get("code", ""),
                 line_color=line.get("color", ""),
                 observation_type=dep.get("observation_type", ""),
+                track=dep_track,
+                is_cancelled=dep.get("is_cancelled", False),
             )
         )
 
@@ -573,18 +572,30 @@ def compare_route(
 
         if best_idx is not None and best_delta <= tolerance_secs:
             used_tr_indices.add(best_idx)
+            matched_tr = tr_departures[best_idx]
+            # Check track mismatch: only flag when both sides have a value
+            track_mismatch = (
+                bool(gt.track and matched_tr.track)
+                and gt.track != matched_tr.track
+            )
             result.matches.append(
-                MatchResult(gt=gt, tr=tr_departures[best_idx], delta_seconds=best_delta)
+                MatchResult(
+                    gt=gt, tr=matched_tr, delta_seconds=best_delta,
+                    track_mismatch=track_mismatch,
+                )
             )
         elif gt.minutes_away == 0:
             result.arriving_unmatched.append(gt)
         else:
             result.missing.append(gt)
 
-    # Unmatched TrackRat departures = phantoms
+    # Unmatched TrackRat departures
     for i, tr in enumerate(tr_departures):
         if i not in used_tr_indices:
-            result.phantoms.append(tr)
+            if tr.is_cancelled:
+                result.cancelled_in_tr.append(tr)
+            else:
+                result.phantoms.append(tr)
 
     return result
 
@@ -677,9 +688,11 @@ def run_validation_loop(
                 print(f"  GT arrivals: {len(relevant_gt)}, TR departures: {len(tr_departures)}")
                 for tr in sorted(tr_departures, key=lambda x: x.departure_time):
                     time_str = tr.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    track_str = f"  track={tr.track}" if tr.track else ""
+                    cancel_str = "  CANCELLED" if tr.is_cancelled else ""
                     print(
                         f"    TR: {time_str}  {tr.train_id}  "
-                        f"line={tr.line_code}  obs={tr.observation_type}"
+                        f"line={tr.line_code}  obs={tr.observation_type}{track_str}{cancel_str}"
                     )
 
             result = compare_route(gt_arrivals, tr_departures, from_st, to_st, tolerance)
@@ -692,10 +705,26 @@ def run_validation_loop(
                 if verbose:
                     tr_time = m.tr.departure_time.astimezone(et).strftime("%H:%M:%S")
                     detail = f" -> {m.tr.train_id} @ {tr_time} ({m.tr.observation_type})"
-                log_pass(
-                    f'Train "{m.gt.headsign}" @ {time_str} matched '
-                    f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}"
-                )
+                track_info = ""
+                if m.track_mismatch:
+                    track_info = f" [TRACK MISMATCH: GT={m.gt.track} TR={m.tr.track}]"
+                elif verbose and (m.gt.track or m.tr.track):
+                    track_info = f" [track: GT={m.gt.track or '-'} TR={m.tr.track or '-'}]"
+                if m.track_mismatch:
+                    log_warn(
+                        f'Train "{m.gt.headsign}" @ {time_str} matched '
+                        f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}{track_info}"
+                    )
+                elif m.tr.is_cancelled:
+                    log_warn(
+                        f'Train "{m.gt.headsign}" @ {time_str} matched but CANCELLED in TrackRat'
+                        f"{detail}{track_info}"
+                    )
+                else:
+                    log_pass(
+                        f'Train "{m.gt.headsign}" @ {time_str} matched '
+                        f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}{track_info}"
+                    )
 
             # Report arriving-but-unmatched (gray zone)
             for gt in result.arriving_unmatched:
@@ -736,6 +765,11 @@ def run_validation_loop(
                 if tr.observation_type == "OBSERVED" or is_near:
                     log_warn(f"TrackRat train {tr.train_id} @ {time_str} has no ground truth match")
                 # Silently skip far-future SCHEDULED trains
+
+            # Report cancelled trains that had no GT match
+            for tr in result.cancelled_in_tr:
+                time_str = tr.departure_time.astimezone(et).strftime("%H:%M")
+                log_warn(f"TrackRat train {tr.train_id} @ {time_str} cancelled (no GT match expected)")
     finally:
         client.close()
 
@@ -819,9 +853,10 @@ def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{track_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "NJT", base_url, tolerance, verbose, gt_window)
@@ -846,9 +881,10 @@ def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False, 
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{track_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "AMTRAK", base_url, tolerance, verbose, gt_window)
@@ -873,9 +909,10 @@ def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False, gt
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{track_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "LIRR", base_url, tolerance, verbose, gt_window)
@@ -900,9 +937,10 @@ def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{track_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "MNR", base_url, tolerance, verbose, gt_window)
