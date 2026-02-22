@@ -111,6 +111,7 @@ class SubwayClient:
         self._cache: dict[str, list[SubwayArrival]] = {}
         self._cache_times: dict[str, datetime] = {}
         self._cache_ttl = 30  # seconds
+        self._last_fetch_ok: dict[str, bool] = {}
 
     @property
     def session(self) -> httpx.AsyncClient:
@@ -155,6 +156,7 @@ class SubwayClient:
             List of SubwayArrival objects from this feed
         """
         if self._is_feed_cache_valid(feed_key):
+            self._last_fetch_ok[feed_key] = True
             return self._cache[feed_key]
 
         try:
@@ -241,6 +243,7 @@ class SubwayClient:
             # Cache results
             self._cache[feed_key] = arrivals
             self._cache_times[feed_key] = datetime.now(UTC)
+            self._last_fetch_ok[feed_key] = True
 
             logger.debug(
                 f"Fetched {len(arrivals)} subway arrivals from {feed_key} feed"
@@ -248,18 +251,20 @@ class SubwayClient:
             return arrivals
 
         except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching subway {feed_key} feed: {e}")
+            logger.warning(f"HTTP error fetching subway {feed_key} feed: {e}")
+            self._last_fetch_ok[feed_key] = False
             return self._cache.get(feed_key, [])
         except Exception as e:
-            logger.error(f"Error parsing subway {feed_key} feed: {e}")
+            logger.warning(f"Error parsing subway {feed_key} feed: {e}")
+            self._last_fetch_ok[feed_key] = False
             return self._cache.get(feed_key, [])
 
-    async def get_all_arrivals(self) -> list[SubwayArrival]:
+    async def get_all_arrivals(self) -> tuple[list[SubwayArrival], set[str]]:
         """
         Fetch and parse all subway arrivals from all 8 GTFS-RT feeds concurrently.
 
         Returns:
-            List of SubwayArrival objects from all feeds, sorted by arrival time
+            Tuple of (arrivals sorted by time, set of feed keys that succeeded)
         """
         tasks = [
             self._fetch_feed(key, url) for key, url in SUBWAY_GTFS_RT_FEED_URLS.items()
@@ -267,18 +272,25 @@ class SubwayClient:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_arrivals: list[SubwayArrival] = []
+        succeeded_feeds: set[str] = set()
         for i, result in enumerate(results):
             feed_key = list(SUBWAY_GTFS_RT_FEED_URLS.keys())[i]
             if isinstance(result, BaseException):
-                logger.error(f"Failed to fetch subway {feed_key} feed: {result}")
+                logger.warning(f"Failed to fetch subway {feed_key} feed: {result}")
                 all_arrivals.extend(self._cache.get(feed_key, []))
             else:
                 all_arrivals.extend(result)
+                # Use _last_fetch_ok to determine success (set by _fetch_feed),
+                # since _fetch_feed catches exceptions internally and may return
+                # stale cache data on failure.
+                if self._last_fetch_ok.get(feed_key, False) and result:
+                    succeeded_feeds.add(feed_key)
 
         logger.info(
-            f"Fetched {len(all_arrivals)} total subway arrivals from {len(SUBWAY_GTFS_RT_FEED_URLS)} feeds"
+            f"Fetched {len(all_arrivals)} total subway arrivals "
+            f"({len(succeeded_feeds)}/{len(SUBWAY_GTFS_RT_FEED_URLS)} feeds OK)"
         )
-        return sorted(all_arrivals, key=lambda a: a.arrival_time)
+        return sorted(all_arrivals, key=lambda a: a.arrival_time), succeeded_feeds
 
     async def get_feed_arrivals(self, route_id: str) -> list[SubwayArrival]:
         """Fetch arrivals from a single feed based on route_id.
@@ -294,12 +306,12 @@ class SubwayClient:
 
     async def get_station_arrivals(self, station_code: str) -> list[SubwayArrival]:
         """Get arrivals for a specific station."""
-        all_arrivals = await self.get_all_arrivals()
+        all_arrivals, _ = await self.get_all_arrivals()
         return [a for a in all_arrivals if a.station_code == station_code]
 
     async def get_trip_stops(self, trip_id: str) -> list[SubwayArrival]:
         """Get all stops for a specific trip, sorted by arrival time."""
-        all_arrivals = await self.get_all_arrivals()
+        all_arrivals, _ = await self.get_all_arrivals()
         trip_stops = [a for a in all_arrivals if a.trip_id == trip_id]
         return sorted(trip_stops, key=lambda a: a.arrival_time)
 
@@ -307,3 +319,4 @@ class SubwayClient:
         """Clear all cached data."""
         self._cache.clear()
         self._cache_times.clear()
+        self._last_fetch_ok.clear()
