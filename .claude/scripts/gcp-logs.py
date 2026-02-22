@@ -44,10 +44,41 @@ HOSTNAME_PREFIX = {
 }
 
 
+def _check_dependencies():
+    """Verify required packages are importable, with actionable error on failure."""
+    try:
+        import google.oauth2.service_account  # noqa: F401
+        import google.auth.transport.requests  # noqa: F401
+        import requests  # noqa: F401
+    except ImportError as e:
+        print(
+            f"❌ Missing dependency: {e}\n\n"
+            "Run these commands to install:\n"
+            "  pip install google-cloud-logging 2>&1 | tail -3\n"
+            "  pip install cffi cryptography --force-reinstall --target=/tmp/pylibs 2>&1 | tail -3\n\n"
+            "Then invoke with:\n"
+            "  PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def get_credentials():
     from google.oauth2 import service_account
     from google.auth.transport.requests import Request
     import requests
+
+    import os
+
+    if not os.path.exists(SA_KEY_PATH):
+        print(
+            f"❌ Service account key not found at {SA_KEY_PATH}\n\n"
+            "The SessionStart hook should write GCP_SA_KEY_JSON to this path.\n"
+            "Check that GCP_SA_KEY_JSON is set in your environment and\n"
+            "the hook in .claude/settings.json ran successfully.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     with open(SA_KEY_PATH, "r") as f:
         sa_info = json.loads(f.read(), strict=False)
@@ -158,6 +189,7 @@ def main():
     parser.add_argument("--raw", action="store_true", help="Include Docker events (noisy)")
     args = parser.parse_args()
 
+    _check_dependencies()
     token = get_credentials()
 
     # Discover instance

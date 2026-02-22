@@ -4,12 +4,20 @@
 
 set -e
 
-SERVICE_URL="${1}"
-ENVIRONMENT="${2:-staging}"
+SERVICE_URL=""
+ENVIRONMENT="staging"
+NO_WAIT=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-wait) NO_WAIT=true; shift ;;
+        *) if [[ -z "$SERVICE_URL" ]]; then SERVICE_URL="$1"; else ENVIRONMENT="$1"; fi; shift ;;
+    esac
+done
 
 if [[ -z "$SERVICE_URL" ]]; then
     echo "❌ Error: SERVICE_URL is required"
-    echo "Usage: $0 <SERVICE_URL> [ENVIRONMENT]"
+    echo "Usage: $0 <SERVICE_URL> [ENVIRONMENT] [--no-wait]"
     exit 1
 fi
 
@@ -23,8 +31,12 @@ if [[ "$ENVIRONMENT" == "production" ]]; then
     WAIT_TIME=60
 fi
 
-echo "⏳ Waiting ${WAIT_TIME} seconds for service to stabilize..."
-sleep $WAIT_TIME
+if [[ "$NO_WAIT" == "true" ]]; then
+    echo "⏩ Skipping stabilization wait (--no-wait)"
+else
+    echo "⏳ Waiting ${WAIT_TIME} seconds for service to stabilize..."
+    sleep $WAIT_TIME
+fi
 
 # Health Check with retries
 HEALTH_URL="${SERVICE_URL}/health"
