@@ -1290,9 +1290,11 @@ extension PlatformPrediction {
 
         return trackProbabilities
     }
+}
 
-    // MARK: - Route Alert Subscriptions
+// MARK: - Route Alert Subscriptions
 
+extension APIService {
     func registerDevice(deviceId: String, apnsToken: String) async throws {
         let endpoint = "/v2/devices/register"
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {

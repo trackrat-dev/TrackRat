@@ -137,7 +137,7 @@ struct AddRouteAlertView: View {
                     let fromCode = from.code
                     let toCode = to.code
                     let systems = Stations.systemStringsForStation(fromCode)
-                    let dataSource = systems.first ?? "NJT"
+                    let dataSource = systems.sorted().first ?? "NJT"
 
                     alertService.addStationPairSubscription(
                         dataSource: dataSource,
