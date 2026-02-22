@@ -36,8 +36,10 @@ class NJTransitClient:
         self.settings = settings or get_settings()
         self.base_url = self.settings.njt_api_url.rstrip("/")
         self.token = self.settings.njt_api_token
+        self._init_http_client()
 
-        # Create long-lived HTTP client with connection pooling and retries
+    def _init_http_client(self) -> None:
+        """Create long-lived HTTP client with connection pooling and retries."""
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(30.0),
             follow_redirects=True,
@@ -50,6 +52,19 @@ class NJTransitClient:
                 max_connections=20,
             ),
         )
+
+    @classmethod
+    def from_token(cls, token: str, base_url: str = "https://raildata.njtransit.com/api") -> "NJTransitClient":
+        """Create a lightweight client without requiring full backend Settings.
+
+        Useful for standalone scripts that only need the NJT API.
+        """
+        instance = object.__new__(cls)
+        instance.settings = None
+        instance.base_url = base_url
+        instance.token = token
+        instance._init_http_client()
+        return instance
 
     async def close(self) -> None:
         """Close the HTTP client."""

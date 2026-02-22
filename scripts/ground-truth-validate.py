@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import sys
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -84,7 +85,9 @@ class GroundTruthArrival:
     line_color: str
     headsign: str
     minutes_away: int
-    train_id: str = ""  # Provider train ID for cross-validation (NJT, Amtrak)
+    train_id: str = ""  # Provider train ID for cross-validation (NJT, Amtrak, LIRR, MNR)
+    track: str | None = None  # Track/platform assignment from provider
+    delay_seconds: int | None = None  # GTFS-RT delay (LIRR/MNR); None for other providers
 
 
 @dataclass
@@ -92,10 +95,15 @@ class TrackRatDeparture:
     train_id: str
     destination_code: str
     destination_name: str
-    departure_time: datetime
+    departure_time: datetime  # Best available: actual > updated > scheduled
     line_code: str
     line_color: str
     observation_type: str
+    track: str | None = None  # Track/platform from TrackRat API
+    is_cancelled: bool = False  # Whether TrackRat reports this train as cancelled
+    scheduled_time: datetime | None = None  # Original timetable time
+    updated_time: datetime | None = None  # Real-time estimate
+    actual_time: datetime | None = None  # Observed departure
 
 
 @dataclass
@@ -103,6 +111,10 @@ class MatchResult:
     gt: GroundTruthArrival
     tr: TrackRatDeparture
     delta_seconds: int
+    track_mismatch: bool = False  # True if both have track and they differ
+    line_color_mismatch: bool = False  # True if both have line_color and they differ
+    stale_scheduled: bool = False  # True if TR is OBSERVED but only has scheduled_time (no RT update)
+    delay_mismatch_seconds: int | None = None  # Difference between GT and TR delay estimates (LIRR/MNR)
 
 
 @dataclass
@@ -114,6 +126,7 @@ class ComparisonResult:
     missing: list[GroundTruthArrival] = field(default_factory=list)
     phantoms: list[TrackRatDeparture] = field(default_factory=list)
     arriving_unmatched: list[GroundTruthArrival] = field(default_factory=list)
+    cancelled_in_tr: list[TrackRatDeparture] = field(default_factory=list)  # Cancelled in TR but not in GT
 
 
 # --- RidePATH parsing (copied from RidePathClient._parse_minutes) ---
@@ -200,25 +213,11 @@ def fetch_ridepath_arrivals(client: httpx.Client) -> tuple[list[GroundTruthArriv
 
 
 def _create_njt_client():
-    """Create NJTransitClient without requiring full backend Settings.
-
-    NJTransitClient.__init__ needs a Settings object which requires DATABASE_URL
-    and other backend config. Since the validation script only needs the NJT API,
-    we construct the client manually with just base_url, token, and _client.
-    """
+    """Create NJTransitClient without requiring full backend Settings."""
     from trackrat.collectors.njt.client import NJTransitClient
 
     token = os.environ["TRACKRAT_NJT_API_TOKEN"]
-    client = object.__new__(NJTransitClient)
-    client.base_url = "https://raildata.njtransit.com/api"
-    client.token = token
-    client._client = httpx.AsyncClient(
-        timeout=httpx.Timeout(30.0),
-        follow_redirects=True,
-        transport=httpx.AsyncHTTPTransport(retries=3, verify=True),
-        limits=httpx.Limits(max_keepalive_connections=10, max_connections=20),
-    )
-    return client
+    return NJTransitClient.from_token(token)
 
 
 def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
@@ -286,6 +285,7 @@ def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
                     line_color = item.get("BACKCOLOR", "").strip()
                     destination_name = item.get("DESTINATION", "").strip()
                     headsign = f"{train_id} to {destination_name}"
+                    track = item.get("TRACK", "").strip() or None
 
                     # Compute minutes_away from now
                     now = datetime.now(expected_time.tzinfo)
@@ -300,6 +300,7 @@ def fetch_njt_ground_truth() -> list[GroundTruthArrival]:
                             headsign=headsign,
                             minutes_away=minutes_away,
                             train_id=train_id,
+                            track=track,
                         )
                     )
 
@@ -372,6 +373,7 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
 
                     now = datetime.now(timezone.utc)
                     minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
+                    platform = stop.platform if stop.platform else None
 
                     arrivals.append(
                         GroundTruthArrival(
@@ -382,6 +384,7 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
                             headsign=headsign,
                             minutes_away=minutes_away,
                             train_id=str(train.trainNum),
+                            track=platform,
                         )
                     )
 
@@ -393,8 +396,17 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
 # --- Fetch ground truth from GTFS-RT (LIRR / Metro-North) ---
 
 
-def _fetch_gtfsrt_ground_truth(client_class: type) -> list[GroundTruthArrival]:
-    """Fetch ground truth departures from a GTFS-RT feed (shared by LIRR and MNR)."""
+def _fetch_gtfsrt_ground_truth(
+    client_class: type,
+    generate_train_id: Callable[[str], str] | None = None,
+) -> list[GroundTruthArrival]:
+    """Fetch ground truth departures from a GTFS-RT feed (shared by LIRR and MNR).
+
+    Args:
+        client_class: The GTFS-RT client class (LIRRClient or MNRClient).
+        generate_train_id: Optional function to derive train_id from trip_id,
+            enabling strong-signal matching against TrackRat.
+    """
     arrivals: list[GroundTruthArrival] = []
 
     async def _fetch() -> list[GroundTruthArrival]:
@@ -425,6 +437,14 @@ def _fetch_gtfsrt_ground_truth(client_class: type) -> list[GroundTruthArrival]:
             now = datetime.now(timezone.utc)
             minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
 
+            # Derive train_id from trip_id using collector's logic
+            train_id = ""
+            if generate_train_id:
+                try:
+                    train_id = generate_train_id(arr.trip_id)
+                except Exception:
+                    pass  # Fall back to empty train_id
+
             arrivals.append(
                 GroundTruthArrival(
                     station_code=arr.station_code,
@@ -433,6 +453,9 @@ def _fetch_gtfsrt_ground_truth(client_class: type) -> list[GroundTruthArrival]:
                     line_color="",
                     headsign=arr.trip_id,
                     minutes_away=minutes_away,
+                    train_id=train_id,
+                    track=arr.track,
+                    delay_seconds=arr.delay_seconds if arr.delay_seconds != 0 else None,
                 )
             )
 
@@ -444,15 +467,17 @@ def _fetch_gtfsrt_ground_truth(client_class: type) -> list[GroundTruthArrival]:
 def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
     """Fetch ground truth departures from LIRR GTFS-RT feed."""
     from trackrat.collectors.lirr.client import LIRRClient
+    from trackrat.collectors.lirr.collector import _generate_train_id as lirr_train_id
 
-    return _fetch_gtfsrt_ground_truth(LIRRClient)
+    return _fetch_gtfsrt_ground_truth(LIRRClient, generate_train_id=lirr_train_id)
 
 
 def fetch_mnr_ground_truth() -> list[GroundTruthArrival]:
     """Fetch ground truth departures from Metro-North GTFS-RT feed."""
     from trackrat.collectors.mnr.client import MNRClient
+    from trackrat.collectors.mnr.collector import _generate_train_id as mnr_train_id
 
-    return _fetch_gtfsrt_ground_truth(MNRClient)
+    return _fetch_gtfsrt_ground_truth(MNRClient, generate_train_id=mnr_train_id)
 
 
 def fetch_subway_ground_truth() -> list[GroundTruthArrival]:
@@ -489,19 +514,26 @@ def fetch_trackrat_departures(
 
     for dep in data.get("departures", []):
         dep_info = dep.get("departure", {})
-        scheduled = dep_info.get("actual_time") or dep_info.get("updated_time") or dep_info.get("scheduled_time")
-        if not scheduled:
-            continue
 
-        try:
-            dep_time = datetime.fromisoformat(scheduled)
-        except ValueError:
+        # Parse all three time tiers
+        sched_str = dep_info.get("scheduled_time")
+        upd_str = dep_info.get("updated_time")
+        act_str = dep_info.get("actual_time")
+
+        sched_dt = _safe_parse_iso(sched_str)
+        upd_dt = _safe_parse_iso(upd_str)
+        act_dt = _safe_parse_iso(act_str)
+
+        # Best available: actual > updated > scheduled
+        dep_time = act_dt or upd_dt or sched_dt
+        if not dep_time:
             continue
 
         line = dep.get("line", {})
         # Resolve destination code from the arrival station info if available
         arrival = dep.get("arrival", {})
         dest_code = arrival.get("code", "") if arrival else ""
+        dep_track = dep_info.get("track") or None
 
         departures.append(
             TrackRatDeparture(
@@ -512,6 +544,11 @@ def fetch_trackrat_departures(
                 line_code=line.get("code", ""),
                 line_color=line.get("color", ""),
                 observation_type=dep.get("observation_type", ""),
+                track=dep_track,
+                is_cancelled=dep.get("is_cancelled", False),
+                scheduled_time=sched_dt,
+                updated_time=upd_dt,
+                actual_time=act_dt,
             )
         )
 
@@ -519,6 +556,16 @@ def fetch_trackrat_departures(
 
 
 # --- Matching ---
+
+
+def _safe_parse_iso(value: str | None) -> datetime | None:
+    """Parse an ISO datetime string, returning None on failure or empty input."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def format_delta(seconds: int) -> str:
@@ -580,18 +627,69 @@ def compare_route(
 
         if best_idx is not None and best_delta <= tolerance_secs:
             used_tr_indices.add(best_idx)
+            matched_tr = tr_departures[best_idx]
+            # Check track mismatch: only flag when both sides have a value
+            track_mismatch = (
+                bool(gt.track and matched_tr.track)
+                and gt.track != matched_tr.track
+            )
+            # Check line color mismatch: only when both have non-empty values
+            # Normalize: strip whitespace, lowercase, remove leading '#' (RidePATH
+            # returns "D93A30" while TrackRat returns "#D93A30")
+            # RidePATH may return comma-separated multi-colors ("4D92FB,FF9900");
+            # match if TR color matches any of the GT colors
+            tr_color_norm = matched_tr.line_color.lower().strip().lstrip("#") if matched_tr.line_color else ""
+            gt_colors_norm = (
+                [c.lower().strip().lstrip("#") for c in gt.line_color.split(",")]
+                if gt.line_color else []
+            )
+            gt_colors_norm = [c for c in gt_colors_norm if c]  # drop empties
+            line_color_mismatch = (
+                bool(gt_colors_norm and tr_color_norm)
+                and tr_color_norm not in gt_colors_norm
+            )
+            # Stale scheduled: train is OBSERVED but has no real-time update
+            # (only scheduled_time, no updated_time or actual_time)
+            stale_scheduled = (
+                matched_tr.observation_type == "OBSERVED"
+                and matched_tr.scheduled_time is not None
+                and matched_tr.updated_time is None
+                and matched_tr.actual_time is None
+            )
+            # Delay cross-validation (LIRR/MNR): compare GT delay_seconds
+            # against TR's implied delay (best_time - scheduled_time)
+            delay_mismatch_seconds: int | None = None
+            if (
+                gt.delay_seconds is not None
+                and matched_tr.scheduled_time is not None
+            ):
+                tr_best = matched_tr.actual_time or matched_tr.updated_time
+                if tr_best:
+                    tr_implied_delay = int(
+                        (tr_best - matched_tr.scheduled_time).total_seconds()
+                    )
+                    delay_mismatch_seconds = abs(gt.delay_seconds - tr_implied_delay)
             result.matches.append(
-                MatchResult(gt=gt, tr=tr_departures[best_idx], delta_seconds=best_delta)
+                MatchResult(
+                    gt=gt, tr=matched_tr, delta_seconds=best_delta,
+                    track_mismatch=track_mismatch,
+                    line_color_mismatch=line_color_mismatch,
+                    stale_scheduled=stale_scheduled,
+                    delay_mismatch_seconds=delay_mismatch_seconds,
+                )
             )
         elif gt.minutes_away == 0:
             result.arriving_unmatched.append(gt)
         else:
             result.missing.append(gt)
 
-    # Unmatched TrackRat departures = phantoms
+    # Unmatched TrackRat departures
     for i, tr in enumerate(tr_departures):
         if i not in used_tr_indices:
-            result.phantoms.append(tr)
+            if tr.is_cancelled:
+                result.cancelled_in_tr.append(tr)
+            else:
+                result.phantoms.append(tr)
 
     return result
 
@@ -684,9 +782,11 @@ def run_validation_loop(
                 print(f"  GT arrivals: {len(relevant_gt)}, TR departures: {len(tr_departures)}")
                 for tr in sorted(tr_departures, key=lambda x: x.departure_time):
                     time_str = tr.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    track_str = f"  track={tr.track}" if tr.track else ""
+                    cancel_str = "  CANCELLED" if tr.is_cancelled else ""
                     print(
                         f"    TR: {time_str}  {tr.train_id}  "
-                        f"line={tr.line_code}  obs={tr.observation_type}"
+                        f"line={tr.line_code}  obs={tr.observation_type}{track_str}{cancel_str}"
                     )
 
             result = compare_route(gt_arrivals, tr_departures, from_st, to_st, tolerance)
@@ -699,10 +799,66 @@ def run_validation_loop(
                 if verbose:
                     tr_time = m.tr.departure_time.astimezone(et).strftime("%H:%M:%S")
                     detail = f" -> {m.tr.train_id} @ {tr_time} ({m.tr.observation_type})"
-                log_pass(
-                    f'Train "{m.gt.headsign}" @ {time_str} matched '
-                    f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}"
+                track_info = ""
+                if m.track_mismatch:
+                    track_info = f" [TRACK MISMATCH: GT={m.gt.track} TR={m.tr.track}]"
+                elif verbose and (m.gt.track or m.tr.track):
+                    track_info = f" [track: GT={m.gt.track or '-'} TR={m.tr.track or '-'}]"
+                line_info = ""
+                if m.line_color_mismatch:
+                    line_info = f" [LINE COLOR MISMATCH: GT={m.gt.line_color} TR={m.tr.line_color}]"
+                elif verbose and (m.gt.line_color or m.tr.line_color):
+                    line_info = f" [color: GT={m.gt.line_color or '-'} TR={m.tr.line_color or '-'}]"
+                stale_info = ""
+                if m.stale_scheduled:
+                    stale_info = " [STALE: OBSERVED but only scheduled_time, no RT update]"
+                delay_info = ""
+                if m.delay_mismatch_seconds is not None and m.delay_mismatch_seconds > 60:
+                    gt_delay = m.gt.delay_seconds or 0
+                    tr_best = m.tr.actual_time or m.tr.updated_time
+                    tr_implied = (
+                        int((tr_best - m.tr.scheduled_time).total_seconds())
+                        if tr_best and m.tr.scheduled_time
+                        else 0
+                    )
+                    delay_info = (
+                        f" [DELAY MISMATCH: GT={gt_delay}s TR={tr_implied}s"
+                        f" diff={m.delay_mismatch_seconds}s]"
+                    )
+                elif verbose and m.delay_mismatch_seconds is not None:
+                    gt_delay = m.gt.delay_seconds or 0
+                    delay_info = f" [delay: GT={gt_delay}s diff={m.delay_mismatch_seconds}s]"
+                time_tier_info = ""
+                if verbose:
+                    s = m.tr.scheduled_time.astimezone(et).strftime("%H:%M:%S") if m.tr.scheduled_time else "-"
+                    u = m.tr.updated_time.astimezone(et).strftime("%H:%M:%S") if m.tr.updated_time else "-"
+                    a = m.tr.actual_time.astimezone(et).strftime("%H:%M:%S") if m.tr.actual_time else "-"
+                    time_tier_info = f" [sched={s} upd={u} act={a}]"
+                has_mismatch = (
+                    m.track_mismatch
+                    or m.line_color_mismatch
+                    or m.stale_scheduled
+                    or (m.delay_mismatch_seconds is not None and m.delay_mismatch_seconds > 60)
                 )
+                suffix = (
+                    f"{track_info}{line_info}{stale_info}"
+                    f"{delay_info}{time_tier_info}"
+                )
+                if has_mismatch:
+                    log_warn(
+                        f'Train "{m.gt.headsign}" @ {time_str} matched '
+                        f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}{suffix}"
+                    )
+                elif m.tr.is_cancelled:
+                    log_warn(
+                        f'Train "{m.gt.headsign}" @ {time_str} matched but CANCELLED in TrackRat'
+                        f"{detail}{suffix}"
+                    )
+                else:
+                    log_pass(
+                        f'Train "{m.gt.headsign}" @ {time_str} matched '
+                        f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}{suffix}"
+                    )
 
             # Report arriving-but-unmatched (gray zone)
             for gt in result.arriving_unmatched:
@@ -743,6 +899,11 @@ def run_validation_loop(
                 if tr.observation_type == "OBSERVED" or is_near:
                     log_warn(f"TrackRat train {tr.train_id} @ {time_str} has no ground truth match")
                 # Silently skip far-future SCHEDULED trains
+
+            # Report cancelled trains that had no GT match
+            for tr in result.cancelled_in_tr:
+                time_str = tr.departure_time.astimezone(et).strftime("%H:%M")
+                log_warn(f"TrackRat train {tr.train_id} @ {time_str} cancelled (no GT match expected)")
     finally:
         client.close()
 
@@ -826,9 +987,10 @@ def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{track_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "NJT", base_url, tolerance, verbose, gt_window)
@@ -853,9 +1015,10 @@ def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False, 
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{track_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "AMTRAK", base_url, tolerance, verbose, gt_window)
@@ -880,9 +1043,12 @@ def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False, gt
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
+            id_str = f"  id={a.train_id}" if a.train_id else ""
+            delay_str = f"  delay={a.delay_seconds}s" if a.delay_seconds else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{id_str}{track_str}{delay_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "LIRR", base_url, tolerance, verbose, gt_window)
@@ -907,9 +1073,12 @@ def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
         print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
         for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
             time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
+            id_str = f"  id={a.train_id}" if a.train_id else ""
+            delay_str = f"  delay={a.delay_seconds}s" if a.delay_seconds else ""
             print(
                 f"  {a.station_code} -> {a.destination_code}  "
-                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"'
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{id_str}{track_str}{delay_str}'
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "MNR", base_url, tolerance, verbose, gt_window)
