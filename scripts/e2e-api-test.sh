@@ -147,7 +147,7 @@ ROUTES=(
   "Subway A|SH11|SA02|SUBWAY||"
   "Subway L|SL29|SL01|SUBWAY||"
   "Subway 7|S701|S726|SUBWAY||"
-  "Subway N|SN01|SR44|SUBWAY||"
+  "Subway N|SR01|SD43|SUBWAY||"
   # PATCO - schedule-only (no real-time API available)
   "PATCO Speedline|LND|FFL|PATCO||s"
 )
