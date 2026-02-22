@@ -26,7 +26,7 @@ def test_settings_missing_required_fields():
     from typing import Literal
 
     # Temporarily remove environment variables
-    env_vars_to_clear = ["TRACKRAT_NJT_API_TOKEN", "NJT_API_TOKEN"]
+    env_vars_to_clear = ["TRACKRAT_NJT_API_TOKEN", "NJT_API_TOKEN", "NJT_TOKEN"]
     original_values = {}
     for var in env_vars_to_clear:
         original_values[var] = os.environ.get(var)
