@@ -320,8 +320,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     "stop_sequence": stop_sequence,
                     "scheduled_arrival": sched_arr,
                     "scheduled_departure": sched_dep,
-                    "updated_arrival": self._compute_estimated_time(sched_arr, amtrak_stop.arrCmnt),
-                    "updated_departure": self._compute_estimated_time(sched_dep, amtrak_stop.depCmnt),
+                    "updated_arrival": self._compute_estimated_time(
+                        sched_arr, amtrak_stop.arrCmnt
+                    ),
+                    "updated_departure": self._compute_estimated_time(
+                        sched_dep, amtrak_stop.depCmnt
+                    ),
                     "actual_arrival": actual_arr,
                     "actual_departure": actual_dep,
                     "raw_amtrak_status": amtrak_stop.status,
@@ -597,8 +601,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 "stop_sequence": stop_sequence,
                 "scheduled_arrival": scheduled_arrival,
                 "scheduled_departure": scheduled_departure,
-                "updated_arrival": self._compute_estimated_time(scheduled_arrival, amtrak_stop.arrCmnt),
-                "updated_departure": self._compute_estimated_time(scheduled_departure, amtrak_stop.depCmnt),
+                "updated_arrival": self._compute_estimated_time(
+                    scheduled_arrival, amtrak_stop.arrCmnt
+                ),
+                "updated_departure": self._compute_estimated_time(
+                    scheduled_departure, amtrak_stop.depCmnt
+                ),
                 "actual_arrival": actual_arrival,
                 "actual_departure": actual_departure,
                 "raw_amtrak_status": amtrak_stop.status,

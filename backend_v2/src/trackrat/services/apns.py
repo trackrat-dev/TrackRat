@@ -207,6 +207,79 @@ class SimpleAPNSService:
             )
             return False
 
+    async def send_alert_notification(
+        self, device_token: str, title: str, body: str
+    ) -> bool:
+        """
+        Send a standard alert push notification to an iOS device.
+
+        Args:
+            device_token: The APNS device token (not a Live Activity token)
+            title: Notification title
+            body: Notification body text
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_configured:
+            logger.warning("apns_alert_skipped", reason="Not configured")
+            return False
+
+        payload = {
+            "aps": {
+                "alert": {"title": title, "body": body},
+                "sound": "default",
+            }
+        }
+
+        headers = {
+            "authorization": f"bearer {self._get_jwt_token()}",
+            "apns-topic": self.bundle_id,
+            "apns-push-type": "alert",
+            "apns-priority": "10",
+            "content-type": "application/json",
+        }
+
+        url = f"{self.base_url}/3/device/{device_token}"
+
+        try:
+            async with httpx.AsyncClient(
+                http2=True,
+                timeout=httpx.Timeout(10.0),
+            ) as client:
+                response = await client.post(url, json=payload, headers=headers)
+
+                if response.status_code == 200:
+                    logger.info(
+                        "apns_alert_sent",
+                        device_token=device_token[:10] + "...",
+                    )
+                    return True
+
+                if response.status_code == 410:
+                    logger.warning(
+                        "apns_alert_token_invalid",
+                        device_token=device_token[:10] + "...",
+                        status_code=410,
+                    )
+                    return False
+
+                logger.error(
+                    "apns_alert_error",
+                    device_token=device_token[:10] + "...",
+                    status_code=response.status_code,
+                    response=response.text,
+                )
+                return False
+
+        except Exception as e:
+            logger.exception(
+                "apns_alert_exception",
+                device_token=device_token[:10] + "...",
+                error=str(e),
+            )
+            return False
+
     async def send_live_activity_end(
         self,
         push_token: str,

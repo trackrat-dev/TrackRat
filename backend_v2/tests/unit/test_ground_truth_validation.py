@@ -246,7 +246,10 @@ class TestCompareRouteMultipleTrains:
     def test_multiple_matches(self):
         """Multiple GT entries should each match a separate TR entry."""
         gt = [_gt(minutes_offset=10), _gt(minutes_offset=20)]
-        tr = [_tr(minutes_offset=10, train_id="A"), _tr(minutes_offset=20, train_id="B")]
+        tr = [
+            _tr(minutes_offset=10, train_id="A"),
+            _tr(minutes_offset=20, train_id="B"),
+        ]
         result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
 
         assert len(result.matches) == 2
@@ -319,7 +322,9 @@ class TestCompareRoutePhantoms:
         gt = [_gt(minutes_offset=5)]
         tr = [
             _tr(minutes_offset=5, train_id="match"),  # Matches GT
-            _tr(minutes_offset=30, is_cancelled=True, train_id="cancelled"),  # Unmatched cancelled
+            _tr(
+                minutes_offset=30, is_cancelled=True, train_id="cancelled"
+            ),  # Unmatched cancelled
         ]
         result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
 
@@ -396,7 +401,9 @@ class TestCompareRouteCancellation:
         gt = [_gt(minutes_offset=10)]
         tr = [
             _tr(minutes_offset=10),  # This one matches the GT
-            _tr(minutes_offset=30, is_cancelled=True),  # This one is unmatched + cancelled
+            _tr(
+                minutes_offset=30, is_cancelled=True
+            ),  # This one is unmatched + cancelled
         ]
         result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
 

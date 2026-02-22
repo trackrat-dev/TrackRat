@@ -501,13 +501,11 @@ class TestComputeEstimatedTime:
         """
         from datetime import timedelta
 
-        result = AmtrakJourneyCollector._compute_estimated_time(
-            self.SCHEDULED, comment
-        )
+        result = AmtrakJourneyCollector._compute_estimated_time(self.SCHEDULED, comment)
         expected = self.SCHEDULED + timedelta(minutes=expected_offset_min)
-        assert result == expected, (
-            f"comment={comment!r}: expected {expected}, got {result}"
-        )
+        assert (
+            result == expected
+        ), f"comment={comment!r}: expected {expected}, got {result}"
 
     @pytest.mark.parametrize(
         "comment,description",
@@ -523,12 +521,10 @@ class TestComputeEstimatedTime:
 
         Validates: {description}
         """
-        result = AmtrakJourneyCollector._compute_estimated_time(
-            self.SCHEDULED, comment
-        )
-        assert result == self.SCHEDULED, (
-            f"comment={comment!r}: expected scheduled time unchanged, got {result}"
-        )
+        result = AmtrakJourneyCollector._compute_estimated_time(self.SCHEDULED, comment)
+        assert (
+            result == self.SCHEDULED
+        ), f"comment={comment!r}: expected scheduled time unchanged, got {result}"
 
     def test_none_scheduled_returns_none(self):
         """Test that None scheduled time returns None regardless of comment."""

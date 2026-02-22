@@ -33,7 +33,7 @@ class NJTransitClient:
 
     def __init__(self, settings: Settings | None = None) -> None:
         """Initialize the client."""
-        self.settings = settings or get_settings()
+        self.settings: Settings | None = settings or get_settings()
         self.base_url = self.settings.njt_api_url.rstrip("/")
         self.token = self.settings.njt_api_token
         self._init_http_client()
@@ -54,7 +54,9 @@ class NJTransitClient:
         )
 
     @classmethod
-    def from_token(cls, token: str, base_url: str = "https://raildata.njtransit.com/api") -> "NJTransitClient":
+    def from_token(
+        cls, token: str, base_url: str = "https://raildata.njtransit.com/api"
+    ) -> "NJTransitClient":
         """Create a lightweight client without requiring full backend Settings.
 
         Useful for standalone scripts that only need the NJT API.

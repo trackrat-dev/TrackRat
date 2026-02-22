@@ -705,9 +705,7 @@ class TestStripSourcePrefix:
     def test_subway_strips_route_prefix(self):
         """Subway S1-trip_id -> trip_id for GTFS lookup."""
         assert (
-            _strip_source_prefix(
-                "S1-AFA25GEN-1079-Sunday-00_000600_1..N03R", "SUBWAY"
-            )
+            _strip_source_prefix("S1-AFA25GEN-1079-Sunday-00_000600_1..N03R", "SUBWAY")
             == "AFA25GEN-1079-Sunday-00_000600_1..N03R"
         )
 
@@ -722,9 +720,7 @@ class TestStripSourcePrefix:
     def test_subway_bare_trip_id_passthrough(self):
         """Bare trip_id (no S prefix) passes through unchanged."""
         assert (
-            _strip_source_prefix(
-                "AFA25GEN-1079-Sunday-00_000600_1..N03R", "SUBWAY"
-            )
+            _strip_source_prefix("AFA25GEN-1079-Sunday-00_000600_1..N03R", "SUBWAY")
             == "AFA25GEN-1079-Sunday-00_000600_1..N03R"
         )
 

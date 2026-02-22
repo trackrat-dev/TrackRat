@@ -27,6 +27,7 @@ from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
+from trackrat.services.alert_evaluator import evaluate_route_alerts
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
@@ -252,6 +253,17 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=3600,  # 1 hour grace period
+        )
+
+        # Schedule route alert evaluation (every 5 minutes)
+        self.scheduler.add_job(
+            self.run_alert_evaluation,
+            trigger=IntervalTrigger(minutes=5),
+            id="route_alert_evaluation",
+            name="Route Alert Evaluation",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=300,  # 5 minute grace period (matches interval)
         )
 
         # Start the scheduler
@@ -2990,6 +3002,30 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("amtrak_schedule_generation_skipped_still_fresh")
+
+    async def run_alert_evaluation(self) -> None:
+        """Evaluate route alert subscriptions and send notifications."""
+
+        async def do_alert_evaluation_work() -> None:
+            if not self.apns_service:
+                logger.debug("alert_evaluation_skipped_no_apns")
+                return
+
+            async with get_session() as session:
+                await evaluate_route_alerts(session, self.apns_service)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(5)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="route_alert_evaluation",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_alert_evaluation_work,
+            )
+
+            if not executed:
+                logger.debug("route_alert_evaluation_skipped_still_fresh")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status and job information."""

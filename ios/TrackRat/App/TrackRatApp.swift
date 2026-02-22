@@ -146,6 +146,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             AppDelegate.deviceToken = tokenString
         }
 
+        // Sync route alert subscriptions with backend
+        Task {
+            await AlertSubscriptionService.shared.syncWithBackend(apnsToken: tokenString)
+        }
+
         #if DEBUG
         print("📱 Device token stored - Live Activities ready")
         #endif
@@ -679,7 +684,6 @@ final class AppState: ObservableObject {
     private func loadSelectedSystems() {
         if let stored = UserDefaults.standard.string(forKey: "selectedTrainSystems"), !stored.isEmpty {
             let loaded = Set<TrainSystem>.from(commaSeparated: stored)
-            // Ensure at least one system is selected
             selectedSystems = loaded.isEmpty ? .defaultEnabled : loaded
         } else {
             // Default to NJT and Amtrak

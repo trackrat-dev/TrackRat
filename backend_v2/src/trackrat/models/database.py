@@ -7,6 +7,7 @@ Follows the simplified single-journey design documented in backend_v2/CLAUDE.md.
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -258,6 +259,72 @@ class LiveActivityToken(Base):
     __table_args__ = (
         Index("idx_active_tokens", "is_active", "train_number"),
         Index("idx_token_expiry", "expires_at"),
+    )
+
+
+class DeviceToken(Base):
+    """Device registration for push notification alerts."""
+
+    __tablename__ = "device_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(String(64), unique=True, nullable=False)
+    apns_token = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    subscriptions: Mapped[list["RouteAlertSubscription"]] = relationship(
+        "RouteAlertSubscription",
+        back_populates="device",
+        cascade="all, delete-orphan",
+        foreign_keys="RouteAlertSubscription.device_id",
+        primaryjoin="DeviceToken.device_id == RouteAlertSubscription.device_id",
+    )
+
+
+class RouteAlertSubscription(Base):
+    """User subscription for delay/cancellation alerts on a route."""
+
+    __tablename__ = "route_alert_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(
+        String(64),
+        ForeignKey("device_tokens.device_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    data_source = Column(String(10), nullable=False)
+    line_id = Column(String(30), nullable=True)
+    from_station_code = Column(String(10), nullable=True)
+    to_station_code = Column(String(10), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_alerted_at = Column(DateTime(timezone=True), nullable=True)
+    last_alert_hash = Column(String(64), nullable=True)
+
+    # Relationships
+    device: Mapped["DeviceToken"] = relationship(
+        "DeviceToken",
+        back_populates="subscriptions",
+        foreign_keys=[device_id],
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "(line_id IS NOT NULL) OR "
+            "(from_station_code IS NOT NULL AND to_station_code IS NOT NULL)",
+            name="ck_alert_sub_type",
+        ),
+        Index("idx_alert_sub_device", "device_id"),
+        Index("idx_alert_sub_line", "data_source", "line_id"),
+        Index(
+            "idx_alert_sub_stations",
+            "data_source",
+            "from_station_code",
+            "to_station_code",
+        ),
     )
 
 
