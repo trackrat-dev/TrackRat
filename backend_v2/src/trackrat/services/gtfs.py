@@ -158,6 +158,31 @@ def _mnr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
     return f"M{train_id_or_trip_id[:6]}"
 
 
+def _strip_source_prefix(train_id: str, source: str) -> str:
+    """Strip transit-system display prefix from train_id for GTFS lookup.
+
+    Display prefixes are added in departure listings to avoid ID collisions
+    between systems. This reverses that for GTFS database lookup.
+
+    Examples:
+        ("A112", "AMTRAK") -> "112"
+        ("L181", "LIRR") -> "181"
+        ("M631700", "MNR") -> "631700"
+        ("S1-AFA25GEN-...", "SUBWAY") -> "AFA25GEN-..."
+    """
+    if source == "AMTRAK" and train_id.startswith("A") and train_id[1:].isdigit():
+        return train_id[1:]
+    if source == "LIRR" and train_id.startswith("L") and train_id[1:].isdigit():
+        return train_id[1:]
+    if source == "MNR" and train_id.startswith("M") and train_id[1:].isdigit():
+        return train_id[1:]
+    if source == "SUBWAY" and train_id.startswith("S"):
+        dash_idx = train_id.find("-")
+        if dash_idx != -1:
+            return train_id[dash_idx + 1 :]
+    return train_id
+
+
 class GTFSService:
     """Service for managing GTFS static schedule data."""
 
@@ -1574,26 +1599,9 @@ class GTFSService:
 
         # Normalize prefixed train IDs: strip prefix for lookup since GTFS stores without it
         # (We add prefixes for display consistency with real-time data)
-        search_train_id = train_id
-        if (
-            data_source == "AMTRAK"
-            and train_id.startswith("A")
-            and train_id[1:].isdigit()
-        ):
-            search_train_id = train_id[1:]
-        if (
-            data_source == "LIRR"
-            and train_id.startswith("L")
-            and train_id[1:].isdigit()
-        ):
-            search_train_id = train_id[1:]
-        if data_source == "MNR" and train_id.startswith("M") and train_id[1:].isdigit():
-            search_train_id = train_id[1:]
-        # Strip "S{route}-" prefix for SUBWAY to recover the original GTFS trip_id
-        if data_source == "SUBWAY" and train_id.startswith("S"):
-            dash_idx = train_id.find("-")
-            if dash_idx != -1:
-                search_train_id = train_id[dash_idx + 1 :]
+        search_train_id = (
+            _strip_source_prefix(train_id, data_source) if data_source else train_id
+        )
 
         all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
         sources_to_search = [data_source] if data_source else all_sources
@@ -1625,12 +1633,8 @@ class GTFSService:
             # Two-phase search: prioritize train_id (real numbers) over trip_id (GTFS IDs)
             # Phase 1: Search all sources for train_id match
             for source, service_ids in source_service_ids.items():
-                # For prefixed sources, use prefix-stripped ID for lookup
-                lookup_id = (
-                    search_train_id
-                    if source in ("AMTRAK", "LIRR", "MNR", "SUBWAY")
-                    else train_id
-                )
+                # Strip source-specific prefix (e.g., A112->112, S1-trip->trip)
+                lookup_id = _strip_source_prefix(train_id, source)
                 trip_row = await self._find_trip_in_source(
                     db, lookup_id, source, service_ids, "train_id"
                 )
@@ -1641,11 +1645,7 @@ class GTFSService:
             # Phase 2: Fall back to trip_id match
             if not trip_row:
                 for source, service_ids in source_service_ids.items():
-                    lookup_id = (
-                        search_train_id
-                        if source in ("AMTRAK", "LIRR", "MNR", "SUBWAY")
-                        else train_id
-                    )
+                    lookup_id = _strip_source_prefix(train_id, source)
                     trip_row = await self._find_trip_in_source(
                         db, lookup_id, source, service_ids, "trip_id"
                     )

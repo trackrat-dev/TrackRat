@@ -12,6 +12,7 @@ from trackrat.services.gtfs import (
     NJT_LINE_CODE_MAPPING,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
+    _strip_source_prefix,
 )
 from trackrat.models.database import (
     GTFSCalendar,
@@ -612,25 +613,12 @@ class TestSubwayTrainIdPrefixing:
         prefixed_id = "S1-AFA25GEN-1079-Sunday-00_000600_1..N03R"
         original_trip_id = "AFA25GEN-1079-Sunday-00_000600_1..N03R"
 
-        # Simulate the strip logic from gtfs.py get_train_details
-        search_train_id = prefixed_id
-        if prefixed_id.startswith("S"):
-            dash_idx = prefixed_id.find("-")
-            if dash_idx != -1:
-                search_train_id = prefixed_id[dash_idx + 1 :]
-
-        assert search_train_id == original_trip_id
+        assert _strip_source_prefix(prefixed_id, "SUBWAY") == original_trip_id
 
     def test_subway_prefix_strip_with_multi_char_route(self):
         """Route names can be multi-character (e.g., 'SIR' for Staten Island)."""
         prefixed_id = "SSIR-trip_abc_123"
-        search_train_id = prefixed_id
-        if prefixed_id.startswith("S"):
-            dash_idx = prefixed_id.find("-")
-            if dash_idx != -1:
-                search_train_id = prefixed_id[dash_idx + 1 :]
-
-        assert search_train_id == "trip_abc_123"
+        assert _strip_source_prefix(prefixed_id, "SUBWAY") == "trip_abc_123"
 
     def test_subway_prefix_not_applied_twice(self):
         """If effective_train_id already starts with S, skip prefixing."""
@@ -654,15 +642,113 @@ class TestSubwayTrainIdPrefixing:
             effective_train_id = f"S{route_short}-{effective_train_id}"
         assert effective_train_id == "SA-BFA30GEN-1079-Weekday-00_043200_A..N04R"
 
-        # Step 2: Strip (detail endpoint)
-        search_id = effective_train_id
-        if search_id.startswith("S"):
-            dash_idx = search_id.find("-")
-            if dash_idx != -1:
-                search_id = search_id[dash_idx + 1 :]
+        # Step 2: Strip (detail endpoint) using actual helper
+        search_id = _strip_source_prefix(effective_train_id, "SUBWAY")
 
         # Recovered trip_id matches original
         assert search_id == original_trip_id
+
+
+class TestStripSourcePrefix:
+    """Tests for _strip_source_prefix helper function.
+
+    This function strips transit-system display prefixes from train IDs
+    so they can be looked up in the GTFS database. Used both in
+    single-source mode (data_source provided) and the two-phase search
+    (data_source=None, iterating all sources).
+
+    Bug fix: Previously, prefix stripping was gated on data_source matching,
+    so the two-phase search (data_source=None) would pass still-prefixed IDs
+    to the GTFS lookup, causing lookups to fail silently.
+    """
+
+    # --- AMTRAK ---
+
+    def test_amtrak_strips_a_prefix(self):
+        """Amtrak train A112 -> 112 for GTFS lookup."""
+        assert _strip_source_prefix("A112", "AMTRAK") == "112"
+
+    def test_amtrak_preserves_non_digit_suffix(self):
+        """Only strip A prefix when rest is all digits."""
+        assert _strip_source_prefix("ABCD", "AMTRAK") == "ABCD"
+
+    def test_amtrak_no_prefix_passthrough(self):
+        """Bare number passes through unchanged."""
+        assert _strip_source_prefix("112", "AMTRAK") == "112"
+
+    # --- LIRR ---
+
+    def test_lirr_strips_l_prefix(self):
+        """LIRR train L181 -> 181 for GTFS lookup."""
+        assert _strip_source_prefix("L181", "LIRR") == "181"
+
+    def test_lirr_preserves_non_digit_suffix(self):
+        """Only strip L prefix when rest is all digits."""
+        assert _strip_source_prefix("LABC", "LIRR") == "LABC"
+
+    def test_lirr_no_prefix_passthrough(self):
+        """Bare number passes through unchanged."""
+        assert _strip_source_prefix("181", "LIRR") == "181"
+
+    # --- MNR ---
+
+    def test_mnr_strips_m_prefix(self):
+        """MNR train M631700 -> 631700 for GTFS lookup."""
+        assert _strip_source_prefix("M631700", "MNR") == "631700"
+
+    def test_mnr_preserves_non_digit_suffix(self):
+        """Only strip M prefix when rest is all digits."""
+        assert _strip_source_prefix("MXYZ", "MNR") == "MXYZ"
+
+    # --- SUBWAY ---
+
+    def test_subway_strips_route_prefix(self):
+        """Subway S1-trip_id -> trip_id for GTFS lookup."""
+        assert (
+            _strip_source_prefix(
+                "S1-AFA25GEN-1079-Sunday-00_000600_1..N03R", "SUBWAY"
+            )
+            == "AFA25GEN-1079-Sunday-00_000600_1..N03R"
+        )
+
+    def test_subway_strips_multi_char_route(self):
+        """SIR route produces SSIR- prefix."""
+        assert _strip_source_prefix("SSIR-trip_123", "SUBWAY") == "trip_123"
+
+    def test_subway_no_dash_passthrough(self):
+        """If no dash found, ID passes through unchanged (safety guard)."""
+        assert _strip_source_prefix("S6010123", "SUBWAY") == "S6010123"
+
+    def test_subway_bare_trip_id_passthrough(self):
+        """Bare trip_id (no S prefix) passes through unchanged."""
+        assert (
+            _strip_source_prefix(
+                "AFA25GEN-1079-Sunday-00_000600_1..N03R", "SUBWAY"
+            )
+            == "AFA25GEN-1079-Sunday-00_000600_1..N03R"
+        )
+
+    # --- Cross-source safety ---
+
+    def test_njt_no_stripping(self):
+        """NJT IDs are never prefixed, so nothing is stripped."""
+        assert _strip_source_prefix("2508", "NJT") == "2508"
+
+    def test_path_no_stripping(self):
+        """PATH IDs are never prefixed, so nothing is stripped."""
+        assert _strip_source_prefix("PATH-123", "PATH") == "PATH-123"
+
+    def test_wrong_source_no_stripping(self):
+        """A prefixed ID only gets stripped for its matching source.
+
+        An Amtrak-prefixed ID passed with source=NJT should NOT be stripped,
+        since the prefix logic is source-specific.
+        """
+        assert _strip_source_prefix("A112", "NJT") == "A112"
+
+    def test_subway_prefix_not_stripped_for_amtrak(self):
+        """Subway-style prefix shouldn't be stripped for non-SUBWAY source."""
+        assert _strip_source_prefix("S1-trip_123", "AMTRAK") == "S1-trip_123"
 
 
 class TestDataSourceFiltering:
