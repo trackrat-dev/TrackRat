@@ -17,6 +17,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from structlog import get_logger
 
 from trackrat.api import (
+    alerts,
     feedback,
     health,
     live_activities,
@@ -182,6 +183,7 @@ async def suppress_health_check_logs(
 
 
 # Include routers
+app.include_router(alerts.router, include_in_schema=False)
 app.include_router(feedback.router, include_in_schema=False)
 app.include_router(health.router, include_in_schema=False)
 app.include_router(live_activities.router, include_in_schema=False)

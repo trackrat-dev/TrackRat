@@ -146,6 +146,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             AppDelegate.deviceToken = tokenString
         }
 
+        // Sync route alert subscriptions with backend
+        Task {
+            await AlertSubscriptionService.shared.syncWithBackend(apnsToken: tokenString)
+        }
+
         #if DEBUG
         print("📱 Device token stored - Live Activities ready")
         #endif

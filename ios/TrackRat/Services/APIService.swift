@@ -1290,4 +1290,74 @@ extension PlatformPrediction {
 
         return trackProbabilities
     }
+
+    // MARK: - Route Alert Subscriptions
+
+    func registerDevice(deviceId: String, apnsToken: String) async throws {
+        let endpoint = "/v2/devices/register"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        struct RegisterRequest: Encodable {
+            let device_id: String
+            let apns_token: String
+        }
+
+        let body = RegisterRequest(device_id: deviceId, apns_token: apnsToken)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await session.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse,
+           httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+            throw APIError.invalidParameters
+        }
+    }
+
+    func syncAlertSubscriptions(deviceId: String, subscriptions: [RouteAlertSubscription]) async throws {
+        let endpoint = "/v2/alerts/subscriptions"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
+            throw APIError.invalidURL
+        }
+
+        struct SubscriptionItem: Encodable {
+            let data_source: String
+            let line_id: String?
+            let line_name: String?
+            let from_station_code: String?
+            let to_station_code: String?
+        }
+
+        struct SyncRequest: Encodable {
+            let device_id: String
+            let subscriptions: [SubscriptionItem]
+        }
+
+        let items = subscriptions.map { sub in
+            SubscriptionItem(
+                data_source: sub.dataSource,
+                line_id: sub.lineId,
+                line_name: sub.lineName,
+                from_station_code: sub.fromStationCode,
+                to_station_code: sub.toStationCode
+            )
+        }
+
+        let body = SyncRequest(device_id: deviceId, subscriptions: items)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (_, response) = try await session.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse,
+           httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
+            throw APIError.invalidParameters
+        }
+    }
 }

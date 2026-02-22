@@ -4,6 +4,7 @@ import SwiftUI
 enum ProfileDestination: Hashable {
     case tripHistory
     case favoriteStations
+    case routeAlerts
     case advancedConfiguration
 }
 
@@ -348,6 +349,8 @@ struct MyProfileView: View {
                         TripHistoryView()
                     case .favoriteStations:
                         OnboardingView(isRepeating: true)
+                    case .routeAlerts:
+                        EditRouteAlertsView()
                     case .advancedConfiguration:
                         AdvancedConfigurationView()
                     }
@@ -437,6 +440,45 @@ struct SettingsSection: View {
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Route Alerts
+            Button {
+                navigationPath.append(ProfileDestination.routeAlerts)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Route Alerts")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+
+                        Text("Delay & cancellation notifications")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.7))
                             .multilineTextAlignment(.leading)
                     }
 
