@@ -12,7 +12,7 @@ from typing import Any
 import structlog
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import make_asgi_app
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.gzip import GZipMiddleware
 from structlog import get_logger
 
@@ -192,11 +192,13 @@ app.include_router(routes.router)
 app.include_router(trains.router)
 app.include_router(validation.router, include_in_schema=False)
 
-# Mount Prometheus metrics endpoint if enabled
+# Prometheus metrics endpoint (direct route avoids Starlette mount 307 redirect)
 settings = get_settings()
 if settings.enable_metrics:
-    metrics_app = make_asgi_app()
-    app.mount("/metrics", metrics_app)
+
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics() -> Response:
+        return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/", include_in_schema=False)
