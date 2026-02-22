@@ -283,7 +283,19 @@ export function LandingPage() {
               Submit Feedback
             </a>
           </div>
-          <p className="text-text-muted text-sm">
+          <p className="text-text-muted text-xs mt-2">
+            Amtrak data powered by{' '}
+            <a
+              href="https://amtraker.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              Amtraker
+            </a>
+            {' '}&mdash; thank you for making this possible.
+          </p>
+          <p className="text-text-muted text-sm mt-4">
             &copy; {new Date().getFullYear()} TrackRat
           </p>
         </div>
