@@ -23,6 +23,8 @@ def create_amtrak_station_data(
     actual_arr: str | None = None,
     status: str = "Enroute",
     platform: str = "",
+    dep_cmnt: str = "",
+    arr_cmnt: str = "",
 ) -> AmtrakStationData:
     """Factory for creating AmtrakStationData objects."""
     return AmtrakStationData(
@@ -34,8 +36,8 @@ def create_amtrak_station_data(
         schArr=sch_arr,
         dep=actual_dep,
         arr=actual_arr,
-        arrCmnt="",
-        depCmnt="",
+        arrCmnt=arr_cmnt,
+        depCmnt=dep_cmnt,
         status=status,
         stopIconColor="",
         platform=platform,
