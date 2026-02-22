@@ -109,8 +109,8 @@ cd backend_v2
 # PATH (no auth needed)
 poetry run python3 ../scripts/ground-truth-validate.py --provider PATH --verbose
 
-# NJT (needs token from .njt-token in repo root)
-TRACKRAT_NJT_API_TOKEN=$(cat ../.njt-token) poetry run python3 ../scripts/ground-truth-validate.py --provider NJT --verbose
+# NJT (needs token via NJT_TOKEN env var, TRACKRAT_NJT_API_TOKEN env var, or .njt-token file)
+poetry run python3 ../scripts/ground-truth-validate.py --provider NJT --verbose
 
 # Amtrak (no auth needed)
 poetry run python3 ../scripts/ground-truth-validate.py --provider AMTRAK --verbose
@@ -128,8 +128,8 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbo
 Options: `--tolerance N` (minutes, default 3), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
 Default target is staging; pass a URL as first positional arg for production.
 
-The NJT API token is stored in `.njt-token` (gitignored). When running NJT validation,
-read it with `$(cat ../.njt-token)` or `$(cat .njt-token)` depending on your cwd.
+The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
+or `.njt-token` file (gitignored) in the repo root. Priority: TRACKRAT_NJT_API_TOKEN > NJT_TOKEN > .njt-token file.
 
 ### Architecture Patterns
 

@@ -24,7 +24,7 @@ import urllib.request
 import zipfile
 from collections import defaultdict
 
-GTFS_URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip"
+GTFS_URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
 
 # Route colors from official MTA branding (hex without #)
 # The GTFS file has slightly different colors; we use official MTA bullet colors.
@@ -404,7 +404,7 @@ def generate_python_stations(
         "}",
         "",
         "# GTFS static feed URL",
-        'SUBWAY_GTFS_STATIC_URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip"',
+        'SUBWAY_GTFS_STATIC_URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"',
         "",
         "",
     ]

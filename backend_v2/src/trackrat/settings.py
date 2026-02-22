@@ -58,9 +58,13 @@ class Settings(BaseSettings):
     @field_validator("njt_api_token", mode="before")
     @classmethod
     def load_njt_token_from_file(cls, v: str) -> str:
-        """Load NJT API token from .njt-token file if not set via env."""
+        """Load NJT API token from env vars or .njt-token file."""
         if v:
             return v
+        # Check NJT_TOKEN env var (used in CI/cloud environments)
+        from_env = os.environ.get("NJT_TOKEN", "")
+        if from_env:
+            return from_env
         # Walk up from this file to find .njt-token in the repo root
         for parent in Path(__file__).resolve().parents:
             token_file = parent / ".njt-token"

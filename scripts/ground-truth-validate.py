@@ -216,7 +216,9 @@ def _create_njt_client():
     """Create NJTransitClient without requiring full backend Settings."""
     from trackrat.collectors.njt.client import NJTransitClient
 
-    token = os.environ["TRACKRAT_NJT_API_TOKEN"]
+    token = os.environ.get("TRACKRAT_NJT_API_TOKEN") or os.environ.get("NJT_TOKEN", "")
+    if not token:
+        raise KeyError("TRACKRAT_NJT_API_TOKEN or NJT_TOKEN must be set")
     return NJTransitClient.from_token(token)
 
 
@@ -966,9 +968,9 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False, gt
 def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for NJ Transit."""
     # Check for required env var
-    token = os.environ.get("TRACKRAT_NJT_API_TOKEN")
+    token = os.environ.get("TRACKRAT_NJT_API_TOKEN") or os.environ.get("NJT_TOKEN")
     if not token:
-        print(f"{YELLOW}WARN{NC} TRACKRAT_NJT_API_TOKEN not set, skipping NJT validation")
+        print(f"{YELLOW}WARN{NC} TRACKRAT_NJT_API_TOKEN / NJT_TOKEN not set, skipping NJT validation")
         return
 
     _print_header("NJT", base_url, tolerance, gt_window)

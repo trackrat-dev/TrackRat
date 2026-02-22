@@ -15,7 +15,11 @@ from trackrat.collectors.subway.collector import (
     SubwayCollector,
     _generate_train_id,
 )
-from trackrat.collectors.subway.client import SubwayArrival, SubwayClient
+from trackrat.collectors.subway.client import (
+    SubwayArrival,
+    SubwayClient,
+    _ROUTE_TO_FEED,
+)
 from trackrat.models.database import JourneyStop, TrainJourney
 
 # =============================================================================
@@ -152,7 +156,7 @@ class TestSubwayCollectorCollect:
     def mock_client(self):
         """Create a mock Subway client."""
         client = AsyncMock(spec=SubwayClient)
-        client.get_all_arrivals = AsyncMock(return_value=[])
+        client.get_all_arrivals = AsyncMock(return_value=([], set()))
         client.close = AsyncMock()
         return client
 
@@ -233,7 +237,8 @@ class TestSubwayCollectorCollect:
                 is_assigned=True,
             ),
         ]
-        mock_client.get_all_arrivals.return_value = arrivals
+        # All feeds succeeded — route "1" -> "1234567S", route "A" -> "ACE"
+        mock_client.get_all_arrivals.return_value = (arrivals, {"1234567S", "ACE"})
 
         # Mock _process_trip to track calls without hitting DB
         process_calls = []
@@ -463,7 +468,7 @@ class TestSubwayCollectorJourneyDetails:
     def mock_client(self):
         """Create a mock Subway client."""
         client = AsyncMock(spec=SubwayClient)
-        client.get_all_arrivals = AsyncMock(return_value=[])
+        client.get_all_arrivals = AsyncMock(return_value=([], set()))
         client.get_feed_arrivals = AsyncMock(return_value=[])
         client.close = AsyncMock()
         return client
@@ -626,7 +631,7 @@ class TestSubwayCollectorRun:
     def mock_client(self):
         """Create a mock Subway client."""
         client = AsyncMock(spec=SubwayClient)
-        client.get_all_arrivals = AsyncMock(return_value=[])
+        client.get_all_arrivals = AsyncMock(return_value=([], set()))
         client.get_feed_arrivals = AsyncMock(return_value=[])
         client.close = AsyncMock()
         return client
@@ -656,3 +661,212 @@ class TestSubwayCollectorRun:
             assert "updated" in result
             assert "expired" in result
             assert "errors" in result
+
+
+# =============================================================================
+# FEED RESILIENCE TESTS
+# =============================================================================
+
+
+class TestSubwayFeedResilience:
+    """Tests for per-feed failure tracking and expiration gating.
+
+    When a GTFS-RT feed fails transiently, trains from that feed's routes
+    should NOT be expired. Only trains whose feed succeeded and are missing
+    from the feed should be expired.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock database session."""
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        nested = AsyncMock()
+        nested.__aenter__ = AsyncMock()
+        nested.__aexit__ = AsyncMock(return_value=False)
+        session.begin_nested = MagicMock(return_value=nested)
+        return session
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock Subway client."""
+        client = AsyncMock(spec=SubwayClient)
+        client.close = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def collector(self, mock_client):
+        """Create a collector with mock client."""
+        with patch("trackrat.collectors.subway.collector.GTFSService"):
+            collector = SubwayCollector(client=mock_client)
+        return collector
+
+    @pytest.mark.asyncio
+    async def test_expiration_skipped_for_failed_feed(
+        self, collector, mock_client, mock_session
+    ):
+        """Trains from a failed feed should NOT be expired.
+
+        Scenario: NQRW feed fails, an N train journey exists and is not in
+        the current arrivals. It should be preserved (not expired) because
+        we can't distinguish 'train gone' from 'feed unavailable'.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Return arrivals only from 1234567S feed (NQRW failed)
+        arrivals = [
+            SubwayArrival(
+                station_code="S127",
+                gtfs_stop_id="127S",
+                trip_id="trip_1",
+                route_id="1",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now,
+                departure_time=now + timedelta(seconds=30),
+                delay_seconds=0,
+                track=None,
+                nyct_train_id="01 0100+ SFR",
+                is_assigned=True,
+            ),
+        ]
+        # Only 1234567S succeeded; NQRW is NOT in succeeded_feeds
+        mock_client.get_all_arrivals.return_value = (arrivals, {"1234567S"})
+
+        # Mock _process_trip to return a discovered journey
+        async def mock_process_trip(session, trip_id, trip_arrivals):
+            return "discovered", 100
+
+        collector._process_trip = mock_process_trip
+
+        # Create a stale N train journey (route "N" -> feed "NQRW")
+        stale_journey = MagicMock(spec=TrainJourney)
+        stale_journey.id = 200
+        stale_journey.line_code = "N"
+        stale_journey.is_expired = False
+        stale_journey.is_completed = False
+        stale_journey.is_cancelled = False
+        stale_journey.api_error_count = 0
+        stale_journey.last_updated_at = now - timedelta(minutes=2)
+
+        mock_stale_result = MagicMock()
+        mock_stale_result.scalars.return_value = iter([stale_journey])
+        mock_session.execute.return_value = mock_stale_result
+
+        result = await collector.collect(mock_session)
+
+        # The N train should NOT be expired since NQRW feed failed
+        assert stale_journey.is_expired is False, (
+            "Journey from failed feed should NOT be expired"
+        )
+        assert result["expired"] == 0
+
+    @pytest.mark.asyncio
+    async def test_expiration_applied_for_succeeded_feed(
+        self, collector, mock_client, mock_session
+    ):
+        """Trains from a succeeded feed that are missing SHOULD be expired.
+
+        Scenario: 1234567S feed succeeds, a route 1 train is not in the
+        current arrivals and was recently active. It should be expired
+        (full-replacement semantics).
+        """
+        now = datetime.now(timezone.utc)
+
+        arrivals = [
+            SubwayArrival(
+                station_code="SA41",
+                gtfs_stop_id="A41S",
+                trip_id="trip_A",
+                route_id="A",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id="05 0500+ FAR",
+                is_assigned=True,
+            ),
+        ]
+        # Both feeds succeeded
+        mock_client.get_all_arrivals.return_value = (
+            arrivals,
+            {"1234567S", "ACE"},
+        )
+
+        async def mock_process_trip(session, trip_id, trip_arrivals):
+            return "discovered", 300
+
+        collector._process_trip = mock_process_trip
+
+        # Create a stale route-1 journey (feed "1234567S" succeeded)
+        # last_updated_at is recent (within _REPLACEMENT_WINDOW)
+        stale_journey = MagicMock(spec=TrainJourney)
+        stale_journey.id = 400
+        stale_journey.line_code = "1"
+        stale_journey.is_expired = False
+        stale_journey.is_completed = False
+        stale_journey.is_cancelled = False
+        stale_journey.api_error_count = 0
+        # Recently active: 2 minutes ago (within 30-min replacement window)
+        stale_journey.last_updated_at = now - timedelta(minutes=2)
+
+        mock_stale_result = MagicMock()
+        mock_stale_result.scalars.return_value = iter([stale_journey])
+        mock_session.execute.return_value = mock_stale_result
+
+        result = await collector.collect(mock_session)
+
+        # The route-1 train SHOULD be expired since 1234567S feed succeeded
+        assert stale_journey.is_expired is True, (
+            "Journey from succeeded feed should be expired when missing from feed"
+        )
+        assert result["expired"] == 1
+
+    def test_route_to_feed_mapping_coverage(self):
+        """Verify _ROUTE_TO_FEED covers all commonly used subway routes."""
+        expected_routes = [
+            "1", "2", "3", "4", "5", "6", "7",
+            "A", "C", "E",
+            "B", "D", "F", "M",
+            "G",
+            "J", "Z",
+            "L",
+            "N", "Q", "R", "W",
+            "SI",
+        ]
+        for route in expected_routes:
+            assert route in _ROUTE_TO_FEED, (
+                f"Route {route} missing from _ROUTE_TO_FEED mapping"
+            )
+
+
+# =============================================================================
+# GTFS FEED URL TESTS
+# =============================================================================
+
+
+class TestGtfsFeedUrl:
+    """Verify GTFS static feed URL uses supplemented version."""
+
+    def test_subway_gtfs_url_is_supplemented(self):
+        """GTFS_FEED_URLS['SUBWAY'] should use the supplemented feed
+        so planned work (weekend service changes) is reflected."""
+        from trackrat.services.gtfs import GTFS_FEED_URLS
+
+        assert "supplemented" in GTFS_FEED_URLS["SUBWAY"], (
+            f"Expected supplemented feed URL, got: {GTFS_FEED_URLS['SUBWAY']}"
+        )
+
+    def test_subway_static_url_is_supplemented(self):
+        """SUBWAY_GTFS_STATIC_URL constant should match the supplemented feed."""
+        from trackrat.config.stations.subway import SUBWAY_GTFS_STATIC_URL
+
+        assert "supplemented" in SUBWAY_GTFS_STATIC_URL, (
+            f"Expected supplemented feed URL, got: {SUBWAY_GTFS_STATIC_URL}"
+        )

@@ -56,7 +56,7 @@ GTFS_FEED_URLS = {
     "PATCO": "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip",
     "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
-    "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_subway.zip",
+    "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)

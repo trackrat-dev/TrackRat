@@ -447,12 +447,14 @@ class TestSubwayClient:
                 "ACE": "https://example.com/ace",
             },
         ):
-            result = await client.get_all_arrivals()
+            result, succeeded_feeds = await client.get_all_arrivals()
 
         assert len(result) == 2
         # Results should be sorted by arrival time
         assert result[0].station_code == "SA41"  # Earlier time
         assert result[1].station_code == "S127"
+        # Both feeds had cached data, so both should be in succeeded_feeds
+        assert succeeded_feeds == {"1234567S", "ACE"}
 
     @pytest.mark.asyncio
     async def test_fetch_feed_parses_nyct_extensions(self, client):
@@ -555,3 +557,124 @@ class TestSubwayClient:
         assert arrival.is_assigned is False
         assert arrival.track is None
         assert arrival.direction_id == 0
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_tracks_failed_feeds(self, client):
+        """Test that succeeded_feeds excludes feeds that raised exceptions.
+
+        When a feed fetch raises an exception, it should not appear in
+        the succeeded_feeds set. Stale cache data is still returned for
+        arrivals but the feed is not counted as successfully fetched.
+        """
+        now = datetime.now(timezone.utc)
+
+        # Cache data for ACE feed (will fail on refresh)
+        client._cache["ACE"] = [
+            SubwayArrival(
+                station_code="SA41",
+                gtfs_stop_id="A41S",
+                trip_id="t_stale",
+                route_id="A",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id=None,
+                is_assigned=False,
+            )
+        ]
+        # Expired cache so it will attempt to refetch
+        client._cache_times["ACE"] = now - timedelta(seconds=120)
+
+        # 1234567S has valid cache
+        client._cache["1234567S"] = [
+            SubwayArrival(
+                station_code="S127",
+                gtfs_stop_id="127S",
+                trip_id="t_fresh",
+                route_id="1",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now + timedelta(minutes=5),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id=None,
+                is_assigned=True,
+            )
+        ]
+        client._cache_times["1234567S"] = now  # Valid cache
+
+        # Mock session: ACE will fail on fetch
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(
+            side_effect=httpx.HTTPError("ACE feed unavailable")
+        )
+        client._session = mock_session
+
+        with patch(
+            "trackrat.collectors.subway.client.SUBWAY_GTFS_RT_FEED_URLS",
+            {
+                "1234567S": "https://example.com/1234567S",
+                "ACE": "https://example.com/ace",
+            },
+        ):
+            arrivals, succeeded_feeds = await client.get_all_arrivals()
+
+        # 1234567S served from valid cache, ACE failed
+        assert "1234567S" in succeeded_feeds, (
+            "1234567S had valid cache and should be in succeeded_feeds"
+        )
+        assert "ACE" not in succeeded_feeds, (
+            "ACE feed failed and should NOT be in succeeded_feeds"
+        )
+        # Stale ACE data is still included in arrivals
+        assert len(arrivals) == 2, (
+            f"Expected 2 arrivals (1 fresh + 1 stale), got {len(arrivals)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_empty_feed_not_counted_as_success(self, client):
+        """Test that a feed returning empty results is not in succeeded_feeds.
+
+        An empty response might indicate a feed issue rather than no trains.
+        """
+        now = datetime.now(timezone.utc)
+
+        client._cache["1234567S"] = [
+            SubwayArrival(
+                station_code="S127",
+                gtfs_stop_id="127S",
+                trip_id="t1",
+                route_id="1",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id=None,
+                is_assigned=True,
+            )
+        ]
+        client._cache_times["1234567S"] = now  # Valid cache
+
+        # ACE returns empty (not an error, but empty)
+        client._cache["ACE"] = []
+        client._cache_times["ACE"] = now  # Valid cache
+
+        with patch(
+            "trackrat.collectors.subway.client.SUBWAY_GTFS_RT_FEED_URLS",
+            {
+                "1234567S": "https://example.com/1234567S",
+                "ACE": "https://example.com/ace",
+            },
+        ):
+            arrivals, succeeded_feeds = await client.get_all_arrivals()
+
+        assert "1234567S" in succeeded_feeds
+        assert "ACE" not in succeeded_feeds, (
+            "Empty feed should not count as success"
+        )

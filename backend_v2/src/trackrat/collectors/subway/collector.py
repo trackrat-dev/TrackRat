@@ -28,7 +28,7 @@ from trackrat.collectors.mta_common import (
     update_journey_metadata,
     update_stop_departure_status,
 )
-from trackrat.collectors.subway.client import SubwayArrival, SubwayClient
+from trackrat.collectors.subway.client import SubwayArrival, SubwayClient, _ROUTE_TO_FEED
 from trackrat.config.stations import (
     SUBWAY_ROUTES,
     get_station_name,
@@ -109,7 +109,7 @@ class SubwayCollector:
             collection_start = now_et()
 
             # Fetch all arrivals from all 8 feeds
-            arrivals = await self.client.get_all_arrivals()
+            arrivals, succeeded_feeds = await self.client.get_all_arrivals()
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:
@@ -165,6 +165,10 @@ class SubwayCollector:
             )
             for journey in stale_result.scalars():
                 if journey.id in seen_journey_ids:
+                    continue
+                # Skip expiration for trains whose feed failed this cycle
+                route_feed = _ROUTE_TO_FEED.get(journey.line_code or "")
+                if route_feed and route_feed not in succeeded_feeds:
                     continue
                 # Only expire if it was recently active (within replacement window)
                 if journey.last_updated_at and (

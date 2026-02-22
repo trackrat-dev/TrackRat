@@ -26,7 +26,7 @@ def test_settings_missing_required_fields():
     from typing import Literal
 
     # Temporarily remove environment variables
-    env_vars_to_clear = ["TRACKRAT_NJT_API_TOKEN", "NJT_API_TOKEN"]
+    env_vars_to_clear = ["TRACKRAT_NJT_API_TOKEN", "NJT_API_TOKEN", "NJT_TOKEN"]
     original_values = {}
     for var in env_vars_to_clear:
         original_values[var] = os.environ.get(var)
@@ -92,3 +92,38 @@ def test_sqlite_url_rejected():
             njt_api_token="token",
         )
     assert "Only PostgreSQL databases are supported" in str(exc_info.value)
+
+
+def test_njt_token_fallback_to_njt_token_env(tmp_path, monkeypatch):
+    """Test that NJT_TOKEN env var is used when TRACKRAT_NJT_API_TOKEN is not set."""
+    # Clear all NJT token sources
+    monkeypatch.delenv("TRACKRAT_NJT_API_TOKEN", raising=False)
+    monkeypatch.delenv("NJT_API_TOKEN", raising=False)
+    monkeypatch.setenv("NJT_TOKEN", "fallback_token_value")
+
+    # Ensure no .njt-token file is found by pointing to empty dir
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(database_url="postgresql://user:pass@localhost/db")
+    assert settings.njt_api_token == "fallback_token_value"
+
+
+def test_njt_token_primary_takes_precedence(tmp_path, monkeypatch):
+    """Test that TRACKRAT_NJT_API_TOKEN takes precedence over NJT_TOKEN."""
+    monkeypatch.setenv("TRACKRAT_NJT_API_TOKEN", "primary_token")
+    monkeypatch.setenv("NJT_TOKEN", "fallback_token")
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(database_url="postgresql://user:pass@localhost/db")
+    assert settings.njt_api_token == "primary_token"
+
+
+def test_njt_token_empty_when_no_source(tmp_path, monkeypatch):
+    """Test that njt_api_token is empty when no token source is available."""
+    monkeypatch.delenv("TRACKRAT_NJT_API_TOKEN", raising=False)
+    monkeypatch.delenv("NJT_API_TOKEN", raising=False)
+    monkeypatch.delenv("NJT_TOKEN", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(database_url="postgresql://user:pass@localhost/db")
+    assert settings.njt_api_token == ""
