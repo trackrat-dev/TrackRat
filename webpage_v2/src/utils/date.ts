@@ -1,18 +1,9 @@
-import { format, formatDistance, parseISO } from 'date-fns';
+import { format, formatDistance, parseISO, isToday as fnsIsToday } from 'date-fns';
 
 export function formatTime(dateString: string): string {
   try {
     const date = parseISO(dateString);
     return format(date, 'h:mm a');
-  } catch {
-    return 'N/A';
-  }
-}
-
-export function formatDateTime(dateString: string): string {
-  try {
-    const date = parseISO(dateString);
-    return format(date, 'MMM d, h:mm a');
   } catch {
     return 'N/A';
   }
@@ -42,4 +33,20 @@ export function getDelayMinutes(scheduled?: string, actual?: string): number {
 export function getTodayDateString(): string {
   const today = new Date();
   return format(today, 'yyyy-MM-dd');
+}
+
+export function isToday(dateString: string): boolean {
+  try {
+    return fnsIsToday(parseISO(dateString));
+  } catch {
+    return true; // default to "today" if parsing fails
+  }
+}
+
+export function formatDate(dateString: string): string {
+  try {
+    return format(parseISO(dateString), 'MMM d, yyyy');
+  } catch {
+    return dateString;
+  }
 }

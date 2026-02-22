@@ -1,4 +1,4 @@
-import { DeparturesResponse, TrainDetailsResponse, HealthResponse, PlatformPrediction } from '../types';
+import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse } from '../types';
 
 const BASE_URL = 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -60,9 +60,14 @@ class APIService {
     return this.fetch<TrainDetailsResponse>(url, false);
   }
 
-  async checkHealth(): Promise<HealthResponse> {
-    const url = `${BASE_URL}/../health`;
-    return this.fetch<HealthResponse>(url, false);
+  async getRouteSummary(from: string, to: string): Promise<OperationsSummaryResponse | null> {
+    try {
+      const url = `${BASE_URL}/routes/summary?scope=route&from_station=${from}&to_station=${to}`;
+      return await this.fetch<OperationsSummaryResponse>(url);
+    } catch {
+      // Fail silently - summary is optional
+      return null;
+    }
   }
 
   async getPlatformPrediction(
@@ -80,16 +85,6 @@ class APIService {
     }
   }
 
-  clearCache(): void {
-    this.cache.clear();
-  }
-
-  // Get cache age for a URL
-  getCacheAge(url: string): number | null {
-    const cached = this.cache.get(url);
-    if (!cached) return null;
-    return Date.now() - cached.timestamp;
-  }
 }
 
 export const apiService = new APIService();

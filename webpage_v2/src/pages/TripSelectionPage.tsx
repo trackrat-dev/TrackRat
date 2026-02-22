@@ -11,6 +11,7 @@ export function TripSelectionPage() {
     selectedDestination,
     setDeparture,
     setDestination,
+    loadLastRoute,
     recentTrips,
     favoriteStations,
     loadRecentTrips,
@@ -21,9 +22,10 @@ export function TripSelectionPage() {
   const [showDestinationPicker, setShowDestinationPicker] = useState(false);
 
   useEffect(() => {
+    loadLastRoute();
     loadRecentTrips();
     loadFavorites();
-  }, [loadRecentTrips, loadFavorites]);
+  }, [loadLastRoute, loadRecentTrips, loadFavorites]);
 
   const handleSearch = () => {
     if (selectedDeparture && selectedDestination) {

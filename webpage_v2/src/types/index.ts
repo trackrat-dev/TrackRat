@@ -1,8 +1,11 @@
 // Core Types
 
+export type TransitSystem = 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
+
 export interface Station {
   code: string;
   name: string;
+  system?: TransitSystem;
   coordinates?: {
     lat: number;
     lon: number;
@@ -86,8 +89,12 @@ export interface Stop {
   stop_sequence: number;
   scheduled_arrival?: string;
   scheduled_departure?: string;
+  updated_arrival?: string;
+  updated_departure?: string;
   actual_arrival?: string;
   actual_departure?: string;
+  predicted_arrival?: string;
+  predicted_arrival_samples?: number;
   track?: string;
   track_assigned_at?: string;
   has_departed_station: boolean;
@@ -129,27 +136,15 @@ export interface DataFreshness {
   collection_method: string | null;
 }
 
-export interface HealthResponse {
-  status: 'healthy' | 'degraded' | 'unhealthy';
-  timestamp: string;
-  version: string;
-  environment: string;
-}
+// Operations Summary Types
 
-// UI State Types
-
-export type TrainStatus =
-  | 'scheduled'
-  | 'boarding'
-  | 'departed'
-  | 'delayed'
-  | 'approaching'
-  | 'arrived'
-  | 'cancelled';
-
-export interface UITrainCard extends Train {
-  status: TrainStatus;
-  delayMinutes: number;
+export interface OperationsSummaryResponse {
+  headline: string;
+  body: string;
+  scope: 'network' | 'route' | 'train';
+  time_window_minutes: number;
+  data_freshness_seconds: number;
+  generated_at: string;
 }
 
 // Track Prediction Types

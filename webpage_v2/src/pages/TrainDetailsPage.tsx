@@ -7,7 +7,7 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
 import { ShareButton } from '../components/ShareButton';
-import { getTodayDateString } from '../utils/date';
+import { getTodayDateString, formatTimeAgo, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
 
 export function TrainDetailsPage() {
@@ -180,7 +180,17 @@ export function TrainDetailsPage() {
           </div>
         </div>
 
-        <div className="text-sm text-text-muted">{train.data_source}</div>
+        <div className="flex items-center gap-3 text-sm text-text-muted">
+          <span>{train.data_source}</span>
+          {!isToday(train.journey_date) && (
+            <span className="px-2 py-0.5 bg-warning/20 text-warning rounded text-xs font-medium">
+              {formatDate(train.journey_date)}
+            </span>
+          )}
+          {train.data_freshness?.last_updated && (
+            <span>Updated {formatTimeAgo(train.data_freshness.last_updated)}</span>
+          )}
+        </div>
       </div>
 
       {/* Track predictions */}

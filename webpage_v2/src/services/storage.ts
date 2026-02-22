@@ -53,10 +53,6 @@ class StorageService {
     localStorage.setItem(RECENT_TRIPS_KEY, JSON.stringify(trimmedTrips));
   }
 
-  clearRecentTrips(): void {
-    localStorage.removeItem(RECENT_TRIPS_KEY);
-  }
-
   // Favorite Stations
   getFavoriteStations(): FavoriteStation[] {
     try {
@@ -93,11 +89,6 @@ class StorageService {
     const favorites = this.getFavoriteStations();
     const filtered = favorites.filter(f => f.id !== stationId);
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(filtered));
-  }
-
-  isFavorite(stationId: string): boolean {
-    const favorites = this.getFavoriteStations();
-    return favorites.some(f => f.id === stationId);
   }
 
   // Last Selected Route

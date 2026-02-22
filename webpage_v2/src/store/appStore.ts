@@ -14,8 +14,7 @@ interface AppState {
   // Actions
   setDeparture: (station: Station | null) => void;
   setDestination: (station: Station | null) => void;
-  setRoute: (from: Station, to: Station) => void;
-  clearRoute: () => void;
+  loadLastRoute: () => void;
 
   // Recent Trips
   addRecentTrip: (from: Station, to: Station) => void;
@@ -25,7 +24,6 @@ interface AppState {
   addFavorite: (station: Station) => void;
   removeFavorite: (stationId: string) => void;
   loadFavorites: () => void;
-  isFavorite: (stationId: string) => boolean;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -38,28 +36,38 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Actions
   setDeparture: (station) => {
     set({ selectedDeparture: station });
+    const dest = get().selectedDestination;
+    if (station && dest) {
+      storageService.saveLastRoute(
+        { code: station.code, name: station.name },
+        { code: dest.code, name: dest.name }
+      );
+    }
   },
 
   setDestination: (station) => {
     set({ selectedDestination: station });
+    const dep = get().selectedDeparture;
+    if (dep && station) {
+      storageService.saveLastRoute(
+        { code: dep.code, name: dep.name },
+        { code: station.code, name: station.name }
+      );
+    }
   },
 
-  setRoute: (from, to) => {
-    set({
-      selectedDeparture: from,
-      selectedDestination: to,
-    });
-    storageService.saveLastRoute(
-      { code: from.code, name: from.name },
-      { code: to.code, name: to.name }
-    );
-  },
+  loadLastRoute: () => {
+    const { selectedDeparture, selectedDestination } = get();
+    // Only restore if no selections already made
+    if (selectedDeparture || selectedDestination) return;
 
-  clearRoute: () => {
-    set({
-      selectedDeparture: null,
-      selectedDestination: null,
-    });
+    const lastRoute = storageService.getLastRoute();
+    if (lastRoute) {
+      set({
+        selectedDeparture: { code: lastRoute.from.code, name: lastRoute.from.name },
+        selectedDestination: { code: lastRoute.to.code, name: lastRoute.to.name },
+      });
+    }
   },
 
   // Recent Trips
@@ -95,9 +103,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadFavorites: () => {
     const favorites = storageService.getFavoriteStations();
     set({ favoriteStations: favorites });
-  },
-
-  isFavorite: (stationId) => {
-    return storageService.isFavorite(stationId);
   },
 }));

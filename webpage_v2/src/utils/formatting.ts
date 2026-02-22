@@ -4,30 +4,6 @@ export function formatDelayText(delayMinutes: number): string {
   return `${delayMinutes} mins late`;
 }
 
-export function formatStopCount(count: number): string {
-  return `${count} ${count === 1 ? 'stop' : 'stops'}`;
-}
-
-export function getStatusColor(status: string): string {
-  switch (status.toLowerCase()) {
-    case 'on time':
-    case 'scheduled':
-      return 'text-success';
-    case 'boarding':
-      return 'text-accent';
-    case 'departed':
-      return 'text-blue-400';
-    case 'delayed':
-      return 'text-warning';
-    case 'cancelled':
-      return 'text-error';
-    case 'arrived':
-      return 'text-success';
-    default:
-      return 'text-white';
-  }
-}
-
 export function getStatusBadgeClass(status: string): string {
   const baseClass = 'px-2 py-1 rounded-full text-xs font-semibold';
   switch (status.toLowerCase()) {

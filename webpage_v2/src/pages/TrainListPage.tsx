@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Train } from '../types';
+import { Train, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -18,6 +18,9 @@ export function TrainListPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [trainFilter, setTrainFilter] = useState('');
+  const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
@@ -25,20 +28,11 @@ export function TrainListPage() {
   // Check if train has already departed from the origin station
   const hasTrainDeparted = (train: Train): boolean => {
     const now = new Date();
-
-    // Get departure time (prefer actual, fallback to scheduled)
     const departureTimeStr = train.departure.actual_time || train.departure.scheduled_time;
-
-    if (!departureTimeStr) {
-      // If no departure time, don't filter out (safe default)
-      return false;
-    }
-
+    if (!departureTimeStr) return false;
     const departureTime = new Date(departureTimeStr);
-
-    // Add 1 minute buffer to account for delays (matching iOS implementation)
+    // 1 minute buffer (matching iOS implementation)
     const departureWithBuffer = new Date(departureTime.getTime() + 60 * 1000);
-
     return departureWithBuffer < now;
   };
 
@@ -49,10 +43,15 @@ export function TrainListPage() {
       setError(null);
       const response = await apiService.getDepartures(from, to);
 
-      // Filter out trains that have already departed from the origin station
-      const upcomingTrains = response.departures.filter(train => !hasTrainDeparted(train));
+      // Sort: upcoming trains first, then departed trains
+      const sorted = [...response.departures].sort((a, b) => {
+        const aDeparted = hasTrainDeparted(a);
+        const bDeparted = hasTrainDeparted(b);
+        if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+        return 0; // preserve API order within each group
+      });
 
-      setTrains(upcomingTrains);
+      setTrains(sorted);
       setLastUpdated(new Date());
       setLoading(false);
 
@@ -69,10 +68,21 @@ export function TrainListPage() {
   useEffect(() => {
     fetchTrains();
 
-    // Poll every 30 seconds
+    // Fetch summary once on mount (not polled)
+    if (from && to) {
+      apiService.getRouteSummary(from, to).then(setSummary);
+    }
+
+    // Poll departures every 30 seconds
     const interval = setInterval(fetchTrains, 30000);
     return () => clearInterval(interval);
   }, [from, to]);
+
+  const filteredTrains = useMemo(() => {
+    if (!trainFilter.trim()) return trains;
+    const q = trainFilter.trim().toLowerCase();
+    return trains.filter(t => t.train_id.toLowerCase().includes(q));
+  }, [trains, trainFilter]);
 
   if (!from || !to || !fromStation || !toStation) {
     return (
@@ -102,31 +112,66 @@ export function TrainListPage() {
         )}
       </div>
 
-      <button
-        onClick={fetchTrains}
-        disabled={loading}
-        className="w-full mb-4 py-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
-      >
-        {loading ? 'Refreshing...' : '🔄 Refresh'}
-      </button>
+      {summary && (
+        <button
+          onClick={() => setSummaryExpanded(!summaryExpanded)}
+          className="w-full mb-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4 text-left transition-all hover:bg-surface"
+        >
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium text-text-primary">{summary.headline}</div>
+            <span className="text-text-muted text-xs ml-2">{summaryExpanded ? '▲' : '▼'}</span>
+          </div>
+          {summaryExpanded && (
+            <div className="mt-3 text-sm text-text-muted whitespace-pre-line">{summary.body}</div>
+          )}
+        </button>
+      )}
+
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={fetchTrains}
+          disabled={loading}
+          className="py-3 px-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
+        >
+          {loading ? '...' : '🔄'}
+        </button>
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            value={trainFilter}
+            onChange={(e) => setTrainFilter(e.target.value)}
+            placeholder="Filter by train #"
+            className="w-full px-4 py-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          {trainFilter && (
+            <button
+              onClick={() => setTrainFilter('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
 
       {loading && trains.length === 0 ? (
         <LoadingSpinner />
       ) : error ? (
         <ErrorMessage message={error} onRetry={fetchTrains} />
-      ) : trains.length === 0 ? (
+      ) : filteredTrains.length === 0 ? (
         <div className="text-center py-12 text-text-muted">
-          No trains found for this route
+          {trainFilter ? 'No matching trains' : 'No trains found for this route'}
         </div>
       ) : (
         <div className="space-y-3">
-          {trains.map((train, index) => (
+          {filteredTrains.map((train, index) => (
             <TrainCard
               key={`${train.train_id}-${index}`}
               train={train}
               onClick={() => navigate(`/train/${train.train_id}/${from}/${to}`)}
               from={from}
               to={to}
+              departed={hasTrainDeparted(train)}
             />
           ))}
         </div>

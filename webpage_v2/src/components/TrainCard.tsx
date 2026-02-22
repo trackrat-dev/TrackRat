@@ -9,28 +9,53 @@ interface TrainCardProps {
   onClick: () => void;
   from?: string;
   to?: string;
+  departed?: boolean;
 }
 
-export function TrainCard({ train, onClick, from, to }: TrainCardProps) {
+export function TrainCard({ train, onClick, from, to, departed = false }: TrainCardProps) {
   const delayMinutes = getDelayMinutes(
     train.departure.scheduled_time,
     train.departure.actual_time || undefined
   );
 
+  const arrivalDelayMinutes = getDelayMinutes(
+    train.arrival.scheduled_time,
+    train.arrival.actual_time || undefined
+  );
+
+  // Detect boarding: train is at our departure station and hasn't departed yet
+  const isBoarding =
+    !departed &&
+    !train.is_cancelled &&
+    from &&
+    train.train_position?.at_station_code === from;
+
   const status = train.is_cancelled
     ? 'cancelled'
+    : departed
+    ? 'departed'
+    : isBoarding
+    ? 'boarding'
+    : train.observation_type === 'SCHEDULED'
+    ? 'scheduled'
     : delayMinutes > 0
     ? 'delayed'
     : 'on time';
 
+  const cardClasses = [
+    'w-full border rounded-2xl p-4 text-left transition-all',
+    departed
+      ? 'bg-surface/40 backdrop-blur-xl border-text-muted/10 opacity-60'
+      : isBoarding
+      ? 'bg-accent/10 backdrop-blur-xl border-accent/40'
+      : 'bg-surface/70 backdrop-blur-xl border-text-muted/20 hover:bg-surface',
+  ].join(' ');
+
   return (
-    <button
-      onClick={onClick}
-      className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 hover:bg-surface transition-all text-left"
-    >
+    <button onClick={onClick} className={cardClasses}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
-          <div className="text-lg font-semibold text-text-primary">
+          <div className={`text-lg font-semibold text-text-primary ${train.is_cancelled ? 'line-through' : ''}`}>
             Train {train.train_id}
           </div>
           <div className="text-sm text-text-muted">{train.line.name}</div>
@@ -49,10 +74,24 @@ export function TrainCard({ train, onClick, from, to }: TrainCardProps) {
             />
           </div>
           <span className={getStatusBadgeClass(status)}>
-            {train.is_cancelled ? 'Cancelled' : formatDelayText(delayMinutes)}
+            {status === 'cancelled'
+              ? 'Cancelled'
+              : status === 'departed'
+              ? 'Departed'
+              : status === 'boarding'
+              ? 'Boarding'
+              : status === 'scheduled'
+              ? 'Scheduled'
+              : formatDelayText(delayMinutes)}
           </span>
         </div>
       </div>
+
+      {isBoarding && train.departure.track && (
+        <div className="mb-3 text-sm font-semibold text-accent">
+          Boarding on Track {train.departure.track}
+        </div>
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -71,6 +110,11 @@ export function TrainCard({ train, onClick, from, to }: TrainCardProps) {
           <div className="text-sm text-text-muted">Arrival</div>
           <div className="font-medium text-text-primary">
             {formatTime(train.arrival.scheduled_time)}
+            {train.arrival.actual_time && arrivalDelayMinutes > 0 && (
+              <span className="text-warning ml-2">
+                ({formatTime(train.arrival.actual_time)})
+              </span>
+            )}
           </div>
         </div>
 
