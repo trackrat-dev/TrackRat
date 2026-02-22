@@ -2076,6 +2076,58 @@ SUBWAY_STATION_COORDINATES: dict[str, tuple[float, float]] = {
 }
 
 
+# Station complexes: groups of platform codes at the same physical station.
+# Used by STATION_EQUIVALENTS to aggregate departures across platforms.
+SUBWAY_STATION_COMPLEXES: list[set[str]] = [
+    {"S112", "SA09"},  # 168 St / 168 St-Washington Hts
+    {"S125", "SA24"},  # 59 St-Columbus Circle
+    {
+        "S127",
+        "S725",
+        "S902",
+        "SA27",
+        "SR16",
+    },  # 42 St-Port Authority Bus Terminal / Times Sq-42 St
+    {"S132", "SD19", "SL02"},  # 14 St / 6 Av
+    {"S222", "S415"},  # 149 St-Grand Concourse
+    {
+        "S228",
+        "SA36",
+        "SE01",
+        "SR25",
+    },  # Chambers St / Cortlandt St / Park Place / World Trade Center
+    {"S229", "S418", "SA38", "SM22"},  # Fulton St
+    {"S232", "S423", "SR28"},  # Borough Hall / Court St
+    {"S235", "SD24", "SR31"},  # Atlantic Av-Barclays Ctr
+    {"S239", "SS04"},  # Botanic Garden / Franklin Av-Medgar Evers College
+    {"S254", "SL26"},  # Junius St / Livonia Av
+    {"S414", "SD11"},  # 161 St-Yankee Stadium
+    {"S629", "SB08", "SR11"},  # 59 St / Lexington Av/59 St / Lexington Av/63 St
+    {"S630", "SF11"},  # 51 St / Lexington Av/53 St
+    {"S631", "S723", "S901"},  # Grand Central-42 St
+    {"S635", "SL03", "SR20"},  # 14 St-Union Sq
+    {"S637", "SD21"},  # Bleecker St / Broadway-Lafayette St
+    {"S639", "SM20", "SQ01", "SR23"},  # Canal St
+    {"S640", "SM21"},  # Brooklyn Bridge-City Hall / Chambers St
+    {"S710", "SG14"},  # 74 St-Broadway / Jackson Hts-Roosevelt Av
+    {"S718", "SR09"},  # Queensboro Plaza
+    {"S719", "SF09", "SG22"},  # Court Sq / Court Sq-23 St
+    {"S724", "SD16"},  # 42 St-Bryant Pk / 5 Av
+    {"SA12", "SD13"},  # 145 St
+    {"SA31", "SL01"},  # 14 St / 8 Av
+    {"SA32", "SD20"},  # W 4 St-Wash Sq
+    {"SA41", "SR29"},  # Jay St-MetroTech
+    {"SA45", "SS01"},  # Franklin Av
+    {"SA51", "SJ27", "SL22"},  # Broadway Junction
+    {"SB16", "SN04"},  # 62 St / New Utrecht Av
+    {"SD17", "SR17"},  # 34 St-Herald Sq
+    {"SF15", "SM18"},  # Delancey St-Essex St
+    {"SF23", "SR33"},  # 4 Av-9 St
+    {"SG29", "SL10"},  # Lorimer St / Metropolitan Av
+    {"SL17", "SM08"},  # Myrtle-Wyckoff Avs
+]
+
+
 def map_subway_gtfs_stop(gtfs_stop_id: str) -> str | None:
     """Map a GTFS stop ID (possibly with N/S suffix) to internal station code."""
     # Strip directional suffix (e.g., '101N' -> '101')

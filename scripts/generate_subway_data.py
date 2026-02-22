@@ -85,7 +85,7 @@ def download_and_extract(url: str, cache_path: str = "/tmp/gtfs_subway.zip") -> 
 
     data = {}
     with zipfile.ZipFile(cache_path) as zf:
-        for name in ["stops.txt", "routes.txt", "trips.txt", "stop_times.txt"]:
+        for name in ["stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "transfers.txt"]:
             print(f"  Parsing {name}...")
             with zf.open(name) as f:
                 text = io.TextIOWrapper(f, encoding="utf-8-sig")
@@ -178,7 +178,59 @@ def build_route_stop_sequences(trips: list[dict], stop_times: list[dict], statio
     return route_sequences
 
 
-def generate_python_stations(stations: list[dict], routes: list[dict], route_sequences: dict) -> str:
+def build_station_complexes(transfers: list[dict], stations: list[dict]) -> list[set[str]]:
+    """Build connected components of station complexes from transfers.txt.
+
+    Filters for transfer_type=2 (in-station transfers between platform complexes)
+    and groups parent stations that share physical connections into equivalence sets.
+    Returns only groups with 2+ members (single stations need no equivalence).
+    """
+    gtfs_to_internal = {s["gtfs_id"]: s["code"] for s in stations}
+
+    # Build adjacency from transfer_type=2 (timed transfer between stops)
+    adjacency: dict[str, set[str]] = defaultdict(set)
+    for transfer in transfers:
+        if transfer.get("transfer_type") != "2":
+            continue
+        from_id = transfer["from_stop_id"]
+        to_id = transfer["to_stop_id"]
+        if from_id == to_id:
+            continue
+        # Only consider parent stations (those in our station map)
+        from_code = gtfs_to_internal.get(from_id)
+        to_code = gtfs_to_internal.get(to_id)
+        if from_code and to_code and from_code != to_code:
+            adjacency[from_code].add(to_code)
+            adjacency[to_code].add(from_code)
+
+    # Find connected components via BFS
+    visited: set[str] = set()
+    complexes: list[set[str]] = []
+    for code in adjacency:
+        if code in visited:
+            continue
+        component: set[str] = set()
+        queue = [code]
+        while queue:
+            current = queue.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            component.add(current)
+            for neighbor in adjacency.get(current, set()):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+        if len(component) >= 2:
+            complexes.append(component)
+
+    complexes.sort(key=lambda s: min(s))
+    return complexes
+
+
+def generate_python_stations(
+    stations: list[dict], routes: list[dict], route_sequences: dict,
+    complexes: list[set[str]] | None = None,
+) -> str:
     """Generate Python source for subway.py station data."""
     lines = [
         '"""',
@@ -270,6 +322,27 @@ def generate_python_stations(stations: list[dict], routes: list[dict], route_seq
     for s in stations:
         lines.append(f'    "{s["code"]}": ({s["lat"]}, {s["lon"]}),')
     lines.append("}")
+    lines.append("")
+    lines.append("")
+
+    # Station complexes (groups of platform codes at the same physical station)
+    if complexes:
+        lines.append("# Station complexes: groups of platform codes at the same physical station.")
+        lines.append("# Used by STATION_EQUIVALENTS to aggregate departures across platforms.")
+        lines.append("SUBWAY_STATION_COMPLEXES: list[set[str]] = [")
+        for group in complexes:
+            sorted_codes = sorted(group)
+            codes_str = ", ".join(f'"{c}"' for c in sorted_codes)
+            # Add comment with station names for readability
+            names = sorted(set(
+                next((s["name"] for s in stations if s["code"] == c), c)
+                for c in sorted_codes
+            ))
+            comment = " / ".join(names)
+            lines.append(f"    {{{codes_str}}},  # {comment}")
+        lines.append("]")
+    else:
+        lines.append("SUBWAY_STATION_COMPLEXES: list[set[str]] = []")
     lines.append("")
     lines.append("")
 
@@ -477,13 +550,17 @@ def main():
     route_sequences = build_route_stop_sequences(data["trips"], data["stop_times"], stations)
     print(f"Built {len(route_sequences)} route/direction sequences")
 
+    # Build station complexes from transfers
+    complexes = build_station_complexes(data["transfers"], stations)
+    print(f"Found {len(complexes)} station complexes (multi-platform groups)")
+
     # Verify discovery stations
     print()
     print(generate_discovery_station_verification(stations))
 
     # Generate outputs
     outputs = {
-        "subway.py": generate_python_stations(stations, routes, route_sequences),
+        "subway.py": generate_python_stations(stations, routes, route_sequences, complexes),
         "subway_coordinates.py": generate_python_coordinates(stations),
         "StationData_subway.swift": generate_swift_station_data(stations),
         "StationCoordinates_subway.swift": generate_swift_coordinates(stations),

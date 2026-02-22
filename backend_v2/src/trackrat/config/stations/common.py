@@ -30,6 +30,7 @@ from trackrat.config.stations.path import (
     PATH_TRANSITER_TO_INTERNAL_MAP,
 )
 from trackrat.config.stations.subway import (
+    SUBWAY_STATION_COMPLEXES,
     SUBWAY_STATION_COORDINATES,
     SUBWAY_STATION_NAMES,
     map_subway_gtfs_stop,
@@ -59,25 +60,26 @@ def get_station_name(code: str) -> str:
     return STATION_NAMES.get(code, code)
 
 
-# Station code equivalences for physically identical stations served by multiple systems.
-# Some stations are shared between Amtrak and Metro-North but use different internal codes.
-# E.g., New Rochelle is "NRO" in Amtrak data and "MNRC" in Metro-North data.
-STATION_EQUIVALENTS: dict[str, str] = {
-    "NRO": "MNRC",
-    "MNRC": "NRO",  # New Rochelle
-    "YNY": "MYON",
-    "MYON": "YNY",  # Yonkers
-    "CRT": "MCRH",
-    "MCRH": "CRT",  # Croton-Harmon
-    "POU": "MPOK",
-    "MPOK": "POU",  # Poughkeepsie
-    "STM": "MSTM",
-    "MSTM": "STM",  # Stamford
-    "BRP": "MBGP",
-    "MBGP": "BRP",  # Bridgeport
-    "NHV": "MNHV",
-    "MNHV": "NHV",  # New Haven
-}
+# Station code equivalence groups for physically identical stations.
+# Each set contains all codes for the same physical station across systems.
+# Cross-system: Amtrak / Metro-North shared stations.
+# Subway: platform complexes from SUBWAY_STATION_COMPLEXES.
+STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
+    {"NRO", "MNRC"},  # New Rochelle
+    {"YNY", "MYON"},  # Yonkers
+    {"CRT", "MCRH"},  # Croton-Harmon
+    {"POU", "MPOK"},  # Poughkeepsie
+    {"STM", "MSTM"},  # Stamford
+    {"BRP", "MBGP"},  # Bridgeport
+    {"NHV", "MNHV"},  # New Haven
+    *SUBWAY_STATION_COMPLEXES,
+]
+
+# Derived lookup: code -> full equivalence group
+STATION_EQUIVALENTS: dict[str, set[str]] = {}
+for _group in STATION_EQUIVALENCE_GROUPS:
+    for _code in _group:
+        STATION_EQUIVALENTS[_code] = _group
 
 
 def expand_station_codes(code: str) -> list[str]:
@@ -88,8 +90,10 @@ def expand_station_codes(code: str) -> list[str]:
     New Rochelle). This function returns all codes for the same physical station
     so queries can match trains from any system.
     """
-    equiv = STATION_EQUIVALENTS.get(code)
-    return [code, equiv] if equiv else [code]
+    group = STATION_EQUIVALENTS.get(code)
+    if group:
+        return [code] + sorted(group - {code})
+    return [code]
 
 
 def canonical_station_code(code: str) -> str:
@@ -98,9 +102,9 @@ def canonical_station_code(code: str) -> str:
     Used for cache keys so that equivalent codes (e.g., NRO and MNRC)
     produce the same cache key.
     """
-    equiv = STATION_EQUIVALENTS.get(code)
-    if equiv:
-        return min(code, equiv)  # Alphabetically first
+    group = STATION_EQUIVALENTS.get(code)
+    if group:
+        return min(group)
     return code
 
 

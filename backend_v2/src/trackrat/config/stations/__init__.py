@@ -53,6 +53,7 @@ __all__ = [
     "map_lirr_gtfs_stop",
     # Subway
     "INTERNAL_TO_SUBWAY_GTFS_STOP_MAP",
+    "SUBWAY_STATION_COMPLEXES",
     "SUBWAY_DISCOVERY_STATIONS",
     "SUBWAY_GTFS_RT_FEED_URLS",
     "SUBWAY_GTFS_STATIC_URL",
@@ -73,6 +74,7 @@ __all__ = [
     "map_mnr_gtfs_stop",
     # Common
     "STATION_COORDINATES",
+    "STATION_EQUIVALENCE_GROUPS",
     "STATION_EQUIVALENTS",
     "STATION_NAMES",
     "_build_name_to_code_map",
@@ -99,6 +101,7 @@ from trackrat.config.stations.amtrak import (
 # Common (unified data + shared functions)
 from trackrat.config.stations.common import (
     STATION_COORDINATES,
+    STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
     STATION_NAMES,
     _build_name_to_code_map,
@@ -181,6 +184,7 @@ from trackrat.config.stations.subway import (
     SUBWAY_GTFS_STATIC_URL,
     SUBWAY_GTFS_STOP_TO_INTERNAL_MAP,
     SUBWAY_ROUTES,
+    SUBWAY_STATION_COMPLEXES,
     SUBWAY_STATION_COORDINATES,
     SUBWAY_STATION_NAMES,
     get_subway_route_info,

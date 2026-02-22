@@ -11,8 +11,10 @@ from trackrat.config.stations import (
     AMTRAK_TO_INTERNAL_STATION_MAP,
     NJT_GTFS_STOP_TO_INTERNAL_MAP,
     STATION_COORDINATES,
+    STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
     STATION_NAMES,
+    SUBWAY_STATION_COMPLEXES,
     canonical_station_code,
     expand_station_codes,
     get_station_name,
@@ -522,7 +524,7 @@ class TestStationEquivalences:
     ]
 
     def test_expand_station_codes_with_equivalent(self):
-        """expand_station_codes returns both codes for shared stations."""
+        """expand_station_codes returns all codes for shared stations."""
         for amtrak_code, mnr_code, name in self.EXPECTED_PAIRS:
             # Amtrak code expands to include MNR code
             result = expand_station_codes(amtrak_code)
@@ -532,9 +534,6 @@ class TestStationEquivalences:
             assert (
                 mnr_code in result
             ), f"{name}: MNR code {mnr_code} missing from expansion of {amtrak_code}"
-            assert (
-                len(result) == 2
-            ), f"{name}: expected 2 codes, got {len(result)}: {result}"
 
             # MNR code expands to include Amtrak code
             result = expand_station_codes(mnr_code)
@@ -544,9 +543,6 @@ class TestStationEquivalences:
             assert (
                 amtrak_code in result
             ), f"{name}: Amtrak code {amtrak_code} missing from expansion of {mnr_code}"
-            assert (
-                len(result) == 2
-            ), f"{name}: expected 2 codes, got {len(result)}: {result}"
 
     def test_expand_station_codes_without_equivalent(self):
         """expand_station_codes returns single-element list for non-shared stations."""
@@ -589,15 +585,18 @@ class TestStationEquivalences:
             ), f"Non-shared code {code} should be its own canonical"
 
     def test_equivalents_are_symmetric(self):
-        """Every code in STATION_EQUIVALENTS has a reverse entry."""
-        for code, equiv in STATION_EQUIVALENTS.items():
+        """Every member of an equivalence group maps to the same group."""
+        for code, group in STATION_EQUIVALENTS.items():
             assert (
-                equiv in STATION_EQUIVALENTS
-            ), f"Code {code} maps to {equiv}, but {equiv} has no reverse mapping"
-            assert STATION_EQUIVALENTS[equiv] == code, (
-                f"Code {code} maps to {equiv}, but {equiv} maps to "
-                f"{STATION_EQUIVALENTS[equiv]} instead of {code}"
-            )
+                code in group
+            ), f"Code {code} not in its own equivalence group {group}"
+            for member in group:
+                assert (
+                    member in STATION_EQUIVALENTS
+                ), f"Code {member} (in group with {code}) has no STATION_EQUIVALENTS entry"
+                assert (
+                    STATION_EQUIVALENTS[member] is group
+                ), f"Code {member} and {code} should share the same group object"
 
     def test_all_equivalent_codes_exist_in_station_names(self):
         """Every code in STATION_EQUIVALENTS should have an entry in STATION_NAMES."""
@@ -619,3 +618,52 @@ class TestStationEquivalences:
                 f"MNR code {mnr_code} resolves to '{mnr_name}', "
                 f"expected '{expected_name}'"
             )
+
+    def test_equivalence_groups_have_no_overlap(self):
+        """No station code should appear in multiple equivalence groups."""
+        seen: dict[str, int] = {}
+        for i, group in enumerate(STATION_EQUIVALENCE_GROUPS):
+            for code in group:
+                assert (
+                    code not in seen
+                ), f"Code {code} appears in group {seen[code]} and group {i}"
+                seen[code] = i
+
+    def test_subway_complex_expansion(self):
+        """Querying any platform code at a subway complex returns all platform codes."""
+        # 14 St-Union Sq: S635 (4/5/6), SL03 (L), SR20 (N/Q/R/W)
+        expected_14st = {"S635", "SL03", "SR20"}
+        for code in expected_14st:
+            result = expand_station_codes(code)
+            assert set(result) == expected_14st, (
+                f"expand_station_codes('{code}') returned {result}, "
+                f"expected all of {sorted(expected_14st)}"
+            )
+            assert (
+                result[0] == code
+            ), f"Queried code {code} should be first, got {result[0]}"
+
+        # Times Sq-42 St: 5-platform complex
+        expected_ts = {"S127", "S725", "S902", "SA27", "SR16"}
+        for code in expected_ts:
+            result = expand_station_codes(code)
+            assert set(result) == expected_ts, (
+                f"expand_station_codes('{code}') returned {result}, "
+                f"expected all of {sorted(expected_ts)}"
+            )
+
+    def test_canonical_station_code_deterministic_for_subway(self):
+        """canonical_station_code returns the same code for all members of a subway complex."""
+        for group in SUBWAY_STATION_COMPLEXES:
+            canonical_codes = {canonical_station_code(code) for code in group}
+            assert (
+                len(canonical_codes) == 1
+            ), f"Group {sorted(group)} produced multiple canonical codes: {canonical_codes}"
+
+    def test_non_complex_subway_station_expands_to_self(self):
+        """Subway stations not in any complex expand to just themselves."""
+        # S101 = Van Cortlandt Park-242 St (standalone station on 1 line)
+        result = expand_station_codes("S101")
+        assert result == [
+            "S101"
+        ], f"Standalone station S101 should expand to ['S101'], got {result}"
