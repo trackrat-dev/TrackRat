@@ -1198,7 +1198,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", or "MNR"
+        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", or "SUBWAY"
 
     Returns:
         Our internal station code or None if no match found

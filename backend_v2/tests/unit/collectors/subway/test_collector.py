@@ -464,6 +464,7 @@ class TestSubwayCollectorJourneyDetails:
         """Create a mock Subway client."""
         client = AsyncMock(spec=SubwayClient)
         client.get_all_arrivals = AsyncMock(return_value=[])
+        client.get_feed_arrivals = AsyncMock(return_value=[])
         client.close = AsyncMock()
         return client
 
@@ -484,7 +485,7 @@ class TestSubwayCollectorJourneyDetails:
 
         await collector.collect_journey_details(mock_session, journey)
 
-        collector.client.get_all_arrivals.assert_not_called()
+        collector.client.get_feed_arrivals.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_collect_journey_details_handles_no_matching_trip(
@@ -495,16 +496,17 @@ class TestSubwayCollectorJourneyDetails:
         journey.id = 1
         journey.train_id = "S1-999999"
         journey.data_source = "SUBWAY"
+        journey.line_code = "1"
 
         stop = MagicMock(spec=JourneyStop)
         stop.station_code = "S127"
         journey.stops = [stop]
 
-        mock_client.get_all_arrivals.return_value = []
+        mock_client.get_feed_arrivals.return_value = []
 
         await collector.collect_journey_details(mock_session, journey)
 
-        mock_client.get_all_arrivals.assert_called_once()
+        mock_client.get_feed_arrivals.assert_called_once_with("1")
 
     @pytest.mark.asyncio
     async def test_collect_journey_details_best_match_selects_highest_overlap(
@@ -517,6 +519,7 @@ class TestSubwayCollectorJourneyDetails:
         journey.id = 1
         journey.train_id = "S1-010100"
         journey.data_source = "SUBWAY"
+        journey.line_code = "1"
         journey.scheduled_departure = now
         journey.is_completed = False
         journey.update_count = 0
@@ -590,7 +593,7 @@ class TestSubwayCollectorJourneyDetails:
                 is_assigned=True,
             ),
         ]
-        mock_client.get_all_arrivals.return_value = arrivals
+        mock_client.get_feed_arrivals.return_value = arrivals
 
         # Mock stop lookups: return mock stops for trip_B arrivals
         mock_stop_result = MagicMock()
@@ -606,7 +609,7 @@ class TestSubwayCollectorJourneyDetails:
         await collector.collect_journey_details(mock_session, journey)
 
         # Verify trip_B was used (2 stops updated, journey times set from trip_B)
-        mock_client.get_all_arrivals.assert_called_once()
+        mock_client.get_feed_arrivals.assert_called_once_with("1")
         assert journey.actual_departure == now
         assert journey.actual_arrival == now + timedelta(minutes=10)
 
@@ -624,6 +627,7 @@ class TestSubwayCollectorRun:
         """Create a mock Subway client."""
         client = AsyncMock(spec=SubwayClient)
         client.get_all_arrivals = AsyncMock(return_value=[])
+        client.get_feed_arrivals = AsyncMock(return_value=[])
         client.close = AsyncMock()
         return client
 

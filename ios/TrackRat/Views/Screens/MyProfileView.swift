@@ -405,11 +405,12 @@ struct SettingsSection: View {
                 Divider()
                     .background(Color.white.opacity(0.1))
 
-                ForEach(TrainSystem.allCases, id: \.self) { system in
+                let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
+                ForEach(sortedSystems, id: \.self) { system in
                     TrainSystemRow(
                         system: system,
                         isSelected: appState.isSystemSelected(system),
-                        isLast: system == TrainSystem.allCases.last
+                        isLast: system == sortedSystems.last
                     ) {
                         appState.toggleSystem(system)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()

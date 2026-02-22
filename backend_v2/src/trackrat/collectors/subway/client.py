@@ -25,6 +25,39 @@ from trackrat.config.stations import (
 
 logger = logging.getLogger(__name__)
 
+# Maps each GTFS route_id to its feed group key in SUBWAY_GTFS_RT_FEED_URLS
+_ROUTE_TO_FEED: dict[str, str] = {
+    "1": "1234567S",
+    "2": "1234567S",
+    "3": "1234567S",
+    "4": "1234567S",
+    "5": "1234567S",
+    "6": "1234567S",
+    "6X": "1234567S",
+    "7": "1234567S",
+    "7X": "1234567S",
+    "GS": "1234567S",
+    "FS": "1234567S",
+    "H": "1234567S",
+    "A": "ACE",
+    "C": "ACE",
+    "E": "ACE",
+    "B": "BDFM",
+    "D": "BDFM",
+    "F": "BDFM",
+    "FX": "BDFM",
+    "M": "BDFM",
+    "G": "G",
+    "J": "JZ",
+    "Z": "JZ",
+    "L": "L",
+    "N": "NQRW",
+    "Q": "NQRW",
+    "R": "NQRW",
+    "W": "NQRW",
+    "SI": "SIR",
+}
+
 
 class SubwayArrival(BaseModel):
     """A single arrival/stop time from the NYC Subway GTFS-RT feed."""
@@ -246,6 +279,18 @@ class SubwayClient:
             f"Fetched {len(all_arrivals)} total subway arrivals from {len(SUBWAY_GTFS_RT_FEED_URLS)} feeds"
         )
         return sorted(all_arrivals, key=lambda a: a.arrival_time)
+
+    async def get_feed_arrivals(self, route_id: str) -> list[SubwayArrival]:
+        """Fetch arrivals from a single feed based on route_id.
+
+        Useful for JIT updates where we know the route and only need one feed.
+        Falls back to get_all_arrivals if the route_id is unknown.
+        """
+        feed_key = _ROUTE_TO_FEED.get(route_id)
+        if feed_key and feed_key in SUBWAY_GTFS_RT_FEED_URLS:
+            return await self._fetch_feed(feed_key, SUBWAY_GTFS_RT_FEED_URLS[feed_key])
+        # Unknown route — fall back to all feeds
+        return await self.get_all_arrivals()
 
     async def get_station_arrivals(self, station_code: str) -> list[SubwayArrival]:
         """Get arrivals for a specific station."""

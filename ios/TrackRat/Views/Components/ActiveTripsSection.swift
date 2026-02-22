@@ -72,7 +72,7 @@ struct ActiveTripsSection: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 // For trains with synthetic IDs, show destination instead
                                 let tn = activity.attributes.trainNumber
-                                let hasSyntheticId = tn.hasPrefix("PATH_") || tn.hasPrefix("PATCO_") || tn.hasPrefix("L") || tn.hasPrefix("M")
+                                let hasSyntheticId = tn.hasPrefix("PATH_") || tn.hasPrefix("PATCO_") || tn.hasPrefix("L") || tn.hasPrefix("M") || tn.hasPrefix("S")
                                 let trainLabel = hasSyntheticId
                                     ? activity.attributes.destination
                                     : "Train \(tn)"

@@ -21,7 +21,7 @@ class Route:
 
     id: str  # Unique identifier (e.g., "njt-nec")
     name: str  # Display name
-    data_source: str  # "NJT", "PATH", "PATCO", "AMTRAK", "LIRR", "MNR"
+    data_source: str  # "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"
     line_codes: frozenset[str]  # Valid line_code values for this route
     stations: tuple[str, ...]  # Ordered station codes
 

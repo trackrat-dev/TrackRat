@@ -4,7 +4,7 @@ This guide provides comprehensive information for Claude Code when working with 
 
 **Last Updated:** February 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
-**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North), ML predictions, API caching, schedule generation, GTFS integration
+**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway), ML predictions, API caching, schedule generation, GTFS integration
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
-- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North data sources with extensible architecture
+- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway data sources with extensible architecture
 - **ML-Powered Features**: Track predictions, arrival forecasting, and congestion analysis
 - **API Response Caching**: Intelligent caching system for performance optimization
 
@@ -99,7 +99,7 @@ The V2 backend eliminates the complexity of V1 by:
 train_journeys (
     id, train_id, journey_date, line_code, line_name, line_color,
     destination, origin_station_code, terminal_station_code,
-    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR), observation_type (OBSERVED/SCHEDULED),
+    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR/SUBWAY), observation_type (OBSERVED/SCHEDULED),
     scheduled_departure, scheduled_arrival, actual_departure, actual_arrival,
     has_complete_journey, stops_count, is_cancelled, is_completed,
     api_error_count, is_expired, discovery_track, discovery_station_code
@@ -295,6 +295,7 @@ The system now includes comprehensive transit time analysis:
    - PATH collector in `collectors/path/` (collector.py, client.py, ridepath_client.py)
    - LIRR collector in `collectors/lirr/` (collector.py, client.py)
    - Metro-North collector in `collectors/mnr/` (collector.py, client.py)
+   - NYC Subway collector in `collectors/subway/` (collector.py, client.py)
    - MTA shared logic in `collectors/mta_common.py` and `collectors/mta_extensions.py`
    - Base classes in `collectors/base.py`
    - Test with data in `tests/unit/collectors/`

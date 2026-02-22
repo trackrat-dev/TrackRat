@@ -247,7 +247,7 @@ interface Train {
   arrival: StationTiming;     // Destination timing
   train_position?: { ... };   // Current location
   data_freshness: { ... };    // Last updated info
-  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
   observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
 }
@@ -263,7 +263,7 @@ interface TrainDetails {
   train_position?: { ... };
   stops: Stop[];              // All stops on route
   data_freshness: { ... };
-  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
   is_cancelled: boolean;
   is_completed: boolean;
 }

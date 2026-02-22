@@ -434,7 +434,8 @@ class SubwayCollector:
         if journey.data_source != "SUBWAY":
             return
 
-        arrivals = await self.client.get_all_arrivals()
+        # Fetch only the relevant feed based on route, not all 8
+        arrivals = await self.client.get_feed_arrivals(journey.line_code or "")
 
         journey_station_codes = {s.station_code for s in journey.stops}
         matching_trips: dict[str, list[SubwayArrival]] = {}

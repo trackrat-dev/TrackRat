@@ -49,7 +49,7 @@ def infer_missing_origin(
     Args:
         first_arrival_station: Station code of the first visible RT stop.
         direction_id: 0 = outbound (from terminal), 1 = inbound (to terminal).
-        data_source: "LIRR" or "MNR".
+        data_source: "LIRR", "MNR", or "SUBWAY".
 
     Returns:
         Inferred origin station code, or None if no inference needed
@@ -83,7 +83,7 @@ def infer_direction_from_terminals(
 
     Args:
         last_stop_code: Station code of the last stop by arrival time.
-        data_source: "LIRR" or "MNR".
+        data_source: "LIRR", "MNR", or "SUBWAY".
 
     Returns:
         1 if inbound (last stop is a terminal), 0 otherwise.

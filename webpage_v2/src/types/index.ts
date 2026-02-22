@@ -55,7 +55,7 @@ export interface Train {
     between_stations?: boolean;
   };
   data_freshness: DataFreshness;
-  data_source: 'NJT' | 'AMTRAK';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
   observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
 }
@@ -113,7 +113,7 @@ export interface TrainDetails {
   };
   stops: Stop[];
   data_freshness: DataFreshness;
-  data_source: 'NJT' | 'AMTRAK';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
   is_cancelled: boolean;
   is_completed: boolean;
 }
