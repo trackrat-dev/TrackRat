@@ -666,4 +666,13 @@ extension TrainV2 {
     var usesSyntheticTrainId: Bool {
         return TrainSystem.syntheticTrainIdSources.contains(dataSource)
     }
+
+    /// User-facing label: "Train 3254" for NJT/Amtrak, "(N) Astoria-Ditmars Blvd" for subway,
+    /// or just the destination for other synthetic-ID sources (PATH, LIRR, MNR, PATCO)
+    var displayLabel: String {
+        if dataSource == "SUBWAY" {
+            return "(\(line.code)) \(destination)"
+        }
+        return usesSyntheticTrainId ? destination : "Train \(trainId)"
+    }
 }

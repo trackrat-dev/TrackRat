@@ -368,8 +368,7 @@ struct TrainCard: View {
                 }
 
                 HStack(spacing: 4) {
-                    // Trains with synthetic IDs display destination instead of train ID
-                    Text(train.usesSyntheticTrainId ? train.destination : "Train \(train.trainId)")
+                    Text(train.displayLabel)
                         .font(.headline)
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)

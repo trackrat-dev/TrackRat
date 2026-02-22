@@ -32,10 +32,9 @@ struct TrainDetailsView: View {
         self._viewModel = StateObject(wrappedValue: VModel)
     }
 
-    // Trains with synthetic IDs display destination instead of cryptic train ID
     private var trainNavigationTitle: String {
         guard let train = viewModel.train else { return "Loading..." }
-        return train.usesSyntheticTrainId ? train.destination : "Train \(train.trainId)"
+        return train.displayLabel
     }
 
     var body: some View {

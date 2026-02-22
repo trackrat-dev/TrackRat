@@ -162,8 +162,7 @@ struct PerformanceSection: View {
                     if let stats = trainStats {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
-                        // PATH and PATCO trains display destination instead of synthetic train ID
-                        let trainLabel = train.usesSyntheticTrainId ? train.destination : "Train \(train.trainId)"
+                        let trainLabel = train.displayLabel
                         DelayPerformanceBar(
                             label: "\(trainLabel) (\(fromCode)→\(toCode))",
                             stats: stats
@@ -237,8 +236,7 @@ struct TrackUsageSection: View {
                     if let stats = trainStats {
                         let fromCode = fromStationCode ?? "?"
                         let toCode = toStationCode ?? "?"
-                        // PATH and PATCO trains display destination instead of synthetic train ID
-                        let trainLabel = train.usesSyntheticTrainId ? train.destination : "Train \(train.trainId)"
+                        let trainLabel = train.displayLabel
                         TrackUsageBar(
                             label: "\(trainLabel) (\(fromCode)→\(toCode))",
                             stats: stats
