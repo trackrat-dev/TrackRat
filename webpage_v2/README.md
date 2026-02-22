@@ -1,23 +1,33 @@
 # TrackRat Web
 
-A mobile-first web application for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North trains in real-time.
+A mobile-first web application for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway trains in real-time.
 
 ## Features
 
-- 🚂 Real-time train departures and details
-- 🔍 Search trains by origin and destination
-- ⭐ Favorite stations for quick access
-- 📱 Mobile-first responsive design
-- 🎨 Dark mode with glassmorphism UI
-- 🔄 Auto-refresh every 30 seconds
+- Real-time train departures and details
+- Search trains by origin and destination across 7 transit systems
+- 1000+ stations with system-grouped picker (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, Subway)
+- Visual train states: departed (dimmed), boarding (highlighted), cancelled (strikethrough), scheduled
+- Train number filter on departure list
+- Route operations summary
+- Track/platform predictions
+- Stop timing hierarchy (actual > updated > scheduled) with predicted arrivals
+- Favorite stations for quick access
+- Last route auto-restoration
+- Data freshness indicators and journey date display
+- iOS smart app banner
+- Mobile-first dark mode with glassmorphism UI
+- Auto-refresh every 30 seconds
+- PWA support (installable, offline-capable)
+- Web Share API for sharing train links
 
 ## Tech Stack
 
 - React 19 + TypeScript
 - Vite 7 (build tool)
-- Tailwind CSS 3 (styling)
+- Tailwind CSS 4 (styling)
 - Zustand 5 (state management)
-- React Router v6 (routing)
+- React Router v7 (routing)
 - date-fns 4 (date formatting)
 
 ## Getting Started
@@ -47,13 +57,13 @@ npm run preview
 ```
 src/
 ├── components/       # Reusable UI components
-├── pages/           # Page components
-├── services/        # API and storage services
-├── store/           # Zustand state management
+├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, Favorites)
+├── services/        # API client (with caching) and localStorage wrapper
+├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
-├── utils/           # Utility functions
-├── data/            # Station data
-├── App.tsx          # Main app component
+├── utils/           # Date formatting, status badges, share helpers
+├── data/            # Station data (1000+ stations, 7 transit systems)
+├── App.tsx          # Main app component with route definitions
 ├── main.tsx         # Entry point
 └── index.css        # Global styles
 ```
@@ -64,10 +74,10 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 ### Key Endpoints
 
-- `GET /trains/departures` - Get train departures
-- `GET /trains/{id}` - Get train details
-- `GET /predictions/track` - ML platform predictions
-- `GET /health` - Health check
+- `GET /trains/departures` - Get train departures between stations
+- `GET /trains/{id}` - Get train details with all stops
+- `GET /predictions/track` - Track/platform predictions
+- `GET /routes/summary` - Route operations summary
 
 ## Development
 
@@ -75,46 +85,32 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 - TypeScript with strict mode
 - Functional React components with hooks
-- Tailwind CSS for styling
+- Tailwind CSS for styling (no custom CSS classes)
 - ESLint for code quality
 
 ### Key Patterns
 
-- **State Management**: Zustand for global state
-- **Data Fetching**: Custom API service with caching
-- **Routing**: React Router v6 with type-safe routes
+- **State Management**: Zustand for global state with localStorage persistence
+- **Data Fetching**: Custom API service with in-memory caching (2min TTL)
+- **Routing**: React Router v7 with type-safe routes
 - **Styling**: Tailwind CSS with glassmorphism effects
+- **Sharing**: Web Share API with clipboard fallback
 
 ## Deployment
 
-### Automated Deployment (GitHub Pages)
+Deployed to Google Cloud Storage as a static site.
 
-The app automatically deploys to GitHub Pages when changes are pushed to the `main` branch.
-
-**Live URL:** https://bokonon1.github.io/TrackRat/
-
-**How it works:**
-1. Push changes to `webpage_v2/` directory
-2. GitHub Actions automatically builds and deploys
-3. Changes appear at the live URL within ~2 minutes
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
-
-### Manual Deployment
-
-The app can be deployed to any static hosting service:
-
-- GitHub Pages (automated via Actions)
-- Vercel
-- Netlify
-- Cloudflare Pages
+**Live URL:** https://trackrat.net
 
 ```bash
-# Build for production
-npm run build
+# Deploy from repo root
+./scripts/deploy-webpage.sh
 
-# The dist/ folder contains the production build
+# Dry run
+./scripts/deploy-webpage.sh --dry-run
 ```
+
+The deploy script syncs the `dist/` build output to GCS with appropriate cache headers (`no-cache` for `index.html` and service worker, `max-age=1yr` for hashed assets).
 
 ## License
 

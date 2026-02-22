@@ -40,7 +40,7 @@ API Service (fetch + cache)
 - **Keys**:
   - `trackrat:recentTrips` - last 10 trips, sorted by usage
   - `trackrat:favorites` - favorite stations, sorted by date added
-  - `trackrat:lastRoute` - last selected from/to pair
+  - `trackrat:lastRoute` - last selected from/to pair (auto-restored on mount)
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
 ## Design System
@@ -94,8 +94,8 @@ useEffect(() => {
 ### Endpoints Used
 1. `GET /trains/departures?from={code}&to={code}&limit=100`
 2. `GET /trains/{trainId}?date={YYYY-MM-DD}`
-3. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional)
-4. `GET /health` (not actively used)
+3. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
+4. `GET /routes/summary?scope=route&from_station={code}&to_station={code}` (optional, fail-silent)
 
 ## Key File Locations
 
@@ -105,29 +105,32 @@ webpage_v2/
 │   ├── components/          # Reusable UI components
 │   │   ├── Layout.tsx       # App shell with header + navigation
 │   │   ├── Navigation.tsx   # Bottom tab bar (mobile-first)
-│   │   ├── StationPicker.tsx # Searchable station selector
-│   │   ├── TrainCard.tsx    # Departure list item
-│   │   ├── StopCard.tsx     # Individual stop in train details
-│   │   ├── TrackPredictionBar.tsx # ML platform predictions
+│   │   ├── StationPicker.tsx # Searchable station selector (grouped by system)
+│   │   ├── TrainCard.tsx    # Departure list item (visual states: departed/boarding/cancelled/scheduled)
+│   │   ├── StopCard.tsx     # Individual stop in train details (timing hierarchy)
+│   │   ├── TrackPredictionBar.tsx # Track/platform predictions
+│   │   ├── ShareButton.tsx  # Web Share API with clipboard fallback
 │   │   ├── LoadingSpinner.tsx
 │   │   └── ErrorMessage.tsx
 │   ├── pages/              # Route components
-│   │   ├── TripSelectionPage.tsx  # Home / station selection
-│   │   ├── TrainListPage.tsx      # Departures for route
-│   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view
-│   │   └── FavoritesPage.tsx      # Manage favorites
+│   │   ├── LandingPage.tsx        # Marketing landing (/, open-source section, iOS banner)
+│   │   ├── TripSelectionPage.tsx  # Station selection (/departures)
+│   │   ├── TrainListPage.tsx      # Departures for route (filter, summary, departed dimming)
+│   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (freshness, journey date)
+│   │   └── FavoritesPage.tsx      # Manage favorite stations
 │   ├── services/
 │   │   ├── api.ts          # API client with caching
 │   │   └── storage.ts      # localStorage wrapper
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   └── stations.ts     # Static station list (250+ stations)
+│   │   └── stations.ts     # Static station list (1000+ stations, 7 transit systems)
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/
 │       ├── date.ts         # date-fns wrappers
-│       └── formatting.ts   # Text/color utilities
+│       ├── formatting.ts   # Status badge classes
+│       └── share.ts        # Web Share API helper + train URL builder
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
@@ -136,8 +139,9 @@ webpage_v2/
 
 ## Routes
 
-- `/` - Trip selection (origin + destination pickers)
-- `/trains/:from/:to` - Train list for route
+- `/` - Landing page (marketing, open-source info, iOS banner)
+- `/departures` - Trip selection (origin + destination pickers, last route restore)
+- `/trains/:from/:to` - Train list for route (filter, summary, departed dimming)
 - `/train/:trainId/:from?/:to?` - Train details with stops
 - `/favorites` - Manage favorite stations
 
@@ -202,9 +206,11 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 
 ### Time Formatting
 - `formatTime()` - "3:45 PM"
-- `formatDateTime()` - "Jan 15, 3:45 PM"
 - `formatTimeAgo()` - "2 minutes ago"
+- `formatDate()` - "Jan 15, 2025"
 - `getDelayMinutes()` - Calculate delay from scheduled vs actual
+- `isToday()` - Check if date string is today
+- `getTodayDateString()` - "2025-01-15" format
 
 ## Key Constraints
 
@@ -226,10 +232,13 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 
 ### Station
 ```typescript
+type TransitSystem = 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
+
 interface Station {
-  code: string;        // "NY", "PJ", etc.
-  name: string;        // "New York Penn", "Secaucus Junction"
-  coordinates?: {      // Optional GPS coordinates
+  code: string;           // "NY", "PNK", "S127", etc.
+  name: string;           // "New York Penn Station", "Newark PATH"
+  system?: TransitSystem; // Transit system this station belongs to
+  coordinates?: {         // Optional GPS coordinates
     lat: number;
     lon: number;
   };
@@ -245,7 +254,7 @@ interface Train {
   destination: string;        // Terminal station name
   departure: StationTiming;   // Origin timing
   arrival: StationTiming;     // Destination timing
-  train_position?: { ... };   // Current location
+  train_position?: { ... };   // Current location (at_station_code, etc.)
   data_freshness: { ... };    // Last updated info
   data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
   observation_type: 'OBSERVED' | 'SCHEDULED';
@@ -253,23 +262,38 @@ interface Train {
 }
 ```
 
-### TrainDetails (Full Journey)
+### Stop (Train Details)
 ```typescript
-interface TrainDetails {
-  train_id: string;
-  journey_date: string;
-  line: LineInfo;
-  route: TrainRoute;
-  train_position?: { ... };
-  stops: Stop[];              // All stops on route
-  data_freshness: { ... };
-  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
-  is_cancelled: boolean;
-  is_completed: boolean;
+interface Stop {
+  station: StationInfo;
+  stop_sequence: number;
+  scheduled_arrival?: string;
+  scheduled_departure?: string;
+  updated_arrival?: string;      // Estimated/updated time from provider
+  updated_departure?: string;
+  actual_arrival?: string;
+  actual_departure?: string;
+  predicted_arrival?: string;    // ML-predicted arrival
+  predicted_arrival_samples?: number;
+  track?: string;
+  track_assigned_at?: string;
+  has_departed_station: boolean;
 }
 ```
 
-### PlatformPrediction (ML Track Predictions)
+### OperationsSummaryResponse
+```typescript
+interface OperationsSummaryResponse {
+  headline: string;         // Short summary for collapsed view
+  body: string;             // Detailed summary (2-4 sentences)
+  scope: 'network' | 'route' | 'train';
+  time_window_minutes: number;
+  data_freshness_seconds: number;
+  generated_at: string;
+}
+```
+
+### PlatformPrediction (Track Predictions)
 ```typescript
 interface PlatformPrediction {
   platform_probabilities: Record<string, number>; // "1": 0.85
@@ -306,7 +330,7 @@ interface PlatformPrediction {
 
 ## Performance Targets
 
-- **Bundle Size**: <200KB gzipped (currently ~150KB)
+- **Bundle Size**: <200KB gzipped (currently ~107KB)
 - **First Contentful Paint**: <2s
 - **Time to Interactive**: <3s
 - **3G Network**: App remains usable on slow connections
@@ -329,12 +353,6 @@ interface PlatformPrediction {
 2. Update `src/components/Layout.tsx` for global styles
 3. No CSS files needed (Tailwind only)
 
-### Debug Polling Issues
-1. Check browser console for API errors
-2. Use `apiService.getCacheAge(url)` to verify cache
-3. Clear cache with `apiService.clearCache()`
-4. Verify interval cleanup in useEffect return
-
 ## Differences from iOS/Android Apps
 
 | Feature | iOS/Android | Web |
@@ -347,12 +365,3 @@ interface PlatformPrediction {
 | **Background Refresh** | Yes | No |
 | **Install** | App Store | PWA install prompt |
 | **Auth** | Potential | None |
-
-## Future Enhancements (Not Planned for MVP)
-
-- WebSocket for real-time updates
-- Browser push notifications
-- Historical performance charts
-- Network congestion visualization
-- Code splitting for faster initial load
-- Automated testing suite
