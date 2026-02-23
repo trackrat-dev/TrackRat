@@ -39,15 +39,19 @@ def _generate_train_id(trip_id: str) -> str:
     """
     Generate a stable train ID for LIRR trains.
 
-    LIRR GTFS trip_ids follow the format:
-    - Standard: "GO103_25_181" -> train number is 3rd segment ("181")
-    - Event:    "GO103_25_367_2891_METS" -> train number is still 3rd segment ("367")
+    LIRR GTFS trip_ids follow several formats:
+    - GO-prefix:  "GO103_25_181"              -> train number is 3rd segment ("181")
+    - GO-event:   "GO103_25_367_2891_METS"    -> train number is still 3rd segment ("367")
+    - Date-suffix: "7597_2026-02-22"          -> train number is 1st segment ("7597")
 
     The "L" prefix ensures LIRR trains are displayed as "L181" etc.
     """
     parts = trip_id.split("_")
     if len(parts) >= 3:
         train_number = parts[2]
+    elif len(parts) == 2 and "-" in parts[1]:
+        # Date-suffix format: "{train_number}_{YYYY-MM-DD}"
+        train_number = parts[0]
     else:
         # Fallback for unexpected formats: extract digits from end
         train_number = "".join(c for c in trip_id if c.isdigit())[-6:]

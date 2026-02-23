@@ -37,8 +37,20 @@ class TestGenerateTrainId:
         """Event trip_id 'GO103_25_367_2891_METS' -> 'L367'."""
         assert _generate_train_id("GO103_25_367_2891_METS") == "L367"
 
+    def test_date_suffix_trip_id_uses_first_segment(self):
+        """Date-suffix trip_id '7597_2026-02-22' -> 'L7597'."""
+        assert _generate_train_id("7597_2026-02-22") == "L7597"
+
+    def test_date_suffix_different_dates_produce_different_ids(self):
+        """Different trains on same date get unique IDs (not date-based)."""
+        id1 = _generate_train_id("7597_2026-02-22")
+        id2 = _generate_train_id("6574_2026-02-22")
+        assert id1 != id2
+        assert id1 == "L7597"
+        assert id2 == "L6574"
+
     def test_two_segment_trip_id_falls_back_to_digits(self):
-        """Trip_id with <3 segments falls back to digit extraction."""
+        """Trip_id with 2 segments but no date falls back to digit extraction."""
         assert _generate_train_id("LIRR_123456") == "L123456"
 
     def test_short_numeric_trip_id(self):

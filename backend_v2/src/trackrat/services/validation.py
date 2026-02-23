@@ -85,7 +85,7 @@ class TrainValidationService:
         """Async context manager entry."""
         self.njt_client = NJTransitClient(self.settings)
         self.amtrak_client = AmtrakClient(timeout=30.0)
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(timeout=120.0)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
