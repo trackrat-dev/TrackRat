@@ -18,6 +18,7 @@ class TrainV2Tests: XCTestCase {
         track: String? = "11",
         isCancelled: Bool = false,
         isCompleted: Bool = false,
+        observationType: String? = nil,
         stops: [StopV2]? = nil
     ) -> TrainV2 {
         let departure = StationTiming(
@@ -49,7 +50,7 @@ class TrainV2Tests: XCTestCase {
             arrival: arrival,
             trainPosition: nil,
             dataFreshness: nil,
-            observationType: nil,
+            observationType: observationType,
             isCancelled: isCancelled,
             isCompleted: isCompleted,
             dataSource: "NJT",
@@ -294,6 +295,63 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(status, .cancelled, "Cancelled status should take precedence over all others")
 
         print("  ✅ Cancelled status calculation test passed")
+    }
+
+    func testCalculateStatus_withScheduledTrain_returnsScheduled() {
+        print("📋 Testing status calculation for SCHEDULED (no real-time data) train")
+
+        let train = createTestTrainV2(
+            trainId: "SCHED123",
+            departureTime: Date().addingTimeInterval(600), // 10 min from now
+            observationType: "SCHEDULED"
+        )
+
+        print("  - Train: \(train.trainId)")
+        print("  - Observation type: \(train.observationType ?? "nil")")
+        print("  - Delay minutes: \(train.delayMinutes)")
+
+        let status = train.calculateStatus(fromStationCode: "NY", toStationName: "Philadelphia")
+
+        print("  - Calculated status: \(status)")
+        XCTAssertEqual(status, .scheduled,
+            "SCHEDULED trains must show .scheduled, not .onTime — we have no real-time data to confirm on-time status")
+
+        // Verify that OBSERVED trains still show .onTime when delay is 0
+        let observedTrain = createTestTrainV2(
+            trainId: "OBS123",
+            departureTime: Date().addingTimeInterval(600),
+            observationType: "OBSERVED"
+        )
+
+        let observedStatus = observedTrain.calculateStatus(fromStationCode: "NY", toStationName: "Philadelphia")
+
+        print("  - OBSERVED train status: \(observedStatus)")
+        XCTAssertEqual(observedStatus, .onTime,
+            "OBSERVED trains with no delay should still show .onTime")
+
+        print("  ✅ SCHEDULED status calculation test passed")
+    }
+
+    func testCalculateStatus_withCancelledScheduledTrain_returnsCancelled() {
+        print("🚫 Testing that cancelled takes precedence over SCHEDULED")
+
+        let train = createTestTrainV2(
+            trainId: "CANCSCHED123",
+            isCancelled: true,
+            observationType: "SCHEDULED"
+        )
+
+        print("  - Train: \(train.trainId)")
+        print("  - Is cancelled: \(train.isCancelled)")
+        print("  - Observation type: \(train.observationType ?? "nil")")
+
+        let status = train.calculateStatus(fromStationCode: "NY", toStationName: "Philadelphia")
+
+        print("  - Calculated status: \(status)")
+        XCTAssertEqual(status, .cancelled,
+            "Cancelled status must take precedence over SCHEDULED observation type")
+
+        print("  ✅ Cancelled-SCHEDULED precedence test passed")
     }
 
     func testCalculateStatus_withBoardingTrain_returnsBoarding() {

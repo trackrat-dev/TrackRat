@@ -165,11 +165,17 @@ struct TrainV2: Identifiable, Codable {
             return .boarding
         }
         
+        // SCHEDULED trains have no confirmed real-time data —
+        // don't claim "on time" when we don't actually know.
+        if observationType == "SCHEDULED" {
+            return .scheduled
+        }
+
         // Check for delays
         if delayMinutes > 0 {
             return .delayed
         }
-        
+
         return .onTime
     }
     
