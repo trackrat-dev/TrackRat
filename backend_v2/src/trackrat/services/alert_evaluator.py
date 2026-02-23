@@ -112,8 +112,16 @@ async def evaluate_route_alerts(
             # Send
             if not device.apns_token:
                 continue
+            custom_data = {
+                "route_alert": {
+                    "data_source": sub.data_source,
+                    "line_id": sub.line_id,
+                    "from_station_code": sub.from_station_code,
+                    "to_station_code": sub.to_station_code,
+                }
+            }
             sent = await apns_service.send_alert_notification(
-                device.apns_token, title, body
+                device.apns_token, title, body, custom_data=custom_data
             )
 
             if sent:

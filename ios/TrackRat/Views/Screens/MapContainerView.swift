@@ -350,6 +350,11 @@ struct MapContainerView: View {
                 .presentationDetents([.height(600), .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $appState.pendingRouteStatus) { context in
+            RouteStatusView(context: context)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
     
     private func handleNavigationChange(_ navigationPath: NavigationPath) {

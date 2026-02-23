@@ -27,6 +27,9 @@ struct TrackRatApp: App {
             .environmentObject(themeManager)
             .preferredColorScheme(themeManager.colorScheme)
             .tint(themeManager.tintColor)
+            .onAppear {
+                AppDelegate.appState = appState
+            }
             .onOpenURL { url in
                 print("🔗 App received URL: \(url)")
                 DeepLinkService.shared.handleOpenURL(url, appState: appState)
@@ -65,6 +68,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         get { storedDeviceToken }
         set { storedDeviceToken = newValue }
     }
+
+    /// Weak reference to AppState, set by TrackRatApp on launch
+    @MainActor static weak var appState: AppState?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         // Set up notification delegate
@@ -125,7 +131,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     // Handle user interaction with notifications
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-        // Here you can add logic to navigate to a specific part of your app based on the notification
+        let userInfo = response.notification.request.content.userInfo
+        if let routeAlert = userInfo["route_alert"] as? [String: Any] {
+            let context = RouteStatusContext(
+                dataSource: routeAlert["data_source"] as? String ?? "",
+                lineId: routeAlert["line_id"] as? String,
+                fromStationCode: routeAlert["from_station_code"] as? String,
+                toStationCode: routeAlert["to_station_code"] as? String
+            )
+            Task { @MainActor in
+                AppDelegate.appState?.pendingRouteStatus = context
+            }
+        }
         completionHandler()
     }
     
@@ -508,6 +525,63 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
+// MARK: - Route Status Context
+struct RouteStatusContext: Identifiable, Equatable {
+    let id = UUID()
+    let dataSource: String
+    let lineId: String?
+    let fromStationCode: String?
+    let toStationCode: String?
+
+    /// Human-readable title for the route
+    var title: String {
+        if let lineId = lineId,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            return route.name
+        }
+        if let from = fromStationCode, let to = toStationCode {
+            return "\(Stations.displayName(for: from)) → \(Stations.displayName(for: to))"
+        }
+        return dataSource
+    }
+
+    /// Station codes for filtering congestion segments
+    var stationCodes: [String] {
+        if let lineId = lineId,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            return route.stationCodes
+        }
+        if let from = fromStationCode, let to = toStationCode {
+            return RouteTopology.expandStationCodes([from, to], dataSource: dataSource)
+        }
+        return []
+    }
+
+    /// First station code (for API calls)
+    var effectiveFromStation: String? {
+        if let from = fromStationCode { return from }
+        if let lineId = lineId,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            return route.stationCodes.first
+        }
+        return nil
+    }
+
+    /// Last station code (for API calls)
+    var effectiveToStation: String? {
+        if let to = toStationCode { return to }
+        if let lineId = lineId,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            return route.stationCodes.last
+        }
+        return nil
+    }
+
+    static func == (lhs: RouteStatusContext, rhs: RouteStatusContext) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 // MARK: - Map Display Mode
 enum MapDisplayMode: Equatable {
     case overallCongestion
@@ -537,6 +611,9 @@ final class AppState: ObservableObject {
     // Pending navigation - set by views to request navigation that requires sheet expansion first
     // MapContainerView observes this and handles: expand sheet → wait → navigate
     @Published var pendingNavigation: NavigationDestination? = nil
+
+    // Route status sheet - set by notification tap or EditRouteAlertsView row tap
+    @Published var pendingRouteStatus: RouteStatusContext? = nil
 
     private let apiService = APIService()
     private let storageService = StorageService()

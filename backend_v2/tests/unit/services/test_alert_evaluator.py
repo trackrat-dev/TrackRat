@@ -313,6 +313,67 @@ class TestAlertEvaluator:
         count = await evaluate_route_alerts(db_session, apns)
         assert count == 1
 
+    async def test_custom_data_includes_route_alert_metadata(
+        self, db_session: AsyncSession
+    ):
+        """Alert notification should include route_alert custom data with subscription metadata."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(
+            db_session,
+            train_id="9001",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+
+        call_kwargs = apns.send_alert_notification.call_args.kwargs
+        assert "custom_data" in call_kwargs
+        route_alert = call_kwargs["custom_data"]["route_alert"]
+        assert route_alert["data_source"] == "NJT"
+        assert route_alert["from_station_code"] == "NY"
+        assert route_alert["to_station_code"] == "TR"
+        assert route_alert["line_id"] is None
+
+    async def test_custom_data_includes_line_id_for_line_mode(
+        self, db_session: AsyncSession
+    ):
+        """Line-mode subscription should include line_id in custom data."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            line_id="njt-nec",
+        )
+        _make_journey(
+            db_session,
+            train_id="9002",
+            line_code="NE",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+
+        call_kwargs = apns.send_alert_notification.call_args.kwargs
+        route_alert = call_kwargs["custom_data"]["route_alert"]
+        assert route_alert["data_source"] == "NJT"
+        assert route_alert["line_id"] == "njt-nec"
+        assert route_alert["from_station_code"] is None
+        assert route_alert["to_station_code"] is None
+
     async def test_apns_failure_does_not_update_state(self, db_session: AsyncSession):
         """If APNS send fails, last_alerted_at should NOT be updated."""
         apns = _make_apns(send_returns=False)

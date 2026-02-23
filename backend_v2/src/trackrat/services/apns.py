@@ -208,7 +208,11 @@ class SimpleAPNSService:
             return False
 
     async def send_alert_notification(
-        self, device_token: str, title: str, body: str
+        self,
+        device_token: str,
+        title: str,
+        body: str,
+        custom_data: dict | None = None,
     ) -> bool:
         """
         Send a standard alert push notification to an iOS device.
@@ -217,6 +221,7 @@ class SimpleAPNSService:
             device_token: The APNS device token (not a Live Activity token)
             title: Notification title
             body: Notification body text
+            custom_data: Optional dict merged into payload root alongside aps
 
         Returns:
             True if successful, False otherwise
@@ -225,12 +230,15 @@ class SimpleAPNSService:
             logger.warning("apns_alert_skipped", reason="Not configured")
             return False
 
-        payload = {
+        payload: dict = {
             "aps": {
                 "alert": {"title": title, "body": body},
                 "sound": "default",
             }
         }
+        if custom_data:
+            safe_data = {k: v for k, v in custom_data.items() if k != "aps"}
+            payload.update(safe_data)
 
         headers = {
             "authorization": f"bearer {self._get_jwt_token()}",

@@ -82,18 +82,30 @@ struct EditRouteAlertsView: View {
             ForEach(groupedSubscriptions, id: \.0) { dataSource, subs in
                 Section(header: Text(dataSource).foregroundColor(.white.opacity(0.7))) {
                     ForEach(subs) { sub in
-                        HStack {
-                            if let lineName = sub.lineName {
-                                Label(lineName, systemImage: "tram.fill")
-                            } else if let from = sub.fromStationCode, let to = sub.toStationCode {
-                                Label(
-                                    "\(Stations.displayName(for: from)) → \(Stations.displayName(for: to))",
-                                    systemImage: "arrow.right"
-                                )
+                        Button {
+                            appState.pendingRouteStatus = RouteStatusContext(
+                                dataSource: sub.dataSource,
+                                lineId: sub.lineId,
+                                fromStationCode: sub.fromStationCode,
+                                toStationCode: sub.toStationCode
+                            )
+                        } label: {
+                            HStack {
+                                if let lineName = sub.lineName {
+                                    Label(lineName, systemImage: "tram.fill")
+                                } else if let from = sub.fromStationCode, let to = sub.toStationCode {
+                                    Label(
+                                        "\(Stations.displayName(for: from)) → \(Stations.displayName(for: to))",
+                                        systemImage: "arrow.right"
+                                    )
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
-                            Spacer()
+                            .foregroundColor(.white)
                         }
-                        .foregroundColor(.white)
                     }
                     .onDelete { offsets in
                         let toRemove = offsets.map { subs[$0] }
