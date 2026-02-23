@@ -2084,10 +2084,9 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {
         "S127",
         "S725",
-        "S902",
         "SA27",
         "SR16",
-    },  # 42 St-Port Authority Bus Terminal / Times Sq-42 St
+    },  # 42 St-Port Authority Bus Terminal / Times Sq-42 St (S902/GS excluded - dedicated platform)
     {"S132", "SD19", "SL02"},  # 14 St / 6 Av
     {"S222", "S415"},  # 149 St-Grand Concourse
     {
@@ -2104,7 +2103,7 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S414", "SD11"},  # 161 St-Yankee Stadium
     {"S629", "SB08", "SR11"},  # 59 St / Lexington Av/59 St / Lexington Av/63 St
     {"S630", "SF11"},  # 51 St / Lexington Av/53 St
-    {"S631", "S723", "S901"},  # Grand Central-42 St
+    {"S631", "S723"},  # Grand Central-42 St (S901/GS excluded - dedicated platform)
     {"S635", "SL03", "SR20"},  # 14 St-Union Sq
     {"S637", "SD21"},  # Bleecker St / Broadway-Lafayette St
     {"S639", "SM20", "SQ01", "SR23"},  # Canal St

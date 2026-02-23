@@ -7,7 +7,7 @@ GTFS scheduled data and real-time API data are properly deduplicated.
 Key scenarios:
 1. Matching by train_id (primary key)
 2. Matching by line+time (fallback key)
-3. NJT line code normalization (GTFS "NEC" vs API "NE")
+3. NJT line code normalization (legacy "No" vs current "NE")
 4. Amtrak train_id normalization (strip "A" prefix)
 """
 
@@ -78,7 +78,7 @@ class TestMakeDedupKeys:
         """Test primary key includes train_id, date, and source."""
         departure = self._create_departure(
             train_id="3936",
-            line_code="No",
+            line_code="NE",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
@@ -91,7 +91,7 @@ class TestMakeDedupKeys:
         """Test fallback keys include current time and ±1 minute for tolerance."""
         departure = self._create_departure(
             train_id="3936",
-            line_code="No",
+            line_code="NE",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
@@ -100,28 +100,28 @@ class TestMakeDedupKeys:
 
         # Should have 3 keys: 09:14, 09:15, 09:16
         assert len(fallbacks) == 3
-        assert "No:NJT:09:14" in fallbacks
-        assert "No:NJT:09:15" in fallbacks
-        assert "No:NJT:09:16" in fallbacks
+        assert "NE:NJT:09:14" in fallbacks
+        assert "NE:NJT:09:15" in fallbacks
+        assert "NE:NJT:09:16" in fallbacks
 
     def test_no_primary_key_when_train_id_missing(self):
         """Test no primary key when train_id is empty."""
         departure = self._create_departure(
             train_id="",
-            line_code="No",
+            line_code="NE",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
         )
 
         primary, fallbacks = self.service._make_dedup_keys(departure)
 
         assert primary is None
-        assert "No:NJT:09:15" in fallbacks
+        assert "NE:NJT:09:15" in fallbacks
 
     def test_no_primary_key_when_train_id_unknown(self):
         """Test no primary key when train_id is 'Unknown'."""
         departure = self._create_departure(
             train_id="Unknown",
-            line_code="No",
+            line_code="NE",
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
         )
 
@@ -158,13 +158,13 @@ class TestMakeDedupKeys:
 
         departure_et = self._create_departure(
             train_id="2483",
-            line_code="No",
+            line_code="NE",
             scheduled_time=time_in_et,
             data_source="NJT",
         )
         departure_utc = self._create_departure(
             train_id="3846",
-            line_code="No",
+            line_code="NE",
             scheduled_time=time_in_utc,
             data_source="NJT",
         )
@@ -173,28 +173,28 @@ class TestMakeDedupKeys:
         _, fallbacks_utc = self.service._make_dedup_keys(departure_utc)
 
         # Both should produce the same fallback keys (13:02, 13:03, 13:04 in ET)
-        assert "No:NJT:13:03" in fallbacks_et
-        assert "No:NJT:13:03" in fallbacks_utc
+        assert "NE:NJT:13:03" in fallbacks_et
+        assert "NE:NJT:13:03" in fallbacks_utc
         # The main key should be the same
         assert fallbacks_et == fallbacks_utc
 
-    def test_njt_line_code_normalization_ne_to_no(self):
-        """Test NJT line code 'NE' is normalized to 'No' for deduplication.
+    def test_njt_legacy_no_code_passes_through(self):
+        """Test legacy NJT line code 'No' is NOT canonicalized.
 
-        The NJT API inconsistently returns "NEC" or "Northeast Corridor" for
-        the same line, which when truncated gives "NE" or "No". GTFS always
-        maps to "No", so we normalize "NE" -> "No" for matching.
+        'No' was used for both NEC and NJCL under the old truncation-based mapping.
+        Since it's ambiguous, it passes through unchanged rather than being mapped
+        to either 'NE' or 'NC'.
         """
         departure = self._create_departure(
             train_id="3936",
-            line_code="NE",  # From NJT API returning "NEC"
+            line_code="No",  # Legacy ambiguous code
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
 
         _, fallbacks = self.service._make_dedup_keys(departure)
 
-        # "NE" should be normalized to "No" in the fallback key
+        # "No" should pass through unchanged (ambiguous legacy code)
         assert "No:NJT:09:15" in fallbacks
         assert "NE:NJT:09:15" not in fallbacks
 
@@ -278,10 +278,10 @@ class TestMergeDepartures:
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
         realtime = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
         ]
         gtfs = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -296,11 +296,11 @@ class TestMergeDepartures:
 
         # Real-time has different train_id but same line+time
         realtime = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
         ]
         # GTFS uses gtfs_trip_id as train_id
         gtfs = [
-            self._create_departure(train_id="2508", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="2508", line_code="NE", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -312,20 +312,19 @@ class TestMergeDepartures:
     def test_line_code_normalization_enables_dedup(self):
         """Test that line code normalization enables correct deduplication.
 
-        The NJT API inconsistently returns "NEC" or "Northeast Corridor",
-        giving different 2-char codes ("NE" vs "No"). With normalization,
-        both map to "No" and correctly deduplicate.
+        NJT API sometimes returns 'RV' for Raritan Valley while GTFS maps to 'Ra'.
+        With normalization, 'RV' -> 'Ra' and they correctly deduplicate.
         """
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
-        # Real-time uses API line code "No" (from "Northeast Corridor" truncated)
+        # GTFS uses canonical line code "Ra"
         realtime = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="5409", line_code="Ra", scheduled_time=time)
         ]
-        # Even if GTFS or another source uses "NEC", it normalizes to "No"
+        # API returns "RV" which normalizes to "Ra"
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="NEC", scheduled_time=time
+                train_id="5410", line_code="RV", scheduled_time=time
             )
         ]
 
@@ -333,20 +332,20 @@ class TestMergeDepartures:
 
         # With line code normalization: 1 train (correctly deduplicated)
         assert len(merged) == 1
-        assert merged[0].train_id == "3936"  # Real-time preferred
+        assert merged[0].train_id == "5409"  # Real-time preferred
 
     def test_normalized_line_codes_dedup_correctly(self):
-        """Test that normalized line codes enable correct deduplication."""
+        """Test that matching line codes enable correct deduplication."""
         time = ET.localize(datetime(2026, 1, 20, 9, 15))
 
-        # Both use normalized line code "No" (after GTFS NEC -> No mapping)
+        # Both use line code "NE" (API and GTFS now both produce "NE" for NEC)
         realtime = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
         ]
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="No", scheduled_time=time
-            )  # After NJT_LINE_CODE_MAPPING: NEC -> No
+                train_id="2508", line_code="NE", scheduled_time=time
+            )  # After NJT_LINE_CODE_MAPPING: NEC -> NE
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -366,12 +365,12 @@ class TestMergeDepartures:
 
         realtime = [
             self._create_departure(
-                train_id="3936", line_code="No", scheduled_time=realtime_time
+                train_id="3936", line_code="NE", scheduled_time=realtime_time
             )
         ]
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="No", scheduled_time=gtfs_time
+                train_id="2508", line_code="NE", scheduled_time=gtfs_time
             )
         ]
 
@@ -388,12 +387,12 @@ class TestMergeDepartures:
 
         realtime = [
             self._create_departure(
-                train_id="3936", line_code="No", scheduled_time=realtime_time
+                train_id="3936", line_code="NE", scheduled_time=realtime_time
             )
         ]
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="No", scheduled_time=gtfs_time
+                train_id="2508", line_code="NE", scheduled_time=gtfs_time
             )
         ]
 
@@ -409,12 +408,12 @@ class TestMergeDepartures:
 
         realtime = [
             self._create_departure(
-                train_id="3936", line_code="No", scheduled_time=time1
+                train_id="3936", line_code="NE", scheduled_time=time1
             )
         ]
         gtfs = [
             self._create_departure(
-                train_id="2508", line_code="No", scheduled_time=time2
+                train_id="2508", line_code="NE", scheduled_time=time2
             )  # Different time
         ]
 
@@ -429,11 +428,11 @@ class TestMergeDepartures:
 
         realtime = [
             self._create_departure(
-                train_id="3936", line_code="No", scheduled_time=time, is_cancelled=True
+                train_id="3936", line_code="NE", scheduled_time=time, is_cancelled=True
             )
         ]
         gtfs = [
-            self._create_departure(train_id="3936", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="3936", line_code="NE", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
@@ -458,13 +457,13 @@ class TestMergeDepartures:
         # Real-time train with UTC time
         realtime = [
             self._create_departure(
-                train_id="3846", line_code="No", scheduled_time=time_utc
+                train_id="3846", line_code="NE", scheduled_time=time_utc
             )
         ]
         # GTFS train with ET time (same moment)
         gtfs = [
             self._create_departure(
-                train_id="2483", line_code="No", scheduled_time=time_et
+                train_id="2483", line_code="NE", scheduled_time=time_et
             )
         ]
 

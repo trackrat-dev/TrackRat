@@ -491,25 +491,6 @@ class JourneyCollector(BaseJourneyCollector):
 
         return normalized.strip()
 
-    def _normalize_line_code(self, line_code: str) -> str:
-        """Normalize line code for comparison.
-
-        Handles variations like:
-        - "No" -> "ne" (Northeast Corridor)
-        - "NE" -> "ne" (Northeast Corridor)
-        - "M&E" -> "me" (Morris & Essex)
-        """
-        if not line_code:
-            return ""
-
-        normalized = line_code.lower().strip()
-
-        # Handle Northeast Corridor variations
-        if normalized in ["no", "ne"]:
-            return "ne"
-
-        return normalized
-
     async def _is_same_journey(
         self,
         session: AsyncSession,

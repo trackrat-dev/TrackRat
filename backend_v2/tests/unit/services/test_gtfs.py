@@ -443,8 +443,7 @@ class TestNJTLineCodeMapping:
     """Tests for NJT GTFS route_short_name to API line code mapping.
 
     NJT GTFS uses route_short_name values like "NEC", "NJCL", "BNTN", etc.
-    NJT real-time API returns full line names like "Northeast Corridor" which
-    get truncated to 2 characters ("No").
+    NJT real-time API returns 2-char LINE codes like "NE", "NC", "Mo", etc.
 
     This mapping is critical for deduplication between GTFS scheduled data
     and real-time API data - if line codes don't match, the fallback
@@ -475,17 +474,17 @@ class TestNJTLineCodeMapping:
         for route in expected_routes:
             assert route in NJT_LINE_CODE_MAPPING, f"Missing mapping for {route}"
 
-    def test_nec_maps_to_no(self):
-        """Northeast Corridor maps to 'No' (from 'Northeast Corridor' truncated)."""
+    def test_nec_maps_to_ne(self):
+        """Northeast Corridor maps to 'NE' (matching NJT API LINE field)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["NEC"] == "No"
+        assert NJT_LINE_CODE_MAPPING["NEC"] == "NE"
 
-    def test_njcl_maps_to_no(self):
-        """North Jersey Coast Line maps to 'No' (from 'North Jersey...' truncated)."""
+    def test_njcl_maps_to_nc(self):
+        """North Jersey Coast Line maps to 'NC' (distinct from NEC 'NE')."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["NJCL"] == "No"
+        assert NJT_LINE_CODE_MAPPING["NJCL"] == "NC"
 
     def test_morris_essex_maps_to_mo(self):
         """Morris & Essex Line maps to 'Mo' (from 'Morris and Essex' truncated)."""

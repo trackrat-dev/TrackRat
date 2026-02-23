@@ -73,15 +73,15 @@ DEFAULT_LINE_COLORS = {
     "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
 }
 
-# NJT GTFS route_short_name to API line code mapping
-# GTFS uses abbreviations like "NEC", API uses 2-char codes from truncated line names
-# e.g., API returns "Northeast Corridor" which becomes "No" when truncated to 2 chars
+# NJT GTFS route_short_name to line code mapping
+# Maps GTFS route abbreviations to the 2-char codes used by the NJT real-time API
+# (the API's LINE field) and route_topology.py.
 NJT_LINE_CODE_MAPPING = {
-    # Northeast Corridor
-    "NEC": "No",
-    # North Jersey Coast Line
-    "NJCL": "No",  # API returns "North Jersey Coast Line" -> "No"
-    "NJCLL": "No",  # Variation
+    # Northeast Corridor — API LINE="NE", topology line_codes={"NE"}
+    "NEC": "NE",
+    # North Jersey Coast Line — API LINE="NC", topology line_codes={"NC"}
+    "NJCL": "NC",
+    "NJCLL": "NC",  # Variation
     # Morris & Essex Line (Morristown, Dover)
     "MNE": "Mo",  # API returns "Morris and Essex" -> "Mo"
     # Gladstone Branch (part of Morris & Essex)

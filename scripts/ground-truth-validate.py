@@ -402,7 +402,7 @@ def _fetch_gtfsrt_ground_truth(
     client_class: type,
     generate_train_id: Callable[[str], str] | None = None,
 ) -> list[GroundTruthArrival]:
-    """Fetch ground truth departures from a GTFS-RT feed (shared by LIRR and MNR).
+    """Fetch ground truth departures from a GTFS-RT feed (shared by LIRR, MNR, Subway).
 
     Args:
         client_class: The GTFS-RT client class (LIRRClient or MNRClient).
@@ -414,6 +414,10 @@ def _fetch_gtfsrt_ground_truth(
     async def _fetch() -> list[GroundTruthArrival]:
         async with client_class() as client:
             all_arrivals = await client.get_all_arrivals()
+
+        # SubwayClient returns (arrivals, succeeded_feeds) tuple
+        if isinstance(all_arrivals, tuple):
+            all_arrivals = all_arrivals[0]
 
         # Group by trip_id to find destination (last stop)
         trips: dict[str, list] = {}
