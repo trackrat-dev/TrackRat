@@ -624,16 +624,16 @@ class TestSubwayClient:
             arrivals, succeeded_feeds = await client.get_all_arrivals()
 
         # 1234567S served from valid cache, ACE failed
-        assert "1234567S" in succeeded_feeds, (
-            "1234567S had valid cache and should be in succeeded_feeds"
-        )
-        assert "ACE" not in succeeded_feeds, (
-            "ACE feed failed and should NOT be in succeeded_feeds"
-        )
+        assert (
+            "1234567S" in succeeded_feeds
+        ), "1234567S had valid cache and should be in succeeded_feeds"
+        assert (
+            "ACE" not in succeeded_feeds
+        ), "ACE feed failed and should NOT be in succeeded_feeds"
         # Stale ACE data is still included in arrivals
-        assert len(arrivals) == 2, (
-            f"Expected 2 arrivals (1 fresh + 1 stale), got {len(arrivals)}"
-        )
+        assert (
+            len(arrivals) == 2
+        ), f"Expected 2 arrivals (1 fresh + 1 stale), got {len(arrivals)}"
 
     @pytest.mark.asyncio
     async def test_get_all_arrivals_empty_feed_not_counted_as_success(self, client):
@@ -675,6 +675,4 @@ class TestSubwayClient:
             arrivals, succeeded_feeds = await client.get_all_arrivals()
 
         assert "1234567S" in succeeded_feeds
-        assert "ACE" not in succeeded_feeds, (
-            "Empty feed should not count as success"
-        )
+        assert "ACE" not in succeeded_feeds, "Empty feed should not count as success"

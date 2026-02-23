@@ -28,7 +28,11 @@ from trackrat.collectors.mta_common import (
     update_journey_metadata,
     update_stop_departure_status,
 )
-from trackrat.collectors.subway.client import SubwayArrival, SubwayClient, _ROUTE_TO_FEED
+from trackrat.collectors.subway.client import (
+    _ROUTE_TO_FEED,
+    SubwayArrival,
+    SubwayClient,
+)
 from trackrat.config.stations import (
     SUBWAY_ROUTES,
     get_station_name,

@@ -302,7 +302,8 @@ class SubwayClient:
         if feed_key and feed_key in SUBWAY_GTFS_RT_FEED_URLS:
             return await self._fetch_feed(feed_key, SUBWAY_GTFS_RT_FEED_URLS[feed_key])
         # Unknown route — fall back to all feeds
-        return await self.get_all_arrivals()
+        arrivals, _ = await self.get_all_arrivals()
+        return arrivals
 
     async def get_station_arrivals(self, station_code: str) -> list[SubwayArrival]:
         """Get arrivals for a specific station."""

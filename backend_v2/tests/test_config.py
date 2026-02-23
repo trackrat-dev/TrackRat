@@ -2,6 +2,8 @@
 Tests for configuration management.
 """
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -123,7 +125,15 @@ def test_njt_token_empty_when_no_source(tmp_path, monkeypatch):
     monkeypatch.delenv("TRACKRAT_NJT_API_TOKEN", raising=False)
     monkeypatch.delenv("NJT_API_TOKEN", raising=False)
     monkeypatch.delenv("NJT_TOKEN", raising=False)
-    monkeypatch.chdir(tmp_path)
+    # The validator walks from __file__ (not cwd) looking for .njt-token,
+    # so chdir alone won't prevent it finding the repo's token file.
+    # Patch is_file to block .njt-token discovery.
+    _orig_is_file = Path.is_file
+    monkeypatch.setattr(
+        Path,
+        "is_file",
+        lambda self: False if self.name == ".njt-token" else _orig_is_file(self),
+    )
 
     settings = Settings(database_url="postgresql://user:pass@localhost/db")
     assert settings.njt_api_token == ""

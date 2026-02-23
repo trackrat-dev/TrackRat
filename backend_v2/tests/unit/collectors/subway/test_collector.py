@@ -760,9 +760,9 @@ class TestSubwayFeedResilience:
         result = await collector.collect(mock_session)
 
         # The N train should NOT be expired since NQRW feed failed
-        assert stale_journey.is_expired is False, (
-            "Journey from failed feed should NOT be expired"
-        )
+        assert (
+            stale_journey.is_expired is False
+        ), "Journey from failed feed should NOT be expired"
         assert result["expired"] == 0
 
     @pytest.mark.asyncio
@@ -823,27 +823,42 @@ class TestSubwayFeedResilience:
         result = await collector.collect(mock_session)
 
         # The route-1 train SHOULD be expired since 1234567S feed succeeded
-        assert stale_journey.is_expired is True, (
-            "Journey from succeeded feed should be expired when missing from feed"
-        )
+        assert (
+            stale_journey.is_expired is True
+        ), "Journey from succeeded feed should be expired when missing from feed"
         assert result["expired"] == 1
 
     def test_route_to_feed_mapping_coverage(self):
         """Verify _ROUTE_TO_FEED covers all commonly used subway routes."""
         expected_routes = [
-            "1", "2", "3", "4", "5", "6", "7",
-            "A", "C", "E",
-            "B", "D", "F", "M",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "A",
+            "C",
+            "E",
+            "B",
+            "D",
+            "F",
+            "M",
             "G",
-            "J", "Z",
+            "J",
+            "Z",
             "L",
-            "N", "Q", "R", "W",
+            "N",
+            "Q",
+            "R",
+            "W",
             "SI",
         ]
         for route in expected_routes:
-            assert route in _ROUTE_TO_FEED, (
-                f"Route {route} missing from _ROUTE_TO_FEED mapping"
-            )
+            assert (
+                route in _ROUTE_TO_FEED
+            ), f"Route {route} missing from _ROUTE_TO_FEED mapping"
 
 
 # =============================================================================
@@ -859,14 +874,14 @@ class TestGtfsFeedUrl:
         so planned work (weekend service changes) is reflected."""
         from trackrat.services.gtfs import GTFS_FEED_URLS
 
-        assert "supplemented" in GTFS_FEED_URLS["SUBWAY"], (
-            f"Expected supplemented feed URL, got: {GTFS_FEED_URLS['SUBWAY']}"
-        )
+        assert (
+            "supplemented" in GTFS_FEED_URLS["SUBWAY"]
+        ), f"Expected supplemented feed URL, got: {GTFS_FEED_URLS['SUBWAY']}"
 
     def test_subway_static_url_is_supplemented(self):
         """SUBWAY_GTFS_STATIC_URL constant should match the supplemented feed."""
         from trackrat.config.stations.subway import SUBWAY_GTFS_STATIC_URL
 
-        assert "supplemented" in SUBWAY_GTFS_STATIC_URL, (
-            f"Expected supplemented feed URL, got: {SUBWAY_GTFS_STATIC_URL}"
-        )
+        assert (
+            "supplemented" in SUBWAY_GTFS_STATIC_URL
+        ), f"Expected supplemented feed URL, got: {SUBWAY_GTFS_STATIC_URL}"

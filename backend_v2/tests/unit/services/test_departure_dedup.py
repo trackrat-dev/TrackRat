@@ -323,9 +323,7 @@ class TestMergeDepartures:
         ]
         # API returns "RV" which normalizes to "Ra"
         gtfs = [
-            self._create_departure(
-                train_id="5410", line_code="RV", scheduled_time=time
-            )
+            self._create_departure(train_id="5410", line_code="RV", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)

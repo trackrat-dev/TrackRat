@@ -212,7 +212,7 @@ class SimpleAPNSService:
         device_token: str,
         title: str,
         body: str,
-        custom_data: dict | None = None,
+        custom_data: dict[str, Any] | None = None,
     ) -> bool:
         """
         Send a standard alert push notification to an iOS device.
@@ -230,7 +230,7 @@ class SimpleAPNSService:
             logger.warning("apns_alert_skipped", reason="Not configured")
             return False
 
-        payload: dict = {
+        payload: dict[str, Any] = {
             "aps": {
                 "alert": {"title": title, "body": body},
                 "sound": "default",
