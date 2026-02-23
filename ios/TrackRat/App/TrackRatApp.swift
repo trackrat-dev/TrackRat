@@ -632,6 +632,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Amtrak coverage mode: NEC Only vs All Routes (persisted via UserDefaults)
+    @Published var amtrakMode: AmtrakMode = .all {
+        didSet {
+            UserDefaults.standard.set(amtrakMode.rawValue, forKey: "amtrakMode")
+        }
+    }
+
     // Map display settings (persisted via UserDefaults)
     @Published var mapHighlightMode: SegmentHighlightMode = .delays {
         didSet {
@@ -757,14 +764,29 @@ final class AppState: ObservableObject {
 
     // MARK: - Train Systems
 
-    /// Load selected systems from UserDefaults
+    /// Load selected systems from UserDefaults (with migration from legacy AMTRAK_NEC)
     private func loadSelectedSystems() {
         if let stored = UserDefaults.standard.string(forKey: "selectedTrainSystems"), !stored.isEmpty {
+            // Migration: convert legacy "AMTRAK_NEC" to "AMTRAK" + necOnly mode
+            if stored.contains("AMTRAK_NEC") {
+                let migrated = stored
+                    .replacingOccurrences(of: "AMTRAK_NEC", with: "AMTRAK")
+                let loaded = Set<TrainSystem>.from(commaSeparated: migrated)
+                selectedSystems = loaded.isEmpty ? .defaultEnabled : loaded
+                amtrakMode = .necOnly
+                return
+            }
+
             let loaded = Set<TrainSystem>.from(commaSeparated: stored)
             selectedSystems = loaded.isEmpty ? .defaultEnabled : loaded
         } else {
-            // Default to NJT and Amtrak
             selectedSystems = .defaultEnabled
+        }
+
+        // Load persisted amtrak mode
+        if let storedMode = UserDefaults.standard.string(forKey: "amtrakMode"),
+           let mode = AmtrakMode(rawValue: storedMode) {
+            amtrakMode = mode
         }
     }
 
@@ -774,26 +796,34 @@ final class AppState: ObservableObject {
     }
 
     /// Toggle a system's selection state (ensures at least one remains selected)
+    /// For Amtrak: cycles Off → NEC Only → All → Off
     func toggleSystem(_ system: TrainSystem) {
-        if selectedSystems.contains(system) {
-            // Don't allow deselecting the last system
-            guard selectedSystems.count > 1 else { return }
-            selectedSystems.remove(system)
+        if system == .amtrak {
+            if !selectedSystems.contains(.amtrak) {
+                // Off → NEC Only
+                selectedSystems.insert(.amtrak)
+                amtrakMode = .necOnly
+            } else if amtrakMode == .necOnly {
+                // NEC Only → All
+                amtrakMode = .all
+            } else {
+                // All → Off (unless it's the last system)
+                guard selectedSystems.count > 1 else { return }
+                selectedSystems.remove(.amtrak)
+            }
         } else {
-            selectedSystems.insert(system)
-            // Mutual exclusivity: full Amtrak and NEC-only can't coexist
-            switch system {
-            case .amtrak:    selectedSystems.remove(.amtrakNEC)
-            case .amtrakNEC: selectedSystems.remove(.amtrak)
-            default: break
+            if selectedSystems.contains(system) {
+                guard selectedSystems.count > 1 else { return }
+                selectedSystems.remove(system)
+            } else {
+                selectedSystems.insert(system)
             }
         }
     }
 
     /// Select all systems
     func selectAllSystems() {
-        // Exclude .amtrakNEC since .amtrak is its superset
-        selectedSystems = Set(TrainSystem.allCases.filter { $0 != .amtrakNEC })
+        selectedSystems = Set(TrainSystem.allCases)
     }
 
     // MARK: - Map Settings

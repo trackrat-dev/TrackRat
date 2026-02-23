@@ -1,10 +1,31 @@
 import Foundation
 
+/// Amtrak coverage mode: NEC-only or all routes
+enum AmtrakMode: String, CaseIterable {
+    case necOnly = "NEC_ONLY"
+    case all = "ALL"
+
+    /// Label shown as subtitle on Amtrak toggle buttons
+    var label: String {
+        switch self {
+        case .necOnly: return "NEC Only"
+        case .all: return "All Routes"
+        }
+    }
+
+    /// Cycle to next mode
+    var next: AmtrakMode {
+        switch self {
+        case .necOnly: return .all
+        case .all: return .necOnly
+        }
+    }
+}
+
 /// Represents the different train systems supported by TrackRat
 enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case njt = "NJT"
     case amtrak = "AMTRAK"
-    case amtrakNEC = "AMTRAK_NEC"
     case path = "PATH"
     case patco = "PATCO"
     case lirr = "LIRR"
@@ -13,28 +34,14 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
-    /// Backend data source string (e.g. .amtrakNEC shares "AMTRAK")
-    var dataSource: String {
-        switch self {
-        case .amtrakNEC: return "AMTRAK"
-        default: return rawValue
-        }
-    }
-
-    /// Route IDs this system is restricted to, or nil for no restriction
-    var routeIds: [String]? {
-        switch self {
-        case .amtrakNEC: return ["amtrak-nec", "amtrak-keystone"]
-        default: return nil
-        }
-    }
+    /// Backend data source string
+    var dataSource: String { rawValue }
 
     /// Human-readable display name
     var displayName: String {
         switch self {
         case .njt: return "NJ Transit"
         case .amtrak: return "Amtrak"
-        case .amtrakNEC: return "Amtrak (NEC Only)"
         case .path: return "PATH"
         case .patco: return "PATCO"
         case .lirr: return "LIRR"
@@ -48,7 +55,6 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .njt: return "New Jersey commuter rail"
         case .amtrak: return "National passenger rail"
-        case .amtrakNEC: return "Northeast Corridor & Keystone"
         case .path: return "NY-NJ rapid transit"
         case .patco: return "Philly-South Jersey"
         case .lirr: return "Long Island commuter rail"
@@ -61,7 +67,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     var icon: String {
         switch self {
         case .njt: return "tram.fill"
-        case .amtrak, .amtrakNEC: return "train.side.front.car"
+        case .amtrak: return "train.side.front.car"
         case .path: return "tram"
         case .patco: return "lightrail.fill"
         case .lirr: return "train.side.rear.car"
@@ -74,7 +80,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     var color: String {
         switch self {
         case .njt: return "#004D6E"   // NJ Transit blue
-        case .amtrak, .amtrakNEC: return "#004B87" // Amtrak blue
+        case .amtrak: return "#004B87" // Amtrak blue
         case .path: return "#FF5722"  // PATH orange
         case .patco: return "#0072CE" // PATCO blue
         case .lirr: return "#0039A6"  // MTA LIRR blue
@@ -119,37 +125,28 @@ extension Set where Element == TrainSystem {
         []
     }
 
-    /// Deduplicated data source strings for API calls (e.g. both .amtrak and .amtrakNEC → "AMTRAK")
+    /// Deduplicated data source strings for API calls
     var apiDataSources: String {
-        Set<String>(self.map(\.dataSource)).sorted().joined(separator: ",")
+        Set<String>(self.map(\.rawValue)).sorted().joined(separator: ",")
     }
 
     /// Converts to raw data source string set for use with Stations/route filtering
     var asRawStrings: Set<String> {
-        var result = Set<String>()
-        for system in self {
-            result.insert(system.dataSource)
-        }
-        return result
+        Set<String>(self.map(\.rawValue))
     }
 }
 
 // MARK: - Stations Extensions (TrainSystem-aware wrappers)
 
 extension Stations {
-    /// Cached mapping of route-filtered system rawValues to their allowed station codes.
-    /// For systems like .amtrakNEC that restrict to specific routes.
-    static let routeFilteredStations: [String: Set<String>] = {
-        var result: [String: Set<String>] = [:]
-        for system in TrainSystem.allCases {
-            guard let routeIds = system.routeIds else { continue }
-            var codes = Set<String>()
-            for route in RouteTopology.allRoutes where routeIds.contains(route.id) {
-                codes.formUnion(route.stationCodes)
-            }
-            result[system.rawValue] = codes
+    /// Station codes on the Amtrak NEC + Keystone routes (used for NEC-only filtering)
+    static let amtrakNECStations: Set<String> = {
+        let necRouteIds: Set<String> = ["amtrak-nec", "amtrak-keystone"]
+        var codes = Set<String>()
+        for route in RouteTopology.allRoutes where necRouteIds.contains(route.id) {
+            codes.formUnion(route.stationCodes)
         }
-        return result
+        return codes
     }()
 
     /// Returns the train systems that serve a given station
@@ -159,15 +156,16 @@ extension Stations {
         return Set(rawSystems.compactMap { TrainSystem(rawValue: $0) })
     }
 
-    /// Check if a station should be visible based on selected systems
+    /// Check if a station should be visible based on selected systems and Amtrak mode
     /// A station is visible if ANY of the selected systems serve it
-    static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>) -> Bool {
+    static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>, amtrakMode: AmtrakMode = .all) -> Bool {
         for system in selectedSystems {
-            if let allowedStations = routeFilteredStations[system.rawValue] {
-                if allowedStations.contains(code) { return true }
+            if system == .amtrak && amtrakMode == .necOnly {
+                // NEC-only: restrict to NEC + Keystone stations
+                if amtrakNECStations.contains(code) { return true }
             } else {
                 let stationSystems = systemStringsForStation(code)
-                if stationSystems.contains(system.dataSource) { return true }
+                if stationSystems.contains(system.rawValue) { return true }
             }
         }
         return false

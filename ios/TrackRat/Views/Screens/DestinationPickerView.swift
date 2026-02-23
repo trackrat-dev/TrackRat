@@ -14,7 +14,7 @@ struct DestinationPickerView: View {
         return results.filter { stationName in
             guard stationName != appState.selectedDeparture else { return false }
             guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems)
+            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
         }
     }
 
@@ -22,7 +22,7 @@ struct DestinationPickerView: View {
     private var favoriteStations: [FavoriteStation] {
         return appState.favoriteStations.filter { station in
             station.id != appState.departureStationCode &&
-            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems)
+            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
         }
     }
     
