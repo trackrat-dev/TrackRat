@@ -823,6 +823,7 @@ final class AppState: ObservableObject {
                 // All → Off (unless it's the last system)
                 guard selectedSystems.count > 1 else { return }
                 selectedSystems.remove(.amtrak)
+                amtrakMode = .necOnly
             }
         } else {
             if selectedSystems.contains(system) {

@@ -54,6 +54,7 @@ def _generate_train_id(trip_id: str) -> str:
         train_number = parts[0]
     else:
         # Fallback for unexpected formats: extract digits from end
+        logger.warning("Unexpected LIRR trip_id format: %s", trip_id)
         train_number = "".join(c for c in trip_id if c.isdigit())[-6:]
 
     if not train_number:
