@@ -84,20 +84,20 @@ struct RouteStatusView: View {
         timePeriodSection(
             title: "Past Hour",
             data: viewModel.pastHourData,
-            isLoading: viewModel.isLoadingHistory,
-            error: viewModel.historyError
+            isLoading: viewModel.isLoadingPastHour,
+            error: viewModel.pastHourError
         )
         timePeriodSection(
             title: "Past 24 Hours",
             data: viewModel.past24HoursData,
-            isLoading: viewModel.isLoadingHistory,
-            error: viewModel.historyError
+            isLoading: viewModel.isLoadingPast24Hours,
+            error: viewModel.past24HoursError
         )
         timePeriodSection(
             title: "Past 7 Days",
             data: viewModel.past7DaysData,
-            isLoading: viewModel.isLoadingHistory,
-            error: viewModel.historyError
+            isLoading: viewModel.isLoadingPast7Days,
+            error: viewModel.past7DaysError
         )
     }
 
@@ -228,12 +228,16 @@ final class RouteStatusViewModel: ObservableObject {
     @Published var isLoadingMap = false
     @Published var mapError: String?
 
-    // History state - three time periods
+    // History state - per-section loading and error
     @Published var pastHourData: RouteHistoricalData?
     @Published var past24HoursData: RouteHistoricalData?
     @Published var past7DaysData: RouteHistoricalData?
-    @Published var isLoadingHistory = false
-    @Published var historyError: String?
+    @Published var isLoadingPastHour = false
+    @Published var isLoadingPast24Hours = false
+    @Published var isLoadingPast7Days = false
+    @Published var pastHourError: String?
+    @Published var past24HoursError: String?
+    @Published var past7DaysError: String?
 
     init(context: RouteStatusContext) {
         self.context = context
@@ -323,16 +327,20 @@ final class RouteStatusViewModel: ObservableObject {
     private func loadAllHistory() async {
         guard let from = context.effectiveFromStation,
               let to = context.effectiveToStation else {
-            historyError = "No station pair available"
+            pastHourError = "No station pair available"
+            past24HoursError = "No station pair available"
+            past7DaysError = "No station pair available"
             return
         }
 
-        isLoadingHistory = true
-        defer { isLoadingHistory = false }
+        isLoadingPastHour = true
+        isLoadingPast24Hours = true
+        isLoadingPast7Days = true
 
         // Fetch all three time periods in parallel
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
+                defer { Task { @MainActor in self.isLoadingPastHour = false } }
                 do {
                     let data = try await APIService.shared.fetchRouteHistoricalData(
                         from: from, to: to,
@@ -341,22 +349,24 @@ final class RouteStatusViewModel: ObservableObject {
                     )
                     await MainActor.run { self.pastHourData = data }
                 } catch {
-                    print("Past hour history load failed: \(error)")
+                    await MainActor.run { self.pastHourError = error.localizedDescription }
                 }
             }
             group.addTask {
+                defer { Task { @MainActor in self.isLoadingPast24Hours = false } }
                 do {
                     let data = try await APIService.shared.fetchRouteHistoricalData(
                         from: from, to: to,
                         dataSource: self.context.dataSource,
-                        days: 1
+                        hours: 24
                     )
                     await MainActor.run { self.past24HoursData = data }
                 } catch {
-                    print("Past 24h history load failed: \(error)")
+                    await MainActor.run { self.past24HoursError = error.localizedDescription }
                 }
             }
             group.addTask {
+                defer { Task { @MainActor in self.isLoadingPast7Days = false } }
                 do {
                     let data = try await APIService.shared.fetchRouteHistoricalData(
                         from: from, to: to,
@@ -365,7 +375,7 @@ final class RouteStatusViewModel: ObservableObject {
                     )
                     await MainActor.run { self.past7DaysData = data }
                 } catch {
-                    await MainActor.run { self.historyError = error.localizedDescription }
+                    await MainActor.run { self.past7DaysError = error.localizedDescription }
                 }
             }
         }

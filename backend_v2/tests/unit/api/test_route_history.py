@@ -12,8 +12,6 @@ Tests _calculate_route_stats directly to verify:
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
-import pytest
-
 from trackrat.api.routes import _calculate_route_stats
 
 

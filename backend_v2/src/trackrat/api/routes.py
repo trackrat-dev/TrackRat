@@ -132,6 +132,9 @@ async def get_route_history(
         from_stop_conditions.append(
             from_stop_alias.scheduled_departure >= cutoff_time,
         )
+        from_stop_conditions.append(
+            from_stop_alias.scheduled_departure <= now,
+        )
 
     # Subquery: journey has from_station with stop_sequence < to_station's sequence
     route_filter = exists(
