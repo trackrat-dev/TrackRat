@@ -173,12 +173,7 @@ export function LandingPage() {
         ))}
 
         {/* Unified Feature - full width with three images */}
-        <div className="text-center mb-6">
-          <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
-            {unifiedFeature.title}
-          </h2>
-        </div>
-        <div className="flex justify-center gap-4">
+        <div className="flex justify-center gap-4 mb-6">
           {unifiedFeature.images.map((src) => (
             <img
               key={src}
@@ -188,6 +183,11 @@ export function LandingPage() {
               loading="lazy"
             />
           ))}
+        </div>
+        <div className="text-center">
+          <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
+            {unifiedFeature.title}
+          </h2>
         </div>
       </section>
 
