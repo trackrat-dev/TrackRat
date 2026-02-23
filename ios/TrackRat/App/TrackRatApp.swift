@@ -29,6 +29,11 @@ struct TrackRatApp: App {
             .tint(themeManager.tintColor)
             .onAppear {
                 AppDelegate.appState = appState
+                // Pick up any route status from a cold-launch notification tap
+                if let pending = AppDelegate.pendingColdLaunchRouteStatus {
+                    AppDelegate.pendingColdLaunchRouteStatus = nil
+                    appState.pendingRouteStatus = pending
+                }
             }
             .onOpenURL { url in
                 print("🔗 App received URL: \(url)")
@@ -71,6 +76,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// Weak reference to AppState, set by TrackRatApp on launch
     @MainActor static weak var appState: AppState?
+
+    /// Pending route status from notification tap during cold launch (before appState is set)
+    @MainActor static var pendingColdLaunchRouteStatus: RouteStatusContext?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         // Set up notification delegate
@@ -140,7 +148,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 toStationCode: routeAlert["to_station_code"] as? String
             )
             Task { @MainActor in
-                AppDelegate.appState?.pendingRouteStatus = context
+                if let appState = AppDelegate.appState {
+                    appState.pendingRouteStatus = context
+                } else {
+                    // Cold launch: appState not yet available, stash for pickup in onAppear
+                    AppDelegate.pendingColdLaunchRouteStatus = context
+                }
             }
         }
         completionHandler()

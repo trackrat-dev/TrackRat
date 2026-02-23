@@ -212,6 +212,11 @@ struct MapContainerView: View {
             .sheet(isPresented: $feedbackService.shouldShowFeedbackPrompt) {
                 JourneyFeedbackPromptView()
             }
+            .sheet(item: $appState.pendingRouteStatus) { context in
+                RouteStatusView(context: context)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
         }
         .task {
             // Load congestion data when map container appears, but don't block UI
@@ -348,11 +353,6 @@ struct MapContainerView: View {
         .sheet(item: $selectedSegment) { segment in
             SegmentTrainDetailsView(segment: segment)
                 .presentationDetents([.height(600), .large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $appState.pendingRouteStatus) { context in
-            RouteStatusView(context: context)
-                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
     }
