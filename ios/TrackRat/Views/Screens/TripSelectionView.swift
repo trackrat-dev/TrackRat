@@ -25,8 +25,8 @@ struct TripSelectionView: View {
     // Whether the RatSense suggestion button should be visible
     private var isRatSenseSuggestionVisible: Bool {
         guard let suggestion = ratSenseService.suggestedJourney,
-              Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems),
-              Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems),
+              Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
+              Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
               !liveActivityService.isActivityActive,
               !isSearching,
               !showingProfile else {
@@ -38,7 +38,7 @@ struct TripSelectionView: View {
     // Get favorite stations filtered by selected systems
     private var favoriteStations: [FavoriteStation] {
         return appState.favoriteStations.filter { station in
-            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems)
+            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
         }
     }
     
@@ -49,7 +49,7 @@ struct TripSelectionView: View {
         let allStationResults = Stations.search(query)
         let stationResults = allStationResults.filter { stationName in
             guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems)
+            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
         }
 
         // Generate potential train numbers for dual search

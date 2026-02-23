@@ -93,6 +93,7 @@ struct OnboardingView: View {
                 selectedStation: binding(for: stationBeingEdited),
                 disabledStation: disabledStation(for: stationBeingEdited),
                 selectedSystems: appState.selectedSystems,
+                amtrakMode: appState.amtrakMode,
                 onStationSelected: { station in
                     // Explicitly handle station assignment with proper state update
                     DispatchQueue.main.async {
@@ -134,6 +135,7 @@ struct OnboardingView: View {
                     SystemSelectionCard(
                         system: system,
                         isSelected: appState.isSystemSelected(system),
+                        subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
                         onTap: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 appState.toggleSystem(system)
@@ -552,6 +554,7 @@ struct StationSelectionCard: View {
 struct SystemSelectionCard: View {
     let system: TrainSystem
     let isSelected: Bool
+    var subtitle: String? = nil
     let onTap: () -> Void
 
     var body: some View {
@@ -569,6 +572,17 @@ struct SystemSelectionCard: View {
                         Text(system.displayName)
                             .font(.headline)
                             .foregroundColor(.white)
+                        if let subtitle, isSelected {
+                            Text(subtitle)
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule().fill(.orange.opacity(0.2))
+                                )
+                        }
                         if system.isBeta {
                             Text("beta")
                                 .font(.caption2)
@@ -672,6 +686,7 @@ struct StationPickerSheet: View {
     @Binding var selectedStation: Station?
     let disabledStation: Station?  // Station that should be shown as disabled
     var selectedSystems: Set<TrainSystem>? = nil  // Optional: filter stations by selected systems
+    var amtrakMode: AmtrakMode = .all
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -686,7 +701,7 @@ struct StationPickerSheet: View {
 
         if let systems = selectedSystems {
             allStations = allStations.filter { station in
-                Stations.isStationVisible(station.code, withSystems: systems)
+                Stations.isStationVisible(station.code, withSystems: systems, amtrakMode: amtrakMode)
             }
         }
 

@@ -152,7 +152,10 @@ struct CongestionMapView: View {
             await viewModel.fetchCongestionData()
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
-            viewModel.setSelectedSystems(newSystems)
+            viewModel.setSelectedSystems(newSystems, amtrakMode: appState.amtrakMode)
+        }
+        .onChange(of: appState.amtrakMode) { _, newMode in
+            viewModel.setSelectedSystems(appState.selectedSystems, amtrakMode: newMode)
         }
         .onChange(of: appState.mapHighlightMode) { _, newMode in
             viewModel.highlightMode = newMode
@@ -162,7 +165,7 @@ struct CongestionMapView: View {
         }
         .onAppear {
             // Sync AppState settings to ViewModel on appear
-            viewModel.setSelectedSystems(appState.selectedSystems)
+            viewModel.setSelectedSystems(appState.selectedSystems, amtrakMode: appState.amtrakMode)
             viewModel.highlightMode = appState.mapHighlightMode
             viewModel.showStations = appState.showMapStations
         }
@@ -264,6 +267,7 @@ struct CongestionMapView: View {
                 SystemToggleButton(
                     system: system,
                     isSelected: appState.isSystemSelected(system),
+                    subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
                     action: {
                         appState.toggleSystem(system)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -382,6 +386,7 @@ private struct LayerToggleButton: View {
 private struct SystemToggleButton: View {
     let system: TrainSystem
     let isSelected: Bool
+    var subtitle: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -392,9 +397,17 @@ private struct SystemToggleButton: View {
                     .foregroundColor(isSelected ? .orange : .secondary)
                     .frame(width: 20)
 
-                Text(system.displayName)
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(system.displayName)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+
+                    if let subtitle, isSelected {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundColor(.orange)
+                    }
+                }
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.body)
@@ -490,6 +503,7 @@ class CongestionMapViewModel: ObservableObject {
 
     // System filter
     private var selectedSystems: Set<TrainSystem> = .all
+    private var amtrakMode: AmtrakMode = .all
 
     // Live Activity observation
     private var liveActivityCancellables = Set<AnyCancellable>()
@@ -515,20 +529,22 @@ class CongestionMapViewModel: ObservableObject {
         }
         // Apply system filter to get visible stations
         routeStations = allRouteStations.filter { station in
-            Stations.isStationVisible(station.code, withSystems: selectedSystems)
+            Stations.isStationVisible(station.code, withSystems: selectedSystems, amtrakMode: amtrakMode)
         }
         print("🗺️ Loaded \(allRouteStations.count) route topology stations, \(routeStations.count) visible with current systems")
     }
 
     /// Updates the selected systems filter and reapplies all filtering
-    func setSelectedSystems(_ systems: Set<TrainSystem>) {
-        guard systems != selectedSystems else { return }
+    func setSelectedSystems(_ systems: Set<TrainSystem>, amtrakMode: AmtrakMode = .all) {
+        let changed = systems != selectedSystems || amtrakMode != self.amtrakMode
         selectedSystems = systems
+        self.amtrakMode = amtrakMode
+        guard changed else { return }
         print("🚦 Selected systems updated: \(systems.map(\.rawValue).sorted().joined(separator: ", "))")
 
         // Refilter route stations
         routeStations = allRouteStations.filter { station in
-            Stations.isStationVisible(station.code, withSystems: selectedSystems)
+            Stations.isStationVisible(station.code, withSystems: selectedSystems, amtrakMode: amtrakMode)
         }
 
         // Reapply all filters
@@ -745,11 +761,11 @@ class CongestionMapViewModel: ObservableObject {
         // First filter by effective systems
         let systemFilteredAggregated = allAggregatedSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
         let systemFilteredIndividual = allIndividualSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
-        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: effectiveSystems) }
+        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: effectiveSystems, amtrakMode: amtrakMode) }
 
         // Update route station visibility to match effective systems
         routeStations = allRouteStations.filter { station in
-            Stations.isStationVisible(station.code, withSystems: effectiveSystems)
+            Stations.isStationVisible(station.code, withSystems: effectiveSystems, amtrakMode: amtrakMode)
         }
 
         // Then apply route filter if we have one
@@ -908,8 +924,8 @@ struct FilterSheet: View {
                 Section("Data Source") {
                     Picker("Source", selection: $selectedDataSource) {
                         Text("All").tag("All")
-                        ForEach(TrainSystem.allCases.filter { $0 != .amtrakNEC }) { system in
-                            Text(system.displayName).tag(system.dataSource)
+                        ForEach(TrainSystem.allCases) { system in
+                            Text(system.displayName).tag(system.rawValue)
                         }
                     }
                 }

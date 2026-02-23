@@ -413,7 +413,8 @@ struct SettingsSection: View {
                     TrainSystemRow(
                         system: system,
                         isSelected: appState.isSystemSelected(system),
-                        isLast: system == sortedSystems.last
+                        isLast: system == sortedSystems.last,
+                        subtitle: system == .amtrak ? appState.amtrakMode.label : nil
                     ) {
                         appState.toggleSystem(system)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -914,6 +915,7 @@ private struct TrainSystemRow: View {
     let system: TrainSystem
     let isSelected: Bool
     let isLast: Bool
+    var subtitle: String? = nil
     let action: () -> Void
 
     var body: some View {
@@ -925,10 +927,18 @@ private struct TrainSystemRow: View {
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
                         .frame(width: 24, height: 24)
 
-                    Text(system.displayName + (system.isBeta ? " (beta)" : ""))
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(system.displayName + (system.isBeta ? " (beta)" : ""))
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+
+                        if let subtitle, isSelected {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+                    }
 
                     Spacer()
 

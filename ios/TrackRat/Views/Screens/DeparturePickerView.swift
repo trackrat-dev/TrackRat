@@ -71,7 +71,7 @@ struct DeparturePickerView: View {
         // Always search stations, filtered by selected systems
         let stationResults = Stations.search(query).filter { stationName in
             guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems)
+            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
         }
         
         // Check if input also looks like a train number
