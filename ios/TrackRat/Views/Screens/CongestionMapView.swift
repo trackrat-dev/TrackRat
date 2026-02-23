@@ -253,6 +253,7 @@ struct CongestionMapView: View {
                 detail: viewModel.showStations ? "On" : "Off"
             ) {
                 viewModel.showStations.toggle()
+                appState.showMapStations = viewModel.showStations
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
 

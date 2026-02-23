@@ -273,11 +273,13 @@ async def _query_baseline_train_count(
     lookback_end = (now - timedelta(days=1)).date()
 
     # Build base conditions: same data source, same hour, same day type
+    # Exclude cancelled trains to match the active_count calculation in evaluate_route_alerts
     base_conditions = [
         TrainJourney.data_source == sub.data_source,
         TrainJourney.journey_date >= lookback_start,
         TrainJourney.journey_date <= lookback_end,
         extract("hour", TrainJourney.scheduled_departure) == current_hour,
+        TrainJourney.is_cancelled.is_not(True),
     ]
 
     # Filter weekday/weekend pattern

@@ -329,6 +329,25 @@ struct CongestionMapKitView: UIViewRepresentable {
         
         // Build desired overlay state (include congestionLevel to catch visual changes)
         let desiredOverlayState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
+        let highlightModeChanged = highlightMode != context.coordinator.highlightMode
+
+        // If highlight mode changed, update existing overlay renderers
+        if highlightModeChanged {
+            context.coordinator.highlightMode = highlightMode
+            for polyline in context.coordinator.polylines {
+                if let renderer = mapView.renderer(for: polyline) as? MKPolylineRenderer,
+                   let segment = polyline.segment {
+                    if segment.cancellationRate > 0 {
+                        renderer.strokeColor = UIColor.darkGray
+                        renderer.lineWidth = 10
+                    } else {
+                        renderer.strokeColor = context.coordinator.colorForSegment(segment)
+                        renderer.lineWidth = context.coordinator.lineWidthForSegment(segment)
+                    }
+                    renderer.setNeedsDisplay()
+                }
+            }
+        }
 
         // Early exit if nothing changed
         guard desiredOverlayState != context.coordinator.currentOverlayState else {
@@ -438,6 +457,23 @@ struct CongestionMapKitView: UIViewRepresentable {
         var currentOverlayState: Set<OverlayIdentity> = []
         var overlayMap: [String: CongestionPolyline] = [:]
 
+        // MARK: - Public color/width helpers for updateUIView
+        func colorForSegment(_ segment: CongestionSegment) -> UIColor {
+            if highlightMode == .health {
+                return getFrequencyUIColor(for: segment.frequencyFactor)
+            } else {
+                return getUIColor(for: segment.congestionFactor)
+            }
+        }
+
+        func lineWidthForSegment(_ segment: CongestionSegment) -> CGFloat {
+            if highlightMode == .health {
+                return getFrequencyLineWidth(segment.frequencyFactor)
+            } else {
+                return getCongestionLineWidth(segment.congestionFactor)
+            }
+        }
+
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? CongestionPolyline {
@@ -448,13 +484,8 @@ struct CongestionMapKitView: UIViewRepresentable {
                     renderer.strokeColor = UIColor.darkGray
                     renderer.lineWidth = 10
                 } else if let segment = polyline.segment {
-                    if highlightMode == .health {
-                        renderer.strokeColor = getFrequencyUIColor(for: segment.frequencyFactor)
-                        renderer.lineWidth = getFrequencyLineWidth(segment.frequencyFactor)
-                    } else {
-                        renderer.strokeColor = getUIColor(for: segment.congestionFactor)
-                        renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
-                    }
+                    renderer.strokeColor = colorForSegment(segment)
+                    renderer.lineWidth = lineWidthForSegment(segment)
                 } else {
                     renderer.strokeColor = UIColor.gray
                     renderer.lineWidth = 5

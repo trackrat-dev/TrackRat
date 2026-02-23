@@ -420,7 +420,7 @@ class TestAlertEvaluator:
         for days_ago in range(1, 6):
             past_date = now - timedelta(days=days_ago)
             # Skip if weekday/weekend doesn't match
-            if past_date.weekday() >= 5 != (now.weekday() >= 5):
+            if (past_date.weekday() >= 5) != (now.weekday() >= 5):
                 # Add extra days to ensure we get enough matching days
                 continue
             for i in range(10):
