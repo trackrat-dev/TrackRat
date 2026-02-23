@@ -408,6 +408,36 @@ struct SettingsSection: View {
                     .fill(.ultraThinMaterial)
             )
 
+            // Health Indicator
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Health Indicator")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                }
+                .padding()
+
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
+                let orderedModes: [SegmentHighlightMode] = [.delays, .health, .off]
+                ForEach(orderedModes, id: \.self) { mode in
+                    HealthIndicatorRow(
+                        mode: mode,
+                        isSelected: appState.mapHighlightMode == mode,
+                        isLast: mode == orderedModes.last
+                    ) {
+                        appState.mapHighlightMode = mode
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+
             // Favorite Stations
             Button {
                 navigationPath.append(ProfileDestination.favoriteStations)

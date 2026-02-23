@@ -20,6 +20,11 @@ from trackrat.models.database import (
 from trackrat.services.alert_evaluator import (
     COOLDOWN_MINUTES,
     DELAY_THRESHOLD_MINUTES,
+    MIN_BASELINE_DAYS,
+    REALTIME_SOURCES,
+    _build_alert_message,
+    _compute_alert_hash,
+    _query_baseline_train_count,
     evaluate_route_alerts,
 )
 from trackrat.utils.time import now_et
@@ -397,3 +402,219 @@ class TestAlertEvaluator:
         result = await db_session.execute(select(RouteAlertSubscription))
         sub = result.scalar_one()
         assert sub.last_alerted_at is None
+
+    async def test_reduced_service_triggers_alert_for_realtime_source(
+        self, db_session: AsyncSession
+    ):
+        """When train count drops below 50% of baseline, a reduced service alert fires."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="SUBWAY",
+            from_station="A01",
+            to_station="B01",
+        )
+
+        now = now_et()
+        # Create baseline: 10 trains per day for the last 5 comparable days
+        for days_ago in range(1, 6):
+            past_date = now - timedelta(days=days_ago)
+            # Skip if weekday/weekend doesn't match
+            if past_date.weekday() >= 5 != (now.weekday() >= 5):
+                # Add extra days to ensure we get enough matching days
+                continue
+            for i in range(10):
+                journey = TrainJourney(
+                    train_id=f"baseline-{days_ago}-{i}",
+                    journey_date=past_date.date(),
+                    line_code="A",
+                    line_name="A Train",
+                    destination="Far Rockaway",
+                    origin_station_code="A01",
+                    terminal_station_code="B01",
+                    data_source="SUBWAY",
+                    scheduled_departure=past_date.replace(hour=now.hour, minute=i * 5),
+                    actual_departure=past_date.replace(hour=now.hour, minute=i * 5),
+                    is_cancelled=False,
+                    has_complete_journey=True,
+                )
+                db_session.add(journey)
+
+        # Create baseline for enough weekday/weekend matching days
+        # Ensure we have at least MIN_BASELINE_DAYS matching days
+        for extra in range(7, 35, 7):
+            past_date = now - timedelta(days=extra)
+            if (past_date.weekday() >= 5) == (now.weekday() >= 5):
+                for i in range(10):
+                    journey = TrainJourney(
+                        train_id=f"baseline-extra-{extra}-{i}",
+                        journey_date=past_date.date(),
+                        line_code="A",
+                        line_name="A Train",
+                        destination="Far Rockaway",
+                        origin_station_code="A01",
+                        terminal_station_code="B01",
+                        data_source="SUBWAY",
+                        scheduled_departure=past_date.replace(hour=now.hour, minute=i * 5),
+                        actual_departure=past_date.replace(hour=now.hour, minute=i * 5),
+                        is_cancelled=False,
+                        has_complete_journey=True,
+                    )
+                    db_session.add(journey)
+
+        # Current hour: only 3 trains running (30% of baseline ~10)
+        for i in range(3):
+            _make_journey(
+                db_session,
+                train_id=f"current-{i}",
+                data_source="SUBWAY",
+                line_code="A",
+                origin="A01",
+                terminal="B01",
+                delay_minutes=0,
+                minutes_ago=10 + i * 10,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        title = call_args.args[1]
+        body = call_args.args[2]
+        assert "Reduced service" in title or "reduced service" in title.lower()
+        assert "trains running" in body.lower()
+        print(f"  Alert title: {title}")
+        print(f"  Alert body: {body}")
+
+    async def test_no_reduced_service_alert_for_schedule_only_source(
+        self, db_session: AsyncSession
+    ):
+        """PATCO (schedule-only) should not get reduced service alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="PATCO",
+            from_station="PA1",
+            to_station="PA2",
+        )
+        # Only 1 train running, no baseline data
+        _make_journey(
+            db_session,
+            train_id="patco-1",
+            data_source="PATCO",
+            line_code="PATCO",
+            origin="PA1",
+            terminal="PA2",
+            delay_minutes=0,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_no_reduced_service_when_frequency_above_threshold(
+        self, db_session: AsyncSession
+    ):
+        """When train count is above 50% of baseline, no reduced service alert fires."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="PATH",
+            from_station="WTC",
+            to_station="NWK",
+        )
+
+        now = now_et()
+        # Create baseline: 6 trains per comparable day
+        for extra in range(7, 35, 7):
+            past_date = now - timedelta(days=extra)
+            if (past_date.weekday() >= 5) == (now.weekday() >= 5):
+                for i in range(6):
+                    journey = TrainJourney(
+                        train_id=f"path-base-{extra}-{i}",
+                        journey_date=past_date.date(),
+                        line_code="NWK",
+                        line_name="Newark-WTC",
+                        destination="Newark",
+                        origin_station_code="WTC",
+                        terminal_station_code="NWK",
+                        data_source="PATH",
+                        scheduled_departure=past_date.replace(hour=now.hour, minute=i * 10),
+                        actual_departure=past_date.replace(hour=now.hour, minute=i * 10),
+                        is_cancelled=False,
+                        has_complete_journey=True,
+                    )
+                    db_session.add(journey)
+
+        # Current hour: 4 trains running (67% of baseline ~6) — above 50% threshold
+        for i in range(4):
+            _make_journey(
+                db_session,
+                train_id=f"path-now-{i}",
+                data_source="PATH",
+                line_code="NWK",
+                origin="WTC",
+                terminal="NWK",
+                delay_minutes=0,
+                minutes_ago=10 + i * 10,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+
+class TestAlertHelpers:
+    """Tests for alert evaluator helper functions."""
+
+    def test_build_alert_message_reduced_service(self):
+        """reduced_service alert message includes train count and frequency info."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="SUBWAY",
+            from_station_code="A01",
+            to_station_code="B01",
+        )
+        title, body = _build_alert_message(
+            sub, "reduced_service", 0, 0, 5, frequency_factor=0.3
+        )
+        assert "Reduced service" in title
+        assert "SUBWAY" in title
+        assert "trains running" in body
+        assert "30%" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
+
+    def test_build_alert_message_cancellation(self):
+        """Cancellation alerts still work correctly with frequency_factor."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+        )
+        title, body = _build_alert_message(
+            sub, "cancellation", 2, 0, 10, frequency_factor=None
+        )
+        assert "Cancellation" in title
+        assert "2 trains cancelled" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
+
+    def test_compute_alert_hash_includes_frequency(self):
+        """Hash should differ based on frequency_factor."""
+        hash1 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.3)
+        hash2 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.4)
+        hash3 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=None)
+        assert hash1 != hash2, "Different frequency factors should produce different hashes"
+        assert hash1 != hash3, "None vs 0.3 should produce different hashes"
+
+    def test_compute_alert_hash_rounds_frequency(self):
+        """Tiny frequency differences should produce the same hash (rounded to 1 decimal)."""
+        hash1 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.31)
+        hash2 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.34)
+        assert hash1 == hash2, "0.31 and 0.34 both round to 0.3"

@@ -711,6 +711,30 @@ struct CongestionSegment: Codable, Identifiable {
         guard let factor = frequencyFactor else { return nil }
         return Int((factor * 100).rounded())
     }
+
+    /// Current average minutes between departures
+    func currentHeadwayMinutes(timeWindowHours: Int) -> Double? {
+        guard let count = trainCount, count > 0 else { return nil }
+        return Double(timeWindowHours * 60) / Double(count)
+    }
+
+    /// Baseline average minutes between departures
+    func baselineHeadwayMinutes(timeWindowHours: Int) -> Double? {
+        guard let baseline = baselineTrainCount, baseline > 0 else { return nil }
+        return Double(timeWindowHours * 60) / baseline
+    }
+
+    /// Human-readable headway string, e.g. "Every ~8 min"
+    func headwayDisplayText(timeWindowHours: Int) -> String? {
+        guard let headway = currentHeadwayMinutes(timeWindowHours: timeWindowHours) else {
+            return nil
+        }
+        let rounded = Int(headway.rounded())
+        if rounded <= 1 {
+            return "Every ~1 min"
+        }
+        return "Every ~\(rounded) min"
+    }
 }
 
 // MARK: - Segment Highlight Mode
@@ -724,7 +748,7 @@ enum SegmentHighlightMode: String, CaseIterable {
     var displayName: String {
         switch self {
         case .off: return "Off"
-        case .health: return "Train Count (beta)"
+        case .health: return "Train Count"
         case .delays: return "Travel Time"
         }
     }

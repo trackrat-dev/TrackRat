@@ -3,14 +3,15 @@ import MapKit
 import UIKit
 
 struct JourneyCongestionMapView: View {
+    @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: JourneyCongestionViewModel
     @State private var selectedSegment: CongestionSegment?
-    
+
     let train: TrainV2
     let userOrigin: String?
     let userDestination: String?
     let onSegmentTap: ((CongestionSegment) -> Void)?
-    
+
     init(train: TrainV2, userOrigin: String?, userDestination: String?, onSegmentTap: ((CongestionSegment) -> Void)? = nil) {
         self.train = train
         self.userOrigin = userOrigin
@@ -41,6 +42,7 @@ struct JourneyCongestionMapView: View {
                         segments: viewModel.filteredSegments,
                         stations: viewModel.journeyStations,
                         trainPositions: viewModel.trainPositions,
+                        highlightMode: appState.mapHighlightMode,
                         onSegmentTap: { segment in
                             // Call parent callback if provided, otherwise handle locally
                             if let onSegmentTap = onSegmentTap {
@@ -75,13 +77,20 @@ struct JourneyCongestionMapView: View {
                 }
             }
             
-            // Congestion legend
+            // Legend adapts to highlight mode
             if !viewModel.filteredSegments.isEmpty {
                 HStack(spacing: 16) {
-                    LegendItem(color: .green, label: "Normal")
-                    LegendItem(color: .yellow, label: "Moderate")
-                    LegendItem(color: .orange, label: "Heavy")
-                    LegendItem(color: .red, label: "Severe")
+                    if appState.mapHighlightMode == .health {
+                        LegendItem(color: .green, label: "Healthy")
+                        LegendItem(color: .yellow, label: "Moderate")
+                        LegendItem(color: .orange, label: "Reduced")
+                        LegendItem(color: .red, label: "Severe")
+                    } else {
+                        LegendItem(color: .green, label: "Normal")
+                        LegendItem(color: .yellow, label: "Moderate")
+                        LegendItem(color: .orange, label: "Heavy")
+                        LegendItem(color: .red, label: "Severe")
+                    }
                 }
                 .padding(.top, 8)
                 .font(.caption2)
@@ -271,17 +280,20 @@ struct CongestionMapKitView: UIViewRepresentable {
     let segments: [CongestionSegment]
     let stations: [JourneyStation]
     let trainPositions: [TrainLocationData]
+    let highlightMode: SegmentHighlightMode
     let onSegmentTap: (CongestionSegment) -> Void
-    
-    init(region: Binding<MKCoordinateRegion>, 
-         segments: [CongestionSegment], 
-         stations: [JourneyStation], 
+
+    init(region: Binding<MKCoordinateRegion>,
+         segments: [CongestionSegment],
+         stations: [JourneyStation],
          trainPositions: [TrainLocationData] = [],
+         highlightMode: SegmentHighlightMode = .delays,
          onSegmentTap: @escaping (CongestionSegment) -> Void) {
         self._region = region
         self.segments = segments
         self.stations = stations
         self.trainPositions = trainPositions
+        self.highlightMode = highlightMode
         self.onSegmentTap = onSegmentTap
     }
     
@@ -403,6 +415,7 @@ struct CongestionMapKitView: UIViewRepresentable {
         // Update coordinator with current segments for tap handling
         context.coordinator.segments = segments
         context.coordinator.onSegmentTap = onSegmentTap
+        context.coordinator.highlightMode = highlightMode
         context.coordinator.mapView = mapView
     }
     
@@ -420,25 +433,31 @@ struct CongestionMapKitView: UIViewRepresentable {
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var polylines: [CongestionPolyline] = []
         weak var mapView: MKMapView?
+        var highlightMode: SegmentHighlightMode = .delays
 
         var currentOverlayState: Set<OverlayIdentity> = []
         var overlayMap: [String: CongestionPolyline] = [:]
-        
+
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-                
+
                 // Check if this segment has cancellations
                 if let segment = polyline.segment, segment.cancellationRate > 0 {
                     renderer.strokeColor = UIColor.darkGray
                     renderer.lineWidth = 10
                 } else if let segment = polyline.segment {
-                    renderer.strokeColor = getUIColor(for: segment.congestionFactor)
-                    renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
+                    if highlightMode == .health {
+                        renderer.strokeColor = getFrequencyUIColor(for: segment.frequencyFactor)
+                        renderer.lineWidth = getFrequencyLineWidth(segment.frequencyFactor)
+                    } else {
+                        renderer.strokeColor = getUIColor(for: segment.congestionFactor)
+                        renderer.lineWidth = getCongestionLineWidth(segment.congestionFactor)
+                    }
                 } else {
                     renderer.strokeColor = UIColor.gray
-                    renderer.lineWidth = getCongestionLineWidth(1.0)
+                    renderer.lineWidth = 5
                 }
                 renderer.alpha = 0.8
                 return renderer
@@ -535,7 +554,23 @@ struct CongestionMapKitView: UIViewRepresentable {
                 return UIColor.systemRed
             }
         }
-        
+
+        private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
+            guard let factor = frequencyFactor else { return UIColor.gray }
+            if factor >= 0.9 { return UIColor.systemGreen }
+            else if factor >= 0.7 { return UIColor.systemYellow }
+            else if factor >= 0.5 { return UIColor.systemOrange }
+            else { return UIColor.systemRed }
+        }
+
+        private func getFrequencyLineWidth(_ frequencyFactor: Double?) -> CGFloat {
+            guard let factor = frequencyFactor else { return 5 }
+            if factor >= 0.9 { return 5 }
+            else if factor >= 0.7 { return 7 }
+            else if factor >= 0.5 { return 8 }
+            else { return 9 }
+        }
+
         private func createStationPinView(for station: JourneyStation) -> UIView {
             let size: CGFloat = 12
             let containerView = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))
@@ -658,13 +693,14 @@ extension UIView {
 // MARK: - Embedded Congestion Map for Train Details
 
 struct EmbeddedCongestionMapView: View {
+    @EnvironmentObject private var appState: AppState
     let train: TrainV2
     let userOrigin: String?
     let userDestination: String?
-    
+
     @StateObject private var viewModel: EmbeddedCongestionViewModel
     @State private var selectedSegment: CongestionSegment?
-    
+
     init(train: TrainV2, userOrigin: String?, userDestination: String?) {
         self.train = train
         self.userOrigin = userOrigin
@@ -709,6 +745,7 @@ struct EmbeddedCongestionMapView: View {
                     segments: viewModel.journeySegments,
                     stations: viewModel.journeyStations,
                     trainPositions: viewModel.trainPositions,
+                    highlightMode: appState.mapHighlightMode,
                     onSegmentTap: { segment in
                         selectedSegment = segment
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()

@@ -844,12 +844,12 @@ final class AppState: ObservableObject {
 
     /// Load map display settings from UserDefaults
     private func loadMapSettings() {
-        // Load highlight mode
+        // Load highlight mode (smart default based on selected systems)
         if let stored = UserDefaults.standard.string(forKey: "mapHighlightMode"),
            let mode = SegmentHighlightMode(rawValue: stored) {
             mapHighlightMode = mode
         } else {
-            mapHighlightMode = .delays
+            mapHighlightMode = selectedSystems.recommendedHighlightMode
         }
 
         // Load stations visibility

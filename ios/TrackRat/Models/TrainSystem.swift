@@ -100,6 +100,16 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         default: return false
         }
     }
+
+    /// Preferred health indicator for this system.
+    /// High-frequency rapid transit → Train Count (frequency matters more than travel time).
+    /// Commuter/intercity rail → Travel Time (delays are more variable and meaningful).
+    var preferredHighlightMode: SegmentHighlightMode {
+        switch self {
+        case .subway, .path: return .health
+        case .njt, .amtrak, .lirr, .mnr, .patco: return .delays
+        }
+    }
 }
 
 // MARK: - Set Extensions
@@ -133,6 +143,14 @@ extension Set where Element == TrainSystem {
     /// Converts to raw data source string set for use with Stations/route filtering
     var asRawStrings: Set<String> {
         Set<String>(self.map(\.rawValue))
+    }
+
+    /// Recommended highlight mode based on selected systems.
+    /// If all systems prefer the same mode, use that. Otherwise default to Travel Time.
+    var recommendedHighlightMode: SegmentHighlightMode {
+        guard !self.isEmpty else { return .delays }
+        let allPreferHealth = self.allSatisfy { $0.preferredHighlightMode == .health }
+        return allPreferHealth ? .health : .delays
     }
 }
 

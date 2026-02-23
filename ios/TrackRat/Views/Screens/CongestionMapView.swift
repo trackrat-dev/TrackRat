@@ -210,6 +210,7 @@ struct CongestionMapView: View {
             ) {
                 let wasOff = viewModel.highlightMode == .off
                 viewModel.cycleHighlightMode()
+                appState.mapHighlightMode = viewModel.highlightMode
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
                 // Reload congestion data when turning on (from off state)
@@ -304,9 +305,15 @@ struct CongestionMapView: View {
                     LegendItem(color: .red, label: "Severe")
                 }
 
-                Text("Train count vs typical for this time")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                if let summary = frequencySummaryText {
+                    Text(summary)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("Train count vs typical for this time")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
             }
             .padding()
             .background(
@@ -341,6 +348,25 @@ struct CongestionMapView: View {
     // Legacy alias for compatibility
     private var congestionLegendView: some View {
         segmentLegendView
+    }
+
+    /// Summarize headway across visible segments for the legend subtitle
+    private var frequencySummaryText: String? {
+        let segmentsWithData = viewModel.segments.filter { $0.hasFrequencyData }
+        guard !segmentsWithData.isEmpty else { return nil }
+
+        let headways = segmentsWithData.compactMap {
+            $0.currentHeadwayMinutes(timeWindowHours: timeWindow)
+        }
+        guard !headways.isEmpty else { return nil }
+
+        let avgHeadway = Int((headways.reduce(0, +) / Double(headways.count)).rounded())
+        let totalTrains = segmentsWithData.compactMap(\.trainCount).reduce(0, +)
+
+        if avgHeadway <= 1 {
+            return "\(totalTrains) trains · Avg every ~1 min"
+        }
+        return "\(totalTrains) trains · Avg every ~\(avgHeadway) min"
     }
 }
 
