@@ -27,6 +27,7 @@ class HistoricalDataViewModelTests: XCTestCase {
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: 85.0,
                 averageDelayMinutes: 5.2,
+                averageDepartureDelayMinutes: 3.1,
                 cancellationRate: 2.0,
                 delayBreakdown: RouteHistoricalData.DelayBreakdown(
                     onTime: 40,

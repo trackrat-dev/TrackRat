@@ -4,6 +4,7 @@ struct EditRouteAlertsView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @State private var showAddSheet = false
+    @State private var selectedRouteStatus: RouteStatusContext?
 
     /// Group subscriptions by data source for display.
     private var groupedSubscriptions: [(String, [RouteAlertSubscription])] {
@@ -83,7 +84,7 @@ struct EditRouteAlertsView: View {
                 Section(header: Text(dataSource).foregroundColor(.white.opacity(0.7))) {
                     ForEach(subs) { sub in
                         Button {
-                            appState.pendingRouteStatus = RouteStatusContext(
+                            selectedRouteStatus = RouteStatusContext(
                                 dataSource: sub.dataSource,
                                 lineId: sub.lineId,
                                 fromStationCode: sub.fromStationCode,
@@ -118,6 +119,11 @@ struct EditRouteAlertsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        .sheet(item: $selectedRouteStatus) { context in
+            RouteStatusView(context: context)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Helpers

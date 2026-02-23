@@ -6,7 +6,7 @@ import Foundation
 protocol APIServiceProtocol {
     func searchTrains(fromStationCode: String, toStationCode: String) async throws -> [Train]
     func fetchTrainDetails(id trainId: String, fromStationCode: String) async throws -> TrainV2
-    func fetchRouteHistoricalData(from: String, to: String, dataSource: String, highlightTrain: String?, days: Int) async throws -> RouteHistoricalData
+    func fetchRouteHistoricalData(from: String, to: String, dataSource: String, highlightTrain: String?, days: Int, hours: Int?) async throws -> RouteHistoricalData
     func fetchCongestionMapData(timeWindowHours: Int, dataSource: String?, maxPerSegment: Int) async throws -> CongestionMapResponse
     func registerLiveActivityToken(pushToken: String, activityId: String, trainNumber: String, originCode: String, destinationCode: String) async throws
     func unregisterLiveActivityToken(pushToken: String) async throws
@@ -72,7 +72,7 @@ class MockAPIService: APIServiceProtocol {
     var lastHistoricalFromCode: String?
     var lastHistoricalToCode: String?
 
-    func fetchRouteHistoricalData(from: String, to: String, dataSource: String, highlightTrain: String?, days: Int) async throws -> RouteHistoricalData {
+    func fetchRouteHistoricalData(from: String, to: String, dataSource: String, highlightTrain: String?, days: Int, hours: Int?) async throws -> RouteHistoricalData {
         fetchRouteHistoricalDataCallCount += 1
         lastHistoricalFromCode = from
         lastHistoricalToCode = to
@@ -97,6 +97,7 @@ class MockAPIService: APIServiceProtocol {
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: 85.0,
                 averageDelayMinutes: 5.2,
+                averageDepartureDelayMinutes: 3.1,
                 cancellationRate: 2.0,
                 delayBreakdown: RouteHistoricalData.DelayBreakdown(
                     onTime: 40,

@@ -17,7 +17,7 @@ struct RouteStatusView: View {
                 VStack(spacing: 16) {
                     mapSection
                     operationsSummarySection
-                    historySection
+                    historySections
                 }
                 .padding()
             }
@@ -77,22 +77,54 @@ struct RouteStatusView: View {
         )
     }
 
-    // MARK: - History Section
+    // MARK: - History Sections (Past Hour, Past 24 Hours, Past 7 Days)
 
     @ViewBuilder
-    private var historySection: some View {
+    private var historySections: some View {
+        timePeriodSection(
+            title: "Past Hour",
+            data: viewModel.pastHourData,
+            isLoading: viewModel.isLoadingHistory,
+            error: viewModel.historyError
+        )
+        timePeriodSection(
+            title: "Past 24 Hours",
+            data: viewModel.past24HoursData,
+            isLoading: viewModel.isLoadingHistory,
+            error: viewModel.historyError
+        )
+        timePeriodSection(
+            title: "Past 7 Days",
+            data: viewModel.past7DaysData,
+            isLoading: viewModel.isLoadingHistory,
+            error: viewModel.historyError
+        )
+    }
+
+    @ViewBuilder
+    private func timePeriodSection(
+        title: String,
+        data: RouteHistoricalData?,
+        isLoading: Bool,
+        error: String?
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("7-Day Performance")
+            Text(title)
                 .font(.headline)
 
-            if viewModel.isLoadingHistory {
+            if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-            } else if let history = viewModel.historicalData {
+            } else if let history = data {
                 historyContent(history)
-            } else if let error = viewModel.historyError {
+            } else if let error = error {
                 Text("Could not load history: \(error)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding()
+            } else {
+                Text("No data available")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding()
@@ -104,7 +136,7 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private func historyContent(_ history: RouteHistoricalData) -> some View {
-        // Stat cards
+        // Stat cards row
         HStack(spacing: 12) {
             statCard(
                 title: "On Time",
@@ -112,22 +144,36 @@ struct RouteStatusView: View {
                 color: history.aggregateStats.onTimePercentage >= 80 ? .green : .orange
             )
             statCard(
-                title: "Avg Delay",
-                value: "\(Int(history.aggregateStats.averageDelayMinutes))m",
-                color: history.aggregateStats.averageDelayMinutes <= 5 ? .green : .orange
-            )
-            statCard(
                 title: "Cancelled",
-                value: "\(Int(history.aggregateStats.cancellationRate * 100))%",
-                color: history.aggregateStats.cancellationRate <= 0.05 ? .green : .red
+                value: "\(Int(history.aggregateStats.cancellationRate))%",
+                color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
             )
+        }
+
+        // Delay statistics: departure from origin + arrival at destination
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Delay Statistics")
+                .font(.subheadline.bold())
+
+            HStack(spacing: 12) {
+                delayStatCard(
+                    title: "Avg Departure Delay",
+                    value: "\(Int(history.aggregateStats.averageDepartureDelayMinutes))m",
+                    color: history.aggregateStats.averageDepartureDelayMinutes <= 5 ? .green : .orange
+                )
+                delayStatCard(
+                    title: "Avg Arrival Delay",
+                    value: "\(Int(history.aggregateStats.averageDelayMinutes))m",
+                    color: history.aggregateStats.averageDelayMinutes <= 5 ? .green : .orange
+                )
+            }
         }
 
         // Delay breakdown bar
         let breakdown = history.aggregateStats.delayBreakdown
         let total = history.route.totalTrains
         DelayPerformanceBar(
-            label: "Delay Breakdown",
+            label: "Arrival Delay Breakdown (\(total) trains)",
             stats: DelayStats(
                 onTime: breakdown.onTime,
                 slight: breakdown.slight,
@@ -152,6 +198,21 @@ struct RouteStatusView: View {
         .padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
     }
+
+    private func delayStatCard(title: String, value: String, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.title3.bold())
+                .foregroundColor(color)
+            Text(title)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
+    }
 }
 
 // MARK: - View Model
@@ -167,8 +228,10 @@ final class RouteStatusViewModel: ObservableObject {
     @Published var isLoadingMap = false
     @Published var mapError: String?
 
-    // History state
-    @Published var historicalData: RouteHistoricalData?
+    // History state - three time periods
+    @Published var pastHourData: RouteHistoricalData?
+    @Published var past24HoursData: RouteHistoricalData?
+    @Published var past7DaysData: RouteHistoricalData?
     @Published var isLoadingHistory = false
     @Published var historyError: String?
 
@@ -179,7 +242,7 @@ final class RouteStatusViewModel: ObservableObject {
     func loadData() async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadCongestionMap() }
-            group.addTask { await self.loadHistory() }
+            group.addTask { await self.loadAllHistory() }
         }
     }
 
@@ -257,7 +320,7 @@ final class RouteStatusViewModel: ObservableObject {
 
     // MARK: - History
 
-    private func loadHistory() async {
+    private func loadAllHistory() async {
         guard let from = context.effectiveFromStation,
               let to = context.effectiveToStation else {
             historyError = "No station pair available"
@@ -267,15 +330,44 @@ final class RouteStatusViewModel: ObservableObject {
         isLoadingHistory = true
         defer { isLoadingHistory = false }
 
-        do {
-            historicalData = try await APIService.shared.fetchRouteHistoricalData(
-                from: from,
-                to: to,
-                dataSource: context.dataSource,
-                days: 7
-            )
-        } catch {
-            historyError = error.localizedDescription
+        // Fetch all three time periods in parallel
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                do {
+                    let data = try await APIService.shared.fetchRouteHistoricalData(
+                        from: from, to: to,
+                        dataSource: self.context.dataSource,
+                        hours: 1
+                    )
+                    await MainActor.run { self.pastHourData = data }
+                } catch {
+                    print("Past hour history load failed: \(error)")
+                }
+            }
+            group.addTask {
+                do {
+                    let data = try await APIService.shared.fetchRouteHistoricalData(
+                        from: from, to: to,
+                        dataSource: self.context.dataSource,
+                        days: 1
+                    )
+                    await MainActor.run { self.past24HoursData = data }
+                } catch {
+                    print("Past 24h history load failed: \(error)")
+                }
+            }
+            group.addTask {
+                do {
+                    let data = try await APIService.shared.fetchRouteHistoricalData(
+                        from: from, to: to,
+                        dataSource: self.context.dataSource,
+                        days: 7
+                    )
+                    await MainActor.run { self.past7DaysData = data }
+                } catch {
+                    await MainActor.run { self.historyError = error.localizedDescription }
+                }
+            }
         }
     }
 }
