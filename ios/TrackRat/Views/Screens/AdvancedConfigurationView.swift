@@ -14,7 +14,6 @@ struct AdvancedConfigurationView: View {
     @State private var selectedEnvironment: ServerEnvironment = StorageService().loadServerEnvironment()
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
-    @State private var showingTripsPaywall = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,11 +25,10 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    createMyTripsSection()
-                    createMapSettingsSection()
-                    createSubscriptionDebugSection()
                     createServerEnvironmentSection()
                     createHealthCheckSection()
+                    createMapSettingsSection()
+                    createSubscriptionDebugSection()
                     createDebugToolsSection()
                     createDataManagementSection()
                 }
@@ -63,132 +61,6 @@ struct AdvancedConfigurationView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: resetDataSuccessMessage)
-        .sheet(isPresented: $showingTripsPaywall) {
-            PaywallView(context: .generic)
-        }
-    }
-
-    @ViewBuilder
-    private func createTrainSystemsSection() -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Additional Transit Systems")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-
-            Text("Enable additional transit systems to see them in the app. NJ Transit and Amtrak are always available.")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
-
-            VStack(spacing: 12) {
-                // PATH toggle
-                TrainSystemToggleRow(
-                    system: .path,
-                    isEnabled: appState.isSystemSelected(.path)
-                ) { _ in
-                    appState.toggleSystem(.path)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-
-                // PATCO toggle
-                TrainSystemToggleRow(
-                    system: .patco,
-                    isEnabled: appState.isSystemSelected(.patco)
-                ) { _ in
-                    appState.toggleSystem(.patco)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-
-                // LIRR toggle
-                TrainSystemToggleRow(
-                    system: .lirr,
-                    isEnabled: appState.isSystemSelected(.lirr)
-                ) { _ in
-                    appState.toggleSystem(.lirr)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-
-                // Metro-North toggle
-                TrainSystemToggleRow(
-                    system: .mnr,
-                    isEnabled: appState.isSystemSelected(.mnr)
-                ) { _ in
-                    appState.toggleSystem(.mnr)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                )
-        )
-    }
-
-    // MARK: - My Trips Section
-    @ViewBuilder
-    private func createMyTripsSection() -> some View {
-        let tripsContent = HStack(spacing: 16) {
-            Image(systemName: "chart.bar.fill")
-                .font(.title2)
-                .foregroundColor(.orange)
-                .frame(width: 24, height: 24)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("My Trips (beta)")
-                    .font(.headline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.leading)
-            }
-
-            Spacer()
-
-            if !subscriptionService.isPro {
-                HStack(spacing: 4) {
-                    Image(systemName: "lock.fill")
-                        .font(.caption2)
-                    Text("PRO")
-                        .font(.caption2.bold())
-                }
-                .foregroundColor(.orange)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(.orange.opacity(0.2))
-                )
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-
-        if subscriptionService.isPro {
-            NavigationLink(value: ProfileDestination.tripHistory) {
-                tripsContent
-            }
-            .buttonStyle(.plain)
-        } else {
-            Button {
-                showingTripsPaywall = true
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                tripsContent
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     // MARK: - Map Settings Section
@@ -762,62 +634,6 @@ struct ServerEnvironmentRow: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct TrainSystemToggleRow: View {
-    let system: TrainSystem
-    let isEnabled: Bool
-    let onToggle: (Bool) -> Void
-
-    var body: some View {
-        HStack {
-            Image(systemName: system.icon)
-                .font(.title2)
-                .foregroundColor(isEnabled ? .orange : .white.opacity(0.5))
-                .frame(width: 32)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(system.displayName)
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    if system.isBeta {
-                        Text("beta")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(.orange.opacity(0.2))
-                            )
-                    }
-                }
-
-                Text(system.description)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.6))
-            }
-
-            Spacer()
-
-            Toggle("", isOn: Binding(
-                get: { isEnabled },
-                set: { onToggle($0) }
-            ))
-            .labelsHidden()
-            .tint(.orange)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isEnabled ? .orange.opacity(0.2) : .white.opacity(0.05))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(isEnabled ? .orange.opacity(0.5) : .white.opacity(0.1), lineWidth: 1)
-                )
-        )
     }
 }
 
