@@ -455,7 +455,9 @@ class TestAlertEvaluator:
                         origin_station_code="A01",
                         terminal_station_code="B01",
                         data_source="SUBWAY",
-                        scheduled_departure=past_date.replace(hour=now.hour, minute=i * 5),
+                        scheduled_departure=past_date.replace(
+                            hour=now.hour, minute=i * 5
+                        ),
                         actual_departure=past_date.replace(hour=now.hour, minute=i * 5),
                         is_cancelled=False,
                         has_complete_journey=True,
@@ -543,8 +545,12 @@ class TestAlertEvaluator:
                         origin_station_code="WTC",
                         terminal_station_code="NWK",
                         data_source="PATH",
-                        scheduled_departure=past_date.replace(hour=now.hour, minute=i * 10),
-                        actual_departure=past_date.replace(hour=now.hour, minute=i * 10),
+                        scheduled_departure=past_date.replace(
+                            hour=now.hour, minute=i * 10
+                        ),
+                        actual_departure=past_date.replace(
+                            hour=now.hour, minute=i * 10
+                        ),
                         is_cancelled=False,
                         has_complete_journey=True,
                     )
@@ -610,7 +616,9 @@ class TestAlertHelpers:
         hash1 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.3)
         hash2 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.4)
         hash3 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=None)
-        assert hash1 != hash2, "Different frequency factors should produce different hashes"
+        assert (
+            hash1 != hash2
+        ), "Different frequency factors should produce different hashes"
         assert hash1 != hash3, "None vs 0.3 should produce different hashes"
 
     def test_compute_alert_hash_rounds_frequency(self):

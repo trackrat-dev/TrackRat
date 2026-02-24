@@ -9,7 +9,8 @@ or when train frequency drops significantly below normal levels.
 import hashlib
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, extract, func as sqla_func, select
+from sqlalchemy import and_, extract, select
+from sqlalchemy import func as sqla_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -103,14 +104,9 @@ async def evaluate_route_alerts(
                 alert_type = "delay"
 
             # Check frequency reduction for real-time sources
-            if (
-                not should_alert
-                and sub.data_source in REALTIME_SOURCES
-            ):
+            if not should_alert and sub.data_source in REALTIME_SOURCES:
                 active_count = total_count - cancelled_count
-                baseline = await _query_baseline_train_count(
-                    db, sub, now
-                )
+                baseline = await _query_baseline_train_count(db, sub, now)
                 if baseline is not None and baseline > 0:
                     frequency_factor = active_count / baseline
                     if frequency_factor < FREQ_THRESHOLD_REDUCED:
@@ -122,7 +118,10 @@ async def evaluate_route_alerts(
 
             # Dedup via hash
             alert_hash = _compute_alert_hash(
-                alert_type, cancelled_count, delayed_count, total_count,
+                alert_type,
+                cancelled_count,
+                delayed_count,
+                total_count,
                 frequency_factor=frequency_factor,
             )
             if sub.last_alert_hash == alert_hash:
@@ -130,7 +129,11 @@ async def evaluate_route_alerts(
 
             # Build notification
             title, body = _build_alert_message(
-                sub, alert_type, cancelled_count, delayed_count, total_count,
+                sub,
+                alert_type,
+                cancelled_count,
+                delayed_count,
+                total_count,
                 frequency_factor=frequency_factor,
             )
 
@@ -278,15 +281,17 @@ async def _query_baseline_train_count(
         TrainJourney.data_source == sub.data_source,
         TrainJourney.journey_date >= lookback_start,
         TrainJourney.journey_date <= lookback_end,
-        extract("hour", TrainJourney.scheduled_departure) == current_hour,
+        extract(
+            "hour",
+            sqla_func.timezone("America/New_York", TrainJourney.scheduled_departure),
+        )
+        == current_hour,
         TrainJourney.is_cancelled.is_not(True),
     ]
 
     # Filter weekday/weekend pattern
     if is_weekend:
-        base_conditions.append(
-            extract("dow", TrainJourney.journey_date).in_([0, 6])
-        )
+        base_conditions.append(extract("dow", TrainJourney.journey_date).in_([0, 6]))
     else:
         base_conditions.append(
             extract("dow", TrainJourney.journey_date).in_([1, 2, 3, 4, 5])
@@ -298,10 +303,12 @@ async def _query_baseline_train_count(
             return None
         base_conditions.append(TrainJourney.line_code.in_(list(route.line_codes)))
     else:
-        base_conditions.extend([
-            TrainJourney.origin_station_code == sub.from_station_code,
-            TrainJourney.terminal_station_code == sub.to_station_code,
-        ])
+        base_conditions.extend(
+            [
+                TrainJourney.origin_station_code == sub.from_station_code,
+                TrainJourney.terminal_station_code == sub.to_station_code,
+            ]
+        )
 
     # Count trains per day, then average across days
     per_day = (
