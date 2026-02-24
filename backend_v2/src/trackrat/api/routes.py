@@ -137,9 +137,7 @@ async def get_route_history(
         )
 
     # Subquery: journey has from_station with stop_sequence < to_station's sequence
-    route_filter = exists(
-        select(from_stop_alias.id).where(and_(*from_stop_conditions))
-    )
+    route_filter = exists(select(from_stop_alias.id).where(and_(*from_stop_conditions)))
 
     stmt = (
         select(TrainJourney)
@@ -245,9 +243,7 @@ def _calculate_route_stats(
         arrival_delay = 0
         if last_stop.actual_arrival and last_stop.scheduled_arrival:
             arrival_delay = int(
-                (
-                    last_stop.actual_arrival - last_stop.scheduled_arrival
-                ).total_seconds()
+                (last_stop.actual_arrival - last_stop.scheduled_arrival).total_seconds()
                 / 60
             )
 

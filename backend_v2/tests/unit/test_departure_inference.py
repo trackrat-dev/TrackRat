@@ -357,26 +357,26 @@ class TestDepartureInference:
         ny_stop = stops_by_code["NY"]
         assert ny_stop.has_departed_station == True
         assert ny_stop.departure_source == "time_inference"
-        assert ny_stop.actual_departure is None, (
-            "Tier 3 must not set actual_departure from schedule data"
-        )
-        assert ny_stop.actual_arrival is None, (
-            "Tier 3 must not set actual_arrival for time-inferred stops"
-        )
+        assert (
+            ny_stop.actual_departure is None
+        ), "Tier 3 must not set actual_departure from schedule data"
+        assert (
+            ny_stop.actual_arrival is None
+        ), "Tier 3 must not set actual_arrival for time-inferred stops"
 
         np_stop = stops_by_code["NP"]
         assert np_stop.has_departed_station == True
         assert np_stop.departure_source == "time_inference"
-        assert np_stop.actual_departure is None, (
-            "Tier 3 must not set actual_departure from schedule data"
-        )
+        assert (
+            np_stop.actual_departure is None
+        ), "Tier 3 must not set actual_departure from schedule data"
 
         mp_stop = stops_by_code["MP"]
         assert mp_stop.has_departed_station == True
         assert mp_stop.departure_source == "time_inference"
-        assert mp_stop.actual_departure is None, (
-            "Tier 3 must not set actual_departure from schedule data"
-        )
+        assert (
+            mp_stop.actual_departure is None
+        ), "Tier 3 must not set actual_departure from schedule data"
 
         # Trenton is in the future, should NOT be marked departed
         tr_stop = stops_by_code["TR"]
@@ -567,9 +567,9 @@ class TestDepartureInference:
 
         mp_stop = next(s for s in sample_journey.stops if s.station_code == "MP")
         assert mp_stop.departure_source == "time_inference"  # Old enough
-        assert mp_stop.actual_departure is None, (
-            "Tier 3 must not set actual_departure from schedule data"
-        )
+        assert (
+            mp_stop.actual_departure is None
+        ), "Tier 3 must not set actual_departure from schedule data"
 
         tr_stop = next(s for s in sample_journey.stops if s.station_code == "TR")
         assert tr_stop.departure_source is None  # Future stop

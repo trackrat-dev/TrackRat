@@ -61,7 +61,10 @@ class TestCalculateRouteStatsEmpty:
         assert result["average_departure_delay_minutes"] == 0.0
         assert result["cancellation_rate"] == 0.0
         assert result["delay_breakdown"] == {
-            "on_time": 0, "slight": 0, "significant": 0, "major": 0
+            "on_time": 0,
+            "slight": 0,
+            "significant": 0,
+            "major": 0,
         }
         assert result["track_usage"] == {}
 
@@ -78,9 +81,12 @@ class TestCancellationRate:
         journeys = []
         for i in range(10):
             stops = [
-                _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
                 _make_stop(
-                    "TR", 1,
+                    "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+                ),
+                _make_stop(
+                    "TR",
+                    1,
                     scheduled_arrival=BASE_TIME + timedelta(hours=1),
                     actual_arrival=BASE_TIME + timedelta(hours=1),
                 ),
@@ -98,9 +104,12 @@ class TestCancellationRate:
     def test_zero_cancellation_rate(self):
         """All trains running = 0% cancelled."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1),
             ),
@@ -127,12 +136,14 @@ class TestDepartureDelay:
         """Train departs 10 minutes late from origin."""
         stops = [
             _make_stop(
-                "NY", 0,
+                "NY",
+                0,
                 scheduled_departure=BASE_TIME,
                 actual_departure=BASE_TIME + timedelta(minutes=10),
             ),
             _make_stop(
-                "TR", 1,
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1, minutes=5),
             ),
@@ -140,28 +151,31 @@ class TestDepartureDelay:
         journeys = [_make_journey(stops)]
         result = _calculate_route_stats(journeys, "NY")
 
-        assert result["average_departure_delay_minutes"] == 10.0, (
-            f"Expected 10m departure delay, got {result['average_departure_delay_minutes']}"
-        )
-        assert result["average_delay_minutes"] == 5.0, (
-            f"Expected 5m arrival delay, got {result['average_delay_minutes']}"
-        )
+        assert (
+            result["average_departure_delay_minutes"] == 10.0
+        ), f"Expected 10m departure delay, got {result['average_departure_delay_minutes']}"
+        assert (
+            result["average_delay_minutes"] == 5.0
+        ), f"Expected 5m arrival delay, got {result['average_delay_minutes']}"
 
     def test_departure_delay_only_at_specified_origin(self):
         """Departure delay uses the origin_station parameter, not just the first stop."""
         stops = [
             _make_stop(
-                "SE", 0,  # Secaucus (not the origin we care about)
+                "SE",
+                0,  # Secaucus (not the origin we care about)
                 scheduled_departure=BASE_TIME - timedelta(minutes=30),
                 actual_departure=BASE_TIME - timedelta(minutes=20),  # 10 min late
             ),
             _make_stop(
-                "NY", 1,  # Penn Station (our origin)
+                "NY",
+                1,  # Penn Station (our origin)
                 scheduled_departure=BASE_TIME,
                 actual_departure=BASE_TIME + timedelta(minutes=3),  # 3 min late
             ),
             _make_stop(
-                "TR", 2,
+                "TR",
+                2,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1),
             ),
@@ -176,12 +190,14 @@ class TestDepartureDelay:
         """Train departs on time = 0 delay."""
         stops = [
             _make_stop(
-                "NY", 0,
+                "NY",
+                0,
                 scheduled_departure=BASE_TIME,
                 actual_departure=BASE_TIME,
             ),
             _make_stop(
-                "TR", 1,
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1),
             ),
@@ -196,12 +212,14 @@ class TestDepartureDelay:
         for delay_mins in [0, 5, 10, 15]:
             stops = [
                 _make_stop(
-                    "NY", 0,
+                    "NY",
+                    0,
                     scheduled_departure=BASE_TIME,
                     actual_departure=BASE_TIME + timedelta(minutes=delay_mins),
                 ),
                 _make_stop(
-                    "TR", 1,
+                    "TR",
+                    1,
                     scheduled_arrival=BASE_TIME + timedelta(hours=1),
                     actual_arrival=BASE_TIME + timedelta(hours=1),
                 ),
@@ -216,12 +234,14 @@ class TestDepartureDelay:
         """When actual_departure is missing, departure delay is not counted."""
         stops = [
             _make_stop(
-                "NY", 0,
+                "NY",
+                0,
                 scheduled_departure=BASE_TIME,
                 actual_departure=None,  # No actual data
             ),
             _make_stop(
-                "TR", 1,
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1),
             ),
@@ -238,9 +258,12 @@ class TestArrivalDelay:
     def test_arrival_delay_at_destination(self):
         """Train arrives 8 minutes late at the destination."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1, minutes=8),
             ),
@@ -256,9 +279,12 @@ class TestDelayCategories:
     def test_on_time_threshold(self):
         """5 minutes or less = on_time."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1, minutes=5),
             ),
@@ -269,9 +295,12 @@ class TestDelayCategories:
     def test_slight_delay_threshold(self):
         """6-15 minutes = slight."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1, minutes=10),
             ),
@@ -282,9 +311,12 @@ class TestDelayCategories:
     def test_significant_delay_threshold(self):
         """16-30 minutes = significant."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1, minutes=25),
             ),
@@ -295,9 +327,12 @@ class TestDelayCategories:
     def test_major_delay_threshold(self):
         """Over 30 minutes = major."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1, minutes=45),
             ),
@@ -311,9 +346,16 @@ class TestTrackUsage:
 
     def test_track_usage_at_origin(self):
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME, track="5"),
             _make_stop(
-                "TR", 1,
+                "NY",
+                0,
+                scheduled_departure=BASE_TIME,
+                actual_departure=BASE_TIME,
+                track="5",
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1),
                 track="3",
@@ -325,9 +367,12 @@ class TestTrackUsage:
     def test_track_usage_ignores_destination(self):
         """Track at destination should not appear in track_usage."""
         stops = [
-            _make_stop("NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME),
             _make_stop(
-                "TR", 1,
+                "NY", 0, scheduled_departure=BASE_TIME, actual_departure=BASE_TIME
+            ),
+            _make_stop(
+                "TR",
+                1,
                 scheduled_arrival=BASE_TIME + timedelta(hours=1),
                 actual_arrival=BASE_TIME + timedelta(hours=1),
                 track="7",
