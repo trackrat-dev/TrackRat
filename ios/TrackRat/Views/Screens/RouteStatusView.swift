@@ -52,7 +52,7 @@ struct RouteStatusView: View {
                 CongestionMapKitView(
                     region: $viewModel.mapRegion,
                     segments: viewModel.filteredSegments,
-                    stations: viewModel.journeyStations,
+                    stations: [],
                     trainPositions: [],
                     onSegmentTap: { _ in }
                 )
