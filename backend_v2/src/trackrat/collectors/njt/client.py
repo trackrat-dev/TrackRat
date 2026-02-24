@@ -197,7 +197,7 @@ class NJTransitClient:
             and "STOPS" in response["ITEMS"][0]
         ):
             sample_train = response["ITEMS"][0]
-            stops_count = len(sample_train.get("STOPS", []))
+            stops_count = len(sample_train.get("STOPS") or [])
             logger.debug(
                 "train_schedule_stops_sample",
                 station_code=station_code,

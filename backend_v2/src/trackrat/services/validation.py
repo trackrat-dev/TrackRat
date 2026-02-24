@@ -111,7 +111,7 @@ class TrainValidationService:
         try:
             # Get departure board for origin station
             response = await self.njt_client.get_train_schedule_with_stops(from_station)
-            trains_data = response.get("ITEMS", [])
+            trains_data = response.get("ITEMS") or []
 
             # Filter for trains going to destination
             relevant_trains = set()
@@ -121,7 +121,7 @@ class TrainValidationService:
                     continue
 
                 # Check if train goes to destination
-                stops = train.get("STOPS", [])
+                stops = train.get("STOPS") or []
                 if any(stop.get("STATION_2CHAR") == to_station for stop in stops):
                     relevant_trains.add(train_id)
 

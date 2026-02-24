@@ -595,7 +595,7 @@ class DepartureService:
         try:
             schedule_data = await njt_client.get_train_schedule_with_stops(station_code)
 
-            train_items = schedule_data.get("ITEMS", [])
+            train_items = schedule_data.get("ITEMS") or []
             logger.info(
                 "station_refresh_retrieved",
                 station_code=station_code,
@@ -679,7 +679,7 @@ class DepartureService:
                         journey.update_count = (journey.update_count or 0) + 1
 
                         # Update stops from embedded STOPS data
-                        stops_data = train_data.get("STOPS", [])
+                        stops_data = train_data.get("STOPS") or []
                         if stops_data:
                             await self._update_stops_from_embedded_data(
                                 db, journey, stops_data
