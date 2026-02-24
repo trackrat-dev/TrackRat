@@ -457,20 +457,22 @@ struct CongestionMapKitView: UIViewRepresentable {
         var currentOverlayState: Set<OverlayIdentity> = []
         var overlayMap: [String: CongestionPolyline] = [:]
 
-        // MARK: - Public color/width helpers for updateUIView
+        // MARK: - Public color/width helpers (used by updateUIView and rendererFor)
         func colorForSegment(_ segment: CongestionSegment) -> UIColor {
-            if highlightMode == .health {
-                return getFrequencyUIColor(for: segment.frequencyFactor)
-            } else {
-                return getUIColor(for: segment.congestionFactor)
+            if segment.cancellationRate > 0 { return UIColor.darkGray }
+            switch highlightMode {
+            case .off:    return UIColor.clear
+            case .health: return getFrequencyUIColor(for: segment.frequencyFactor)
+            case .delays: return getUIColor(for: segment.congestionFactor)
             }
         }
 
         func lineWidthForSegment(_ segment: CongestionSegment) -> CGFloat {
-            if highlightMode == .health {
-                return getFrequencyLineWidth(segment.frequencyFactor)
-            } else {
-                return getCongestionLineWidth(segment.congestionFactor)
+            if segment.cancellationRate > 0 { return 10 }
+            switch highlightMode {
+            case .off:    return 0
+            case .health: return getFrequencyLineWidth(segment.frequencyFactor)
+            case .delays: return getCongestionLineWidth(segment.congestionFactor)
             }
         }
 
@@ -478,12 +480,7 @@ struct CongestionMapKitView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
-
-                // Check if this segment has cancellations
-                if let segment = polyline.segment, segment.cancellationRate > 0 {
-                    renderer.strokeColor = UIColor.darkGray
-                    renderer.lineWidth = 10
-                } else if let segment = polyline.segment {
+                if let segment = polyline.segment {
                     renderer.strokeColor = colorForSegment(segment)
                     renderer.lineWidth = lineWidthForSegment(segment)
                 } else {
