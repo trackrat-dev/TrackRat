@@ -128,6 +128,7 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(train.track, "11", "Track should match")
         XCTAssertFalse(train.isCancelled, "Train should not be cancelled by default")
         XCTAssertFalse(train.isCompleted, "Train should not be completed by default")
+        XCTAssertTrue(train.enhancedDisplayStatus.isEmpty, "Enhanced display status should be empty without position data")
 
         print("  ✅ Basic initialization test passed")
     }
@@ -144,14 +145,17 @@ class TrainV2Tests: XCTestCase {
 
         print("  - Train ID: \(train.trainId)")
         print("  - Delay minutes: \(train.delayMinutes)")
-        print("  - Status: \(train.status)")
-        print("  - Enhanced display status: \(train.enhancedDisplayStatus)")
+        print("  - Enhanced display status: '\(train.enhancedDisplayStatus)'")
         print("  - Destination station code: \(train.destinationStationCode ?? "none")")
 
         XCTAssertEqual(train.delayMinutes, 15, "Delay should be calculated correctly")
-        XCTAssertEqual(train.status, .scheduled, "Default status should be scheduled")
         XCTAssertEqual(train.destinationStationCode, "PH", "Destination station code should be available")
-        XCTAssertNotNil(train.enhancedDisplayStatus, "Enhanced display status should be available")
+        XCTAssertTrue(train.enhancedDisplayStatus.isEmpty, "Enhanced display status should be empty without position data")
+
+        // Context-aware status should show delayed for a train with 15 min delay
+        let contextStatus = train.calculateStatus(fromStationCode: "NY", toStationName: "Philadelphia")
+        print("  - Context-aware status: \(contextStatus)")
+        XCTAssertEqual(contextStatus, .delayed, "Train with 15 min delay should show delayed status")
 
         print("  ✅ Computed properties test passed")
     }
@@ -240,7 +244,7 @@ class TrainV2Tests: XCTestCase {
         print("  - Origin departed: \(completedStops[0].hasDepartedStation)")
         print("  - Destination status: terminal (should be 100%)")
 
-        let progress = train.calculateJourneyProgress(from: "NY", to: "Philadelphia")
+        let progress = train.calculateJourneyProgress(from: "NY", toCode: "PH")
 
         print("  - Journey progress: \(progress * 100)%")
         XCTAssertEqual(progress, 1.0, accuracy: 0.01,
@@ -269,7 +273,7 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(status, .departed, "Status should be departed when train has left origin")
 
         // Test with JourneyContext
-        let context = JourneyContext(from: "NY", to: "Philadelphia")
+        let context = JourneyContext(from: "NY", toCode: "PH", toName: "Philadelphia")
         let contextStatus = train.calculateStatus(for: context)
 
         print("  - Context-based status: \(contextStatus)")
@@ -516,35 +520,37 @@ class TrainV2Tests: XCTestCase {
 
     // MARK: - Live Activity Support Tests
 
-    func testToActivityAttributes_withDestination_createsCorrectAttributes() {
-        print("📱 Testing Live Activity attributes creation")
+    func testToLiveActivityContentState_withDestination_createsCorrectState() {
+        print("📱 Testing Live Activity content state creation")
 
         let departureTime = TestHelpers.createMockDate(from: "2024-01-15 10:00:00")
         let arrivalTime = departureTime.addingTimeInterval(3600)
 
+        let stops = createTestStops(baseTime: departureTime)
         let train = createTestTrainV2(
             trainId: "LIVE123",
             departureTime: departureTime,
-            arrivalTime: arrivalTime
+            arrivalTime: arrivalTime,
+            stops: stops
         )
 
         print("  - Train: \(train.trainId)")
         print("  - Origin: \(train.originStationName)")
         print("  - Destination: \(train.destination)")
 
-        let attributes = train.toActivityAttributes(toStationName: "Philadelphia")
+        let contentState = train.toLiveActivityContentState(from: "NY", toCode: "PH", toName: "Philadelphia")
 
-        print("  - Activity train ID: \(attributes.trainId)")
-        print("  - Activity route: \(attributes.routeDescription)")
-        print("  - Activity departure time: \(attributes.departureTime)")
+        print("  - Content state status: \(contentState.status)")
+        print("  - Content state track: \(contentState.track ?? "none")")
+        print("  - Content state progress: \(contentState.journeyProgress)")
+        print("  - Content state departed: \(contentState.hasTrainDeparted)")
 
-        XCTAssertEqual(attributes.trainId, "LIVE123", "Activity should have correct train ID")
-        XCTAssertEqual(attributes.origin, "New York Penn Station", "Activity should have correct origin")
-        XCTAssertEqual(attributes.destination, "Philadelphia", "Activity should have correct destination")
-        XCTAssertEqual(attributes.originStationCode, "NY", "Activity should have correct origin code")
-        TestHelpers.assertDatesEqual(attributes.departureTime, departureTime)
+        XCTAssertEqual(contentState.track, "11", "Content state should have correct track")
+        XCTAssertEqual(contentState.journeyProgress, 0.0, accuracy: 0.01, "Progress should be 0 before departure")
+        XCTAssertFalse(contentState.hasTrainDeparted, "Train should not have departed yet")
+        XCTAssertNotNil(contentState.status, "Content state should have a status")
 
-        print("  ✅ Live Activity attributes test passed")
+        print("  ✅ Live Activity content state test passed")
     }
 
     // Test removed - content state journey progress is 0 when destination not reached
@@ -559,7 +565,7 @@ class TrainV2Tests: XCTestCase {
         print("  - Train: \(train.trainId)")
         print("  - Testing with invalid station codes")
 
-        let progress = train.calculateJourneyProgress(from: "INVALID", to: "NOTFOUND")
+        let progress = train.calculateJourneyProgress(from: "INVALID", toCode: "NOTFOUND")
 
         print("  - Progress with invalid stations: \(progress)")
         XCTAssertEqual(progress, 0.0, "Invalid stations should return 0 progress")
