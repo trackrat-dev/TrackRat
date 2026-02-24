@@ -56,6 +56,12 @@ async def get_route_history(
         ..., description="Data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY)"
     ),
     days: int = Query(30, ge=1, le=365, description="Number of days of history"),
+    hours: int | None = Query(
+        None,
+        ge=1,
+        le=168,
+        description="Hours lookback (overrides days when provided)",
+    ),
     highlight_train: str | None = Query(None, description="Train ID to highlight"),
     db: AsyncSession = Depends(get_db),
 ) -> RouteHistoryResponse:
@@ -64,6 +70,9 @@ async def get_route_history(
     Returns on-time percentage, delay breakdown, cancellation rate, and track usage
     at the origin station. Optionally highlights a specific train for comparison
     against the route-wide statistics.
+
+    When `hours` is provided, filters by actual departure time at the origin station
+    instead of journey date, enabling sub-day time windows (e.g. past hour).
     """
     logger.info(
         "get_route_history_request",
@@ -71,6 +80,7 @@ async def get_route_history(
         to_station=to_station,
         data_source=data_source,
         days=days,
+        hours=hours,
         highlight_train=highlight_train,
     )
 
@@ -83,8 +93,15 @@ async def get_route_history(
         )
 
     # Calculate date range
-    end_date = now_et().date()
-    start_date = end_date - timedelta(days=days)
+    now = now_et()
+    cutoff_time = None
+    if hours:
+        # Hours-based filtering: use timestamp on origin stop departure
+        cutoff_time = now - timedelta(hours=hours)
+        start_date = cutoff_time.date()
+    else:
+        start_date = now.date() - timedelta(days=days)
+    end_date = now.date()
 
     # PERFORMANCE FIX: Use database-level filtering with EXISTS subqueries
     # to avoid loading all journeys into memory then filtering in Python.
@@ -95,23 +112,33 @@ async def get_route_history(
     from_codes = expand_station_codes(from_station)
     to_codes = expand_station_codes(to_station)
 
+    # Build from_stop conditions
+    from_stop_conditions = [
+        from_stop_alias.journey_id == TrainJourney.id,
+        from_stop_alias.station_code.in_(from_codes),
+        exists(
+            select(to_stop_alias.id).where(
+                and_(
+                    to_stop_alias.journey_id == TrainJourney.id,
+                    to_stop_alias.station_code.in_(to_codes),
+                    to_stop_alias.stop_sequence > from_stop_alias.stop_sequence,
+                )
+            )
+        ),
+    ]
+
+    # When hours is provided, also filter by departure time at origin
+    if cutoff_time:
+        from_stop_conditions.append(
+            from_stop_alias.scheduled_departure >= cutoff_time,
+        )
+        from_stop_conditions.append(
+            from_stop_alias.scheduled_departure <= now,
+        )
+
     # Subquery: journey has from_station with stop_sequence < to_station's sequence
     route_filter = exists(
-        select(from_stop_alias.id).where(
-            and_(
-                from_stop_alias.journey_id == TrainJourney.id,
-                from_stop_alias.station_code.in_(from_codes),
-                exists(
-                    select(to_stop_alias.id).where(
-                        and_(
-                            to_stop_alias.journey_id == TrainJourney.id,
-                            to_stop_alias.station_code.in_(to_codes),
-                            to_stop_alias.stop_sequence > from_stop_alias.stop_sequence,
-                        )
-                    )
-                ),
-            )
-        )
+        select(from_stop_alias.id).where(and_(*from_stop_conditions))
     )
 
     stmt = (
@@ -151,6 +178,9 @@ async def get_route_history(
             train_id=highlight_train,
             on_time_percentage=highlighted_stats["on_time_percentage"],
             average_delay_minutes=highlighted_stats["average_delay_minutes"],
+            average_departure_delay_minutes=highlighted_stats[
+                "average_departure_delay_minutes"
+            ],
             delay_breakdown=DelayBreakdown(**highlighted_stats["delay_breakdown"]),
             track_usage_at_origin=highlighted_stats["track_usage"],
         )
@@ -165,6 +195,9 @@ async def get_route_history(
         aggregate_stats=AggregateStats(
             on_time_percentage=aggregate_stats["on_time_percentage"],
             average_delay_minutes=aggregate_stats["average_delay_minutes"],
+            average_departure_delay_minutes=aggregate_stats[
+                "average_departure_delay_minutes"
+            ],
             cancellation_rate=aggregate_stats["cancellation_rate"],
             delay_breakdown=DelayBreakdown(**aggregate_stats["delay_breakdown"]),
             track_usage_at_origin=aggregate_stats["track_usage"],
@@ -181,6 +214,7 @@ def _calculate_route_stats(
         return {
             "on_time_percentage": 0.0,
             "average_delay_minutes": 0.0,
+            "average_departure_delay_minutes": 0.0,
             "cancellation_rate": 0.0,
             "delay_breakdown": {
                 "on_time": 0,
@@ -191,7 +225,9 @@ def _calculate_route_stats(
             "track_usage": {},
         }
 
-    total_delay = 0
+    total_arrival_delay = 0
+    total_departure_delay = 0
+    departure_delay_count = 0
     on_time_count = 0
     cancelled_count = 0
     delay_categories = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
@@ -199,35 +235,51 @@ def _calculate_route_stats(
     origin_codes = set(expand_station_codes(origin_station))
 
     for journey in journeys:
-        # Get last stop for delay calculation
-        if journey.stops:
-            last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
+        if not journey.stops:
+            continue
 
-            # Calculate arrival delay
-            arrival_delay = 0
-            if last_stop.actual_arrival and last_stop.scheduled_arrival:
-                arrival_delay = int(
-                    (
-                        last_stop.actual_arrival - last_stop.scheduled_arrival
-                    ).total_seconds()
-                    / 60
-                )
+        # Get last stop for arrival delay calculation
+        last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-            if journey.is_cancelled:
-                cancelled_count += 1
+        # Calculate arrival delay
+        arrival_delay = 0
+        if last_stop.actual_arrival and last_stop.scheduled_arrival:
+            arrival_delay = int(
+                (
+                    last_stop.actual_arrival - last_stop.scheduled_arrival
+                ).total_seconds()
+                / 60
+            )
+
+        # Calculate departure delay at origin station
+        for stop in journey.stops:
+            if stop.station_code in origin_codes:
+                if stop.actual_departure and stop.scheduled_departure:
+                    dep_delay = int(
+                        (
+                            stop.actual_departure - stop.scheduled_departure
+                        ).total_seconds()
+                        / 60
+                    )
+                    total_departure_delay += max(0, dep_delay)
+                    departure_delay_count += 1
+                break
+
+        if journey.is_cancelled:
+            cancelled_count += 1
+        else:
+            # Categorize by arrival delay
+            if arrival_delay <= 5:
+                on_time_count += 1
+                delay_categories["on_time"] += 1
+            elif arrival_delay <= 15:
+                delay_categories["slight"] += 1
+            elif arrival_delay <= 30:
+                delay_categories["significant"] += 1
             else:
-                # Categorize delay
-                if arrival_delay <= 5:
-                    on_time_count += 1
-                    delay_categories["on_time"] += 1
-                elif arrival_delay <= 15:
-                    delay_categories["slight"] += 1
-                elif arrival_delay <= 30:
-                    delay_categories["significant"] += 1
-                else:
-                    delay_categories["major"] += 1
+                delay_categories["major"] += 1
 
-                total_delay += max(0, arrival_delay)
+            total_arrival_delay += max(0, arrival_delay)
 
         # Count track usage ONLY at origin station
         for stop in journey.stops:
@@ -272,7 +324,14 @@ def _calculate_route_stats(
             else 0
         ),
         "average_delay_minutes": (
-            (total_delay / non_cancelled_journeys) if non_cancelled_journeys > 0 else 0
+            (total_arrival_delay / non_cancelled_journeys)
+            if non_cancelled_journeys > 0
+            else 0
+        ),
+        "average_departure_delay_minutes": (
+            (total_departure_delay / departure_delay_count)
+            if departure_delay_count > 0
+            else 0
         ),
         "cancellation_rate": (
             (cancelled_count / total_journeys * 100) if total_journeys > 0 else 0

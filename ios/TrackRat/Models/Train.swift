@@ -1013,6 +1013,7 @@ struct RouteHistoricalData {
     struct Stats {
         let onTimePercentage: Double
         let averageDelayMinutes: Double
+        let averageDepartureDelayMinutes: Double
         let cancellationRate: Double
         let delayBreakdown: DelayBreakdown
         let trackUsageAtOrigin: [String: Int]

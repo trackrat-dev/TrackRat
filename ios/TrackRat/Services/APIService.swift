@@ -369,7 +369,8 @@ final class APIService: ObservableObject {
         to: String,
         dataSource: String,
         highlightTrain: String? = nil,
-        days: Int = 365
+        days: Int = 365,
+        hours: Int? = nil
     ) async throws -> RouteHistoricalData {
         var urlComponents = URLComponents(string: "\(baseURL)/v2/routes/history")!
         urlComponents.queryItems = [
@@ -378,7 +379,11 @@ final class APIService: ObservableObject {
             URLQueryItem(name: "data_source", value: dataSource),
             URLQueryItem(name: "days", value: String(days))
         ]
-        
+
+        if let hours = hours {
+            urlComponents.queryItems?.append(URLQueryItem(name: "hours", value: String(hours)))
+        }
+
         if let highlightTrain = highlightTrain {
             urlComponents.queryItems?.append(URLQueryItem(name: "highlight_train", value: highlightTrain))
         }
@@ -419,13 +424,15 @@ final class APIService: ObservableObject {
             struct AggregateStats: Decodable {
                 let onTimePercentage: Double
                 let averageDelayMinutes: Double
+                let averageDepartureDelayMinutes: Double?
                 let cancellationRate: Double
                 let delayBreakdown: DelayBreakdown
                 let trackUsageAtOrigin: [String: Int]
-                
+
                 private enum CodingKeys: String, CodingKey {
                     case onTimePercentage = "on_time_percentage"
                     case averageDelayMinutes = "average_delay_minutes"
+                    case averageDepartureDelayMinutes = "average_departure_delay_minutes"
                     case cancellationRate = "cancellation_rate"
                     case delayBreakdown = "delay_breakdown"
                     case trackUsageAtOrigin = "track_usage_at_origin"
@@ -436,13 +443,15 @@ final class APIService: ObservableObject {
                 let trainId: String
                 let onTimePercentage: Double
                 let averageDelayMinutes: Double
+                let averageDepartureDelayMinutes: Double?
                 let delayBreakdown: DelayBreakdown
                 let trackUsageAtOrigin: [String: Int]
-                
+
                 private enum CodingKeys: String, CodingKey {
                     case trainId = "train_id"
                     case onTimePercentage = "on_time_percentage"
                     case averageDelayMinutes = "average_delay_minutes"
+                    case averageDepartureDelayMinutes = "average_departure_delay_minutes"
                     case delayBreakdown = "delay_breakdown"
                     case trackUsageAtOrigin = "track_usage_at_origin"
                 }
@@ -488,6 +497,7 @@ final class APIService: ObservableObject {
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: response.aggregateStats.onTimePercentage,
                 averageDelayMinutes: response.aggregateStats.averageDelayMinutes,
+                averageDepartureDelayMinutes: response.aggregateStats.averageDepartureDelayMinutes ?? 0,
                 cancellationRate: response.aggregateStats.cancellationRate,
                 delayBreakdown: RouteHistoricalData.DelayBreakdown(
                     onTime: response.aggregateStats.delayBreakdown.onTime,
@@ -501,6 +511,7 @@ final class APIService: ObservableObject {
                 RouteHistoricalData.Stats(
                     onTimePercentage: highlighted.onTimePercentage,
                     averageDelayMinutes: highlighted.averageDelayMinutes,
+                    averageDepartureDelayMinutes: highlighted.averageDepartureDelayMinutes ?? 0,
                     cancellationRate: 0.0, // Not provided for individual trains
                     delayBreakdown: RouteHistoricalData.DelayBreakdown(
                         onTime: highlighted.delayBreakdown.onTime,
