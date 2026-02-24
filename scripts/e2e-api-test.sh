@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 # e2e-api-test.sh - End-to-end API validation mimicking iOS app behavior
 #
-# Phase 1: Tests ~22 fixed routes across NJT, Amtrak, PATH, LIRR, and
-# Metro-North by replicating the exact API call sequence the iOS app makes:
+# Pre-loop: Tests congestion API (network-wide + per data source)
+#
+# Per-route loop (Phase 1: fixed routes, Phase 2: random routes):
 #   1. Fetch departures for a route
 #   2. Fetch train detail (with predictions) for the first active train
 #   3. Fetch track + delay predictions at ML-enabled stations
-# Phase 2: Randomly selects additional routes from the backend route topology
+#   4. Fetch route history (7-day stats: OTP, delay breakdown)
+#   5. Fetch route summary (headline, body, metrics)
+#
+# Phase 2 randomly selects additional routes from the backend route topology
 # and runs the same validation. Deduplicates against fixed routes.
 #
 # Usage: ./scripts/e2e-api-test.sh [base_url] [--no-random] [--seed N]
@@ -105,6 +109,81 @@ fi
 status=$(jq -r '.status' "$TMPDIR/resp.json")
 env=$(jq -r '.environment // "unknown"' "$TMPDIR/resp.json")
 echo -e "Status: $status | Environment: $env\n"
+
+# --- Congestion API (network-wide, tested once per data source) ---
+
+echo -e "${BOLD}Congestion API...${NC}"
+
+# Test with no filter first (network-wide)
+code=$(api "$API/routes/congestion")
+check_timing
+if [[ "$code" != "200" ]]; then
+  fail "Congestion (network): HTTP $code"
+  print_error_body
+else
+  meta_trains=$(jq '.metadata.total_trains // -1' "$TMPDIR/resp.json")
+  meta_agg=$(jq '.metadata.total_aggregated_segments // -1' "$TMPDIR/resp.json")
+  meta_levels=$(jq '.metadata.congestion_levels | keys | length' "$TMPDIR/resp.json" 2>/dev/null || echo 0)
+  positions=$(jq '.train_positions | length' "$TMPDIR/resp.json")
+  agg_segs=$(jq '.aggregated_segments | length' "$TMPDIR/resp.json")
+
+  if [[ "$meta_trains" -lt 0 ]]; then
+    fail "Congestion: metadata.total_trains missing"
+  else
+    pass "Congestion: $meta_trains trains, $agg_segs segments, $positions positions"
+  fi
+
+  if [[ "$meta_levels" -ne 4 ]]; then
+    got=$(jq -c '.metadata.congestion_levels | keys' "$TMPDIR/resp.json" 2>/dev/null)
+    fail_v "Congestion: expected 4 congestion_levels" "Got: $got"
+  else
+    levels=$(jq -c '.metadata.congestion_levels' "$TMPDIR/resp.json")
+    pass "Congestion levels: $levels"
+  fi
+
+  # Validate aggregated segment structure (spot-check first segment)
+  if [[ "$agg_segs" -gt 0 ]]; then
+    seg_ok=$(jq '[.aggregated_segments[0] | .from_station, .to_station, .congestion_level, .sample_count] | all(. != null)' "$TMPDIR/resp.json")
+    if [[ "$seg_ok" != "true" ]]; then
+      fail "Congestion: aggregated segment missing required fields"
+    else
+      pass "Congestion: segment structure valid"
+    fi
+
+    # Validate congestion_level values are valid enums
+    bad_levels=$(jq '[.aggregated_segments[].congestion_level | select(. != "normal" and . != "moderate" and . != "heavy" and . != "severe")] | length' "$TMPDIR/resp.json")
+    if [[ "$bad_levels" -gt 0 ]]; then
+      sample=$(jq -r '[.aggregated_segments[].congestion_level | select(. != "normal" and . != "moderate" and . != "heavy" and . != "severe")][0]' "$TMPDIR/resp.json")
+      fail_v "Congestion: $bad_levels segments with invalid congestion_level" "Got: $sample"
+    else
+      pass "Congestion: all congestion_level values valid"
+    fi
+  fi
+
+  # Validate train position structure (spot-check first position)
+  if [[ "$positions" -gt 0 ]]; then
+    pos_ok=$(jq '[.train_positions[0] | .train_id, .data_source] | all(. != null)' "$TMPDIR/resp.json")
+    if [[ "$pos_ok" != "true" ]]; then
+      fail "Congestion: train position missing required fields"
+    else
+      pass "Congestion: position structure valid"
+    fi
+  fi
+fi
+
+# Test per data source (smoke test: just check HTTP 200)
+for cong_src in NJT AMTRAK PATH LIRR MNR SUBWAY PATCO; do
+  code=$(api "$API/routes/congestion?data_source=$cong_src")
+  if [[ "$code" != "200" ]]; then
+    fail "Congestion ($cong_src): HTTP $code"
+    print_error_body
+  else
+    trains=$(jq '.metadata.total_trains // 0' "$TMPDIR/resp.json")
+    pass "Congestion ($cong_src): $trains trains"
+  fi
+done
+
+echo ""
 
 # --- Routes ---
 # Format: "label|from|to|data_source|ml_station|flags"
@@ -403,6 +482,82 @@ for route in "${ROUTES[@]}"; do
       print_error_body
       FAILED_ROUTES+=("$label ($from -> $to): Delay prediction HTTP $code")
     fi
+  fi
+
+  # 4. ROUTE HISTORY (iOS: Route Alert view stats)
+  hist_url="$API/routes/history?from_station=$from&to_station=$to&data_source=$source&days=7"
+  code=$(api "$hist_url")
+  check_timing
+  if [[ "$code" == "200" ]]; then
+    total_trains=$(jq '.route.total_trains // -1' "$TMPDIR/resp.json")
+    otp=$(jq '.aggregate_stats.on_time_percentage // -1' "$TMPDIR/resp.json")
+    breakdown_keys=$(jq -c '.aggregate_stats.delay_breakdown | keys | sort' "$TMPDIR/resp.json" 2>/dev/null || echo "[]")
+    expected_keys='["major","on_time","significant","slight"]'
+
+    if [[ "$total_trains" -lt 0 ]]; then
+      fail "History: total_trains missing"
+    elif [[ "$total_trains" -eq 0 ]]; then
+      warn "History: 0 trains in 7-day window"
+    else
+      pass "History: $total_trains trains, OTP: $otp%"
+    fi
+
+    if [[ "$breakdown_keys" != "$expected_keys" ]]; then
+      fail_v "History: delay_breakdown keys wrong" "Expected: $expected_keys, got: $breakdown_keys"
+    else
+      pass "History: delay_breakdown valid"
+    fi
+
+    # Validate OTP range
+    otp_valid=$(jq '.aggregate_stats.on_time_percentage >= 0 and .aggregate_stats.on_time_percentage <= 100' "$TMPDIR/resp.json" 2>/dev/null || echo "false")
+    if [[ "$otp_valid" != "true" && "$total_trains" -gt 0 ]]; then
+      fail_v "History: OTP out of range" "Got: $otp"
+    fi
+  elif [[ "$code" == "404" ]]; then
+    pass "History: no data ($code)"
+  else
+    fail "History: HTTP $code"
+    print_error_body
+    FAILED_ROUTES+=("$label ($from -> $to): History HTTP $code")
+  fi
+
+  # 5. ROUTE SUMMARY (iOS: Route Alert view headline)
+  summ_url="$API/routes/summary?scope=route&from_station=$from&to_station=$to&data_source=$source"
+  code=$(api "$summ_url")
+  check_timing
+  if [[ "$code" == "200" ]]; then
+    headline=$(jq -r '.headline // ""' "$TMPDIR/resp.json")
+    body=$(jq -r '.body // ""' "$TMPDIR/resp.json")
+    scope=$(jq -r '.scope // ""' "$TMPDIR/resp.json")
+    train_count=$(jq '.metrics.train_count // 0' "$TMPDIR/resp.json")
+    metrics_null=$(jq '.metrics == null' "$TMPDIR/resp.json")
+
+    if [[ "$scope" != "route" ]]; then
+      fail_v "Summary: wrong scope" "Expected: route, got: $scope"
+    elif [[ -z "$headline" && "$metrics_null" == "true" ]]; then
+      # No trains in recent window — valid "no data" response
+      pass "Summary: no recent trains"
+    elif [[ -z "$headline" ]]; then
+      fail "Summary: empty headline (but metrics present)"
+    elif [[ -z "$body" ]]; then
+      fail "Summary: empty body"
+    else
+      pass "Summary: \"$headline\" ($train_count trains)"
+    fi
+
+    # Validate generated_at is present
+    gen_at=$(jq -r '.generated_at // ""' "$TMPDIR/resp.json")
+    if [[ -z "$gen_at" ]]; then
+      fail "Summary: missing generated_at"
+    else
+      pass "Summary: generated_at present"
+    fi
+  elif [[ "$code" == "404" ]]; then
+    pass "Summary: no data ($code)"
+  else
+    fail "Summary: HTTP $code"
+    print_error_body
+    FAILED_ROUTES+=("$label ($from -> $to): Summary HTTP $code")
   fi
 
   echo ""
