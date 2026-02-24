@@ -251,6 +251,51 @@ class TestDepartureDelay:
         # No data points for departure delay
         assert result["average_departure_delay_minutes"] == 0.0
 
+    def test_departure_delay_excludes_cancelled_trains(self):
+        """Cancelled trains with actual_departure data must not affect departure delay average."""
+        # Non-cancelled train: 5 min late
+        normal_stops = [
+            _make_stop(
+                "NY",
+                0,
+                scheduled_departure=BASE_TIME,
+                actual_departure=BASE_TIME + timedelta(minutes=5),
+            ),
+            _make_stop(
+                "TR",
+                1,
+                scheduled_arrival=BASE_TIME + timedelta(hours=1),
+                actual_arrival=BASE_TIME + timedelta(hours=1),
+            ),
+        ]
+        # Cancelled train that partially ran: 20 min late at origin
+        cancelled_stops = [
+            _make_stop(
+                "NY",
+                0,
+                scheduled_departure=BASE_TIME,
+                actual_departure=BASE_TIME + timedelta(minutes=20),
+            ),
+            _make_stop(
+                "TR",
+                1,
+                scheduled_arrival=BASE_TIME + timedelta(hours=1),
+                actual_arrival=None,
+            ),
+        ]
+        journeys = [
+            _make_journey(normal_stops, is_cancelled=False),
+            _make_journey(cancelled_stops, is_cancelled=True),
+        ]
+        result = _calculate_route_stats(journeys, "NY")
+
+        # Only the non-cancelled train's 5 min delay should count
+        assert result["average_departure_delay_minutes"] == 5.0, (
+            f"Expected 5.0 (non-cancelled only), got {result['average_departure_delay_minutes']}. "
+            "Cancelled trains should be excluded from departure delay calculation."
+        )
+        assert result["cancellation_rate"] == 50.0
+
 
 class TestArrivalDelay:
     """Verify arrival delay is calculated at the last stop (destination)."""

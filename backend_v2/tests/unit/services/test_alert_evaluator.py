@@ -416,53 +416,40 @@ class TestAlertEvaluator:
         )
 
         now = now_et()
-        # Create baseline: 10 trains per day for the last 5 comparable days
-        for days_ago in range(1, 6):
+        # Create baseline: 10 trains per matching day, spread within the rolling
+        # 60-minute window (same window the evaluator uses for both current and
+        # baseline counts).
+        baseline_days_added = 0
+        for days_ago in range(1, 35):
             past_date = now - timedelta(days=days_ago)
-            # Skip if weekday/weekend doesn't match
+            # Must match weekday/weekend pattern
             if (past_date.weekday() >= 5) != (now.weekday() >= 5):
-                # Add extra days to ensure we get enough matching days
                 continue
             for i in range(10):
+                # Spread trains within the past 50 minutes relative to now's
+                # time-of-day so they fall inside the rolling 60-min window.
+                # Cap at 50 min to avoid crossing midnight into a different date.
+                sched = past_date.replace(
+                    hour=now.hour, minute=now.minute, second=0, microsecond=0
+                ) - timedelta(minutes=i * 5)
                 journey = TrainJourney(
                     train_id=f"baseline-{days_ago}-{i}",
-                    journey_date=past_date.date(),
+                    journey_date=sched.date(),
                     line_code="A",
                     line_name="A Train",
                     destination="Far Rockaway",
                     origin_station_code="A01",
                     terminal_station_code="B01",
                     data_source="SUBWAY",
-                    scheduled_departure=past_date.replace(hour=now.hour, minute=i * 5),
-                    actual_departure=past_date.replace(hour=now.hour, minute=i * 5),
+                    scheduled_departure=sched,
+                    actual_departure=sched,
                     is_cancelled=False,
                     has_complete_journey=True,
                 )
                 db_session.add(journey)
-
-        # Create baseline for enough weekday/weekend matching days
-        # Ensure we have at least MIN_BASELINE_DAYS matching days
-        for extra in range(7, 35, 7):
-            past_date = now - timedelta(days=extra)
-            if (past_date.weekday() >= 5) == (now.weekday() >= 5):
-                for i in range(10):
-                    journey = TrainJourney(
-                        train_id=f"baseline-extra-{extra}-{i}",
-                        journey_date=past_date.date(),
-                        line_code="A",
-                        line_name="A Train",
-                        destination="Far Rockaway",
-                        origin_station_code="A01",
-                        terminal_station_code="B01",
-                        data_source="SUBWAY",
-                        scheduled_departure=past_date.replace(
-                            hour=now.hour, minute=i * 5
-                        ),
-                        actual_departure=past_date.replace(hour=now.hour, minute=i * 5),
-                        is_cancelled=False,
-                        has_complete_journey=True,
-                    )
-                    db_session.add(journey)
+            baseline_days_added += 1
+            if baseline_days_added >= MIN_BASELINE_DAYS + 1:
+                break
 
         # Current hour: only 3 trains running (30% of baseline ~10)
         for i in range(3):
@@ -531,30 +518,35 @@ class TestAlertEvaluator:
         )
 
         now = now_et()
-        # Create baseline: 6 trains per comparable day
-        for extra in range(7, 35, 7):
-            past_date = now - timedelta(days=extra)
-            if (past_date.weekday() >= 5) == (now.weekday() >= 5):
-                for i in range(6):
-                    journey = TrainJourney(
-                        train_id=f"path-base-{extra}-{i}",
-                        journey_date=past_date.date(),
-                        line_code="NWK",
-                        line_name="Newark-WTC",
-                        destination="Newark",
-                        origin_station_code="WTC",
-                        terminal_station_code="NWK",
-                        data_source="PATH",
-                        scheduled_departure=past_date.replace(
-                            hour=now.hour, minute=i * 10
-                        ),
-                        actual_departure=past_date.replace(
-                            hour=now.hour, minute=i * 10
-                        ),
-                        is_cancelled=False,
-                        has_complete_journey=True,
-                    )
-                    db_session.add(journey)
+        # Create baseline: 6 trains per comparable day within the rolling
+        # 60-minute window
+        baseline_days_added = 0
+        for days_ago in range(1, 35):
+            past_date = now - timedelta(days=days_ago)
+            if (past_date.weekday() >= 5) != (now.weekday() >= 5):
+                continue
+            for i in range(6):
+                sched = past_date.replace(
+                    hour=now.hour, minute=now.minute, second=0, microsecond=0
+                ) - timedelta(minutes=i * 10)
+                journey = TrainJourney(
+                    train_id=f"path-base-{days_ago}-{i}",
+                    journey_date=sched.date(),
+                    line_code="NWK",
+                    line_name="Newark-WTC",
+                    destination="Newark",
+                    origin_station_code="WTC",
+                    terminal_station_code="NWK",
+                    data_source="PATH",
+                    scheduled_departure=sched,
+                    actual_departure=sched,
+                    is_cancelled=False,
+                    has_complete_journey=True,
+                )
+                db_session.add(journey)
+            baseline_days_added += 1
+            if baseline_days_added >= MIN_BASELINE_DAYS + 1:
+                break
 
         # Current hour: 4 trains running (67% of baseline ~6) — above 50% threshold
         for i in range(4):

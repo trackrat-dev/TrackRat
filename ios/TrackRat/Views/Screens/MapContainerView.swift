@@ -564,7 +564,7 @@ struct MapContainerView: View {
         let segmentsWithData = mapViewModel.segments.filter { $0.hasFrequencyData }
         if !segmentsWithData.isEmpty {
             let totalTrains = segmentsWithData.compactMap(\.trainCount).reduce(0, +)
-            let headways = segmentsWithData.compactMap { $0.currentHeadwayMinutes(timeWindowHours: 1) }
+            let headways = segmentsWithData.compactMap { $0.currentHeadwayMinutes(timeWindowHours: mapViewModel.lastTimeWindowHours) }
             let avgHeadway = headways.isEmpty ? nil : Int((headways.reduce(0, +) / Double(headways.count)).rounded())
             let severeCount = segmentsWithData.filter { ($0.frequencyFactor ?? 1.0) < 0.5 }.count
 

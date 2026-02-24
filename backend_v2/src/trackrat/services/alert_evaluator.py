@@ -9,7 +9,7 @@ or when train frequency drops significantly below normal levels.
 import hashlib
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import and_, extract, select
+from sqlalchemy import Time, and_, cast, extract, or_, select
 from sqlalchemy import func as sqla_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -265,29 +265,56 @@ async def _query_baseline_train_count(
 ) -> float | None:
     """
     Compute the average number of trains matching this subscription's scope
-    at the same hour and weekday/weekend pattern over the last 30 days.
+    in the same 60-minute time-of-day window and weekday/weekend pattern
+    over the last 30 days.
+
+    Uses the same rolling 60-minute window as the current count query
+    (scheduled_departure within [now - 1h, now] by time of day) to avoid
+    systematic bias from clock-hour boundaries.
 
     Returns None if insufficient historical data.
     """
-    current_hour = now.hour
     is_weekend = now.weekday() >= 5  # Saturday=5, Sunday=6
 
     lookback_start = (now - timedelta(days=BASELINE_LOOKBACK_DAYS)).date()
     lookback_end = (now - timedelta(days=1)).date()
 
-    # Build base conditions: same data source, same hour, same day type
+    # Use time-of-day window matching the current 60-minute rolling window
+    window_start_time = (now - timedelta(hours=1)).time()
+    window_end_time = now.time()
+
+    # Extract time of day from scheduled_departure in ET
+    departure_time_et = cast(
+        sqla_func.timezone("America/New_York", TrainJourney.scheduled_departure),
+        Time,
+    )
+
+    # Build base conditions: same data source, same time-of-day window, same day type
     # Exclude cancelled trains to match the active_count calculation in evaluate_route_alerts
     base_conditions = [
         TrainJourney.data_source == sub.data_source,
         TrainJourney.journey_date >= lookback_start,
         TrainJourney.journey_date <= lookback_end,
-        extract(
-            "hour",
-            sqla_func.timezone("America/New_York", TrainJourney.scheduled_departure),
-        )
-        == current_hour,
         TrainJourney.is_cancelled.is_not(True),
     ]
+
+    # Time-of-day filter: handle midnight crossover
+    if window_start_time <= window_end_time:
+        # Normal case: e.g., 09:30 to 10:30
+        base_conditions.extend(
+            [
+                departure_time_et >= window_start_time,
+                departure_time_et <= window_end_time,
+            ]
+        )
+    else:
+        # Midnight crossover: e.g., 23:30 to 00:30
+        base_conditions.append(
+            or_(
+                departure_time_et >= window_start_time,
+                departure_time_et <= window_end_time,
+            )
+        )
 
     # Filter weekday/weekend pattern
     if is_weekend:

@@ -340,7 +340,6 @@ final class RouteStatusViewModel: ObservableObject {
         // Fetch all three time periods in parallel
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
-                defer { Task { @MainActor in self.isLoadingPastHour = false } }
                 do {
                     let data = try await APIService.shared.fetchRouteHistoricalData(
                         from: from, to: to,
@@ -351,9 +350,9 @@ final class RouteStatusViewModel: ObservableObject {
                 } catch {
                     await MainActor.run { self.pastHourError = error.localizedDescription }
                 }
+                await MainActor.run { self.isLoadingPastHour = false }
             }
             group.addTask {
-                defer { Task { @MainActor in self.isLoadingPast24Hours = false } }
                 do {
                     let data = try await APIService.shared.fetchRouteHistoricalData(
                         from: from, to: to,
@@ -364,9 +363,9 @@ final class RouteStatusViewModel: ObservableObject {
                 } catch {
                     await MainActor.run { self.past24HoursError = error.localizedDescription }
                 }
+                await MainActor.run { self.isLoadingPast24Hours = false }
             }
             group.addTask {
-                defer { Task { @MainActor in self.isLoadingPast7Days = false } }
                 do {
                     let data = try await APIService.shared.fetchRouteHistoricalData(
                         from: from, to: to,
@@ -377,6 +376,7 @@ final class RouteStatusViewModel: ObservableObject {
                 } catch {
                     await MainActor.run { self.past7DaysError = error.localizedDescription }
                 }
+                await MainActor.run { self.isLoadingPast7Days = false }
             }
         }
     }

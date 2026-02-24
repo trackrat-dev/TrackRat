@@ -479,6 +479,7 @@ class CongestionMapViewModel: ObservableObject {
     @Published var routeStations: [MapStation] = []  // Stations from route topology
     @Published var isLoading = false
     @Published var error: String?
+    @Published var lastTimeWindowHours: Int = 1  // Track fetched time window for headway calc
 
     // MARK: - Internal State
     private var allAggregatedSegments: [CongestionSegment] = []
@@ -600,6 +601,7 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 Starting congestion data fetch (timeWindow: \(timeWindowHours), dataSource: \(dataSource ?? "All"))")
         isLoading = true
         error = nil
+        lastTimeWindowHours = timeWindowHours
         
         do {
             // Determine maxPerSegment based on detail mode (fetch individual trains only if showing)

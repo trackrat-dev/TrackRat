@@ -247,23 +247,23 @@ def _calculate_route_stats(
                 / 60
             )
 
-        # Calculate departure delay at origin station
-        for stop in journey.stops:
-            if stop.station_code in origin_codes:
-                if stop.actual_departure and stop.scheduled_departure:
-                    dep_delay = int(
-                        (
-                            stop.actual_departure - stop.scheduled_departure
-                        ).total_seconds()
-                        / 60
-                    )
-                    total_departure_delay += max(0, dep_delay)
-                    departure_delay_count += 1
-                break
-
         if journey.is_cancelled:
             cancelled_count += 1
         else:
+            # Calculate departure delay at origin station (non-cancelled only)
+            for stop in journey.stops:
+                if stop.station_code in origin_codes:
+                    if stop.actual_departure and stop.scheduled_departure:
+                        dep_delay = int(
+                            (
+                                stop.actual_departure - stop.scheduled_departure
+                            ).total_seconds()
+                            / 60
+                        )
+                        total_departure_delay += max(0, dep_delay)
+                        departure_delay_count += 1
+                    break
+
             # Categorize by arrival delay
             if arrival_delay <= 5:
                 on_time_count += 1
