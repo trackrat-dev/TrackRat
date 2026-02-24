@@ -7,6 +7,7 @@ segments (A→C) are properly attributed to all intermediate
 canonical segments (A→B, B→C).
 """
 
+import math
 from collections import defaultdict
 from typing import Any
 
@@ -20,6 +21,47 @@ from trackrat.services.congestion_types import (
 )
 
 logger = get_logger(__name__)
+
+# Maximum distance (km) for segments with no matching route, by data source.
+# Segments beyond this threshold are dropped as anomalous — typically caused
+# by sparse GTFS-RT stop lists creating phantom cross-branch connections.
+_MAX_UNMATCHED_SEGMENT_KM: dict[str, float] = {
+    "SUBWAY": 10.0,
+}
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two points in km."""
+    r = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(math.radians(lat1))
+        * math.cos(math.radians(lat2))
+        * math.sin(dlon / 2) ** 2
+    )
+    return r * 2 * math.asin(math.sqrt(a))
+
+
+def _is_segment_anomalous(
+    from_station: str, to_station: str, data_source: str
+) -> bool:
+    """Check if an unmatched segment spans an unreasonable geographic distance."""
+    max_km = _MAX_UNMATCHED_SEGMENT_KM.get(data_source)
+    if max_km is None:
+        return False
+    from trackrat.config.stations import get_station_coordinates
+
+    from_coords = get_station_coordinates(from_station)
+    to_coords = get_station_coordinates(to_station)
+    if not from_coords or not to_coords:
+        return False
+    dist = _haversine_km(
+        from_coords["lat"], from_coords["lon"],
+        to_coords["lat"], to_coords["lon"],
+    )
+    return dist > max_km
 
 
 def normalize_aggregated_segments(
@@ -63,7 +105,17 @@ def normalize_aggregated_segments(
             segment.from_station,
             segment.to_station,
         ):
-            # Segment is already canonical or no route found
+            # Segment is already canonical or no route found — check distance
+            if _is_segment_anomalous(
+                segment.from_station, segment.to_station, segment.data_source
+            ):
+                logger.warning(
+                    "anomalous_segment_filtered",
+                    from_station=segment.from_station,
+                    to_station=segment.to_station,
+                    data_source=segment.data_source,
+                )
+                continue
             segments_unchanged += 1
         else:
             segments_expanded += 1
@@ -249,7 +301,18 @@ def normalize_individual_segments(
             segment.from_station,
             segment.to_station,
         ):
-            # Segment is already canonical - pass through unchanged
+            # Segment is already canonical or no route found — check distance
+            if _is_segment_anomalous(
+                segment.from_station, segment.to_station, segment.data_source
+            ):
+                logger.warning(
+                    "anomalous_individual_segment_filtered",
+                    from_station=segment.from_station,
+                    to_station=segment.to_station,
+                    data_source=segment.data_source,
+                    journey_id=segment.journey_id,
+                )
+                continue
             result.append(segment)
             continue
 

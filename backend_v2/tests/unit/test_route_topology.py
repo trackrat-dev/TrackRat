@@ -17,6 +17,9 @@ from trackrat.config.route_topology import (
     PATH_NWK_WTC,
     PATCO_SPEEDLINE,
     AMTRAK_NEC,
+    SUBWAY_A,
+    SUBWAY_A_ROCKAWAY,
+    SUBWAY_H,
     Route,
     find_route_for_segment,
     get_canonical_segments,
@@ -483,3 +486,124 @@ class TestAllRoutesConsistency:
         # Waterbury includes trunk to Bridgeport then branch to Waterbury
         assert "MBGP" in MNR_WATERBURY.stations
         assert MNR_WATERBURY.stations[-1] == "MWTB"
+
+
+class TestSubwayARockawayBranch:
+    """Test the A train Rockaway Park branch route definition.
+
+    The A train serves both the Far Rockaway branch (SH11-SH06-SH04)
+    and the Rockaway Park branch (SH15-SH12-SH04) during late nights.
+    SUBWAY_A_ROCKAWAY covers the latter variant.
+    """
+
+    def test_rockaway_route_exists_in_all_routes(self):
+        """Test that SUBWAY_A_ROCKAWAY is registered in ALL_ROUTES."""
+        assert SUBWAY_A_ROCKAWAY in ALL_ROUTES
+
+    def test_rockaway_route_line_code(self):
+        """Test that the Rockaway variant uses line code A."""
+        assert "A" in SUBWAY_A_ROCKAWAY.line_codes
+
+    def test_rockaway_route_data_source(self):
+        """Test that the Rockaway variant is tagged as SUBWAY."""
+        assert SUBWAY_A_ROCKAWAY.data_source == "SUBWAY"
+
+    def test_rockaway_route_contains_rockaway_park_stations(self):
+        """Test that the Rockaway variant includes SH15-SH12 (Rockaway Park branch)."""
+        rockaway_park_stations = {"SH15", "SH14", "SH13", "SH12"}
+        assert rockaway_park_stations.issubset(
+            set(SUBWAY_A_ROCKAWAY.stations)
+        ), f"Missing Rockaway Park stations: {rockaway_park_stations - set(SUBWAY_A_ROCKAWAY.stations)}"
+
+    def test_rockaway_route_does_not_contain_far_rockaway_stations(self):
+        """Test that the Rockaway variant does NOT include Far Rockaway branch stations."""
+        far_rockaway_only = {"SH11", "SH10", "SH09", "SH08", "SH07", "SH06"}
+        overlap = far_rockaway_only & set(SUBWAY_A_ROCKAWAY.stations)
+        assert len(overlap) == 0, f"Rockaway Park route should not include Far Rockaway stations: {overlap}"
+
+    def test_rockaway_route_shares_trunk_with_main_a(self):
+        """Test that the Rockaway variant shares the full trunk (SH04 to SA02) with SUBWAY_A."""
+        # Both routes should share everything from Broad Channel (SH04) northward
+        main_a_trunk_idx = SUBWAY_A.stations.index("SH04")
+        rockaway_trunk_idx = SUBWAY_A_ROCKAWAY.stations.index("SH04")
+
+        main_trunk = SUBWAY_A.stations[main_a_trunk_idx:]
+        rockaway_trunk = SUBWAY_A_ROCKAWAY.stations[rockaway_trunk_idx:]
+
+        assert main_trunk == rockaway_trunk, (
+            "Trunk stations from SH04 northward should match between "
+            "SUBWAY_A and SUBWAY_A_ROCKAWAY"
+        )
+
+    def test_rockaway_route_branch_order(self):
+        """Test that Rockaway Park stations are in correct geographic order."""
+        stations = list(SUBWAY_A_ROCKAWAY.stations)
+        # SH15 (Rockaway Park) -> SH14 -> SH13 -> SH12 -> SH04 (Broad Channel)
+        sh15_idx = stations.index("SH15")
+        sh14_idx = stations.index("SH14")
+        sh13_idx = stations.index("SH13")
+        sh12_idx = stations.index("SH12")
+        sh04_idx = stations.index("SH04")
+        assert sh15_idx < sh14_idx < sh13_idx < sh12_idx < sh04_idx, (
+            "Rockaway Park branch stations must be ordered SH15 -> SH14 -> SH13 -> SH12 -> SH04"
+        )
+
+    def test_find_route_resolves_rockaway_segment(self):
+        """Test that SH04->SH12 segment resolves to the Rockaway route.
+
+        This is the critical bug fix: previously SH04->SH12 with line_code='A'
+        could not be found because SUBWAY_A only has the Far Rockaway branch.
+        """
+        route = find_route_for_segment("SUBWAY", "SH04", "SH12", line_code="A")
+        assert route is not None, "SH04->SH12 should be found in a route with line_code A"
+        assert route.contains_segment("SH04", "SH12")
+        assert "SH15" in route._station_set, "Found route should be the Rockaway Park variant"
+
+    def test_find_route_resolves_far_rockaway_segment(self):
+        """Test that SH04->SH06 segment still resolves to the main A route."""
+        route = find_route_for_segment("SUBWAY", "SH04", "SH06", line_code="A")
+        assert route is not None, "SH04->SH06 should be found in a route with line_code A"
+        assert "SH11" in route._station_set, "Found route should be the Far Rockaway variant"
+
+    def test_canonical_segments_rockaway_branch(self):
+        """Test that skip-stop segments on Rockaway Park branch expand correctly."""
+        # SH04 (Broad Channel) -> SH15 (Rockaway Park) should expand to 4 segments
+        canonical = get_canonical_segments("SUBWAY", "SH04", "SH15")
+        assert len(canonical) == 4, (
+            f"SH04->SH15 should expand to 4 canonical segments, got {len(canonical)}: {canonical}"
+        )
+        expected = [("SH04", "SH12"), ("SH12", "SH13"), ("SH13", "SH14"), ("SH14", "SH15")]
+        assert canonical == expected, f"Expected {expected}, got {canonical}"
+
+    def test_canonical_segments_cross_branch_sa28_to_sh15(self):
+        """Test that the previously-broken SA28->SH15 segment now resolves correctly.
+
+        This was the original bug: an A train with sparse GTFS-RT data had only
+        SA28 (Penn Station) and SH15 (Rockaway Park) in its stop list, producing
+        a phantom diagonal line across Brooklyn/Queens on the congestion map.
+        """
+        canonical = get_canonical_segments("SUBWAY", "SA28", "SH15")
+        # Should now be expandable via SUBWAY_A_ROCKAWAY since both stations
+        # are in that route
+        assert len(canonical) > 1, (
+            "SA28->SH15 should be expanded via SUBWAY_A_ROCKAWAY, "
+            f"but got unresolved: {canonical}"
+        )
+        # First segment should start from SA28
+        assert canonical[0][0] == "SA28"
+        # Last segment should end at SH15
+        assert canonical[-1][1] == "SH15"
+
+    def test_main_a_route_still_in_line_code_lookup(self):
+        """Test that the main SUBWAY_A route is still the direct line_code lookup.
+
+        SUBWAY_A_ROCKAWAY is registered before SUBWAY_A in ALL_ROUTES, so the
+        _ROUTES_BY_LINE_CODE dict should have SUBWAY_A as the direct lookup
+        (it overwrites SUBWAY_A_ROCKAWAY).
+        """
+        route = get_route_by_line_code("SUBWAY", "A")
+        assert route is not None
+        # The main A route has Far Rockaway stations
+        assert "SH11" in route._station_set, (
+            "Direct line_code lookup for 'A' should return the main Far Rockaway variant"
+        )

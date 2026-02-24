@@ -9,6 +9,8 @@ import pytest
 from trackrat.models.api import IndividualJourneySegment
 from trackrat.services.congestion_types import SegmentCongestion
 from trackrat.services.segment_normalizer import (
+    _haversine_km,
+    _is_segment_anomalous,
     normalize_aggregated_segments,
     normalize_individual_segments,
 )
@@ -410,3 +412,147 @@ class TestNormalizeIndividualSegments:
             # At minimum, the names should not be empty
             assert seg.from_station_name is not None
             assert seg.to_station_name is not None
+
+
+class TestHaversineKm:
+    """Test the haversine distance helper function."""
+
+    def test_same_point_returns_zero(self):
+        """Test that distance between same point is zero."""
+        assert _haversine_km(40.75, -73.99, 40.75, -73.99) == 0.0
+
+    def test_known_distance_nyc_subway(self):
+        """Test haversine against known NYC subway station distances.
+
+        Penn Station (SA28) to Times Square (SA30) is approximately 0.7 km.
+        """
+        # SA28 (34 St-Penn Station): 40.752287, -73.993391
+        # SA30 (59 St-Columbus Circle): 40.768247, -73.981929
+        dist = _haversine_km(40.752287, -73.993391, 40.768247, -73.981929)
+        assert 1.0 < dist < 3.0, f"Penn Station to Columbus Circle should be ~2 km, got {dist:.2f}"
+
+    def test_cross_branch_distance_large(self):
+        """Test that distance between SA28 (Penn Station) and SH15 (Rockaway Park) is large.
+
+        This is the anomalous segment that caused the original bug — ~25 km.
+        """
+        # SA28: 40.752287, -73.993391  SH15: 40.580903, -73.835592
+        dist = _haversine_km(40.752287, -73.993391, 40.580903, -73.835592)
+        assert dist > 20.0, f"SA28 to SH15 should be >20 km, got {dist:.2f}"
+
+
+class TestIsSegmentAnomalous:
+    """Test the anomalous segment detection function."""
+
+    def test_normal_subway_segment_not_anomalous(self):
+        """Test that a normal consecutive subway segment is not flagged."""
+        # SH04 (Broad Channel) to SH12 (Beach 90 St) are adjacent on Rockaway Park branch
+        assert not _is_segment_anomalous("SH04", "SH12", "SUBWAY")
+
+    def test_cross_branch_subway_segment_anomalous(self):
+        """Test that a cross-branch subway segment exceeding distance threshold is flagged.
+
+        SA28 (Penn Station) to SH15 (Rockaway Park) spans ~25 km with no
+        matching route — this should be caught as anomalous.
+        """
+        # NOTE: This specific segment now HAS a matching route (SUBWAY_A_ROCKAWAY),
+        # so in practice get_canonical_segments would expand it. But the distance
+        # check itself should still flag it if called directly.
+        assert _is_segment_anomalous("SA28", "SH15", "SUBWAY")
+
+    def test_njt_segments_not_checked(self):
+        """Test that NJT segments are not subject to distance filtering."""
+        # NY (Penn Station) and a distant NJT station — should not be flagged
+        # because NJT is not in _MAX_UNMATCHED_SEGMENT_KM
+        assert not _is_segment_anomalous("NY", "LB", "NJT")
+
+    def test_unknown_station_not_anomalous(self):
+        """Test that segments with unknown station codes are not flagged.
+
+        If we can't look up coordinates, we can't determine distance,
+        so we conservatively pass them through.
+        """
+        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "SUBWAY")
+
+
+class TestAnomalousSegmentFiltering:
+    """Test that anomalous segments are filtered during normalization."""
+
+    def test_aggregated_anomalous_subway_segment_filtered(self):
+        """Test that aggregated normalization filters anomalous unmatched subway segments.
+
+        Creates a segment between two distant subway stations that don't share
+        a route. The normalizer should drop it.
+        """
+        # S101 (Van Cortlandt Park-242 St, 1 train) and SH15 (Rockaway Park, A/H)
+        # These are on completely different lines with no shared route, ~35 km apart
+        raw = [
+            SegmentCongestion(
+                from_station="S101",
+                to_station="SH15",
+                data_source="SUBWAY",
+                congestion_factor=1.0,
+                congestion_level="normal",
+                avg_transit_minutes=5.0,
+                baseline_minutes=5.0,
+                sample_count=1,
+                average_delay_minutes=0.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+        assert len(result) == 0, (
+            f"Anomalous segment S101->SH15 should be filtered out, got {len(result)} segments"
+        )
+
+    def test_aggregated_valid_subway_segment_kept(self):
+        """Test that valid unmatched subway segments are NOT filtered."""
+        # Use two adjacent stations on the same line
+        raw = [
+            SegmentCongestion(
+                from_station="SH04",
+                to_station="SH12",
+                data_source="SUBWAY",
+                congestion_factor=1.1,
+                congestion_level="normal",
+                avg_transit_minutes=3.0,
+                baseline_minutes=2.5,
+                sample_count=5,
+                average_delay_minutes=0.5,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+        assert len(result) >= 1, "Valid segment SH04->SH12 should not be filtered"
+
+    def test_individual_anomalous_subway_segment_filtered(self):
+        """Test that individual normalization filters anomalous unmatched subway segments."""
+        base_time = datetime(2025, 7, 15, 8, 0, 0)
+        raw = [
+            IndividualJourneySegment(
+                journey_id="test-anomalous",
+                train_id="A-999",
+                from_station="S101",
+                to_station="SH15",
+                from_station_name="Van Cortlandt Park-242 St",
+                to_station_name="Rockaway Park-Beach 116 St",
+                data_source="SUBWAY",
+                scheduled_departure=base_time,
+                actual_departure=base_time,
+                scheduled_arrival=base_time,
+                actual_arrival=base_time,
+                scheduled_minutes=60.0,
+                actual_minutes=65.0,
+                delay_minutes=5.0,
+                congestion_factor=1.08,
+                congestion_level="normal",
+                is_cancelled=False,
+                journey_date=date(2025, 7, 15),
+            )
+        ]
+        result = normalize_individual_segments(raw)
+        assert len(result) == 0, (
+            f"Anomalous segment S101->SH15 should be filtered out, got {len(result)} segments"
+        )
