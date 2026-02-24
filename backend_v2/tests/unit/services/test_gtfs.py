@@ -1026,6 +1026,14 @@ class TestLirrTrainIdFromGtfs:
         """Trip IDs with fewer than 3 segments fall back to L-prefix."""
         assert _lirr_train_id_from_gtfs("GO103_181") == "LGO103_181"
 
+    def test_date_suffix_extracts_first_segment(self):
+        """Date-suffix trip_id '7597_2026-02-22' -> extract '7597' -> 'L7597'."""
+        assert _lirr_train_id_from_gtfs("7597_2026-02-22") == "L7597"
+
+    def test_date_suffix_different_train_number(self):
+        """Another date-suffix trip_id to verify consistency with collector."""
+        assert _lirr_train_id_from_gtfs("123_2026-01-15") == "L123"
+
     def test_single_segment_non_numeric(self):
         """Non-numeric single values get L-prefix as fallback."""
         assert _lirr_train_id_from_gtfs("UNKNOWN") == "LUNKNOWN"

@@ -108,10 +108,12 @@ def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
 
     LIRR real-time collector generates train IDs as "L{number}" (e.g., "L181").
     GTFS stores the bare number in trip_short_name (e.g., "181") or uses
-    trip_id format "GO103_25_181" where the 3rd segment is the train number.
+    trip_id formats:
+    - GO-prefix:    "GO103_25_181"       -> 3rd segment is train number
+    - Date-suffix:  "7597_2026-02-22"    -> 1st segment is train number
 
     Args:
-        train_id_or_trip_id: Either a bare number ("181") or GTFS trip_id ("GO103_25_181").
+        train_id_or_trip_id: Either a bare number ("181") or GTFS trip_id.
 
     Returns:
         L-prefixed train ID (e.g., "L181").
@@ -120,8 +122,11 @@ def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
         return train_id_or_trip_id
     if train_id_or_trip_id.isdigit():
         return f"L{train_id_or_trip_id}"
-    # GTFS trip_id format: "GO103_25_181" -> extract 3rd segment
     parts = train_id_or_trip_id.split("_")
+    # Date-suffix format: "7597_2026-02-22" -> train number is 1st segment
+    if len(parts) == 2 and "-" in parts[1]:
+        return f"L{parts[0]}"
+    # GO-prefix format: "GO103_25_181" -> train number is 3rd segment
     if len(parts) >= 3:
         return f"L{parts[2]}"
     # Fallback: prefix as-is
