@@ -346,11 +346,6 @@ struct CongestionMapView: View {
         }
     }
 
-    // Legacy alias for compatibility
-    private var congestionLegendView: some View {
-        segmentLegendView
-    }
-
     /// Summarize headway across visible segments for the legend subtitle
     private var frequencySummaryText: String? {
         let segmentsWithData = viewModel.segments.filter { $0.hasFrequencyData }
@@ -447,38 +442,6 @@ private struct SystemToggleButton: View {
 }
 
 // MARK: - View Model
-
-/// Legacy display mode for API parameter selection
-enum CongestionDisplayMode: Equatable {
-    case aggregated
-    case individual
-    case individualLimited(maxPerSegment: Int)
-}
-
-/// Congestion layer mode: off or on (aggregated summary)
-enum CongestionMode: String, CaseIterable {
-    case off = "Off"
-    case aggregated = "On"
-    case individual = "Trains"  // Deprecated: kept for type safety, never used
-
-    /// Toggle between off and on
-    func next() -> CongestionMode {
-        switch self {
-        case .off: return .aggregated
-        case .aggregated: return .off
-        case .individual: return .off  // Fallback if somehow reached
-        }
-    }
-
-    /// Icon for the current mode
-    var iconName: String {
-        switch self {
-        case .off: return "eye.slash"
-        case .aggregated: return "chart.bar.fill"
-        case .individual: return "chart.bar.fill"  // Fallback, same as aggregated
-        }
-    }
-}
 
 /// Display mode for individual vs aggregated segments (when highlighting is on)
 enum SegmentDetailMode: String, CaseIterable {
@@ -759,10 +722,6 @@ class CongestionMapViewModel: ObservableObject {
         applyDisplayModeFilterDeferred()
     }
 
-    // Legacy method for compatibility
-    func cycleCongestionMode() {
-        cycleHighlightMode()
-    }
 
     /// Applies display mode filter with a delay to prevent UI lag during button animations
     private func applyDisplayModeFilterDeferred() {
@@ -1225,7 +1184,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         context.coordinator.individualSegments = individualSegments
         context.coordinator.onSegmentTap = onSegmentTap
         context.coordinator.onIndividualSegmentTap = onIndividualSegmentTap ?? { _ in }
-        context.coordinator.highlightMode = highlightMode
     }
     
     
@@ -1800,147 +1758,6 @@ struct SegmentTrainDetailsView: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
         )
-    }
-}
-
-// MARK: - Supporting Views for Segment Details
-
-private struct SegmentStatCard: View {
-    let title: String
-    let value: String
-    let color: Color
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                
-                Spacer()
-            }
-            
-            Text(value)
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundColor(color)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.leading)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}
-
-private struct SegmentTrainDetailCard: View {
-    let train: SegmentTrainDetail
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header with train ID and line
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    // Trains with synthetic IDs display line (route) instead of train ID
-                    Text(TrainSystem.syntheticTrainIdSources.contains(train.dataSource) ? train.line : "Train \(train.trainId)")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-
-                    // Only show line as subtitle when header shows train ID (not line)
-                    if !TrainSystem.syntheticTrainIdSources.contains(train.dataSource) {
-                        Text(train.line)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 2) {
-                    if !train.delayCategoryDisplay.isEmpty {
-                        Text(train.delayCategoryDisplay)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(train.delayCategoryColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(train.delayCategoryColor.opacity(0.2))
-                            )
-                    }
-                    
-                    Text(train.transitTimeDisplay)
-                }
-            }
-            
-            // Time details
-            VStack(spacing: 8) {
-                SegmentTimeDetailRow(
-                    label: "Departure",
-                    scheduled: train.scheduledDeparture,
-                    actual: train.actualDeparture,
-                    delay: train.departureDelayDisplay,
-                    delayColor: train.departureDelayMinutes > 0 ? .orange : .green
-                )
-                
-                SegmentTimeDetailRow(
-                    label: "Arrival",
-                    scheduled: train.scheduledArrival,
-                    actual: train.actualArrival,
-                    delay: train.arrivalDelayDisplay,
-                    delayColor: train.arrivalDelayMinutes > 0 ? .orange : .green
-                )
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}
-
-private struct SegmentTimeDetailRow: View {
-    let label: String
-    let scheduled: Date
-    let actual: Date
-    let delay: String
-    let delayColor: Color
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .textProtected()
-                .frame(width: 70, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(scheduled.formatted(date: .omitted, time: .shortened))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .strikethrough(scheduled != actual)
-                
-                if scheduled != actual {
-                    Text(actual.formatted(date: .omitted, time: .shortened))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                }
-            }
-            
-            Spacer()
-            
-            Text(delay)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(delayColor)
-        }
     }
 }
 

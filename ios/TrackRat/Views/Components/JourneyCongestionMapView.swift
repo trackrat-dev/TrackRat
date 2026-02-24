@@ -434,7 +434,6 @@ struct CongestionMapKitView: UIViewRepresentable {
         // Update coordinator with current segments for tap handling
         context.coordinator.segments = segments
         context.coordinator.onSegmentTap = onSegmentTap
-        context.coordinator.highlightMode = highlightMode
         context.coordinator.mapView = mapView
     }
     
@@ -1307,9 +1306,9 @@ struct SegmentTrainDetailsContentView: View {
     }
 }
 
-// MARK: - Supporting Views for Segment Details (Duplicated from CongestionMapView for access)
+// MARK: - Shared Supporting Views for Segment Details
 
-private struct SegmentStatCard: View {
+struct SegmentStatCard: View {
     let title: String
     let value: String
     let color: Color
@@ -1342,7 +1341,7 @@ private struct SegmentStatCard: View {
     }
 }
 
-private struct SegmentTrainDetailCard: View {
+struct SegmentTrainDetailCard: View {
     let train: SegmentTrainDetail
     
     var body: some View {
@@ -1410,7 +1409,7 @@ private struct SegmentTrainDetailCard: View {
     }
 }
 
-private struct SegmentTimeDetailRow: View {
+struct SegmentTimeDetailRow: View {
     let label: String
     let scheduled: Date
     let actual: Date
