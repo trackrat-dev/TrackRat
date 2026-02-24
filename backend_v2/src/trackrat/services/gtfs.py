@@ -183,6 +183,26 @@ def _strip_source_prefix(train_id: str, source: str) -> str:
     return train_id
 
 
+def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
+    """Extract LIRR train number from a date-suffix GTFS-RT trip_id.
+
+    LIRR GTFS-RT uses trip_ids like "6817_2026-02-24" for trains not matching
+    the current GTFS static schedule's trip_ids (which use "GO103_25_6817").
+    The train number (first segment) matches trip_short_name in GTFS static.
+
+    Args:
+        gtfs_trip_id: GTFS-RT trip_id string.
+
+    Returns:
+        Train number string (e.g., "6817") if date-suffix format detected,
+        None otherwise.
+    """
+    parts = gtfs_trip_id.split("_")
+    if len(parts) == 2 and "-" in parts[1] and parts[0].isdigit():
+        return parts[0]
+    return None
+
+
 class GTFSService:
     """Service for managing GTFS static schedule data."""
 
@@ -1915,14 +1935,23 @@ class GTFSService:
             db, gtfs_trip_id, data_source, service_ids, "trip_id"
         )
         if not trip_row:
-            logger.debug(
-                "gtfs_static_trip_not_found",
-                data_source=data_source,
-                trip_id=gtfs_trip_id,
-                target_date=str(target_date),
-                service_id_count=len(service_ids),
-            )
-            return None
+            # LIRR GTFS-RT uses date-suffix trip_ids (e.g., "6817_2026-02-24")
+            # that don't exist in GTFS static. Extract the train number and
+            # try matching by train_id (trip_short_name in GTFS static).
+            train_number = _extract_lirr_train_number(gtfs_trip_id)
+            if train_number:
+                trip_row = await self._find_trip_in_source(
+                    db, train_number, data_source, service_ids, "train_id"
+                )
+            if not trip_row:
+                logger.debug(
+                    "gtfs_static_trip_not_found",
+                    data_source=data_source,
+                    trip_id=gtfs_trip_id,
+                    target_date=str(target_date),
+                    service_id_count=len(service_ids),
+                )
+                return None
 
         db_trip_id = trip_row.id
 

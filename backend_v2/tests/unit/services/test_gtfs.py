@@ -10,6 +10,7 @@ from trackrat.services.gtfs import (
     GTFSService,
     GTFS_DOWNLOAD_INTERVAL_HOURS,
     NJT_LINE_CODE_MAPPING,
+    _extract_lirr_train_number,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
     _strip_source_prefix,
@@ -1066,3 +1067,223 @@ class TestMnrTrainIdFromGtfs:
     def test_single_digit_in_suffix(self):
         """Even a single digit in last 6 chars is extracted."""
         assert _mnr_train_id_from_gtfs("ABCDE1FG") == "M1"
+
+
+class TestExtractLirrTrainNumber:
+    """Tests for _extract_lirr_train_number helper.
+
+    LIRR GTFS-RT uses date-suffix trip_ids (e.g., '6817_2026-02-24') for
+    trains that don't match the current GTFS static trip_ids.  The helper
+    extracts the bare train number so we can fall back to a train_id lookup
+    in the static schedule.
+    """
+
+    def test_date_suffix_format_returns_train_number(self):
+        """Standard date-suffix format: '6817_2026-02-24' -> '6817'."""
+        assert _extract_lirr_train_number("6817_2026-02-24") == "6817"
+
+    def test_four_digit_train_number(self):
+        """Four-digit train number with date suffix."""
+        assert _extract_lirr_train_number("6853_2026-02-24") == "6853"
+
+    def test_five_digit_train_number(self):
+        """Five-digit train number with date suffix."""
+        assert _extract_lirr_train_number("12345_2025-12-31") == "12345"
+
+    def test_go_prefix_format_returns_none(self):
+        """GO-prefix trip_ids are NOT date-suffix format."""
+        assert _extract_lirr_train_number("GO103_25_6127") is None
+
+    def test_go_event_format_returns_none(self):
+        """GO-event trip_ids (with METS suffix) are NOT date-suffix format."""
+        assert _extract_lirr_train_number("GO103_25_367_2891_METS") is None
+
+    def test_plain_number_returns_none(self):
+        """Plain numeric trip_id (MNR style) returns None."""
+        assert _extract_lirr_train_number("3009440") is None
+
+    def test_non_numeric_first_segment_returns_none(self):
+        """Non-numeric first segment before date separator returns None."""
+        assert _extract_lirr_train_number("ABC_2026-01-01") is None
+
+    def test_no_hyphen_in_second_segment_returns_none(self):
+        """Two segments but second doesn't contain a hyphen returns None."""
+        assert _extract_lirr_train_number("6817_20260224") is None
+
+    def test_empty_string_returns_none(self):
+        """Empty string returns None."""
+        assert _extract_lirr_train_number("") is None
+
+    def test_single_segment_returns_none(self):
+        """Single segment with no underscore returns None."""
+        assert _extract_lirr_train_number("6817") is None
+
+
+class TestGetStaticStopTimesLirrFallback:
+    """Tests for get_static_stop_times fallback to train_id for LIRR date-suffix trips.
+
+    When the GTFS-RT trip_id (e.g., '6817_2026-02-24') doesn't match any
+    static trip_id, the service should extract the train number ('6817')
+    and retry with a train_id lookup.
+    """
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_train_id_on_date_suffix_trip(self):
+        """Date-suffix trip_id triggers train_id fallback when trip_id lookup fails."""
+        mock_db = AsyncMock()
+        target_date = date(2026, 2, 24)
+
+        mock_trip_row = MagicMock()
+        mock_trip_row.id = 42
+
+        find_calls = []
+
+        async def mock_find(db, search_id, source, sids, match_field):
+            find_calls.append((search_id, match_field))
+            if match_field == "trip_id":
+                return None  # trip_id "6817_2026-02-24" not found
+            elif match_field == "train_id" and search_id == "6817":
+                return mock_trip_row  # train_id "6817" found
+            return None
+
+        # Mock stop_times query result
+        mock_stops_result = MagicMock()
+        mock_stops_result.all.return_value = [
+            MagicMock(
+                station_code="NY",
+                stop_sequence=1,
+                arrival_time="11:54:00",
+                departure_time="11:54:00",
+            ),
+            MagicMock(
+                station_code="JAM",
+                stop_sequence=2,
+                arrival_time="12:15:00",
+                departure_time="12:15:00",
+            ),
+            MagicMock(
+                station_code="LBH",
+                stop_sequence=3,
+                arrival_time="12:45:00",
+                departure_time="12:45:00",
+            ),
+        ]
+        mock_db.execute = AsyncMock(return_value=mock_stops_result)
+
+        with (
+            patch.object(
+                self.service,
+                "get_active_service_ids",
+                return_value={"SVC_WEEKDAY"},
+            ),
+            patch.object(
+                self.service,
+                "_find_trip_in_source",
+                side_effect=mock_find,
+            ),
+        ):
+            stops = await self.service.get_static_stop_times(
+                mock_db, "LIRR", "6817_2026-02-24", target_date
+            )
+
+        # Should have found stops via train_id fallback
+        assert stops is not None, "Expected stops from train_id fallback"
+        assert len(stops) == 3
+        assert stops[0]["station_code"] == "NY"
+        assert stops[2]["station_code"] == "LBH"
+        # Verify trip_id lookup failed, then train_id lookup succeeded
+        assert len(find_calls) == 2
+        assert find_calls[0] == ("6817_2026-02-24", "trip_id")
+        assert find_calls[1] == ("6817", "train_id")
+
+    @pytest.mark.asyncio
+    async def test_go_prefix_uses_direct_trip_id_lookup(self):
+        """GO-prefix trip_ids succeed on first lookup without fallback."""
+        mock_db = AsyncMock()
+        target_date = date(2026, 2, 24)
+
+        mock_trip_row = MagicMock()
+        mock_trip_row.id = 42
+
+        find_calls = []
+
+        async def mock_find(db, search_id, source, sids, match_field):
+            find_calls.append((search_id, match_field))
+            if match_field == "trip_id" and search_id == "GO103_25_6127":
+                return mock_trip_row
+            return None
+
+        mock_stops_result = MagicMock()
+        mock_stops_result.all.return_value = [
+            MagicMock(
+                station_code="NY",
+                stop_sequence=1,
+                arrival_time="11:00:00",
+                departure_time="11:00:00",
+            ),
+            MagicMock(
+                station_code="BTA",
+                stop_sequence=2,
+                arrival_time="12:00:00",
+                departure_time="12:00:00",
+            ),
+        ]
+        mock_db.execute = AsyncMock(return_value=mock_stops_result)
+
+        with (
+            patch.object(
+                self.service,
+                "get_active_service_ids",
+                return_value={"SVC_WEEKDAY"},
+            ),
+            patch.object(
+                self.service,
+                "_find_trip_in_source",
+                side_effect=mock_find,
+            ),
+        ):
+            stops = await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_6127", target_date
+            )
+
+        assert stops is not None
+        # Only 1 find call: trip_id succeeded, no train_id fallback
+        assert len(find_calls) == 1
+        assert find_calls[0] == ("GO103_25_6127", "trip_id")
+
+    @pytest.mark.asyncio
+    async def test_date_suffix_both_lookups_fail_returns_none(self):
+        """When both trip_id and train_id lookups fail, returns None."""
+        mock_db = AsyncMock()
+        target_date = date(2026, 2, 24)
+
+        find_calls = []
+
+        async def mock_find(db, search_id, source, sids, match_field):
+            find_calls.append((search_id, match_field))
+            return None  # All lookups fail
+
+        with (
+            patch.object(
+                self.service,
+                "get_active_service_ids",
+                return_value={"SVC_WEEKDAY"},
+            ),
+            patch.object(
+                self.service,
+                "_find_trip_in_source",
+                side_effect=mock_find,
+            ),
+        ):
+            stops = await self.service.get_static_stop_times(
+                mock_db, "LIRR", "9999_2026-02-24", target_date
+            )
+
+        assert stops is None
+        # 2 find calls: trip_id (fail) + train_id (fail)
+        assert len(find_calls) == 2
+        assert find_calls[0] == ("9999_2026-02-24", "trip_id")
+        assert find_calls[1] == ("9999", "train_id")
