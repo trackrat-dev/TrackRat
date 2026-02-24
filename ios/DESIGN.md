@@ -195,7 +195,7 @@ This document contains detailed design specifications, screen documentation, and
 - **TrainV2**: Main model with comprehensive train data (current implementation)
   - Extensions for origin-based departure time calculation
   - Methods: `getScheduledDepartureTime(fromStationCode:)`, `getFormattedScheduledDepartureTime(fromStationCode:)`
-  - Live Activity support: `toActivityAttributes()`, `toContentState()`
+  - Live Activity support: `toLiveActivityContentState(from:toCode:toName:)`
   - New fields: `originStation`, `dataSource`, `currentPosition`, `trackAssignment`, `statusV2`, `progress`
   - Status summary with delay information
   - Consolidation metadata for multi-source trains

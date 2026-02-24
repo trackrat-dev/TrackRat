@@ -1301,14 +1301,10 @@ class JourneyCollector(BaseJourneyCollector):
                 stop.scheduled_departure
                 and stop.scheduled_departure < now_et() - timedelta(minutes=5)
             ):
-                # Train should have departed by now (5-minute grace period)
-                if not stop.actual_departure:
-                    if is_origin:
-                        stop.actual_departure = (
-                            dep_time_field or stop.scheduled_departure
-                        )
-                    else:
-                        stop.actual_departure = time_field or stop.scheduled_departure
+                # Train should have departed by now (5-minute grace period).
+                # Mark as departed for position tracking, but do NOT set
+                # actual_departure — we have no real data for the actual time,
+                # and using the schedule creates false "on time" status.
                 stop.has_departed_station = True
                 stop.departure_source = stop.departure_source or "time_inference"
 
@@ -1327,7 +1323,10 @@ class JourneyCollector(BaseJourneyCollector):
             # Once set, actual_arrival is frozen to preserve the value captured
             # when the train was at/near the station.
             if stop.has_departed_station:
-                if stop.actual_arrival is None:
+                if (
+                    stop.actual_arrival is None
+                    and stop.departure_source != "time_inference"
+                ):
                     stop.actual_arrival = normalized["actual_arrival"]
             else:
                 # Clear any stale actual_arrival from legacy code that wrote

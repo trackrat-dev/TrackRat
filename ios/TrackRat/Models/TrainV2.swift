@@ -73,11 +73,6 @@ struct TrainV2: Identifiable, Codable {
         departure.track
     }
     
-    var status: TrainStatus {
-        // Default to scheduled - context-aware status should be calculated separately
-        .scheduled
-    }
-    
     var delayMinutes: Int {
         departure.delayMinutes
     }
@@ -101,7 +96,7 @@ struct TrainV2: Identifiable, Codable {
         return nil
     }
     
-    // Enhanced display status using train position
+    // Enhanced display status using train position (empty when no position data)
     var enhancedDisplayStatus: String {
         if let position = trainPosition {
             if let nextStation = position.nextStationCode {
@@ -110,7 +105,7 @@ struct TrainV2: Identifiable, Codable {
                 return "At \(atStation)"
             }
         }
-        return status.displayText
+        return ""
     }
     
     // Check if train is boarding at user's origin (requires journey context)
@@ -165,11 +160,17 @@ struct TrainV2: Identifiable, Codable {
             return .boarding
         }
         
+        // SCHEDULED trains have no confirmed real-time data —
+        // don't claim "on time" when we don't actually know.
+        if observationType == "SCHEDULED" {
+            return .scheduled
+        }
+
         // Check for delays
         if delayMinutes > 0 {
             return .delayed
         }
-        
+
         return .onTime
     }
     
@@ -523,35 +524,6 @@ extension TrainV2 {
         )
     }
 
-    // Convert to Live Activity content state (simple version)
-    func toContentState() -> TrainActivityAttributes.ContentState {
-        // Calculate overall progress
-        let progress = calculateOverallProgress()
-
-        // Get current and next stop names from train position
-        let currentStop = trainPosition?.atStationCode ??
-                         stops?.last(where: { $0.hasDepartedStation })?.stationName ??
-                         departure.name
-        let nextStop = trainPosition?.nextStationCode ??
-                      stops?.first(where: { !$0.hasDepartedStation })?.stationName
-
-        return TrainActivityAttributes.ContentState(
-            status: status.rawValue,
-            track: track,
-            currentStopName: currentStop,
-            nextStopName: nextStop,
-            delayMinutes: delayMinutes,
-            journeyProgress: progress,
-            dataTimestamp: Date().timeIntervalSince1970,
-            scheduledDepartureTime: getEstimatedDepartureTime(fromStationCode: originStationCode)?.toISO8601String(),
-            scheduledArrivalTime: getEstimatedArrivalTime(toStationCode: destinationStationCode ?? "")?.toISO8601String(),
-            nextStopArrivalTime: getNextStopArrivalTime()?.toISO8601String(),
-            hasTrainDeparted: hasTrainDepartedFromStation(originStationCode),
-            originStationCode: originStationCode,
-            destinationStationCode: destinationStationCode ?? ""
-        )
-    }
-    
     // MARK: - Helper Methods for Live Activities
     
     // Calculate journey progress for a specific origin-destination segment

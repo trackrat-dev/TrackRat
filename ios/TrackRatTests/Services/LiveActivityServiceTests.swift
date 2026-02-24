@@ -119,7 +119,7 @@ class LiveActivityServiceTests: XCTestCase {
         )
 
         // Test progress calculation
-        let progress = train.calculateJourneyProgress(from: "NY", to: "Philadelphia")
+        let progress = train.calculateJourneyProgress(from: "NY", toCode: "PH")
 
         // Since we have 2 stops and haven't marked any as departed,
         // progress should be 0
@@ -146,7 +146,7 @@ class LiveActivityServiceTests: XCTestCase {
             destination: "Philadelphia"
         )
 
-        let contentState = train.toLiveActivityContentState(from: "NY", to: "Philadelphia")
+        let contentState = train.toLiveActivityContentState(from: "NY", toCode: "PH", toName: "Philadelphia")
 
         XCTAssertNotNil(contentState.status)
         XCTAssertNotNil(contentState.journeyProgress)
