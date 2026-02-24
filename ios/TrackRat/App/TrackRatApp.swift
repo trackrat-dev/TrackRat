@@ -107,7 +107,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     private func requestNotificationPermissions() async {
         do {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge, .provisional]
+                options: [.alert, .sound, .badge]
             )
             print("🔔 Notification permission granted: \(granted)")
             
