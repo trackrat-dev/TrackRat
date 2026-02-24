@@ -392,15 +392,8 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
         
-        print("📊 Fetching route historical data from: \(url)")
-
         let (data, _) = try await session.data(from: url)
-        
-        // Debug: Print raw response
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("📊 Raw route historical response: \(jsonString.prefix(500))...")
-        }
-        
+
         // Define response structure for route history endpoint
         struct RouteHistoryResponse: Decodable {
             let route: RouteInfo

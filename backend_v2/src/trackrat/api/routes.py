@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, exists, select
+from sqlalchemy import and_, exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
@@ -34,6 +34,7 @@ from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.services.departure import DepartureService
 from trackrat.utils.time import ensure_timezone_aware, now_et
@@ -92,6 +93,33 @@ async def get_route_history(
             detail=f"data_source must be one of: {', '.join(valid_sources)}",
         )
 
+    # Check cache first (skip when highlight_train is provided - uncommon, user-specific)
+    cache_service = ApiCacheService()
+    if not highlight_train:
+        cache_params = {
+            "from_station": from_station,
+            "to_station": to_station,
+            "data_source": data_source,
+            "days": days,
+            "hours": hours,
+        }
+        cached_response = await cache_service.get_cached_response(
+            db=db,
+            endpoint="/api/v2/routes/history",
+            params=cache_params,
+        )
+        if cached_response:
+            try:
+                return RouteHistoryResponse(**cached_response)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "route_history_cache_deserialization_failed",
+                    error=str(e),
+                )
+                await cache_service.invalidate_cache_entry(
+                    db, "/api/v2/routes/history", cache_params
+                )
+
     # Calculate date range
     now = now_et()
     cutoff_time = None
@@ -103,91 +131,45 @@ async def get_route_history(
         start_date = now.date() - timedelta(days=days)
     end_date = now.date()
 
-    # PERFORMANCE FIX: Use database-level filtering with EXISTS subqueries
-    # to avoid loading all journeys into memory then filtering in Python.
-    # This uses aliases to check that the journey has both stations in correct order.
-    from_stop_alias = aliased(JourneyStop, name="from_stop")
-    to_stop_alias = aliased(JourneyStop, name="to_stop")
-
     from_codes = expand_station_codes(from_station)
     to_codes = expand_station_codes(to_station)
 
-    # Build from_stop conditions
-    from_stop_conditions = [
-        from_stop_alias.journey_id == TrainJourney.id,
-        from_stop_alias.station_code.in_(from_codes),
-        exists(
-            select(to_stop_alias.id).where(
-                and_(
-                    to_stop_alias.journey_id == TrainJourney.id,
-                    to_stop_alias.station_code.in_(to_codes),
-                    to_stop_alias.stop_sequence > from_stop_alias.stop_sequence,
-                )
-            )
-        ),
-    ]
-
-    # When hours is provided, also filter by departure time at origin
-    if cutoff_time:
-        from_stop_conditions.append(
-            from_stop_alias.scheduled_departure >= cutoff_time,
-        )
-        from_stop_conditions.append(
-            from_stop_alias.scheduled_departure <= now,
-        )
-
-    # Subquery: journey has from_station with stop_sequence < to_station's sequence
-    route_filter = exists(select(from_stop_alias.id).where(and_(*from_stop_conditions)))
-
-    stmt = (
-        select(TrainJourney)
-        .where(
-            and_(
-                TrainJourney.data_source == data_source,
-                TrainJourney.journey_date >= start_date,
-                TrainJourney.journey_date <= end_date,
-                route_filter,
-            )
-        )
-        .options(selectinload(TrainJourney.stops))
-        .limit(5000)  # Safety limit to prevent memory issues with large date ranges
+    # Compute aggregate stats via SQL
+    aggregate_stats = await _calculate_route_stats_sql(
+        db, data_source, start_date, end_date, from_codes, to_codes, cutoff_time, now
     )
 
-    result = await db.execute(stmt)
-    route_journeys = list(result.scalars().all())
-
-    # Filter highlighted train journeys from the already-filtered route journeys
-    highlighted_train_journeys = []
-    if highlight_train:
-        highlighted_train_journeys = [
-            j for j in route_journeys if j.train_id == highlight_train
-        ]
-
-    # Calculate aggregate statistics for all route journeys
-    aggregate_stats = _calculate_route_stats(route_journeys, from_station)
-
-    # Calculate highlighted train statistics if specified
+    # Compute highlighted train stats if specified
     highlighted_train_data = None
-    if highlight_train and highlighted_train_journeys:
-        highlighted_stats = _calculate_route_stats(
-            highlighted_train_journeys, from_station
+    if highlight_train:
+        highlighted_stats = await _calculate_route_stats_sql(
+            db,
+            data_source,
+            start_date,
+            end_date,
+            from_codes,
+            to_codes,
+            cutoff_time,
+            now,
+            train_id_filter=highlight_train,
         )
-        highlighted_train_data = HighlightedTrain(
-            train_id=highlight_train,
-            on_time_percentage=highlighted_stats["on_time_percentage"],
-            average_delay_minutes=highlighted_stats["average_delay_minutes"],
-            average_departure_delay_minutes=highlighted_stats[
-                "average_departure_delay_minutes"
-            ],
-            delay_breakdown=DelayBreakdown(**highlighted_stats["delay_breakdown"]),
-            track_usage_at_origin=highlighted_stats["track_usage"],
-        )
+        if highlighted_stats["total_journeys"] > 0:
+            highlighted_train_data = HighlightedTrain(
+                train_id=highlight_train,
+                on_time_percentage=highlighted_stats["on_time_percentage"],
+                average_delay_minutes=highlighted_stats["average_delay_minutes"],
+                average_departure_delay_minutes=highlighted_stats[
+                    "average_departure_delay_minutes"
+                ],
+                delay_breakdown=DelayBreakdown(**highlighted_stats["delay_breakdown"]),
+                track_usage_at_origin=highlighted_stats["track_usage"],
+            )
 
-    return RouteHistoryResponse(
+    response = RouteHistoryResponse(
         route=HistoricalRouteInfo(
             from_station=from_station,
             to_station=to_station,
-            total_trains=len(route_journeys),
+            total_trains=aggregate_stats["total_journeys"],
             data_source=data_source,
         ),
         aggregate_stats=AggregateStats(
@@ -203,132 +185,220 @@ async def get_route_history(
         highlighted_train=highlighted_train_data,
     )
 
-
-def _calculate_route_stats(
-    journeys: list[TrainJourney], origin_station: str
-) -> dict[str, Any]:
-    """Calculate statistics for a list of journeys, focusing on origin station tracks."""
-    if not journeys:
-        return {
-            "on_time_percentage": 0.0,
-            "average_delay_minutes": 0.0,
-            "average_departure_delay_minutes": 0.0,
-            "cancellation_rate": 0.0,
-            "delay_breakdown": {
-                "on_time": 0,
-                "slight": 0,
-                "significant": 0,
-                "major": 0,
-            },
-            "track_usage": {},
-        }
-
-    total_arrival_delay = 0
-    total_departure_delay = 0
-    departure_delay_count = 0
-    on_time_count = 0
-    cancelled_count = 0
-    delay_categories = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
-    track_usage_counts: dict[str, int] = {}
-    origin_codes = set(expand_station_codes(origin_station))
-
-    for journey in journeys:
-        if not journey.stops:
-            continue
-
-        # Get last stop for arrival delay calculation
-        last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
-
-        # Calculate arrival delay
-        arrival_delay = 0
-        if last_stop.actual_arrival and last_stop.scheduled_arrival:
-            arrival_delay = int(
-                (last_stop.actual_arrival - last_stop.scheduled_arrival).total_seconds()
-                / 60
+    # Store in cache (skip when highlight_train is provided)
+    if not highlight_train:
+        try:
+            await cache_service.store_cached_response(
+                db=db,
+                endpoint="/api/v2/routes/history",
+                params=cache_params,
+                response=response.model_dump(mode="json"),
+                ttl_seconds=120,
             )
+        except Exception as e:
+            logger.warning("route_history_cache_storage_failed", error=str(e))
 
-        if journey.is_cancelled:
-            cancelled_count += 1
-        else:
-            # Calculate departure delay at origin station (non-cancelled only)
-            for stop in journey.stops:
-                if stop.station_code in origin_codes:
-                    if stop.actual_departure and stop.scheduled_departure:
-                        dep_delay = int(
-                            (
-                                stop.actual_departure - stop.scheduled_departure
-                            ).total_seconds()
-                            / 60
-                        )
-                        total_departure_delay += max(0, dep_delay)
-                        departure_delay_count += 1
-                    break
+    return response
 
-            # Categorize by arrival delay
-            if arrival_delay <= 5:
-                on_time_count += 1
-                delay_categories["on_time"] += 1
-            elif arrival_delay <= 15:
-                delay_categories["slight"] += 1
-            elif arrival_delay <= 30:
-                delay_categories["significant"] += 1
-            else:
-                delay_categories["major"] += 1
 
-            total_arrival_delay += max(0, arrival_delay)
+async def _calculate_route_stats_sql(
+    db: AsyncSession,
+    data_source: str,
+    start_date: Any,
+    end_date: Any,
+    from_codes: list[str],
+    to_codes: list[str],
+    cutoff_time: datetime | None,
+    now: datetime,
+    train_id_filter: str | None = None,
+) -> dict[str, Any]:
+    """Calculate route statistics using SQL aggregation instead of loading ORM objects."""
 
-        # Count track usage ONLY at origin station
-        for stop in journey.stops:
-            if stop.station_code in origin_codes and stop.track:
-                if stop.track not in track_usage_counts:
-                    track_usage_counts[stop.track] = 0
-                track_usage_counts[stop.track] += 1
+    empty_stats = {
+        "total_journeys": 0,
+        "on_time_percentage": 0.0,
+        "average_delay_minutes": 0.0,
+        "average_departure_delay_minutes": 0.0,
+        "cancellation_rate": 0.0,
+        "delay_breakdown": {
+            "on_time": 0,
+            "slight": 0,
+            "significant": 0,
+            "major": 0,
+        },
+        "track_usage": {},
+    }
 
-    # Calculate percentages
-    total_journeys = len(journeys)
-    non_cancelled_journeys = total_journeys - cancelled_count
+    # Build the time filter clause for origin stop
+    time_filter = ""
+    if cutoff_time:
+        time_filter = """
+            AND fs.scheduled_departure >= :cutoff_time
+            AND fs.scheduled_departure <= :now_time
+        """
 
-    # Delay breakdown percentages
-    delay_breakdown: dict[str, int] = {}
-    if non_cancelled_journeys > 0:
+    train_filter = ""
+    if train_id_filter:
+        train_filter = "AND tj.train_id = :train_id"
+
+    # Build the route_journeys CTE SQL (reused by stats and track queries)
+    route_journeys_cte = f"""
+        SELECT tj.id AS journey_id, tj.is_cancelled
+        FROM train_journeys tj
+        WHERE tj.data_source = :data_source
+          AND tj.journey_date >= :start_date
+          AND tj.journey_date <= :end_date
+          {train_filter}
+          AND EXISTS (
+              SELECT 1 FROM journey_stops fs
+              WHERE fs.journey_id = tj.id
+                AND fs.station_code = ANY(:from_codes)
+                {time_filter}
+                AND EXISTS (
+                    SELECT 1 FROM journey_stops ts
+                    WHERE ts.journey_id = tj.id
+                      AND ts.station_code = ANY(:to_codes)
+                      AND ts.stop_sequence > fs.stop_sequence
+                )
+          )
+        ORDER BY tj.journey_date DESC
+        LIMIT 5000
+    """
+
+    # Single SQL query with CTEs for all aggregation
+    sql = text(f"""
+        WITH route_journeys AS (
+            {route_journeys_cte}
+        ),
+        last_stops AS (
+            SELECT DISTINCT ON (js.journey_id)
+                js.journey_id,
+                EXTRACT(EPOCH FROM (js.actual_arrival - js.scheduled_arrival)) / 60.0
+                    AS arrival_delay_minutes
+            FROM journey_stops js
+            INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
+            WHERE js.actual_arrival IS NOT NULL
+              AND js.scheduled_arrival IS NOT NULL
+            ORDER BY js.journey_id, js.stop_sequence DESC
+        ),
+        origin_stops AS (
+            SELECT DISTINCT ON (js.journey_id)
+                js.journey_id,
+                EXTRACT(EPOCH FROM (js.actual_departure - js.scheduled_departure)) / 60.0
+                    AS departure_delay_minutes
+            FROM journey_stops js
+            INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
+            WHERE js.station_code = ANY(:from_codes)
+              AND js.actual_departure IS NOT NULL
+              AND js.scheduled_departure IS NOT NULL
+            ORDER BY js.journey_id, js.stop_sequence ASC
+        ),
+        stats AS (
+            SELECT
+                COUNT(*) AS total_journeys,
+                COUNT(*) FILTER (WHERE rj.is_cancelled) AS cancelled_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled) AS non_cancelled_count,
+                -- Arrival delay aggregates (non-cancelled only)
+                AVG(GREATEST(ls.arrival_delay_minutes, 0))
+                    FILTER (WHERE NOT rj.is_cancelled AND ls.arrival_delay_minutes IS NOT NULL)
+                    AS avg_arrival_delay,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND ls.arrival_delay_minutes IS NOT NULL
+                    AND ls.arrival_delay_minutes <= 5)
+                    AS on_time_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND ls.arrival_delay_minutes IS NOT NULL
+                    AND ls.arrival_delay_minutes > 5 AND ls.arrival_delay_minutes <= 15)
+                    AS slight_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND ls.arrival_delay_minutes IS NOT NULL
+                    AND ls.arrival_delay_minutes > 15 AND ls.arrival_delay_minutes <= 30)
+                    AS significant_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND ls.arrival_delay_minutes IS NOT NULL
+                    AND ls.arrival_delay_minutes > 30)
+                    AS major_count,
+                -- Departure delay aggregates (non-cancelled with actual departure)
+                AVG(GREATEST(os.departure_delay_minutes, 0))
+                    FILTER (WHERE NOT rj.is_cancelled
+                            AND os.departure_delay_minutes IS NOT NULL)
+                    AS avg_departure_delay
+            FROM route_journeys rj
+            LEFT JOIN last_stops ls ON ls.journey_id = rj.journey_id
+            LEFT JOIN origin_stops os ON os.journey_id = rj.journey_id
+        )
+        SELECT * FROM stats
+    """)
+
+    # Build params — use lists for ANY() array comparison
+    params: dict[str, Any] = {
+        "data_source": data_source,
+        "start_date": start_date,
+        "end_date": end_date,
+        "from_codes": from_codes,
+        "to_codes": to_codes,
+    }
+    if cutoff_time:
+        params["cutoff_time"] = cutoff_time
+        params["now_time"] = now
+    if train_id_filter:
+        params["train_id"] = train_id_filter
+
+    result = await db.execute(sql, params)
+    row = result.mappings().first()
+
+    if not row or row["total_journeys"] == 0:
+        return empty_stats
+
+    total_journeys = row["total_journeys"]
+    cancelled_count = row["cancelled_count"]
+    non_cancelled = row["non_cancelled_count"]
+    on_time_count = row["on_time_count"]
+    avg_arrival = float(row["avg_arrival_delay"] or 0)
+    avg_departure = float(row["avg_departure_delay"] or 0)
+
+    # Calculate delay breakdown percentages
+    if non_cancelled > 0:
         delay_breakdown = {
-            "on_time": round(
-                delay_categories["on_time"] / non_cancelled_journeys * 100
-            ),
-            "slight": round(delay_categories["slight"] / non_cancelled_journeys * 100),
-            "significant": round(
-                delay_categories["significant"] / non_cancelled_journeys * 100
-            ),
-            "major": round(delay_categories["major"] / non_cancelled_journeys * 100),
+            "on_time": round(on_time_count / non_cancelled * 100),
+            "slight": round(row["slight_count"] / non_cancelled * 100),
+            "significant": round(row["significant_count"] / non_cancelled * 100),
+            "major": round(row["major_count"] / non_cancelled * 100),
         }
     else:
         delay_breakdown = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
 
-    # Track usage percentages
+    # Track usage query (separate for clarity)
+    track_sql = text(f"""
+        WITH route_journeys AS (
+            {route_journeys_cte}
+        )
+        SELECT js.track, COUNT(*) AS cnt
+        FROM journey_stops js
+        INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
+        WHERE js.station_code = ANY(:from_codes)
+          AND js.track IS NOT NULL
+        GROUP BY js.track
+    """)
+
+    track_result = await db.execute(track_sql, params)
+    track_rows = track_result.mappings().all()
+
     track_usage: dict[str, int] = {}
-    total_track_assignments = sum(track_usage_counts.values())
+    total_track_assignments = sum(r["cnt"] for r in track_rows)
     if total_track_assignments > 0:
         track_usage = {
-            track: round(count / total_track_assignments * 100)
-            for track, count in track_usage_counts.items()
+            r["track"]: round(r["cnt"] / total_track_assignments * 100)
+            for r in track_rows
         }
 
     return {
+        "total_journeys": total_journeys,
         "on_time_percentage": (
-            (on_time_count / non_cancelled_journeys * 100)
-            if non_cancelled_journeys > 0
-            else 0
+            (on_time_count / non_cancelled * 100) if non_cancelled > 0 else 0
         ),
-        "average_delay_minutes": (
-            (total_arrival_delay / non_cancelled_journeys)
-            if non_cancelled_journeys > 0
-            else 0
-        ),
-        "average_departure_delay_minutes": (
-            (total_departure_delay / departure_delay_count)
-            if departure_delay_count > 0
-            else 0
-        ),
+        "average_delay_minutes": avg_arrival,
+        "average_departure_delay_minutes": avg_departure,
         "cancellation_rate": (
             (cancelled_count / total_journeys * 100) if total_journeys > 0 else 0
         ),

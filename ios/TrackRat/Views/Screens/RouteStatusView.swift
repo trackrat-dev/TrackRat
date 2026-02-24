@@ -346,11 +346,16 @@ final class RouteStatusViewModel: ObservableObject {
                         dataSource: self.context.dataSource,
                         hours: 1
                     )
-                    await MainActor.run { self.pastHourData = data }
+                    await MainActor.run {
+                        self.pastHourData = data
+                        self.isLoadingPastHour = false
+                    }
                 } catch {
-                    await MainActor.run { self.pastHourError = error.localizedDescription }
+                    await MainActor.run {
+                        self.pastHourError = error.localizedDescription
+                        self.isLoadingPastHour = false
+                    }
                 }
-                await MainActor.run { self.isLoadingPastHour = false }
             }
             group.addTask {
                 do {
@@ -359,11 +364,16 @@ final class RouteStatusViewModel: ObservableObject {
                         dataSource: self.context.dataSource,
                         hours: 24
                     )
-                    await MainActor.run { self.past24HoursData = data }
+                    await MainActor.run {
+                        self.past24HoursData = data
+                        self.isLoadingPast24Hours = false
+                    }
                 } catch {
-                    await MainActor.run { self.past24HoursError = error.localizedDescription }
+                    await MainActor.run {
+                        self.past24HoursError = error.localizedDescription
+                        self.isLoadingPast24Hours = false
+                    }
                 }
-                await MainActor.run { self.isLoadingPast24Hours = false }
             }
             group.addTask {
                 do {
@@ -372,11 +382,16 @@ final class RouteStatusViewModel: ObservableObject {
                         dataSource: self.context.dataSource,
                         days: 7
                     )
-                    await MainActor.run { self.past7DaysData = data }
+                    await MainActor.run {
+                        self.past7DaysData = data
+                        self.isLoadingPast7Days = false
+                    }
                 } catch {
-                    await MainActor.run { self.past7DaysError = error.localizedDescription }
+                    await MainActor.run {
+                        self.past7DaysError = error.localizedDescription
+                        self.isLoadingPast7Days = false
+                    }
                 }
-                await MainActor.run { self.isLoadingPast7Days = false }
             }
         }
     }

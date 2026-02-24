@@ -187,6 +187,14 @@ class JourneyStop(Base):
         # Performance optimization: composite index for stop-level delay forecaster joins
         # Used by delay_forecaster.py to join journey_stops to train_journeys
         Index("idx_stop_delay_forecaster", "station_code", "journey_id"),
+        # Performance optimization: composite index for route history EXISTS subquery
+        # Used by routes.py to check station pair ordering on journeys
+        Index(
+            "idx_stop_journey_station_seq",
+            "journey_id",
+            "station_code",
+            "stop_sequence",
+        ),
     )
 
 
