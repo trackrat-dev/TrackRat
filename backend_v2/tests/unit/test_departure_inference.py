@@ -264,12 +264,33 @@ class TestDepartureInference:
         assert np_stop.departure_source == "sequential_inference"
         assert np_stop.actual_departure is not None
 
-    @pytest.mark.skip(reason="Complex database mocking - covered by integration tests")
     async def test_tier3_time_inference(self, collector, sample_journey, mock_session):
-        """Test Tier 3: Time-based inference for old stops."""
+        """Test Tier 3: Time-based inference for old stops.
+
+        Verifies that stops whose scheduled_departure is >5min in the past
+        get has_departed_station=True and departure_source='time_inference',
+        but do NOT get actual_departure or actual_arrival set (no real data).
+        """
         session = mock_session
 
-        # No stops marked as departed by API
+        # Make session.scalar return matching stops from sample_journey
+        # so update_journey_stops modifies existing stops in-place.
+        # Stops are sorted by time (NY, NP, MP, TR), so scalar is called
+        # in that order — one call per stop.
+        stops_by_code = {s.station_code: s for s in sample_journey.stops}
+        stop_order = ["NY", "NP", "MP", "TR"]
+        scalar_calls = iter(stop_order)
+
+        async def scalar_side_effect(stmt):
+            try:
+                code = next(scalar_calls)
+                return stops_by_code[code]
+            except StopIteration:
+                return None
+
+        session.scalar = AsyncMock(side_effect=scalar_side_effect)
+
+        # No stops marked as departed by API — all DEPARTED="NO"
         api_stops = [
             MagicMock(
                 ITEM="NY | New York",
@@ -280,6 +301,10 @@ class TestDepartureInference:
                 DEP_TIME="10:00:00 AM",
                 ARR_TIME=None,
                 TRACK="7",
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
             MagicMock(
                 ITEM="NP | Newark Penn",
@@ -290,6 +315,10 @@ class TestDepartureInference:
                 DEP_TIME="10:35:00 AM",
                 ARR_TIME="10:30:00 AM",
                 TRACK="2",
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
             MagicMock(
                 ITEM="MP | Metropark",
@@ -300,6 +329,10 @@ class TestDepartureInference:
                 DEP_TIME="11:05:00 AM",
                 ARR_TIME="11:00:00 AM",
                 TRACK="1",
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
             MagicMock(
                 ITEM="TR | Trenton",
@@ -310,6 +343,10 @@ class TestDepartureInference:
                 DEP_TIME=None,
                 ARR_TIME="12:00:00 PM",
                 TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
             ),
         ]
 
@@ -317,7 +354,7 @@ class TestDepartureInference:
 
         # Verify old stops marked as departed with time_inference,
         # but actual_departure is NOT set (no real data to use).
-        ny_stop = next(s for s in sample_journey.stops if s.station_code == "NY")
+        ny_stop = stops_by_code["NY"]
         assert ny_stop.has_departed_station == True
         assert ny_stop.departure_source == "time_inference"
         assert ny_stop.actual_departure is None, (
@@ -327,14 +364,14 @@ class TestDepartureInference:
             "Tier 3 must not set actual_arrival for time-inferred stops"
         )
 
-        np_stop = next(s for s in sample_journey.stops if s.station_code == "NP")
+        np_stop = stops_by_code["NP"]
         assert np_stop.has_departed_station == True
         assert np_stop.departure_source == "time_inference"
         assert np_stop.actual_departure is None, (
             "Tier 3 must not set actual_departure from schedule data"
         )
 
-        mp_stop = next(s for s in sample_journey.stops if s.station_code == "MP")
+        mp_stop = stops_by_code["MP"]
         assert mp_stop.has_departed_station == True
         assert mp_stop.departure_source == "time_inference"
         assert mp_stop.actual_departure is None, (
@@ -342,7 +379,7 @@ class TestDepartureInference:
         )
 
         # Trenton is in the future, should NOT be marked departed
-        tr_stop = next(s for s in sample_journey.stops if s.station_code == "TR")
+        tr_stop = stops_by_code["TR"]
         assert tr_stop.has_departed_station == False
         assert tr_stop.departure_source is None
 
