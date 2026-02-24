@@ -519,7 +519,9 @@ class TestSubwayARockawayBranch:
         """Test that the Rockaway variant does NOT include Far Rockaway branch stations."""
         far_rockaway_only = {"SH11", "SH10", "SH09", "SH08", "SH07", "SH06"}
         overlap = far_rockaway_only & set(SUBWAY_A_ROCKAWAY.stations)
-        assert len(overlap) == 0, f"Rockaway Park route should not include Far Rockaway stations: {overlap}"
+        assert (
+            len(overlap) == 0
+        ), f"Rockaway Park route should not include Far Rockaway stations: {overlap}"
 
     def test_rockaway_route_shares_trunk_with_main_a(self):
         """Test that the Rockaway variant shares the full trunk (SH04 to SA02) with SUBWAY_A."""
@@ -544,9 +546,9 @@ class TestSubwayARockawayBranch:
         sh13_idx = stations.index("SH13")
         sh12_idx = stations.index("SH12")
         sh04_idx = stations.index("SH04")
-        assert sh15_idx < sh14_idx < sh13_idx < sh12_idx < sh04_idx, (
-            "Rockaway Park branch stations must be ordered SH15 -> SH14 -> SH13 -> SH12 -> SH04"
-        )
+        assert (
+            sh15_idx < sh14_idx < sh13_idx < sh12_idx < sh04_idx
+        ), "Rockaway Park branch stations must be ordered SH15 -> SH14 -> SH13 -> SH12 -> SH04"
 
     def test_find_route_resolves_rockaway_segment(self):
         """Test that SH04->SH12 segment resolves to the Rockaway route.
@@ -555,24 +557,37 @@ class TestSubwayARockawayBranch:
         could not be found because SUBWAY_A only has the Far Rockaway branch.
         """
         route = find_route_for_segment("SUBWAY", "SH04", "SH12", line_code="A")
-        assert route is not None, "SH04->SH12 should be found in a route with line_code A"
+        assert (
+            route is not None
+        ), "SH04->SH12 should be found in a route with line_code A"
         assert route.contains_segment("SH04", "SH12")
-        assert "SH15" in route._station_set, "Found route should be the Rockaway Park variant"
+        assert (
+            "SH15" in route._station_set
+        ), "Found route should be the Rockaway Park variant"
 
     def test_find_route_resolves_far_rockaway_segment(self):
         """Test that SH04->SH06 segment still resolves to the main A route."""
         route = find_route_for_segment("SUBWAY", "SH04", "SH06", line_code="A")
-        assert route is not None, "SH04->SH06 should be found in a route with line_code A"
-        assert "SH11" in route._station_set, "Found route should be the Far Rockaway variant"
+        assert (
+            route is not None
+        ), "SH04->SH06 should be found in a route with line_code A"
+        assert (
+            "SH11" in route._station_set
+        ), "Found route should be the Far Rockaway variant"
 
     def test_canonical_segments_rockaway_branch(self):
         """Test that skip-stop segments on Rockaway Park branch expand correctly."""
         # SH04 (Broad Channel) -> SH15 (Rockaway Park) should expand to 4 segments
         canonical = get_canonical_segments("SUBWAY", "SH04", "SH15")
-        assert len(canonical) == 4, (
-            f"SH04->SH15 should expand to 4 canonical segments, got {len(canonical)}: {canonical}"
-        )
-        expected = [("SH04", "SH12"), ("SH12", "SH13"), ("SH13", "SH14"), ("SH14", "SH15")]
+        assert (
+            len(canonical) == 4
+        ), f"SH04->SH15 should expand to 4 canonical segments, got {len(canonical)}: {canonical}"
+        expected = [
+            ("SH04", "SH12"),
+            ("SH12", "SH13"),
+            ("SH13", "SH14"),
+            ("SH14", "SH15"),
+        ]
         assert canonical == expected, f"Expected {expected}, got {canonical}"
 
     def test_canonical_segments_cross_branch_sa28_to_sh15(self):
@@ -604,6 +619,6 @@ class TestSubwayARockawayBranch:
         route = get_route_by_line_code("SUBWAY", "A")
         assert route is not None
         # The main A route has Far Rockaway stations
-        assert "SH11" in route._station_set, (
-            "Direct line_code lookup for 'A' should return the main Far Rockaway variant"
-        )
+        assert (
+            "SH11" in route._station_set
+        ), "Direct line_code lookup for 'A' should return the main Far Rockaway variant"

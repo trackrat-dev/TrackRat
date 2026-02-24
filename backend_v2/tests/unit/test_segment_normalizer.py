@@ -429,7 +429,9 @@ class TestHaversineKm:
         # SA28 (34 St-Penn Station): 40.752287, -73.993391
         # SA30 (59 St-Columbus Circle): 40.768247, -73.981929
         dist = _haversine_km(40.752287, -73.993391, 40.768247, -73.981929)
-        assert 1.0 < dist < 3.0, f"Penn Station to Columbus Circle should be ~2 km, got {dist:.2f}"
+        assert (
+            1.0 < dist < 3.0
+        ), f"Penn Station to Columbus Circle should be ~2 km, got {dist:.2f}"
 
     def test_cross_branch_distance_large(self):
         """Test that distance between SA28 (Penn Station) and SH15 (Rockaway Park) is large.
@@ -502,9 +504,9 @@ class TestAnomalousSegmentFiltering:
             )
         ]
         result = normalize_aggregated_segments(raw)
-        assert len(result) == 0, (
-            f"Anomalous segment S101->SH15 should be filtered out, got {len(result)} segments"
-        )
+        assert (
+            len(result) == 0
+        ), f"Anomalous segment S101->SH15 should be filtered out, got {len(result)} segments"
 
     def test_aggregated_valid_subway_segment_kept(self):
         """Test that valid unmatched subway segments are NOT filtered."""
@@ -553,6 +555,6 @@ class TestAnomalousSegmentFiltering:
             )
         ]
         result = normalize_individual_segments(raw)
-        assert len(result) == 0, (
-            f"Anomalous segment S101->SH15 should be filtered out, got {len(result)} segments"
-        )
+        assert (
+            len(result) == 0
+        ), f"Anomalous segment S101->SH15 should be filtered out, got {len(result)} segments"

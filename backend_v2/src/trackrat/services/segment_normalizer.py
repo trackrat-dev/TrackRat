@@ -44,9 +44,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return r * 2 * math.asin(math.sqrt(a))
 
 
-def _is_segment_anomalous(
-    from_station: str, to_station: str, data_source: str
-) -> bool:
+def _is_segment_anomalous(from_station: str, to_station: str, data_source: str) -> bool:
     """Check if an unmatched segment spans an unreasonable geographic distance."""
     max_km = _MAX_UNMATCHED_SEGMENT_KM.get(data_source)
     if max_km is None:
@@ -58,8 +56,10 @@ def _is_segment_anomalous(
     if not from_coords or not to_coords:
         return False
     dist = _haversine_km(
-        from_coords["lat"], from_coords["lon"],
-        to_coords["lat"], to_coords["lon"],
+        from_coords["lat"],
+        from_coords["lon"],
+        to_coords["lat"],
+        to_coords["lon"],
     )
     return dist > max_km
 
