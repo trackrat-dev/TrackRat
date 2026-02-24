@@ -95,7 +95,11 @@ class TestPhantomStopDeletion:
         await db_session.flush()
 
         # Verify phantom stop was deleted
-        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
         all_stops = (await db_session.scalars(stmt)).all()
 
         station_codes = [stop.station_code for stop in all_stops]
@@ -238,7 +242,11 @@ class TestPhantomStopDeletion:
         await db_session.flush()
 
         # Verify both phantom stops were deleted
-        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
         all_stops = (await db_session.scalars(stmt)).all()
 
         station_codes = [stop.station_code for stop in all_stops]
@@ -386,7 +394,11 @@ class TestStopSequenceReordering:
         await db_session.flush()
 
         # Verify no duplicates
-        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
         stops = (await db_session.scalars(stmt)).all()
 
         sequences = [stop.stop_sequence for stop in stops]
