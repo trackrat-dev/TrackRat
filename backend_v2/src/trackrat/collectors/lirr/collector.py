@@ -296,6 +296,23 @@ class LIRRCollector:
                 if inferred_origin:
                     origin_code = inferred_origin
 
+            # Skip trips with fewer than 2 usable stops when no static
+            # backfill is available.  LIRR GTFS-RT includes future trains
+            # where only the origin terminal has a departure time; creating
+            # a 1-stop journey with origin == destination is nonsensical.
+            effective_stop_count = (
+                len(merged_stops)
+                if merged_stops
+                else len(arrivals) + (1 if inferred_origin else 0)
+            )
+            if effective_stop_count < 2:
+                logger.debug(
+                    "Skipping LIRR trip %s: only %d usable stop(s)",
+                    trip_id,
+                    effective_stop_count,
+                )
+                return None
+
             # Compute scheduled times
             if merged_stops:
                 sched_departure = merged_stops[0]["scheduled_departure"]
