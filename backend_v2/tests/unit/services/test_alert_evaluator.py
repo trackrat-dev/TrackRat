@@ -5,8 +5,8 @@ Uses real PostgreSQL via db_session fixture. APNS send calls are mocked
 since we cannot hit Apple's servers in tests.
 """
 
-from datetime import timedelta
-from unittest.mock import AsyncMock
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -827,36 +827,83 @@ class TestTrainSubscriptionAlerts:
         apns.send_alert_notification.assert_not_called()
 
     async def test_weekdays_only_skips_weekend(self, db_session: AsyncSession):
-        """weekdays_only subscription should not fire on weekends."""
+        """weekdays_only subscription should NOT fire on a Saturday."""
         apns = _make_apns()
+        # Saturday 2026-02-21 10:00 ET
+        fake_saturday = datetime(2026, 2, 21, 10, 0, 0)
+        assert fake_saturday.weekday() == 5, "Sanity check: 2026-02-21 is Saturday"
+
         _make_device_and_sub(
             db_session,
             data_source="NJT",
             train_id="3254",
             weekdays_only=True,
         )
-        _make_journey(
-            db_session,
+        # Create journey with times relative to fake_saturday
+        sched = fake_saturday - timedelta(minutes=20)
+        journey = TrainJourney(
             train_id="3254",
-            origin="NY",
-            terminal="TR",
+            journey_date=fake_saturday.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=sched,
+            actual_departure=None,
             is_cancelled=True,
-            minutes_ago=20,
+            has_complete_journey=True,
         )
+        db_session.add(journey)
         await db_session.flush()
 
-        now = now_et()
-        if now.weekday() >= 5:
-            # It IS a weekend — should skip
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fake_saturday
+        ):
             count = await evaluate_route_alerts(db_session, apns)
-            assert count == 0
-            apns.send_alert_notification.assert_not_called()
-            print("  Verified: weekend skip works")
-        else:
-            # It's a weekday — should fire
+        assert count == 0, "weekdays_only should suppress alerts on weekends"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: weekend skip works (deterministic Saturday)")
+
+    async def test_weekdays_only_fires_on_weekday(self, db_session: AsyncSession):
+        """weekdays_only subscription should fire on a Wednesday."""
+        apns = _make_apns()
+        # Wednesday 2026-02-18 10:00 ET
+        fake_wednesday = datetime(2026, 2, 18, 10, 0, 0)
+        assert fake_wednesday.weekday() == 2, "Sanity check: 2026-02-18 is Wednesday"
+
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=True,
+        )
+        sched = fake_wednesday - timedelta(minutes=20)
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=fake_wednesday.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=sched,
+            actual_departure=None,
+            is_cancelled=True,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fake_wednesday
+        ):
             count = await evaluate_route_alerts(db_session, apns)
-            assert count == 1
-            print("  Test ran on weekday; alert correctly fired")
+        assert count == 1, "weekdays_only should fire on weekdays"
+        apns.send_alert_notification.assert_called_once()
+        print("  Verified: weekday alert fires (deterministic Wednesday)")
 
     async def test_train_alert_cooldown(self, db_session: AsyncSession):
         """Train alerts respect the cooldown period."""

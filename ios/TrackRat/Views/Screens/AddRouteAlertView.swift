@@ -295,6 +295,7 @@ struct AddRouteAlertView: View {
             if let system = trainSystem {
                 StationPickerSheet(
                     selectedStation: $trainStation,
+                    disabledStation: nil,
                     selectedSystems: [system],
                     onStationSelected: { station in
                         trainStation = station

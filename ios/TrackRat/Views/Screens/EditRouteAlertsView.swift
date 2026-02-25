@@ -5,6 +5,7 @@ struct EditRouteAlertsView: View {
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @State private var showAddSheet = false
     @State private var selectedRouteStatus: RouteStatusContext?
+    @State private var selectedTrainAlert: RouteAlertSubscription?
 
     /// Group subscriptions by data source for display.
     private var groupedSubscriptions: [(String, [RouteAlertSubscription])] {
@@ -84,12 +85,16 @@ struct EditRouteAlertsView: View {
                 Section(header: Text(dataSource).foregroundColor(.white.opacity(0.7))) {
                     ForEach(subs) { sub in
                         Button {
-                            selectedRouteStatus = RouteStatusContext(
-                                dataSource: sub.dataSource,
-                                lineId: sub.lineId,
-                                fromStationCode: sub.fromStationCode,
-                                toStationCode: sub.toStationCode
-                            )
+                            if sub.trainId != nil {
+                                selectedTrainAlert = sub
+                            } else {
+                                selectedRouteStatus = RouteStatusContext(
+                                    dataSource: sub.dataSource,
+                                    lineId: sub.lineId,
+                                    fromStationCode: sub.fromStationCode,
+                                    toStationCode: sub.toStationCode
+                                )
+                            }
                         } label: {
                             HStack {
                                 if let trainName = sub.trainName, sub.trainId != nil {
@@ -132,6 +137,16 @@ struct EditRouteAlertsView: View {
             RouteStatusView(context: context)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedTrainAlert) { sub in
+            NavigationStack {
+                TrainDetailsView(
+                    trainNumber: sub.trainId ?? "",
+                    dataSource: sub.dataSource
+                )
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
     }
 

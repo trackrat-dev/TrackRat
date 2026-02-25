@@ -46,14 +46,15 @@ class SubscriptionItem(BaseModel):
 
     @model_validator(mode="after")
     def check_subscription_type(self) -> "SubscriptionItem":
-        """Require either line_id, both station codes, or train_id."""
+        """Require exactly one of: line_id, both station codes, or train_id."""
         has_line = bool(self.line_id)
         has_stations = bool(self.from_station_code and self.to_station_code)
         has_train = bool(self.train_id)
-        if not (has_line or has_stations or has_train):
+        modes = sum([has_line, has_stations, has_train])
+        if modes != 1:
             raise ValueError(
-                "Must provide either line_id, both from_station_code and "
-                "to_station_code, or train_id"
+                "Must provide exactly one of: line_id, both from_station_code "
+                "and to_station_code, or train_id"
             )
         return self
 
