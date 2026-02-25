@@ -9,17 +9,24 @@ import pytest
 
 from trackrat.config.stations import (
     AMTRAK_TO_INTERNAL_STATION_MAP,
+    INTERNAL_TO_MNR_GTFS_STOP_MAP,
+    INTERNAL_TO_SUBWAY_GTFS_STOP_MAP,
+    MNR_GTFS_STOP_TO_INTERNAL_MAP,
+    MNR_STATION_NAMES,
     NJT_GTFS_STOP_TO_INTERNAL_MAP,
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
     STATION_NAMES,
+    SUBWAY_GTFS_STOP_TO_INTERNAL_MAP,
     SUBWAY_STATION_COMPLEXES,
+    SUBWAY_STATION_NAMES,
     canonical_station_code,
     expand_station_codes,
     get_station_name,
     map_amtrak_station_code,
     map_gtfs_stop_to_station_code,
+    map_subway_gtfs_stop,
     get_path_stops_by_origin_destination,
 )
 
@@ -674,3 +681,215 @@ class TestStationEquivalences:
         assert result == [
             "S101"
         ], f"Standalone station S101 should expand to ['S101'], got {result}"
+
+
+class TestSubwayGTFSStopMapping:
+    """Tests for Subway GTFS stop_id to internal station code mapping.
+
+    Subway GTFS uses parent station IDs (e.g., '101') with optional N/S
+    directional suffixes (e.g., '101N', '101S'). Internal codes are
+    S-prefixed (e.g., 'S101'). SIR stations use 'S' prefix in GTFS
+    and 'SS' prefix internally (e.g., 'S31' -> 'SS31').
+
+    Regression tests for commit 3b103d1 which fixed station code mismatches
+    breaking subway departure times and train details.
+    """
+
+    @pytest.mark.parametrize(
+        "gtfs_stop_id,expected_code,description",
+        [
+            # Regular subway stations
+            ("101", "S101", "Van Cortlandt Park-242 St (1 line)"),
+            ("103", "S103", "238 St (1 line)"),
+            ("631", "S631", "Grand Central-42 St (4/5/6)"),
+            ("A27", "SA27", "42 St-Port Authority (A/C/E)"),
+            ("R16", "SR16", "Times Sq-42 St (N/Q/R/W)"),
+            ("L03", "SL03", "14 St-Union Sq (L)"),
+            # SIR (Staten Island Railway) - GTFS 'S' prefix -> internal 'SS' prefix
+            ("S01", "SS01", "St George (SIR)"),
+            ("S31", "SS31", "Tottenville (SIR)"),
+            ("S09", "SS09", "Stapleton (SIR)"),
+        ],
+    )
+    def test_subway_basic_mapping(self, gtfs_stop_id, expected_code, description):
+        """Test basic GTFS stop_id to internal code mapping for subway stations."""
+        result = map_gtfs_stop_to_station_code(gtfs_stop_id, "ignored", "SUBWAY")
+        assert result == expected_code, (
+            f"Subway station '{description}' (GTFS id={gtfs_stop_id}) mapped to "
+            f"'{result}', expected '{expected_code}'"
+        )
+
+    @pytest.mark.parametrize(
+        "gtfs_stop_id,expected_code,description",
+        [
+            ("101N", "S101", "Van Cortlandt Park northbound"),
+            ("101S", "S101", "Van Cortlandt Park southbound"),
+            ("631N", "S631", "Grand Central northbound"),
+            ("631S", "S631", "Grand Central southbound"),
+            ("A27N", "SA27", "42 St-Port Authority northbound"),
+            ("A27S", "SA27", "42 St-Port Authority southbound"),
+        ],
+    )
+    def test_subway_directional_suffix_stripping(
+        self, gtfs_stop_id, expected_code, description
+    ):
+        """Test that N/S directional suffixes are stripped before lookup.
+
+        GTFS-RT feeds append 'N' (northbound) or 'S' (southbound) to stop IDs.
+        The mapper must strip these to find the parent station.
+        """
+        result = map_gtfs_stop_to_station_code(gtfs_stop_id, "ignored", "SUBWAY")
+        assert result == expected_code, (
+            f"Subway '{description}' (GTFS id={gtfs_stop_id}) mapped to "
+            f"'{result}', expected '{expected_code}'"
+        )
+
+    def test_subway_invalid_stop_returns_none(self):
+        """Test that unmapped GTFS stop IDs return None."""
+        assert map_gtfs_stop_to_station_code("99999", "ignored", "SUBWAY") is None
+        assert map_gtfs_stop_to_station_code("", "ignored", "SUBWAY") is None
+        assert map_gtfs_stop_to_station_code("INVALID", "ignored", "SUBWAY") is None
+
+    def test_subway_name_parameter_is_ignored(self):
+        """Subway mapping uses stop_id only, not stop_name."""
+        result_a = map_gtfs_stop_to_station_code("101", "Van Cortlandt", "SUBWAY")
+        result_b = map_gtfs_stop_to_station_code("101", "WRONG NAME", "SUBWAY")
+        assert result_a == result_b == "S101"
+
+    def test_subway_forward_map_completeness(self):
+        """Every subway GTFS mapping should point to a code in SUBWAY_STATION_NAMES."""
+        for gtfs_id, internal_code in SUBWAY_GTFS_STOP_TO_INTERNAL_MAP.items():
+            assert internal_code in SUBWAY_STATION_NAMES, (
+                f"GTFS stop_id '{gtfs_id}' maps to '{internal_code}' "
+                f"which is not in SUBWAY_STATION_NAMES"
+            )
+
+    def test_subway_reverse_map_consistency(self):
+        """Reverse map should be consistent with forward map.
+
+        For every entry in INTERNAL_TO_SUBWAY_GTFS_STOP_MAP, looking up
+        the GTFS ID in the forward map should return the internal code.
+        """
+        for internal_code, gtfs_id in INTERNAL_TO_SUBWAY_GTFS_STOP_MAP.items():
+            forward_result = SUBWAY_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_id)
+            assert forward_result == internal_code, (
+                f"Reverse map says '{internal_code}' -> GTFS '{gtfs_id}', "
+                f"but forward map says GTFS '{gtfs_id}' -> '{forward_result}'"
+            )
+
+    def test_subway_reverse_map_covers_all_forward_entries(self):
+        """Every internal code in the forward map should have a reverse mapping."""
+        forward_codes = set(SUBWAY_GTFS_STOP_TO_INTERNAL_MAP.values())
+        reverse_codes = set(INTERNAL_TO_SUBWAY_GTFS_STOP_MAP.keys())
+        missing = forward_codes - reverse_codes
+        assert (
+            not missing
+        ), f"Internal codes in forward map but missing from reverse map: {sorted(missing)}"
+
+    def test_subway_round_trip_mapping(self):
+        """Round-trip: GTFS -> internal -> GTFS should return the original ID."""
+        sample_ids = ["101", "631", "A27", "R16", "L03", "S01", "S31"]
+        for gtfs_id in sample_ids:
+            internal = SUBWAY_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_id)
+            assert internal is not None, f"GTFS '{gtfs_id}' not in forward map"
+            back_to_gtfs = INTERNAL_TO_SUBWAY_GTFS_STOP_MAP.get(internal)
+            assert (
+                back_to_gtfs == gtfs_id
+            ), f"Round-trip failed: GTFS '{gtfs_id}' -> '{internal}' -> '{back_to_gtfs}'"
+
+    def test_subway_map_function_directly(self):
+        """Test map_subway_gtfs_stop function directly (not through dispatch)."""
+        assert map_subway_gtfs_stop("101") == "S101"
+        assert map_subway_gtfs_stop("101N") == "S101"
+        assert map_subway_gtfs_stop("101S") == "S101"
+        assert map_subway_gtfs_stop("S31") == "SS31"
+        assert map_subway_gtfs_stop("99999") is None
+
+
+class TestMNRGTFSStopMapping:
+    """Tests for Metro-North GTFS stop_id to internal station code mapping.
+
+    MNR GTFS uses numeric stop_ids (e.g., '1' for Grand Central).
+    Internal codes are M-prefixed (e.g., 'M125') or special (e.g., 'GCT').
+
+    Regression tests for commit 3b103d1 which fixed station code mismatches
+    breaking MNR departure times and train details.
+    """
+
+    @pytest.mark.parametrize(
+        "gtfs_stop_id,expected_code,description",
+        [
+            # Hudson Line
+            ("1", "GCT", "Grand Central Terminal"),
+            ("4", "M125", "Harlem-125th Street"),
+            ("622", "MEYS", "Yankees-E 153 St"),
+            # Harlem Line
+            ("18", "MYON", "Yonkers"),
+            # New Haven Line
+            ("172", "MWTB", "Waterbury"),
+            ("165", "MDBY", "Danbury"),
+        ],
+    )
+    def test_mnr_basic_mapping(self, gtfs_stop_id, expected_code, description):
+        """Test basic GTFS stop_id to internal code mapping for MNR stations."""
+        result = map_gtfs_stop_to_station_code(gtfs_stop_id, "ignored", "MNR")
+        assert result == expected_code, (
+            f"MNR station '{description}' (GTFS id={gtfs_stop_id}) mapped to "
+            f"'{result}', expected '{expected_code}'"
+        )
+
+    def test_mnr_invalid_stop_returns_none(self):
+        """Test that unmapped GTFS stop IDs return None."""
+        assert map_gtfs_stop_to_station_code("99999", "ignored", "MNR") is None
+        assert map_gtfs_stop_to_station_code("", "ignored", "MNR") is None
+        assert map_gtfs_stop_to_station_code("INVALID", "ignored", "MNR") is None
+
+    def test_mnr_name_parameter_is_ignored(self):
+        """MNR mapping uses stop_id only, not stop_name."""
+        result_a = map_gtfs_stop_to_station_code("1", "Grand Central", "MNR")
+        result_b = map_gtfs_stop_to_station_code("1", "WRONG NAME", "MNR")
+        assert result_a == result_b == "GCT"
+
+    def test_mnr_forward_map_completeness(self):
+        """Every MNR GTFS mapping should point to a code in MNR_STATION_NAMES."""
+        for gtfs_id, internal_code in MNR_GTFS_STOP_TO_INTERNAL_MAP.items():
+            # GCT is shared with LIRR and lives in STATION_NAMES, not MNR_STATION_NAMES
+            if internal_code == "GCT":
+                assert internal_code in STATION_NAMES, (
+                    f"GTFS stop_id '{gtfs_id}' maps to 'GCT' "
+                    f"which is not in STATION_NAMES"
+                )
+            else:
+                assert internal_code in MNR_STATION_NAMES, (
+                    f"GTFS stop_id '{gtfs_id}' maps to '{internal_code}' "
+                    f"which is not in MNR_STATION_NAMES"
+                )
+
+    def test_mnr_reverse_map_consistency(self):
+        """Reverse map should be consistent with forward map."""
+        for internal_code, gtfs_id in INTERNAL_TO_MNR_GTFS_STOP_MAP.items():
+            forward_result = MNR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_id)
+            assert forward_result == internal_code, (
+                f"Reverse map says '{internal_code}' -> GTFS '{gtfs_id}', "
+                f"but forward map says GTFS '{gtfs_id}' -> '{forward_result}'"
+            )
+
+    def test_mnr_reverse_map_covers_all_forward_entries(self):
+        """Every internal code in the forward map should have a reverse mapping."""
+        forward_codes = set(MNR_GTFS_STOP_TO_INTERNAL_MAP.values())
+        reverse_codes = set(INTERNAL_TO_MNR_GTFS_STOP_MAP.keys())
+        missing = forward_codes - reverse_codes
+        assert (
+            not missing
+        ), f"Internal codes in forward map but missing from reverse map: {sorted(missing)}"
+
+    def test_mnr_round_trip_mapping(self):
+        """Round-trip: GTFS -> internal -> GTFS should return the original ID."""
+        sample_ids = ["1", "4", "622", "18", "172", "165"]
+        for gtfs_id in sample_ids:
+            internal = MNR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_id)
+            assert internal is not None, f"GTFS '{gtfs_id}' not in forward map"
+            back_to_gtfs = INTERNAL_TO_MNR_GTFS_STOP_MAP.get(internal)
+            assert (
+                back_to_gtfs == gtfs_id
+            ), f"Round-trip failed: GTFS '{gtfs_id}' -> '{internal}' -> '{back_to_gtfs}'"
