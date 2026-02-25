@@ -38,6 +38,9 @@ MIN_BASELINE_DAYS = 3  # Need at least 3 comparable days for a reliable baseline
 # Data sources with real-time data (frequency alerts only apply to these)
 REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
 
+# Data sources where train_id is stable and represents the same daily service
+STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR"}
+
 # Build route-ID lookup once at import time
 _ROUTES_BY_ID = {route.id: route for route in ALL_ROUTES}
 
@@ -63,13 +66,28 @@ async def evaluate_route_alerts(
 
     alerts_sent = 0
 
+    is_weekend = now.weekday() >= 5
+
     for device in devices:
         for sub in device.subscriptions:
+            # Skip weekdays-only subscriptions on weekends
+            if sub.weekdays_only and is_weekend:
+                continue
+
             # Cooldown check
             if sub.last_alerted_at and sub.last_alerted_at >= cooldown_cutoff:
                 continue
 
-            # Build query for relevant journeys
+            # Train-ID subscriptions: single-train alert logic
+            if sub.train_id:
+                sent = await _evaluate_train_subscription(
+                    db, sub, device, today, now, apns_service
+                )
+                if sent:
+                    alerts_sent += 1
+                continue
+
+            # Build query for relevant journeys (line / station-pair modes)
             journeys = await _query_journeys_for_subscription(
                 db, sub, today, one_hour_ago, now
             )
@@ -146,6 +164,7 @@ async def evaluate_route_alerts(
                     "line_id": sub.line_id,
                     "from_station_code": sub.from_station_code,
                     "to_station_code": sub.to_station_code,
+                    "train_id": sub.train_id,
                 }
             }
             sent = await apns_service.send_alert_notification(
@@ -164,6 +183,7 @@ async def evaluate_route_alerts(
                     line_id=sub.line_id,
                     from_station=sub.from_station_code,
                     to_station=sub.to_station_code,
+                    train_id=sub.train_id,
                     alert_type=alert_type,
                     cancelled=cancelled_count,
                     delayed=delayed_count,
@@ -176,6 +196,102 @@ async def evaluate_route_alerts(
 
     logger.info("route_alert_evaluation_complete", alerts_sent=alerts_sent)
     return alerts_sent
+
+
+async def _evaluate_train_subscription(
+    db: AsyncSession,
+    sub: RouteAlertSubscription,
+    device: DeviceToken,
+    today: date,
+    now: datetime,
+    apns_service: SimpleAPNSService,
+) -> bool:
+    """
+    Evaluate a train_id subscription and send notification if warranted.
+
+    For a specific train, alert on:
+    - Cancellation
+    - Delay >= DELAY_THRESHOLD_MINUTES
+
+    Returns True if an alert was sent.
+    """
+    # Find today's journey for this specific train
+    result = await db.execute(
+        select(TrainJourney).where(
+            and_(
+                TrainJourney.train_id == sub.train_id,
+                TrainJourney.data_source == sub.data_source,
+                TrainJourney.journey_date == today,
+            )
+        )
+    )
+    journey = result.scalar_one_or_none()
+
+    if not journey:
+        return False
+
+    # Determine alert type
+    alert_type = ""
+    if journey.is_cancelled:
+        alert_type = "cancellation"
+    elif _is_significantly_delayed(journey):
+        alert_type = "delay"
+
+    if not alert_type:
+        return False
+
+    # Compute delay for message
+    delay_minutes = 0
+    if (
+        alert_type == "delay"
+        and journey.actual_departure
+        and journey.scheduled_departure
+    ):
+        delay_minutes = int(
+            (journey.actual_departure - journey.scheduled_departure).total_seconds()
+            / 60
+        )
+
+    # Dedup via hash
+    alert_hash = _compute_train_alert_hash(
+        sub.train_id or "", alert_type, delay_minutes
+    )
+    if sub.last_alert_hash == alert_hash:
+        return False
+
+    # Build notification
+    title, body = _build_train_alert_message(sub, journey, alert_type, delay_minutes)
+
+    if not device.apns_token:
+        return False
+
+    custom_data = {
+        "route_alert": {
+            "data_source": sub.data_source,
+            "train_id": sub.train_id,
+            "line_id": None,
+            "from_station_code": None,
+            "to_station_code": None,
+        }
+    }
+    sent = await apns_service.send_alert_notification(
+        device.apns_token, title, body, custom_data=custom_data
+    )
+
+    if sent:
+        sub.last_alerted_at = now
+        sub.last_alert_hash = alert_hash
+
+        logger.info(
+            "train_alert_sent",
+            device_id=device.device_id,
+            data_source=sub.data_source,
+            train_id=sub.train_id,
+            alert_type=alert_type,
+            delay_minutes=delay_minutes,
+        )
+
+    return sent
 
 
 async def _query_journeys_for_subscription(
@@ -425,6 +541,38 @@ def _build_alert_message(
         body = (
             f"{delayed_count} of {total_count} trains delayed {DELAY_THRESHOLD_MINUTES}+ min "
             f"in the past hour."
+        )
+
+    return title, body
+
+
+def _compute_train_alert_hash(
+    train_id: str, alert_type: str, delay_minutes: int
+) -> str:
+    """Generate a deduplication hash for a train-specific alert."""
+    # Round delay to nearest 5 minutes to avoid hash churn from minor timing changes
+    delay_bucket = (delay_minutes // 5) * 5
+    raw = f"train:{train_id}:{alert_type}:{delay_bucket}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _build_train_alert_message(
+    sub: RouteAlertSubscription,
+    journey: TrainJourney,
+    alert_type: str,
+    delay_minutes: int,
+) -> tuple[str, str]:
+    """Build notification title and body for a train-specific alert."""
+    route_desc = f"{journey.origin_station_code} → {journey.terminal_station_code}"
+
+    if alert_type == "cancellation":
+        title = f"{sub.data_source}: Train {sub.train_id} Cancelled"
+        body = f"Train {sub.train_id} ({route_desc}) has been cancelled."
+    else:
+        title = f"{sub.data_source}: Train {sub.train_id} Delayed"
+        body = (
+            f"Train {sub.train_id} ({route_desc}) is delayed "
+            f"{delay_minutes} minutes."
         )
 
     return title, body

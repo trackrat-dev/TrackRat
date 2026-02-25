@@ -41,13 +41,19 @@ class SubscriptionItem(BaseModel):
     line_id: str | None = None
     from_station_code: str | None = None
     to_station_code: str | None = None
+    train_id: str | None = None
+    weekdays_only: bool = False
 
     @model_validator(mode="after")
     def check_subscription_type(self) -> "SubscriptionItem":
-        """Require either line_id or both station codes."""
-        if not self.line_id and not (self.from_station_code and self.to_station_code):
+        """Require either line_id, both station codes, or train_id."""
+        has_line = bool(self.line_id)
+        has_stations = bool(self.from_station_code and self.to_station_code)
+        has_train = bool(self.train_id)
+        if not (has_line or has_stations or has_train):
             raise ValueError(
-                "Must provide either line_id or both from_station_code and to_station_code"
+                "Must provide either line_id, both from_station_code and "
+                "to_station_code, or train_id"
             )
         return self
 
@@ -65,6 +71,8 @@ class SubscriptionResponse(BaseModel):
     line_id: str | None = None
     from_station_code: str | None = None
     to_station_code: str | None = None
+    train_id: str | None = None
+    weekdays_only: bool = False
 
 
 class SyncSubscriptionsResponse(BaseModel):
@@ -134,6 +142,8 @@ async def sync_subscriptions(
             line_id=item.line_id,
             from_station_code=item.from_station_code,
             to_station_code=item.to_station_code,
+            train_id=item.train_id,
+            weekdays_only=item.weekdays_only,
         )
         db.add(sub)
 
@@ -174,6 +184,8 @@ async def get_subscriptions(
                 line_id=sub.line_id,
                 from_station_code=sub.from_station_code,
                 to_station_code=sub.to_station_code,
+                train_id=sub.train_id,
+                weekdays_only=sub.weekdays_only,
             )
             for sub in device.subscriptions
         ],

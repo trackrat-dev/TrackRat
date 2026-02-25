@@ -95,19 +95,22 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Search
 
-    func searchTrains(fromStationCode: String, toStationCode: String, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
+    func searchTrains(fromStationCode: String, toStationCode: String? = nil, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
         guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
             throw APIError.invalidURL
         }
 
         var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
-            URLQueryItem(name: "to", value: toStationCode),
             URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
             // PERFORMANCE: Filter out already-departed trains server-side
             // This reduces payload size and eliminates redundant client filtering
             URLQueryItem(name: "hide_departed", value: "true")
         ]
+
+        if let toStationCode = toStationCode {
+            queryItems.append(URLQueryItem(name: "to", value: toStationCode))
+        }
 
         if let date = date {
             let formatter = DateFormatter()
@@ -1335,6 +1338,8 @@ extension APIService {
             let line_id: String?
             let from_station_code: String?
             let to_station_code: String?
+            let train_id: String?
+            let weekdays_only: Bool
         }
 
         struct SyncRequest: Encodable {
@@ -1347,7 +1352,9 @@ extension APIService {
                 data_source: sub.dataSource,
                 line_id: sub.lineId,
                 from_station_code: sub.fromStationCode,
-                to_station_code: sub.toStationCode
+                to_station_code: sub.toStationCode,
+                train_id: sub.trainId,
+                weekdays_only: sub.weekdaysOnly
             )
         }
 

@@ -51,6 +51,20 @@ final class AlertSubscriptionService: ObservableObject {
         saveToDefaults()
     }
 
+    func addTrainSubscription(dataSource: String, trainId: String, trainName: String, weekdaysOnly: Bool) {
+        let sub = RouteAlertSubscription(
+            dataSource: dataSource,
+            trainId: trainId,
+            trainName: trainName,
+            weekdaysOnly: weekdaysOnly
+        )
+        guard !subscriptions.contains(where: {
+            $0.trainId == trainId && $0.dataSource == dataSource
+        }) else { return }
+        subscriptions.append(sub)
+        saveToDefaults()
+    }
+
     func removeSubscription(_ sub: RouteAlertSubscription) {
         subscriptions.removeAll { $0.id == sub.id }
         saveToDefaults()
@@ -92,6 +106,9 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     let lineName: String?
     let fromStationCode: String?
     let toStationCode: String?
+    let trainId: String?
+    let trainName: String?
+    let weekdaysOnly: Bool
 
     /// Line-based subscription.
     init(dataSource: String, lineId: String, lineName: String) {
@@ -101,6 +118,9 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.lineName = lineName
         self.fromStationCode = nil
         self.toStationCode = nil
+        self.trainId = nil
+        self.trainName = nil
+        self.weekdaysOnly = false
     }
 
     /// Station-pair subscription.
@@ -111,5 +131,35 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.lineName = nil
         self.fromStationCode = fromStationCode
         self.toStationCode = toStationCode
+        self.trainId = nil
+        self.trainName = nil
+        self.weekdaysOnly = false
+    }
+
+    /// Train-specific subscription.
+    init(dataSource: String, trainId: String, trainName: String, weekdaysOnly: Bool) {
+        self.id = UUID()
+        self.dataSource = dataSource
+        self.lineId = nil
+        self.lineName = nil
+        self.fromStationCode = nil
+        self.toStationCode = nil
+        self.trainId = trainId
+        self.trainName = trainName
+        self.weekdaysOnly = weekdaysOnly
+    }
+
+    /// Backward-compatible decoding: new fields default to nil/false if missing.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        dataSource = try container.decode(String.self, forKey: .dataSource)
+        lineId = try container.decodeIfPresent(String.self, forKey: .lineId)
+        lineName = try container.decodeIfPresent(String.self, forKey: .lineName)
+        fromStationCode = try container.decodeIfPresent(String.self, forKey: .fromStationCode)
+        toStationCode = try container.decodeIfPresent(String.self, forKey: .toStationCode)
+        trainId = try container.decodeIfPresent(String.self, forKey: .trainId)
+        trainName = try container.decodeIfPresent(String.self, forKey: .trainName)
+        weekdaysOnly = try container.decodeIfPresent(Bool.self, forKey: .weekdaysOnly) ?? false
     }
 }

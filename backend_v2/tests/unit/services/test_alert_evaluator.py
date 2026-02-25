@@ -23,7 +23,9 @@ from trackrat.services.alert_evaluator import (
     MIN_BASELINE_DAYS,
     REALTIME_SOURCES,
     _build_alert_message,
+    _build_train_alert_message,
     _compute_alert_hash,
+    _compute_train_alert_hash,
     _query_baseline_train_count,
     evaluate_route_alerts,
 )
@@ -81,6 +83,8 @@ def _make_device_and_sub(
     line_id: str | None = None,
     from_station: str | None = None,
     to_station: str | None = None,
+    train_id: str | None = None,
+    weekdays_only: bool = False,
 ) -> tuple[DeviceToken, RouteAlertSubscription]:
     """Create a DeviceToken + RouteAlertSubscription pair."""
     device = DeviceToken(device_id=device_id, apns_token=apns_token)
@@ -92,6 +96,8 @@ def _make_device_and_sub(
         line_id=line_id,
         from_station_code=from_station,
         to_station_code=to_station,
+        train_id=train_id,
+        weekdays_only=weekdays_only,
     )
     db.add(sub)
     return device, sub
@@ -618,3 +624,330 @@ class TestAlertHelpers:
         hash1 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.31)
         hash2 = _compute_alert_hash("reduced_service", 0, 0, 5, frequency_factor=0.34)
         assert hash1 == hash2, "0.31 and 0.34 both round to 0.3"
+
+    def test_build_train_alert_message_cancellation(self):
+        """Train cancellation alert message includes train ID and route."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            train_id="3254",
+        )
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=now_et().date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            is_cancelled=True,
+            has_complete_journey=True,
+        )
+        title, body = _build_train_alert_message(sub, journey, "cancellation", 0)
+        assert "3254" in title
+        assert "Cancelled" in title
+        assert "NJT" in title
+        assert "NY → TR" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
+
+    def test_build_train_alert_message_delay(self):
+        """Train delay alert message includes delay minutes."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            train_id="3254",
+        )
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=40),
+            actual_departure=now - timedelta(minutes=20),
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        title, body = _build_train_alert_message(sub, journey, "delay", 20)
+        assert "Delayed" in title
+        assert "3254" in title
+        assert "20 minutes" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
+
+    def test_compute_train_alert_hash_buckets_delay(self):
+        """Train alert hash buckets delay to nearest 5 minutes."""
+        hash1 = _compute_train_alert_hash("3254", "delay", 17)
+        hash2 = _compute_train_alert_hash("3254", "delay", 18)
+        hash3 = _compute_train_alert_hash("3254", "delay", 22)
+        assert hash1 == hash2, "17 and 18 both bucket to 15"
+        assert hash1 != hash3, "15 bucket != 20 bucket"
+
+    def test_compute_train_alert_hash_differs_by_type(self):
+        """Cancellation and delay produce different hashes."""
+        hash_cancel = _compute_train_alert_hash("3254", "cancellation", 0)
+        hash_delay = _compute_train_alert_hash("3254", "delay", 15)
+        assert hash_cancel != hash_delay
+
+
+@pytest.mark.asyncio
+class TestTrainSubscriptionAlerts:
+    """Tests for train_id subscription evaluation."""
+
+    async def test_cancelled_train_triggers_alert(self, db_session: AsyncSession):
+        """A cancelled train matching a train_id subscription should alert."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        title = call_args.args[1]
+        body = call_args.args[2]
+        assert "3254" in title
+        assert "Cancelled" in title
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
+
+    async def test_delayed_train_triggers_alert(self, db_session: AsyncSession):
+        """A significantly delayed train matching a train_id subscription should alert."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            delay_minutes=DELAY_THRESHOLD_MINUTES + 5,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        title = call_args.args[1]
+        body = call_args.args[2]
+        assert "3254" in title
+        assert "Delayed" in title
+        assert "20 minutes" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
+
+    async def test_on_time_train_no_alert(self, db_session: AsyncSession):
+        """An on-time train should NOT trigger an alert."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            delay_minutes=0,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_no_journey_today_no_alert(self, db_session: AsyncSession):
+        """If the train hasn't appeared today, no alert is sent."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        # No journey created for this train
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_different_train_id_no_alert(self, db_session: AsyncSession):
+        """A cancelled train with a different ID should NOT alert."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="9999",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_weekdays_only_skips_weekend(self, db_session: AsyncSession):
+        """weekdays_only subscription should not fire on weekends."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=True,
+        )
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        now = now_et()
+        if now.weekday() >= 5:
+            # It IS a weekend — should skip
+            count = await evaluate_route_alerts(db_session, apns)
+            assert count == 0
+            apns.send_alert_notification.assert_not_called()
+            print("  Verified: weekend skip works")
+        else:
+            # It's a weekday — should fire
+            count = await evaluate_route_alerts(db_session, apns)
+            assert count == 1
+            print("  Test ran on weekday; alert correctly fired")
+
+    async def test_train_alert_cooldown(self, db_session: AsyncSession):
+        """Train alerts respect the cooldown period."""
+        apns = _make_apns()
+        device, sub = _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        sub.last_alerted_at = now_et() - timedelta(minutes=COOLDOWN_MINUTES - 5)
+
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_train_alert_dedup(self, db_session: AsyncSession):
+        """Same train alert hash should not fire twice."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        # First call should send
+        count1 = await evaluate_route_alerts(db_session, apns)
+        assert count1 == 1
+
+        # Reset cooldown but keep hash
+        result = await db_session.execute(select(RouteAlertSubscription))
+        sub = result.scalar_one()
+        sub.last_alerted_at = now_et() - timedelta(minutes=COOLDOWN_MINUTES + 1)
+        await db_session.flush()
+
+        apns.send_alert_notification.reset_mock()
+
+        # Second call should be deduped
+        count2 = await evaluate_route_alerts(db_session, apns)
+        assert count2 == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_train_alert_custom_data_includes_train_id(
+        self, db_session: AsyncSession
+    ):
+        """Train alert notification should include train_id in custom data."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            weekdays_only=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="3254",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+
+        call_kwargs = apns.send_alert_notification.call_args.kwargs
+        assert "custom_data" in call_kwargs
+        route_alert = call_kwargs["custom_data"]["route_alert"]
+        assert route_alert["data_source"] == "NJT"
+        assert route_alert["train_id"] == "3254"
+        assert route_alert["line_id"] is None
+        assert route_alert["from_station_code"] is None
+        print(f"  Custom data: {route_alert}")
