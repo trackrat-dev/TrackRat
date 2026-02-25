@@ -85,19 +85,22 @@ struct RouteStatusView: View {
             title: "Past Hour",
             data: viewModel.pastHourData,
             isLoading: viewModel.isLoadingPastHour,
-            error: viewModel.pastHourError
+            error: viewModel.pastHourError,
+            hours: 1
         )
         timePeriodSection(
             title: "Past 24 Hours",
             data: viewModel.past24HoursData,
             isLoading: viewModel.isLoadingPast24Hours,
-            error: viewModel.past24HoursError
+            error: viewModel.past24HoursError,
+            hours: 24
         )
         timePeriodSection(
             title: "Past 7 Days",
             data: viewModel.past7DaysData,
             isLoading: viewModel.isLoadingPast7Days,
-            error: viewModel.past7DaysError
+            error: viewModel.past7DaysError,
+            hours: 168
         )
     }
 
@@ -106,7 +109,8 @@ struct RouteStatusView: View {
         title: String,
         data: RouteHistoricalData?,
         isLoading: Bool,
-        error: String?
+        error: String?,
+        hours: Double
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
@@ -116,15 +120,15 @@ struct RouteStatusView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
-            } else if let history = data {
-                historyContent(history)
+            } else if let history = data, history.route.totalTrains > 0 {
+                historyContent(history, hours: hours)
             } else if let error = error {
                 Text("Could not load history: \(error)")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding()
             } else {
-                Text("No data available")
+                Text("No trains in this time period")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding()
@@ -135,7 +139,7 @@ struct RouteStatusView: View {
     }
 
     @ViewBuilder
-    private func historyContent(_ history: RouteHistoricalData) -> some View {
+    private func historyContent(_ history: RouteHistoricalData, hours: Double) -> some View {
         // Stat cards row
         HStack(spacing: 12) {
             statCard(
@@ -147,6 +151,11 @@ struct RouteStatusView: View {
                 title: "Cancelled",
                 value: "\(Int(history.aggregateStats.cancellationRate))%",
                 color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
+            )
+            statCard(
+                title: "Frequency",
+                value: formatFrequency(totalTrains: history.route.totalTrains, hours: hours),
+                color: .blue
             )
         }
 
@@ -168,21 +177,16 @@ struct RouteStatusView: View {
                 )
             }
         }
+    }
 
-        // Delay breakdown bar
-        let breakdown = history.aggregateStats.delayBreakdown
-        let total = history.route.totalTrains
-        DelayPerformanceBar(
-            label: "Arrival Delay Breakdown (\(total) trains)",
-            stats: DelayStats(
-                onTime: breakdown.onTime,
-                slight: breakdown.slight,
-                significant: breakdown.significant,
-                major: breakdown.major,
-                total: total,
-                avgDelay: Int(history.aggregateStats.averageDelayMinutes)
-            )
-        )
+    private func formatFrequency(totalTrains: Int, hours: Double) -> String {
+        let perHour = Double(totalTrains) / hours
+        if perHour >= 1 {
+            return perHour == perHour.rounded() ? "\(Int(perHour))/hr" : String(format: "%.1f/hr", perHour)
+        } else {
+            let perDay = perHour * 24
+            return perDay == perDay.rounded() ? "\(Int(perDay))/day" : String(format: "%.1f/day", perDay)
+        }
     }
 
     private func statCard(title: String, value: String, color: Color) -> some View {
