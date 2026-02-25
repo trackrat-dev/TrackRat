@@ -304,7 +304,7 @@ class DepartureService:
                         actual_time=to_stop.actual_arrival or to_stop.actual_departure,
                         track=to_stop.track,
                     )
-                    if to_stop
+                    if to_stop and to_station
                     else None
                 ),
                 train_position=train_position,
