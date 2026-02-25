@@ -92,7 +92,16 @@ struct EditRouteAlertsView: View {
                             )
                         } label: {
                             HStack {
-                                if let lineName = sub.lineName {
+                                if let trainName = sub.trainName, sub.trainId != nil {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Label(trainName, systemImage: "train.side.front.car")
+                                        if sub.weekdaysOnly {
+                                            Text("Weekdays only")
+                                                .font(.caption2)
+                                                .foregroundColor(.white.opacity(0.5))
+                                        }
+                                    }
+                                } else if let lineName = sub.lineName {
                                     Label(lineName, systemImage: "tram.fill")
                                 } else if let from = sub.fromStationCode, let to = sub.toStationCode {
                                     Label(

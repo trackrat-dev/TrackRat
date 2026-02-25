@@ -308,6 +308,10 @@ class RouteAlertSubscription(Base):
     line_id = Column(String(30), nullable=True)
     from_station_code = Column(String(10), nullable=True)
     to_station_code = Column(String(10), nullable=True)
+    train_id = Column(String(30), nullable=True)
+    weekdays_only = Column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_alerted_at = Column(DateTime(timezone=True), nullable=True)
     last_alert_hash = Column(String(64), nullable=True)
@@ -322,7 +326,8 @@ class RouteAlertSubscription(Base):
     __table_args__ = (
         CheckConstraint(
             "(line_id IS NOT NULL) OR "
-            "(from_station_code IS NOT NULL AND to_station_code IS NOT NULL)",
+            "(from_station_code IS NOT NULL AND to_station_code IS NOT NULL) OR "
+            "(train_id IS NOT NULL)",
             name="ck_alert_sub_type",
         ),
         Index("idx_alert_sub_device", "device_id"),
@@ -333,6 +338,7 @@ class RouteAlertSubscription(Base):
             "from_station_code",
             "to_station_code",
         ),
+        Index("idx_alert_sub_train", "data_source", "train_id"),
     )
 
 

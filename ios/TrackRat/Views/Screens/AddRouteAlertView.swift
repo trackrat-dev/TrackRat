@@ -8,18 +8,39 @@ struct AddRouteAlertView: View {
     enum AlertMode: String, CaseIterable {
         case line = "Line"
         case stations = "Stations"
+        case train = "Train"
     }
 
+    /// Data sources with stable daily train IDs suitable for recurring alerts.
+    static let stableTrainIdSystems: Set<TrainSystem> = [.njt, .amtrak, .lirr, .mnr]
+
     @State private var mode: AlertMode = .line
+
+    // Station-pair state
     @State private var showFromPicker = false
     @State private var showToPicker = false
     @State private var fromStation: Station? = nil
     @State private var toStation: Station? = nil
 
+    // Train mode state
+    @State private var trainSystem: TrainSystem? = nil
+    @State private var trainStation: Station? = nil
+    @State private var showTrainStationPicker = false
+    @State private var departures: [TrainV2] = []
+    @State private var isLoadingDepartures = false
+    @State private var weekdaysOnly = true
+
     /// Routes filtered to the user's selected train systems.
     private var filteredRoutes: [RouteLine] {
         let dataSources = appState.selectedSystems.asRawStrings
         return RouteTopology.allRoutes.filter { dataSources.contains($0.dataSource) }
+    }
+
+    /// Systems available for train mode: intersection of stable-ID systems and user's selection.
+    private var availableTrainSystems: [TrainSystem] {
+        Self.stableTrainIdSystems
+            .intersection(appState.selectedSystems)
+            .sorted { $0.displayName < $1.displayName }
     }
 
     var body: some View {
@@ -38,6 +59,8 @@ struct AddRouteAlertView: View {
                     lineList
                 case .stations:
                     stationPairPicker
+                case .train:
+                    trainPicker
                 }
             }
             .navigationTitle("Add Route Alert")
@@ -186,5 +209,221 @@ struct AddRouteAlertView: View {
                 }
             )
         }
+    }
+
+    // MARK: - Train Mode
+
+    private var trainPicker: some View {
+        VStack(spacing: 16) {
+            if availableTrainSystems.isEmpty {
+                noEligibleSystemsView
+            } else {
+                // System picker
+                systemPickerRow
+
+                // Station picker (shown after system selected)
+                if trainSystem != nil {
+                    stationPickerRow
+                }
+
+                // Weekdays-only toggle
+                if trainStation != nil {
+                    weekdaysToggleRow
+                }
+
+                // Departures list or loading indicator
+                if isLoadingDepartures {
+                    Spacer()
+                    ProgressView("Loading departures...")
+                        .foregroundColor(.white)
+                    Spacer()
+                } else if trainStation != nil {
+                    departuresList
+                }
+            }
+        }
+        .padding()
+        .sheet(isPresented: $showTrainStationPicker) {
+            if let system = trainSystem {
+                StationPickerSheet(
+                    selectedStation: $trainStation,
+                    selectedSystems: [system],
+                    onStationSelected: { station in
+                        trainStation = station
+                        showTrainStationPicker = false
+                        loadDepartures()
+                    }
+                )
+            }
+        }
+    }
+
+    private var noEligibleSystemsView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 36))
+                .foregroundColor(.white.opacity(0.3))
+            Text("Train alerts require NJ Transit, Amtrak, LIRR, or Metro-North.")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+        }
+    }
+
+    private var systemPickerRow: some View {
+        HStack {
+            Text("System")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.6))
+            Spacer()
+            Menu {
+                ForEach(availableTrainSystems) { system in
+                    Button(system.displayName) {
+                        if trainSystem != system {
+                            trainSystem = system
+                            trainStation = nil
+                            departures = []
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(trainSystem?.displayName ?? "Select")
+                        .foregroundColor(trainSystem != nil ? .white : .white.opacity(0.4))
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.3))
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    }
+
+    private var stationPickerRow: some View {
+        Button {
+            showTrainStationPicker = true
+        } label: {
+            HStack {
+                Text("Station")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+                Text(trainStation.map { $0.name } ?? "Select station")
+                    .foregroundColor(trainStation != nil ? .white : .white.opacity(0.4))
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.3))
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var weekdaysToggleRow: some View {
+        Toggle(isOn: $weekdaysOnly) {
+            Text("Weekdays only")
+                .font(.subheadline)
+                .foregroundColor(.white)
+        }
+        .tint(.orange)
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    }
+
+    private var departuresList: some View {
+        Group {
+            if departures.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Text("No upcoming departures")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.5))
+                    Spacer()
+                }
+            } else {
+                List {
+                    ForEach(departures) { train in
+                        Button {
+                            let trainName = formatTrainName(train)
+                            alertService.addTrainSubscription(
+                                dataSource: train.dataSource,
+                                trainId: train.trainId,
+                                trainName: trainName,
+                                weekdaysOnly: weekdaysOnly
+                            )
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            dismiss()
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Train \(train.trainId)")
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                    HStack(spacing: 4) {
+                                        if let time = train.departure.scheduledTime {
+                                            Text(time, style: .time)
+                                                .font(.subheadline)
+                                                .foregroundColor(.white.opacity(0.8))
+                                        }
+                                        Text("→ \(train.destination)")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white.opacity(0.6))
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: "plus.circle")
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func loadDepartures() {
+        guard let system = trainSystem, let station = trainStation else { return }
+        isLoadingDepartures = true
+        departures = []
+
+        Task {
+            do {
+                let results = try await APIService.shared.searchTrains(
+                    fromStationCode: station.code,
+                    dataSources: [system]
+                )
+                await MainActor.run {
+                    departures = results
+                    isLoadingDepartures = false
+                }
+            } catch {
+                await MainActor.run {
+                    departures = []
+                    isLoadingDepartures = false
+                }
+            }
+        }
+    }
+
+    private func formatTrainName(_ train: TrainV2) -> String {
+        var parts = [train.dataSource, train.trainId]
+        if let time = train.departure.scheduledTime {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "h:mma"
+            formatter.timeZone = TimeZone(identifier: "America/New_York")
+            parts.append(formatter.string(from: time).lowercased())
+        }
+        parts.append("→ \(train.destination)")
+        return parts.joined(separator: " ")
     }
 }
