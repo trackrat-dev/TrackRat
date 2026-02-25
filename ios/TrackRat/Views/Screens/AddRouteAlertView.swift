@@ -15,11 +15,15 @@ struct AddRouteAlertView: View {
     @State private var showToPicker = false
     @State private var fromStation: Station? = nil
     @State private var toStation: Station? = nil
+    @State private var confirmationMessage: String? = nil
 
-    /// Routes filtered to the user's selected train systems.
+    /// Routes filtered to the user's selected train systems, excluding already-subscribed lines.
     private var filteredRoutes: [RouteLine] {
         let dataSources = appState.selectedSystems.asRawStrings
-        return RouteTopology.allRoutes.filter { dataSources.contains($0.dataSource) }
+        return RouteTopology.allRoutes.filter { route in
+            dataSources.contains(route.dataSource) &&
+            !alertService.subscriptions.contains(where: { $0.lineId == route.id && $0.dataSource == route.dataSource })
+        }
     }
 
     var body: some View {
@@ -44,7 +48,7 @@ struct AddRouteAlertView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Done") { dismiss() }
                         .foregroundColor(.orange)
                 }
             }
@@ -55,36 +59,52 @@ struct AddRouteAlertView: View {
     // MARK: - Line Mode
 
     private var lineList: some View {
-        List {
-            ForEach(filteredRoutes) { route in
-                Button {
-                    alertService.addLineSubscription(
-                        dataSource: route.dataSource,
-                        lineId: route.id,
-                        lineName: route.name
-                    )
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(route.name)
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            Text(route.dataSource)
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.6))
+        Group {
+            if filteredRoutes.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 40))
+                        .foregroundColor(.orange)
+                    Text("All available routes subscribed")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Spacer()
+                }
+            } else {
+                List {
+                    ForEach(filteredRoutes) { route in
+                        Button {
+                            withAnimation {
+                                alertService.addLineSubscription(
+                                    dataSource: route.dataSource,
+                                    lineId: route.id,
+                                    lineName: route.name
+                                )
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(route.name)
+                                        .font(.headline)
+                                        .foregroundColor(.white)
+                                    Text(route.dataSource)
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.6))
+                                }
+                                Spacer()
+                                Image(systemName: "plus.circle")
+                                    .foregroundColor(.orange)
+                            }
                         }
-                        Spacer()
-                        Image(systemName: "plus.circle")
-                            .foregroundColor(.orange)
+                        .buttonStyle(.plain)
                     }
                 }
-                .buttonStyle(.plain)
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Station-Pair Mode
@@ -143,13 +163,29 @@ struct AddRouteAlertView: View {
                     let common = fromSystems.intersection(toSystems).intersection(selectedStrings)
                     let dataSource = common.first ?? fromSystems.intersection(toSystems).first ?? "NJT"
 
-                    alertService.addStationPairSubscription(
-                        dataSource: dataSource,
-                        fromStationCode: fromCode,
-                        toStationCode: toCode
-                    )
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    dismiss()
+                    let alreadyExists = alertService.subscriptions.contains(where: {
+                        $0.fromStationCode == fromCode &&
+                        $0.toStationCode == toCode &&
+                        $0.dataSource == dataSource
+                    })
+
+                    if alreadyExists {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        showConfirmation("Already subscribed")
+                    } else {
+                        alertService.addStationPairSubscription(
+                            dataSource: dataSource,
+                            fromStationCode: fromCode,
+                            toStationCode: toCode
+                        )
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        showConfirmation("Alert added")
+                    }
+
+                    withAnimation {
+                        fromStation = nil
+                        toStation = nil
+                    }
                 } label: {
                     Text("Add Alert")
                         .font(.headline)
@@ -158,6 +194,18 @@ struct AddRouteAlertView: View {
                         .padding(.vertical, 14)
                         .background(Capsule().fill(.orange))
                 }
+                .padding(.top, 8)
+            }
+
+            if let message = confirmationMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: message == "Alert added" ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundColor(message == "Alert added" ? .green : .yellow)
+                    Text(message)
+                        .foregroundColor(.white)
+                }
+                .font(.subheadline)
+                .transition(.opacity.combined(with: .move(edge: .top)))
                 .padding(.top, 8)
             }
 
@@ -185,6 +233,15 @@ struct AddRouteAlertView: View {
                     showToPicker = false
                 }
             )
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func showConfirmation(_ message: String) {
+        withAnimation { confirmationMessage = message }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { confirmationMessage = nil }
         }
     }
 }
