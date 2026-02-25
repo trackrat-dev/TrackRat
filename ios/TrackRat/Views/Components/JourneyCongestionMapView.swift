@@ -178,10 +178,10 @@ class JourneyCongestionViewModel: ObservableObject {
         }
         
         // Find origin and destination indices
-        let originIndex = stops.firstIndex { $0.stationCode.uppercased() == originCode.uppercased() }
+        let originIndex = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, originCode) }
         let destinationIndex = stops.firstIndex { stop in
             if let destinationCode = Stations.getStationCode(destinationName) {
-                return stop.stationCode.uppercased() == destinationCode.uppercased()
+                return Stations.areEquivalentStations(stop.stationCode, destinationCode)
             }
             return stop.stationName.lowercased() == destinationName.lowercased()
         }
@@ -210,7 +210,7 @@ class JourneyCongestionViewModel: ObservableObject {
             if let coordinate = Stations.getCoordinates(for: stop.stationCode) {
                 let isDestination: Bool
                 if let destinationCode = Stations.getStationCode(destinationName) {
-                    isDestination = stop.stationCode.uppercased() == destinationCode.uppercased()
+                    isDestination = Stations.areEquivalentStations(stop.stationCode, destinationCode)
                 } else {
                     isDestination = stop.stationName.lowercased() == destinationName.lowercased()
                 }
@@ -219,7 +219,7 @@ class JourneyCongestionViewModel: ObservableObject {
                     code: stop.stationCode,
                     name: stop.stationName,
                     coordinate: coordinate,
-                    isOrigin: stop.stationCode.uppercased() == originCode.uppercased(),
+                    isOrigin: Stations.areEquivalentStations(stop.stationCode, originCode),
                     isDestination: isDestination
                 ))
             }
@@ -978,10 +978,10 @@ class EmbeddedCongestionViewModel: ObservableObject {
         }
         
         // Find origin and destination indices
-        let originIndex = stops.firstIndex { $0.stationCode.uppercased() == originCode.uppercased() }
+        let originIndex = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, originCode) }
         let destinationIndex = stops.firstIndex { stop in
             if let destinationCode = Stations.getStationCode(destinationName) {
-                return stop.stationCode.uppercased() == destinationCode.uppercased()
+                return Stations.areEquivalentStations(stop.stationCode, destinationCode)
             }
             return stop.stationName.lowercased() == destinationName.lowercased()
         }
@@ -1010,7 +1010,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
             if let coordinate = Stations.getCoordinates(for: stop.stationCode) {
                 let isDestination: Bool
                 if let destinationCode = Stations.getStationCode(destinationName) {
-                    isDestination = stop.stationCode.uppercased() == destinationCode.uppercased()
+                    isDestination = Stations.areEquivalentStations(stop.stationCode, destinationCode)
                 } else {
                     isDestination = stop.stationName.lowercased() == destinationName.lowercased()
                 }
@@ -1019,7 +1019,7 @@ class EmbeddedCongestionViewModel: ObservableObject {
                     code: stop.stationCode,
                     name: stop.stationName,
                     coordinate: coordinate,
-                    isOrigin: stop.stationCode.uppercased() == originCode.uppercased(),
+                    isOrigin: Stations.areEquivalentStations(stop.stationCode, originCode),
                     isDestination: isDestination
                 ))
             }

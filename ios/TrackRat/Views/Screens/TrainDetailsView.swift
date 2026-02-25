@@ -406,11 +406,11 @@ struct CombinedDetailsCard: View {
                     
                     ForEach(displayableTrainStops) { stop in
                         let isDepartureStop = appState.departureStationCode != nil &&
-                            stop.stationCode.uppercased() == appState.departureStationCode!.uppercased()
+                            Stations.areEquivalentStations(stop.stationCode, appState.departureStationCode!)
                         StopRowV2(
                             stop: stop,
                             isDestination: selectedDestinationCode != nil &&
-                                         stop.stationCode.uppercased() == selectedDestinationCode!.uppercased(),
+                                         Stations.areEquivalentStations(stop.stationCode, selectedDestinationCode!),
                             isDeparture: isDepartureStop,
                             isBoarding: train.isBoardingAtStation(stop.stationCode) && isDepartureStop,
                             boardingTrack: train.isBoardingAtStation(stop.stationCode) && isDepartureStop ? stop.track : nil,
@@ -841,11 +841,11 @@ class TrainDetailsViewModel: ObservableObject {
 
         // Find indices of origin and destination stops by station CODE (reliable)
         let originIndex = stops.firstIndex { stop in
-            stop.stationCode.uppercased() == originStationCode.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, originStationCode)
         }
 
         let destinationIndex = stops.firstIndex { stop in
-            stop.stationCode.uppercased() == destinationStationCode.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, destinationStationCode)
         }
 
         // If we found both indices, return the slice
@@ -881,7 +881,7 @@ class TrainDetailsViewModel: ObservableObject {
 
         // Find the origin index by station CODE
         let originIndex = stops.firstIndex { stop in
-            stop.stationCode.uppercased() == originStationCode.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, originStationCode)
         }
 
         // Update hasPreviousDisplayStops
@@ -889,7 +889,7 @@ class TrainDetailsViewModel: ObservableObject {
 
         // Find destination index by station CODE
         let destinationIndex = stops.firstIndex { stop in
-            stop.stationCode.uppercased() == destinationStationCode.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, destinationStationCode)
         }
 
         // Update hasMoreDisplayStops

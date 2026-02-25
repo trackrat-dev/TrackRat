@@ -68,8 +68,8 @@ class LiveActivityService: ObservableObject {
         // Extract journey station codes from origin to destination using existing stops
         if let stops = train.stops {
             let sortedStops = stops.sorted { $0.sequence < $1.sequence }
-            if let originIndex = sortedStops.firstIndex(where: { $0.stationCode == originCode }),
-               let destIndex = sortedStops.lastIndex(where: { $0.stationCode == destinationCode }),
+            if let originIndex = sortedStops.firstIndex(where: { Stations.areEquivalentStations($0.stationCode, originCode) }),
+               let destIndex = sortedStops.lastIndex(where: { Stations.areEquivalentStations($0.stationCode, destinationCode) }),
                originIndex <= destIndex {
                 let journeyStops = sortedStops[originIndex...destIndex]
                 await MainActor.run {
@@ -531,8 +531,8 @@ class LiveActivityService: ObservableObject {
         guard let stops = train.stops else { return nil }
 
         // Find origin and destination stops by station CODE (reliable)
-        let originIndex = stops.firstIndex { $0.stationCode.uppercased() == originCode.uppercased() }
-        let destinationIndex = stops.firstIndex { $0.stationCode.uppercased() == destinationCode.uppercased() }
+        let originIndex = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, originCode) }
+        let destinationIndex = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, destinationCode) }
         
         guard let fromIndex = originIndex, let toIndex = destinationIndex, fromIndex < toIndex else {
             return nil

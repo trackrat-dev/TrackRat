@@ -516,18 +516,18 @@ struct MapContainerView: View {
         
         // Find indices of origin and destination in train stops
         let originIndex = stops.firstIndex { stop in
-            stop.stationCode.uppercased() == origin.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, origin)
         }
-        
+
         // For destination, try direct station code match first, then name matching
         let destinationIndex = stops.firstIndex { stop in
             // Try direct station code match first (destination is likely already a code)
-            if stop.stationCode.uppercased() == destination.uppercased() {
+            if Stations.areEquivalentStations(stop.stationCode, destination) {
                 return true
             }
             // Try station name to code lookup as fallback
             if let destCode = Stations.getStationCode(destination) {
-                return stop.stationCode.uppercased() == destCode.uppercased()
+                return Stations.areEquivalentStations(stop.stationCode, destCode)
             }
             // Final fallback to name matching
             return stop.stationName.lowercased().contains(destination.lowercased())

@@ -2314,4 +2314,63 @@ extension Stations {
     static func stationName(forCode code: String) -> String? {
         return stationCodeToName[code]
     }
+
+    // MARK: - Station Code Equivalence
+
+    /// Maps each station code to the set of all equivalent codes (including itself).
+    /// Built from cross-system (Amtrak/MNR) and subway complex equivalences.
+    static let stationEquivalents: [String: Set<String>] = {
+        var groups: [Set<String>] = [
+            // Cross-system: Amtrak / Metro-North shared stations
+            ["NRO", "MNRC"],   // New Rochelle
+            ["YNY", "MYON"],   // Yonkers
+            ["CRT", "MCRH"],   // Croton-Harmon
+            ["POU", "MPOK"],   // Poughkeepsie
+            ["STM", "MSTM"],   // Stamford
+            ["BRP", "MBGP"],   // Bridgeport
+            ["NHV", "MNHV"],   // New Haven
+        ]
+
+        // Subway station complexes: build groups from (alternate, canonical) pairs
+        let subwayPairs: [(String, String)] = [
+            ("SA09", "S112"),  ("SA24", "S125"),  ("S725", "S127"),
+            ("S902", "S127"),  ("SA27", "S127"),  ("SR16", "S127"),
+            ("SD19", "S132"),  ("SL02", "S132"),  ("S415", "S222"),
+            ("SA36", "S228"),  ("SE01", "S228"),  ("SR25", "S228"),
+            ("S418", "S229"),  ("SA38", "S229"),  ("SM22", "S229"),
+            ("S423", "S232"),  ("SR28", "S232"),  ("SD24", "S235"),
+            ("SR31", "S235"),  ("SS04", "S239"),  ("SL26", "S254"),
+            ("SD11", "S414"),  ("SB08", "S629"),  ("SR11", "S629"),
+            ("SF11", "S630"),  ("S723", "S631"),  ("S901", "S631"),
+            ("SL03", "S635"),  ("SR20", "S635"),  ("SD21", "S637"),
+            ("SM20", "S639"),  ("SQ01", "S639"),  ("SR23", "S639"),
+            ("SM21", "S640"),  ("SG14", "S710"),  ("SR09", "S718"),
+            ("SF09", "S719"),  ("SG22", "S719"),  ("SD16", "S724"),
+            ("SD13", "SA12"),  ("SL01", "SA31"),  ("SD20", "SA32"),
+            ("SR29", "SA41"),  ("SS01", "SA45"),  ("SJ27", "SA51"),
+            ("SL22", "SA51"),  ("SN04", "SB16"),  ("SR17", "SD17"),
+            ("SM18", "SF15"),  ("SR33", "SF23"),  ("SL10", "SG29"),
+            ("SM08", "SL17"),
+        ]
+        // Merge pairs into groups (a canonical code may appear multiple times)
+        var canonicalToIndex: [String: Int] = [:]
+        for (alternate, canonical) in subwayPairs {
+            if let idx = canonicalToIndex[canonical] {
+                groups[idx].insert(alternate)
+            } else {
+                let idx = groups.count
+                groups.append([canonical, alternate])
+                canonicalToIndex[canonical] = idx
+            }
+        }
+
+        // Build the lookup: each code maps to its full group
+        var result: [String: Set<String>] = [:]
+        for group in groups {
+            for code in group {
+                result[code] = group
+            }
+        }
+        return result
+    }()
 }

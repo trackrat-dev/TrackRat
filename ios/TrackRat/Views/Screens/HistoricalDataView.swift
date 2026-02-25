@@ -905,14 +905,14 @@ class CongestionDataViewModel: ObservableObject {
 
         // Find origin stop by station code
         guard let originIndex = allStops.firstIndex(where: { stop in
-            stop.stationCode.uppercased() == userOrigin.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, userOrigin)
         }) else {
             return nil
         }
 
         // Find destination stop by station code (reliable matching)
         guard let destinationIndex = allStops.firstIndex(where: { stop in
-            stop.stationCode.uppercased() == userDestination.uppercased()
+            Stations.areEquivalentStations(stop.stationCode, userDestination)
         }) else {
             return nil
         }
