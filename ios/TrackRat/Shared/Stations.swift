@@ -163,6 +163,16 @@ struct Stations {
         let stationSystems = systemStringsForStation(code)
         return !stationSystems.isDisjoint(with: selectedSystems)
     }
+
+    // MARK: - Station Code Equivalence
+
+    /// Returns true if two station codes refer to the same physical station.
+    /// Handles cross-system equivalents (Amtrak/MNR) and subway complexes.
+    static func areEquivalentStations(_ code1: String, _ code2: String) -> Bool {
+        if code1 == code2 { return true }
+        guard let group = stationEquivalents[code1] else { return false }
+        return group.contains(code2)
+    }
 }
 
 // MARK: - Default Map Region

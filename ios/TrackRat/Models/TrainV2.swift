@@ -112,9 +112,9 @@ struct TrainV2: Identifiable, Codable {
     func isBoarding(fromStationCode: String) -> Bool {
         // Check if train is at the user's origin station
         if let position = trainPosition,
-           position.atStationCode == fromStationCode {
+           Stations.areEquivalentStations(position.atStationCode ?? "", fromStationCode) {
             // Check if train has departed from this station
-            if let stop = stops?.first(where: { $0.stationCode == fromStationCode }) {
+            if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
                 return !stop.hasDepartedStation
             }
         }
@@ -123,7 +123,7 @@ struct TrainV2: Identifiable, Codable {
     
     // Track-based boarding detection with time window - works for both NJ Transit and Amtrak
     func isBoardingAtStation(_ stationCode: String) -> Bool {
-        guard let stop = stops?.first(where: { $0.stationCode == stationCode }) else {
+        guard let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, stationCode) }) else {
             return false
         }
 
@@ -181,7 +181,7 @@ struct TrainV2: Identifiable, Codable {
     
     // Check if train has departed from a specific station
     func hasTrainDepartedFromStation(_ stationCode: String) -> Bool {
-        if let stop = stops?.first(where: { $0.stationCode == stationCode }) {
+        if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, stationCode) }) {
             return stop.hasDepartedStation
         }
         return false
@@ -189,22 +189,22 @@ struct TrainV2: Identifiable, Codable {
     
     // Get departure time from a specific station
     func getDepartureTime(fromStationCode: String) -> Date? {
-        if fromStationCode == originStationCode {
+        if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departureTime
         }
-        
+
         // Find departure from stops if available
-        return stops?.first { $0.stationCode == fromStationCode }?.scheduledDeparture
+        return stops?.first { Stations.areEquivalentStations($0.stationCode, fromStationCode) }?.scheduledDeparture
     }
     
     // Get scheduled departure time from a specific station
     func getScheduledDepartureTime(fromStationCode: String) -> Date? {
-        if fromStationCode == originStationCode {
+        if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departure.scheduledTime
         }
-        
+
         // Find departure from stops if available
-        return stops?.first { $0.stationCode == fromStationCode }?.scheduledDeparture
+        return stops?.first { Stations.areEquivalentStations($0.stationCode, fromStationCode) }?.scheduledDeparture
     }
     
     // Get scheduled arrival time at destination
@@ -217,7 +217,7 @@ struct TrainV2: Identifiable, Codable {
     func getScheduledArrivalTime(toStationCode: String) -> Date? {
         if let stops = stops,
            let destinationStop = stops.first(where: {
-               $0.stationCode.uppercased() == toStationCode.uppercased()
+               Stations.areEquivalentStations($0.stationCode, toStationCode)
            }) {
             return destinationStop.scheduledArrival
         }
@@ -243,11 +243,11 @@ struct TrainV2: Identifiable, Codable {
     // Get estimated (delay-adjusted) departure time from a specific station
     // Returns updatedDeparture if available, otherwise falls back to scheduledDeparture
     func getEstimatedDepartureTime(fromStationCode: String) -> Date? {
-        if let stop = stops?.first(where: { $0.stationCode.uppercased() == fromStationCode.uppercased() }) {
+        if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
             return stop.updatedDeparture ?? stop.scheduledDeparture
         }
         // Fallback for origin station
-        if fromStationCode.uppercased() == originStationCode.uppercased() {
+        if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departure.updatedTime ?? departure.scheduledTime
         }
         return nil
@@ -258,7 +258,7 @@ struct TrainV2: Identifiable, Codable {
     func getEstimatedArrivalTime(toStationCode: String) -> Date? {
         if let stops = stops,
            let destinationStop = stops.first(where: {
-               $0.stationCode.uppercased() == toStationCode.uppercased()
+               Stations.areEquivalentStations($0.stationCode, toStationCode)
            }) {
             return destinationStop.updatedArrival ?? destinationStop.scheduledArrival
         }
@@ -301,13 +301,13 @@ struct TrainV2: Identifiable, Codable {
         }
         
         // Second priority: Check actual departure time from stop data
-        if let stop = stops?.first(where: { $0.stationCode == fromStationCode }),
+        if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }),
            let actualDeparture = stop.actualDeparture {
             return actualDeparture < now
         }
-        
+
         // Third priority: Check station timing actual time (for origin station)
-        if fromStationCode == originStationCode,
+        if Stations.areEquivalentStations(fromStationCode, originStationCode),
            let actualDeparture = departure.actualTime {
             return actualDeparture < now
         }
@@ -329,9 +329,9 @@ struct TrainV2: Identifiable, Codable {
 
         // Get the actual or scheduled departure time
         let departureTime: Date?
-        if let stop = stops?.first(where: { $0.stationCode == fromStationCode }) {
+        if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
             departureTime = stop.actualDeparture ?? stop.scheduledDeparture
-        } else if fromStationCode == originStationCode {
+        } else if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             departureTime = departure.actualTime ?? departure.scheduledTime
         } else {
             departureTime = nil
@@ -531,8 +531,8 @@ extension TrainV2 {
         guard let stops = stops else { return 0.0 }
 
         // Find origin and destination stops by station CODE (reliable)
-        let originIndex = stops.firstIndex { $0.stationCode.uppercased() == originCode.uppercased() }
-        let destinationIndex = stops.firstIndex { $0.stationCode.uppercased() == destinationCode.uppercased() }
+        let originIndex = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, originCode) }
+        let destinationIndex = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, destinationCode) }
         
         guard let fromIndex = originIndex, let toIndex = destinationIndex, fromIndex < toIndex else {
             return 0.0

@@ -284,8 +284,8 @@ class DepartureService:
                 ),
                 destination=journey.destination,
                 departure=StationInfo(
-                    code=from_stop.station_code,
-                    name=from_stop.station_name,
+                    code=from_station,
+                    name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
                     updated_time=from_stop.updated_departure
@@ -295,8 +295,8 @@ class DepartureService:
                 ),
                 arrival=(
                     StationInfo(
-                        code=to_stop.station_code,
-                        name=to_stop.station_name,
+                        code=to_station,
+                        name=get_station_name(to_station),
                         scheduled_time=to_stop.scheduled_arrival
                         or to_stop.scheduled_departure,
                         updated_time=to_stop.updated_arrival

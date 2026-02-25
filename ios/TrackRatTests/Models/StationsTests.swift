@@ -322,4 +322,100 @@ class StationsTests: XCTestCase {
         let stationSet = Set(Stations.all)
         XCTAssertEqual(Stations.all.count, stationSet.count, "Station names should be unique")
     }
+
+    // MARK: - Station Code Equivalence Tests
+
+    func testStationEquivalentsDataExists() {
+        XCTAssertFalse(Stations.stationEquivalents.isEmpty, "Station equivalents should not be empty")
+    }
+
+    func testAreEquivalentStationsSameCode() {
+        // Same code should always be equivalent
+        XCTAssertTrue(Stations.areEquivalentStations("S635", "S635"), "Same code should be equivalent")
+        XCTAssertTrue(Stations.areEquivalentStations("NY", "NY"), "Same code should be equivalent")
+    }
+
+    func testAreEquivalentStationsSubwayComplex() {
+        // 14 St-Union Sq: S635 (4/5/6), SL03 (L), SR20 (N/Q/R/W)
+        XCTAssertTrue(Stations.areEquivalentStations("S635", "SL03"),
+                     "S635 and SL03 should be equivalent (14 St-Union Sq)")
+        XCTAssertTrue(Stations.areEquivalentStations("SL03", "S635"),
+                     "Equivalence should be symmetric")
+        XCTAssertTrue(Stations.areEquivalentStations("S635", "SR20"),
+                     "S635 and SR20 should be equivalent (14 St-Union Sq)")
+        XCTAssertTrue(Stations.areEquivalentStations("SL03", "SR20"),
+                     "SL03 and SR20 should be equivalent (14 St-Union Sq)")
+    }
+
+    func testAreEquivalentStationsAmtrakMNR() {
+        // Cross-system: Amtrak / Metro-North shared stations
+        XCTAssertTrue(Stations.areEquivalentStations("NRO", "MNRC"),
+                     "NRO and MNRC should be equivalent (New Rochelle)")
+        XCTAssertTrue(Stations.areEquivalentStations("MNRC", "NRO"),
+                     "Equivalence should be symmetric")
+        XCTAssertTrue(Stations.areEquivalentStations("YNY", "MYON"),
+                     "YNY and MYON should be equivalent (Yonkers)")
+        XCTAssertTrue(Stations.areEquivalentStations("CRT", "MCRH"),
+                     "CRT and MCRH should be equivalent (Croton-Harmon)")
+        XCTAssertTrue(Stations.areEquivalentStations("STM", "MSTM"),
+                     "STM and MSTM should be equivalent (Stamford)")
+        XCTAssertTrue(Stations.areEquivalentStations("NHV", "MNHV"),
+                     "NHV and MNHV should be equivalent (New Haven)")
+    }
+
+    func testAreEquivalentStationsNonEquivalent() {
+        // Different stations should not be equivalent
+        XCTAssertFalse(Stations.areEquivalentStations("S635", "SG29"),
+                      "14 St-Union Sq and Metropolitan Av should not be equivalent")
+        XCTAssertFalse(Stations.areEquivalentStations("NY", "NP"),
+                      "NY Penn and Newark Penn should not be equivalent")
+        XCTAssertFalse(Stations.areEquivalentStations("NRO", "YNY"),
+                      "New Rochelle and Yonkers should not be equivalent")
+    }
+
+    func testAreEquivalentStationsUnknownCode() {
+        // Unknown codes should only match themselves
+        XCTAssertFalse(Stations.areEquivalentStations("UNKNOWN", "S635"),
+                      "Unknown code should not match any station")
+        XCTAssertTrue(Stations.areEquivalentStations("UNKNOWN", "UNKNOWN"),
+                     "Unknown code should match itself")
+    }
+
+    func testStationEquivalentsGroupIntegrity() {
+        // Every code in a group should map to the same group
+        for (code, group) in Stations.stationEquivalents {
+            XCTAssertTrue(group.contains(code),
+                         "Code \(code) should be in its own equivalence group")
+            for member in group {
+                guard let memberGroup = Stations.stationEquivalents[member] else {
+                    XCTFail("Member \(member) of group for \(code) should have its own equivalence entry")
+                    continue
+                }
+                XCTAssertEqual(group, memberGroup,
+                             "All members of a group should share the same group: \(code) vs \(member)")
+            }
+        }
+    }
+
+    func testTimesSquareComplexHasAllPlatforms() {
+        // Times Sq-42 St: S127, S725, S902, SA27, SR16
+        let expected: Set<String> = ["S127", "S725", "S902", "SA27", "SR16"]
+        guard let group = Stations.stationEquivalents["S127"] else {
+            XCTFail("Times Sq S127 should have equivalence group")
+            return
+        }
+        XCTAssertEqual(group, expected,
+                      "Times Sq-42 St should have all 5 platform codes, got: \(group)")
+    }
+
+    func testMetropolitanAvComplex() {
+        // Metropolitan Av (G) / Lorimer St (L): SG29, SL10
+        let expected: Set<String> = ["SG29", "SL10"]
+        guard let group = Stations.stationEquivalents["SG29"] else {
+            XCTFail("Metropolitan Av SG29 should have equivalence group")
+            return
+        }
+        XCTAssertEqual(group, expected,
+                      "Metropolitan Av complex should include SG29 and SL10, got: \(group)")
+    }
 }

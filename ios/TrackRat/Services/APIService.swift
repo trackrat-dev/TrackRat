@@ -965,10 +965,10 @@ final class APIService: ObservableObject {
         // Create departure timing from first stop or requested station
         let departureTiming: StationTiming
         if let fromCode = fromStationCode,
-           let requestedStop = details.stops.first(where: { $0.station.code == fromCode }) {
+           let requestedStop = details.stops.first(where: { Stations.areEquivalentStations($0.station.code, fromCode) }) {
             departureTiming = StationTiming(
-                code: requestedStop.station.code,
-                name: requestedStop.station.name,
+                code: fromCode,
+                name: Stations.stationName(forCode: fromCode) ?? requestedStop.station.name,
                 scheduledTime: requestedStop.scheduledDeparture,
                 updatedTime: requestedStop.updatedDeparture,
                 actualTime: requestedStop.actualDeparture,
