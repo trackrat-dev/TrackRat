@@ -201,12 +201,12 @@ struct CongestionMapView: View {
                 .font(.headline)
                 .fontWeight(.semibold)
 
-            // Segment highlight mode toggle (Off → Health → Delays → Off)
+            // Segment visibility toggle (on/off — per-segment coloring is automatic)
             LayerToggleButton(
                 label: "Segments",
-                icon: viewModel.highlightMode.icon,
+                icon: viewModel.highlightMode != .off ? "waveform.path.ecg" : "eye.slash",
                 isOn: viewModel.highlightMode != .off,
-                detail: viewModel.highlightMode.displayName
+                detail: viewModel.highlightMode != .off ? "On" : "Off"
             ) {
                 let wasOff = viewModel.highlightMode == .off
                 viewModel.cycleHighlightMode()
@@ -289,54 +289,51 @@ struct CongestionMapView: View {
 
     @ViewBuilder
     private var segmentLegendView: some View {
-        switch viewModel.highlightMode {
-        case .off:
-            EmptyView()
+        if viewModel.highlightMode != .off {
+            let dataSources = Set(viewModel.segments.map(\.dataSource))
+            let hasFrequencySystems = dataSources.contains { TrainSystem(rawValue: $0)?.preferredHighlightMode == .health }
+            let hasDelaySystems = dataSources.contains { TrainSystem(rawValue: $0)?.preferredHighlightMode != .health }
 
-        case .health:
-            // Health/Frequency legend (higher is better)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Service Health")
-                    .trackRatSectionHeader()
+            VStack(alignment: .leading, spacing: 12) {
+                if hasFrequencySystems {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Service Health")
+                            .trackRatSectionHeader()
 
-                HStack(spacing: 16) {
-                    LegendItem(color: .green, label: "Healthy")
-                    LegendItem(color: .yellow, label: "Moderate")
-                    LegendItem(color: .orange, label: "Reduced")
-                    LegendItem(color: .red, label: "Severe")
+                        HStack(spacing: 16) {
+                            LegendItem(color: .green, label: "Healthy")
+                            LegendItem(color: .yellow, label: "Moderate")
+                            LegendItem(color: .orange, label: "Reduced")
+                            LegendItem(color: .red, label: "Severe")
+                        }
+
+                        if let summary = frequencySummaryText {
+                            Text(summary)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("Train count vs typical for this time")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
                 }
 
-                if let summary = frequencySummaryText {
-                    Text(summary)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                } else {
-                    Text("Train count vs typical for this time")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                if hasDelaySystems {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Delay Levels")
+                            .trackRatSectionHeader()
+
+                        HStack(spacing: 16) {
+                            LegendItem(color: .green, label: "Normal")
+                            LegendItem(color: .yellow, label: "Moderate")
+                            LegendItem(color: .orange, label: "Heavy")
+                            LegendItem(color: .red, label: "Severe")
+                        }
+
+                        LegendItem(color: .red, label: "Cancellations")
+                    }
                 }
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-
-        case .delays:
-            // Congestion/Delays legend (lower is better)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Delay Levels")
-                    .trackRatSectionHeader()
-
-                HStack(spacing: 16) {
-                    LegendItem(color: .green, label: "Normal")
-                    LegendItem(color: .yellow, label: "Moderate")
-                    LegendItem(color: .orange, label: "Heavy")
-                    LegendItem(color: .red, label: "Severe")
-                }
-
-                // Cancellation legend
-                LegendItem(color: .red, label: "Cancellations")
             }
             .padding()
             .background(
@@ -1368,14 +1365,13 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        /// Get color for aggregated segment based on highlight mode
+        /// Get color for aggregated segment based on its data source's preferred mode
         private func getColorForSegment(_ segment: CongestionSegment) -> UIColor {
-            switch highlightMode {
-            case .off:
-                return UIColor.clear
+            guard highlightMode != .off else { return UIColor.clear }
+            switch segment.preferredHighlightMode {
             case .health:
                 return getFrequencyUIColor(for: segment.frequencyFactor)
-            case .delays:
+            case .delays, .off:
                 return getUIColor(for: segment.congestionFactor)
             }
         }
@@ -1387,17 +1383,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
         /// Get color for individual segment based on highlight mode
         private func getColorForIndividualSegment(_ segment: IndividualJourneySegment) -> UIColor {
-            // Individual segments don't have frequency data, so always use congestion coloring
-            // In health mode, use a muted color since we can't show per-train frequency
-            switch highlightMode {
-            case .off:
-                return UIColor.clear
-            case .health:
-                // For individual trains in health mode, use gray since we don't have per-train frequency
-                return UIColor.systemGray
-            case .delays:
-                return getUIColor(for: segment.congestionFactor)
-            }
+            // Individual segments don't have per-train frequency data, always use congestion coloring
+            guard highlightMode != .off else { return UIColor.clear }
+            return getUIColor(for: segment.congestionFactor)
         }
 
         /// Public accessor for getColorForIndividualSegment (used by updateUIView for mode changes)
@@ -1407,9 +1395,8 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
         /// Get line width for segment based on highlight mode
         private func getSegmentLineWidth(_ segment: CongestionSegment) -> CGFloat {
-            switch highlightMode {
-            case .off:
-                return 0
+            guard highlightMode != .off else { return 0 }
+            switch segment.preferredHighlightMode {
             case .health:
                 // Use frequency factor for line width (thicker = worse service)
                 guard let factor = segment.frequencyFactor else { return 5 }
@@ -1417,7 +1404,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 else if factor >= 0.7 { return 7 }
                 else if factor >= 0.5 { return 8 }
                 else { return 9 }
-            case .delays:
+            case .delays, .off:
                 return getCongestionLineWidth(segment.congestionFactor)
             }
         }

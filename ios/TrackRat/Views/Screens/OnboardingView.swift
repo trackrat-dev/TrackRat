@@ -442,11 +442,6 @@ struct OnboardingView: View {
         // Force immediate synchronization of favorites
         appState.loadFavoriteStations()
 
-        // Set smart default health indicator based on selected systems (first onboarding only)
-        if !isRepeating {
-            appState.mapHighlightMode = appState.selectedSystems.recommendedHighlightMode
-        }
-
         // Provide haptic feedback
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 

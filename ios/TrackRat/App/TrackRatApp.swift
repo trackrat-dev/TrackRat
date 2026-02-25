@@ -844,12 +844,13 @@ final class AppState: ObservableObject {
 
     /// Load map display settings from UserDefaults
     private func loadMapSettings() {
-        // Load highlight mode (smart default based on selected systems)
+        // Load highlight mode (on/off toggle — per-segment coloring is automatic)
         if let stored = UserDefaults.standard.string(forKey: "mapHighlightMode"),
            let mode = SegmentHighlightMode(rawValue: stored) {
-            mapHighlightMode = mode
+            // Migrate: .health is no longer user-selectable, treat as "on" (.delays)
+            mapHighlightMode = mode == .health ? .delays : mode
         } else {
-            mapHighlightMode = selectedSystems.recommendedHighlightMode
+            mapHighlightMode = .delays
         }
 
         // Load stations visibility
@@ -857,11 +858,6 @@ final class AppState: ObservableObject {
 
         // Load beta features
         showDepartureOdds = UserDefaults.standard.bool(forKey: "showDepartureOdds")
-    }
-
-    /// Cycle to next highlight mode: Off → Health → Delays → Off
-    func cycleMapHighlightMode() {
-        mapHighlightMode = mapHighlightMode.next
     }
 
 }

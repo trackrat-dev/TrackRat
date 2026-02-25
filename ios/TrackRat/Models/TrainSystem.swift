@@ -106,8 +106,8 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Commuter/intercity rail → Travel Time (delays are more variable and meaningful).
     var preferredHighlightMode: SegmentHighlightMode {
         switch self {
-        case .subway, .path: return .health
-        case .njt, .amtrak, .lirr, .mnr, .patco: return .delays
+        case .subway, .path, .patco: return .health
+        case .njt, .amtrak, .lirr, .mnr: return .delays
         }
     }
 }
@@ -145,13 +145,6 @@ extension Set where Element == TrainSystem {
         Set<String>(self.map(\.rawValue))
     }
 
-    /// Recommended highlight mode based on selected systems.
-    /// If all systems prefer the same mode, use that. Otherwise default to Travel Time.
-    var recommendedHighlightMode: SegmentHighlightMode {
-        guard !self.isEmpty else { return .delays }
-        let allPreferHealth = self.allSatisfy { $0.preferredHighlightMode == .health }
-        return allPreferHealth ? .health : .delays
-    }
 }
 
 // MARK: - Stations Extensions (TrainSystem-aware wrappers)

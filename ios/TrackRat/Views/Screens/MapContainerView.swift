@@ -149,21 +149,14 @@ struct MapContainerView: View {
 
             // Operations summary pill (network scope) - positioned at top
             // Shows network summary + route summary when RatSense has a prediction
-            // In health mode, also shows frequency summary from congestion data
             VStack {
                 if mapViewModel.highlightMode != .off {
-                    if mapViewModel.highlightMode == .health {
-                        frequencySummaryPill
-                            .padding(.horizontal, 16)
-                            .padding(.top, 30)
-                    } else {
-                        OperationsSummaryView(
-                            scope: .network,
-                            ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.top, 30)
-                    }
+                    OperationsSummaryView(
+                        scope: .network,
+                        ratSenseRoute: ratSenseService.suggestedJourney.map { ($0.fromStation, $0.toStation) }
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 30)
                 }
 
                 Spacer()
@@ -558,49 +551,6 @@ struct MapContainerView: View {
         return stationCodes
     }
     
-    /// Frequency summary pill shown in health mode instead of delay-focused operations summary
-    @ViewBuilder
-    private var frequencySummaryPill: some View {
-        let segmentsWithData = mapViewModel.segments.filter { $0.hasFrequencyData }
-        if !segmentsWithData.isEmpty {
-            let totalTrains = segmentsWithData.compactMap(\.trainCount).reduce(0, +)
-            let headways = segmentsWithData.compactMap { $0.currentHeadwayMinutes(timeWindowHours: mapViewModel.lastTimeWindowHours) }
-            let avgHeadway = headways.isEmpty ? nil : Int((headways.reduce(0, +) / Double(headways.count)).rounded())
-            let severeCount = segmentsWithData.filter { ($0.frequencyFactor ?? 1.0) < 0.5 }.count
-
-            let text: String = {
-                var parts: [String] = []
-                if severeCount > 0 {
-                    let segWord = severeCount == 1 ? "segment" : "segments"
-                    parts.append("\(severeCount) \(segWord) with reduced service.")
-                }
-                parts.append("\(totalTrains) trains running.")
-                if let avg = avgHeadway {
-                    parts.append("Avg every ~\(max(avg, 1)) min.")
-                }
-                return parts.joined(separator: " ")
-            }()
-
-            Text(text)
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(2)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(.ultraThinMaterial)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
-                )
-        }
-    }
-
     private func animateMapToRoute(_ route: TripPair, targetSheetDetent: PresentationDetent? = nil) {
         // Get coordinates for departure and destination
         guard let fromCoords = Stations.getCoordinates(for: route.departureCode),
@@ -800,16 +750,35 @@ struct CongestionMapControlsView: View {
             }
             .padding(.horizontal)
             
-            // Legend
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Congestion Levels")
-                    .trackRatSectionHeader()
+            // Legend — shows both scales when mixed system types are visible
+            let dataSources = Set(mapViewModel.segments.map(\.dataSource))
+            let hasFrequencySystems = dataSources.contains { TrainSystem(rawValue: $0)?.preferredHighlightMode == .health }
+            let hasDelaySystems = dataSources.contains { TrainSystem(rawValue: $0)?.preferredHighlightMode != .health }
 
-                HStack(spacing: 16) {
-                    LegendItem(color: .green, label: "Normal")
-                    LegendItem(color: .yellow, label: "Moderate")
-                    LegendItem(color: .orange, label: "Heavy")
-                    LegendItem(color: .red, label: "Severe")
+            VStack(alignment: .leading, spacing: 12) {
+                if hasFrequencySystems {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Service Health")
+                            .trackRatSectionHeader()
+                        HStack(spacing: 16) {
+                            LegendItem(color: .green, label: "Healthy")
+                            LegendItem(color: .yellow, label: "Moderate")
+                            LegendItem(color: .orange, label: "Reduced")
+                            LegendItem(color: .red, label: "Severe")
+                        }
+                    }
+                }
+                if hasDelaySystems {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Delay Levels")
+                            .trackRatSectionHeader()
+                        HStack(spacing: 16) {
+                            LegendItem(color: .green, label: "Normal")
+                            LegendItem(color: .yellow, label: "Moderate")
+                            LegendItem(color: .orange, label: "Heavy")
+                            LegendItem(color: .red, label: "Severe")
+                        }
+                    }
                 }
             }
             .padding()

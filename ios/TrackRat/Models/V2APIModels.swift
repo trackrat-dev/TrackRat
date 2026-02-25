@@ -735,6 +735,14 @@ struct CongestionSegment: Codable, Identifiable {
         }
         return "Every ~\(rounded) min"
     }
+
+    /// Preferred highlight mode based on this segment's data source.
+    /// Rapid transit (PATH, Subway, PATCO) → frequency coloring.
+    /// Commuter/intercity rail (NJT, Amtrak, LIRR, MNR) → delay coloring.
+    var preferredHighlightMode: SegmentHighlightMode {
+        guard let system = TrainSystem(rawValue: dataSource) else { return .delays }
+        return system.preferredHighlightMode
+    }
 }
 
 // MARK: - Segment Highlight Mode
@@ -761,12 +769,11 @@ enum SegmentHighlightMode: String, CaseIterable {
         }
     }
 
-    /// Cycle to next mode: Delays → Health → Off → Delays
+    /// Toggle segments on/off. Per-segment coloring is automatic based on data source.
     var next: SegmentHighlightMode {
         switch self {
-        case .delays: return .health
-        case .health: return .off
         case .off: return .delays
+        case .delays, .health: return .off
         }
     }
 }

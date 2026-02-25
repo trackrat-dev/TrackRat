@@ -408,36 +408,6 @@ struct SettingsSection: View {
                     .fill(.ultraThinMaterial)
             )
 
-            // Health Indicator
-            VStack(spacing: 0) {
-                HStack {
-                    Text("Health Indicator")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                }
-                .padding()
-
-                Divider()
-                    .background(Color.white.opacity(0.1))
-
-                let orderedModes: [SegmentHighlightMode] = [.delays, .health, .off]
-                ForEach(orderedModes, id: \.self) { mode in
-                    HealthIndicatorRow(
-                        mode: mode,
-                        isSelected: appState.mapHighlightMode == mode,
-                        isLast: mode == orderedModes.last
-                    ) {
-                        appState.mapHighlightMode = mode
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-
             // Favorite Stations
             Button {
                 navigationPath.append(ProfileDestination.favoriteStations)
@@ -906,47 +876,6 @@ private struct TrainSystemRow: View {
                 }
                 .padding()
                 .contentShape(Rectangle())
-
-                if !isLast {
-                    Divider()
-                        .background(Color.white.opacity(0.1))
-                        .padding(.leading, 56)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct HealthIndicatorRow: View {
-    let mode: SegmentHighlightMode
-    let isSelected: Bool
-    let isLast: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    Image(systemName: mode.icon)
-                        .font(.title2)
-                        .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
-                        .frame(width: 24, height: 24)
-
-                    HStack(spacing: 4) {
-                        Text(mode.displayName)
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
-                }
-                .padding()
 
                 if !isLast {
                     Divider()

@@ -77,23 +77,11 @@ struct JourneyCongestionMapView: View {
                 }
             }
             
-            // Legend adapts to highlight mode
+            // Legend adapts to train system's preferred mode
             if !viewModel.filteredSegments.isEmpty {
-                HStack(spacing: 16) {
-                    if appState.mapHighlightMode == .health {
-                        LegendItem(color: .green, label: "Healthy")
-                        LegendItem(color: .yellow, label: "Moderate")
-                        LegendItem(color: .orange, label: "Reduced")
-                        LegendItem(color: .red, label: "Severe")
-                    } else {
-                        LegendItem(color: .green, label: "Normal")
-                        LegendItem(color: .yellow, label: "Moderate")
-                        LegendItem(color: .orange, label: "Heavy")
-                        LegendItem(color: .red, label: "Severe")
-                    }
-                }
-                .padding(.top, 8)
-                .font(.caption2)
+                let trainMode = TrainSystem(rawValue: train.dataSource)?.preferredHighlightMode ?? .delays
+                CompactCongestionLegend(highlightMode: trainMode)
+                    .padding(.top, 8)
             }
         }
         .sheet(item: $selectedSegment) { segment in
@@ -459,19 +447,19 @@ struct CongestionMapKitView: UIViewRepresentable {
         // MARK: - Public color/width helpers (used by updateUIView and rendererFor)
         func colorForSegment(_ segment: CongestionSegment) -> UIColor {
             if segment.cancellationRate > 0 { return UIColor.darkGray }
-            switch highlightMode {
-            case .off:    return UIColor.clear
+            guard highlightMode != .off else { return UIColor.clear }
+            switch segment.preferredHighlightMode {
             case .health: return getFrequencyUIColor(for: segment.frequencyFactor)
-            case .delays: return getUIColor(for: segment.congestionFactor)
+            case .delays, .off: return getUIColor(for: segment.congestionFactor)
             }
         }
 
         func lineWidthForSegment(_ segment: CongestionSegment) -> CGFloat {
             if segment.cancellationRate > 0 { return 10 }
-            switch highlightMode {
-            case .off:    return 0
+            guard highlightMode != .off else { return 0 }
+            switch segment.preferredHighlightMode {
             case .health: return getFrequencyLineWidth(segment.frequencyFactor)
-            case .delays: return getCongestionLineWidth(segment.congestionFactor)
+            case .delays, .off: return getCongestionLineWidth(segment.congestionFactor)
             }
         }
 
@@ -880,12 +868,21 @@ struct SingleSegmentMapView: View {
 // MARK: - Compact Congestion Legend
 
 struct CompactCongestionLegend: View {
+    var highlightMode: SegmentHighlightMode = .delays
+
     var body: some View {
         HStack(spacing: 12) {
-            LegendItem(color: .green, label: "Normal")
-            LegendItem(color: .yellow, label: "Moderate")
-            LegendItem(color: .orange, label: "Heavy")
-            LegendItem(color: .red, label: "Severe")
+            if highlightMode == .health {
+                LegendItem(color: .green, label: "Healthy")
+                LegendItem(color: .yellow, label: "Moderate")
+                LegendItem(color: .orange, label: "Reduced")
+                LegendItem(color: .red, label: "Severe")
+            } else {
+                LegendItem(color: .green, label: "Normal")
+                LegendItem(color: .yellow, label: "Moderate")
+                LegendItem(color: .orange, label: "Heavy")
+                LegendItem(color: .red, label: "Severe")
+            }
         }
         .font(.caption2)
         .padding(.horizontal)

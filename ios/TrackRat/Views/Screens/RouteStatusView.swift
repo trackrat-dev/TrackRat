@@ -6,6 +6,11 @@ struct RouteStatusView: View {
     @StateObject private var viewModel: RouteStatusViewModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Preferred highlight mode derived from this route's data source
+    private var preferredMode: SegmentHighlightMode {
+        TrainSystem(rawValue: context.dataSource)?.preferredHighlightMode ?? .delays
+    }
+
     init(context: RouteStatusContext) {
         self.context = context
         self._viewModel = StateObject(wrappedValue: RouteStatusViewModel(context: context))
@@ -54,12 +59,13 @@ struct RouteStatusView: View {
                     segments: viewModel.filteredSegments,
                     stations: [],
                     trainPositions: [],
+                    highlightMode: .delays,  // "on" — per-segment coloring is automatic
                     onSegmentTap: { _ in }
                 )
                 .frame(height: 200)
                 .cornerRadius(12)
 
-                CompactCongestionLegend()
+                CompactCongestionLegend(highlightMode: preferredMode)
             } else if viewModel.mapError != nil {
                 ContentUnavailableView("Map Unavailable", systemImage: "map", description: Text("Could not load congestion data"))
                     .frame(height: 200)
@@ -136,53 +142,78 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private func historyContent(_ history: RouteHistoricalData) -> some View {
-        // Stat cards row
-        HStack(spacing: 12) {
-            statCard(
-                title: "On Time",
-                value: "\(Int(history.aggregateStats.onTimePercentage))%",
-                color: history.aggregateStats.onTimePercentage >= 80 ? .green : .orange
-            )
-            statCard(
-                title: "Cancelled",
-                value: "\(Int(history.aggregateStats.cancellationRate))%",
-                color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
-            )
-        }
+        let total = history.route.totalTrains
 
-        // Delay statistics: departure from origin + arrival at destination
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Delay Statistics")
-                .font(.subheadline.bold())
-
+        if preferredMode == .health {
+            // Frequency-focused stats for rapid transit (PATH, Subway, PATCO)
             HStack(spacing: 12) {
-                delayStatCard(
-                    title: "Avg Departure Delay",
-                    value: "\(Int(history.aggregateStats.averageDepartureDelayMinutes))m",
-                    color: history.aggregateStats.averageDepartureDelayMinutes <= 5 ? .green : .orange
+                statCard(
+                    title: "Trains",
+                    value: "\(total)",
+                    color: .blue
                 )
-                delayStatCard(
-                    title: "Avg Arrival Delay",
-                    value: "\(Int(history.aggregateStats.averageDelayMinutes))m",
-                    color: history.aggregateStats.averageDelayMinutes <= 5 ? .green : .orange
+                statCard(
+                    title: "On Time",
+                    value: "\(Int(history.aggregateStats.onTimePercentage))%",
+                    color: history.aggregateStats.onTimePercentage >= 80 ? .green : .orange
                 )
             }
-        }
 
-        // Delay breakdown bar
-        let breakdown = history.aggregateStats.delayBreakdown
-        let total = history.route.totalTrains
-        DelayPerformanceBar(
-            label: "Arrival Delay Breakdown (\(total) trains)",
-            stats: DelayStats(
-                onTime: breakdown.onTime,
-                slight: breakdown.slight,
-                significant: breakdown.significant,
-                major: breakdown.major,
-                total: total,
-                avgDelay: Int(history.aggregateStats.averageDelayMinutes)
+            if history.aggregateStats.cancellationRate > 0 {
+                HStack(spacing: 12) {
+                    statCard(
+                        title: "Cancelled",
+                        value: "\(Int(history.aggregateStats.cancellationRate))%",
+                        color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
+                    )
+                }
+            }
+        } else {
+            // Delay-focused stats for commuter/intercity rail
+            HStack(spacing: 12) {
+                statCard(
+                    title: "On Time",
+                    value: "\(Int(history.aggregateStats.onTimePercentage))%",
+                    color: history.aggregateStats.onTimePercentage >= 80 ? .green : .orange
+                )
+                statCard(
+                    title: "Cancelled",
+                    value: "\(Int(history.aggregateStats.cancellationRate))%",
+                    color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Delay Statistics")
+                    .font(.subheadline.bold())
+
+                HStack(spacing: 12) {
+                    delayStatCard(
+                        title: "Avg Departure Delay",
+                        value: "\(Int(history.aggregateStats.averageDepartureDelayMinutes))m",
+                        color: history.aggregateStats.averageDepartureDelayMinutes <= 5 ? .green : .orange
+                    )
+                    delayStatCard(
+                        title: "Avg Arrival Delay",
+                        value: "\(Int(history.aggregateStats.averageDelayMinutes))m",
+                        color: history.aggregateStats.averageDelayMinutes <= 5 ? .green : .orange
+                    )
+                }
+            }
+
+            let breakdown = history.aggregateStats.delayBreakdown
+            DelayPerformanceBar(
+                label: "Arrival Delay Breakdown (\(total) trains)",
+                stats: DelayStats(
+                    onTime: breakdown.onTime,
+                    slight: breakdown.slight,
+                    significant: breakdown.significant,
+                    major: breakdown.major,
+                    total: total,
+                    avgDelay: Int(history.aggregateStats.averageDelayMinutes)
+                )
             )
-        )
+        }
     }
 
     private func statCard(title: String, value: String, color: Color) -> some View {
