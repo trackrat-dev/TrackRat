@@ -4,9 +4,10 @@ Train discovery collector for TrackRat V2.
 Discovers active trains by polling station departure boards.
 """
 
+from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, exists, select
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -255,6 +256,70 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         track=sanitized_track,
                     )
 
+    async def _find_matching_scheduled_train(
+        self,
+        session: AsyncSession,
+        station_code: str,
+        destination: str,
+        scheduled_departure: datetime,
+        journey_date: date,
+        time_tolerance_minutes: int = 5,
+    ) -> TrainJourney | None:
+        """Find a SCHEDULED NJT train that matches by route and time.
+
+        Used when a real-time train ID doesn't match any existing record.
+        NJT sometimes assigns different train numbers in the published schedule
+        vs the real-time feed for the same physical train.
+
+        Matches via JourneyStop at the discovery station (not TrainJourney.scheduled_departure)
+        because the journey's origin may differ from the discovery station.
+
+        Follows the same pattern as PATH's _find_matching_journey().
+
+        Args:
+            session: Database session
+            station_code: Discovery station code
+            destination: Train destination from real-time API
+            scheduled_departure: Departure time at discovery station
+            journey_date: Date of the journey
+            time_tolerance_minutes: Max minutes difference for time matching
+
+        Returns:
+            Matching SCHEDULED TrainJourney if found, None otherwise
+        """
+        time_window = timedelta(minutes=time_tolerance_minutes)
+        time_min = scheduled_departure - time_window
+        time_max = scheduled_departure + time_window
+
+        stmt = (
+            select(TrainJourney)
+            .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == journey_date,
+                    TrainJourney.observation_type == "SCHEDULED",
+                    TrainJourney.is_cancelled.is_(False),
+                    func.lower(func.trim(TrainJourney.destination))
+                    == func.lower(destination.strip()),
+                    JourneyStop.station_code == station_code,
+                    JourneyStop.scheduled_departure.is_not(None),
+                    JourneyStop.scheduled_departure >= time_min,
+                    JourneyStop.scheduled_departure <= time_max,
+                )
+            )
+            .order_by(
+                func.abs(
+                    func.extract("epoch", JourneyStop.scheduled_departure)
+                    - func.extract("epoch", scheduled_departure)
+                )
+            )
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+
+        return await session.scalar(stmt)
+
     async def process_discovered_trains(
         self,
         session: AsyncSession,
@@ -378,6 +443,48 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     session, existing, station_code, track
                                 )
 
+                            continue
+
+                        # Before creating a new record, check if a SCHEDULED
+                        # train matches by destination and departure time.
+                        # NJT sometimes uses different train numbers in the
+                        # published schedule vs the real-time feed.
+                        destination = train_data.get("DESTINATION", "").strip()
+                        scheduled_match = (
+                            await self._find_matching_scheduled_train(
+                                session,
+                                station_code,
+                                destination,
+                                scheduled_departure,
+                                journey_date,
+                            )
+                            if destination
+                            else None
+                        )
+
+                        if scheduled_match:
+                            old_train_id = scheduled_match.train_id
+                            scheduled_match.train_id = train_id
+                            scheduled_match.observation_type = "OBSERVED"
+                            scheduled_match.last_updated_at = now_et()
+
+                            track = train_data.get("TRACK")
+                            if track and station_code:
+                                await self._update_stop_track_if_needed(
+                                    session,
+                                    scheduled_match,
+                                    station_code,
+                                    track,
+                                )
+
+                            logger.info(
+                                "fuzzy_matched_scheduled_to_observed",
+                                old_train_id=old_train_id,
+                                new_train_id=train_id,
+                                destination=destination,
+                                station_code=station_code,
+                                journey_date=journey_date,
+                            )
                             continue
 
                         # Create new journey
