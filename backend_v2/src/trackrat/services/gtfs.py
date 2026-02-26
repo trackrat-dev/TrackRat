@@ -1449,10 +1449,12 @@ class GTFSService:
                 )
 
             # Determine effective train_id:
-            # - If train_id is set (from trip_short_name, e.g., Amtrak), use it
+            # - If train_id is set (from trip_short_name, e.g., Amtrak/NJT), use it
             # - Otherwise fall back to gtfs_trip_id for lookup purposes
             # For Amtrak, train_id will be the actual train number (e.g., "112")
-            # For NJT, train_id is usually None since NJT GTFS lacks trip_short_name
+            # NJT GTFS has trip_short_name but uses different train numbers
+            # than the real-time API, so primary-key dedup won't match —
+            # fallback dedup (line + time) handles NJT matching instead.
             effective_train_id = train_id if train_id else gtfs_trip_id
 
             # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
@@ -1763,8 +1765,8 @@ class GTFSService:
             )
             return None
 
-        # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112")
-        # Otherwise use gtfs_trip_id for NJT where no train_id exists
+        # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112", NJT "3243")
+        # Otherwise use gtfs_trip_id as fallback
         effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
 
         # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")

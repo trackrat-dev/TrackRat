@@ -431,6 +431,16 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                             # Mark as observed if it was previously scheduled
                             if existing.observation_type == "SCHEDULED":
                                 existing.observation_type = "OBSERVED"
+                                # Fix line_code: schedule collector may have
+                                # stored a truncated full name (e.g., "No"
+                                # from "Northeast Corridor" instead of "NE")
+                                rt_line = train_data.get("LINE", "").strip()
+                                if rt_line:
+                                    existing.line_code = rt_line[:2]
+                                    existing.line_name = (
+                                        train_data.get("LINE_NAME", "")
+                                        or existing.line_name
+                                    )
                                 logger.info(
                                     "upgraded_scheduled_to_observed",
                                     train_id=train_id,
@@ -470,6 +480,14 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     scheduled_match.train_id = train_id
                                     scheduled_match.observation_type = "OBSERVED"
                                     scheduled_match.last_updated_at = now_et()
+                                    # Fix line_code from real-time API
+                                    rt_line = train_data.get("LINE", "").strip()
+                                    if rt_line:
+                                        scheduled_match.line_code = rt_line[:2]
+                                        scheduled_match.line_name = (
+                                            train_data.get("LINE_NAME", "")
+                                            or scheduled_match.line_name
+                                        )
 
                                     track = train_data.get("TRACK")
                                     if track and station_code:

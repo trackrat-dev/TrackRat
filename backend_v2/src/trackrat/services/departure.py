@@ -38,12 +38,17 @@ from trackrat.utils.train import get_effective_observation_type
 logger = get_logger(__name__)
 
 # NJT line code normalization for deduplication.
-# The NJT API LINE field returns 2-char codes (e.g., "NE" for Northeast Corridor).
-# GTFS uses the same codes via NJT_LINE_CODE_MAPPING. This map handles edge cases
-# where codes differ between sources.
+# The NJT real-time discovery API LINE field returns short codes (e.g., "NEC" → "NE").
+# The NJT schedule API LINE field returns full names (e.g., "Northeast Corridor"),
+# which the schedule collector maps to 2-char codes. GTFS uses NJT_LINE_CODE_MAPPING.
+# This map handles residual mismatches between sources.
 NJT_LINE_CANONICALIZATION: dict[str, str] = {
     # Raritan Valley: API sometimes returns "RV", GTFS maps RARV -> "Ra"
     "RV": "Ra",
+    # Safety net: schedule collector previously truncated full names to 2 chars,
+    # producing "No" for both "Northeast Corridor" and "North Jersey Coast Line".
+    # Fixed at source, but existing DB records may still have these values.
+    "No": "NE",
 }
 
 # Data sources that have real-time discovery systems.
@@ -960,7 +965,7 @@ class DepartureService:
         """Normalize line code to canonical form for deduplication.
 
         NJT line codes can vary between real-time API and GTFS:
-        - API "NEC" truncated -> "NE", but GTFS maps to "No"
+        - Schedule API full names truncated to "No" (fixed at source, safety net here)
         - API "Raritan Valley" -> "RV", but GTFS maps RARV -> "Ra"
         """
         if data_source == "NJT":
