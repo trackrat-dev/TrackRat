@@ -82,10 +82,15 @@ class SchedulerService:
         # Initialize JIT service with the NJ Transit client
         self.jit_service = JustInTimeUpdateService(self.njt_client)
 
+        # Reference time for staggering interval triggers to prevent thundering herd
+        now = now_et()
+
         # Schedule NJT discovery job
         self.scheduler.add_job(
             self.run_njt_discovery,
-            trigger=IntervalTrigger(minutes=self.settings.discovery_interval_minutes),
+            trigger=IntervalTrigger(
+                minutes=self.settings.discovery_interval_minutes, jitter=60
+            ),
             id="njt_train_discovery",
             name="NJT Train Discovery",
             replace_existing=True,
@@ -93,10 +98,14 @@ class SchedulerService:
             misfire_grace_time=300,  # 5 minute grace period
         )
 
-        # Schedule Amtrak discovery job - using same interval
+        # Schedule Amtrak discovery job - staggered 5min from NJT
         self.scheduler.add_job(
             self.run_amtrak_discovery,
-            trigger=IntervalTrigger(minutes=self.settings.discovery_interval_minutes),
+            trigger=IntervalTrigger(
+                minutes=self.settings.discovery_interval_minutes,
+                start_date=now + timedelta(minutes=5),
+                jitter=60,
+            ),
             id="amtrak_train_discovery",
             name="Amtrak Train Discovery",
             replace_existing=True,
@@ -104,10 +113,11 @@ class SchedulerService:
             misfire_grace_time=300,
         )
 
-        # Schedule unified PATH collection (discovery + updates every 4 minutes)
+        # Schedule 4-min collectors staggered 1 minute apart to prevent
+        # all four from hitting CPU/network simultaneously
         self.scheduler.add_job(
             self.run_path_collection,
-            trigger=IntervalTrigger(minutes=4),
+            trigger=IntervalTrigger(minutes=4, jitter=30),
             id="path_collection",
             name="PATH Collection",
             replace_existing=True,
@@ -115,10 +125,11 @@ class SchedulerService:
             misfire_grace_time=120,
         )
 
-        # Schedule LIRR collection (every 4 minutes)
         self.scheduler.add_job(
             self.run_lirr_collection,
-            trigger=IntervalTrigger(minutes=4),
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(minutes=1), jitter=30
+            ),
             id="lirr_collection",
             name="LIRR Collection",
             replace_existing=True,
@@ -126,10 +137,11 @@ class SchedulerService:
             misfire_grace_time=120,
         )
 
-        # Schedule MNR collection (every 4 minutes)
         self.scheduler.add_job(
             self.run_mnr_collection,
-            trigger=IntervalTrigger(minutes=4),
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(minutes=2), jitter=30
+            ),
             id="mnr_collection",
             name="MNR Collection",
             replace_existing=True,
@@ -137,10 +149,11 @@ class SchedulerService:
             misfire_grace_time=120,
         )
 
-        # Schedule Subway collection (every 4 minutes)
         self.scheduler.add_job(
             self.run_subway_collection,
-            trigger=IntervalTrigger(minutes=4),
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(minutes=3), jitter=30
+            ),
             id="subway_collection",
             name="Subway Collection",
             replace_existing=True,
@@ -152,7 +165,7 @@ class SchedulerService:
         # This checks for trains needing updates and schedules them
         self.scheduler.add_job(
             self.check_journey_updates,
-            trigger=IntervalTrigger(minutes=5),
+            trigger=IntervalTrigger(minutes=5, jitter=30),
             id="journey_update_check",
             name="Journey Update Check",
             replace_existing=True,
@@ -162,7 +175,7 @@ class SchedulerService:
         # Schedule Live Activity updates (every minute)
         self.scheduler.add_job(
             self.update_live_activities,
-            trigger=IntervalTrigger(minutes=1),
+            trigger=IntervalTrigger(minutes=1, jitter=10),
             id="live_activity_updates",
             name="Live Activity Updates",
             replace_existing=True,
@@ -172,7 +185,7 @@ class SchedulerService:
         # Schedule Live Activity token cleanup (every hour)
         self.scheduler.add_job(
             self.cleanup_expired_live_activity_tokens,
-            trigger=IntervalTrigger(hours=1),
+            trigger=IntervalTrigger(hours=1, jitter=120),
             id="live_activity_token_cleanup",
             name="Live Activity Token Cleanup",
             replace_existing=True,
@@ -182,7 +195,7 @@ class SchedulerService:
         # Schedule congestion API cache pre-computation (every 15 minutes)
         self.scheduler.add_job(
             self.precompute_congestion_cache,
-            trigger=IntervalTrigger(minutes=15),
+            trigger=IntervalTrigger(minutes=15, jitter=60),
             id="congestion_cache_precompute",
             name="Congestion Cache Pre-computation",
             replace_existing=True,
@@ -192,7 +205,7 @@ class SchedulerService:
         # Schedule departures API cache pre-computation (every 90 seconds)
         self.scheduler.add_job(
             self.precompute_departure_cache,
-            trigger=IntervalTrigger(seconds=90),
+            trigger=IntervalTrigger(seconds=90, jitter=15),
             id="departure_cache_precompute",
             name="Departure Cache Pre-computation",
             replace_existing=True,
@@ -200,10 +213,12 @@ class SchedulerService:
             coalesce=True,
         )
 
-        # Schedule train validation (every hour)
+        # Schedule train validation (every hour, offset 10min from token cleanup)
         self.scheduler.add_job(
             self.run_train_validation,
-            trigger=IntervalTrigger(hours=1),
+            trigger=IntervalTrigger(
+                hours=1, start_date=now + timedelta(minutes=10), jitter=120
+            ),
             id="train_validation",
             name="End-to-End Train Validation",
             replace_existing=True,
@@ -255,10 +270,12 @@ class SchedulerService:
             misfire_grace_time=3600,  # 1 hour grace period
         )
 
-        # Schedule route alert evaluation (every 5 minutes)
+        # Schedule route alert evaluation (every 5 minutes, offset from journey check)
         self.scheduler.add_job(
             self.run_alert_evaluation,
-            trigger=IntervalTrigger(minutes=5),
+            trigger=IntervalTrigger(
+                minutes=5, start_date=now + timedelta(minutes=2), jitter=30
+            ),
             id="route_alert_evaluation",
             name="Route Alert Evaluation",
             replace_existing=True,
@@ -269,13 +286,8 @@ class SchedulerService:
         # Start the scheduler
         self.scheduler.start()
 
-        # Run discovery immediately on startup
-        asyncio.create_task(self.run_njt_discovery())
-        asyncio.create_task(self.run_amtrak_discovery())
-        asyncio.create_task(self.run_path_collection())
-        asyncio.create_task(self.run_lirr_collection())
-        asyncio.create_task(self.run_mnr_collection())
-        asyncio.create_task(self.run_subway_collection())
+        # Run initial collections staggered to avoid startup CPU spike
+        asyncio.create_task(self._run_startup_collectors())
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
         asyncio.create_task(self.check_and_initialize_gtfs_feeds())
@@ -283,6 +295,21 @@ class SchedulerService:
         logger.info(
             "scheduler_started", jobs=[job.id for job in self.scheduler.get_jobs()]
         )
+
+    async def _run_startup_collectors(self) -> None:
+        """Launch startup collectors with staggered delays to avoid CPU spike."""
+        collectors = [
+            ("njt_discovery", self.run_njt_discovery),
+            ("amtrak_discovery", self.run_amtrak_discovery),
+            ("path_collection", self.run_path_collection),
+            ("lirr_collection", self.run_lirr_collection),
+            ("mnr_collection", self.run_mnr_collection),
+            ("subway_collection", self.run_subway_collection),
+        ]
+        for name, collector in collectors:
+            logger.info("startup_collector_launch", collector=name)
+            asyncio.create_task(collector())
+            await asyncio.sleep(10)
 
     async def stop(self) -> None:
         """Stop the scheduler and cleanup."""
