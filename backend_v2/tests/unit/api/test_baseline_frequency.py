@@ -191,9 +191,13 @@ class TestBaselineTwentyFourHour:
 
     async def test_includes_all_hours_same_day_type(self, db_session: AsyncSession):
         """24-hour baseline should count journeys at any hour on matching day type."""
-        # Create journeys at different hours on weekdays
-        for hour_offset in [0, 2, 4, 6]:
-            dep_time = BASE_TIME - timedelta(days=7) + timedelta(hours=hour_offset)
+        # Create journeys at different hours spread across 4 weekdays (need >= 3 days)
+        # BASE_TIME is Wednesday; use past Wednesdays at 7, 14, 21, 28 days ago
+        for idx, day_offset in enumerate([7, 14, 21, 28]):
+            hour_offset = idx * 2  # different hours: 0, 2, 4, 6
+            dep_time = (
+                BASE_TIME - timedelta(days=day_offset) + timedelta(hours=hour_offset)
+            )
             await _create_journey_with_segments(
                 db_session,
                 train_id=f"train_h{hour_offset}",
@@ -209,7 +213,7 @@ class TestBaselineTwentyFourHour:
                         "departure_time": dep_time + timedelta(minutes=15),
                     },
                 ],
-                journey_date=(BASE_DATE - timedelta(days=7)),
+                journey_date=(BASE_DATE - timedelta(days=day_offset)),
             )
         await db_session.commit()
 
@@ -226,26 +230,28 @@ class TestBaselineSevenDay:
 
     async def test_includes_all_days_and_hours(self, db_session: AsyncSession):
         """7-day baseline should include all journeys regardless of hour/day."""
-        # Create weekend journey at a different hour
-        past_saturday = BASE_TIME - timedelta(days=4)
-        past_saturday_date = BASE_DATE - timedelta(days=4)
-        await _create_journey_with_segments(
-            db_session,
-            train_id="train_sat",
-            segments=[
-                {
-                    "from_station": "NY",
-                    "to_station": "NP",
-                    "departure_time": past_saturday,
-                },
-                {
-                    "from_station": "NP",
-                    "to_station": "TR",
-                    "departure_time": past_saturday + timedelta(minutes=15),
-                },
-            ],
-            journey_date=past_saturday_date,
-        )
+        # Create journeys on 4 different days (need >= 3 days): mix weekdays and weekend
+        # Saturday (4 days ago), Sunday (3 days ago), Monday (2 days ago), Tuesday (1 day ago)
+        for day_offset in [4, 3, 2, 1]:
+            dep_time = BASE_TIME - timedelta(days=day_offset)
+            dep_date = BASE_DATE - timedelta(days=day_offset)
+            await _create_journey_with_segments(
+                db_session,
+                train_id=f"train_d{day_offset}",
+                segments=[
+                    {
+                        "from_station": "NY",
+                        "to_station": "NP",
+                        "departure_time": dep_time,
+                    },
+                    {
+                        "from_station": "NP",
+                        "to_station": "TR",
+                        "departure_time": dep_time + timedelta(minutes=15),
+                    },
+                ],
+                journey_date=dep_date,
+            )
         await db_session.commit()
 
         # hours=None means days-based query (7 days)
