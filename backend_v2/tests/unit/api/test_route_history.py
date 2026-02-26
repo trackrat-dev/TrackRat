@@ -396,7 +396,7 @@ class TestDepartureDelay:
 
 @pytest.mark.asyncio
 class TestArrivalDelay:
-    """Verify arrival delay is calculated at the last stop (destination)."""
+    """Verify arrival delay is calculated at the destination station (to_codes)."""
 
     async def test_arrival_delay_at_destination(self, db_session: AsyncSession):
         """Train arrives 8 minutes late at the destination."""
@@ -422,6 +422,181 @@ class TestArrivalDelay:
 
         result = await _run_stats(db_session)
         assert abs(result["average_delay_minutes"] - 8.0) < 0.1
+
+    async def test_arrival_delay_at_destination_not_last_stop(
+        self, db_session: AsyncSession
+    ):
+        """Arrival delay should be measured at the to_station, not the train's final stop.
+
+        A train NY -> TR -> HAM should measure arrival delay at TR (the to_station),
+        not HAM (the train's final stop). This tests the fix for the bug where
+        last_stops CTE picked the highest stop_sequence regardless of to_codes.
+        """
+        await _create_journey(
+            db_session,
+            train_id="train_continues_past",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=3),
+                },
+                {
+                    "station_code": "HAM",
+                    "stop_sequence": 2,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1, minutes=30),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=50),
+                },
+            ],
+        )
+        await db_session.commit()
+
+        # to_codes=["TR"], so arrival delay should be 3 min (at TR), not 20 min (at HAM)
+        result = await _run_stats(db_session)
+        assert abs(result["average_delay_minutes"] - 3.0) < 0.1, (
+            f"Expected 3.0m (delay at TR), got {result['average_delay_minutes']}. "
+            "Arrival delay should be measured at the destination station, not the last stop."
+        )
+
+
+@pytest.mark.asyncio
+class TestOnTimePercentageDenominator:
+    """Verify on_time_percentage only counts trains with arrival data in denominator.
+
+    This was the root cause of the '71% on-time but 0m avg delay' bug: trains
+    without actual_arrival data were included in the denominator, deflating the
+    on-time percentage while average delay (correctly) excluded them.
+    """
+
+    async def test_trains_without_arrival_data_excluded_from_denominator(
+        self, db_session: AsyncSession
+    ):
+        """5 trains with arrival data (all on-time), 2 without = should be 100%, not 71%.
+
+        Before the fix: on_time_count=5, non_cancelled=7 -> 71%
+        After the fix:  on_time_count=5, with_arrival_data=5 -> 100%
+        """
+        # 5 trains with arrival data, all on-time
+        for i in range(5):
+            await _create_journey(
+                db_session,
+                train_id=f"train_with_data_{i}",
+                stops=[
+                    {
+                        "station_code": "NY",
+                        "stop_sequence": 0,
+                        "scheduled_departure": BASE_TIME,
+                        "actual_departure": BASE_TIME,
+                    },
+                    {
+                        "station_code": "TR",
+                        "stop_sequence": 1,
+                        "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                        "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=2),
+                    },
+                ],
+            )
+        # 2 trains without arrival data (still in progress)
+        for i in range(2):
+            await _create_journey(
+                db_session,
+                train_id=f"train_no_arrival_{i}",
+                stops=[
+                    {
+                        "station_code": "NY",
+                        "stop_sequence": 0,
+                        "scheduled_departure": BASE_TIME,
+                        "actual_departure": BASE_TIME,
+                    },
+                    {
+                        "station_code": "TR",
+                        "stop_sequence": 1,
+                        "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                        "actual_arrival": None,
+                    },
+                ],
+            )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["total_journeys"] == 7
+        assert result["on_time_percentage"] == 100.0, (
+            f"Expected 100% (5/5 trains with data are on-time), got "
+            f"{result['on_time_percentage']}%. Trains without arrival data "
+            "should not be counted in the denominator."
+        )
+        # Average delay should also be very small (2 min, clamped positive)
+        assert result["average_delay_minutes"] < 3.0
+
+    async def test_delay_breakdown_sums_to_100(self, db_session: AsyncSession):
+        """Delay breakdown percentages should sum to ~100% when trains have mixed delays."""
+        delays = [2, 10, 25, 45]  # on_time, slight, significant, major
+        for i, delay in enumerate(delays):
+            await _create_journey(
+                db_session,
+                train_id=f"train_mix_{i}",
+                stops=[
+                    {
+                        "station_code": "NY",
+                        "stop_sequence": 0,
+                        "scheduled_departure": BASE_TIME,
+                        "actual_departure": BASE_TIME,
+                    },
+                    {
+                        "station_code": "TR",
+                        "stop_sequence": 1,
+                        "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                        "actual_arrival": BASE_TIME
+                        + timedelta(hours=1, minutes=delay),
+                    },
+                ],
+            )
+        # Add one train without arrival data (should not affect breakdown)
+        await _create_journey(
+            db_session,
+            train_id="train_no_data",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+        breakdown = result["delay_breakdown"]
+        total_pct = (
+            breakdown["on_time"]
+            + breakdown["slight"]
+            + breakdown["significant"]
+            + breakdown["major"]
+        )
+        assert 98 <= total_pct <= 102, (
+            f"Delay breakdown should sum to ~100%, got {total_pct}%: {breakdown}. "
+            "Each category should be 25% (1 of 4 trains with data)."
+        )
+        # Each category should be 25% (1 of 4 trains with data)
+        assert breakdown["on_time"] == 25
+        assert breakdown["slight"] == 25
+        assert breakdown["significant"] == 25
+        assert breakdown["major"] == 25
 
 
 @pytest.mark.asyncio

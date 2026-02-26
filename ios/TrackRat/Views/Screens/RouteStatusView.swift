@@ -199,30 +199,23 @@ struct RouteStatusView: View {
                 HStack(spacing: 12) {
                     delayStatCard(
                         title: "Avg Departure Delay",
-                        value: "\(Int(history.aggregateStats.averageDepartureDelayMinutes))m",
+                        value: formatDelay(history.aggregateStats.averageDepartureDelayMinutes),
                         color: history.aggregateStats.averageDepartureDelayMinutes <= 5 ? .green : .orange
                     )
                     delayStatCard(
                         title: "Avg Arrival Delay",
-                        value: "\(Int(history.aggregateStats.averageDelayMinutes))m",
+                        value: formatDelay(history.aggregateStats.averageDelayMinutes),
                         color: history.aggregateStats.averageDelayMinutes <= 5 ? .green : .orange
                     )
                 }
             }
 
-            let breakdown = history.aggregateStats.delayBreakdown
-            DelayPerformanceBar(
-                label: "Arrival Delay Breakdown (\(total) trains)",
-                stats: DelayStats(
-                    onTime: breakdown.onTime,
-                    slight: breakdown.slight,
-                    significant: breakdown.significant,
-                    major: breakdown.major,
-                    total: total,
-                    avgDelay: Int(history.aggregateStats.averageDelayMinutes)
-                )
-            )
         }
+    }
+
+    private func formatDelay(_ minutes: Double) -> String {
+        let rounded = Int(round(minutes))
+        return "\(rounded)m"
     }
 
     private func formatFrequency(totalTrains: Int, hours: Double) -> String {

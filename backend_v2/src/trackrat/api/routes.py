@@ -270,16 +270,17 @@ async def _calculate_route_stats_sql(
         WITH route_journeys AS (
             {route_journeys_cte}
         ),
-        last_stops AS (
+        destination_stops AS (
             SELECT DISTINCT ON (js.journey_id)
                 js.journey_id,
                 EXTRACT(EPOCH FROM (js.actual_arrival - js.scheduled_arrival)) / 60.0
                     AS arrival_delay_minutes
             FROM journey_stops js
             INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
-            WHERE js.actual_arrival IS NOT NULL
+            WHERE js.station_code = ANY(:to_codes)
+              AND js.actual_arrival IS NOT NULL
               AND js.scheduled_arrival IS NOT NULL
-            ORDER BY js.journey_id, js.stop_sequence DESC
+            ORDER BY js.journey_id, js.stop_sequence ASC
         ),
         origin_stops AS (
             SELECT DISTINCT ON (js.journey_id)
@@ -298,25 +299,29 @@ async def _calculate_route_stats_sql(
                 COUNT(*) AS total_journeys,
                 COUNT(*) FILTER (WHERE rj.is_cancelled) AS cancelled_count,
                 COUNT(*) FILTER (WHERE NOT rj.is_cancelled) AS non_cancelled_count,
+                -- Count of non-cancelled trains with arrival data (proper denominator)
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND ds.arrival_delay_minutes IS NOT NULL)
+                    AS with_arrival_data_count,
                 -- Arrival delay aggregates (non-cancelled only)
-                AVG(GREATEST(ls.arrival_delay_minutes, 0))
-                    FILTER (WHERE NOT rj.is_cancelled AND ls.arrival_delay_minutes IS NOT NULL)
+                AVG(GREATEST(ds.arrival_delay_minutes, 0))
+                    FILTER (WHERE NOT rj.is_cancelled AND ds.arrival_delay_minutes IS NOT NULL)
                     AS avg_arrival_delay,
                 COUNT(*) FILTER (WHERE NOT rj.is_cancelled
-                    AND ls.arrival_delay_minutes IS NOT NULL
-                    AND ls.arrival_delay_minutes <= 5)
+                    AND ds.arrival_delay_minutes IS NOT NULL
+                    AND ds.arrival_delay_minutes <= 5)
                     AS on_time_count,
                 COUNT(*) FILTER (WHERE NOT rj.is_cancelled
-                    AND ls.arrival_delay_minutes IS NOT NULL
-                    AND ls.arrival_delay_minutes > 5 AND ls.arrival_delay_minutes <= 15)
+                    AND ds.arrival_delay_minutes IS NOT NULL
+                    AND ds.arrival_delay_minutes > 5 AND ds.arrival_delay_minutes <= 15)
                     AS slight_count,
                 COUNT(*) FILTER (WHERE NOT rj.is_cancelled
-                    AND ls.arrival_delay_minutes IS NOT NULL
-                    AND ls.arrival_delay_minutes > 15 AND ls.arrival_delay_minutes <= 30)
+                    AND ds.arrival_delay_minutes IS NOT NULL
+                    AND ds.arrival_delay_minutes > 15 AND ds.arrival_delay_minutes <= 30)
                     AS significant_count,
                 COUNT(*) FILTER (WHERE NOT rj.is_cancelled
-                    AND ls.arrival_delay_minutes IS NOT NULL
-                    AND ls.arrival_delay_minutes > 30)
+                    AND ds.arrival_delay_minutes IS NOT NULL
+                    AND ds.arrival_delay_minutes > 30)
                     AS major_count,
                 -- Departure delay aggregates (non-cancelled with actual departure)
                 AVG(GREATEST(os.departure_delay_minutes, 0))
@@ -324,7 +329,7 @@ async def _calculate_route_stats_sql(
                             AND os.departure_delay_minutes IS NOT NULL)
                     AS avg_departure_delay
             FROM route_journeys rj
-            LEFT JOIN last_stops ls ON ls.journey_id = rj.journey_id
+            LEFT JOIN destination_stops ds ON ds.journey_id = rj.journey_id
             LEFT JOIN origin_stops os ON os.journey_id = rj.journey_id
         )
         SELECT * FROM stats
@@ -352,18 +357,18 @@ async def _calculate_route_stats_sql(
 
     total_journeys = row["total_journeys"]
     cancelled_count = row["cancelled_count"]
-    non_cancelled = row["non_cancelled_count"]
+    with_arrival_data = row["with_arrival_data_count"]
     on_time_count = row["on_time_count"]
     avg_arrival = float(row["avg_arrival_delay"] or 0)
     avg_departure = float(row["avg_departure_delay"] or 0)
 
-    # Calculate delay breakdown percentages
-    if non_cancelled > 0:
+    # Calculate delay breakdown percentages using trains with arrival data as denominator
+    if with_arrival_data > 0:
         delay_breakdown = {
-            "on_time": round(on_time_count / non_cancelled * 100),
-            "slight": round(row["slight_count"] / non_cancelled * 100),
-            "significant": round(row["significant_count"] / non_cancelled * 100),
-            "major": round(row["major_count"] / non_cancelled * 100),
+            "on_time": round(on_time_count / with_arrival_data * 100),
+            "slight": round(row["slight_count"] / with_arrival_data * 100),
+            "significant": round(row["significant_count"] / with_arrival_data * 100),
+            "major": round(row["major_count"] / with_arrival_data * 100),
         }
     else:
         delay_breakdown = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
@@ -395,7 +400,7 @@ async def _calculate_route_stats_sql(
     return {
         "total_journeys": total_journeys,
         "on_time_percentage": (
-            (on_time_count / non_cancelled * 100) if non_cancelled > 0 else 0
+            (on_time_count / with_arrival_data * 100) if with_arrival_data > 0 else 0
         ),
         "average_delay_minutes": avg_arrival,
         "average_departure_delay_minutes": avg_departure,
