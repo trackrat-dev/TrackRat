@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from trackrat.models.database import (
     DeviceToken,
+    JourneyStop,
     RouteAlertSubscription,
     TrainJourney,
 )
@@ -22,12 +22,11 @@ from trackrat.services.alert_evaluator import (
     DELAY_THRESHOLD_MINUTES,
     FREQUENCY_FIRST_SOURCES,
     MIN_BASELINE_DAYS,
-    REALTIME_SOURCES,
     _build_alert_message,
     _build_train_alert_message,
     _compute_alert_hash,
     _compute_train_alert_hash,
-    _query_baseline_train_count,
+    _is_significantly_delayed,
     evaluate_route_alerts,
 )
 from trackrat.utils.time import now_et
@@ -174,6 +173,68 @@ class TestAlertEvaluator:
 
         call_args = apns.send_alert_notification.call_args
         assert "Delay" in call_args.args[1] or "delay" in call_args.args[1].lower()
+
+    async def test_arrival_delay_triggers_alert_for_station_pair(
+        self, db_session: AsyncSession
+    ):
+        """Train departs on time but arrives 20+ min late at destination → alert fires.
+
+        This tests that station-pair subscriptions check arrival delay at the
+        destination stop, not just departure delay at the origin.
+        """
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        now = now_et()
+        sched = now - timedelta(minutes=30)
+
+        # 2 of 2 trains depart on time but arrive late at TR
+        for i, train_id in enumerate(["arr-late-1", "arr-late-2"]):
+            journey = TrainJourney(
+                train_id=train_id,
+                journey_date=now.date(),
+                line_code="NE",
+                line_name="Northeast Corridor",
+                destination="Trenton",
+                origin_station_code="NY",
+                terminal_station_code="TR",
+                data_source="NJT",
+                scheduled_departure=sched + timedelta(minutes=i * 5),
+                actual_departure=sched + timedelta(minutes=i * 5),  # on-time departure
+                is_cancelled=False,
+                has_complete_journey=True,
+            )
+            db_session.add(journey)
+            await db_session.flush()
+
+            # Destination stop: scheduled arrival 60min after departure,
+            # but actual arrival is 20min late
+            sched_arrival = sched + timedelta(minutes=i * 5 + 60)
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code="TR",
+                station_name="Trenton",
+                stop_sequence=5,
+                scheduled_arrival=sched_arrival,
+                actual_arrival=sched_arrival + timedelta(minutes=20),
+            )
+            db_session.add(stop)
+
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert (
+            count == 1
+        ), "Expected alert when trains depart on time but arrive 20+ min late at destination"
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        assert "Delay" in call_args.args[1] or "delay" in call_args.args[1].lower()
+        print(f"  Arrival delay alert: {call_args.args[1]} — {call_args.args[2]}")
 
     async def test_delay_below_threshold_no_alert(self, db_session: AsyncSession):
         """When <50% of trains are delayed, no alert fires."""
@@ -764,6 +825,126 @@ class TestSystemAwareAlertPriority:
         ), "Frequency-first and delay-first sets must not overlap"
         print(f"  FREQUENCY_FIRST_SOURCES = {FREQUENCY_FIRST_SOURCES}")
         print(f"  Delay-first systems = {delay_first}")
+
+
+class TestIsSignificantlyDelayed:
+    """Tests for _is_significantly_delayed helper."""
+
+    def test_departure_delay_above_threshold(self):
+        """Departure delay >= 15 min → delayed."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="100",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="NEC",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=45),
+            actual_departure=now - timedelta(minutes=30),  # 15 min late
+            has_complete_journey=True,
+        )
+        assert _is_significantly_delayed(journey) is True
+
+    def test_departure_delay_below_threshold(self):
+        """Departure delay < 15 min → not delayed."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="101",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="NEC",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=40),
+            actual_departure=now - timedelta(minutes=30),  # 10 min late
+            has_complete_journey=True,
+        )
+        assert _is_significantly_delayed(journey) is False
+
+    def test_arrival_delay_at_destination_stop(self):
+        """On-time departure but late arrival at to_station → delayed."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="102",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="NEC",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=60),
+            actual_departure=now - timedelta(minutes=60),  # on-time departure
+            has_complete_journey=True,
+        )
+        sched_arr = now - timedelta(minutes=10)
+        stop = JourneyStop(
+            journey_id=1,
+            station_code="TR",
+            station_name="Trenton",
+            stop_sequence=5,
+            scheduled_arrival=sched_arr,
+            actual_arrival=sched_arr + timedelta(minutes=20),  # 20 min late arrival
+        )
+        journey.stops = [stop]
+
+        # Without to_station_code: departure is on time → not delayed
+        assert _is_significantly_delayed(journey) is False
+        # With to_station_code: arrival is 20 min late → delayed
+        assert _is_significantly_delayed(journey, to_station_code="TR") is True
+
+    def test_arrival_delay_ignored_for_wrong_station(self):
+        """Arrival delay at a non-destination station is not checked."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="103",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="NEC",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=60),
+            actual_departure=now - timedelta(minutes=60),  # on-time departure
+            has_complete_journey=True,
+        )
+        sched_arr = now - timedelta(minutes=30)
+        stop = JourneyStop(
+            journey_id=1,
+            station_code="NP",  # Newark, not Trenton
+            station_name="Newark Penn",
+            stop_sequence=2,
+            scheduled_arrival=sched_arr,
+            actual_arrival=sched_arr + timedelta(minutes=25),  # 25 min late at NP
+        )
+        journey.stops = [stop]
+
+        # Checking arrival at TR, but only NP stop exists → not delayed
+        assert _is_significantly_delayed(journey, to_station_code="TR") is False
+
+    def test_no_actual_times_not_delayed(self):
+        """Missing actual departure/arrival → not delayed."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="104",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="NEC",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=60),
+            actual_departure=None,
+            has_complete_journey=False,
+        )
+        assert _is_significantly_delayed(journey) is False
 
 
 class TestAlertHelpers:

@@ -104,10 +104,13 @@ async def evaluate_route_alerts(
             delayed_count = 0
             total_count = len(journeys)
 
+            # For station-pair subs, check arrival delay at the destination
+            dest_station = sub.to_station_code if not sub.line_id else None
+
             for journey in journeys:
                 if journey.is_cancelled:
                     cancelled_count += 1
-                elif _is_significantly_delayed(journey):
+                elif _is_significantly_delayed(journey, to_station_code=dest_station):
                     delayed_count += 1
 
             # Determine if alert is warranted
@@ -334,12 +337,18 @@ async def _query_journeys_for_subscription(
 
     else:
         # Station-pair mode: match origin/destination or journey stops
+        # Eagerly load stops so _is_significantly_delayed can check
+        # arrival delay at the destination station.
+        eager_opts = [selectinload(TrainJourney.stops)]
+
         # First try direct origin/destination match
         direct_conditions = base_conditions + [
             TrainJourney.origin_station_code == sub.from_station_code,
             TrainJourney.terminal_station_code == sub.to_station_code,
         ]
-        result = await db.execute(select(TrainJourney).where(and_(*direct_conditions)))
+        result = await db.execute(
+            select(TrainJourney).options(*eager_opts).where(and_(*direct_conditions))
+        )
         direct_matches = list(result.scalars().all())
 
         if direct_matches:
@@ -370,7 +379,9 @@ async def _query_journeys_for_subscription(
         )
 
         result = await db.execute(
-            select(TrainJourney).where(
+            select(TrainJourney)
+            .options(*eager_opts)
+            .where(
                 and_(
                     *base_conditions,
                     TrainJourney.id.in_(subq),
@@ -485,15 +496,41 @@ async def _query_baseline_train_count(
     return float(avg_count)
 
 
-def _is_significantly_delayed(journey: TrainJourney) -> bool:
-    """Check if a journey has a delay >= DELAY_THRESHOLD_MINUTES."""
-    if not journey.actual_departure or not journey.scheduled_departure:
-        return False
+def _is_significantly_delayed(
+    journey: TrainJourney,
+    to_station_code: str | None = None,
+) -> bool:
+    """Check if a journey has a delay >= DELAY_THRESHOLD_MINUTES.
 
-    delay = (
-        journey.actual_departure - journey.scheduled_departure
-    ).total_seconds() / 60
-    return delay >= DELAY_THRESHOLD_MINUTES
+    When *to_station_code* is provided (station-pair subscriptions), also
+    checks arrival delay at the destination stop — a train may depart on time
+    but arrive late due to en-route delays.
+    """
+    # Check departure delay (always available for delay-first sources)
+    departure_delayed = False
+    if journey.actual_departure and journey.scheduled_departure:
+        dep_delay = (
+            journey.actual_departure - journey.scheduled_departure
+        ).total_seconds() / 60
+        departure_delayed = dep_delay >= DELAY_THRESHOLD_MINUTES
+
+    if departure_delayed:
+        return True
+
+    # For station-pair subs, also check arrival delay at the destination stop
+    if to_station_code and hasattr(journey, "stops") and journey.stops:
+        for stop in journey.stops:
+            if (
+                stop.station_code == to_station_code
+                and stop.actual_arrival
+                and stop.scheduled_arrival
+            ):
+                arr_delay = (
+                    stop.actual_arrival - stop.scheduled_arrival
+                ).total_seconds() / 60
+                return arr_delay >= DELAY_THRESHOLD_MINUTES
+
+    return False
 
 
 def _compute_alert_hash(

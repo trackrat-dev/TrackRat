@@ -464,28 +464,39 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         )
 
                         if scheduled_match:
-                            old_train_id = scheduled_match.train_id
-                            scheduled_match.train_id = train_id
-                            scheduled_match.observation_type = "OBSERVED"
-                            scheduled_match.last_updated_at = now_et()
+                            try:
+                                async with session.begin_nested():
+                                    old_train_id = scheduled_match.train_id
+                                    scheduled_match.train_id = train_id
+                                    scheduled_match.observation_type = "OBSERVED"
+                                    scheduled_match.last_updated_at = now_et()
 
-                            track = train_data.get("TRACK")
-                            if track and station_code:
-                                await self._update_stop_track_if_needed(
-                                    session,
-                                    scheduled_match,
-                                    station_code,
-                                    track,
+                                    track = train_data.get("TRACK")
+                                    if track and station_code:
+                                        await self._update_stop_track_if_needed(
+                                            session,
+                                            scheduled_match,
+                                            station_code,
+                                            track,
+                                        )
+
+                                logger.info(
+                                    "fuzzy_matched_scheduled_to_observed",
+                                    old_train_id=old_train_id,
+                                    new_train_id=train_id,
+                                    destination=destination,
+                                    station_code=station_code,
+                                    journey_date=journey_date,
                                 )
-
-                            logger.info(
-                                "fuzzy_matched_scheduled_to_observed",
-                                old_train_id=old_train_id,
-                                new_train_id=train_id,
-                                destination=destination,
-                                station_code=station_code,
-                                journey_date=journey_date,
-                            )
+                            except IntegrityError:
+                                # Race: another process already created a journey
+                                # with this train_id — skip the fuzzy match
+                                logger.info(
+                                    "fuzzy_match_skipped_duplicate_train_id",
+                                    train_id=train_id,
+                                    scheduled_train_id=scheduled_match.train_id,
+                                    journey_date=journey_date,
+                                )
                             continue
 
                         # Create new journey

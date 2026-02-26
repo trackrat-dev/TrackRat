@@ -13,19 +13,16 @@ These tests require a PostgreSQL test database because the baseline calculation
 uses raw SQL against segment_transit_times.
 """
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from trackrat.api.routes import _calculate_baseline_train_count
 from trackrat.models.database import SegmentTransitTime, TrainJourney
 from trackrat.utils.time import normalize_to_et
 
 # Wednesday 8am ET = Wednesday 13:00 UTC (ET is UTC-5 in winter)
-BASE_TIME = datetime(
-    2025, 6, 18, 12, 0, 0, tzinfo=timezone.utc
-)  # Wednesday 8am ET (EDT)
+BASE_TIME = datetime(2025, 6, 18, 12, 0, 0, tzinfo=UTC)  # Wednesday 8am ET (EDT)
 BASE_DATE = date(2025, 6, 18)
 
 
@@ -311,3 +308,178 @@ class TestBaselineRouteFiltering:
         assert (
             result is None
         ), "Journey from different data source should not be counted"
+
+
+@pytest.mark.asyncio
+class TestBaselineNumericAccuracy:
+    """Verify the actual numeric baseline values from per-day averaging."""
+
+    async def test_per_day_average_1hour(self, db_session: AsyncSession):
+        """3 weekdays with 2, 4, 6 trains at same hour → avg 4.0 per day."""
+        weekday_offsets = []
+        for i in range(1, 30):
+            dt = BASE_TIME - timedelta(days=i)
+            if dt.weekday() < 5:
+                weekday_offsets.append(i)
+            if len(weekday_offsets) >= 3:
+                break
+
+        train_counts = [2, 4, 6]
+        for day_idx, day_offset in enumerate(weekday_offsets):
+            dep_base = BASE_TIME - timedelta(days=day_offset)
+            for t in range(train_counts[day_idx]):
+                await _create_journey_with_segments(
+                    db_session,
+                    train_id=f"train_d{day_offset}_t{t}",
+                    segments=[
+                        {
+                            "from_station": "NY",
+                            "to_station": "NP",
+                            "departure_time": dep_base + timedelta(minutes=t * 5),
+                        },
+                        {
+                            "from_station": "NP",
+                            "to_station": "TR",
+                            "departure_time": dep_base + timedelta(minutes=t * 5 + 15),
+                        },
+                    ],
+                    journey_date=(BASE_DATE - timedelta(days=day_offset)),
+                )
+        await db_session.commit()
+
+        result = await _calculate_baseline_train_count(
+            db_session, "NJT", ["NY"], ["TR"], hours=1, now=BASE_TIME
+        )
+        assert result is not None, "Expected a baseline value"
+        assert (
+            result == 4.0
+        ), f"Expected per-day average of 4.0 (mean of 2,4,6), got {result}"
+
+    async def test_per_day_average_24hour(self, db_session: AsyncSession):
+        """3 weekdays with 1, 2, 3 trains → avg 2.0 per day."""
+        weekday_offsets = []
+        for i in range(1, 30):
+            dt = BASE_TIME - timedelta(days=i)
+            if dt.weekday() < 5:
+                weekday_offsets.append(i)
+            if len(weekday_offsets) >= 3:
+                break
+
+        train_counts = [1, 2, 3]
+        for day_idx, day_offset in enumerate(weekday_offsets):
+            dep_base = BASE_TIME - timedelta(days=day_offset)
+            for t in range(train_counts[day_idx]):
+                await _create_journey_with_segments(
+                    db_session,
+                    train_id=f"train_d{day_offset}_t{t}",
+                    segments=[
+                        {
+                            "from_station": "NY",
+                            "to_station": "NP",
+                            "departure_time": dep_base + timedelta(hours=t * 2),
+                        },
+                        {
+                            "from_station": "NP",
+                            "to_station": "TR",
+                            "departure_time": dep_base
+                            + timedelta(hours=t * 2, minutes=15),
+                        },
+                    ],
+                    journey_date=(BASE_DATE - timedelta(days=day_offset)),
+                )
+        await db_session.commit()
+
+        result = await _calculate_baseline_train_count(
+            db_session, "NJT", ["NY"], ["TR"], hours=24, now=BASE_TIME
+        )
+        assert result is not None, "Expected a baseline value"
+        assert (
+            result == 2.0
+        ), f"Expected per-day average of 2.0 (mean of 1,2,3), got {result}"
+
+    async def test_minimum_3_days_required(self, db_session: AsyncSession):
+        """Baseline requires at least 3 days of data; 2 days should return None."""
+        weekday_offsets = []
+        for i in range(1, 30):
+            dt = BASE_TIME - timedelta(days=i)
+            if dt.weekday() < 5:
+                weekday_offsets.append(i)
+            if len(weekday_offsets) >= 2:
+                break
+
+        for day_offset in weekday_offsets:
+            dep_time = BASE_TIME - timedelta(days=day_offset)
+            await _create_journey_with_segments(
+                db_session,
+                train_id=f"train_d{day_offset}",
+                segments=[
+                    {
+                        "from_station": "NY",
+                        "to_station": "NP",
+                        "departure_time": dep_time,
+                    },
+                    {
+                        "from_station": "NP",
+                        "to_station": "TR",
+                        "departure_time": dep_time + timedelta(minutes=15),
+                    },
+                ],
+                journey_date=(BASE_DATE - timedelta(days=day_offset)),
+            )
+        await db_session.commit()
+
+        result = await _calculate_baseline_train_count(
+            db_session, "NJT", ["NY"], ["TR"], hours=1, now=BASE_TIME
+        )
+        assert result is None, f"Expected None with only 2 days of data, got {result}"
+
+
+@pytest.mark.asyncio
+class TestBaselineDirectionEnforcement:
+    """Verify that reverse-direction trains are excluded."""
+
+    async def test_excludes_reverse_direction(self, db_session: AsyncSession):
+        """A TR→NY train should not count when querying NY→TR baseline.
+
+        Segments for a TR→NY train: TR→NP (departs first), NP→NY (departs later).
+        When querying from=NY, to=TR, the from segment (NP→NY) departs AFTER the
+        to segment (TR→NP), so it should be excluded by departure_time ordering.
+        """
+        # Need at least 3 days for baseline, create reverse-direction trains
+        weekday_offsets = []
+        for i in range(1, 30):
+            dt = BASE_TIME - timedelta(days=i)
+            if dt.weekday() < 5:
+                weekday_offsets.append(i)
+            if len(weekday_offsets) >= 5:
+                break
+
+        for day_offset in weekday_offsets:
+            dep_time = BASE_TIME - timedelta(days=day_offset)
+            # Reverse direction: TR→NP→NY
+            await _create_journey_with_segments(
+                db_session,
+                train_id=f"reverse_d{day_offset}",
+                segments=[
+                    {
+                        "from_station": "TR",
+                        "to_station": "NP",
+                        "departure_time": dep_time,
+                    },
+                    {
+                        "from_station": "NP",
+                        "to_station": "NY",
+                        "departure_time": dep_time + timedelta(minutes=15),
+                    },
+                ],
+                journey_date=(BASE_DATE - timedelta(days=day_offset)),
+            )
+        await db_session.commit()
+
+        # Query for NY→TR (forward direction) - should not match reverse trains
+        result = await _calculate_baseline_train_count(
+            db_session, "NJT", ["NY"], ["TR"], hours=1, now=BASE_TIME
+        )
+        assert (
+            result is None
+        ), f"Reverse-direction trains should not count for NY→TR baseline, got {result}"

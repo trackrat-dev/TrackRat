@@ -455,31 +455,42 @@ async def _calculate_baseline_train_count(
             (:is_weekend AND stt.day_of_week IN (5, 6))
             OR (NOT :is_weekend AND stt.day_of_week NOT IN (5, 6))
         )"""
-        divisor = 30.0
     elif hours is not None and hours <= 24:
         # 24-hour window: match weekday/weekend only
         day_filter = """AND (
             (:is_weekend AND stt.day_of_week IN (5, 6))
             OR (NOT :is_weekend AND stt.day_of_week NOT IN (5, 6))
         )"""
-        divisor = 30.0
     else:
-        # 7+ day window: no time/day filter, scale to weekly average
-        divisor = 30.0 / 7.0
+        # 7+ day window: no time/day filter
+        pass
 
+    # Use per-day averaging: count trains per day, then average across days.
+    # For weekly+ windows, multiply by 7 to get per-week baseline.
     sql = text(f"""
-        SELECT COUNT(DISTINCT stt.journey_id) AS baseline_count
-        FROM segment_transit_times stt
-        WHERE stt.departure_time >= :baseline_start
-          AND stt.from_station_code = ANY(:from_codes)
-          AND stt.data_source = :data_source
-          {hour_filter}
-          {day_filter}
-          AND EXISTS (
-              SELECT 1 FROM segment_transit_times stt2
-              WHERE stt2.journey_id = stt.journey_id
-                AND stt2.to_station_code = ANY(:to_codes)
-          )
+        WITH matching_journeys AS (
+            SELECT DISTINCT stt.journey_id, stt.departure_time::date AS journey_day
+            FROM segment_transit_times stt
+            WHERE stt.departure_time >= :baseline_start
+              AND stt.from_station_code = ANY(:from_codes)
+              AND stt.data_source = :data_source
+              {hour_filter}
+              {day_filter}
+              AND EXISTS (
+                  SELECT 1 FROM segment_transit_times stt2
+                  WHERE stt2.journey_id = stt.journey_id
+                    AND stt2.to_station_code = ANY(:to_codes)
+                    AND stt2.departure_time > stt.departure_time
+              )
+        ),
+        daily_counts AS (
+            SELECT journey_day, COUNT(*) AS day_count
+            FROM matching_journeys
+            GROUP BY journey_day
+        )
+        SELECT AVG(day_count) AS avg_per_day,
+               COUNT(*) AS num_days
+        FROM daily_counts
     """)
 
     params: dict[str, Any] = {
@@ -487,18 +498,26 @@ async def _calculate_baseline_train_count(
         "from_codes": from_codes,
         "to_codes": to_codes,
         "data_source": data_source,
-        "current_hour": current_hour,
-        "is_weekend": is_weekend,
     }
+    if hour_filter:
+        params["current_hour"] = current_hour
+    if day_filter:
+        params["is_weekend"] = is_weekend
 
     try:
         result = await db.execute(sql, params)
         row = result.mappings().first()
-        if not row or row["baseline_count"] == 0:
+        if not row or row["num_days"] is None or row["num_days"] < 3:
             return None
 
-        baseline = float(row["baseline_count"]) / divisor
-        return round(baseline, 1) if baseline > 0 else None
+        avg_per_day = float(row["avg_per_day"])
+        if hours is not None and hours >= 168:
+            # Scale daily average to weekly for 7+ day windows
+            avg_per_day *= 7.0
+        elif hours is None:
+            avg_per_day *= 7.0
+
+        return round(avg_per_day, 1) if avg_per_day > 0 else None
     except Exception as e:
         logger.warning("baseline_train_count_query_failed", error=str(e))
         return None
