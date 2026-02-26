@@ -147,6 +147,7 @@ struct RouteStatusView: View {
     @ViewBuilder
     private func historyContent(_ history: RouteHistoricalData, hours: Double) -> some View {
         let total = history.route.totalTrains
+        let freqColor = frequencyColor(totalTrains: total, baseline: history.route.baselineTrainCount)
 
         if preferredMode == .health {
             // Frequency-focused stats for rapid transit (PATH, Subway, PATCO)
@@ -154,7 +155,7 @@ struct RouteStatusView: View {
                 statCard(
                     title: "Frequency",
                     value: formatFrequency(totalTrains: total, hours: hours),
-                    color: .blue
+                    color: freqColor
                 )
                 statCard(
                     title: "On Time",
@@ -188,7 +189,7 @@ struct RouteStatusView: View {
                 statCard(
                     title: "Frequency",
                     value: formatFrequency(totalTrains: total, hours: hours),
-                    color: .blue
+                    color: freqColor
                 )
             }
 
@@ -223,6 +224,17 @@ struct RouteStatusView: View {
                 )
             )
         }
+    }
+
+    /// Color for frequency based on comparison to historical baseline.
+    /// Uses the same thresholds as CongestionSegment.frequencyDisplayColor.
+    private func frequencyColor(totalTrains: Int, baseline: Double?) -> Color {
+        guard let baseline = baseline, baseline > 0 else { return .blue }
+        let factor = Double(totalTrains) / baseline
+        if factor >= 0.9 { return .green }
+        if factor >= 0.7 { return .yellow }
+        if factor >= 0.5 { return .orange }
+        return .red
     }
 
     private func formatFrequency(totalTrains: Int, hours: Double) -> String {

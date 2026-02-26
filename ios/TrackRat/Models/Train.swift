@@ -1008,6 +1008,7 @@ struct RouteHistoricalData {
         let toStation: String
         let totalTrains: Int
         let dataSource: String
+        let baselineTrainCount: Double?
     }
     
     struct Stats {

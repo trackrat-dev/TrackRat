@@ -408,12 +408,14 @@ final class APIService: ObservableObject {
                 let toStation: String
                 let totalTrains: Int
                 let dataSource: String
-                
+                let baselineTrainCount: Double?
+
                 private enum CodingKeys: String, CodingKey {
                     case fromStation = "from_station"
                     case toStation = "to_station"
                     case totalTrains = "total_trains"
                     case dataSource = "data_source"
+                    case baselineTrainCount = "baseline_train_count"
                 }
             }
             
@@ -488,7 +490,8 @@ final class APIService: ObservableObject {
                 fromStation: response.route.fromStation,
                 toStation: response.route.toStation,
                 totalTrains: response.route.totalTrains,
-                dataSource: response.route.dataSource
+                dataSource: response.route.dataSource,
+                baselineTrainCount: response.route.baselineTrainCount
             ),
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: response.aggregateStats.onTimePercentage,
