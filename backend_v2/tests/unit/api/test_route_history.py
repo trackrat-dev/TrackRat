@@ -554,8 +554,7 @@ class TestOnTimePercentageDenominator:
                         "station_code": "TR",
                         "stop_sequence": 1,
                         "scheduled_arrival": BASE_TIME + timedelta(hours=1),
-                        "actual_arrival": BASE_TIME
-                        + timedelta(hours=1, minutes=delay),
+                        "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=delay),
                     },
                 ],
             )

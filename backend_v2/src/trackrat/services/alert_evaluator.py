@@ -123,9 +123,7 @@ async def evaluate_route_alerts(
                 # reduced service instead of delays
                 if sub.data_source in REALTIME_SOURCES:
                     active_count = total_count - cancelled_count
-                    baseline = await _query_baseline_train_count(
-                        db, sub, now
-                    )
+                    baseline = await _query_baseline_train_count(db, sub, now)
                     if baseline is not None and baseline > 0:
                         frequency_factor = active_count / baseline
                         if frequency_factor < FREQ_THRESHOLD_REDUCED:

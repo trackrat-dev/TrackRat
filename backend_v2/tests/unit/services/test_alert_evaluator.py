@@ -609,9 +609,9 @@ class TestSystemAwareAlertPriority:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 0, (
-            "SUBWAY should NOT get delay alerts — frequency-first systems skip delay checks"
-        )
+        assert (
+            count == 0
+        ), "SUBWAY should NOT get delay alerts — frequency-first systems skip delay checks"
         apns.send_alert_notification.assert_not_called()
         print("  Verified: SUBWAY with heavy delays → no alert (frequency-first)")
 
@@ -650,9 +650,9 @@ class TestSystemAwareAlertPriority:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 0, (
-            "PATH should NOT get delay alerts — frequency-first systems skip delay checks"
-        )
+        assert (
+            count == 0
+        ), "PATH should NOT get delay alerts — frequency-first systems skip delay checks"
         apns.send_alert_notification.assert_not_called()
         print("  Verified: PATH with heavy delays → no alert (frequency-first)")
 
@@ -717,15 +717,13 @@ class TestSystemAwareAlertPriority:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 0, (
-            "NJT should NOT get reduced_service alerts — delay-first systems skip frequency checks"
-        )
+        assert (
+            count == 0
+        ), "NJT should NOT get reduced_service alerts — delay-first systems skip frequency checks"
         apns.send_alert_notification.assert_not_called()
         print("  Verified: NJT with reduced frequency → no alert (delay-first)")
 
-    async def test_subway_cancellation_still_triggers(
-        self, db_session: AsyncSession
-    ):
+    async def test_subway_cancellation_still_triggers(self, db_session: AsyncSession):
         """Cancellations are universal — SUBWAY cancellation should still alert."""
         apns = _make_apns()
         _make_device_and_sub(
@@ -761,9 +759,9 @@ class TestSystemAwareAlertPriority:
         assert FREQUENCY_FIRST_SOURCES == {"SUBWAY", "PATH", "PATCO"}
         # Verify no overlap: frequency-first should not include delay-first systems
         delay_first = {"NJT", "AMTRAK", "LIRR", "MNR"}
-        assert FREQUENCY_FIRST_SOURCES.isdisjoint(delay_first), (
-            "Frequency-first and delay-first sets must not overlap"
-        )
+        assert FREQUENCY_FIRST_SOURCES.isdisjoint(
+            delay_first
+        ), "Frequency-first and delay-first sets must not overlap"
         print(f"  FREQUENCY_FIRST_SOURCES = {FREQUENCY_FIRST_SOURCES}")
         print(f"  Delay-first systems = {delay_first}")
 
