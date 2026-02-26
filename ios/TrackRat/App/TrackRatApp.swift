@@ -14,13 +14,18 @@ struct TrackRatApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     
+    /// True if user needs onboarding: either never completed, or state is corrupt (no systems selected)
+    private var shouldShowOnboarding: Bool {
+        !hasCompletedOnboarding || appState.selectedSystems.isEmpty
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
-                if hasCompletedOnboarding {
-                    ContentView()
-                } else {
+                if shouldShowOnboarding {
                     OnboardingView()
+                } else {
+                    ContentView()
                 }
             }
             .environmentObject(appState)

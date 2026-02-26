@@ -130,7 +130,8 @@ extension Set where Element == TrainSystem {
         Set(TrainSystem.allCases)
     }
 
-    /// No systems enabled by default — user picks during onboarding
+    /// Empty by default — user picks during onboarding.
+    /// If state is corrupt (empty after onboarding), the app self-heals by re-showing onboarding.
     static var defaultEnabled: Set<TrainSystem> {
         []
     }

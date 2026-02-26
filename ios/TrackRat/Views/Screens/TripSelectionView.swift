@@ -137,7 +137,40 @@ struct TripSelectionView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal)
                 .padding(.top, isRatSenseSuggestionVisible ? 8 : 28)
-                
+
+                // Home station setup nudge — shown every launch until user sets a home station
+                if !isSearching && ratSenseService.getHomeStation() == nil {
+                    Button {
+                        appState.navigationPath.append(NavigationDestination.favoriteStations)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "house.fill")
+                                .font(.body)
+                            Text("Set your home station for faster trip planning")
+                                .font(TrackRatTheme.Typography.bodySecondary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.5))
+                        }
+                        .foregroundColor(.white)
+                        .textProtected()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.orange.opacity(0.2))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Color.orange.opacity(0.4), lineWidth: 1)
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+                }
+
                 // Search results and content container
                 VStack(alignment: .leading, spacing: 16) {
                     

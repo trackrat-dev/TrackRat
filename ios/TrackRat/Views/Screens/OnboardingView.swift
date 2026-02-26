@@ -80,8 +80,9 @@ struct OnboardingView: View {
         }
         .navigationBarHidden(true)
         .onAppear {
-            // Only clear data on first onboarding, not when editing favorites
-            if !isRepeating {
+            // Only clear data on truly fresh onboarding (never completed before),
+            // not when editing favorites or re-onboarding due to corrupt state
+            if !isRepeating && !hasCompletedOnboarding {
                 clearAllPreviousData()
             }
 
