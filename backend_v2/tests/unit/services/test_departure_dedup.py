@@ -178,25 +178,25 @@ class TestMakeDedupKeys:
         # The main key should be the same
         assert fallbacks_et == fallbacks_utc
 
-    def test_njt_legacy_no_code_passes_through(self):
-        """Test legacy NJT line code 'No' is NOT canonicalized.
+    def test_njt_legacy_no_code_canonicalized_to_ne(self):
+        """Test legacy NJT line code 'No' is canonicalized to 'NE'.
 
-        'No' was used for both NEC and NJCL under the old truncation-based mapping.
-        Since it's ambiguous, it passes through unchanged rather than being mapped
-        to either 'NE' or 'NC'.
+        'No' was produced by the old schedule collector truncating
+        "Northeast Corridor" to 2 chars. Existing DB records may still
+        have this value, so the canonicalization maps it to 'NE' for dedup.
         """
         departure = self._create_departure(
             train_id="3936",
-            line_code="No",  # Legacy ambiguous code
+            line_code="No",  # Legacy truncated code
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
 
         _, fallbacks = self.service._make_dedup_keys(departure)
 
-        # "No" should pass through unchanged (ambiguous legacy code)
-        assert "No:NJT:09:15" in fallbacks
-        assert "NE:NJT:09:15" not in fallbacks
+        # "No" should be canonicalized to "NE"
+        assert "NE:NJT:09:15" in fallbacks
+        assert "No:NJT:09:15" not in fallbacks
 
     def test_njt_line_code_normalization_rv_to_ra(self):
         """Test NJT line code 'RV' is normalized to 'Ra' for deduplication."""
@@ -470,3 +470,32 @@ class TestMergeDepartures:
         # Should deduplicate to 1 train (real-time preferred)
         assert len(merged) == 1
         assert merged[0].train_id == "3846"  # Real-time train wins
+
+    def test_legacy_no_code_deduplicates_with_gtfs_ne(self):
+        """Test that legacy 'No' line code in DB deduplicates with GTFS 'NE'.
+
+        Real-world scenario: Train 3719 in DB has line_code 'No' (from schedule
+        collector truncating 'Northeast Corridor'). GTFS train 3243 has line_code
+        'NE' (from NJT_LINE_CODE_MAPPING). These are the same physical train
+        at the same time. With canonicalization, 'No' → 'NE' enables dedup.
+        """
+        time = ET.localize(datetime(2026, 2, 26, 14, 52))
+
+        # DB train with legacy "No" code (from schedule collector)
+        realtime = [
+            self._create_departure(
+                train_id="3719", line_code="No", scheduled_time=time
+            )
+        ]
+        # GTFS train with correct "NE" code
+        gtfs = [
+            self._create_departure(
+                train_id="3243", line_code="NE", scheduled_time=time
+            )
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        # Should deduplicate: "No" canonicalizes to "NE", matching GTFS
+        assert len(merged) == 1
+        assert merged[0].train_id == "3719"  # DB train preferred
