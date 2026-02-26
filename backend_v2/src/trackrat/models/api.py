@@ -470,6 +470,11 @@ class HistoricalRouteInfo(BaseModel):
     to_station: str = Field(..., min_length=1, max_length=4)
     total_trains: int = Field(..., ge=0)
     data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+    baseline_train_count: float | None = Field(
+        default=None,
+        ge=0.0,
+        description="Expected train count for this time window based on 30-day historical average",
+    )
 
 
 class DelayBreakdown(BaseModel):

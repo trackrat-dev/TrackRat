@@ -165,12 +165,18 @@ async def get_route_history(
                 track_usage_at_origin=highlighted_stats["track_usage"],
             )
 
+    # Calculate baseline train count for frequency comparison
+    baseline_train_count = await _calculate_baseline_train_count(
+        db, data_source, from_codes, to_codes, hours, now
+    )
+
     response = RouteHistoryResponse(
         route=HistoricalRouteInfo(
             from_station=from_station,
             to_station=to_station,
             total_trains=aggregate_stats["total_journeys"],
             data_source=data_source,
+            baseline_train_count=baseline_train_count,
         ),
         aggregate_stats=AggregateStats(
             on_time_percentage=aggregate_stats["on_time_percentage"],
@@ -405,6 +411,92 @@ async def _calculate_route_stats_sql(
         "delay_breakdown": delay_breakdown,
         "track_usage": track_usage,
     }
+
+
+async def _calculate_baseline_train_count(
+    db: AsyncSession,
+    data_source: str,
+    from_codes: list[str],
+    to_codes: list[str],
+    hours: int | None,
+    now: datetime,
+) -> float | None:
+    """Calculate expected train count for frequency baseline comparison.
+
+    Uses segment_transit_times from the past 30 days to estimate how many
+    trains typically run on this route during an equivalent time window.
+
+    Matching strategy (mirrors congestion service):
+    - hours=1: same hour-of-day + weekday/weekend pattern
+    - hours=24: weekday/weekend pattern only (all hours)
+    - hours=None (days-based) or hours>=168: no time/day filter (weekly average)
+
+    Returns None if no historical data exists.
+    """
+    from trackrat.utils.time import normalize_to_et
+
+    now_eastern = normalize_to_et(now)
+    current_hour = now_eastern.hour
+    is_weekend = now_eastern.weekday() >= 5  # Saturday=5, Sunday=6
+
+    # Build filters based on time window
+    hour_filter = ""
+    day_filter = ""
+
+    if hours is not None and hours <= 1:
+        # 1-hour window: match same hour-of-day and weekday/weekend
+        hour_filter = "AND stt.hour_of_day = :current_hour"
+        day_filter = """AND (
+            (:is_weekend AND stt.day_of_week IN (0, 6))
+            OR (NOT :is_weekend AND stt.day_of_week NOT IN (0, 6))
+        )"""
+        divisor = 30.0
+    elif hours is not None and hours <= 24:
+        # 24-hour window: match weekday/weekend only
+        day_filter = """AND (
+            (:is_weekend AND stt.day_of_week IN (0, 6))
+            OR (NOT :is_weekend AND stt.day_of_week NOT IN (0, 6))
+        )"""
+        divisor = 30.0
+    else:
+        # 7+ day window: no time/day filter, scale to weekly average
+        divisor = 30.0 / 7.0
+
+    sql = text(f"""
+        SELECT COUNT(DISTINCT stt.journey_id) AS baseline_count
+        FROM segment_transit_times stt
+        WHERE stt.departure_time >= :baseline_start
+          AND stt.from_station_code = ANY(:from_codes)
+          AND stt.data_source = :data_source
+          {hour_filter}
+          {day_filter}
+          AND EXISTS (
+              SELECT 1 FROM segment_transit_times stt2
+              WHERE stt2.journey_id = stt.journey_id
+                AND stt2.to_station_code = ANY(:to_codes)
+          )
+    """)
+
+    params: dict[str, Any] = {
+        "baseline_start": now - timedelta(days=30),
+        "from_codes": from_codes,
+        "to_codes": to_codes,
+        "data_source": data_source,
+        "current_hour": current_hour,
+        "is_weekend": is_weekend,
+    }
+
+    try:
+        result = await db.execute(sql, params)
+        row = result.mappings().first()
+        if not row or row["baseline_count"] == 0:
+            return None
+
+        baseline = float(row["baseline_count"]) / divisor
+        return round(baseline, 1) if baseline > 0 else None
+    except Exception as e:
+        logger.warning("baseline_train_count_query_failed", error=str(e))
+        return None
 
 
 @router.get("/congestion", response_model=CongestionMapResponse)
