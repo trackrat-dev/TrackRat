@@ -20,6 +20,7 @@ from trackrat.models.database import (
 from trackrat.services.alert_evaluator import (
     COOLDOWN_MINUTES,
     DELAY_THRESHOLD_MINUTES,
+    FREQUENCY_FIRST_SOURCES,
     MIN_BASELINE_DAYS,
     REALTIME_SOURCES,
     _build_alert_message,
@@ -571,6 +572,200 @@ class TestAlertEvaluator:
         count = await evaluate_route_alerts(db_session, apns)
         assert count == 0
         apns.send_alert_notification.assert_not_called()
+
+
+@pytest.mark.asyncio
+class TestSystemAwareAlertPriority:
+    """Tests for system-aware alert evaluation: frequency-first vs delay-first."""
+
+    async def test_subway_delays_do_not_trigger_delay_alert(
+        self, db_session: AsyncSession
+    ):
+        """SUBWAY (frequency-first) with 100% delayed trains should NOT get a delay alert.
+
+        This is the core bug fix: subway users should never receive 'Delays on X'
+        notifications. Only cancellation or reduced_service alerts are valid for
+        frequency-first systems.
+        """
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="SUBWAY",
+            from_station="A01",
+            to_station="B01",
+        )
+        # Create 3 heavily delayed trains (100% delayed — well above 50% threshold)
+        for i in range(3):
+            _make_journey(
+                db_session,
+                train_id=f"subway-delay-{i}",
+                data_source="SUBWAY",
+                line_code="A",
+                origin="A01",
+                terminal="B01",
+                delay_minutes=DELAY_THRESHOLD_MINUTES + 10,
+                minutes_ago=10 + i * 10,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, (
+            "SUBWAY should NOT get delay alerts — frequency-first systems skip delay checks"
+        )
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: SUBWAY with heavy delays → no alert (frequency-first)")
+
+    async def test_path_delays_do_not_trigger_delay_alert(
+        self, db_session: AsyncSession
+    ):
+        """PATH (frequency-first) with heavy delays should NOT get a delay alert."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="PATH",
+            from_station="WTC",
+            to_station="NWK",
+        )
+        # 2 of 2 delayed = 100%
+        _make_journey(
+            db_session,
+            train_id="path-d1",
+            data_source="PATH",
+            line_code="NWK",
+            origin="WTC",
+            terminal="NWK",
+            delay_minutes=DELAY_THRESHOLD_MINUTES + 5,
+            minutes_ago=15,
+        )
+        _make_journey(
+            db_session,
+            train_id="path-d2",
+            data_source="PATH",
+            line_code="NWK",
+            origin="WTC",
+            terminal="NWK",
+            delay_minutes=DELAY_THRESHOLD_MINUTES + 10,
+            minutes_ago=30,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, (
+            "PATH should NOT get delay alerts — frequency-first systems skip delay checks"
+        )
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: PATH with heavy delays → no alert (frequency-first)")
+
+    async def test_njt_reduced_frequency_does_not_trigger_alert(
+        self, db_session: AsyncSession
+    ):
+        """NJT (delay-first) with reduced frequency should NOT get a reduced_service alert.
+
+        Delay-first systems only check cancellations and delays, not frequency.
+        """
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+
+        now = now_et()
+        # Create baseline: 10 trains per comparable day
+        baseline_days_added = 0
+        for days_ago in range(1, 35):
+            past_date = now - timedelta(days=days_ago)
+            if (past_date.weekday() >= 5) != (now.weekday() >= 5):
+                continue
+            for i in range(10):
+                sched = past_date.replace(
+                    hour=now.hour, minute=now.minute, second=0, microsecond=0
+                ) - timedelta(minutes=i * 5)
+                journey = TrainJourney(
+                    train_id=f"njt-base-{days_ago}-{i}",
+                    journey_date=sched.date(),
+                    line_code="NE",
+                    line_name="Northeast Corridor",
+                    destination="Trenton",
+                    origin_station_code="NY",
+                    terminal_station_code="TR",
+                    data_source="NJT",
+                    scheduled_departure=sched,
+                    actual_departure=sched,
+                    is_cancelled=False,
+                    has_complete_journey=True,
+                )
+                db_session.add(journey)
+            baseline_days_added += 1
+            if baseline_days_added >= MIN_BASELINE_DAYS + 1:
+                break
+
+        # Current hour: only 2 on-time trains (20% of baseline ~10)
+        # This WOULD have triggered reduced_service under the old fallback logic
+        for i in range(2):
+            _make_journey(
+                db_session,
+                train_id=f"njt-now-{i}",
+                data_source="NJT",
+                line_code="NE",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=0,
+                minutes_ago=10 + i * 20,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, (
+            "NJT should NOT get reduced_service alerts — delay-first systems skip frequency checks"
+        )
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: NJT with reduced frequency → no alert (delay-first)")
+
+    async def test_subway_cancellation_still_triggers(
+        self, db_session: AsyncSession
+    ):
+        """Cancellations are universal — SUBWAY cancellation should still alert."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="SUBWAY",
+            from_station="A01",
+            to_station="B01",
+        )
+        _make_journey(
+            db_session,
+            train_id="subway-cancel-1",
+            data_source="SUBWAY",
+            line_code="A",
+            origin="A01",
+            terminal="B01",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        title = call_args.args[1]
+        assert "Cancellation" in title
+        assert "SUBWAY" in title
+        print(f"  Verified: SUBWAY cancellation fires correctly — {title}")
+
+    async def test_frequency_first_sources_constant(self):
+        """FREQUENCY_FIRST_SOURCES should match iOS preferredHighlightMode == .health."""
+        assert FREQUENCY_FIRST_SOURCES == {"SUBWAY", "PATH", "PATCO"}
+        # Verify no overlap: frequency-first should not include delay-first systems
+        delay_first = {"NJT", "AMTRAK", "LIRR", "MNR"}
+        assert FREQUENCY_FIRST_SOURCES.isdisjoint(delay_first), (
+            "Frequency-first and delay-first sets must not overlap"
+        )
+        print(f"  FREQUENCY_FIRST_SOURCES = {FREQUENCY_FIRST_SOURCES}")
+        print(f"  Delay-first systems = {delay_first}")
 
 
 class TestAlertHelpers:

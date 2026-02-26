@@ -41,6 +41,10 @@ REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
 # Data sources where train_id is stable and represents the same daily service
 STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR"}
 
+# Frequency-first sources: alert on reduced service, not delays
+# (mirrors iOS TrainSystem.preferredHighlightMode == .health)
+FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO"}
+
 # Build route-ID lookup once at import time
 _ROUTES_BY_ID = {route.id: route for route in ALL_ROUTES}
 
@@ -114,22 +118,26 @@ async def evaluate_route_alerts(
             if cancelled_count > 0:
                 should_alert = True
                 alert_type = "cancellation"
+            elif sub.data_source in FREQUENCY_FIRST_SOURCES:
+                # Frequency-first systems (subway, PATH, PATCO): check
+                # reduced service instead of delays
+                if sub.data_source in REALTIME_SOURCES:
+                    active_count = total_count - cancelled_count
+                    baseline = await _query_baseline_train_count(
+                        db, sub, now
+                    )
+                    if baseline is not None and baseline > 0:
+                        frequency_factor = active_count / baseline
+                        if frequency_factor < FREQ_THRESHOLD_REDUCED:
+                            should_alert = True
+                            alert_type = "reduced_service"
             elif (
                 total_count > 0
                 and (delayed_count / total_count) >= DELAY_PERCENT_THRESHOLD
             ):
+                # Delay-first systems (NJT, Amtrak, LIRR, MNR): check delays
                 should_alert = True
                 alert_type = "delay"
-
-            # Check frequency reduction for real-time sources
-            if not should_alert and sub.data_source in REALTIME_SOURCES:
-                active_count = total_count - cancelled_count
-                baseline = await _query_baseline_train_count(db, sub, now)
-                if baseline is not None and baseline > 0:
-                    frequency_factor = active_count / baseline
-                    if frequency_factor < FREQ_THRESHOLD_REDUCED:
-                        should_alert = True
-                        alert_type = "reduced_service"
 
             if not should_alert:
                 continue
