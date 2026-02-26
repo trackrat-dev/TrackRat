@@ -472,10 +472,11 @@ class CongestionAnalyzer:
             FROM segment_transit_times stt
             WHERE stt.departure_time >= NOW() - INTERVAL '30 days'
               AND stt.hour_of_day = EXTRACT(HOUR FROM NOW())
-              -- Match weekday (Mon-Fri: 1-5) vs weekend (Sat-Sun: 0, 6)
+              -- Match weekday vs weekend
+              -- EXTRACT(DOW) uses Sun=0,Sat=6; Python weekday() uses Mon=0,Sat=5,Sun=6
               AND (
-                  (EXTRACT(DOW FROM NOW()) IN (0, 6) AND stt.day_of_week IN (0, 6))
-                  OR (EXTRACT(DOW FROM NOW()) NOT IN (0, 6) AND stt.day_of_week NOT IN (0, 6))
+                  (EXTRACT(DOW FROM NOW()) IN (0, 6) AND stt.day_of_week IN (5, 6))
+                  OR (EXTRACT(DOW FROM NOW()) NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
               )
               AND (CAST(:data_source AS TEXT) IS NULL OR stt.data_source = CAST(:data_source AS TEXT))
             GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source

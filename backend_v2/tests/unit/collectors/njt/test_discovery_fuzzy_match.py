@@ -81,9 +81,7 @@ class TestFuzzyMatchScheduledTrain:
         # 1. Exact match by train_id "3965" → None (no existing record)
         # 2. Row exists check for "3965" → False (not locked)
         # 3. Fuzzy match query → the SCHEDULED journey
-        mock_session.scalar = AsyncMock(
-            side_effect=[None, False, scheduled_journey]
-        )
+        mock_session.scalar = AsyncMock(side_effect=[None, False, scheduled_journey])
 
         train_data = [
             {
@@ -421,8 +419,12 @@ class TestFuzzyMatchScheduledTrain:
         # 6. Fuzzy match → None (no match)
         mock_session.scalar = AsyncMock(
             side_effect=[
-                None, False, scheduled_journey,  # Train 3965: fuzzy match
-                None, False, None,               # Train 4100: no match
+                None,
+                False,
+                scheduled_journey,  # Train 3965: fuzzy match
+                None,
+                False,
+                None,  # Train 4100: no match
             ]
         )
 

@@ -7,7 +7,7 @@ Discovers active trains by polling station departure boards.
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, exists, func, select
+from sqlalchemy import and_, exists, func, literal, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -311,14 +311,15 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
             .order_by(
                 func.abs(
                     func.extract("epoch", JourneyStop.scheduled_departure)
-                    - func.extract("epoch", scheduled_departure)
+                    - func.extract("epoch", literal(scheduled_departure))
                 )
             )
             .with_for_update(skip_locked=True)
             .limit(1)
         )
 
-        return await session.scalar(stmt)
+        result: TrainJourney | None = await session.scalar(stmt)
+        return result
 
     async def process_discovered_trains(
         self,

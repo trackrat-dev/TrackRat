@@ -20,9 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.api.routes import _calculate_baseline_train_count
 from trackrat.models.database import SegmentTransitTime, TrainJourney
+from trackrat.utils.time import normalize_to_et
 
 # Wednesday 8am ET = Wednesday 13:00 UTC (ET is UTC-5 in winter)
-BASE_TIME = datetime(2025, 6, 18, 12, 0, 0, tzinfo=timezone.utc)  # Wednesday 8am ET (EDT)
+BASE_TIME = datetime(
+    2025, 6, 18, 12, 0, 0, tzinfo=timezone.utc
+)  # Wednesday 8am ET (EDT)
 BASE_DATE = date(2025, 6, 18)
 
 
@@ -55,6 +58,7 @@ async def _create_journey_with_segments(
 
     for seg in segments:
         dep_time = seg["departure_time"]
+        dep_eastern = normalize_to_et(dep_time)
         stt = SegmentTransitTime(
             journey_id=journey.id,
             from_station_code=seg["from_station"],
@@ -65,8 +69,8 @@ async def _create_journey_with_segments(
             actual_minutes=seg.get("actual_minutes", 15),
             delay_minutes=seg.get("delay_minutes", 0),
             departure_time=dep_time,
-            hour_of_day=dep_time.hour,
-            day_of_week=dep_time.weekday(),
+            hour_of_day=dep_eastern.hour,
+            day_of_week=dep_eastern.weekday(),
         )
         db.add(stt)
 
@@ -101,7 +105,11 @@ class TestBaselineOneHour:
                 db_session,
                 train_id=f"train_{i}",
                 segments=[
-                    {"from_station": "NY", "to_station": "NP", "departure_time": dep_time},
+                    {
+                        "from_station": "NY",
+                        "to_station": "NP",
+                        "departure_time": dep_time,
+                    },
                     {
                         "from_station": "NP",
                         "to_station": "TR",
@@ -142,7 +150,9 @@ class TestBaselineOneHour:
         )
         assert result is None, "Journey at different hour should not be counted"
 
-    async def test_excludes_weekend_when_querying_weekday(self, db_session: AsyncSession):
+    async def test_excludes_weekend_when_querying_weekday(
+        self, db_session: AsyncSession
+    ):
         """Weekend journeys should not appear in weekday 1-hour baseline."""
         # Create journey on a Saturday at the same hour
         # BASE_TIME is Wednesday; Saturday is 3 days later
@@ -156,7 +166,11 @@ class TestBaselineOneHour:
             db_session,
             train_id="train_weekend",
             segments=[
-                {"from_station": "NY", "to_station": "NP", "departure_time": past_saturday},
+                {
+                    "from_station": "NY",
+                    "to_station": "NP",
+                    "departure_time": past_saturday,
+                },
                 {
                     "from_station": "NP",
                     "to_station": "TR",
@@ -187,7 +201,11 @@ class TestBaselineTwentyFourHour:
                 db_session,
                 train_id=f"train_h{hour_offset}",
                 segments=[
-                    {"from_station": "NY", "to_station": "NP", "departure_time": dep_time},
+                    {
+                        "from_station": "NY",
+                        "to_station": "NP",
+                        "departure_time": dep_time,
+                    },
                     {
                         "from_station": "NP",
                         "to_station": "TR",
@@ -218,7 +236,11 @@ class TestBaselineSevenDay:
             db_session,
             train_id="train_sat",
             segments=[
-                {"from_station": "NY", "to_station": "NP", "departure_time": past_saturday},
+                {
+                    "from_station": "NY",
+                    "to_station": "NP",
+                    "departure_time": past_saturday,
+                },
                 {
                     "from_station": "NP",
                     "to_station": "TR",
@@ -286,4 +308,6 @@ class TestBaselineRouteFiltering:
         result = await _calculate_baseline_train_count(
             db_session, "NJT", ["NY"], ["TR"], hours=1, now=BASE_TIME
         )
-        assert result is None, "Journey from different data source should not be counted"
+        assert (
+            result is None
+        ), "Journey from different data source should not be counted"

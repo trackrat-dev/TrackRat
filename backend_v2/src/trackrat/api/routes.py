@@ -447,15 +447,15 @@ async def _calculate_baseline_train_count(
         # 1-hour window: match same hour-of-day and weekday/weekend
         hour_filter = "AND stt.hour_of_day = :current_hour"
         day_filter = """AND (
-            (:is_weekend AND stt.day_of_week IN (0, 6))
-            OR (NOT :is_weekend AND stt.day_of_week NOT IN (0, 6))
+            (:is_weekend AND stt.day_of_week IN (5, 6))
+            OR (NOT :is_weekend AND stt.day_of_week NOT IN (5, 6))
         )"""
         divisor = 30.0
     elif hours is not None and hours <= 24:
         # 24-hour window: match weekday/weekend only
         day_filter = """AND (
-            (:is_weekend AND stt.day_of_week IN (0, 6))
-            OR (NOT :is_weekend AND stt.day_of_week NOT IN (0, 6))
+            (:is_weekend AND stt.day_of_week IN (5, 6))
+            OR (NOT :is_weekend AND stt.day_of_week NOT IN (5, 6))
         )"""
         divisor = 30.0
     else:
