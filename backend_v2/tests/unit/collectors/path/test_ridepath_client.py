@@ -251,6 +251,304 @@ class TestRidePathClient:
         assert client._cache is None
         assert client._cache_time is None
 
+    def test_arrival_time_uses_last_updated_baseline(self, client):
+        """Test that arrival_time is computed from lastUpdated, not now.
+
+        The RidePATH API's "X min" countdown is relative to when the prediction
+        was generated (lastUpdated). Using now instead of lastUpdated inflates
+        arrival times by the lag between the two.
+        """
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 2 minutes behind now (typical API lag)
+        last_updated_time = now - timedelta(minutes=2)
+        last_updated_str = last_updated_time.isoformat()
+
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": last_updated_str,
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        # arrival_time should be lastUpdated + 10 min, NOT now + 10 min
+        expected = last_updated_time + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"arrival_time should be based on lastUpdated, not now. "
+            f"Expected ~{expected}, got {arrival.arrival_time} (delta {delta}s)"
+        )
+        # Verify it's about 2 minutes earlier than the old (now-based) computation
+        now_based = now + timedelta(minutes=10)
+        offset = (now_based - arrival.arrival_time).total_seconds()
+        assert 115 < offset < 125, (
+            f"arrival_time should be ~120s earlier than now+10min, got {offset}s"
+        )
+
+    def test_arrival_time_falls_back_to_now_when_no_last_updated(self, client):
+        """Test fallback to now when lastUpdated is missing."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lineColor": "D93A30",
+            # No lastUpdated field
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = now + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"Without lastUpdated, arrival_time should use now. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_falls_back_to_now_when_last_updated_stale(self, client):
+        """Test fallback to now when lastUpdated is too stale (>5 minutes)."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 6 minutes behind — too stale to trust
+        stale_time = now - timedelta(minutes=6)
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": stale_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = now + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"With stale lastUpdated (>5min), should fall back to now. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_falls_back_to_now_when_last_updated_in_future(self, client):
+        """Test fallback to now when lastUpdated is in the future (clock skew)."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 30 seconds in the future — clock skew
+        future_time = now + timedelta(seconds=30)
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": future_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = now + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"With future lastUpdated (clock skew), should fall back to now. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_with_recent_last_updated(self, client):
+        """Test that a very recent lastUpdated (few seconds) is used."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 5 seconds behind — very fresh, should use it
+        recent_time = now - timedelta(seconds=5)
+        msg = {
+            "headSign": "33rd Street",
+            "arrivalTimeMessage": "3 min",
+            "lastUpdated": recent_time.isoformat(),
+            "lineColor": "4D92FB",
+        }
+
+        arrival = client._parse_arrival_message("PHO", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = recent_time + timedelta(minutes=3)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"With fresh lastUpdated, arrival_time should use it. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_timezone_consistency(self, client):
+        """Regression: arrival_time must always have pytz ET timezone.
+
+        When baseline is lastUpdated (parsed via fromisoformat with stdlib tz),
+        the result must still be normalized to pytz ET — not carry a stdlib
+        fixed-offset timezone. This prevents downstream timezone mismatches.
+        """
+        import pytz
+        from trackrat.utils.time import ET, now_et
+
+        now = now_et()
+
+        # Case 1: lastUpdated used (fresh) — result must be pytz ET
+        fresh_msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "5 min",
+            "lastUpdated": (now - timedelta(seconds=30)).isoformat(),
+            "lineColor": "D93A30",
+        }
+        arrival_fresh = client._parse_arrival_message("PJS", "ToNY", fresh_msg, now)
+        assert arrival_fresh is not None
+        assert arrival_fresh.arrival_time.tzinfo is not None
+        # pytz timezones have a .zone attribute; stdlib fixed-offset does not
+        assert hasattr(arrival_fresh.arrival_time.tzinfo, "zone"), (
+            f"arrival_time should have pytz timezone, got {type(arrival_fresh.arrival_time.tzinfo)}"
+        )
+
+        # Case 2: no lastUpdated (fallback to now) — result must also be pytz ET
+        no_lu_msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "5 min",
+            "lineColor": "D93A30",
+        }
+        arrival_no_lu = client._parse_arrival_message("PJS", "ToNY", no_lu_msg, now)
+        assert arrival_no_lu is not None
+        assert hasattr(arrival_no_lu.arrival_time.tzinfo, "zone"), (
+            f"arrival_time should have pytz timezone, got {type(arrival_no_lu.arrival_time.tzinfo)}"
+        )
+
+        # Both should have the same timezone type
+        assert type(arrival_fresh.arrival_time.tzinfo) == type(arrival_no_lu.arrival_time.tzinfo)
+
+    def test_arrival_time_staleness_boundary(self, client):
+        """Regression: verify behavior at the exact 300-second staleness boundary.
+
+        At exactly 300s, lastUpdated should still be used (0 <= staleness <= 300).
+        At 301s, it should fall back to now.
+        """
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+
+        # Exactly 300 seconds (5 min) — should use lastUpdated
+        boundary_time = now - timedelta(seconds=300)
+        msg_at_boundary = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": boundary_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg_at_boundary, now)
+        assert arrival is not None
+        expected = boundary_time + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"At exactly 300s staleness, should use lastUpdated. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+        # 301 seconds — should fall back to now
+        over_boundary = now - timedelta(seconds=301)
+        msg_over = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": over_boundary.isoformat(),
+            "lineColor": "D93A30",
+        }
+        arrival_over = client._parse_arrival_message("PJS", "ToNY", msg_over, now)
+        assert arrival_over is not None
+        expected_now = now + timedelta(minutes=10)
+        delta_now = abs((arrival_over.arrival_time - expected_now).total_seconds())
+        assert delta_now < 1, (
+            f"At 301s staleness, should fall back to now. "
+            f"Expected ~{expected_now}, got {arrival_over.arrival_time}"
+        )
+
+    def test_parse_response_uses_last_updated_for_all_arrivals(self, client):
+        """Regression: _parse_response must use lastUpdated for every arrival.
+
+        Simulates a realistic scenario where the API data is 90 seconds old.
+        All computed arrival_times must be based on lastUpdated, not now.
+        This is the primary regression test for the PATH time delay bug.
+        """
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        last_updated = now - timedelta(seconds=90)
+        lu_str = last_updated.isoformat()
+
+        data = {
+            "results": [
+                {
+                    "consideredStation": "JSQ",
+                    "destinations": [
+                        {
+                            "label": "ToNY",
+                            "messages": [
+                                {
+                                    "headSign": "World Trade Center",
+                                    "arrivalTimeMessage": "12 min",
+                                    "lastUpdated": lu_str,
+                                    "lineColor": "D93A30",
+                                },
+                                {
+                                    "headSign": "33rd Street",
+                                    "arrivalTimeMessage": "6 min",
+                                    "lastUpdated": lu_str,
+                                    "lineColor": "4D92FB",
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "consideredStation": "HOB",
+                    "destinations": [
+                        {
+                            "label": "ToNY",
+                            "messages": [
+                                {
+                                    "headSign": "33rd Street",
+                                    "arrivalTimeMessage": "3 min",
+                                    "lastUpdated": lu_str,
+                                    "lineColor": "4D92FB",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ]
+        }
+
+        # Patch now_et so _parse_response uses our controlled `now`
+        with patch("trackrat.collectors.path.ridepath_client.now_et", return_value=now):
+            arrivals = client._parse_response(data)
+
+        assert len(arrivals) == 3, f"Expected 3 arrivals, got {len(arrivals)}"
+
+        for arrival in arrivals:
+            # Each arrival_time must be based on lastUpdated, not now.
+            # If based on now, the offset from lastUpdated would be ~90s too much.
+            implied_baseline = arrival.arrival_time - timedelta(minutes=arrival.minutes_away)
+            offset_from_lu = abs((implied_baseline - last_updated).total_seconds())
+            offset_from_now = abs((implied_baseline - now).total_seconds())
+
+            assert offset_from_lu < 2, (
+                f"arrival {arrival.headsign} at {arrival.station_code}: "
+                f"arrival_time should be based on lastUpdated (offset {offset_from_lu:.1f}s), "
+                f"but appears based on now (offset {offset_from_now:.1f}s)"
+            )
+            assert offset_from_now > 85, (
+                f"arrival {arrival.headsign} at {arrival.station_code}: "
+                f"arrival_time appears to use now as baseline (offset {offset_from_now:.1f}s). "
+                f"This is the PATH time delay bug — must use lastUpdated instead."
+            )
+
     @pytest.mark.asyncio
     async def test_close(self, client):
         """Test closing the client."""

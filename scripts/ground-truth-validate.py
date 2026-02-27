@@ -183,17 +183,24 @@ def fetch_ridepath_arrivals(client: httpx.Client) -> tuple[list[GroundTruthArriv
                     continue
 
                 line_color = msg.get("lineColor", "")
-                expected_time = now + timedelta(minutes=minutes)
 
-                # Track staleness
+                # Use lastUpdated as the baseline for computing expected_time.
+                # The API's "X min" countdown is relative to when the prediction
+                # was generated (lastUpdated), not when we fetch it.
+                baseline = now
                 last_updated_str = msg.get("lastUpdated")
                 if last_updated_str:
                     try:
                         lu = datetime.fromisoformat(last_updated_str)
+                        staleness = (now - lu).total_seconds()
+                        if 0 <= staleness <= 300:
+                            baseline = lu
                         if oldest_updated is None or lu < oldest_updated:
                             oldest_updated = lu
                     except ValueError:
                         pass
+
+                expected_time = baseline + timedelta(minutes=minutes)
 
                 arrivals.append(
                     GroundTruthArrival(

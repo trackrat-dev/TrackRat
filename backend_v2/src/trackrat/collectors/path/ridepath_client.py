@@ -18,7 +18,7 @@ from structlog import get_logger
 
 from trackrat.config.stations import PATH_RIDEPATH_API_TO_INTERNAL_MAP
 from trackrat.utils.metrics import track_api_call
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ET, now_et
 
 logger = get_logger(__name__)
 
@@ -199,15 +199,30 @@ class RidePathClient:
             if minutes is None:
                 return None
 
-            # Parse last_updated timestamp
+            # Parse last_updated timestamp and normalize to ET so all
+            # PathArrival.arrival_time values have a consistent timezone type
+            # (pytz ET), regardless of whether baseline is now or last_updated.
             last_updated = self._parse_timestamp(msg.get("lastUpdated"))
+            if last_updated is not None:
+                last_updated = last_updated.astimezone(ET)
+
+            # Use lastUpdated as the baseline for computing arrival_time.
+            # The API's "X min" countdown is relative to when the prediction
+            # was generated (lastUpdated), not when we fetch it. Using `now`
+            # inflates arrival times by the lag between lastUpdated and now.
+            # Fall back to `now` if lastUpdated is missing or stale (>5 min).
+            baseline = now
+            if last_updated is not None:
+                staleness = (now - last_updated).total_seconds()
+                if 0 <= staleness <= 300:
+                    baseline = last_updated
 
             return PathArrival(
                 station_code=station_code,
                 headsign=msg.get("headSign", "Unknown"),
                 direction=direction,
                 minutes_away=minutes,
-                arrival_time=now + timedelta(minutes=minutes),
+                arrival_time=baseline + timedelta(minutes=minutes),
                 line_color=msg.get("lineColor", ""),
                 last_updated=last_updated,
             )
