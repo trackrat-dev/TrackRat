@@ -2,7 +2,7 @@
 """Ground truth validation: compare TrackRat departures against raw transit provider data.
 
 Run from the repo root using the backend poetry environment:
-    cd backend_v2 && poetry run python3 ../scripts/ground-truth-validate.py [base_url] [--provider PATH] [--tolerance 5]
+    cd backend_v2 && poetry run python3 ../scripts/ground-truth-validate.py [base_url] [--provider PATH] [--tolerance 1.5]
 """
 
 import argparse
@@ -598,7 +598,7 @@ def compare_route(
     tr_departures: list[TrackRatDeparture],
     origin: str,
     destination: str,
-    tolerance_minutes: int,
+    tolerance_minutes: float,
 ) -> ComparisonResult:
     """Compare ground truth arrivals against TrackRat departures for one route direction."""
     route_name = f"{get_station_name(origin)} -> {get_station_name(destination)}"
@@ -752,7 +752,7 @@ def run_validation_loop(
     gt_arrivals: list[GroundTruthArrival],
     data_source: str,
     base_url: str,
-    tolerance: int,
+    tolerance: float,
     verbose: bool,
     gt_window_minutes: int = 120,
 ) -> int:
@@ -923,21 +923,23 @@ def run_validation_loop(
     return route_directions_tested
 
 
-def _print_header(provider: str, base_url: str, tolerance: int, gt_window: int = 120) -> None:
+def _print_header(provider: str, base_url: str, tolerance: float, gt_window: int = 120) -> None:
     """Print validation header."""
     et = ZoneInfo("America/New_York")
     now_et = datetime.now(et)
     print(f"\n{BOLD}Ground Truth Validation{NC}")
     print(f"Target: {base_url}")
     print(f"Provider: {provider}")
-    print(f"Tolerance: {tolerance} min, Window: {gt_window} min")
+    tol_secs = tolerance * 60
+    tol_str = f"{int(tol_secs)}s" if tolerance != int(tolerance) else f"{int(tolerance)} min"
+    print(f"Tolerance: {tol_str}, Window: {gt_window} min")
     print(f"Time: {now_et.strftime('%Y-%m-%d %H:%M')} ET\n")
 
 
 # --- Provider-specific runners ---
 
 
-def run_path_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+def run_path_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for PATH."""
     _print_header("PATH", base_url, tolerance, gt_window)
     et = ZoneInfo("America/New_York")
@@ -976,7 +978,7 @@ def run_path_validation(base_url: str, tolerance: int, verbose: bool = False, gt
     print_summary(route_directions_tested)
 
 
-def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+def run_njt_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for NJ Transit."""
     # Check for required env var
     token = os.environ.get("TRACKRAT_NJT_API_TOKEN") or os.environ.get("NJT_TOKEN")
@@ -1010,7 +1012,7 @@ def run_njt_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
     print_summary(route_directions_tested)
 
 
-def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+def run_amtrak_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for Amtrak (NEC scope)."""
     _print_header("AMTRAK", base_url, tolerance, gt_window)
     et = ZoneInfo("America/New_York")
@@ -1038,7 +1040,7 @@ def run_amtrak_validation(base_url: str, tolerance: int, verbose: bool = False, 
     print_summary(route_directions_tested)
 
 
-def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+def run_lirr_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for LIRR."""
     _print_header("LIRR", base_url, tolerance, gt_window)
     et = ZoneInfo("America/New_York")
@@ -1068,7 +1070,7 @@ def run_lirr_validation(base_url: str, tolerance: int, verbose: bool = False, gt
     print_summary(route_directions_tested)
 
 
-def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+def run_mnr_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for Metro-North."""
     _print_header("MNR", base_url, tolerance, gt_window)
     et = ZoneInfo("America/New_York")
@@ -1098,7 +1100,7 @@ def run_mnr_validation(base_url: str, tolerance: int, verbose: bool = False, gt_
     print_summary(route_directions_tested)
 
 
-def run_subway_validation(base_url: str, tolerance: int, verbose: bool = False, gt_window: int = 120) -> None:
+def run_subway_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120) -> None:
     """Run ground truth validation for NYC Subway."""
     _print_header("SUBWAY", base_url, tolerance, gt_window)
     et = ZoneInfo("America/New_York")
@@ -1146,9 +1148,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--tolerance",
-        type=int,
-        default=3,
-        help="Matching tolerance in minutes (default: 3)",
+        type=float,
+        default=1.5,
+        help="Matching tolerance in minutes (default: 1.5)",
     )
     parser.add_argument(
         "--window",
