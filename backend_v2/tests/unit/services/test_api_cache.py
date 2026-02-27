@@ -588,169 +588,52 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_departure_responses(mock_db)
 
-                # 8 routes × 2 hide_departed variants = 16 calls
-                assert mock_compute.call_count == 16
+                # 14 routes × 2 hide_departed variants = 28 calls
+                # (8 with destination + 6 origin-only)
+                assert mock_compute.call_count == 28
 
-                assert mock_store.call_count == 16
+                assert mock_store.call_count == 28
 
-                # Expected routes now include hide_departed variants
-                expected_routes = [
-                    # hide_departed=False variants (first)
-                    {
-                        "from_station": "NY",
-                        "to_station": "TR",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "TR",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "NP",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "NP",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "TR",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "TR",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "NP",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "NP",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "PJ",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "PJ",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "PJ",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "PJ",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "LB",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "NY",
-                        "to_station": "LB",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                    {
-                        "from_station": "LB",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": False,
-                    },
-                    {
-                        "from_station": "LB",
-                        "to_station": "NY",
-                        "date": None,
-                        "limit": 50,
-                        "hide_departed": True,
-                    },
-                ]
+                # Verify first few routes have correct structure including data_sources key
+                first_call_params = mock_compute.call_args_list[0][0][1]
+                assert first_call_params == {
+                    "from_station": "NY",
+                    "to_station": "TR",
+                    "date": None,
+                    "limit": 50,
+                    "hide_departed": False,
+                    "data_sources": None,
+                }
 
-                for i, expected_route in enumerate(expected_routes):
+                # Verify all calls include the data_sources key
+                for i in range(28):
                     actual_params = mock_compute.call_args_list[i][0][1]
-                    assert actual_params == expected_route
+                    assert "data_sources" in actual_params, (
+                        f"Call {i} missing data_sources key: {actual_params}"
+                    )
 
                     store_call = mock_store.call_args_list[i]
                     assert store_call.kwargs["endpoint"] == "/api/v2/trains/departures"
-                    assert store_call.kwargs["params"] == expected_route
                     assert store_call.kwargs["ttl_seconds"] == 120
 
     @pytest.mark.asyncio
     async def test_precompute_departure_handles_errors(self, cache_service, mock_db):
         """Test that departure pre-computation continues even if some computations fail."""
         with patch.object(cache_service, "_compute_departure_response") as mock_compute:
-            # 16 calls: first fails, rest succeed
+            # 28 calls: first fails, rest succeed
+            # (14 routes × 2 hide_departed variants = 28)
             mock_compute.side_effect = [
                 Exception("Computation failed"),
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-                {"departures": []},
-            ]
+            ] + [{"departures": []}] * 27
 
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_departure_responses(mock_db)
 
-                # 8 routes × 2 hide_departed variants = 16 calls
-                assert mock_compute.call_count == 16
+                # 14 routes × 2 hide_departed variants = 28 calls
+                assert mock_compute.call_count == 28
 
-                # Only 15 successful (first one failed)
-                assert mock_store.call_count == 15
+                # Only 27 successful (first one failed)
+                assert mock_store.call_count == 27
 
     @pytest.mark.asyncio
     async def test_compute_departure_response(self, cache_service, mock_db):

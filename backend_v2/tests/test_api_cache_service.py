@@ -148,8 +148,8 @@ async def test_precompute_departure_responses(db_session):
 
         await service.precompute_departure_responses(db_session)
 
-        # 8 routes × 2 hide_departed variants = 16 calls
-        assert mock_get.call_count >= 16
+        # 14 routes × 2 hide_departed variants = 28 calls
+        assert mock_get.call_count >= 28
 
         # Cache entries now include hide_departed parameter
         expected_params = {
@@ -158,6 +158,7 @@ async def test_precompute_departure_responses(db_session):
             "date": None,
             "limit": 50,
             "hide_departed": False,
+            "data_sources": None,
         }
         cached = await service.get_cached_response(
             db=db_session, endpoint="/api/v2/trains/departures", params=expected_params

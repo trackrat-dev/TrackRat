@@ -13,6 +13,7 @@ from trackrat.collectors.mta_common import (
     check_journey_completed,
     infer_direction_from_terminals,
     infer_missing_origin,
+    infer_subway_origin,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -734,6 +735,72 @@ class TestInferMissingOrigin:
     def test_origin_travel_buffer_is_ten_minutes(self):
         """Verify the travel buffer constant is 10 minutes."""
         assert ORIGIN_TRAVEL_BUFFER == timedelta(minutes=10)
+
+
+class TestInferSubwayOrigin:
+    """Tests for infer_subway_origin().
+
+    Uses route topology to determine the origin terminal for a subway trip.
+    The origin is the opposite terminal from the train's destination (last
+    visible stop). This is direction-agnostic and works regardless of how
+    the topology stations are ordered.
+    """
+
+    def test_train_heading_to_flushing_origin_is_hudson_yards(self):
+        """7 line train heading to Flushing (S701, last station in topology).
+        Origin should be 34 St-Hudson Yards (S726, first station in topology)."""
+        result = infer_subway_origin("7", terminal_station="S701", first_arrival_station="S725")
+        assert result == "S726", f"Expected S726 (34 St-Hudson Yards), got {result}"
+
+    def test_train_heading_to_hudson_yards_origin_is_flushing(self):
+        """7 line train heading to 34 St-Hudson Yards (S726, first station).
+        Origin should be Flushing-Main St (S701, last station)."""
+        result = infer_subway_origin("7", terminal_station="S726", first_arrival_station="S702")
+        assert result == "S701", f"Expected S701 (Flushing-Main St), got {result}"
+
+    def test_first_stop_is_terminal_returns_none(self):
+        """No inference when first visible stop is a terminal (origin wasn't dropped)."""
+        result = infer_subway_origin("7", terminal_station="S701", first_arrival_station="S726")
+        assert result is None, "Should return None when first stop is already a terminal"
+
+    def test_first_stop_is_other_terminal_returns_none(self):
+        """No inference when first visible stop is the other terminal."""
+        result = infer_subway_origin("7", terminal_station="S726", first_arrival_station="S701")
+        assert result is None, "Should return None when first stop is already a terminal"
+
+    def test_unknown_line_code_returns_none(self):
+        """Unknown line code should return None (no route in topology)."""
+        result = infer_subway_origin("ZZ", terminal_station="S999", first_arrival_station="S127")
+        assert result is None, "Should return None for unknown line code"
+
+    def test_mid_route_terminal_returns_none(self):
+        """When destination is not a topology terminal, can't determine origin."""
+        result = infer_subway_origin("7", terminal_station="S710", first_arrival_station="S725")
+        assert result is None, "Should return None when terminal is mid-route"
+
+    def test_l_line_eastbound_origin_is_8_av(self):
+        """L train heading to Canarsie (SL29, first in topology).
+        Origin should be 8 Av (SL01, last in topology).
+        This verifies the direction-agnostic approach works for routes
+        where topology ordering is reversed from direction convention."""
+        result = infer_subway_origin("L", terminal_station="SL29", first_arrival_station="SL22")
+        assert result == "SL01", f"Expected SL01 (8 Av), got {result}"
+
+    def test_l_line_westbound_origin_is_canarsie(self):
+        """L train heading to 8 Av (SL01, last in topology).
+        Origin should be Canarsie (SL29, first in topology)."""
+        result = infer_subway_origin("L", terminal_station="SL01", first_arrival_station="SL05")
+        assert result == "SL29", f"Expected SL29 (Canarsie), got {result}"
+
+    def test_works_for_multiple_lines(self):
+        """Verify origin inference works across different subway lines."""
+        # 1 line: train heading to Van Cortlandt Park (S101)
+        result_1 = infer_subway_origin("1", terminal_station="S101", first_arrival_station="S103")
+        assert result_1 == "S142", f"1 line: expected S142 (South Ferry), got {result_1}"
+
+        # A line: train heading to Inwood-207 St (SA02)
+        result_a = infer_subway_origin("A", terminal_station="SA02", first_arrival_station="SA24")
+        assert result_a == "SH11", f"A line: expected SH11 (Far Rockaway), got {result_a}"
 
 
 class TestInferDirectionFromTerminals:

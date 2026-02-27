@@ -1065,6 +1065,7 @@ class PathCollector:
                 if scheduled_et + grace_period < now_et_normalized:
                     if not stop.has_departed_station:
                         stop.has_departed_station = True
+                        stop.actual_arrival = stop.scheduled_arrival
                         stop.actual_departure = stop.scheduled_arrival
                         stop.departure_source = "time_inference"
                         if stop.stop_sequence:

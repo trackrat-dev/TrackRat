@@ -71,6 +71,47 @@ def infer_missing_origin(
     return default_origin
 
 
+def infer_subway_origin(
+    line_code: str,
+    terminal_station: str,
+    first_arrival_station: str,
+) -> str | None:
+    """Infer the origin terminal for a subway trip using route topology.
+
+    Unlike LIRR/MNR which have a single main terminal, each subway route has
+    two terminals (one per direction). We determine the origin by looking at the
+    train's destination (last visible stop in the feed): the origin is the
+    opposite terminal. This is direction-agnostic — it works regardless of how
+    the topology stations are ordered.
+
+    Args:
+        line_code: GTFS route_id (e.g., "7", "A", "FS").
+        terminal_station: Station code of the train's destination (last RT stop).
+        first_arrival_station: Station code of the first visible RT stop.
+
+    Returns:
+        Inferred origin station code, or None if inference is not possible.
+    """
+    from trackrat.config.route_topology import get_route_by_line_code
+
+    route = get_route_by_line_code("SUBWAY", line_code)
+    if not route or len(route.stations) < 2:
+        return None
+
+    # If first visible stop is already a terminal, no inference needed
+    if first_arrival_station in (route.stations[0], route.stations[-1]):
+        return None
+
+    # The origin is the opposite terminal from the destination
+    if terminal_station == route.stations[-1]:
+        return route.stations[0]
+    elif terminal_station == route.stations[0]:
+        return route.stations[-1]
+
+    # Terminal is mid-route (express shortline, etc.) — can't determine
+    return None
+
+
 def infer_direction_from_terminals(
     last_stop_code: str,
     data_source: str,
