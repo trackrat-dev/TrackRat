@@ -251,6 +251,138 @@ class TestRidePathClient:
         assert client._cache is None
         assert client._cache_time is None
 
+    def test_arrival_time_uses_last_updated_baseline(self, client):
+        """Test that arrival_time is computed from lastUpdated, not now.
+
+        The RidePATH API's "X min" countdown is relative to when the prediction
+        was generated (lastUpdated). Using now instead of lastUpdated inflates
+        arrival times by the lag between the two.
+        """
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 2 minutes behind now (typical API lag)
+        last_updated_time = now - timedelta(minutes=2)
+        last_updated_str = last_updated_time.isoformat()
+
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": last_updated_str,
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        # arrival_time should be lastUpdated + 10 min, NOT now + 10 min
+        expected = last_updated_time + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"arrival_time should be based on lastUpdated, not now. "
+            f"Expected ~{expected}, got {arrival.arrival_time} (delta {delta}s)"
+        )
+        # Verify it's about 2 minutes earlier than the old (now-based) computation
+        now_based = now + timedelta(minutes=10)
+        offset = (now_based - arrival.arrival_time).total_seconds()
+        assert 115 < offset < 125, (
+            f"arrival_time should be ~120s earlier than now+10min, got {offset}s"
+        )
+
+    def test_arrival_time_falls_back_to_now_when_no_last_updated(self, client):
+        """Test fallback to now when lastUpdated is missing."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lineColor": "D93A30",
+            # No lastUpdated field
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = now + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"Without lastUpdated, arrival_time should use now. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_falls_back_to_now_when_last_updated_stale(self, client):
+        """Test fallback to now when lastUpdated is too stale (>5 minutes)."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 6 minutes behind — too stale to trust
+        stale_time = now - timedelta(minutes=6)
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": stale_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = now + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"With stale lastUpdated (>5min), should fall back to now. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_falls_back_to_now_when_last_updated_in_future(self, client):
+        """Test fallback to now when lastUpdated is in the future (clock skew)."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 30 seconds in the future — clock skew
+        future_time = now + timedelta(seconds=30)
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "10 min",
+            "lastUpdated": future_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PJS", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = now + timedelta(minutes=10)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"With future lastUpdated (clock skew), should fall back to now. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
+    def test_arrival_time_with_recent_last_updated(self, client):
+        """Test that a very recent lastUpdated (few seconds) is used."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        # lastUpdated is 5 seconds behind — very fresh, should use it
+        recent_time = now - timedelta(seconds=5)
+        msg = {
+            "headSign": "33rd Street",
+            "arrivalTimeMessage": "3 min",
+            "lastUpdated": recent_time.isoformat(),
+            "lineColor": "4D92FB",
+        }
+
+        arrival = client._parse_arrival_message("PHO", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = recent_time + timedelta(minutes=3)
+        delta = abs((arrival.arrival_time - expected).total_seconds())
+        assert delta < 1, (
+            f"With fresh lastUpdated, arrival_time should use it. "
+            f"Expected ~{expected}, got {arrival.arrival_time}"
+        )
+
     @pytest.mark.asyncio
     async def test_close(self, client):
         """Test closing the client."""

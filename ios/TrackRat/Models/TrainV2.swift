@@ -66,7 +66,7 @@ struct TrainV2: Identifiable, Codable {
     // MARK: - Computed Properties for UI Compatibility
     
     var departureTime: Date {
-        departure.scheduledTime ?? Date()
+        departure.updatedTime ?? departure.scheduledTime ?? Date()
     }
     
     var track: String? {
@@ -187,14 +187,17 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Get departure time from a specific station
+    // Get departure time from a specific station (best available: updated > scheduled)
     func getDepartureTime(fromStationCode: String) -> Date? {
         if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departureTime
         }
 
-        // Find departure from stops if available
-        return stops?.first { Stations.areEquivalentStations($0.stationCode, fromStationCode) }?.scheduledDeparture
+        // Find departure from stops if available, prefer real-time updated time
+        if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
+            return stop.updatedDeparture ?? stop.scheduledDeparture
+        }
+        return nil
     }
     
     // Get scheduled departure time from a specific station

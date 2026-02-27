@@ -202,12 +202,23 @@ class RidePathClient:
             # Parse last_updated timestamp
             last_updated = self._parse_timestamp(msg.get("lastUpdated"))
 
+            # Use lastUpdated as the baseline for computing arrival_time.
+            # The API's "X min" countdown is relative to when the prediction
+            # was generated (lastUpdated), not when we fetch it. Using `now`
+            # inflates arrival times by the lag between lastUpdated and now.
+            # Fall back to `now` if lastUpdated is missing or stale (>5 min).
+            baseline = now
+            if last_updated is not None:
+                staleness = (now - last_updated).total_seconds()
+                if 0 <= staleness <= 300:
+                    baseline = last_updated
+
             return PathArrival(
                 station_code=station_code,
                 headsign=msg.get("headSign", "Unknown"),
                 direction=direction,
                 minutes_away=minutes,
-                arrival_time=now + timedelta(minutes=minutes),
+                arrival_time=baseline + timedelta(minutes=minutes),
                 line_color=msg.get("lineColor", ""),
                 last_updated=last_updated,
             )
