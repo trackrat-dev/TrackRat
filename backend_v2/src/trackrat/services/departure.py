@@ -196,21 +196,24 @@ class DepartureService:
         # Ensure fresh data for NJT trains BEFORE querying, so the query returns
         # up-to-date departure times. This prevents stale data from causing
         # incorrect delay calculations in the response.
+        # Skip when NJT is not in the requested data sources — the NJT JIT
+        # refresh makes an external API call that's irrelevant for other providers.
         jit_start = time.perf_counter()
-        try:
-            await self._ensure_fresh_station_data(
-                db, from_station, target_date, skip_individual_refresh, hide_departed
-            )
-        except Exception as e:
-            logger.warning(
-                "jit_refresh_failed_serving_stale",
-                station_code=from_station,
-                error=str(e),
-            )
+        if "NJT" in allowed_sources:
             try:
-                await db.rollback()
-            except Exception:
-                pass
+                await self._ensure_fresh_station_data(
+                    db, from_station, target_date, skip_individual_refresh, hide_departed
+                )
+            except Exception as e:
+                logger.warning(
+                    "jit_refresh_failed_serving_stale",
+                    station_code=from_station,
+                    error=str(e),
+                )
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
         query_start = time.perf_counter()
@@ -363,6 +366,7 @@ class DepartureService:
                     to_station=to_station,
                     target_date=target_date,
                     limit=200,  # Fetch more, we'll filter after merge
+                    data_sources=allowed_sources,
                 )
 
                 # Filter GTFS departures:

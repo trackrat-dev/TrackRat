@@ -1185,6 +1185,7 @@ class GTFSService:
         to_station: str | None,
         target_date: date,
         limit: int = 50,
+        data_sources: list[str] | None = None,
     ) -> DeparturesResponse:
         """Get scheduled departures from GTFS data for a future date.
 
@@ -1194,35 +1195,31 @@ class GTFSService:
             to_station: Destination station code (optional)
             target_date: The date to get schedules for
             limit: Maximum number of results
+            data_sources: If provided, only query these data sources
 
         Returns:
             DeparturesResponse with scheduled trains
         """
         departures: list[TrainDeparture] = []
 
-        # Get active service IDs for all sources
-        njt_services = await self.get_active_service_ids(db, "NJT", target_date)
-        amtrak_services = await self.get_active_service_ids(db, "AMTRAK", target_date)
-        path_services = await self.get_active_service_ids(db, "PATH", target_date)
-        patco_services = await self.get_active_service_ids(db, "PATCO", target_date)
-        lirr_services = await self.get_active_service_ids(db, "LIRR", target_date)
-        mnr_services = await self.get_active_service_ids(db, "MNR", target_date)
-        subway_services = await self.get_active_service_ids(db, "SUBWAY", target_date)
+        # All known GTFS data sources
+        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
 
-        all_services = {
-            "NJT": njt_services,
-            "AMTRAK": amtrak_services,
-            "PATH": path_services,
-            "PATCO": patco_services,
-            "LIRR": lirr_services,
-            "MNR": mnr_services,
-            "SUBWAY": subway_services,
-        }
+        # Filter to requested sources if specified
+        sources_to_query = (
+            [s for s in all_source_names if s in data_sources]
+            if data_sources
+            else all_source_names
+        )
+
+        # Get active service IDs only for requested sources
+        all_services: dict[str, list[str]] = {}
+        for source in sources_to_query:
+            service_ids = await self.get_active_service_ids(db, source, target_date)
+            if service_ids:
+                all_services[source] = service_ids
 
         for data_source, service_ids in all_services.items():
-            if not service_ids:
-                continue
-
             source_departures = await self._query_departures_for_source(
                 db, data_source, service_ids, from_station, to_station, target_date
             )

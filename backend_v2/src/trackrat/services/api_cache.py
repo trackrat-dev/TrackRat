@@ -191,7 +191,8 @@ class ApiCacheService:
                 logger.error(
                     "precompute_congestion_error",
                     params=params,
-                    error=str(e),
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
                     exc_info=True,
                 )
                 # Rollback to clear aborted transaction state so subsequent
@@ -391,7 +392,8 @@ class ApiCacheService:
                 logger.error(
                     "precompute_departure_error",
                     params=params,
-                    error=str(e),
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
                     exc_info=True,
                 )
                 # Rollback to clear aborted transaction state so subsequent
