@@ -24,7 +24,7 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
-    infer_missing_origin,
+    infer_subway_origin,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -50,24 +50,15 @@ logger = logging.getLogger(__name__)
 _REPLACEMENT_WINDOW = timedelta(minutes=30)
 
 
-def _generate_train_id(trip_id: str, nyct_train_id: str | None, route_id: str) -> str:
+def _generate_train_id(trip_id: str, route_id: str) -> str:
     """
     Generate a stable train ID for subway trains.
 
-    Prefers the NYCT train_id from the protobuf extension (e.g., "01 0123+ PEL/BBR").
-    Falls back to a hash of the trip_id if extension is unavailable.
-
-    The NYCT train_id format includes a 2-digit origin time code followed by a 4-digit
-    train number. We use all digits to avoid collisions between trains that share the
-    same 4-digit number but differ in origin time. Produces IDs like "S6-010123".
+    Uses a hash of the trip_id to produce consistent IDs like "S7-a1b2c3".
+    The trip_id is stable across the is_assigned transition (when MTA assigns
+    a physical train to the trip), unlike nyct_train_id which only appears
+    after assignment — causing ID changes and duplicate journeys.
     """
-    if nyct_train_id:
-        # Extract all digits from NYCT train_id (e.g., "01 0123+ PEL/BBR" -> "010123")
-        digits = "".join(c for c in nyct_train_id if c.isdigit())
-        if digits:
-            return f"S{route_id}-{digits}"
-
-    # Fallback: hash trip_id to 6-char hex
     h = hashlib.md5(trip_id.encode(), usedforsecurity=False).hexdigest()[:6]
     return f"S{route_id}-{h}"
 
@@ -234,7 +225,7 @@ class SubwayCollector:
         terminal_code = last_arrival.station_code
 
         # Generate train ID using NYCT extension
-        train_id = _generate_train_id(trip_id, first_arrival.nyct_train_id, route_id)
+        train_id = _generate_train_id(trip_id, route_id)
 
         # Determine journey date in Eastern time
         arrival_et = first_arrival.arrival_time.astimezone(ET)
@@ -270,8 +261,8 @@ class SubwayCollector:
 
             inferred_origin: str | None = None
             if not merged_stops:
-                inferred_origin = infer_missing_origin(
-                    first_arrival.station_code, first_arrival.direction_id, "SUBWAY"
+                inferred_origin = infer_subway_origin(
+                    line_code, first_arrival.direction_id, first_arrival.station_code
                 )
                 if inferred_origin:
                     origin_code = inferred_origin

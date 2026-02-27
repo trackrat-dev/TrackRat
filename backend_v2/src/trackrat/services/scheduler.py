@@ -2464,13 +2464,6 @@ class SchedulerService:
                         )
 
                 logger.info("congestion_cache_precomputation_completed")
-
-            except Exception as e:
-                logger.error(
-                    "congestion_cache_precomputation_failed",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
             finally:
                 # Remove from running tasks
                 self._running_tasks.pop(task_id, None)
@@ -2515,13 +2508,6 @@ class SchedulerService:
                 await asyncio.create_task(_inner())
 
                 logger.info("departure_cache_precomputation_completed")
-
-            except Exception as e:
-                logger.error(
-                    "departure_cache_precomputation_failed",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
             finally:
                 self._running_tasks.pop(task_id, None)
 

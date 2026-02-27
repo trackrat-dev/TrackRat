@@ -30,51 +30,41 @@ from trackrat.models.database import JourneyStop, TrainJourney
 class TestGenerateTrainId:
     """Tests for the subway train ID generation function.
 
-    _generate_train_id accepts (trip_id, nyct_train_id, route_id).
-    Prefers NYCT train_id digits, falls back to MD5 hash of trip_id.
+    _generate_train_id accepts (trip_id, route_id) and produces a stable
+    hash-based ID from the trip_id to avoid ID changes during is_assigned transition.
     """
 
-    def test_nyct_train_id_extracts_all_digits(self):
-        """NYCT train_id '01 0123+ PEL/BBR' -> all digits '010123' -> 'S6-010123'."""
-        result = _generate_train_id("some_trip", "01 0123+ PEL/BBR", "6")
-        assert result == "S6-010123"
-
-    def test_nyct_train_id_with_different_route(self):
-        """Route is included in the prefix: 'SA-...'."""
-        result = _generate_train_id("some_trip", "05 0456 FAR", "A")
-        assert result == "SA-050456"
-
-    def test_nyct_train_id_no_digits_falls_back_to_hash(self):
-        """NYCT train_id with no digits falls back to hash."""
-        result = _generate_train_id("trip_abc", "NO DIGITS HERE", "1")
+    def test_produces_hash_based_id(self):
+        """Trip ID is hashed to 6-char hex with route prefix."""
+        result = _generate_train_id("131800_1..S03R", "1")
         assert result.startswith("S1-")
-        assert len(result) == len("S1-") + 6  # 6-char hex hash
+        assert len(result) == len("S1-") + 6
 
-    def test_no_nyct_train_id_uses_hash(self):
-        """None nyct_train_id falls back to MD5 hash."""
-        result = _generate_train_id("trip_123", None, "A")
+    def test_route_included_in_prefix(self):
+        """Route is included in the prefix: 'SA-...'."""
+        result = _generate_train_id("trip_abc", "A")
         assert result.startswith("SA-")
         assert len(result) == len("SA-") + 6
 
     def test_hash_is_deterministic(self):
-        """Same trip_id always produces same hash fallback."""
-        r1 = _generate_train_id("trip_xyz", None, "6")
-        r2 = _generate_train_id("trip_xyz", None, "6")
+        """Same trip_id always produces same ID."""
+        r1 = _generate_train_id("trip_xyz", "6")
+        r2 = _generate_train_id("trip_xyz", "6")
         assert r1 == r2
 
-    def test_different_trip_ids_produce_different_hashes(self):
-        """Different trip_ids produce different hash fallbacks."""
-        r1 = _generate_train_id("trip_aaa", None, "6")
-        r2 = _generate_train_id("trip_bbb", None, "6")
+    def test_different_trip_ids_produce_different_ids(self):
+        """Different trip_ids produce different IDs."""
+        r1 = _generate_train_id("trip_aaa", "6")
+        r2 = _generate_train_id("trip_bbb", "6")
         assert r1 != r2
 
-    def test_different_nyct_ids_produce_different_train_ids(self):
-        """Different NYCT train_ids produce different train IDs."""
-        r1 = _generate_train_id("trip", "01 0100+ SFR", "1")
-        r2 = _generate_train_id("trip", "02 0200+ BBR", "1")
+    def test_same_trip_different_routes_produce_different_ids(self):
+        """Same trip_id with different routes produces different prefixes."""
+        r1 = _generate_train_id("trip_abc", "1")
+        r2 = _generate_train_id("trip_abc", "A")
         assert r1 != r2
-        assert r1 == "S1-010100"
-        assert r2 == "S1-020200"
+        assert r1.startswith("S1-")
+        assert r2.startswith("SA-")
 
 
 # =============================================================================
@@ -364,7 +354,8 @@ class TestSubwayCollectorProcessTrip:
         """Test _process_trip updates existing journey and returns ('updated', id)."""
         existing_journey = MagicMock(spec=TrainJourney)
         existing_journey.id = 42
-        existing_journey.train_id = "S1-010100"
+        # Use a hash-based train_id matching the trip_id "131800_1..S03R"
+        existing_journey.train_id = _generate_train_id("131800_1..S03R", "1")
         existing_journey.data_source = "SUBWAY"
         existing_journey.stops = []
 
@@ -522,7 +513,7 @@ class TestSubwayCollectorJourneyDetails:
 
         journey = MagicMock(spec=TrainJourney)
         journey.id = 1
-        journey.train_id = "S1-010100"
+        journey.train_id = "S1-abc123"
         journey.data_source = "SUBWAY"
         journey.line_code = "1"
         journey.scheduled_departure = now
@@ -859,6 +850,25 @@ class TestSubwayFeedResilience:
             assert (
                 route in _ROUTE_TO_FEED
             ), f"Route {route} missing from _ROUTE_TO_FEED mapping"
+
+    def test_shuttle_routes_in_ace_feed(self):
+        """FS (Franklin Ave Shuttle) and H (Rockaway Park Shuttle) are in the ACE feed.
+
+        Both shuttles operate on IND infrastructure shared with the A/C/E lines.
+        They must map to the ACE feed for correct JIT updates.
+        """
+        assert _ROUTE_TO_FEED["FS"] == "ACE", (
+            f"FS should map to ACE feed, got {_ROUTE_TO_FEED['FS']}"
+        )
+        assert _ROUTE_TO_FEED["H"] == "ACE", (
+            f"H should map to ACE feed, got {_ROUTE_TO_FEED['H']}"
+        )
+
+    def test_gs_shuttle_in_numbered_feed(self):
+        """GS (42 St Shuttle) remains in the 1234567S feed."""
+        assert _ROUTE_TO_FEED["GS"] == "1234567S", (
+            f"GS should map to 1234567S feed, got {_ROUTE_TO_FEED['GS']}"
+        )
 
 
 # =============================================================================

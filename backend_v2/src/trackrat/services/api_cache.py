@@ -194,6 +194,9 @@ class ApiCacheService:
                     error=str(e),
                     exc_info=True,
                 )
+                # Rollback to clear aborted transaction state so subsequent
+                # iterations don't fail with InFailedSqlTransaction
+                await db.rollback()
 
     async def _compute_congestion_response(
         self, db: AsyncSession, params: dict[str, Any]
@@ -332,7 +335,7 @@ class ApiCacheService:
         hide_departed=false (web/default) variants.
         """
 
-        # Base popular routes
+        # Base popular routes (with destination)
         base_routes = [
             {"from_station": "NY", "to_station": "TR"},
             {"from_station": "NY", "to_station": "NP"},
@@ -342,18 +345,26 @@ class ApiCacheService:
             {"from_station": "PJ", "to_station": "NY"},
             {"from_station": "NY", "to_station": "LB"},
             {"from_station": "LB", "to_station": "NY"},
+            # High-volume origin-only queries (no destination filter)
+            {"from_station": "NY", "to_station": None},
+            {"from_station": "GCT", "to_station": None},
+            {"from_station": "JAM", "to_station": None},
+            {"from_station": "PHO", "to_station": None},
+            {"from_station": "PNK", "to_station": None},
+            {"from_station": "PWC", "to_station": None},
         ]
 
         # Generate both hide_departed variants for each route
+        # Include data_sources key to match the cache lookup in trains.py
         popular_routes: list[dict[str, Any]] = []
         for route in base_routes:
             # hide_departed=false (web/default)
             popular_routes.append(
-                {**route, "date": None, "limit": 50, "hide_departed": False}
+                {**route, "date": None, "limit": 50, "hide_departed": False, "data_sources": None}
             )
             # hide_departed=true (iOS)
             popular_routes.append(
-                {**route, "date": None, "limit": 50, "hide_departed": True}
+                {**route, "date": None, "limit": 50, "hide_departed": True, "data_sources": None}
             )
 
         logger.info("precomputing_departure_responses", route_count=len(popular_routes))
@@ -383,6 +394,9 @@ class ApiCacheService:
                     error=str(e),
                     exc_info=True,
                 )
+                # Rollback to clear aborted transaction state so subsequent
+                # iterations don't fail with InFailedSqlTransaction
+                await db.rollback()
 
     async def _compute_departure_response(
         self, db: AsyncSession, params: dict[str, Any]

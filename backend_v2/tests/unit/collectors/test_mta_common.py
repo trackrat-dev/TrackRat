@@ -13,6 +13,7 @@ from trackrat.collectors.mta_common import (
     check_journey_completed,
     infer_direction_from_terminals,
     infer_missing_origin,
+    infer_subway_origin,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -734,6 +735,58 @@ class TestInferMissingOrigin:
     def test_origin_travel_buffer_is_ten_minutes(self):
         """Verify the travel buffer constant is 10 minutes."""
         assert ORIGIN_TRAVEL_BUFFER == timedelta(minutes=10)
+
+
+class TestInferSubwayOrigin:
+    """Tests for infer_subway_origin().
+
+    Uses route topology to determine the terminal station for a given subway
+    line and direction. Unlike LIRR/MNR, subway routes have two terminals
+    (one per direction), and trains in either direction can have their origin dropped.
+    """
+
+    def test_direction_0_returns_first_station(self):
+        """Direction 0 (north/east): origin is the first station in topology.
+
+        7 line topology starts at S726 (34 St-Hudson Yards).
+        A direction 0 train starts there and heads to Flushing.
+        """
+        result = infer_subway_origin("7", direction_id=0, first_arrival_station="S725")
+        assert result == "S726", f"Expected S726 (34 St-Hudson Yards), got {result}"
+
+    def test_direction_1_returns_last_station(self):
+        """Direction 1 (south/west): origin is the last station in topology.
+
+        7 line topology ends at S701 (Flushing-Main St).
+        A direction 1 train starts there and heads to Manhattan.
+        """
+        result = infer_subway_origin("7", direction_id=1, first_arrival_station="S702")
+        assert result == "S701", f"Expected S701 (Flushing-Main St), got {result}"
+
+    def test_first_stop_is_origin_returns_none(self):
+        """No inference needed when first visible stop IS the origin terminal."""
+        result = infer_subway_origin("7", direction_id=0, first_arrival_station="S726")
+        assert result is None, "Should return None when first stop is already the origin"
+
+    def test_first_stop_is_origin_direction_1_returns_none(self):
+        """No inference needed for direction 1 when first stop is the last-topology terminal."""
+        result = infer_subway_origin("7", direction_id=1, first_arrival_station="S701")
+        assert result is None, "Should return None when first stop is already the origin"
+
+    def test_unknown_line_code_returns_none(self):
+        """Unknown line code should return None (no route in topology)."""
+        result = infer_subway_origin("ZZ", direction_id=0, first_arrival_station="S127")
+        assert result is None, "Should return None for unknown line code"
+
+    def test_works_for_multiple_lines(self):
+        """Verify origin inference works across different subway lines."""
+        # 1 line: direction 0 → first station is origin
+        result_1 = infer_subway_origin("1", direction_id=0, first_arrival_station="S103")
+        assert result_1 is not None, "1 line should have an inferred origin"
+
+        # A line: direction 1 → last station is origin
+        result_a = infer_subway_origin("A", direction_id=1, first_arrival_station="SA24")
+        assert result_a is not None, "A line should have an inferred origin"
 
 
 class TestInferDirectionFromTerminals:
