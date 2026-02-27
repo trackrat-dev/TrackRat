@@ -35,16 +35,16 @@ class TestGenerateTrainId:
     """
 
     def test_produces_hash_based_id(self):
-        """Trip ID is hashed to 6-char hex with route prefix."""
+        """Trip ID is hashed to 8-char hex with route prefix."""
         result = _generate_train_id("131800_1..S03R", "1")
         assert result.startswith("S1-")
-        assert len(result) == len("S1-") + 6
+        assert len(result) == len("S1-") + 8
 
     def test_route_included_in_prefix(self):
         """Route is included in the prefix: 'SA-...'."""
         result = _generate_train_id("trip_abc", "A")
         assert result.startswith("SA-")
-        assert len(result) == len("SA-") + 6
+        assert len(result) == len("SA-") + 8
 
     def test_hash_is_deterministic(self):
         """Same trip_id always produces same ID."""

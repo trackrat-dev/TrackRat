@@ -59,7 +59,7 @@ def _generate_train_id(trip_id: str, route_id: str) -> str:
     a physical train to the trip), unlike nyct_train_id which only appears
     after assignment — causing ID changes and duplicate journeys.
     """
-    h = hashlib.md5(trip_id.encode(), usedforsecurity=False).hexdigest()[:6]
+    h = hashlib.md5(trip_id.encode(), usedforsecurity=False).hexdigest()[:8]
     return f"S{route_id}-{h}"
 
 
@@ -224,7 +224,7 @@ class SubwayCollector:
         origin_code = first_arrival.station_code
         terminal_code = last_arrival.station_code
 
-        # Generate train ID using NYCT extension
+        # Generate stable train ID from trip_id
         train_id = _generate_train_id(trip_id, route_id)
 
         # Determine journey date in Eastern time
@@ -262,7 +262,7 @@ class SubwayCollector:
             inferred_origin: str | None = None
             if not merged_stops:
                 inferred_origin = infer_subway_origin(
-                    line_code, first_arrival.direction_id, first_arrival.station_code
+                    line_code, terminal_code, first_arrival.station_code
                 )
                 if inferred_origin:
                     origin_code = inferred_origin
