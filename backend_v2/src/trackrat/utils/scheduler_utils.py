@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from structlog import get_logger
@@ -87,8 +88,19 @@ async def run_with_freshness_check(
     instance_id = os.getenv("K_REVISION", "local")  # Cloud Run revision ID
 
     try:
-        # Try to get the task record with a lock to prevent race conditions
-        # skip_locked=True means if another replica is checking, we'll get None
+        # Ensure the task record exists atomically (idempotent upsert).
+        # This prevents UniqueViolationError when multiple replicas
+        # first-run the same task concurrently — INSERT ... ON CONFLICT
+        # DO NOTHING is atomic, unlike SELECT-then-INSERT.
+        insert_stmt = pg_insert(SchedulerTaskRun).values(
+            task_name=task_name,
+            last_successful_run=datetime.min.replace(tzinfo=UTC),
+            run_count=0,
+        ).on_conflict_do_nothing(index_elements=["task_name"])
+        await db.execute(insert_stmt)
+        await db.flush()
+
+        # Now lock the existing row (guaranteed to exist after upsert)
         stmt = (
             select(SchedulerTaskRun)
             .where(SchedulerTaskRun.task_name == task_name)
@@ -99,7 +111,7 @@ async def run_with_freshness_check(
         task_run = result.scalar_one_or_none()
 
         # If another replica has the lock, skip this execution
-        if task_run is None and await _task_exists(db, task_name):
+        if task_run is None:
             logger.info(
                 "task_locked_by_another_replica",
                 task=task_name,
@@ -107,20 +119,6 @@ async def run_with_freshness_check(
             )
             await db.rollback()
             return False
-
-        # First time this task has ever run
-        if task_run is None:
-            task_run = SchedulerTaskRun(
-                task_name=task_name,
-                last_successful_run=datetime.min.replace(tzinfo=UTC),
-                run_count=0,
-            )
-            db.add(task_run)
-            logger.info(
-                "task_first_run",
-                task=task_name,
-                instance=instance_id,
-            )
 
         # Check if enough time has passed since last successful run
         last_run_time = task_run.last_successful_run
@@ -232,15 +230,6 @@ async def run_with_freshness_check(
         )
         # If we can't check freshness, don't run the task (fail safe)
         return False
-
-
-async def _task_exists(db: AsyncSession, task_name: str) -> bool:
-    """Check if a task record exists without locking."""
-    stmt = select(SchedulerTaskRun.task_name).where(
-        SchedulerTaskRun.task_name == task_name
-    )
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none() is not None
 
 
 def calculate_safe_interval(scheduled_minutes: int) -> int:

@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.utils.scheduler_utils import (
     calculate_safe_interval,
     run_with_freshness_check,
-    _task_exists,
 )
 from trackrat.models.database import SchedulerTaskRun
 
@@ -28,6 +27,7 @@ class TestRunWithFreshnessCheckSimplified:
         # The execute() method returns an awaitable Result object
         # which has scalar_one_or_none() method
         mock.execute = AsyncMock()
+        mock.flush = AsyncMock()
         mock.commit = AsyncMock()
         mock.rollback = AsyncMock()
         mock.add = Mock()
@@ -63,10 +63,11 @@ class TestRunWithFreshnessCheckSimplified:
         mock_task_run.last_successful_run = recent_time
         mock_task_run.run_count = 5
 
-        # Fix: The execute() method is async and returns a Result object
-        mock_result = Mock()  # Not AsyncMock, as scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = mock_task_run
-        mock_db.execute.return_value = mock_result
+        # execute() is called twice: upsert (result unused), then SELECT FOR UPDATE
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
 
         with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
             from datetime import timezone
@@ -107,10 +108,11 @@ class TestRunWithFreshnessCheckSimplified:
         mock_task_run.run_count = 3
         mock_task_run.average_duration_ms = 5000
 
-        # Fix: The execute() method is async and returns a Result object
-        mock_result = Mock()  # Not AsyncMock, as scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = mock_task_run
-        mock_db.execute.return_value = mock_result
+        # execute() is called twice: upsert (result unused), then SELECT FOR UPDATE
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
 
         with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
             from datetime import timezone
@@ -152,20 +154,19 @@ class TestRunWithFreshnessCheckSimplified:
     @pytest.mark.asyncio
     async def test_locked_by_another_replica_skips(self, mock_db, mock_task_func):
         """Test that task is skipped when another replica has the lock."""
-        # Mock that SELECT FOR UPDATE returns None (locked by another instance)
-        mock_result = Mock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_db.execute.return_value = mock_result
+        # Upsert succeeds (row already exists, ON CONFLICT DO NOTHING),
+        # but SELECT FOR UPDATE SKIP LOCKED returns None (locked by another replica)
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = None
+        mock_db.execute.side_effect = [upsert_result, select_result]
 
-        with patch("trackrat.utils.scheduler_utils._task_exists") as mock_exists:
-            mock_exists.return_value = True  # Task exists but is locked
-
-            result = await run_with_freshness_check(
-                db=mock_db,
-                task_name="test_task",
-                minimum_interval_seconds=1800,
-                task_func=mock_task_func,
-            )
+        result = await run_with_freshness_check(
+            db=mock_db,
+            task_name="test_task",
+            minimum_interval_seconds=1800,
+            task_func=mock_task_func,
+        )
 
         # Verify task was NOT executed
         assert result is False
@@ -188,10 +189,11 @@ class TestRunWithFreshnessCheckSimplified:
         mock_task_run.run_count = 1
         mock_task_run.average_duration_ms = 4000  # Real number needed for arithmetic
 
-        # Fix: The execute() method is async and returns a Result object
-        mock_result = Mock()  # Not AsyncMock, as scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = mock_task_run
-        mock_db.execute.return_value = mock_result
+        # execute() is called twice: upsert (result unused), then SELECT FOR UPDATE
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
 
         # Make task function fail
         mock_task_func.side_effect = RuntimeError("Task failed!")
@@ -261,10 +263,11 @@ class TestRunWithFreshnessCheckSimplified:
         mock_task_run.run_count = 1
         mock_task_run.average_duration_ms = 3000  # Real number needed for arithmetic
 
-        # Fix: The execute() method is async and returns a Result object
-        mock_result = Mock()  # Not AsyncMock, as scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = mock_task_run
-        mock_db.execute.return_value = mock_result
+        # execute() is called twice: upsert (result unused), then SELECT FOR UPDATE
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
 
         with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
             # Current time with timezone
@@ -298,10 +301,11 @@ class TestRunWithFreshnessCheckSimplified:
         mock_task_run.run_count = 0
         mock_task_run.average_duration_ms = 2000  # Real number needed for arithmetic
 
-        # Fix: The execute() method is async and returns a Result object
-        mock_result = Mock()  # Not AsyncMock, as scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = mock_task_run
-        mock_db.execute.return_value = mock_result
+        # execute() is called twice: upsert (result unused), then SELECT FOR UPDATE
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
 
         with patch("trackrat.utils.scheduler_utils.os.getenv") as mock_getenv:
             mock_getenv.return_value = "test-revision-123"
@@ -325,34 +329,6 @@ class TestRunWithFreshnessCheckSimplified:
         # Verify instance ID was set
         assert result is True
         assert mock_task_run.last_instance_id == "test-revision-123"
-
-
-class TestTaskExists:
-    """Test cases for _task_exists helper function."""
-
-    @pytest.mark.asyncio
-    async def test_task_exists_returns_true(self):
-        """Test that _task_exists returns True when task record exists."""
-        mock_db = AsyncMock(spec=AsyncSession)
-        mock_result = Mock()  # Not AsyncMock since scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = "test_task"
-        mock_db.execute.return_value = mock_result
-
-        result = await _task_exists(mock_db, "test_task")
-
-        assert result is True
-
-    @pytest.mark.asyncio
-    async def test_task_exists_returns_false(self):
-        """Test that _task_exists returns False when task record doesn't exist."""
-        mock_db = AsyncMock(spec=AsyncSession)
-        mock_result = Mock()  # Not AsyncMock since scalar_one_or_none() is sync
-        mock_result.scalar_one_or_none.return_value = None
-        mock_db.execute.return_value = mock_result
-
-        result = await _task_exists(mock_db, "nonexistent_task")
-
-        assert result is False
 
 
 class TestCalculateSafeInterval:
