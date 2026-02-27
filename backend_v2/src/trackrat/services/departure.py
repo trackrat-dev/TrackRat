@@ -107,6 +107,7 @@ class DepartureService:
                 to_station=to_station,
                 target_date=target_date,
                 limit=limit,
+                data_sources=data_sources,
             )
             if data_sources:
                 response.departures = [
