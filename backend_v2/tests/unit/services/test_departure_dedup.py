@@ -483,15 +483,11 @@ class TestMergeDepartures:
 
         # DB train with legacy "No" code (from schedule collector)
         realtime = [
-            self._create_departure(
-                train_id="3719", line_code="No", scheduled_time=time
-            )
+            self._create_departure(train_id="3719", line_code="No", scheduled_time=time)
         ]
         # GTFS train with correct "NE" code
         gtfs = [
-            self._create_departure(
-                train_id="3243", line_code="NE", scheduled_time=time
-            )
+            self._create_departure(train_id="3243", line_code="NE", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)

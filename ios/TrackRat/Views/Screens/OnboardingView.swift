@@ -700,7 +700,7 @@ struct StationPickerSheet: View {
             return Station(code: code, name: name)
         }
 
-        if let systems = selectedSystems {
+        if let systems = selectedSystems, !systems.isEmpty {
             allStations = allStations.filter { station in
                 Stations.isStationVisible(station.code, withSystems: systems, amtrakMode: amtrakMode)
             }

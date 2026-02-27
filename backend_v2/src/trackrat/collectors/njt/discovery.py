@@ -14,6 +14,7 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.stations import DISCOVERY_STATIONS
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
@@ -436,7 +437,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                 # from "Northeast Corridor" instead of "NE")
                                 rt_line = train_data.get("LINE", "").strip()
                                 if rt_line:
-                                    existing.line_code = rt_line[:2]
+                                    existing.line_code = parse_njt_line_code(rt_line)
                                     existing.line_name = (
                                         train_data.get("LINE_NAME", "")
                                         or existing.line_name
@@ -483,7 +484,9 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     # Fix line_code from real-time API
                                     rt_line = train_data.get("LINE", "").strip()
                                     if rt_line:
-                                        scheduled_match.line_code = rt_line[:2]
+                                        scheduled_match.line_code = parse_njt_line_code(
+                                            rt_line
+                                        )
                                         scheduled_match.line_name = (
                                             train_data.get("LINE_NAME", "")
                                             or scheduled_match.line_name
@@ -524,7 +527,9 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         journey = TrainJourney(
                             train_id=train_id,
                             journey_date=journey_date,
-                            line_code=train_data.get("LINE", "").strip()[:2],
+                            line_code=parse_njt_line_code(
+                                train_data.get("LINE", "").strip()
+                            ),
                             line_name=train_data.get("LINE_NAME", ""),
                             destination=train_data.get("DESTINATION", "").strip(),
                             origin_station_code=station_code,

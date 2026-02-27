@@ -119,6 +119,75 @@ class TestSchedulerService:
                 assert call_obj.kwargs["max_instances"] == 1
 
     @pytest.mark.asyncio
+    async def test_stagger_and_jitter_configuration(self, scheduler_service):
+        """Verify that interval jobs are staggered to prevent thundering herd.
+
+        The 4-minute collectors (PATH/LIRR/MNR/Subway) must be staggered apart
+        so they don't all fire simultaneously and spike CPU/network. This test
+        catches regressions to the stagger offsets and jitter values.
+        """
+        with patch("trackrat.services.scheduler.NJTransitClient") as MockNJTClient:
+            MockNJTClient.return_value = AsyncMock()
+
+            # Let real add_job execute so we can inspect triggers;
+            # only mock start() so the scheduler doesn't fire
+            with patch.object(scheduler_service.scheduler, "start"):
+                with patch("asyncio.create_task"):
+                    await scheduler_service.start()
+
+        jobs = {job.id: job for job in scheduler_service.scheduler.get_jobs()}
+
+        # --- 4-minute collector stagger group ---
+        # PATH has no start_date offset (fires at T+0)
+        # LIRR, MNR, Subway are staggered 1, 2, 3 minutes from PATH
+        four_min_jobs = [
+            "path_collection",
+            "lirr_collection",
+            "mnr_collection",
+            "subway_collection",
+        ]
+        for job_id in four_min_jobs:
+            trigger = jobs[job_id].trigger
+            assert trigger.interval == timedelta(
+                minutes=4
+            ), f"{job_id}: expected 4-min interval, got {trigger.interval}"
+            assert (
+                trigger.jitter == 30
+            ), f"{job_id}: expected jitter=30, got {trigger.jitter}"
+
+        # Verify stagger offsets between explicitly staggered collectors.
+        # PATH has no explicit start_date (APScheduler auto-assigns), so we
+        # verify the 1-minute spacing between LIRR, MNR, and Subway which
+        # all use now + offset.
+        lirr_start = jobs["lirr_collection"].trigger.start_date
+        mnr_start = jobs["mnr_collection"].trigger.start_date
+        subway_start = jobs["subway_collection"].trigger.start_date
+
+        assert (mnr_start - lirr_start).total_seconds() == pytest.approx(60, abs=1)
+        assert (subway_start - mnr_start).total_seconds() == pytest.approx(60, abs=1)
+
+        # --- Discovery stagger group ---
+        njt_disc = jobs["njt_train_discovery"].trigger
+        amtrak_disc = jobs["amtrak_train_discovery"].trigger
+        assert njt_disc.interval == timedelta(minutes=30)
+        assert amtrak_disc.interval == timedelta(minutes=30)
+        assert njt_disc.jitter == 60
+        assert amtrak_disc.jitter == 60
+
+        # Amtrak has explicit start_date of now+5min; verify the offset
+        # is 5 minutes relative to LIRR's now+1min (i.e., 4 min apart)
+        # to confirm both use the same `now` reference
+        amtrak_start = amtrak_disc.start_date
+        assert (amtrak_start - lirr_start).total_seconds() == pytest.approx(240, abs=1)
+
+        # --- Verify all interval jobs have jitter > 0 ---
+        for job_id, job in jobs.items():
+            if isinstance(job.trigger, IntervalTrigger):
+                assert (
+                    job.trigger.jitter is not None and job.trigger.jitter > 0
+                ), f"{job_id}: interval job missing jitter"
+
+    @pytest.mark.asyncio
     async def test_scheduler_stop_cancels_running_tasks(self, scheduler_service):
         """Test that stopping the scheduler cancels all running tasks."""
         # Create mock running tasks

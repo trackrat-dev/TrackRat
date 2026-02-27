@@ -38,7 +38,7 @@ _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
 ]
 
 
-def _parse_njt_line_code(line: str) -> str:
+def parse_njt_line_code(line: str) -> str:
     """Extract canonical 2-char NJT line code from the LINE field.
 
     The NJT schedule API returns full line names (e.g., "Northeast Corridor")
@@ -295,7 +295,7 @@ class NJTScheduleCollector:
             # Update the scheduled journey with latest schedule data
             existing_journey.scheduled_departure = scheduled_departure
             existing_journey.destination = destination
-            existing_journey.line_code = _parse_njt_line_code(line)
+            existing_journey.line_code = parse_njt_line_code(line)
             existing_journey.line_name = line
             existing_journey.last_updated_at = now_et()
 
@@ -310,7 +310,7 @@ class NJTScheduleCollector:
         new_journey = TrainJourney(
             train_id=train_id,
             journey_date=journey_date,
-            line_code=_parse_njt_line_code(line),
+            line_code=parse_njt_line_code(line),
             line_name=line,
             destination=destination,
             origin_station_code=station_code,
