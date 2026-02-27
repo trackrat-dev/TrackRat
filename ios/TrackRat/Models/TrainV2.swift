@@ -315,9 +315,9 @@ struct TrainV2: Identifiable, Codable {
             return actualDeparture < now
         }
         
-        // Fallback: Use scheduled time with buffer for delays
+        // Fallback: Use best available departure time with buffer
         if let scheduledDeparture = getDepartureTime(fromStationCode: fromStationCode) {
-            // Allow 1 minute past scheduled time for delays/late boarding
+            // Allow 1 minute past departure time for late boarding
             let departureWithBuffer = scheduledDeparture.addingTimeInterval(1 * 60)
             return departureWithBuffer < now
         }

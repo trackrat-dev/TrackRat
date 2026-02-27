@@ -13,15 +13,11 @@ interface TrainCardProps {
 }
 
 export function TrainCard({ train, onClick, from, to, departed = false }: TrainCardProps) {
-  const delayMinutes = getDelayMinutes(
-    train.departure.scheduled_time,
-    train.departure.actual_time || undefined
-  );
+  const bestDepartureTime = train.departure.actual_time || train.departure.updated_time || undefined;
+  const delayMinutes = getDelayMinutes(train.departure.scheduled_time, bestDepartureTime);
 
-  const arrivalDelayMinutes = getDelayMinutes(
-    train.arrival.scheduled_time,
-    train.arrival.actual_time || undefined
-  );
+  const bestArrivalTime = train.arrival.actual_time || train.arrival.updated_time || undefined;
+  const arrivalDelayMinutes = getDelayMinutes(train.arrival.scheduled_time, bestArrivalTime);
 
   // Detect boarding: train is at our departure station and hasn't departed yet
   const isBoarding =
@@ -98,9 +94,9 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           <div className="text-sm text-text-muted">Departure</div>
           <div className="font-medium text-text-primary">
             {formatTime(train.departure.scheduled_time)}
-            {train.departure.actual_time && delayMinutes > 0 && (
+            {bestDepartureTime && delayMinutes > 0 && (
               <span className="text-warning ml-2">
-                ({formatTime(train.departure.actual_time)})
+                ({formatTime(bestDepartureTime)})
               </span>
             )}
           </div>
@@ -110,9 +106,9 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           <div className="text-sm text-text-muted">Arrival</div>
           <div className="font-medium text-text-primary">
             {formatTime(train.arrival.scheduled_time)}
-            {train.arrival.actual_time && arrivalDelayMinutes > 0 && (
+            {bestArrivalTime && arrivalDelayMinutes > 0 && (
               <span className="text-warning ml-2">
-                ({formatTime(train.arrival.actual_time)})
+                ({formatTime(bestArrivalTime)})
               </span>
             )}
           </div>

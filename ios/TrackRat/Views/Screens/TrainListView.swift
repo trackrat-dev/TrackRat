@@ -335,10 +335,10 @@ struct TrainCard: View {
     }
 
     private var arrivalTime: String {
-        // For V2, we show arrival time if available
+        // For V2, we show arrival time if available (best available: actual > updated > scheduled)
         // PERFORMANCE: Use cached static formatter instead of creating new one each call
-        if let arrivalTime = train.arrival?.scheduledTime {
-            return DateFormatter.easternTimeShort.string(from: arrivalTime)
+        if let time = train.arrival?.actualTime ?? train.arrival?.updatedTime ?? train.arrival?.scheduledTime {
+            return DateFormatter.easternTimeShort.string(from: time)
         }
         return "--:--"
     }

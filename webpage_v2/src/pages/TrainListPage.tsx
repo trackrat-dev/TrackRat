@@ -28,7 +28,7 @@ export function TrainListPage() {
   // Check if train has already departed from the origin station
   const hasTrainDeparted = (train: Train): boolean => {
     const now = new Date();
-    const departureTimeStr = train.departure.actual_time || train.departure.scheduled_time;
+    const departureTimeStr = train.departure.actual_time || train.departure.updated_time || train.departure.scheduled_time;
     if (!departureTimeStr) return false;
     const departureTime = new Date(departureTimeStr);
     // 1 minute buffer (matching iOS implementation)
