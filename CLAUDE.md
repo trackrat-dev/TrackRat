@@ -125,7 +125,7 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider MNR --verbose
 poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbose
 ```
 
-Options: `--tolerance N` (minutes, default 1.5; supports decimals e.g. 1.5 = 90s), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
+Options: `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
 Default target is staging; pass a URL as first positional arg for production.
 
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,

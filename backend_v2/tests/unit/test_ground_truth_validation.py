@@ -23,6 +23,7 @@ TrackRatDeparture = gtv.TrackRatDeparture
 compare_route = gtv.compare_route
 format_delta = gtv.format_delta
 parse_arrival_minutes = gtv.parse_arrival_minutes
+parse_arrival_seconds = gtv.parse_arrival_seconds
 
 
 # --- Helpers ---
@@ -434,3 +435,95 @@ class TestCompareRouteToleranceBoundary:
 
         assert len(result.matches) == 0
         assert len(result.missing) == 1
+
+    def test_default_tolerance_2min_matches_within_120s(self):
+        """Default tolerance of 2.0 min should match trains within 120s."""
+        gt = [_gt(minutes_offset=10)]
+        # 1 min 50 sec later (110s) — should match with 2.0 min tolerance
+        tr_dep = _tr(minutes_offset=11)
+        tr_dep.departure_time += timedelta(seconds=50)
+        result = compare_route(gt, [tr_dep], "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        assert result.matches[0].delta_seconds == 110
+
+    def test_default_tolerance_2min_rejects_over_120s(self):
+        """Default tolerance of 2.0 min should reject trains over 120s away."""
+        gt = [_gt(minutes_offset=10)]
+        # 2 min 1 sec later (121s) — should NOT match with 2.0 min tolerance
+        tr_dep = _tr(minutes_offset=12)
+        tr_dep.departure_time += timedelta(seconds=1)
+        result = compare_route(gt, [tr_dep], "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 0
+        assert len(result.missing) == 1
+
+
+class TestParseArrivalSeconds:
+    """Test parse_arrival_seconds which prefers precise seconds over rounded minutes."""
+
+    def test_uses_seconds_when_available(self):
+        """Should use secondsToArrival for precise timing."""
+        result = parse_arrival_seconds("422", "7 min")
+        assert result == (422, 7)  # 422s = 7m 2s, minutes_away = 7
+
+    def test_seconds_precision_vs_minutes_rounding(self):
+        """Seconds gives sub-minute precision that minutes can't."""
+        result = parse_arrival_seconds("153", "3 min")
+        assert result == (153, 2)  # 153s = 2m 33s, minutes_away = 2 (not 3)
+
+    def test_falls_back_to_minutes_when_no_seconds(self):
+        """Should use arrivalTimeMessage when secondsToArrival is absent."""
+        result = parse_arrival_seconds(None, "7 min")
+        assert result == (420, 7)  # 7 * 60 = 420
+
+    def test_falls_back_to_minutes_when_seconds_invalid(self):
+        """Should fall back to minutes when secondsToArrival is not a number."""
+        result = parse_arrival_seconds("bad", "7 min")
+        assert result == (420, 7)
+
+    def test_returns_none_when_both_unparseable(self):
+        """Should return None when neither field is parseable."""
+        result = parse_arrival_seconds("bad", "")
+        assert result is None
+
+    def test_zero_seconds(self):
+        """Zero seconds (arriving) should work."""
+        result = parse_arrival_seconds("0", "0 min")
+        assert result == (0, 0)
+
+    def test_arriving_message_fallback(self):
+        """Should handle 'Arriving' message as fallback."""
+        result = parse_arrival_seconds(None, "Arriving")
+        assert result == (0, 0)
+
+    def test_large_seconds_value(self):
+        """Should handle large countdown values (far-future trains)."""
+        result = parse_arrival_seconds("1320", "22 min")
+        assert result == (1320, 22)  # 1320s = 22m
+
+
+class TestCompareRouteFarFuture:
+    """Test that far-future unmatched trains go to missing (reporting decides WARN vs FAIL)."""
+
+    def test_far_future_unmatched_gt_still_goes_to_missing(self):
+        """compare_route puts all unmatched non-arriving GT into missing.
+
+        The far-future WARN vs FAIL distinction is made in run_validation_loop,
+        not in compare_route. This test verifies compare_route behavior is unchanged.
+        """
+        gt = [_gt(minutes_offset=20)]  # 20 min away, no TR to match
+        gt[0].minutes_away = 20
+        result = compare_route(gt, [], "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.missing) == 1
+        assert result.missing[0].minutes_away == 20
+
+    def test_near_future_unmatched_also_goes_to_missing(self):
+        """Near-future unmatched GT should also go to missing (not arriving_unmatched)."""
+        gt = [_gt(minutes_offset=5)]
+        gt[0].minutes_away = 5
+        result = compare_route(gt, [], "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.missing) == 1
+        assert result.missing[0].minutes_away == 5
