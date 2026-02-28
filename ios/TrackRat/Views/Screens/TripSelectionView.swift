@@ -12,7 +12,7 @@ struct TripSelectionView: View {
     @Environment(\.openURL) private var openURL
     @State private var searchText = ""
     @State private var isSearching = false
-    @State private var showingProfile = false
+    @State private var showingSettings = false
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
@@ -29,7 +29,7 @@ struct TripSelectionView: View {
               Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
               !liveActivityService.isActivityActive,
               !isSearching,
-              !showingProfile else {
+              !showingSettings else {
             return false
         }
         return true
@@ -210,11 +210,11 @@ struct TripSelectionView: View {
                                 }
                             }
                         
-                        // Profile icon - presented as dismissable sheet
+                        // Settings icon - presented as dismissable sheet
                         Button {
-                            showingProfile = true
+                            showingSettings = true
                         } label: {
-                            Image(systemName: "person.circle.fill")
+                            Image(systemName: "gearshape.fill")
                                 .font(TrackRatTheme.IconSize.large)
                                 .foregroundColor(.white.opacity(0.8))
                         }
@@ -323,8 +323,8 @@ struct TripSelectionView: View {
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
         }
-        .sheet(isPresented: $showingProfile) {
-            MyProfileView()
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }

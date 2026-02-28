@@ -115,7 +115,7 @@ TrackRat/
 │   │   ├── PennStationGuideView.swift   # Navigation assistance
 │   │   ├── CongestionMapView.swift      # Network congestion
 │   │   ├── HistoricalDataView.swift     # Performance analytics
-│   │   ├── MyProfileView.swift          # User settings
+│   │   ├── SettingsView.swift            # User settings
 │   │   ├── MapContainerView.swift       # Primary map interface
 │   │   ├── OnboardingView.swift         # User onboarding
 │   │   └── AdvancedConfigurationView.swift # Developer settings

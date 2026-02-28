@@ -67,7 +67,7 @@
 		A17B1E712E7F05B00026D42E /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A17B9F3B2E17FD0A00B370A6 /* StationButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17B9F372E17FD0A00B370A6 /* StationButton.swift */; };
 		A183B7E12E6352E80024FADC /* LegacySheetAwareScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */; };
-		A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */; };
+		A1875C7F2E400F4F00FCC7FC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* SettingsView.swift */; };
 		A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */; };
 		A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
@@ -215,7 +215,7 @@
 		A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainStatsSummaryView.swift; path = TrackRat/Views/Components/TrainStatsSummaryView.swift; sourceTree = "<group>"; };
 		A17B9F372E17FD0A00B370A6 /* StationButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationButton.swift; path = Views/Components/StationButton.swift; sourceTree = "<group>"; };
 		A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegacySheetAwareScrollView.swift; path = Views/Components/LegacySheetAwareScrollView.swift; sourceTree = "<group>"; };
-		A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MyProfileView.swift; path = Views/Screens/MyProfileView.swift; sourceTree = "<group>"; };
+		A1875C7E2E400F4F00FCC7FC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Views/Screens/SettingsView.swift; sourceTree = "<group>"; };
 		A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DateSelectorSheet.swift; path = TrackRat/Views/Components/DateSelectorSheet.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
@@ -381,7 +381,7 @@
 				A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */,
 				A19E912C2E3F8E4A0011F777 /* LegacyBottomSheetView.swift */,
 				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
-				A1875C7E2E400F4F00FCC7FC /* MyProfileView.swift */,
+				A1875C7E2E400F4F00FCC7FC /* SettingsView.swift */,
 				A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */,
 				A11A0DBD2F4B840B00C96DA1 /* EditRouteAlertsView.swift */,
 				A1ROUTE0012F5000000000001 /* RouteStatusView.swift */,
@@ -714,7 +714,7 @@
 				A11A0DBB2F4B83CF00C96DA1 /* APIService.swift in Sources */,
 				A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
 				A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
-				A1875C7F2E400F4F00FCC7FC /* MyProfileView.swift in Sources */,
+				A1875C7F2E400F4F00FCC7FC /* SettingsView.swift in Sources */,
 				A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */,
 				A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */,
 				A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */,
