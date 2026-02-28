@@ -21,6 +21,7 @@ from structlog import get_logger
 
 from trackrat.config.stations import expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.congestion_types import FREQUENCY_FIRST_SOURCES
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
@@ -1072,14 +1073,25 @@ class SummaryService:
                 / arr_total
             )
 
-        # Generate headline and body
-        headline, body = self._format_route_headline_body(
-            dep_on_time_pct,
-            dep_avg_delay,
-            arr_on_time_pct,
-            arr_avg_delay,
-            total_cancellations,
+        # Detect if this is a frequency-first route (subway, PATH, PATCO)
+        is_frequency_route = all(
+            ds in FREQUENCY_FIRST_SOURCES for ds in carrier_dep_stats
         )
+
+        # Generate headline and body
+        if is_frequency_route:
+            headline, body = self._format_frequency_route_headline_body(
+                total_non_cancelled,
+                total_cancellations,
+            )
+        else:
+            headline, body = self._format_route_headline_body(
+                dep_on_time_pct,
+                dep_avg_delay,
+                arr_on_time_pct,
+                arr_avg_delay,
+                total_cancellations,
+            )
 
         return OperationsSummary(
             headline=headline,
@@ -1152,6 +1164,50 @@ class SummaryService:
             body = f"{status}."
 
         return headline, body
+
+    def _format_frequency_route_headline_body(
+        self,
+        train_count: int,
+        cancellations: int,
+    ) -> tuple[str, str]:
+        """
+        Format headline and body for frequency-first route summary (subway, PATH, PATCO).
+
+        Emphasizes train count and headway rather than on-time percentage,
+        since riders of frequent-service systems care about "how often"
+        not "is the 3:42 on time."
+        """
+        if cancellations > 0:
+            cancel_word = "cancellation" if cancellations == 1 else "cancellations"
+            headline = f"{cancellations} {cancel_word}"
+        elif train_count > 0:
+            headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
+            train_word = "train" if train_count == 1 else "trains"
+            headline = f"{train_count} {train_word} — every ~{headway:.0f} min"
+        else:
+            headline = ""
+            return headline, ""
+
+        # Body
+        body_parts = []
+        if cancellations > 0:
+            remaining = train_count
+            cancel_word = "train was" if cancellations == 1 else "trains were"
+            body_parts.append(f"{cancellations} {cancel_word} cancelled.")
+            if remaining > 0:
+                headway = SUMMARY_TIME_WINDOW_MINUTES / remaining
+                body_parts.append(
+                    f"{remaining} others departed, averaging every {headway:.0f} minutes."
+                )
+        else:
+            headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
+            train_word = "train" if train_count == 1 else "trains"
+            body_parts.append(
+                f"{train_count} {train_word} departed in the past {SUMMARY_TIME_WINDOW_MINUTES // 60} hours, "
+                f"averaging every {headway:.0f} minutes."
+            )
+
+        return headline, " ".join(body_parts)
 
     def _calculate_historical_departure_stats(
         self,
@@ -1275,16 +1331,25 @@ class SummaryService:
         destination = train_journeys[0].destination if train_journeys else None
 
         # Generate headline and body
-        headline, body = self._format_train_headline_body(
-            similar_dep_stats,
-            similar_arr_stats,
-            train_stats,
-            train_id,
-            carrier_name,
-            total_cancellations,
-            destination=destination,
-            data_source=data_source,
-        )
+        is_frequency_system = data_source in FREQUENCY_FIRST_SOURCES
+        if is_frequency_system:
+            headline, body = self._format_frequency_train_headline_body(
+                similar_dep_stats,
+                train_stats,
+                total_cancellations,
+                destination=destination,
+            )
+        else:
+            headline, body = self._format_train_headline_body(
+                similar_dep_stats,
+                similar_arr_stats,
+                train_stats,
+                train_id,
+                carrier_name,
+                total_cancellations,
+                destination=destination,
+                data_source=data_source,
+            )
 
         if not headline:
             # No data at all
@@ -1405,6 +1470,66 @@ class SummaryService:
                 train_display = f"This {destination} train"
             else:
                 train_display = f"Train {train_id}"
+            hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
+            if train_stats.cancellation_count > 0:
+                hist_text += (
+                    f" Cancelled {train_stats.cancellation_count} "
+                    f"time{'s' if train_stats.cancellation_count != 1 else ''} in past 30 days."
+                )
+            body_parts.append(hist_text)
+
+        return headline, " ".join(body_parts)
+
+    def _format_frequency_train_headline_body(
+        self,
+        dep_stats: OnTimeStats,
+        train_stats: OnTimeStats,
+        cancellations: int,
+        destination: str | None = None,
+    ) -> tuple[str, str]:
+        """
+        Format headline and body for frequency-first train summary (subway, PATH, PATCO).
+
+        Emphasizes recent train count / headway for similar trains,
+        and historical frequency for this specific train.
+        """
+        similar_count = dep_stats.total_count
+        similar_total = similar_count + dep_stats.cancellation_count
+
+        # Headline
+        if cancellations > 0:
+            cancel_word = "cancellation" if cancellations == 1 else "cancellations"
+            headline = f"{cancellations} {cancel_word}"
+        elif similar_total > 0:
+            headway = SUMMARY_TIME_WINDOW_MINUTES / similar_total
+            train_word = "train" if similar_total == 1 else "trains"
+            headline = f"{similar_total} similar {train_word} — every ~{headway:.0f} min"
+        elif train_stats.has_data:
+            headline = f"Historically ~{train_stats.total_count} trains per month"
+        else:
+            return "", ""
+
+        # Body
+        body_parts = []
+
+        if cancellations > 0:
+            cancel_word = "train" if cancellations == 1 else "trains"
+            body_parts.append(f"{cancellations} similar {cancel_word} cancelled.")
+
+        if similar_count > 0:
+            headway = SUMMARY_TIME_WINDOW_MINUTES / similar_count
+            body_parts.append(
+                f"{similar_count} similar trains departed in the past "
+                f"{SUMMARY_TIME_WINDOW_MINUTES // 60} hours, "
+                f"averaging every {headway:.0f} minutes."
+            )
+
+        if train_stats.has_data:
+            train_display = (
+                f"This {destination} train"
+                if destination
+                else "This train"
+            )
             hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
             if train_stats.cancellation_count > 0:
                 hist_text += (

@@ -17,6 +17,10 @@ FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
 FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
 # Below 0.5 = severe
 
+# Data sources where frequency/service health is more meaningful than delay stats.
+# Mirrors iOS TrainSystem.preferredHighlightMode == .health
+FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO"}
+
 
 def get_congestion_level(congestion_factor: float) -> str:
     """Determine congestion level from a congestion factor."""
