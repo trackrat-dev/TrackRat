@@ -28,7 +28,7 @@ httpx = {extras = ["http2"], version = "^0.27.0"}
 gtfs-realtime-bindings = "^1.0.0"
 
 # Task Scheduling
-apscheduler = "^3.10.4"
+apscheduler = "^3.11.2"
 
 # Utilities
 python-dateutil = "^2.8.2"
