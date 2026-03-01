@@ -2604,7 +2604,10 @@ class SchedulerService:
                                 TrainJourney.journey_date == now_et().date(),
                             )
                         )
-                        .options(selectinload(TrainJourney.stops))
+                        .options(
+                            selectinload(TrainJourney.stops),
+                            selectinload(TrainJourney.snapshots),
+                        )
                     )
 
                     journey = session.scalar(journey_stmt)
