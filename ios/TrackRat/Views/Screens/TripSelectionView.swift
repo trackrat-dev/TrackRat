@@ -145,7 +145,7 @@ struct TripSelectionView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "house.fill")
                                 .font(.body)
-                            Text("Set your home station for faster trip planning")
+                            Text("Set your home and work stations")
                                 .font(TrackRatTheme.Typography.bodySecondary)
                             Spacer()
                             Image(systemName: "chevron.right")
