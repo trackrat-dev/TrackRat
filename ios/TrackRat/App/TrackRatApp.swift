@@ -553,12 +553,12 @@ struct RouteStatusContext: Identifiable, Equatable {
 
     /// Human-readable title for the route
     var title: String {
+        if let from = fromStationCode, let to = toStationCode {
+            return "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))"
+        }
         if let lineId = lineId,
            let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
             return route.name
-        }
-        if let from = fromStationCode, let to = toStationCode {
-            return "\(Stations.displayName(for: from)) → \(Stations.displayName(for: to))"
         }
         return dataSource
     }

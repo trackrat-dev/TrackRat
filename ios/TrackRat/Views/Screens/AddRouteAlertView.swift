@@ -139,17 +139,14 @@ struct AddRouteAlertView: View {
 
     private var stationPairPicker: some View {
         VStack(spacing: 16) {
-            // From station
+            // First station
             Button {
                 showFromPicker = true
             } label: {
                 HStack {
-                    Text("From")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.6))
-                    Spacer()
                     Text(fromStation.map { $0.name } ?? "Select station")
                         .foregroundColor(fromStation != nil ? .white : .white.opacity(0.4))
+                    Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.3))
@@ -159,17 +156,14 @@ struct AddRouteAlertView: View {
             }
             .buttonStyle(.plain)
 
-            // To station
+            // Second station
             Button {
                 showToPicker = true
             } label: {
                 HStack {
-                    Text("To")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.6))
-                    Spacer()
                     Text(toStation.map { $0.name } ?? "Select station")
                         .foregroundColor(toStation != nil ? .white : .white.opacity(0.4))
+                    Spacer()
                     Image(systemName: "chevron.right")
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.3))

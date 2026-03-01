@@ -105,7 +105,7 @@ struct EditRouteAlertsView: View {
                                     Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
                                 } else if let from = sub.fromStationCode, let to = sub.toStationCode {
                                     Label(
-                                        "\(Stations.displayName(for: from)) → \(Stations.displayName(for: to))",
+                                        "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))",
                                         systemImage: "arrow.right"
                                     )
                                 }
@@ -176,10 +176,20 @@ struct EditRouteAlertsView: View {
         }
     }
 
-    /// Build display name for a line subscription, appending direction if present.
+    /// Build display name for a line subscription, showing "{from} to {destination}".
     private func lineDisplayName(sub: RouteAlertSubscription, lineName: String) -> String {
         guard let direction = sub.direction else { return lineName }
-        return "\(lineName) → \(Stations.displayName(for: direction))"
+        let directionName = Stations.displayName(for: direction)
+        // Use route station codes to find the "from" terminus
+        if let lineId = sub.lineId,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            let stations = route.stationCodes
+            let fromCode = direction == stations.last ? stations.first : stations.last
+            if let fromCode = fromCode {
+                return "\(Stations.displayName(for: fromCode)) to \(directionName)"
+            }
+        }
+        return "\(lineName) to \(directionName)"
     }
 
     /// Build a RouteStatusContext for a subscription, using direction to set from/to.
