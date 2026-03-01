@@ -528,7 +528,7 @@ def _filter_by_direction(
             "unknown_alert_direction",
             direction=direction,
             route=route.name,
-            known_stations=station_list,
+            route_id=route.id,
         )
         return journeys
 

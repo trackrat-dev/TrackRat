@@ -652,7 +652,9 @@ class TestNjtLineCodeConsistency:
         ]
         for name, expected_code in test_names:
             code = parse_njt_line_code(name)
-            assert code == expected_code, f"parse_njt_line_code({name!r}) = {code!r}, expected {expected_code!r}"
+            assert (
+                code == expected_code
+            ), f"parse_njt_line_code({name!r}) = {code!r}, expected {expected_code!r}"
             route = get_route_by_line_code("NJT", code)
             assert route is not None, (
                 f"Code {code!r} from parse_njt_line_code({name!r}) "

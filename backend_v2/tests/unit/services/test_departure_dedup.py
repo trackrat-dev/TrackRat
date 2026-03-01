@@ -198,19 +198,19 @@ class TestMakeDedupKeys:
         assert "NE:NJT:09:15" in fallbacks
         assert "No:NJT:09:15" not in fallbacks
 
-    def test_njt_line_code_normalization_rv_to_ra(self):
-        """Test NJT line code 'RV' is normalized to 'Ra' for deduplication."""
+    def test_njt_line_code_rv_stays_rv(self):
+        """Test NJT line code 'RV' is already canonical (no normalization needed)."""
         departure = self._create_departure(
             train_id="5409",
-            line_code="RV",  # From NJT API
+            line_code="RV",  # From NJT API — now matches GTFS directly
             scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
             data_source="NJT",
         )
 
         _, fallbacks = self.service._make_dedup_keys(departure)
 
-        # "RV" should be normalized to "Ra"
-        assert "Ra:NJT:09:15" in fallbacks
+        # "RV" is already canonical, should appear as-is
+        assert "RV:NJT:09:15" in fallbacks
 
     def test_non_njt_line_codes_not_normalized(self):
         """Test that non-NJT line codes are not affected by normalization."""

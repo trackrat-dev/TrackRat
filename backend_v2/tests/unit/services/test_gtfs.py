@@ -487,35 +487,35 @@ class TestNJTLineCodeMapping:
 
         assert NJT_LINE_CODE_MAPPING["NJCL"] == "NC"
 
-    def test_morris_essex_maps_to_mo(self):
-        """Morris & Essex Line maps to 'Mo' (from 'Morris and Essex' truncated)."""
+    def test_morris_essex_maps_to_me(self):
+        """Morris & Essex Line maps to 'ME' (matching route_topology line_codes)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["MNE"] == "Mo"
+        assert NJT_LINE_CODE_MAPPING["MNE"] == "ME"
 
     def test_gladstone_maps_to_gl(self):
-        """Gladstone Branch maps to 'Gl' (from 'Gladstone Branch' truncated)."""
+        """Gladstone Branch maps to 'GL' (matching route_topology line_codes)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["MNEG"] == "Gl"
+        assert NJT_LINE_CODE_MAPPING["MNEG"] == "GL"
 
     def test_montclair_boonton_maps_to_mo(self):
-        """Montclair-Boonton Line maps to 'Mo' (from 'Montclair-Boonton' truncated)."""
+        """Montclair-Boonton Line maps to 'MO' (matching route_topology line_codes)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["BNTN"] == "Mo"
+        assert NJT_LINE_CODE_MAPPING["BNTN"] == "MO"
 
-    def test_raritan_valley_maps_to_ra(self):
-        """Raritan Valley Line maps to 'Ra'."""
+    def test_raritan_valley_maps_to_rv(self):
+        """Raritan Valley Line maps to 'RV' (matching route_topology line_codes)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["RARV"] == "Ra"
+        assert NJT_LINE_CODE_MAPPING["RARV"] == "RV"
 
-    def test_pascack_valley_maps_to_pa(self):
-        """Pascack Valley Line maps to 'Pa'."""
+    def test_pascack_valley_maps_to_pv(self):
+        """Pascack Valley Line maps to 'PV' (matching route_topology line_codes)."""
         from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
-        assert NJT_LINE_CODE_MAPPING["PASC"] == "Pa"
+        assert NJT_LINE_CODE_MAPPING["PASC"] == "PV"
 
     def test_line_codes_are_two_chars(self):
         """Verify all mapped line codes are 2 characters for consistency with API."""
