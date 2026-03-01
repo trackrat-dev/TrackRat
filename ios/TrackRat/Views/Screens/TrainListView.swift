@@ -413,17 +413,10 @@ struct TrainCard: View {
 
             // Show cancellation, departed, or scheduled-only status
             if isCancelled {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Cancelled")
-                        .font(.caption)
-                        .foregroundColor(.red.opacity(0.8))
-                        .fontWeight(.medium)
-                    if let reason = train.cancellationReason {
-                        Text(reason.localizedCapitalized)
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                    }
-                }
+                Text("Cancelled")
+                    .font(.caption)
+                    .foregroundColor(.red.opacity(0.8))
+                    .fontWeight(.medium)
             } else if hasDeparted {
                 Text("Departed")
                     .font(.caption)

@@ -331,17 +331,10 @@ struct CombinedDetailsCard: View {
                     // Show CANCELLED banner if train is cancelled
                     let contextStatus = train.calculateStatus(fromStationCode: appState.departureStationCode ?? "")
                     if contextStatus == .cancelled {
-                        VStack(spacing: 4) {
-                            Text("CANCELLED")
-                                .font(.largeTitle)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                            if let reason = train.cancellationReason {
-                                Text(reason.localizedCapitalized)
-                                    .font(.subheadline)
-                                    .foregroundColor(.white.opacity(0.9))
-                            }
-                        }
+                        Text("CANCELLED")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
                         .padding()
                         .frame(maxWidth: .infinity)
                         .background(Color.red.opacity(0.9))
