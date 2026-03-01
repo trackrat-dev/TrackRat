@@ -325,6 +325,7 @@ class RouteAlertSubscription(Base):
     from_station_code = Column(String(10), nullable=True)
     to_station_code = Column(String(10), nullable=True)
     train_id = Column(String(30), nullable=True)
+    direction = Column(String(10), nullable=True)
     weekdays_only = Column(
         Boolean, default=False, nullable=False, server_default="false"
     )

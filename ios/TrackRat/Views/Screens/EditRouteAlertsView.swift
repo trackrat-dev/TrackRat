@@ -88,12 +88,7 @@ struct EditRouteAlertsView: View {
                             if sub.trainId != nil {
                                 selectedTrainAlert = sub
                             } else {
-                                selectedRouteStatus = RouteStatusContext(
-                                    dataSource: sub.dataSource,
-                                    lineId: sub.lineId,
-                                    fromStationCode: sub.fromStationCode,
-                                    toStationCode: sub.toStationCode
-                                )
+                                selectedRouteStatus = routeStatusContext(for: sub)
                             }
                         } label: {
                             HStack {
@@ -107,7 +102,7 @@ struct EditRouteAlertsView: View {
                                         }
                                     }
                                 } else if let lineName = sub.lineName {
-                                    Label(lineName, systemImage: "tram.fill")
+                                    Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
                                 } else if let from = sub.fromStationCode, let to = sub.toStationCode {
                                     Label(
                                         "\(Stations.displayName(for: from)) → \(Stations.displayName(for: to))",
@@ -167,15 +162,10 @@ struct EditRouteAlertsView: View {
         let common = homeSystems.intersection(workSystems).intersection(selectedStrings)
         guard let dataSource = common.first ?? homeSystems.intersection(workSystems).first else { return }
 
-        alertService.addStationPairSubscription(
+        alertService.addStationPairSubscriptions(
             dataSource: dataSource,
             fromStationCode: home,
             toStationCode: work
-        )
-        alertService.addStationPairSubscription(
-            dataSource: dataSource,
-            fromStationCode: work,
-            toStationCode: home
         )
     }
 
@@ -184,5 +174,40 @@ struct EditRouteAlertsView: View {
             guard let token = AppDelegate.deviceToken else { return }
             await alertService.syncWithBackend(apnsToken: token)
         }
+    }
+
+    /// Build display name for a line subscription, appending direction if present.
+    private func lineDisplayName(sub: RouteAlertSubscription, lineName: String) -> String {
+        guard let direction = sub.direction else { return lineName }
+        return "\(lineName) → \(Stations.displayName(for: direction))"
+    }
+
+    /// Build a RouteStatusContext for a subscription, using direction to set from/to.
+    private func routeStatusContext(for sub: RouteAlertSubscription) -> RouteStatusContext {
+        if let lineId = sub.lineId, let direction = sub.direction,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            let stations = route.stationCodes
+            if direction == stations.last {
+                return RouteStatusContext(
+                    dataSource: sub.dataSource,
+                    lineId: lineId,
+                    fromStationCode: stations.first,
+                    toStationCode: stations.last
+                )
+            } else {
+                return RouteStatusContext(
+                    dataSource: sub.dataSource,
+                    lineId: lineId,
+                    fromStationCode: stations.last,
+                    toStationCode: stations.first
+                )
+            }
+        }
+        return RouteStatusContext(
+            dataSource: sub.dataSource,
+            lineId: sub.lineId,
+            fromStationCode: sub.fromStationCode,
+            toStationCode: sub.toStationCode
+        )
     }
 }

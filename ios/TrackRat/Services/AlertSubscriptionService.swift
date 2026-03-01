@@ -25,28 +25,47 @@ final class AlertSubscriptionService: ObservableObject {
 
     // MARK: - Mutation
 
-    func addLineSubscription(dataSource: String, lineId: String, lineName: String) {
+    /// Add two line subscriptions (one per direction) for the given route.
+    func addLineSubscriptions(dataSource: String, lineId: String, lineName: String, route: RouteLine) {
+        guard let first = route.stationCodes.first,
+              let last = route.stationCodes.last else { return }
+        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: first)
+        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: last)
+    }
+
+    /// Add a single directional line subscription (deduped on lineId + dataSource + direction).
+    func addSingleLineSubscription(dataSource: String, lineId: String, lineName: String, direction: String?) {
+        guard !subscriptions.contains(where: {
+            $0.lineId == lineId && $0.dataSource == dataSource && $0.direction == direction
+        }) else { return }
         let sub = RouteAlertSubscription(
             dataSource: dataSource,
             lineId: lineId,
-            lineName: lineName
+            lineName: lineName,
+            direction: direction
         )
-        guard !subscriptions.contains(where: { $0.lineId == lineId && $0.dataSource == dataSource }) else { return }
         subscriptions.append(sub)
         saveToDefaults()
     }
 
-    func addStationPairSubscription(dataSource: String, fromStationCode: String, toStationCode: String) {
-        let sub = RouteAlertSubscription(
-            dataSource: dataSource,
-            fromStationCode: fromStationCode,
-            toStationCode: toStationCode
-        )
+    /// Add station-pair subscriptions for both directions.
+    func addStationPairSubscriptions(dataSource: String, fromStationCode: String, toStationCode: String) {
+        addSingleStationPairSubscription(dataSource: dataSource, fromStationCode: fromStationCode, toStationCode: toStationCode)
+        addSingleStationPairSubscription(dataSource: dataSource, fromStationCode: toStationCode, toStationCode: fromStationCode)
+    }
+
+    /// Add a single station-pair subscription (deduped on from + to + dataSource).
+    func addSingleStationPairSubscription(dataSource: String, fromStationCode: String, toStationCode: String) {
         guard !subscriptions.contains(where: {
             $0.fromStationCode == fromStationCode &&
             $0.toStationCode == toStationCode &&
             $0.dataSource == dataSource
         }) else { return }
+        let sub = RouteAlertSubscription(
+            dataSource: dataSource,
+            fromStationCode: fromStationCode,
+            toStationCode: toStationCode
+        )
         subscriptions.append(sub)
         saveToDefaults()
     }
@@ -108,10 +127,11 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     let toStationCode: String?
     let trainId: String?
     let trainName: String?
+    let direction: String?
     let weekdaysOnly: Bool
 
-    /// Line-based subscription.
-    init(dataSource: String, lineId: String, lineName: String) {
+    /// Line-based subscription with direction (terminus station code).
+    init(dataSource: String, lineId: String, lineName: String, direction: String?) {
         self.id = UUID()
         self.dataSource = dataSource
         self.lineId = lineId
@@ -120,6 +140,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.toStationCode = nil
         self.trainId = nil
         self.trainName = nil
+        self.direction = direction
         self.weekdaysOnly = false
     }
 
@@ -133,6 +154,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.toStationCode = toStationCode
         self.trainId = nil
         self.trainName = nil
+        self.direction = nil
         self.weekdaysOnly = false
     }
 
@@ -146,6 +168,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.toStationCode = nil
         self.trainId = trainId
         self.trainName = trainName
+        self.direction = nil
         self.weekdaysOnly = weekdaysOnly
     }
 
@@ -160,6 +183,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         toStationCode = try container.decodeIfPresent(String.self, forKey: .toStationCode)
         trainId = try container.decodeIfPresent(String.self, forKey: .trainId)
         trainName = try container.decodeIfPresent(String.self, forKey: .trainName)
+        direction = try container.decodeIfPresent(String.self, forKey: .direction)
         weekdaysOnly = try container.decodeIfPresent(Bool.self, forKey: .weekdaysOnly) ?? false
     }
 }

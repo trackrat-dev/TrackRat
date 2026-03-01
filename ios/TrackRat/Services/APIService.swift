@@ -1342,6 +1342,7 @@ extension APIService {
             let from_station_code: String?
             let to_station_code: String?
             let train_id: String?
+            let direction: String?
             let weekdays_only: Bool
         }
 
@@ -1357,6 +1358,7 @@ extension APIService {
                 from_station_code: sub.fromStationCode,
                 to_station_code: sub.toStationCode,
                 train_id: sub.trainId,
+                direction: sub.direction,
                 weekdays_only: sub.weekdaysOnly
             )
         }

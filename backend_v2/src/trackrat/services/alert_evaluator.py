@@ -15,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.config.route_topology import ALL_ROUTES
+from trackrat.config.route_topology import ALL_ROUTES, Route
+from trackrat.config.stations import get_station_name
 from trackrat.models.database import (
     DeviceToken,
     JourneyStop,
@@ -126,6 +127,9 @@ async def evaluate_route_alerts(
                 if sub.data_source in REALTIME_SOURCES:
                     active_count = total_count - cancelled_count
                     baseline = await _query_baseline_train_count(db, sub, now)
+                    # Halve baseline for directional subs since baseline covers both directions
+                    if baseline is not None and sub.direction:
+                        baseline *= 0.5
                     if baseline is not None and baseline > 0:
                         frequency_factor = active_count / baseline
                         if frequency_factor < FREQ_THRESHOLD_REDUCED:
@@ -170,6 +174,7 @@ async def evaluate_route_alerts(
                 "route_alert": {
                     "data_source": sub.data_source,
                     "line_id": sub.line_id,
+                    "direction": sub.direction,
                     "from_station_code": sub.from_station_code,
                     "to_station_code": sub.to_station_code,
                     "train_id": sub.train_id,
@@ -189,6 +194,7 @@ async def evaluate_route_alerts(
                     device_id=device.device_id,
                     data_source=sub.data_source,
                     line_id=sub.line_id,
+                    direction=sub.direction,
                     from_station=sub.from_station_code,
                     to_station=sub.to_station_code,
                     train_id=sub.train_id,
@@ -332,7 +338,13 @@ async def _query_journeys_for_subscription(
         base_conditions.append(TrainJourney.line_code.in_(line_codes))
 
         result = await db.execute(select(TrainJourney).where(and_(*base_conditions)))
-        return list(result.scalars().all())
+        journeys = list(result.scalars().all())
+
+        # Filter by direction if specified
+        if sub.direction:
+            journeys = _filter_by_direction(journeys, route, sub.direction)
+
+        return journeys
 
     else:
         # Station-pair mode: match origin/destination or journey stops
@@ -495,6 +507,43 @@ async def _query_baseline_train_count(
     return float(avg_count)
 
 
+def _filter_by_direction(
+    journeys: list[TrainJourney],
+    route: Route,
+    direction: str,
+) -> list[TrainJourney]:
+    """Keep only journeys traveling toward the given terminus station.
+
+    Direction is determined by comparing station indices in the route's
+    ordered stations tuple.  If direction equals the last station,
+    keep trains where terminal_idx > origin_idx (forward).  If it
+    equals the first station, keep trains where terminal_idx < origin_idx
+    (reverse).
+    """
+    station_list = route.stations
+    station_set = route._station_set
+
+    if direction not in station_set:
+        return journeys  # unknown direction — return unfiltered
+
+    toward_end = direction == station_list[-1]
+
+    filtered = []
+    for j in journeys:
+        if (
+            j.origin_station_code not in station_set
+            or j.terminal_station_code not in station_set
+        ):
+            continue
+        o_idx = station_list.index(j.origin_station_code)
+        t_idx = station_list.index(j.terminal_station_code)
+        if toward_end and t_idx > o_idx:
+            filtered.append(j)
+        elif not toward_end and t_idx < o_idx:
+            filtered.append(j)
+    return filtered
+
+
 def _is_significantly_delayed(
     journey: TrainJourney,
     to_station_code: str | None = None,
@@ -561,6 +610,9 @@ def _build_alert_message(
     if sub.line_id:
         route = _ROUTES_BY_ID.get(sub.line_id)
         route_name = route.name if route else sub.line_id
+        if sub.direction:
+            direction_name = get_station_name(sub.direction)
+            route_name = f"{route_name} toward {direction_name}"
     else:
         route_name = f"{sub.from_station_code} → {sub.to_station_code}"
 

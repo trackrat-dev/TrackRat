@@ -31,12 +31,16 @@ struct AddRouteAlertView: View {
     @State private var isLoadingDepartures = false
     @State private var weekdaysOnly = true
 
-    /// Routes filtered to the user's selected train systems, excluding already-subscribed lines.
+    /// Routes filtered to the user's selected train systems, excluding fully-subscribed lines.
+    /// A route is fully subscribed when both directions have subscriptions.
     private var filteredRoutes: [RouteLine] {
         let dataSources = appState.selectedSystems.asRawStrings
         return RouteTopology.allRoutes.filter { route in
-            dataSources.contains(route.dataSource) &&
-            !alertService.subscriptions.contains(where: { $0.lineId == route.id && $0.dataSource == route.dataSource })
+            guard dataSources.contains(route.dataSource) else { return false }
+            let lineSubs = alertService.subscriptions.filter { $0.lineId == route.id && $0.dataSource == route.dataSource }
+            let subscribedDirections = Set(lineSubs.compactMap(\.direction))
+            let bothTermini = Set([route.stationCodes.first, route.stationCodes.last].compactMap { $0 })
+            return !bothTermini.isSubset(of: subscribedDirections)
         }
     }
 
@@ -99,10 +103,11 @@ struct AddRouteAlertView: View {
                     ForEach(filteredRoutes) { route in
                         Button {
                             withAnimation {
-                                alertService.addLineSubscription(
+                                alertService.addLineSubscriptions(
                                     dataSource: route.dataSource,
                                     lineId: route.id,
-                                    lineName: route.name
+                                    lineName: route.name,
+                                    route: route
                                 )
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -186,23 +191,27 @@ struct AddRouteAlertView: View {
                     let common = fromSystems.intersection(toSystems).intersection(selectedStrings)
                     let dataSource = common.first ?? fromSystems.intersection(toSystems).first ?? "NJT"
 
-                    let alreadyExists = alertService.subscriptions.contains(where: {
+                    let bothExist = alertService.subscriptions.contains(where: {
                         $0.fromStationCode == fromCode &&
                         $0.toStationCode == toCode &&
                         $0.dataSource == dataSource
+                    }) && alertService.subscriptions.contains(where: {
+                        $0.fromStationCode == toCode &&
+                        $0.toStationCode == fromCode &&
+                        $0.dataSource == dataSource
                     })
 
-                    if alreadyExists {
+                    if bothExist {
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         showConfirmation("Already subscribed")
                     } else {
-                        alertService.addStationPairSubscription(
+                        alertService.addStationPairSubscriptions(
                             dataSource: dataSource,
                             fromStationCode: fromCode,
                             toStationCode: toCode
                         )
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        showConfirmation("Alert added")
+                        showConfirmation("Alerts added for both directions")
                     }
 
                     withAnimation {
@@ -222,8 +231,8 @@ struct AddRouteAlertView: View {
 
             if let message = confirmationMessage {
                 HStack(spacing: 6) {
-                    Image(systemName: message == "Alert added" ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                        .foregroundColor(message == "Alert added" ? .green : .yellow)
+                    Image(systemName: message.hasPrefix("Alert") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundColor(message.hasPrefix("Alert") ? .green : .yellow)
                     Text(message)
                         .foregroundColor(.white)
                 }
