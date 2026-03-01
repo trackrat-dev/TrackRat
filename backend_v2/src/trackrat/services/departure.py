@@ -786,13 +786,18 @@ class DepartureService:
                     journey_id = journey.id
 
                     async def refresh_journey(jid: int = journey_id) -> None:
-                        # Re-query to get fresh state after potential rollback
-                        # Default param captures journey_id at definition time
-                        fresh = await db.get(
-                            TrainJourney,
-                            jid,
-                            options=[selectinload(TrainJourney.stops)],
+                        # Re-query to get fresh state after potential rollback.
+                        # Default param captures journey_id at definition time.
+                        # Use explicit query instead of db.get() because get()
+                        # returns from identity map without applying selectinload
+                        # when the object was already loaded by the query above.
+                        result = await db.execute(
+                            select(TrainJourney)
+                            .where(TrainJourney.id == jid)
+                            .options(selectinload(TrainJourney.stops))
+                            .execution_options(populate_existing=True)
                         )
+                        fresh = result.scalar_one_or_none()
                         if fresh:
                             await njt_collector.collect_journey_details(db, fresh)
 
