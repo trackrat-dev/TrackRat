@@ -338,13 +338,15 @@ struct SettingsView: View {
                     }
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(TrackRatTheme.IconSize.xsmall)
-                                .foregroundColor(.white)
+                    if destination != .routeAlerts {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(TrackRatTheme.IconSize.xsmall)
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
                 }
