@@ -524,7 +524,13 @@ def _filter_by_direction(
     station_set = route._station_set
 
     if direction not in station_set:
-        return journeys  # unknown direction — return unfiltered
+        logger.warning(
+            "unknown_alert_direction",
+            direction=direction,
+            route=route.name,
+            known_stations=station_list,
+        )
+        return journeys
 
     toward_end = direction == station_list[-1]
 
