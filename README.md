@@ -3,10 +3,10 @@
 **Open-source ML-powered transit tracking framework for the Northeast Corridor.**
 
 [![App Store](https://img.shields.io/badge/App_Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/trackrat/id6746423610)
-[![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://bokonon1.github.io/TrackRat/)
+[![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
-TrackRat tracks trains across six transit systems in real time, predicts platform assignments using ML, and forecasts delays — all from a unified interface. It runs on iOS (SwiftUI + Live Activities), the web (React + TypeScript), and a Python backend that does the heavy lifting.
+TrackRat tracks trains across seven transit systems in real time, predicts platform assignments using ML, and forecasts delays — all from a unified interface. It runs on iOS (SwiftUI + Live Activities), the web (React + TypeScript), and a Python backend that does the heavy lifting.
 
 ## Supported Transit Systems
 
@@ -17,6 +17,7 @@ TrackRat tracks trains across six transit systems in real time, predicts platfor
 | PATH | All 4 routes, 13 stations | RidePATH API | Yes |
 | LIRR | All branches | MTA GTFS-RT | Yes |
 | Metro-North | All branches | MTA GTFS-RT | Yes |
+| NYC Subway | 36 routes, 472 stations | MTA GTFS-RT | Yes |
 | PATCO | Lindenwold–15th St | GTFS Static | Schedule only |
 
 ## What It Does
@@ -25,6 +26,7 @@ TrackRat tracks trains across six transit systems in real time, predicts platfor
 - **Real-Time Tracking** — Live train status, delays, and journey progress across all systems
 - **Delay Forecasting** — ML-powered delay and cancellation probability predictions
 - **Live Activities** — Real-time iOS Lock Screen and Dynamic Island updates
+- **Route Alerts** — Push notifications for delays and cancellations on subscribed routes
 - **Congestion Maps** — Live network congestion monitoring
 - **1,000+ Stations** across the Northeast Corridor
 
@@ -53,6 +55,7 @@ Each transit system uses a collection pattern suited to its data source:
 - **NJ Transit / Amtrak** — Multi-phase pipeline: Schedule Generation → Discovery → Collection → JIT Updates → Validation
 - **PATH** — Unified collector every 4 minutes via native API, discovers trains at all 13 stations
 - **LIRR / Metro-North** — Unified GTFS-RT collector every 4 minutes with static schedule backfill
+- **NYC Subway** — Unified GTFS-RT collector processing 8 feeds covering 36 routes and 472 stations
 - **PATCO** — GTFS static schedules (no real-time API available)
 
 ## Getting Started
@@ -119,7 +122,7 @@ TrackRat/
 ├── backend_v2/          # Python FastAPI backend
 │   ├── src/trackrat/
 │   │   ├── api/         # API endpoints (FastAPI routers)
-│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr)
+│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway)
 │   │   ├── config/      # Station configs, route topology
 │   │   ├── models/      # SQLAlchemy + Pydantic models
 │   │   ├── services/    # Business logic, ML predictions, scheduling
@@ -166,6 +169,8 @@ GET  /api/v2/trains/{train_id}              # Train details with all stops
 GET  /api/v2/routes/congestion              # Network congestion data
 GET  /api/v2/predictions/track              # ML platform predictions
 GET  /api/v2/predictions/delay              # Delay/cancellation forecasts
+POST /api/v2/devices/register              # Register device for push notifications
+PUT  /api/v2/alerts/subscriptions          # Sync route alert subscriptions
 GET  /health                                # Health check
 ```
 
@@ -178,7 +183,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 ### Areas Where Help Is Wanted
 
-- Adding new transit systems (SEPTA, MTA Subway, and beyond)
+- Adding new transit systems (SEPTA, NJ Light Rail, and beyond)
 - Improving test coverage
 - Web app features (PWA, charts, maps)
 - Accessibility improvements
@@ -192,7 +197,7 @@ Copyright 2025-2026 Andrew Martin
 ## Links
 
 - **iOS App:** [App Store](https://apps.apple.com/us/app/trackrat/id6746423610)
-- **Web App:** [bokonon1.github.io/TrackRat](https://bokonon1.github.io/TrackRat/)
+- **Web App:** [trackrat.net](https://trackrat.net)
 - **Landing Page:** [trackrat.net](https://trackrat.net)
 - **Feedback:** [trackrat.nolt.io](https://trackrat.nolt.io)
 - **YouTube:** [@TrackRat-App](https://www.youtube.com/@TrackRat-App/shorts)

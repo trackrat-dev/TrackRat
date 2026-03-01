@@ -86,15 +86,26 @@ This document contains detailed design specifications, screen documentation, and
 - Favorite stations setup
 - Video fallback handling for errors
 
-### 11. **PennStationGuideView**
-- Interactive Penn Station navigation guide
-- YouTube video integration with embedded player
-- Swipeable instruction cards
-- Separate guides for NJ Transit and Amtrak platforms
-- Visual aids showing exact station locations
-- Platform-specific navigation strategies
+### 11. **RouteStatusView** (Route Alert Details)
+- Per-route performance dashboard triggered from notification taps
+- Frequency baseline coloring (system-appropriate health metric)
+- Recent departures with delay/cancellation stats
+- Map visualization of subscribed route
+- Integrates with route alert subscription system
 
-### 12. **AdvancedConfigurationView**
+### 12. **AddRouteAlertView** (Add Route Alert)
+- Multi-add workflow for route alert subscriptions
+- Station pickers for origin/destination
+- System-appropriate metric selection
+- Recurring train alert configuration per train number
+
+### 13. **EditRouteAlertsView** (Manage Route Alerts)
+- List and manage active route alert subscriptions
+- Swipe-to-delete with subscription sync
+- Navigation to RouteStatusView for performance details
+- Tap to navigate to train details
+
+### 14. **AdvancedConfigurationView**
 - Server environment selection (Production/Staging/Local)
 - Home/work station management
 - Favorite stations configuration
@@ -102,14 +113,16 @@ This document contains detailed design specifications, screen documentation, and
 - Cache clearing utilities
 - Backend health check testing
 
-### 13. **SettingsView**
+### 15. **SettingsView**
 - **Trip Statistics**: Total trips, on-time percentage, minutes saved vs scheduled
 - **Trip History Access**: Link to full TripHistoryView
+- **Route Alerts**: Manage route alert subscriptions
+- **Train System Preferences**: Enable/disable transit systems
+- **Amtrak Mode**: Tri-state toggle (Off / NEC Only / All)
 - User preferences and settings
 - Quick access to advanced configuration
-- Inline favorite stations management
 
-### 14. **TripHistoryView**
+### 16. **TripHistoryView**
 - Complete history of recorded trips from Live Activities
 - Trip details: origin, destination, train, duration, delay
 - Filtering by date range or data source
@@ -179,6 +192,9 @@ This document contains detailed design specifications, screen documentation, and
 - `POST /v2/feedback` - Submit user feedback for data issues
 - `POST /v2/live-activities/register` - Register Live Activity for updates
 - `DELETE /v2/live-activities/{push_token}` - Unregister Live Activity
+- `POST /v2/devices/register` - Register APNS device token for route alerts
+- `PUT /v2/alerts/subscriptions` - Sync route alert subscriptions
+- `GET /v2/routes/history?from_station=X&to_station=Y&data_source=Z&days=N` - Route performance history
 - `GET /health` - Backend health check for wake-up service
 
 ### API Features
@@ -237,6 +253,9 @@ This document contains detailed design specifications, screen documentation, and
   - `.settings` - Settings
   - `.congestionMap` - Network congestion view
   - `.favoriteStations` - Favorite stations (managed inline in SettingsView)
+  - `.editRouteAlerts` - Manage route alert subscriptions
+  - `.addRouteAlert` - Add new route alert
+  - `.routeStatus(route)` - Route alert performance dashboard
 
 ### API Response Types
 - **OriginStation**: Train origin information
@@ -390,6 +409,7 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 11. **TripRecordingService** - Records completed trips from Live Activities for statistics
 12. **JourneyFeedbackService** - Triggers feedback prompts during active journeys
 13. **SubscriptionService** - Pro subscription management with StoreKit 2
+14. **AlertSubscriptionService** - Route alert subscription management and APNS registration
 
 ### LiveActivityService
 - **Singleton Pattern**: Shared instance for app-wide access
@@ -599,6 +619,25 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 
 ## Recent Enhancements
 
+### New Features (February 2026)
+
+#### Route Alerts System
+- **Route Alert Subscriptions**: Subscribe to routes for delay/cancellation push notifications
+- **Recurring Train Alerts**: Subscribe to specific train numbers for daily commute monitoring
+- **RouteStatusView**: Per-route performance dashboard with frequency baseline coloring
+- **Notification Tap Navigation**: Deep link from alert notifications to route performance view
+- **System-Appropriate Health Metric**: Auto-selects frequency vs on-time metric by transit system
+
+#### Settings Redesign
+- **Rebranded "My Profile" to "Settings"** with gear icon in tab bar
+- **Amtrak Tri-State Toggle**: Off → NEC Only → All (consolidated from separate toggles)
+- **Health Indicator Auto-Coloring**: Congestion map segments auto-colored by train system (deprecated manual picker)
+
+#### NYC Subway Support (iOS)
+- Full subway station coverage via station code mapping
+- Subway-aware congestion map with STATION_EQUIVALENTS aggregation
+- System filtering for subway routes
+
 ### New Features (January 2026)
 
 #### PATH and PATCO Support
@@ -656,15 +695,6 @@ Proactive feedback collection during journeys:
 - **LiveActivityService Integration**: Automatically triggers prompts during active Live Activities
 
 ### Previously Documented Features
-
-#### Penn Station Navigation Guide (PennStationGuideView)
-Interactive guide helping users navigate Penn Station efficiently:
-- **YouTube Integration**: Embedded video guides with thumbnails
-- **Swipeable Cards**: Step-by-step navigation instructions
-- **Platform-Specific**: Separate guides for NJ Transit and Amtrak
-- **Visual Aids**: Station photos showing exact locations
-- **Amtrak Guide**: West End Concourse strategy via Moynihan Hall
-- **NJ Transit Guide**: 7th Avenue sub-level Exit Concourse approach
 
 #### RatSense AI Journey Suggestions
 Intelligent journey prediction system that learns from user behavior:
@@ -750,14 +780,13 @@ Live Activities now use the enhanced data for better tracking:
 ## Future Considerations
 
 ### Planned Features
-- **Additional Transit Systems**: LIRR, Metro-North, SEPTA integration
 - **Widget Extension**: Home/Lock Screen widgets for favorite routes
 - **Apple Watch App**: Companion app with Live Activity sync
 - **Siri Shortcuts**: Quick access to frequent trips
 - **Offline Mode**: Core Data caching for reliability
-- **Remote Push Notifications**: Server-side Live Activity updates
 - **Interactive Notifications**: Quick actions from alerts
 - **CarPlay Support**: Hands-free train tracking
+- **Additional Transit Systems**: SEPTA regional rail
 
 ### Potential Enhancements
 - **Multi-Language Support**: Localization for broader audience

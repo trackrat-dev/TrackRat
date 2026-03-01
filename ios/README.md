@@ -1,6 +1,6 @@
 # TrackRat iOS App 🚂
 
-A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North trains with Live Activities, real-time updates, intelligent track predictions, and innovative navigation features.
+A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway trains with Live Activities, real-time updates, intelligent track predictions, route alerts, and innovative navigation features.
 
 ## 🎯 Key Features
 
@@ -18,13 +18,19 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and 
 - **Keystone Service**: 8 Pennsylvania stations
 - **LIRR**: All branches via MTA GTFS-RT
 - **Metro-North**: All branches via MTA GTFS-RT
+- **NYC Subway**: 36 routes, 472 stations via MTA GTFS-RT
 - **Total Coverage**: 1,000+ stations across the Eastern United States
-- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North
+- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway
+
+### Route Alerts
+- **Push Notifications**: Get alerted when subscribed routes experience delays or cancellations
+- **Recurring Train Alerts**: Subscribe to specific train numbers for daily commute monitoring
+- **Route Performance**: View per-route performance dashboards with frequency baseline coloring
+- **System-Appropriate Metrics**: Auto-selects frequency vs on-time metric by transit system
 
 ### Intelligent Features
 - **🦉 Owl Track Predictions**: AI-powered track predictions with confidence levels
 - **🐀 RatSense Journey Suggestions**: Learns your travel patterns and suggests likely trips
-- **Penn Station Navigation Guide**: Interactive video guides for efficient navigation
 - **Historical Analytics**: Performance data, delay statistics, and track usage patterns
 - **Map Layer Controls**: Toggleable congestion, routes, and station markers on map
 - **GTFS Future Schedules**: View train schedules for future dates via GTFS data
@@ -39,8 +45,9 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, and 
 - **Monthly-Only Subscription**: $2.99/month pricing after trial
 
 ### Train System Filtering
-- **Opt-in PATH/PATCO**: Users can enable/disable transit systems in Advanced Configuration
-- **Default Systems**: NJT and Amtrak enabled by default; PATH and PATCO require opt-in
+- **Per-System Toggles**: Users can enable/disable each transit system in Settings
+- **Default Systems**: NJT and Amtrak enabled by default; others require opt-in
+- **Amtrak Tri-State**: Off → NEC Only → All (covers Southeast Corridor expansion)
 - **Map Layer Filtering**: Disabled systems hidden from congestion map and route overlays
 - **Station Filtering**: Disabled systems excluded from station picker and onboarding
 - **TrainSystem.swift**: Model for system preferences with UserDefaults persistence
@@ -91,9 +98,10 @@ TrackRat/
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
 │
-├── Services/                    # Business logic (12 services)
+├── Services/                    # Business logic (14 services)
 │   ├── APIService.swift        # Network communication
 │   ├── LiveActivityService.swift # Live Activity management
+│   ├── AlertSubscriptionService.swift # Route alert subscriptions
 │   ├── RatSenseService.swift   # AI journey predictions
 │   ├── BackendWakeupService.swift # Backend health management
 │   ├── StorageService.swift    # Local persistence
@@ -103,22 +111,26 @@ TrackRat/
 │   ├── ThemeManager.swift      # Theme configuration
 │   ├── SubscriptionService.swift # Pro subscription management
 │   ├── TripRecordingService.swift # Trip statistics tracking
+│   ├── JourneyFeedbackService.swift # Journey feedback prompts
 │   └── StaticTrackDistributionService.swift # Track analytics
 │
 ├── Views/                       # UI layer
-│   ├── Screens/                # Full-screen views (12 screens)
+│   ├── Screens/                # Full-screen views (16 screens)
 │   │   ├── TripSelectionView.swift      # Home screen with search
 │   │   ├── DeparturePickerView.swift    # Origin station selection
 │   │   ├── DestinationPickerView.swift  # Destination selection
 │   │   ├── TrainListView.swift          # Departure board
 │   │   ├── TrainDetailsView.swift       # Train journey details
-│   │   ├── PennStationGuideView.swift   # Navigation assistance
 │   │   ├── CongestionMapView.swift      # Network congestion
 │   │   ├── HistoricalDataView.swift     # Performance analytics
-│   │   ├── SettingsView.swift            # User settings
+│   │   ├── SettingsView.swift           # User settings and preferences
 │   │   ├── MapContainerView.swift       # Primary map interface
 │   │   ├── OnboardingView.swift         # User onboarding
-│   │   └── AdvancedConfigurationView.swift # Developer settings
+│   │   ├── AdvancedConfigurationView.swift # Developer settings
+│   │   ├── RouteStatusView.swift        # Route alert performance
+│   │   ├── AddRouteAlertView.swift      # Add route alert
+│   │   ├── EditRouteAlertsView.swift    # Manage route alerts
+│   │   └── TripHistoryView.swift        # Trip history
 │   │
 │   └── Components/              # Reusable UI components (17+ files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
@@ -316,7 +328,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 - [ ] iPad optimization
 - [ ] macOS Catalyst app
 - [ ] CarPlay support
-- [ ] Additional transit systems (SEPTA)
+- [ ] Additional transit systems (SEPTA, NJ Light Rail)
 - [ ] Social features (trip sharing)
 
 ## 📝 License

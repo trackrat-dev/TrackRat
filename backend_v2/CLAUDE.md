@@ -229,6 +229,10 @@ The APScheduler runs in-process and handles:
 - **Daily at 4 AM ET**: NJT schedule collection (27-hour schedules)
 - **Daily at 4:30 AM ET**: Amtrak pattern-based schedule generation
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
+- **Every 4 min**: PATH collection (unified, RidePATH API)
+- **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
+- **Every 4 min**: Metro-North collection (unified, MTA GTFS-RT)
+- **Every 4 min**: NYC Subway collection (8 GTFS-RT feeds, 36 routes)
 - **Every 5 min**: Journey update checks for active trains
 - **Every 15 min**: Individual journey collection updates
 - **Every 15 min**: API cache pre-computation for congestion endpoints
@@ -655,33 +659,36 @@ The backend is organized into service classes for better maintainability:
 
 ## Recent Improvements & Known Issues
 
-### Recent Improvements (January-February 2026)
+### Recent Improvements (February 2026)
+- ✅ Recurring train alerts: subscribe to specific train numbers for daily commute monitoring
+- ✅ Frequency-based stats for subway/PATH/PATCO recent departures (replaces on-time metric)
+- ✅ System-appropriate health metric: auto-selects frequency vs on-time by transit system
+- ✅ Frequency baseline coloring for route alert performance views
+- ✅ PATH departure time fix: tz normalization eliminating lag vs station signs
+- ✅ Scheduler stagger and jitter to prevent thundering herd on startup
+- ✅ NJT fuzzy matching for scheduled-to-observed train merging
+- ✅ NJT line code collision fixes preventing duplicate SCHEDULED trains
+- ✅ Subway JIT refresh fix: correct train matching on non-branching lines
+- ✅ Subway origin inference topology bug fix and increased train ID hash length
+- ✅ Departure cache miss fix (params_hash including data_sources)
+- ✅ Deadlock cascade prevention via scheduler coordination improvements
+- ✅ Station code mismatch fix for subway/MNR departure times
+- ✅ LIRR date-suffix trip_id handling for GTFS static backfill
+- ✅ Greenlet lazy-load fix preventing greenlet_spawn errors in async context
+
+### Previous Improvements (January 2026)
 - ✅ Added NYC Subway (MTA) support: 472 stations, 36 routes, 8 GTFS-RT feeds
 - ✅ Added route-based delay & cancellation alert system with APNS push notifications
-- ✅ Added Amtrak NEC train system for Northeast Corridor filtering
-- ✅ PATH departure time precision improvements with GTFS segment times
-- ✅ Split station config into per-provider `stations/` package (njt, amtrak, path, patco, lirr, mnr, subway)
-- ✅ Subway station complex aggregation via STATION_EQUIVALENTS
-- ✅ Renamed ML-prefixed identifiers to prediction-agnostic names
-- ✅ Ground truth validation expanded to include SUBWAY provider
-- ✅ Amtrak delay propagation: parse depCmnt/arrCmnt into updated times
-- ✅ Added LIRR support with unified GTFS-RT collector
-- ✅ Added Metro-North support with unified GTFS-RT collector
-- ✅ Shared MTA logic in `mta_common.py` for stop merging, departure inference, completion detection
+- ✅ Added LIRR, Metro-North support with unified GTFS-RT collectors
 - ✅ Added PATH train support with full GTFS integration
 - ✅ Added PATCO Speedline support with schedule-based GTFS data (14 stations)
-- ✅ Implemented GTFS future date schedule viewing for all transit systems
-- ✅ Added headsign fallback lookup for PATH/PATCO train details
-- ✅ Fixed train lookup for systems without numeric train IDs
-- ✅ Simplified route summary body text format with natural language
+- ✅ Shared MTA logic in `mta_common.py` for stop merging, departure inference, completion detection
+- ✅ Subway station complex aggregation via STATION_EQUIVALENTS
+- ✅ Split station config into per-provider `stations/` package
 - ✅ Added delay and cancellation forecasting with predictions
-- ✅ Expanded track predictions to support multiple stations beyond NY Penn
-- ✅ Added hot train updates for reduced event latency
-- ✅ Implemented `hide_departed` parameter for departures endpoint
-- ✅ Improved NJT API resilience for null/empty ITEMS in low-traffic stations
-- ✅ Track prediction now returns 404 instead of uniform distribution when insufficient data
-- ✅ Optimized departure service with data freshness indicators
-- ✅ Fixed delay forecaster floor calculations for accuracy
+- ✅ Implemented GTFS future date schedule viewing for all transit systems
+- ✅ Added `hide_departed` parameter for departures endpoint
+- ✅ Ground truth validation expanded to include all providers
 
 ### Previous Improvements (Aug-Sep 2025)
 - ✅ Added NJT schedule collection for future train visibility

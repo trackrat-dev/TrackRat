@@ -80,14 +80,16 @@ collectors/
 ├── amtrak/       # Amtrak (multi-phase)
 ├── path/         # PATH (unified collector)
 ├── lirr/         # LIRR (GTFS-RT)
-└── mnr/          # Metro-North (GTFS-RT)
+├── mnr/          # Metro-North (GTFS-RT)
+├── subway/       # NYC Subway (GTFS-RT, 8 feeds)
+└── patco/        # PATCO (GTFS static only)
 ```
 
 ### Steps
 
 1. **Create a collector directory** — `collectors/your_system/`
 2. **Implement the collector** — Fetch data from the transit API and produce `TrainJourney` and `JourneyStop` records
-3. **Add station configuration** — Add station codes and names to `config/station_configs/`
+3. **Add station configuration** — Add station codes and names to `config/stations/`
 4. **Register with the scheduler** — Add collection jobs to the scheduler service
 5. **Add tests** — Unit tests with real API response fixtures in `tests/fixtures/`
 6. **Update station data** — Add stations to the web app's `data/stations.ts` and iOS station lists
@@ -98,7 +100,7 @@ Choose the pattern that fits your data source:
 
 - **Multi-phase** (NJT/Amtrak): Schedule generation → discovery → collection → JIT updates. Best for APIs that separate schedule and real-time data.
 - **Unified** (PATH): Single collector that handles both discovery and updates in one pass. Best for APIs that return complete train state.
-- **GTFS-RT** (LIRR/MNR): Uses MTA's GTFS-Realtime feeds with static schedule backfill. Best for systems that publish standard GTFS feeds.
+- **GTFS-RT** (LIRR/MNR/Subway): Uses MTA's GTFS-Realtime feeds with static schedule backfill via shared `mta_common.py`. Best for systems that publish standard GTFS feeds.
 - **Static** (PATCO): GTFS static schedules only. For systems without a real-time API.
 
 ### Key Models
@@ -132,7 +134,7 @@ Open an issue first if you're planning to add a new system — we'll help you ge
 
 ## Where Help Is Wanted
 
-- **New transit systems** — SEPTA, MTA Subway, NJ Bus, and beyond
+- **New transit systems** — SEPTA, NJ Light Rail, NJ Bus, and beyond
 - **Test coverage** — Especially for collectors and services
 - **Web app features** — PWA improvements, accessibility, data visualization
 - **Documentation** — API docs, architecture guides, onboarding improvements

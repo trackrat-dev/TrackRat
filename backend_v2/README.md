@@ -1,6 +1,6 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North built with FastAPI, PostgreSQL, and modern Python.
+A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway built with FastAPI, PostgreSQL, and modern Python.
 
 **Version:** 2.1.0 (February 2026)
 **Database:** PostgreSQL with asyncpg (production-ready)
@@ -18,7 +18,8 @@ A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATC
 - **📊 Built-in Monitoring**: Health checks, metrics, validation, and structured logging
 - **🤖 ML Predictions**: Track assignment predictions with confidence scoring
 - **📱 Live Activities**: Push notification support for iOS Live Activity updates
-- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, and Metro-North with extensible architecture
+- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway with extensible architecture
+- **🔔 Route Alerts**: Push notifications for delays and cancellations on subscribed routes
 - **🔍 Coverage Validation**: Hourly validation ensures complete train coverage
 - **💾 API Caching**: Intelligent response caching with pre-computation
 - **🔄 Horizontal Scaling**: Database-coordinated task execution across replicas
@@ -82,11 +83,13 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 4 minutes**: PATH train collection (unified discovery + updates)
 - **Every 4 minutes**: LIRR train collection (unified GTFS-RT collector)
 - **Every 4 minutes**: Metro-North train collection (unified GTFS-RT collector)
+- **Every 4 minutes**: NYC Subway collection (8 GTFS-RT feeds, 36 routes)
 - **Every 5 minutes**: Update checks for active journeys
+- **Every 5 minutes**: Route alert evaluation and push notifications
 - **Hourly at :05**: Validation across key routes
 - Monitor scheduler status at `/scheduler/status` endpoint
 
-**Note**: PATH, LIRR, and Metro-North each use unified collectors that handle both discovery and journey updates in a single pass. LIRR and Metro-North use MTA's GTFS-RT feeds with shared logic in `mta_common.py`. PATCO uses GTFS static schedules only (no real-time API).
+**Note**: PATH, LIRR, Metro-North, and NYC Subway each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, and Subway use MTA's GTFS-RT feeds with shared logic in `mta_common.py`. PATCO uses GTFS static schedules only (no real-time API).
 
 ## Configuration
 
@@ -263,6 +266,21 @@ GET /api/v2/validation/results/{route}/{source}
 ```
 Route-specific validation details (e.g., `/api/v2/validation/results/NY-TR/NJT`)
 
+### Route Alerts
+
+#### Register Device
+```
+POST /api/v2/devices/register
+{"device_token": "...", "platform": "ios"}
+```
+
+#### Sync Alert Subscriptions
+```
+PUT /api/v2/alerts/subscriptions
+{"device_token": "...", "subscriptions": [...]}
+```
+Sync route alert subscriptions for delay/cancellation push notifications
+
 ### Feedback
 ```
 POST /api/v2/feedback
@@ -372,6 +390,12 @@ The system uses a sophisticated multi-phase approach:
 - GTFS static schedules backfill stops that GTFS-RT omits (e.g., origin terminals)
 - Handles discovery and journey updates in one pass
 
+#### NYC Subway Collection (Every 4 minutes - Unified GTFS-RT)
+- Single collector processes 8 GTFS-RT feeds covering 36 routes and 472 stations
+- Uses MTA's official GTFS-RT feeds with shared logic from `mta_common.py`
+- Station complexes aggregated via `STATION_EQUIVALENTS` mapping
+- Full trip_id used as train ID (not truncated)
+
 #### PATCO Collection (Schedule-based only)
 - Uses GTFS static schedules from SEPTA feed
 - 14 stations from Lindenwold to 15-16th & Locust
@@ -411,6 +435,7 @@ The scheduler supports multiple replicas:
 - **RidePathClient**: Native PATH API client with 30-second caching
 - **LIRRCollector**: Unified LIRR collector using MTA GTFS-RT feeds
 - **MNRCollector**: Unified Metro-North collector using MTA GTFS-RT feeds
+- **SubwayCollector**: Unified NYC Subway collector processing 8 GTFS-RT feeds
 - **MTA Common**: Shared MTA logic for stop merging, departure inference, completion detection
 - **JustInTimeUpdateService**: On-demand data refresh (supports NJT, Amtrak, PATH)
 
@@ -428,8 +453,11 @@ The scheduler supports multiple replicas:
 - **HistoricalTrackPredictor**: Track assignment predictions using historical patterns
 - **TrackOccupancyService**: Track availability analysis
 
+#### Route Alerts
+- **AlertEvaluatorService**: Evaluates delay/cancellation conditions for push notifications
+
 #### Infrastructure
-- **SimpleAPNSService**: iOS Live Activity notifications
+- **SimpleAPNSService**: iOS Live Activity notifications and route alert pushes
 - **BackupService**: GCS database backups
 - **TrainValidationService**: Coverage monitoring
 
@@ -577,7 +605,7 @@ Test the validation:
 
 ### Future Enhancements
 
-1. **🌐 Additional Transit Systems**: SEPTA regional rail and other Northeast Corridor systems
+1. **🌐 Additional Transit Systems**: SEPTA regional rail, NJ Light Rail
 2. **🤖 Enhanced ML**: Improved track prediction models with occupancy detection
 3. **📊 Advanced Monitoring**: Grafana dashboards for Prometheus metrics
 4. **⚡ Performance**: Redis caching layer for frequent queries
