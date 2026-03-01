@@ -609,6 +609,205 @@ class TestSubwayCollectorJourneyDetails:
         assert journey.actual_departure == now
         assert journey.actual_arrival == now + timedelta(minutes=10)
 
+    @pytest.mark.asyncio
+    async def test_exact_match_picks_correct_trip_on_non_branching_line(
+        self, collector, mock_client, mock_session
+    ):
+        """Regression test: on non-branching lines like the L, all trips share
+        identical station sets. The fuzzy matcher would pick the wrong train
+        based on time proximity. The exact match (re-hashing candidate trip_ids)
+        must pick the correct one regardless of timing.
+
+        Scenario: Journey was created from trip_correct. The feed has two L trips
+        with identical stations. trip_wrong has a closer departure time (simulating
+        a newer train closer to origin), but trip_correct is the actual train.
+        The JIT must pick trip_correct via exact hash match.
+        """
+        now = datetime.now(timezone.utc)
+        trip_correct = "074850_L..S"
+        trip_wrong = "075200_L..S"
+
+        # Build the train_id the same way the collector would
+        correct_train_id = _generate_train_id(trip_correct, "L")
+
+        journey = MagicMock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = correct_train_id
+        journey.data_source = "SUBWAY"
+        journey.line_code = "L"
+        # Scheduled departure is 10 minutes ago (train is mid-route)
+        journey.scheduled_departure = now - timedelta(minutes=10)
+        journey.is_completed = False
+        journey.update_count = 0
+
+        # Both trips visit the same stations (L line has no branches)
+        stop1 = MagicMock(spec=JourneyStop)
+        stop1.station_code = "SL01"
+        stop1.stop_sequence = 1
+        stop1.actual_departure = now - timedelta(minutes=10)
+        stop1.actual_arrival = now - timedelta(minutes=10)
+        stop1.scheduled_arrival = now - timedelta(minutes=10)
+        stop1.scheduled_departure = now - timedelta(minutes=10)
+        stop1.has_departed_station = True
+        stop1.departure_source = None
+
+        stop2 = MagicMock(spec=JourneyStop)
+        stop2.station_code = "SL02"
+        stop2.stop_sequence = 2
+        stop2.actual_departure = None
+        stop2.actual_arrival = None
+        stop2.scheduled_arrival = now + timedelta(minutes=5)
+        stop2.scheduled_departure = now + timedelta(minutes=5)
+        stop2.has_departed_station = False
+        stop2.departure_source = None
+
+        journey.stops = [stop1, stop2]
+
+        correct_time = now + timedelta(minutes=3)
+        wrong_time = now - timedelta(minutes=8)
+
+        arrivals = [
+            # trip_wrong: closer to scheduled_departure (fuzzy would pick this)
+            SubwayArrival(
+                station_code="SL01",
+                gtfs_stop_id="L01S",
+                trip_id=trip_wrong,
+                route_id="L",
+                direction_id=1,
+                headsign=None,
+                arrival_time=wrong_time,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id=None,
+                is_assigned=True,
+            ),
+            SubwayArrival(
+                station_code="SL02",
+                gtfs_stop_id="L02S",
+                trip_id=trip_wrong,
+                route_id="L",
+                direction_id=1,
+                headsign=None,
+                arrival_time=wrong_time + timedelta(minutes=10),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id=None,
+                is_assigned=True,
+            ),
+            # trip_correct: further from scheduled_departure but the actual train
+            SubwayArrival(
+                station_code="SL01",
+                gtfs_stop_id="L01S",
+                trip_id=trip_correct,
+                route_id="L",
+                direction_id=1,
+                headsign=None,
+                arrival_time=correct_time,
+                departure_time=None,
+                delay_seconds=0,
+                track="2",
+                nyct_train_id=None,
+                is_assigned=True,
+            ),
+            SubwayArrival(
+                station_code="SL02",
+                gtfs_stop_id="L02S",
+                trip_id=trip_correct,
+                route_id="L",
+                direction_id=1,
+                headsign=None,
+                arrival_time=correct_time + timedelta(minutes=10),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id=None,
+                is_assigned=True,
+            ),
+        ]
+        mock_client.get_feed_arrivals.return_value = arrivals
+
+        mock_stop_result = MagicMock()
+        mock_stop_result.scalar_one_or_none.side_effect = [stop1, stop2]
+        mock_stops_list = MagicMock()
+        mock_stops_list.scalars.return_value.all.return_value = [stop1, stop2]
+        mock_session.execute.side_effect = [
+            mock_stop_result,  # SL01 stop lookup
+            mock_stop_result,  # SL02 stop lookup
+            mock_stops_list,  # Get all stops for update
+        ]
+
+        await collector.collect_journey_details(mock_session, journey)
+
+        # Must use trip_correct (track "2" at SL01), NOT trip_wrong
+        assert journey.actual_departure == correct_time
+        assert journey.actual_arrival == correct_time + timedelta(minutes=10)
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_fallback_when_trip_id_changed(
+        self, collector, mock_client, mock_session
+    ):
+        """When the original trip_id is no longer in the feed (rare: MTA
+        reassignment), the JIT falls back to fuzzy matching by station overlap
+        and time proximity."""
+        now = datetime.now(timezone.utc)
+
+        # Journey has a hash from a trip_id that's no longer in the feed
+        journey = MagicMock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = _generate_train_id("old_trip_gone", "L")
+        journey.data_source = "SUBWAY"
+        journey.line_code = "L"
+        journey.scheduled_departure = now
+        journey.is_completed = False
+        journey.update_count = 0
+
+        stop1 = MagicMock(spec=JourneyStop)
+        stop1.station_code = "SL01"
+        stop1.stop_sequence = 1
+        stop1.actual_departure = now
+        stop1.actual_arrival = now
+        stop1.scheduled_arrival = now
+        stop1.scheduled_departure = now
+        stop1.has_departed_station = False
+        stop1.departure_source = None
+
+        journey.stops = [stop1]
+
+        # Feed only has a new trip_id (no hash match possible)
+        arrivals = [
+            SubwayArrival(
+                station_code="SL01",
+                gtfs_stop_id="L01S",
+                trip_id="new_trip_reassigned",
+                route_id="L",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now + timedelta(seconds=30),
+                departure_time=None,
+                delay_seconds=0,
+                track="1",
+                nyct_train_id=None,
+                is_assigned=True,
+            ),
+        ]
+        mock_client.get_feed_arrivals.return_value = arrivals
+
+        mock_stop_result = MagicMock()
+        mock_stop_result.scalar_one_or_none.return_value = stop1
+        mock_stops_list = MagicMock()
+        mock_stops_list.scalars.return_value.all.return_value = [stop1]
+        mock_session.execute.side_effect = [
+            mock_stop_result,  # SL01 stop lookup
+            mock_stops_list,  # Get all stops for update
+        ]
+
+        await collector.collect_journey_details(mock_session, journey)
+
+        # Fuzzy fallback should still update the journey
+        assert journey.actual_departure == now + timedelta(seconds=30)
+
 
 # =============================================================================
 # RUN ENTRY POINT TESTS

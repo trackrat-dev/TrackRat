@@ -496,6 +496,183 @@ class TestLIRRCollectorJourneyDetails:
         # Should complete without error
         mock_client.get_all_arrivals.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_exact_match_picks_correct_trip_over_closer_time(
+        self, collector, mock_client, mock_session
+    ):
+        """Regression test: when two trips share the same stations (same branch),
+        the JIT must use exact train_id matching (regenerating from trip_id) instead
+        of fuzzy time proximity.
+
+        Scenario: journey was created from GO103_25_181 (train L181). The feed has
+        two trips on the same branch. trip_wrong has a closer departure time, but
+        trip_correct is the actual train. The exact match must win.
+        """
+        now = datetime.now(timezone.utc)
+        trip_correct = "GO103_25_181"  # -> L181
+        trip_wrong = "GO103_25_183"  # -> L183
+
+        correct_train_id = _generate_train_id(trip_correct)
+        assert correct_train_id == "L181"
+
+        journey = MagicMock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = correct_train_id
+        journey.data_source = "LIRR"
+        journey.scheduled_departure = now - timedelta(minutes=5)
+        journey.is_completed = False
+        journey.update_count = 0
+
+        stop1 = MagicMock(spec=JourneyStop)
+        stop1.station_code = "JAM"
+        stop1.stop_sequence = 1
+        stop1.actual_departure = now - timedelta(minutes=5)
+        stop1.actual_arrival = now - timedelta(minutes=5)
+        stop1.scheduled_arrival = now - timedelta(minutes=5)
+        stop1.has_departed_station = True
+        stop1.departure_source = None
+
+        stop2 = MagicMock(spec=JourneyStop)
+        stop2.station_code = "NY"
+        stop2.stop_sequence = 2
+        stop2.actual_departure = None
+        stop2.actual_arrival = None
+        stop2.scheduled_arrival = now + timedelta(minutes=25)
+        stop2.has_departed_station = False
+        stop2.departure_source = None
+
+        journey.stops = [stop1, stop2]
+
+        correct_time = now + timedelta(minutes=2)
+        wrong_time = now - timedelta(minutes=4)
+
+        arrivals = [
+            # trip_wrong: closer departure time to scheduled_departure
+            LirrArrival(
+                station_code="JAM",
+                gtfs_stop_id="102",
+                trip_id=trip_wrong,
+                route_id="1",
+                direction_id=0,
+                headsign=None,
+                arrival_time=wrong_time,
+                departure_time=wrong_time + timedelta(minutes=1),
+                delay_seconds=0,
+                track="3",
+            ),
+            LirrArrival(
+                station_code="NY",
+                gtfs_stop_id="237",
+                trip_id=trip_wrong,
+                route_id="1",
+                direction_id=0,
+                headsign=None,
+                arrival_time=wrong_time + timedelta(minutes=30),
+                departure_time=None,
+                delay_seconds=0,
+                track="18",
+            ),
+            # trip_correct: the actual train
+            LirrArrival(
+                station_code="JAM",
+                gtfs_stop_id="102",
+                trip_id=trip_correct,
+                route_id="1",
+                direction_id=0,
+                headsign=None,
+                arrival_time=correct_time,
+                departure_time=correct_time + timedelta(minutes=1),
+                delay_seconds=0,
+                track="5",
+            ),
+            LirrArrival(
+                station_code="NY",
+                gtfs_stop_id="237",
+                trip_id=trip_correct,
+                route_id="1",
+                direction_id=0,
+                headsign=None,
+                arrival_time=correct_time + timedelta(minutes=30),
+                departure_time=None,
+                delay_seconds=0,
+                track="17",
+            ),
+        ]
+        mock_client.get_all_arrivals.return_value = arrivals
+
+        mock_stop_result = MagicMock()
+        mock_stop_result.scalar_one_or_none.side_effect = [stop1, stop2]
+        mock_stops_list = MagicMock()
+        mock_stops_list.scalars.return_value.all.return_value = [stop1, stop2]
+        mock_session.execute.side_effect = [
+            mock_stop_result,
+            mock_stop_result,
+            mock_stops_list,
+        ]
+
+        await collector.collect_journey_details(mock_session, journey)
+
+        # Must use trip_correct times, NOT trip_wrong
+        assert journey.actual_departure == correct_time
+        assert journey.actual_arrival == correct_time + timedelta(minutes=30)
+
+    @pytest.mark.asyncio
+    async def test_fuzzy_fallback_when_trip_id_changed(
+        self, collector, mock_client, mock_session
+    ):
+        """When the original trip_id is no longer in the feed, the JIT falls
+        back to fuzzy matching by station overlap and time proximity."""
+        now = datetime.now(timezone.utc)
+
+        journey = MagicMock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "L999"  # No trip in feed will generate this
+        journey.data_source = "LIRR"
+        journey.scheduled_departure = now
+        journey.is_completed = False
+        journey.update_count = 0
+
+        stop1 = MagicMock(spec=JourneyStop)
+        stop1.station_code = "JAM"
+        stop1.stop_sequence = 1
+        stop1.actual_departure = now
+        stop1.actual_arrival = now
+        stop1.scheduled_arrival = now
+        stop1.has_departed_station = False
+        stop1.departure_source = None
+
+        journey.stops = [stop1]
+
+        arrivals = [
+            LirrArrival(
+                station_code="JAM",
+                gtfs_stop_id="102",
+                trip_id="new_trip_reassigned",
+                route_id="1",
+                direction_id=0,
+                headsign=None,
+                arrival_time=now + timedelta(seconds=30),
+                departure_time=now + timedelta(seconds=60),
+                delay_seconds=0,
+                track="5",
+            ),
+        ]
+        mock_client.get_all_arrivals.return_value = arrivals
+
+        mock_stop_result = MagicMock()
+        mock_stop_result.scalar_one_or_none.return_value = stop1
+        mock_stops_list = MagicMock()
+        mock_stops_list.scalars.return_value.all.return_value = [stop1]
+        mock_session.execute.side_effect = [
+            mock_stop_result,
+            mock_stops_list,
+        ]
+
+        await collector.collect_journey_details(mock_session, journey)
+
+        # Fuzzy fallback should still update the journey
+        assert journey.actual_departure == now + timedelta(seconds=30)
+
 
 class TestLIRRCollectorRun:
     """Tests for the run() entry point method."""

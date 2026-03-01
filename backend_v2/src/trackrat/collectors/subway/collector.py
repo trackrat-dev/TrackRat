@@ -446,29 +446,42 @@ class SubwayCollector:
                 matching_trips[arr.trip_id] = []
             matching_trips[arr.trip_id].append(arr)
 
+        # Exact match: re-hash each candidate trip_id and compare against
+        # the stored train_id. This avoids the fuzzy matching bug where
+        # non-branching lines (e.g., L) have identical station sets for
+        # every trip, causing the fuzzy matcher to pick the wrong train.
         best_trip: list[SubwayArrival] | None = None
-        best_overlap = 0
-        best_time_diff = float("inf")
-
-        for trip_arrivals in matching_trips.values():
-            trip_stations = {a.station_code for a in trip_arrivals}
-            overlap = len(trip_stations & journey_station_codes)
-
-            time_diff = float("inf")
-            if journey.scheduled_departure:
-                first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                time_diff = abs(
-                    (
-                        first_arr.arrival_time - journey.scheduled_departure
-                    ).total_seconds()
-                )
-
-            if overlap > best_overlap or (
-                overlap == best_overlap and time_diff < best_time_diff
-            ):
-                best_overlap = overlap
-                best_time_diff = time_diff
+        route_id = journey.line_code or ""
+        for trip_id_candidate, trip_arrivals in matching_trips.items():
+            if _generate_train_id(trip_id_candidate, route_id) == journey.train_id:
                 best_trip = trip_arrivals
+                break
+
+        # Fuzzy fallback: if the trip_id changed (rare), fall back to
+        # station overlap + time proximity.
+        if best_trip is None:
+            best_overlap = 0
+            best_time_diff = float("inf")
+
+            for trip_arrivals in matching_trips.values():
+                trip_stations = {a.station_code for a in trip_arrivals}
+                overlap = len(trip_stations & journey_station_codes)
+
+                time_diff = float("inf")
+                if journey.scheduled_departure:
+                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
+                    time_diff = abs(
+                        (
+                            first_arr.arrival_time - journey.scheduled_departure
+                        ).total_seconds()
+                    )
+
+                if overlap > best_overlap or (
+                    overlap == best_overlap and time_diff < best_time_diff
+                ):
+                    best_overlap = overlap
+                    best_time_diff = time_diff
+                    best_trip = trip_arrivals
 
         if not best_trip:
             logger.debug(
