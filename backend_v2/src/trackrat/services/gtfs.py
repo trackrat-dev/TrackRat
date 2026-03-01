@@ -83,7 +83,7 @@ NJT_LINE_CODE_MAPPING = {
     "NJCL": "NC",
     "NJCLL": "NC",  # Variation
     # Morris & Essex Line (Morristown, Dover)
-    "MNE": "Mo",  # API returns "Morris and Essex" -> "Mo"
+    "MNE": "ME",  # Morris & Essex -> "ME" (distinct from Montclair-Boonton "Mo")
     # Gladstone Branch (part of Morris & Essex)
     "MNEG": "Gl",  # API returns "Gladstone Branch" -> "Gl"
     # Montclair-Boonton Line

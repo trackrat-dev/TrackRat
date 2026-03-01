@@ -179,7 +179,7 @@ NJT_GLADSTONE = Route(
     id="njt-gladstone",
     name="Gladstone Branch",
     data_source="NJT",
-    line_codes=frozenset({"GL"}),
+    line_codes=frozenset({"GL", "Gl"}),
     stations=(
         "ST",
         "NV",
@@ -230,7 +230,7 @@ NJT_MONTCLAIR_BOONTON = Route(
     id="njt-mobo",
     name="Montclair-Boonton Line",
     data_source="NJT",
-    line_codes=frozenset({"MO"}),  # Montclair-Boonton uses "MO"
+    line_codes=frozenset({"MO", "Mo"}),  # Montclair-Boonton: "MO" canonical, "Mo" from collectors
     stations=(
         "HB",
         "SE",
@@ -260,7 +260,7 @@ NJT_MAIN_LINE = Route(
     id="njt-main",
     name="Main Line",
     data_source="NJT",
-    line_codes=frozenset({"MA"}),
+    line_codes=frozenset({"MA", "Ma"}),
     stations=(
         "HB",
         "SE",
@@ -287,7 +287,7 @@ NJT_BERGEN_COUNTY = Route(
     id="njt-bergen",
     name="Bergen County Line",
     data_source="NJT",
-    line_codes=frozenset({"BE"}),
+    line_codes=frozenset({"BE", "Be"}),
     stations=(
         "HB",
         "SE",
@@ -321,7 +321,7 @@ NJT_PASCACK_VALLEY = Route(
     id="njt-pascack",
     name="Pascack Valley Line",
     data_source="NJT",
-    line_codes=frozenset({"PV"}),
+    line_codes=frozenset({"PV", "Pa"}),
     stations=(
         "HB",
         "SE",
@@ -348,7 +348,7 @@ NJT_ATLANTIC_CITY = Route(
     id="njt-atlc",
     name="Atlantic City Line",
     data_source="NJT",
-    line_codes=frozenset({"AC"}),
+    line_codes=frozenset({"AC", "At"}),
     stations=("PH", "TR"),  # Limited - add more if coordinates available
 )
 
@@ -356,7 +356,7 @@ NJT_PRINCETON_BRANCH = Route(
     id="njt-princeton",
     name="Princeton Branch",
     data_source="NJT",
-    line_codes=frozenset({"PR"}),
+    line_codes=frozenset({"PR", "Pr"}),
     stations=("PJ", "PR"),
 )
 

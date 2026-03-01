@@ -254,6 +254,7 @@ STATION_COORDINATES = {
     # Montclair-Boonton Line
     "BM": {"lat": 40.792709, "lon": -74.200043},  # Bloomfield
     "MC": {"lat": 40.808178, "lon": -74.208681},  # Bay Street (Montclair)
+    "WA": {"lat": 40.817165, "lon": -74.209557},  # Walnut Street
     "GG": {"lat": 40.80059, "lon": -74.204655},  # Glen Ridge
     "BF": {"lat": 40.922505, "lon": -74.115236},  # Broadway Fair Lawn
     "FZ": {"lat": 40.939914, "lon": -74.121617},  # Radburn Fair Lawn

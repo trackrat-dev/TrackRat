@@ -117,6 +117,11 @@ struct AddRouteAlertView: View {
                                     Text(route.name)
                                         .font(.headline)
                                         .foregroundColor(.white)
+                                    if let subtitle = route.terminalSubtitle {
+                                        Text(subtitle)
+                                            .font(.caption)
+                                            .foregroundColor(.white.opacity(0.7))
+                                    }
                                     Text(route.dataSource)
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.6))

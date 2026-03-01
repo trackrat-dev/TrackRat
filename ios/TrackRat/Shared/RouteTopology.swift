@@ -9,6 +9,14 @@ struct RouteLine: Identifiable {
     let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"
     let stationCodes: [String]
 
+    /// Human-readable terminal stations, e.g. "New York Penn → Trenton".
+    var terminalSubtitle: String? {
+        guard let first = stationCodes.first,
+              let last = stationCodes.last,
+              first != last else { return nil }
+        return "\(Stations.displayName(for: first)) – \(Stations.displayName(for: last))"
+    }
+
     /// Returns coordinate pairs for drawing polylines between consecutive stations.
     /// Only includes pairs where both stations have known coordinates.
     var coordinatePairs: [(CLLocationCoordinate2D, CLLocationCoordinate2D)] {
@@ -365,14 +373,6 @@ struct RouteTopology {
     // MARK: - LIRR Routes
 
     static let lirrRoutes: [RouteLine] = [
-        // Main Line (Penn Station to Jamaica - trunk for most branches)
-        RouteLine(
-            id: "lirr-main-trunk",
-            name: "Main Line (Trunk)",
-            dataSource: "LIRR",
-            stationCodes: ["NY", "WDD", "FHL", "KGN", "JAM"]
-        ),
-
         // Babylon Branch
         RouteLine(
             id: "lirr-babylon",
@@ -467,6 +467,22 @@ struct RouteTopology {
             name: "Grand Central Madison",
             dataSource: "LIRR",
             stationCodes: ["GCT", "JAM"]
+        ),
+
+        // Belmont Park (seasonal service via Hempstead Branch)
+        RouteLine(
+            id: "lirr-belmont-park",
+            name: "Belmont Park",
+            dataSource: "LIRR",
+            stationCodes: ["NY", "WDD", "FHL", "KGN", "JAM", "QVG", "BRS", "EMT"]
+        ),
+
+        // Greenport Service (eastern extension via Ronkonkoma Branch)
+        RouteLine(
+            id: "lirr-greenport",
+            name: "Greenport Service",
+            dataSource: "LIRR",
+            stationCodes: ["NY", "WDD", "FHL", "KGN", "JAM", "MAV", "LMIN", "CPL", "WBY", "LHVL", "BPG", "LFMD", "PLN", "WYD", "DPK", "BWD", "CI", "RON", "MFD", "YPK", "RHD", "MAK", "SHD", "GPT"]
         )
     ]
 
