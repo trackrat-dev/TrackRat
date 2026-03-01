@@ -92,11 +92,15 @@ async def run_with_freshness_check(
         # This prevents UniqueViolationError when multiple replicas
         # first-run the same task concurrently — INSERT ... ON CONFLICT
         # DO NOTHING is atomic, unlike SELECT-then-INSERT.
-        insert_stmt = pg_insert(SchedulerTaskRun).values(
-            task_name=task_name,
-            last_successful_run=datetime.min.replace(tzinfo=UTC),
-            run_count=0,
-        ).on_conflict_do_nothing(index_elements=["task_name"])
+        insert_stmt = (
+            pg_insert(SchedulerTaskRun)
+            .values(
+                task_name=task_name,
+                last_successful_run=datetime.min.replace(tzinfo=UTC),
+                run_count=0,
+            )
+            .on_conflict_do_nothing(index_elements=["task_name"])
+        )
         await db.execute(insert_stmt)
         await db.flush()
 

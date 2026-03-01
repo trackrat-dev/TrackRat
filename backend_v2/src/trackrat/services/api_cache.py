@@ -337,7 +337,7 @@ class ApiCacheService:
         """
 
         # Base popular routes (with destination)
-        base_routes = [
+        base_routes: list[dict[str, Any]] = [
             {"from_station": "NY", "to_station": "TR"},
             {"from_station": "NY", "to_station": "NP"},
             {"from_station": "TR", "to_station": "NY"},
@@ -361,11 +361,23 @@ class ApiCacheService:
         for route in base_routes:
             # hide_departed=false (web/default)
             popular_routes.append(
-                {**route, "date": None, "limit": 50, "hide_departed": False, "data_sources": None}
+                {
+                    **route,
+                    "date": None,
+                    "limit": 50,
+                    "hide_departed": False,
+                    "data_sources": None,
+                }
             )
             # hide_departed=true (iOS)
             popular_routes.append(
-                {**route, "date": None, "limit": 50, "hide_departed": True, "data_sources": None}
+                {
+                    **route,
+                    "date": None,
+                    "limit": 50,
+                    "hide_departed": True,
+                    "data_sources": None,
+                }
             )
 
         logger.info("precomputing_departure_responses", route_count=len(popular_routes))

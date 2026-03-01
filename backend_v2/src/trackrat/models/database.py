@@ -76,11 +76,15 @@ class TrainJourney(Base):
     # in async context, which cause greenlet_spawn errors (sqlalche.me/e/20/xd2s).
     # All access must use explicit eager loading (selectinload) or direct queries.
     stops: Mapped[list["JourneyStop"]] = relationship(
-        "JourneyStop", back_populates="journey", cascade="all, delete-orphan",
+        "JourneyStop",
+        back_populates="journey",
+        cascade="all, delete-orphan",
         lazy="raise_on_sql",
     )
     snapshots: Mapped[list["JourneySnapshot"]] = relationship(
-        "JourneySnapshot", back_populates="journey", cascade="all, delete-orphan",
+        "JourneySnapshot",
+        back_populates="journey",
+        cascade="all, delete-orphan",
         lazy="raise_on_sql",
     )
     progress: Mapped["JourneyProgress"] = relationship(
@@ -91,11 +95,15 @@ class TrainJourney(Base):
         lazy="raise_on_sql",
     )
     segment_times: Mapped[list["SegmentTransitTime"]] = relationship(
-        "SegmentTransitTime", back_populates="journey", cascade="all, delete-orphan",
+        "SegmentTransitTime",
+        back_populates="journey",
+        cascade="all, delete-orphan",
         lazy="raise_on_sql",
     )
     dwell_times: Mapped[list["StationDwellTime"]] = relationship(
-        "StationDwellTime", back_populates="journey", cascade="all, delete-orphan",
+        "StationDwellTime",
+        back_populates="journey",
+        cascade="all, delete-orphan",
         lazy="raise_on_sql",
     )
     progress_snapshots: Mapped[list["JourneyProgress"]] = relationship(

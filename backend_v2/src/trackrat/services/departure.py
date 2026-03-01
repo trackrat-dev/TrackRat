@@ -203,7 +203,11 @@ class DepartureService:
         if "NJT" in allowed_sources:
             try:
                 await self._ensure_fresh_station_data(
-                    db, from_station, target_date, skip_individual_refresh, hide_departed
+                    db,
+                    from_station,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
                 )
             except Exception as e:
                 logger.warning(

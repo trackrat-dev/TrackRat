@@ -608,9 +608,9 @@ class TestApiCacheService:
                 # Verify all calls include the data_sources key
                 for i in range(28):
                     actual_params = mock_compute.call_args_list[i][0][1]
-                    assert "data_sources" in actual_params, (
-                        f"Call {i} missing data_sources key: {actual_params}"
-                    )
+                    assert (
+                        "data_sources" in actual_params
+                    ), f"Call {i} missing data_sources key: {actual_params}"
 
                     store_call = mock_store.call_args_list[i]
                     assert store_call.kwargs["endpoint"] == "/api/v2/trains/departures"

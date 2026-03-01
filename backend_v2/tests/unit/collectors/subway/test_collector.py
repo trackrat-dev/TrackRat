@@ -1056,18 +1056,18 @@ class TestSubwayFeedResilience:
         Both shuttles operate on IND infrastructure shared with the A/C/E lines.
         They must map to the ACE feed for correct JIT updates.
         """
-        assert _ROUTE_TO_FEED["FS"] == "ACE", (
-            f"FS should map to ACE feed, got {_ROUTE_TO_FEED['FS']}"
-        )
-        assert _ROUTE_TO_FEED["H"] == "ACE", (
-            f"H should map to ACE feed, got {_ROUTE_TO_FEED['H']}"
-        )
+        assert (
+            _ROUTE_TO_FEED["FS"] == "ACE"
+        ), f"FS should map to ACE feed, got {_ROUTE_TO_FEED['FS']}"
+        assert (
+            _ROUTE_TO_FEED["H"] == "ACE"
+        ), f"H should map to ACE feed, got {_ROUTE_TO_FEED['H']}"
 
     def test_gs_shuttle_in_numbered_feed(self):
         """GS (42 St Shuttle) remains in the 1234567S feed."""
-        assert _ROUTE_TO_FEED["GS"] == "1234567S", (
-            f"GS should map to 1234567S feed, got {_ROUTE_TO_FEED['GS']}"
-        )
+        assert (
+            _ROUTE_TO_FEED["GS"] == "1234567S"
+        ), f"GS should map to 1234567S feed, got {_ROUTE_TO_FEED['GS']}"
 
 
 # =============================================================================

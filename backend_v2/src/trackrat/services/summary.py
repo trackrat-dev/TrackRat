@@ -1503,7 +1503,9 @@ class SummaryService:
         elif similar_total > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / similar_total
             train_word = "train" if similar_total == 1 else "trains"
-            headline = f"{similar_total} similar {train_word} — every ~{headway:.0f} min"
+            headline = (
+                f"{similar_total} similar {train_word} — every ~{headway:.0f} min"
+            )
         elif train_stats.has_data:
             headline = f"Historically ~{train_stats.total_count} trains per month"
         else:
@@ -1525,11 +1527,7 @@ class SummaryService:
             )
 
         if train_stats.has_data:
-            train_display = (
-                f"This {destination} train"
-                if destination
-                else "This train"
-            )
+            train_display = f"This {destination} train" if destination else "This train"
             hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
             if train_stats.cancellation_count > 0:
                 hist_text += (

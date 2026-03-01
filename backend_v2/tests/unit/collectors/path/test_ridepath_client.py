@@ -285,9 +285,9 @@ class TestRidePathClient:
         # Verify it's about 2 minutes earlier than the old (now-based) computation
         now_based = now + timedelta(minutes=10)
         offset = (now_based - arrival.arrival_time).total_seconds()
-        assert 115 < offset < 125, (
-            f"arrival_time should be ~120s earlier than now+10min, got {offset}s"
-        )
+        assert (
+            115 < offset < 125
+        ), f"arrival_time should be ~120s earlier than now+10min, got {offset}s"
 
     def test_arrival_time_falls_back_to_now_when_no_last_updated(self, client):
         """Test fallback to now when lastUpdated is missing."""
@@ -406,9 +406,9 @@ class TestRidePathClient:
         assert arrival_fresh is not None
         assert arrival_fresh.arrival_time.tzinfo is not None
         # pytz timezones have a .zone attribute; stdlib fixed-offset does not
-        assert hasattr(arrival_fresh.arrival_time.tzinfo, "zone"), (
-            f"arrival_time should have pytz timezone, got {type(arrival_fresh.arrival_time.tzinfo)}"
-        )
+        assert hasattr(
+            arrival_fresh.arrival_time.tzinfo, "zone"
+        ), f"arrival_time should have pytz timezone, got {type(arrival_fresh.arrival_time.tzinfo)}"
 
         # Case 2: no lastUpdated (fallback to now) — result must also be pytz ET
         no_lu_msg = {
@@ -418,12 +418,14 @@ class TestRidePathClient:
         }
         arrival_no_lu = client._parse_arrival_message("PJS", "ToNY", no_lu_msg, now)
         assert arrival_no_lu is not None
-        assert hasattr(arrival_no_lu.arrival_time.tzinfo, "zone"), (
-            f"arrival_time should have pytz timezone, got {type(arrival_no_lu.arrival_time.tzinfo)}"
-        )
+        assert hasattr(
+            arrival_no_lu.arrival_time.tzinfo, "zone"
+        ), f"arrival_time should have pytz timezone, got {type(arrival_no_lu.arrival_time.tzinfo)}"
 
         # Both should have the same timezone type
-        assert type(arrival_fresh.arrival_time.tzinfo) == type(arrival_no_lu.arrival_time.tzinfo)
+        assert type(arrival_fresh.arrival_time.tzinfo) == type(
+            arrival_no_lu.arrival_time.tzinfo
+        )
 
     def test_arrival_time_staleness_boundary(self, client):
         """Regression: verify behavior at the exact 300-second staleness boundary.
@@ -534,7 +536,9 @@ class TestRidePathClient:
         for arrival in arrivals:
             # Each arrival_time must be based on lastUpdated, not now.
             # If based on now, the offset from lastUpdated would be ~90s too much.
-            implied_baseline = arrival.arrival_time - timedelta(minutes=arrival.minutes_away)
+            implied_baseline = arrival.arrival_time - timedelta(
+                minutes=arrival.minutes_away
+            )
             offset_from_lu = abs((implied_baseline - last_updated).total_seconds())
             offset_from_now = abs((implied_baseline - now).total_seconds())
 

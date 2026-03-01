@@ -1213,7 +1213,7 @@ class GTFSService:
         )
 
         # Get active service IDs only for requested sources
-        all_services: dict[str, list[str]] = {}
+        all_services: dict[str, set[str]] = {}
         for source in sources_to_query:
             service_ids = await self.get_active_service_ids(db, source, target_date)
             if service_ids:
