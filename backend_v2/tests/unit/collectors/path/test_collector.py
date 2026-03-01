@@ -310,6 +310,27 @@ class TestInferOriginStation:
         result = _infer_origin_station("PHO", "PHO")
         assert result == "PHO"
 
+    def test_harrison_to_newark_prefers_full_route_over_shuttle(self):
+        """Test that NWK-WTC route is preferred over NWK-HAR shuttle for Harrison→Newark.
+
+        NWK-WTC reversed: [PWC, PEX, PGR, PJS, PHR, PNK] - PHR at idx 4
+        NWK-HAR reversed: [PHR, PNK] - PHR at idx 0
+
+        The shuttle [PNK, PHR] is a strict subset of the NWK-WTC route
+        [PNK, PHR, PJS, PGR, PEX, PWC]. The subset filter should eliminate the
+        shuttle so the full NWK-WTC route is selected, giving origin=PWC (World
+        Trade Center) and a complete 6-stop journey.
+        """
+        result = _infer_origin_station("PHR", "PNK")
+        assert result == "PWC"
+
+    def test_harrison_to_wtc_uses_nwk_wtc_route(self):
+        """Test that Harrison going to WTC correctly infers Newark as origin."""
+        # NWK-WTC route: PNK → PHR → PJS → PGR → PEX → PWC
+        # Harrison (PHR) at index 1, forward direction → origin is PNK
+        result = _infer_origin_station("PHR", "PWC")
+        assert result == "PNK"
+
 
 # =============================================================================
 # PATH COLLECTOR TESTS
