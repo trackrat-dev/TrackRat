@@ -338,13 +338,15 @@ struct SettingsView: View {
                     }
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(TrackRatTheme.IconSize.xsmall)
-                                .foregroundColor(.white)
+                    if destination != .routeAlerts {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(TrackRatTheme.IconSize.xsmall)
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
                 }
@@ -453,18 +455,11 @@ struct SettingsSection: View {
                         .foregroundColor(.orange)
                         .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Route Alerts")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Text("Delay & cancellation notifications")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                            .multilineTextAlignment(.leading)
-                    }
+                    Text("Route Alerts (beta)")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
 
                     Spacer()
 
