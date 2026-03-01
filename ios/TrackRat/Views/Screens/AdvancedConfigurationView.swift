@@ -25,6 +25,7 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
+                    createBetaFeaturesSection()
                     createServerEnvironmentSection()
                     createHealthCheckSection()
                     createMapSettingsSection()
@@ -61,6 +62,63 @@ struct AdvancedConfigurationView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: resetDataSuccessMessage)
+    }
+
+    // MARK: - Beta Features Section
+    @ViewBuilder
+    private func createBetaFeaturesSection() -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Beta Features")
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.white)
+
+            NavigationLink(value: SettingsDestination.tripHistory) {
+                HStack(spacing: 16) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("My Trips")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+
+                        Text("View your trip history and statistics")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.white.opacity(0.1), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.white.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
     }
 
     // MARK: - Map Settings Section
