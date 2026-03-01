@@ -124,12 +124,12 @@ struct RouteTopology {
             stationCodes: ["HB", "SE", "WR", "TE", "EX", "AS", "NH", "RG", "OD", "EN", "WW", "HD", "WL", "PV", "ZM", "PQ", "NN", "SV"]
         ),
 
-        // Atlantic City Line (simplified - main stops)
+        // Atlantic City Line
         RouteLine(
             id: "njt-atlc",
             name: "Atlantic City Line",
             dataSource: "NJT",
-            stationCodes: ["PH", "TR"]  // Limited - add more if coordinates available
+            stationCodes: ["PH", "PN", "CY", "LW", "AO", "HN", "EH", "AB", "AC"]
         ),
 
         // Princeton Branch (shuttle from Princeton Junction)

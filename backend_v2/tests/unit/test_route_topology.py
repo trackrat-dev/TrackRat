@@ -622,3 +622,97 @@ class TestSubwayARockawayBranch:
         assert (
             "SH11" in route._station_set
         ), "Direct line_code lookup for 'A' should return the main Far Rockaway variant"
+
+
+class TestNjtLineCodeConsistency:
+    """Test that NJT line codes are consistent between collectors and topology.
+
+    Collectors (schedule.py, gtfs.py) must produce codes that exist in
+    the corresponding route's line_codes frozenset, so that
+    get_route_by_line_code() can resolve them without falling back
+    to brute-force segment search.
+    """
+
+    def test_schedule_collector_codes_match_topology(self):
+        """Every code from parse_njt_line_code (full names) must be in some NJT route's line_codes."""
+        from trackrat.collectors.njt.schedule import parse_njt_line_code
+
+        test_names = [
+            ("Northeast Corridor", "NE"),
+            ("North Jersey Coast Line", "NC"),
+            ("Gladstone Branch", "GL"),
+            ("Montclair-Boonton Line", "MO"),
+            ("Morris and Essex Line", "ME"),
+            ("Raritan Valley Line", "RV"),
+            ("Pascack Valley Line", "PV"),
+            ("Bergen County Line", "BE"),
+            ("Main Line", "MA"),
+            ("Atlantic City Rail Line", "AC"),
+            ("Princeton Shuttle", "PR"),
+        ]
+        for name, expected_code in test_names:
+            code = parse_njt_line_code(name)
+            assert code == expected_code, f"parse_njt_line_code({name!r}) = {code!r}, expected {expected_code!r}"
+            route = get_route_by_line_code("NJT", code)
+            assert route is not None, (
+                f"Code {code!r} from parse_njt_line_code({name!r}) "
+                f"not found in any NJT route's line_codes"
+            )
+
+    def test_gtfs_mapping_codes_match_topology(self):
+        """Every code in NJT_LINE_CODE_MAPPING must be in some NJT route's line_codes."""
+        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
+
+        for gtfs_name, code in NJT_LINE_CODE_MAPPING.items():
+            route = get_route_by_line_code("NJT", code)
+            assert route is not None, (
+                f"GTFS code {code!r} (from {gtfs_name!r}) "
+                f"not found in any NJT route's line_codes"
+            )
+
+    def test_canonicalization_targets_match_topology(self):
+        """Every target code in NJT_LINE_CANONICALIZATION must be in some NJT route's line_codes."""
+        from trackrat.services.departure import NJT_LINE_CANONICALIZATION
+
+        for old_code, canonical_code in NJT_LINE_CANONICALIZATION.items():
+            route = get_route_by_line_code("NJT", canonical_code)
+            assert route is not None, (
+                f"Canonical code {canonical_code!r} (from {old_code!r}) "
+                f"not found in any NJT route's line_codes"
+            )
+
+    def test_morris_essex_distinct_from_montclair_boonton(self):
+        """Morris & Essex ('ME') and Montclair-Boonton ('MO') must resolve to different routes."""
+        me_route = get_route_by_line_code("NJT", "ME")
+        mo_route = get_route_by_line_code("NJT", "MO")
+        assert me_route is not None
+        assert mo_route is not None
+        assert me_route.id != mo_route.id, (
+            f"ME and MO should resolve to different routes, "
+            f"both resolved to {me_route.id}"
+        )
+
+    def test_atlantic_city_line_has_full_stations(self):
+        """Atlantic City Line should have all intermediate stations, not just PH-TR."""
+        from trackrat.config.route_topology import NJT_ATLANTIC_CITY
+
+        assert len(NJT_ATLANTIC_CITY.stations) >= 9, (
+            f"Atlantic City Line should have at least 9 stations (PH to AC), "
+            f"got {len(NJT_ATLANTIC_CITY.stations)}: {NJT_ATLANTIC_CITY.stations}"
+        )
+        assert NJT_ATLANTIC_CITY.stations[0] == "PH"
+        assert NJT_ATLANTIC_CITY.stations[-1] == "AC"
+
+    def test_all_njt_stations_have_names(self):
+        """Every station code in NJT routes should have a name in NJT_STATION_NAMES."""
+        from trackrat.config.stations.njt import NJT_STATION_NAMES
+        from trackrat.config.stations.common import STATION_NAMES
+
+        all_names = {**STATION_NAMES, **NJT_STATION_NAMES}
+        njt_routes = get_routes_for_data_source("NJT")
+        missing = []
+        for route in njt_routes:
+            for station in route.stations:
+                if station not in all_names:
+                    missing.append((route.id, station))
+        assert missing == [], f"NJT stations missing names: {missing}"

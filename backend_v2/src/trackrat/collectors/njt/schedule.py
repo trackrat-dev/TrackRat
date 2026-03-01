@@ -25,16 +25,16 @@ logger = get_logger(__name__)
 _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("northeast", "NE"),
     ("north jersey", "NC"),
-    ("gladstone", "Gl"),
-    ("montclair", "Mo"),
-    ("boonton", "Mo"),
+    ("gladstone", "GL"),
+    ("montclair", "MO"),
+    ("boonton", "MO"),
     ("morris", "ME"),
-    ("raritan", "Ra"),
-    ("pascack", "Pa"),
-    ("bergen", "Be"),
-    ("main", "Ma"),
-    ("atlantic", "At"),
-    ("princeton", "Pr"),
+    ("raritan", "RV"),
+    ("pascack", "PV"),
+    ("bergen", "BE"),
+    ("main", "MA"),
+    ("atlantic", "AC"),
+    ("princeton", "PR"),
 ]
 
 

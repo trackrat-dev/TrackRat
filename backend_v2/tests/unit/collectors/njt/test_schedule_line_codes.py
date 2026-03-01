@@ -32,34 +32,34 @@ class TestParseNjtLineCode:
         assert parse_njt_line_code("North Jersey Coast") == "NC"
 
     def test_raritan_valley(self):
-        assert parse_njt_line_code("Raritan Valley Line") == "Ra"
+        assert parse_njt_line_code("Raritan Valley Line") == "RV"
 
     def test_morris_and_essex(self):
-        assert parse_njt_line_code("Morris and Essex Line") == "Mo"
+        assert parse_njt_line_code("Morris and Essex Line") == "ME"
 
     def test_morris_ampersand_essex(self):
-        assert parse_njt_line_code("Morris & Essex Line") == "Mo"
+        assert parse_njt_line_code("Morris & Essex Line") == "ME"
 
     def test_montclair_boonton(self):
-        assert parse_njt_line_code("Montclair-Boonton Line") == "Mo"
+        assert parse_njt_line_code("Montclair-Boonton Line") == "MO"
 
     def test_gladstone_branch(self):
-        assert parse_njt_line_code("Gladstone Branch") == "Gl"
+        assert parse_njt_line_code("Gladstone Branch") == "GL"
 
     def test_main_line(self):
-        assert parse_njt_line_code("Main Line") == "Ma"
+        assert parse_njt_line_code("Main Line") == "MA"
 
     def test_bergen_county_line(self):
-        assert parse_njt_line_code("Bergen County Line") == "Be"
+        assert parse_njt_line_code("Bergen County Line") == "BE"
 
     def test_pascack_valley(self):
-        assert parse_njt_line_code("Pascack Valley Line") == "Pa"
+        assert parse_njt_line_code("Pascack Valley Line") == "PV"
 
     def test_atlantic_city(self):
-        assert parse_njt_line_code("Atlantic City Rail Line") == "At"
+        assert parse_njt_line_code("Atlantic City Rail Line") == "AC"
 
     def test_princeton_shuttle(self):
-        assert parse_njt_line_code("Princeton Shuttle") == "Pr"
+        assert parse_njt_line_code("Princeton Shuttle") == "PR"
 
     # --- Short codes from the NJT real-time discovery API ---
 
