@@ -1131,7 +1131,7 @@ class SummaryService:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
         else:
-            headline = f"Recent departures: {dep_on_time_pct:.0f}% on time"
+            headline = f"Past 2h: {dep_on_time_pct:.0f}% on time"
 
         # Status clause
         if cancellations > 0:
@@ -1182,11 +1182,9 @@ class SummaryService:
             headline = f"{cancellations} {cancel_word}"
         elif train_count > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
-            train_word = "train" if train_count == 1 else "trains"
-            headline = f"{train_count} {train_word} — every ~{headway:.0f} min"
+            headline = f"Past 2h: every ~{headway:.0f} min"
         else:
-            headline = ""
-            return headline, ""
+            headline = "Past 2h: 0 trains"
 
         # Body
         body_parts = []
@@ -1199,12 +1197,16 @@ class SummaryService:
                 body_parts.append(
                     f"{remaining} others departed, averaging every {headway:.0f} minutes."
                 )
-        else:
+        elif train_count > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
             train_word = "train" if train_count == 1 else "trains"
             body_parts.append(
                 f"{train_count} {train_word} departed in the past {SUMMARY_TIME_WINDOW_MINUTES // 60} hours, "
                 f"averaging every {headway:.0f} minutes."
+            )
+        else:
+            body_parts.append(
+                f"No trains departed in the past {SUMMARY_TIME_WINDOW_MINUTES // 60} hours."
             )
 
         return headline, " ".join(body_parts)
@@ -1428,11 +1430,9 @@ class SummaryService:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
         elif dep_stats.has_data:
-            headline = f"Recent departures: {dep_stats.on_time_percentage:.0f}% on time"
+            headline = f"Past 2h: {dep_stats.on_time_percentage:.0f}% on time"
         elif train_stats.has_data:
-            headline = (
-                f"Recent departures: {train_stats.on_time_percentage:.0f}% on time"
-            )
+            headline = f"Past 2h: {train_stats.on_time_percentage:.0f}% on time"
         else:
             return "", ""  # No data
 
@@ -1502,10 +1502,7 @@ class SummaryService:
             headline = f"{cancellations} {cancel_word}"
         elif similar_total > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / similar_total
-            train_word = "train" if similar_total == 1 else "trains"
-            headline = (
-                f"{similar_total} similar {train_word} — every ~{headway:.0f} min"
-            )
+            headline = f"Past 2h: every ~{headway:.0f} min"
         elif train_stats.has_data:
             headline = f"Historically ~{train_stats.total_count} trains per month"
         else:

@@ -280,7 +280,7 @@ class TestSummaryService:
         summary = summary_service._generate_route_summary(route_journeys, "NY", "NP")
 
         assert summary.scope == "route"
-        assert "Recent departures:" in summary.headline
+        assert "Past 2h:" in summary.headline
         assert "% on time" in summary.headline
         assert summary.metrics is not None
         assert summary.metrics.train_count == 2
@@ -1248,8 +1248,8 @@ class TestFormatFrequencyRouteHeadlineBody:
         """Create a SummaryService instance for testing."""
         return SummaryService()
 
-    def test_normal_service_shows_count_and_headway(self, summary_service):
-        """12 trains over 120min → headline shows count + ~10 min headway."""
+    def test_normal_service_shows_headway(self, summary_service):
+        """12 trains over 120min → headline shows Past 2h + ~10 min headway."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=12, cancellations=0
         )
@@ -1257,21 +1257,18 @@ class TestFormatFrequencyRouteHeadlineBody:
         print(f"headline: {headline!r}")
         print(f"body: {body!r}")
         print(f"expected_headway: {expected_headway}")
-        assert "12 trains" in headline
-        assert "~10 min" in headline
+        assert headline == "Past 2h: every ~10 min"
         assert "12 trains departed" in body
         assert "every 10 minutes" in body
 
     def test_single_train_headway(self, summary_service):
-        """1 train over 120min → large headway, singular grammar."""
+        """1 train over 120min → large headway."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=1, cancellations=0
         )
         print(f"headline: {headline!r}")
         print(f"body: {body!r}")
-        assert "1 train" in headline
-        assert "1 trains" not in headline  # Verify singular form
-        assert "~120 min" in headline
+        assert headline == "Past 2h: every ~120 min"
 
     def test_high_frequency_headway(self, summary_service):
         """30 trains over 120min → 4 min headway."""
@@ -1280,8 +1277,7 @@ class TestFormatFrequencyRouteHeadlineBody:
         )
         print(f"headline: {headline!r}")
         print(f"body: {body!r}")
-        assert "30 trains" in headline
-        assert "~4 min" in headline
+        assert headline == "Past 2h: every ~4 min"
 
     def test_cancellations_lead_headline(self, summary_service):
         """Cancellations should lead the headline, with remaining train headway in body."""
@@ -1304,15 +1300,15 @@ class TestFormatFrequencyRouteHeadlineBody:
         assert headline == "1 cancellation"
         assert "1 train was cancelled" in body
 
-    def test_zero_trains_returns_empty(self, summary_service):
-        """No trains and no cancellations → empty headline and body."""
+    def test_zero_trains_shows_no_service(self, summary_service):
+        """No trains and no cancellations → 'Past 2h: 0 trains'."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=0, cancellations=0
         )
         print(f"headline: {headline!r}")
         print(f"body: {body!r}")
-        assert headline == ""
-        assert body == ""
+        assert headline == "Past 2h: 0 trains"
+        assert "No trains departed" in body
 
     def test_all_cancelled_no_remaining(self, summary_service):
         """All trains cancelled, none running → no headway info in body."""
@@ -1363,8 +1359,7 @@ class TestFormatFrequencyTrainHeadlineBody:
         print(f"headline: {headline!r}")
         print(f"body: {body!r}")
         expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 8  # 15
-        assert "8 similar trains" in headline
-        assert "~15 min" in headline
+        assert headline == "Past 2h: every ~15 min"
         assert "World Trade Center" in body
         assert "on time" in body
 
