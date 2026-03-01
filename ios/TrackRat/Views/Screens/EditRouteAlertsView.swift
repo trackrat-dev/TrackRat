@@ -102,7 +102,7 @@ struct EditRouteAlertsView: View {
                                         }
                                     }
                                 } else if let lineName = sub.lineName {
-                                    VStack(alignment: .leading, spacing: 2) {
+                                    VStack(alignment: .leading, spacing: 4) {
                                         Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
                                         if let lineId = sub.lineId,
                                            let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }),
