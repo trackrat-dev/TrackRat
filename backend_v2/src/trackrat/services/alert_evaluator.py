@@ -23,7 +23,10 @@ from trackrat.models.database import (
     TrainJourney,
 )
 from trackrat.services.apns import SimpleAPNSService
-from trackrat.services.congestion_types import FREQ_THRESHOLD_REDUCED
+from trackrat.services.congestion_types import (
+    FREQ_THRESHOLD_REDUCED,
+    FREQUENCY_FIRST_SOURCES,
+)
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
@@ -40,10 +43,6 @@ REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
 
 # Data sources where train_id is stable and represents the same daily service
 STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR"}
-
-# Frequency-first sources: alert on reduced service, not delays
-# (mirrors iOS TrainSystem.preferredHighlightMode == .health)
-FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO"}
 
 # Build route-ID lookup once at import time
 _ROUTES_BY_ID = {route.id: route for route in ALL_ROUTES}

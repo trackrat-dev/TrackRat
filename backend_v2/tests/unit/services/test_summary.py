@@ -19,7 +19,9 @@ from trackrat.services.summary import (
     DELAY_CATEGORY_SLIGHT_DELAY,
     ON_TIME_THRESHOLD_MINUTES,
     SLIGHT_DELAY_THRESHOLD_MINUTES,
+    SUMMARY_TIME_WINDOW_MINUTES,
     LineStats,
+    OnTimeStats,
     OperationsSummary,
     SummaryMetrics,
     SummaryService,
@@ -1236,3 +1238,265 @@ class TestDuplicateTrainPrevention:
 
         # Verify each expected train is present exactly once
         assert sorted(unique_train_ids) == sorted(["7828", "7830", "7832", "7834"])
+
+
+class TestFormatFrequencyRouteHeadlineBody:
+    """Test frequency-first route headline/body formatting (subway, PATH, PATCO)."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_normal_service_shows_count_and_headway(self, summary_service):
+        """12 trains over 120min → headline shows count + ~10 min headway."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=12, cancellations=0
+        )
+        expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 12  # 10
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        print(f"expected_headway: {expected_headway}")
+        assert "12 trains" in headline
+        assert "~10 min" in headline
+        assert "12 trains departed" in body
+        assert "every 10 minutes" in body
+
+    def test_single_train_headway(self, summary_service):
+        """1 train over 120min → large headway, singular grammar."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=1, cancellations=0
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "1 train" in headline
+        assert "1 trains" not in headline  # Verify singular form
+        assert "~120 min" in headline
+
+    def test_high_frequency_headway(self, summary_service):
+        """30 trains over 120min → 4 min headway."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=30, cancellations=0
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "30 trains" in headline
+        assert "~4 min" in headline
+
+    def test_cancellations_lead_headline(self, summary_service):
+        """Cancellations should lead the headline, with remaining train headway in body."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=10, cancellations=2
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "2 cancellations"
+        assert "cancelled" in body.lower()
+        assert "10 others departed" in body
+
+    def test_single_cancellation(self, summary_service):
+        """Single cancellation uses singular form."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=8, cancellations=1
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "1 cancellation"
+        assert "1 train was cancelled" in body
+
+    def test_zero_trains_returns_empty(self, summary_service):
+        """No trains and no cancellations → empty headline and body."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=0, cancellations=0
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == ""
+        assert body == ""
+
+    def test_all_cancelled_no_remaining(self, summary_service):
+        """All trains cancelled, none running → no headway info in body."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=0, cancellations=3
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "3 cancellations"
+        assert "cancelled" in body.lower()
+        # No "others departed" since train_count=0
+        assert "others departed" not in body
+
+    def test_body_mentions_time_window(self, summary_service):
+        """Body should reference the 2-hour time window."""
+        headline, body = summary_service._format_frequency_route_headline_body(
+            train_count=12, cancellations=0
+        )
+        print(f"body: {body!r}")
+        assert "2 hours" in body
+
+
+class TestFormatFrequencyTrainHeadlineBody:
+    """Test frequency-first train headline/body formatting (subway, PATH, PATCO)."""
+
+    @pytest.fixture
+    def summary_service(self):
+        """Create a SummaryService instance for testing."""
+        return SummaryService()
+
+    def test_similar_trains_show_count_and_headway(self, summary_service):
+        """Similar trains count and headway should appear in headline."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=2.0,
+            total_count=8,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=85.0,
+            average_delay_minutes=3.0,
+            total_count=20,
+            cancellation_count=0,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=0, destination="World Trade Center"
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 8  # 15
+        assert "8 similar trains" in headline
+        assert "~15 min" in headline
+        assert "World Trade Center" in body
+        assert "on time" in body
+
+    def test_cancellations_lead_headline(self, summary_service):
+        """Cancellations should lead the headline."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=3.0,
+            total_count=6,
+            cancellation_count=2,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=85.0,
+            average_delay_minutes=3.0,
+            total_count=20,
+            cancellation_count=0,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=2, destination="Newark"
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "2 cancellations"
+        assert "cancelled" in body.lower()
+
+    def test_no_similar_trains_falls_back_to_historical(self, summary_service):
+        """When no similar trains, use historical data for headline."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=92.0,
+            average_delay_minutes=1.5,
+            total_count=25,
+            cancellation_count=1,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=0, destination="33rd Street"
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "25 trains" in headline
+        assert "33rd Street" in body
+        assert "on time" in body
+
+    def test_no_data_returns_empty(self, summary_service):
+        """No similar or historical data → empty strings."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=0
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == ""
+        assert body == ""
+
+    def test_destination_none_uses_generic_label(self, summary_service):
+        """When destination is None, use 'This train' instead of specific name."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=88.0,
+            average_delay_minutes=2.0,
+            total_count=15,
+            cancellation_count=0,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=0, destination=None
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "This train" in body
+        assert "on time" in body
+
+    def test_historical_cancellations_mentioned_in_body(self, summary_service):
+        """Historical cancellations should be mentioned in the body."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=1.0,
+            total_count=10,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=80.0,
+            average_delay_minutes=4.0,
+            total_count=30,
+            cancellation_count=3,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=0, destination="Hoboken"
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "Cancelled 3 times" in body
+        assert "past 30 days" in body
+
+    def test_similar_trains_body_includes_headway(self, summary_service):
+        """Body should show headway calculation for similar trains."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=95.0,
+            average_delay_minutes=1.0,
+            total_count=6,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+        headline, body = summary_service._format_frequency_train_headline_body(
+            dep_stats, train_stats, cancellations=0
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 6  # 20
+        assert "every 20 minutes" in body
