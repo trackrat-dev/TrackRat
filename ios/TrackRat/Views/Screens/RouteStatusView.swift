@@ -65,7 +65,7 @@ struct RouteStatusView: View {
                 .frame(height: 200)
                 .cornerRadius(12)
 
-                CompactCongestionLegend(highlightMode: preferredMode)
+                // Legend intentionally omitted — map colors are self-explanatory
             } else if viewModel.mapError != nil {
                 ContentUnavailableView("Map Unavailable", systemImage: "map", description: Text("Could not load congestion data"))
                     .frame(height: 200)
@@ -217,7 +217,7 @@ struct RouteStatusView: View {
     /// Color for frequency based on comparison to historical baseline.
     /// Uses the same thresholds as CongestionSegment.frequencyDisplayColor.
     private func frequencyColor(totalTrains: Int, baseline: Double?) -> Color {
-        guard let baseline = baseline, baseline > 0 else { return .blue }
+        guard let baseline = baseline, baseline > 0 else { return .white }
         let factor = Double(totalTrains) / baseline
         if factor >= 0.9 { return .green }
         if factor >= 0.7 { return .yellow }
