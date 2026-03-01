@@ -28,8 +28,7 @@ struct TripSelectionView: View {
               Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
               Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
               !liveActivityService.isActivityActive,
-              !isSearching,
-              !showingSettings else {
+              !isSearching else {
             return false
         }
         return true
