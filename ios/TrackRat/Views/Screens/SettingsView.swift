@@ -453,18 +453,11 @@ struct SettingsSection: View {
                         .foregroundColor(.orange)
                         .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Route Alerts")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Text("Delay & cancellation notifications")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.7))
-                            .multilineTextAlignment(.leading)
-                    }
+                    Text("Route Alerts (beta)")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
 
                     Spacer()
 
