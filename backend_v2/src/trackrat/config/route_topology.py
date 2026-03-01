@@ -398,7 +398,7 @@ PATH_NWK_WTC = Route(
 
 PATH_JSQ_33_HOB = Route(
     id="path-jsq-33-hob",
-    name="JSQ - 33rd via Hoboken",
+    name="Journal Square - 33rd Street via Hoboken",
     data_source="PATH",
     line_codes=frozenset({"JSQ-33H", "1024"}),
     stations=("PJS", "PGR", "PNP", "PHO", "PCH", "P9S", "P14", "P23", "P33"),

@@ -344,7 +344,7 @@ struct RouteTopology {
         // Journal Square - 33rd Street via Hoboken
         RouteLine(
             id: "path-jsq-33-hob",
-            name: "JSQ - 33rd via Hoboken",
+            name: "Journal Square - 33rd Street via Hoboken",
             dataSource: "PATH",
             stationCodes: ["PJS", "PGR", "PNP", "PHO", "PCH", "P9S", "P14", "P23", "P33"]
         ),
