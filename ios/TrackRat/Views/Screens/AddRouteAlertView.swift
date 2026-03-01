@@ -23,6 +23,9 @@ struct AddRouteAlertView: View {
     @State private var toStation: Station? = nil
     @State private var confirmationMessage: String? = nil
 
+    // Line mode state
+    @State private var lineSystem: TrainSystem? = nil
+
     // Train mode state
     @State private var trainSystem: TrainSystem? = nil
     @State private var trainStation: Station? = nil
@@ -31,12 +34,19 @@ struct AddRouteAlertView: View {
     @State private var isLoadingDepartures = false
     @State private var weekdaysOnly = true
 
-    /// Routes filtered to the user's selected train systems, excluding fully-subscribed lines.
+    /// Systems available for line mode: user's selected systems that have routes.
+    private var availableLineSystems: [TrainSystem] {
+        appState.selectedSystems
+            .sorted { $0.displayName < $1.displayName }
+    }
+
+    /// Routes filtered to the selected line system, excluding fully-subscribed lines.
     /// A route is fully subscribed when both directions have subscriptions.
     private var filteredRoutes: [RouteLine] {
-        let dataSources = appState.selectedSystems.asRawStrings
+        guard let system = lineSystem else { return [] }
+        let ds = system.rawValue
         return RouteTopology.allRoutes.filter { route in
-            guard dataSources.contains(route.dataSource) else { return false }
+            guard route.dataSource == ds else { return false }
             let lineSubs = alertService.subscriptions.filter { $0.lineId == route.id && $0.dataSource == route.dataSource }
             let subscribedDirections = Set(lineSubs.compactMap(\.direction))
             let bothTermini = Set([route.stationCodes.first, route.stationCodes.last].compactMap { $0 })
@@ -81,13 +91,52 @@ struct AddRouteAlertView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            if availableLineSystems.count == 1 {
+                lineSystem = availableLineSystems.first
+            }
+        }
     }
 
     // MARK: - Line Mode
 
+    private var lineSystemPickerRow: some View {
+        HStack {
+            Text("System")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.6))
+            Spacer()
+            Menu {
+                ForEach(availableLineSystems) { system in
+                    Button(system.displayName) {
+                        if lineSystem != system {
+                            lineSystem = system
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(lineSystem?.displayName ?? "Select")
+                        .foregroundColor(lineSystem != nil ? .white : .white.opacity(0.4))
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.3))
+                }
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        .padding(.horizontal)
+        .padding(.top, 4)
+    }
+
     private var lineList: some View {
-        Group {
-            if filteredRoutes.isEmpty {
+        VStack(spacing: 0) {
+            lineSystemPickerRow
+
+            if lineSystem == nil {
+                Spacer()
+            } else if filteredRoutes.isEmpty {
                 VStack(spacing: 12) {
                     Spacer()
                     Image(systemName: "checkmark.circle")
@@ -122,9 +171,6 @@ struct AddRouteAlertView: View {
                                             .font(.caption)
                                             .foregroundColor(.white.opacity(0.7))
                                     }
-                                    Text(route.dataSource)
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.6))
                                 }
                                 Spacer()
                                 Image(systemName: "plus.circle")
