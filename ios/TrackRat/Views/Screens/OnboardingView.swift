@@ -124,7 +124,7 @@ struct OnboardingView: View {
             Spacer()
 
             // Header
-            Text("Which train systems\ndo you use?")
+            Text("Which transit systems\ndo you use?")
                 .font(.largeTitle)
                 .fontWeight(.bold)
                 .foregroundColor(.white)
@@ -152,8 +152,8 @@ struct OnboardingView: View {
 
             Spacer()
 
-            // Continue button and helper text
-            VStack(spacing: 12) {
+            // Continue button (hidden until at least one system selected)
+            if !appState.selectedSystems.isEmpty {
                 Button("Continue") {
                     withAnimation(.easeInOut(duration: 0.3)) {
                         showSystemSelection = false
@@ -164,14 +164,10 @@ struct OnboardingView: View {
                 .foregroundColor(.white)
                 .frame(height: 50)
                 .frame(minWidth: 160)
-                .background(appState.selectedSystems.isEmpty ? Color.gray : Color.orange)
+                .background(Color.orange)
                 .cornerRadius(TrackRatTheme.CornerRadius.md)
                 .buttonStyle(.plain)
-                .disabled(appState.selectedSystems.isEmpty)
-
-                Text("Change later in Map → Layers")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 40)
@@ -570,38 +566,32 @@ struct SystemSelectionCard: View {
                     .frame(width: 32)
 
                 // System info
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(system.displayName)
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        if let subtitle, isSelected {
-                            Text(subtitle)
-                                .font(.caption2)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.orange)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule().fill(.orange.opacity(0.2))
-                                )
-                        }
-                        if system.isBeta {
-                            Text("beta")
-                                .font(.caption2)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.orange)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule().fill(.orange.opacity(0.2))
-                                )
-                        }
+                HStack(spacing: 6) {
+                    Text(system.displayName)
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    if let subtitle, isSelected {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(.orange.opacity(0.2))
+                            )
                     }
-
-                    Text(system.description)
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
+                    if system.isBeta {
+                        Text("beta")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(.orange.opacity(0.2))
+                            )
+                    }
                 }
 
                 Spacer()
