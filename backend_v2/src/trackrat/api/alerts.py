@@ -42,6 +42,7 @@ class SubscriptionItem(BaseModel):
     from_station_code: str | None = None
     to_station_code: str | None = None
     train_id: str | None = None
+    direction: str | None = None
     weekdays_only: bool = False
 
     @model_validator(mode="after")
@@ -73,6 +74,7 @@ class SubscriptionResponse(BaseModel):
     from_station_code: str | None = None
     to_station_code: str | None = None
     train_id: str | None = None
+    direction: str | None = None
     weekdays_only: bool = False
 
 
@@ -144,6 +146,7 @@ async def sync_subscriptions(
             from_station_code=item.from_station_code,
             to_station_code=item.to_station_code,
             train_id=item.train_id,
+            direction=item.direction,
             weekdays_only=item.weekdays_only,
         )
         db.add(sub)
@@ -186,6 +189,7 @@ async def get_subscriptions(
                 from_station_code=sub.from_station_code,
                 to_station_code=sub.to_station_code,
                 train_id=sub.train_id,
+                direction=sub.direction,
                 weekdays_only=sub.weekdays_only,
             )
             for sub in device.subscriptions

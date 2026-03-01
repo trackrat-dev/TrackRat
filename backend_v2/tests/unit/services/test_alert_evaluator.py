@@ -17,6 +17,7 @@ from trackrat.models.database import (
     RouteAlertSubscription,
     TrainJourney,
 )
+from trackrat.config.route_topology import Route
 from trackrat.services.alert_evaluator import (
     COOLDOWN_MINUTES,
     DELAY_THRESHOLD_MINUTES,
@@ -26,6 +27,7 @@ from trackrat.services.alert_evaluator import (
     _build_train_alert_message,
     _compute_alert_hash,
     _compute_train_alert_hash,
+    _filter_by_direction,
     _is_significantly_delayed,
     evaluate_route_alerts,
 )
@@ -84,6 +86,7 @@ def _make_device_and_sub(
     from_station: str | None = None,
     to_station: str | None = None,
     train_id: str | None = None,
+    direction: str | None = None,
     weekdays_only: bool = False,
 ) -> tuple[DeviceToken, RouteAlertSubscription]:
     """Create a DeviceToken + RouteAlertSubscription pair."""
@@ -97,6 +100,7 @@ def _make_device_and_sub(
         from_station_code=from_station,
         to_station_code=to_station,
         train_id=train_id,
+        direction=direction,
         weekdays_only=weekdays_only,
     )
     db.add(sub)
@@ -1372,3 +1376,274 @@ class TestTrainSubscriptionAlerts:
         assert route_alert["line_id"] is None
         assert route_alert["from_station_code"] is None
         print(f"  Custom data: {route_alert}")
+
+
+# ---------------------------------------------------------------------------
+# Direction filtering
+# ---------------------------------------------------------------------------
+
+# Build a small test route for direction tests
+_TEST_ROUTE = Route(
+    id="test-route",
+    name="Test Route",
+    data_source="TEST",
+    line_codes=frozenset({"TE"}),
+    stations=("A", "B", "C", "D", "E"),
+)
+
+
+class TestFilterByDirection:
+    """Unit tests for _filter_by_direction()."""
+
+    def _journey(self, origin: str, terminal: str) -> TrainJourney:
+        """Create a minimal TrainJourney with just origin/terminal."""
+        now = now_et()
+        return TrainJourney(
+            train_id="T1",
+            journey_date=now.date(),
+            line_code="TE",
+            line_name="Test Route",
+            destination=terminal,
+            origin_station_code=origin,
+            terminal_station_code=terminal,
+            data_source="TEST",
+            scheduled_departure=now,
+            has_complete_journey=True,
+        )
+
+    def test_forward_direction_keeps_forward_trains(self):
+        """Direction = last station should keep only forward-traveling trains."""
+        forward = self._journey("A", "E")
+        reverse = self._journey("E", "A")
+        mid_forward = self._journey("B", "D")
+
+        result = _filter_by_direction([forward, reverse, mid_forward], _TEST_ROUTE, "E")
+        origins = [(j.origin_station_code, j.terminal_station_code) for j in result]
+        assert ("A", "E") in origins
+        assert ("B", "D") in origins
+        assert ("E", "A") not in origins
+        print(f"  Forward filter kept {len(result)} of 3 journeys: {origins}")
+
+    def test_reverse_direction_keeps_reverse_trains(self):
+        """Direction = first station should keep only reverse-traveling trains."""
+        forward = self._journey("A", "E")
+        reverse = self._journey("E", "A")
+        mid_reverse = self._journey("D", "B")
+
+        result = _filter_by_direction([forward, reverse, mid_reverse], _TEST_ROUTE, "A")
+        origins = [(j.origin_station_code, j.terminal_station_code) for j in result]
+        assert ("E", "A") in origins
+        assert ("D", "B") in origins
+        assert ("A", "E") not in origins
+        print(f"  Reverse filter kept {len(result)} of 3 journeys: {origins}")
+
+    def test_short_turn_trains_included(self):
+        """A train that doesn't go to the terminus but travels the right direction is kept."""
+        short_forward = self._journey("A", "C")  # doesn't reach E but heads toward it
+        result = _filter_by_direction([short_forward], _TEST_ROUTE, "E")
+        assert len(result) == 1
+        print(f"  Short-turn train A->C kept for direction E")
+
+    def test_unknown_direction_returns_all(self):
+        """If direction station is not in the route, return all journeys unfiltered."""
+        j = self._journey("A", "E")
+        result = _filter_by_direction([j], _TEST_ROUTE, "Z")
+        assert len(result) == 1
+        print(f"  Unknown direction 'Z' returned all journeys")
+
+    def test_off_route_trains_excluded(self):
+        """Trains with stations not on the route are excluded."""
+        off_route = self._journey("X", "Y")
+        on_route = self._journey("A", "E")
+        result = _filter_by_direction([off_route, on_route], _TEST_ROUTE, "E")
+        assert len(result) == 1
+        assert result[0].origin_station_code == "A"
+        print(f"  Off-route train excluded, on-route kept")
+
+    def test_empty_input_returns_empty(self):
+        """Empty journey list returns empty."""
+        result = _filter_by_direction([], _TEST_ROUTE, "E")
+        assert result == []
+
+
+@pytest.mark.asyncio
+class TestDirectionalAlertEvaluation:
+    """Integration tests for directional line subscriptions."""
+
+    async def test_direction_filters_line_alert_to_one_direction(
+        self, db_session: AsyncSession
+    ):
+        """A line sub with direction=TR should only alert on NY->TR trains, not TR->NY."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            line_id="njt-nec",
+            direction="TR",  # toward Trenton
+        )
+        # 2 delayed southbound trains (NY->TR direction)
+        for i in range(2):
+            _make_journey(
+                db_session,
+                train_id=f"south-{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=DELAY_THRESHOLD_MINUTES + 5,
+                minutes_ago=30 + i * 5,
+            )
+        # 2 on-time northbound trains (TR->NY direction — should be filtered out)
+        for i in range(2):
+            _make_journey(
+                db_session,
+                train_id=f"north-{i}",
+                origin="TR",
+                terminal="NY",
+                delay_minutes=0,
+                minutes_ago=30 + i * 5,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Should alert: 2/2 southbound trains delayed (100% >= 50%)"
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        title = call_args.args[1]
+        assert "toward" in title.lower(), f"Title should mention direction: {title}"
+        print(f"  Title: {title}")
+
+    async def test_no_direction_includes_both_directions(
+        self, db_session: AsyncSession
+    ):
+        """A line sub with direction=None evaluates trains in both directions."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            device_id="dev-no-dir",
+            data_source="NJT",
+            line_id="njt-nec",
+            direction=None,  # both directions
+        )
+        # 2 delayed southbound + 2 on-time northbound = 50% delayed overall
+        for i in range(2):
+            _make_journey(
+                db_session,
+                train_id=f"south-d-{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=DELAY_THRESHOLD_MINUTES + 5,
+                minutes_ago=30 + i * 5,
+            )
+        for i in range(2):
+            _make_journey(
+                db_session,
+                train_id=f"north-d-{i}",
+                origin="TR",
+                terminal="NY",
+                delay_minutes=0,
+                minutes_ago=30 + i * 5,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Should alert: 2/4 = 50% delayed (meets threshold)"
+
+    async def test_direction_filters_prevent_false_alert(
+        self, db_session: AsyncSession
+    ):
+        """Direction filtering should prevent alert when opposite direction is fine."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            device_id="dev-no-alert",
+            data_source="NJT",
+            line_id="njt-nec",
+            direction="NY",  # toward NY Penn — northbound
+        )
+        # Southbound trains are delayed (wrong direction for this sub)
+        for i in range(4):
+            _make_journey(
+                db_session,
+                train_id=f"south-e-{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=DELAY_THRESHOLD_MINUTES + 5,
+                minutes_ago=30 + i * 5,
+            )
+        # Northbound trains are on time (the direction we're watching)
+        for i in range(4):
+            _make_journey(
+                db_session,
+                train_id=f"north-e-{i}",
+                origin="TR",
+                terminal="NY",
+                delay_minutes=0,
+                minutes_ago=30 + i * 5,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Should NOT alert: northbound trains are all on time"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: direction filter prevented false alert")
+
+    async def test_direction_included_in_custom_data(self, db_session: AsyncSession):
+        """APNS custom data should include the direction field."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            device_id="dev-custom",
+            data_source="NJT",
+            line_id="njt-nec",
+            direction="TR",
+        )
+        # Enough delayed trains to trigger
+        for i in range(3):
+            _make_journey(
+                db_session,
+                train_id=f"south-c-{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=DELAY_THRESHOLD_MINUTES + 5,
+                minutes_ago=30 + i * 5,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+
+        call_kwargs = apns.send_alert_notification.call_args.kwargs
+        route_alert = call_kwargs["custom_data"]["route_alert"]
+        assert route_alert["direction"] == "TR"
+        assert route_alert["line_id"] == "njt-nec"
+        print(f"  Custom data includes direction: {route_alert}")
+
+
+class TestDirectionalAlertMessage:
+    """Tests for direction in alert message formatting."""
+
+    def test_build_alert_message_with_direction(self):
+        """Alert message should include 'toward <station name>' when direction is set."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+            direction="TR",
+        )
+        title, body = _build_alert_message(sub, "delay", 0, 3, 4)
+        assert "toward" in title.lower()
+        assert "Trenton" in title or "TR" in title
+        print(f"  Title with direction: {title}")
+        print(f"  Body: {body}")
+
+    def test_build_alert_message_without_direction(self):
+        """Alert message without direction should just show route name."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+        )
+        title, body = _build_alert_message(sub, "delay", 0, 3, 4)
+        assert "toward" not in title.lower()
+        assert "Northeast Corridor" in title
+        print(f"  Title without direction: {title}")

@@ -362,3 +362,91 @@ class TestGetSubscriptions:
         """Getting subscriptions for an unregistered device returns 404."""
         resp = e2e_client.get("/api/v2/alerts/subscriptions/no-such-device")
         assert resp.status_code == 404
+
+
+class TestDirectionSubscriptions:
+    """Tests for the direction field on line subscriptions."""
+
+    def test_line_with_direction_roundtrips(self, e2e_client: TestClient):
+        """A line subscription with direction is stored and returned correctly."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-dir-1", "apns_token": "tok-dir1"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-dir-1",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "njt-nec", "direction": "TR"},
+                    {"data_source": "NJT", "line_id": "njt-nec", "direction": "NY"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 2
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-dir-1")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 2
+        directions = {s["direction"] for s in subs}
+        assert directions == {"TR", "NY"}
+        for s in subs:
+            assert s["line_id"] == "njt-nec"
+            assert s["data_source"] == "NJT"
+        print(f"  Direction roundtrip: {directions}")
+
+    def test_direction_null_by_default(self, e2e_client: TestClient):
+        """A line subscription without direction has direction=null."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-dir-2", "apns_token": "tok-dir2"},
+        )
+        e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-dir-2",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "njt-nec"},
+                ],
+            },
+        )
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-dir-2")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["direction"] is None
+        print(f"  Direction default null: {subs[0]}")
+
+    def test_mixed_direction_subscriptions(self, e2e_client: TestClient):
+        """A sync with all subscription types including direction is accepted."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-dir-4", "apns_token": "tok-dir4"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-dir-4",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "njt-nec", "direction": "TR"},
+                    {"data_source": "NJT", "line_id": "njt-nec", "direction": "NY"},
+                    {
+                        "data_source": "NJT",
+                        "from_station_code": "NY",
+                        "to_station_code": "TR",
+                    },
+                    {"data_source": "NJT", "train_id": "3254", "weekdays_only": True},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 4
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-dir-4")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 4
+        line_subs = [s for s in subs if s["line_id"]]
+        assert len(line_subs) == 2
+        assert {s["direction"] for s in line_subs} == {"TR", "NY"}
+        print(f"  Mixed subs with direction: {len(subs)} total")
