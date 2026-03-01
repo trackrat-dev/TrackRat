@@ -77,29 +77,29 @@ DEFAULT_LINE_COLORS = {
 # Maps GTFS route abbreviations to the 2-char codes used by the NJT real-time API
 # (the API's LINE field) and route_topology.py.
 NJT_LINE_CODE_MAPPING = {
-    # Northeast Corridor — API LINE="NE", topology line_codes={"NE"}
+    # Northeast Corridor
     "NEC": "NE",
-    # North Jersey Coast Line — API LINE="NC", topology line_codes={"NC"}
+    # North Jersey Coast Line
     "NJCL": "NC",
-    "NJCLL": "NC",  # Variation
-    # Morris & Essex Line (Morristown, Dover)
-    "MNE": "ME",  # Morris & Essex -> "ME" (distinct from Montclair-Boonton "Mo")
+    "NJCLL": "NC",
+    # Morris & Essex Line (Morristown, Dover) — distinct from Montclair-Boonton "MO"
+    "MNE": "ME",
     # Gladstone Branch (part of Morris & Essex)
-    "MNEG": "Gl",  # API returns "Gladstone Branch" -> "Gl"
+    "MNEG": "GL",
     # Montclair-Boonton Line
-    "BNTN": "Mo",  # API returns "Montclair-Boonton" -> "Mo"
-    "BNTNM": "Mo",  # Variation
+    "BNTN": "MO",
+    "BNTNM": "MO",
     # Main/Bergen County Line
-    "MNBN": "Ma",  # API returns "Main Line" or "Bergen Line" -> "Ma" or "Be"
-    "MNBNP": "Ma",  # Port Jervis Line (part of Main/Bergen)
+    "MNBN": "MA",
+    "MNBNP": "MA",
     # Pascack Valley Line
-    "PASC": "Pa",
+    "PASC": "PV",
     # Raritan Valley Line
-    "RARV": "Ra",
+    "RARV": "RV",
     # Atlantic City Rail Line
-    "ATLC": "At",
+    "ATLC": "AC",
     # Princeton Shuttle (Dinky)
-    "PRIN": "Pr",
+    "PRIN": "PR",
 }
 
 

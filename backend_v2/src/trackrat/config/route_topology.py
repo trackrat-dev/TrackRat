@@ -179,7 +179,7 @@ NJT_GLADSTONE = Route(
     id="njt-gladstone",
     name="Gladstone Branch",
     data_source="NJT",
-    line_codes=frozenset({"GL", "Gl"}),
+    line_codes=frozenset({"GL", "Gl"}),  # "Gl" for pre-2026-03 DB records
     stations=(
         "ST",
         "NV",
@@ -201,7 +201,7 @@ NJT_RARITAN_VALLEY = Route(
     id="njt-rvl",
     name="Raritan Valley Line",
     data_source="NJT",
-    line_codes=frozenset({"RV", "Ra"}),
+    line_codes=frozenset({"RV", "Ra"}),  # "Ra" for pre-2026-03 DB records
     stations=(
         "NP",
         "EZ",
@@ -230,7 +230,7 @@ NJT_MONTCLAIR_BOONTON = Route(
     id="njt-mobo",
     name="Montclair-Boonton Line",
     data_source="NJT",
-    line_codes=frozenset({"MO", "Mo"}),  # Montclair-Boonton: "MO" canonical, "Mo" from collectors
+    line_codes=frozenset({"MO", "Mo"}),  # "Mo" for pre-2026-03 DB records
     stations=(
         "HB",
         "SE",
@@ -260,7 +260,7 @@ NJT_MAIN_LINE = Route(
     id="njt-main",
     name="Main Line",
     data_source="NJT",
-    line_codes=frozenset({"MA", "Ma"}),
+    line_codes=frozenset({"MA", "Ma"}),  # "Ma" for pre-2026-03 DB records
     stations=(
         "HB",
         "SE",
@@ -287,7 +287,7 @@ NJT_BERGEN_COUNTY = Route(
     id="njt-bergen",
     name="Bergen County Line",
     data_source="NJT",
-    line_codes=frozenset({"BE", "Be"}),
+    line_codes=frozenset({"BE", "Be"}),  # "Be" for pre-2026-03 DB records
     stations=(
         "HB",
         "SE",
@@ -321,7 +321,7 @@ NJT_PASCACK_VALLEY = Route(
     id="njt-pascack",
     name="Pascack Valley Line",
     data_source="NJT",
-    line_codes=frozenset({"PV", "Pa"}),
+    line_codes=frozenset({"PV", "Pa"}),  # "Pa" for pre-2026-03 DB records
     stations=(
         "HB",
         "SE",
@@ -348,15 +348,15 @@ NJT_ATLANTIC_CITY = Route(
     id="njt-atlc",
     name="Atlantic City Line",
     data_source="NJT",
-    line_codes=frozenset({"AC", "At"}),
-    stations=("PH", "TR"),  # Limited - add more if coordinates available
+    line_codes=frozenset({"AC", "At"}),  # "At" for pre-2026-03 DB records
+    stations=("PH", "PN", "CY", "LW", "AO", "HN", "EH", "AB", "AC"),
 )
 
 NJT_PRINCETON_BRANCH = Route(
     id="njt-princeton",
     name="Princeton Branch",
     data_source="NJT",
-    line_codes=frozenset({"PR", "Pr"}),
+    line_codes=frozenset({"PR", "Pr"}),  # "Pr" for pre-2026-03 DB records
     stations=("PJ", "PR"),
 )
 

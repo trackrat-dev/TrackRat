@@ -66,6 +66,10 @@ extension Stations {
         "Sloatsburg", "Tuxedo", "Harriman", "Salisbury Mills-Cornwall",
         "Campbell Hall", "Otisville", "Port Jervis",
         
+        // Atlantic City Line
+        "Pennsauken", "Cherry Hill", "Lindenwold NJT", "Atco",
+        "Hammonton", "Egg Harbor City", "Absecon", "Atlantic City Rail Terminal",
+
         // Additional NJ Transit Stations
         "Avenel", "Jersey Avenue",
 
@@ -885,6 +889,16 @@ extension Stations {
         "South Orange": "SO",
         "Morris Plains": "MX",
         "Great Notch": "GA",
+
+        // Atlantic City Line
+        "Pennsauken": "PN",
+        "Cherry Hill": "CY",
+        "Lindenwold NJT": "LW",
+        "Atco": "AO",
+        "Hammonton": "HN",
+        "Egg Harbor City": "EH",
+        "Absecon": "AB",
+        "Atlantic City Rail Terminal": "AC",
 
         // PATH stations (3-char codes to match API constraints)
         "Newark PATH": "PNK",
