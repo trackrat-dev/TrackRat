@@ -28,7 +28,7 @@ _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("gladstone", "Gl"),
     ("montclair", "Mo"),
     ("boonton", "Mo"),
-    ("morris", "Mo"),
+    ("morris", "ME"),
     ("raritan", "Ra"),
     ("pascack", "Pa"),
     ("bergen", "Be"),

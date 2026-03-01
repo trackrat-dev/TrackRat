@@ -157,6 +157,7 @@ NJT_STATION_NAMES: dict[str, str] = {
     "TO": "Towaco",
     "TR": "Trenton",
     "TS": "Secaucus Lower Lvl",
+    "WA": "Walnut Street",
     "UF": "Hohokus",
     "UM": "Upper Montclair",
     "US": "Union",
@@ -328,6 +329,7 @@ NJT_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     "149": "TC",  # TUXEDO
     "150": "UM",  # UPPER MONTCLAIR
     "151": "WK",  # WALDWICK
+    "152": "WA",  # WALNUT STREET
     "153": "WG",  # WATCHUNG AVENUE
     "154": "WT",  # WATSESSING AVENUE
     "155": "WF",  # WESTFIELD
