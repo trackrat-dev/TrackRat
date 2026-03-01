@@ -248,6 +248,26 @@ def _infer_origin_station(
         # No matching route - use current station as origin
         return current_station
 
+    # Filter out shuttle routes whose raw PATH_ROUTE_STOPS definition is a
+    # contiguous prefix of a longer matching route.  e.g., NWK-HAR shuttle
+    # [PNK, PHR] is a prefix of NWK-WTC [PNK, PHR, PJS, PGR, PEX, PWC].
+    # Without this filter, the shuttle wins on position index despite giving
+    # a less informative 2-stop journey instead of the full 6-stop route.
+    if len(matching_routes) > 1:
+        raw = {r[0]: PATH_ROUTE_STOPS[r[0]] for r in matching_routes}
+        filtered = [
+            r
+            for r in matching_routes
+            if not any(
+                raw[r[0]] == raw[o[0]][: len(raw[r[0]])]
+                and len(raw[r[0]]) < len(raw[o[0]])
+                for o in matching_routes
+                if o[0] != r[0]
+            )
+        ]
+        if filtered:
+            matching_routes = filtered
+
     if len(matching_routes) == 1:
         # Unambiguous - return first stop of this route
         return matching_routes[0][1][0]
