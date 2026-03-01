@@ -7,10 +7,11 @@ struct EditRouteAlertsView: View {
     @State private var selectedRouteStatus: RouteStatusContext?
     @State private var selectedTrainAlert: RouteAlertSubscription?
 
-    /// Group subscriptions by data source for display.
+    /// Group subscriptions by data source for display, sorted alphabetically within each group.
     private var groupedSubscriptions: [(String, [RouteAlertSubscription])] {
         Dictionary(grouping: alertService.subscriptions, by: { $0.dataSource })
             .sorted { $0.key < $1.key }
+            .map { ($0.key, $0.value.sorted { ($0.lineName ?? $0.trainName ?? $0.fromStationCode ?? "") < ($1.lineName ?? $1.trainName ?? $1.fromStationCode ?? "") }) }
     }
 
     var body: some View {

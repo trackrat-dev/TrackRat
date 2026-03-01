@@ -52,6 +52,7 @@ struct AddRouteAlertView: View {
             let bothTermini = Set([route.stationCodes.first, route.stationCodes.last].compactMap { $0 })
             return !bothTermini.isSubset(of: subscribedDirections)
         }
+        .sorted { $0.name < $1.name }
     }
 
     /// Systems available for train mode: intersection of stable-ID systems and user's selection.

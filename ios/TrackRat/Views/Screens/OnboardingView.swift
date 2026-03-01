@@ -717,11 +717,13 @@ struct StationPickerSheet: View {
         let q = searchText.lowercased()
         let stations = visibleStations
         let prefixMatches = stations.filter { $0.name.lowercased().hasPrefix(q) }
+            .sorted { $0.name < $1.name }
         let substringMatches = stations.filter {
             !$0.name.lowercased().hasPrefix(q) &&
             ($0.name.localizedCaseInsensitiveContains(searchText) ||
              $0.code.localizedCaseInsensitiveContains(searchText))
         }
+            .sorted { $0.name < $1.name }
         return Array((prefixMatches + substringMatches).prefix(20))
     }
 
