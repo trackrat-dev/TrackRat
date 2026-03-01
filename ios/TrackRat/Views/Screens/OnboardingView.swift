@@ -129,6 +129,8 @@ struct OnboardingView: View {
                 .fontWeight(.bold)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .minimumScaleFactor(0.7)
 
             // System selection cards
             VStack(spacing: 12) {
