@@ -1,14 +1,14 @@
 import SwiftUI
 
-// MARK: - Profile Navigation
-enum ProfileDestination: Hashable {
+// MARK: - Settings Navigation
+enum SettingsDestination: Hashable {
     case tripHistory
     case favoriteStations
     case routeAlerts
     case advancedConfiguration
 }
 
-struct MyProfileView: View {
+struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @Environment(\.openURL) private var openURL
@@ -33,7 +33,7 @@ struct MyProfileView: View {
 
                 // Center title with Pro badge
                 HStack(spacing: 8) {
-                    Text("My Profile")
+                    Text("Settings")
                         .font(.headline)
                         .foregroundColor(.white)
 
@@ -173,7 +173,7 @@ struct MyProfileView: View {
                         // My Trips
                         Button {
                             if subscriptionService.isPro {
-                                navigationPath.append(ProfileDestination.tripHistory)
+                                navigationPath.append(SettingsDestination.tripHistory)
                             } else {
                                 showingPaywall = true
                             }
@@ -313,7 +313,7 @@ struct MyProfileView: View {
                         .buttonStyle(.plain)
                         .sheet(isPresented: $showingFeedbackSheet) {
                             FeedbackSheet(
-                                screen: "my_profile",
+                                screen: "settings",
                                 trainId: nil,
                                 originCode: nil,
                                 destinationCode: nil
@@ -324,7 +324,7 @@ struct MyProfileView: View {
                 .padding()
                 .padding(.bottom, 40)
             }
-            .navigationDestination(for: ProfileDestination.self) { destination in
+            .navigationDestination(for: SettingsDestination.self) { destination in
                 Group {
                     switch destination {
                     case .tripHistory:
@@ -410,7 +410,7 @@ struct SettingsSection: View {
 
             // Favorite Stations
             Button {
-                navigationPath.append(ProfileDestination.favoriteStations)
+                navigationPath.append(SettingsDestination.favoriteStations)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 HStack(spacing: 16) {
@@ -444,7 +444,7 @@ struct SettingsSection: View {
 
             // Route Alerts
             Button {
-                navigationPath.append(ProfileDestination.routeAlerts)
+                navigationPath.append(SettingsDestination.routeAlerts)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 HStack(spacing: 16) {
@@ -485,7 +485,7 @@ struct SettingsSection: View {
             if showDebugSections {
             // Advanced Configuration
             Button {
-                navigationPath.append(ProfileDestination.advancedConfiguration)
+                navigationPath.append(SettingsDestination.advancedConfiguration)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 HStack(spacing: 16) {
@@ -890,7 +890,7 @@ private struct TrainSystemRow: View {
 
 #Preview {
     NavigationStack {
-        MyProfileView()
+        SettingsView()
             .environmentObject(AppState())
             .environmentObject(ThemeManager.shared)
     }

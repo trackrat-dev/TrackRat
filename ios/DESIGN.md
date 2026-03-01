@@ -102,7 +102,7 @@ This document contains detailed design specifications, screen documentation, and
 - Cache clearing utilities
 - Backend health check testing
 
-### 13. **MyProfileView**
+### 13. **SettingsView**
 - **Trip Statistics**: Total trips, on-time percentage, minutes saved vs scheduled
 - **Trip History Access**: Link to full TripHistoryView
 - User preferences and settings
@@ -234,9 +234,9 @@ This document contains detailed design specifications, screen documentation, and
   - `.trainDetails(trainId: Int)` - Legacy train details by ID
   - `.trainDetailsFlexible(trainNumber: String, fromStation: String?, journeyDate: Date?)` - Flexible train lookup
   - `.advancedConfiguration` - Developer settings
-  - `.myProfile` - User profile
+  - `.settings` - Settings
   - `.congestionMap` - Network congestion view
-  - `.favoriteStations` - Favorite stations (managed inline in MyProfileView)
+  - `.favoriteStations` - Favorite stations (managed inline in SettingsView)
 
 ### API Response Types
 - **OriginStation**: Train origin information
@@ -644,7 +644,7 @@ ML-powered delay predictions shown in train details:
 Comprehensive trip tracking with statistics:
 - **TripRecordingService**: Records completed trips from Live Activities with start/end times, delays, train info
 - **CompletedTrip Model**: Stores journey data including origin/destination, duration, delay minutes, data source
-- **MyProfileView**: Shows trip statistics (total trips, on-time %, minutes saved vs scheduled)
+- **SettingsView**: Shows trip statistics (total trips, on-time %, minutes saved vs scheduled)
 - **TripHistoryView**: Full trip history with filtering and detailed journey information
 - **StorageService**: Enhanced to persist trip data across sessions
 
