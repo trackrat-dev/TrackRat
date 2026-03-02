@@ -758,6 +758,7 @@ class CongestionAnalyzer:
             FROM ranked_segments
             WHERE rank_within_route <= :max_per_segment
             ORDER BY departure_time DESC
+            LIMIT :global_limit
             """)
         else:
             # No per-route limiting - return ALL individual segments
@@ -849,12 +850,16 @@ class CongestionAnalyzer:
                 END as congestion_factor
             FROM segment_data
             ORDER BY departure_time DESC
+            LIMIT :global_limit
             """)
 
         # Execute query with performance logging
+        # Global limit prevents unbounded response sizes (e.g. SUBWAY with 700+ station pairs)
+        global_limit = 5000
         params: dict[str, Any] = {
             "cutoff_time": cutoff_time,
             "data_source": data_source,
+            "global_limit": global_limit,
         }
         if max_per_segment > 0:
             params["max_per_segment"] = max_per_segment

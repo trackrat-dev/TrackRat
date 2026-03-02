@@ -767,6 +767,9 @@ class DepartureService:
                         TrainJourney.data_source == "NJT",
                         TrainJourney.journey_date == target_date,
                         TrainJourney.last_updated_at < cutoff_time,
+                        TrainJourney.is_expired.is_not(True),
+                        TrainJourney.is_completed.is_not(True),
+                        TrainJourney.is_cancelled.is_not(True),
                     )
                 )
                 .limit(50)

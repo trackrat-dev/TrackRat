@@ -159,7 +159,7 @@ class ApiCacheService:
             {"time_window_hours": 2, "max_per_segment": 100, "data_source": "AMTRAK"},
             {"time_window_hours": 2, "max_per_segment": 100, "data_source": "LIRR"},
             {"time_window_hours": 2, "max_per_segment": 100, "data_source": "MNR"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "SUBWAY"},
+            {"time_window_hours": 2, "max_per_segment": 10, "data_source": "SUBWAY"},
             {"time_window_hours": 2, "max_per_segment": 100, "data_source": "PATCO"},
             # Longer window views with NJT
             {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"},
