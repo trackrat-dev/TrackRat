@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct OnboardingView: View {
     @EnvironmentObject private var appState: AppState
@@ -452,6 +453,15 @@ struct OnboardingView: View {
             print("✅ OnboardingView: Onboarding completed successfully")
             self.hasCompletedOnboarding = true
             self.dismiss()
+
+            // Request notification permissions now that onboarding is done
+            Task {
+                let _ = try? await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .sound, .badge])
+                await MainActor.run {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
         }
     }
     

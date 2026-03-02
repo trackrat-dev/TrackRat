@@ -91,13 +91,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         setupNotificationCategories()
         registerBackgroundTasks()
 
-        // Request notification permissions (required for Live Activities)
-        Task {
-            await requestNotificationPermissions()
+        // Request notification permissions after onboarding (don't prompt on first launch)
+        if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
+            Task {
+                await requestNotificationPermissions()
+            }
+            application.registerForRemoteNotifications()
         }
-
-        // Register for remote notifications (push notifications)
-        application.registerForRemoteNotifications()
 
         // Wake up backend on app launch
         print("📱 App Launch: Triggering backend wake-up...")
