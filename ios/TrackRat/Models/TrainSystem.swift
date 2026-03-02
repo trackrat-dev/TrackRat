@@ -50,19 +50,6 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Short description for the system
-    var description: String {
-        switch self {
-        case .njt: return "New Jersey commuter rail"
-        case .amtrak: return "National passenger rail"
-        case .path: return "NY-NJ rapid transit"
-        case .patco: return "Philly-South Jersey"
-        case .lirr: return "Long Island commuter rail"
-        case .mnr: return "NYC-Hudson Valley rail"
-        case .subway: return "NYC rapid transit"
-        }
-    }
-
     /// SF Symbol icon for the system
     var icon: String {
         switch self {
