@@ -88,16 +88,6 @@ struct SettingsView: View {
 
                     // Community section
                     VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Community")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal)
-
                         // YouTube Channel
                         Button {
                             if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
@@ -171,72 +161,62 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    // Feedback & Ideas section
-                    VStack(spacing: 16) {
-                        // Section header
-                        HStack {
-                            Text("Feedback & Ideas")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.white)
+                    // Report an Issue
+                    Button {
+                        showingFeedbackSheet = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(systemName: "exclamationmark.bubble.fill")
+                                .font(.title2)
+                                .foregroundColor(.orange)
+                                .frame(width: 24, height: 24)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Report an Issue")
+                                    .font(.headline)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.white)
+                                    .multilineTextAlignment(.leading)
+                            }
+
                             Spacer()
+
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.5))
                         }
-                        .padding(.horizontal)
+                        .padding()
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.ultraThinMaterial)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .sheet(isPresented: $showingFeedbackSheet) {
+                        FeedbackSheet(
+                            screen: "settings",
+                            trainId: nil,
+                            originCode: nil,
+                            destinationCode: nil
+                        )
+                    }
 
-                        // Submit Feedback
+                    // Debug/TestFlight-only: Advanced Configuration
+                    if showDebugSections {
                         Button {
-                            if let feedbackURL = URL(string: "https://trackrat.nolt.io/") {
-                                openURL(feedbackURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "lightbulb.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Submit Feedback")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-
-                                    Text("Send ideas for new features")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.7))
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Report an Issue
-                        Button {
-                            showingFeedbackSheet = true
+                            navigationPath.append(SettingsDestination.advancedConfiguration)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
                             HStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.bubble.fill")
+                                Image(systemName: "gearshape.fill")
                                     .font(.title2)
                                     .foregroundColor(.orange)
                                     .frame(width: 24, height: 24)
 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Report an Issue")
+                                    Text("Advanced Configuration")
                                         .font(.headline)
                                         .fontWeight(.medium)
                                         .foregroundColor(.white)
@@ -245,7 +225,7 @@ struct SettingsView: View {
 
                                 Spacer()
 
-                                Image(systemName: "arrow.up.right")
+                                Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.5))
                             }
@@ -257,14 +237,6 @@ struct SettingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .sheet(isPresented: $showingFeedbackSheet) {
-                            FeedbackSheet(
-                                screen: "settings",
-                                trainId: nil,
-                                originCode: nil,
-                                destinationCode: nil
-                            )
-                        }
                     }
                 }
                 .padding()
@@ -303,6 +275,16 @@ struct SettingsView: View {
             PaywallView(context: paywallContext)
         }
     }
+
+    /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
+    private var showDebugSections: Bool {
+        #if DEBUG
+        return true
+        #else
+        guard let url = Bundle.main.appStoreReceiptURL else { return false }
+        return url.lastPathComponent == "sandboxReceipt"
+        #endif
+    }
 }
 
 // MARK: - Settings Section
@@ -315,16 +297,6 @@ struct SettingsSection: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            // Section header
-            HStack {
-                Text("Settings")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                Spacer()
-            }
-            .padding(.horizontal)
-
             // Train Systems
             VStack(spacing: 0) {
                 HStack {
@@ -422,53 +394,7 @@ struct SettingsSection: View {
             }
             .buttonStyle(.plain)
 
-            // Debug/TestFlight-only settings
-            if showDebugSections {
-            // Advanced Configuration
-            Button {
-                navigationPath.append(SettingsDestination.advancedConfiguration)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Advanced Configuration")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-            }
         }
-    }
-
-    /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
-    private var showDebugSections: Bool {
-        #if DEBUG
-        return true
-        #else
-        guard let url = Bundle.main.appStoreReceiptURL else { return false }
-        return url.lastPathComponent == "sandboxReceipt"
-        #endif
     }
 }
 
