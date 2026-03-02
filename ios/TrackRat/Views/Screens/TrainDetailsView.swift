@@ -3,6 +3,7 @@ import ActivityKit
 
 struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: TrainDetailsViewModel
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
@@ -11,17 +12,20 @@ struct TrainDetailsView: View {
     @State private var paywallContext: PaywallContext = .generic
 
     let trainId: Int  // Keep for backwards compatibility
+    let isSheet: Bool
 
     // Legacy initializer for database ID
-    init(trainId: Int) {
+    init(trainId: Int, isSheet: Bool = false) {
         self.trainId = trainId
+        self.isSheet = isSheet
         let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
     }
 
     // New initializer for train number
-    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, dataSource: String? = nil) {
+    init(trainNumber: String, fromStation: String? = nil, journeyDate: Date? = nil, dataSource: String? = nil, isSheet: Bool = false) {
         self.trainId = 0  // Not used for train number based initialization
+        self.isSheet = isSheet
         let VModel = TrainDetailsViewModel(
             databaseId: nil,
             trainNumber: trainNumber,
@@ -43,6 +47,7 @@ struct TrainDetailsView: View {
             TrackRatNavigationHeader(
                 // PATH and PATCO trains display destination instead of synthetic train ID
                 title: trainNavigationTitle,
+                showBackButton: !isSheet,
                 showCloseButton: false,
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
@@ -57,7 +62,11 @@ struct TrainDetailsView: View {
                         }
 
                         Button("Close") {
-                            appState.navigationPath = NavigationPath()
+                            if isSheet {
+                                dismiss()
+                            } else {
+                                appState.navigationPath = NavigationPath()
+                            }
                         }
                         .font(.body)
                         .fontWeight(.medium)

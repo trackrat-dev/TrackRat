@@ -143,7 +143,8 @@ struct EditRouteAlertsView: View {
             NavigationStack {
                 TrainDetailsView(
                     trainNumber: sub.trainId ?? "",
-                    dataSource: sub.dataSource
+                    dataSource: sub.dataSource,
+                    isSheet: true
                 )
             }
             .presentationDetents([.large])
