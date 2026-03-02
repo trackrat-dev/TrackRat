@@ -506,8 +506,13 @@ struct AddRouteAlertView: View {
                     fromStationCode: station.code,
                     dataSources: [system]
                 )
+                // Filter out trains whose terminal stop is the selected station
+                let filtered = results.filter { train in
+                    guard let destCode = Stations.getStationCode(train.destination) else { return true }
+                    return !Stations.areEquivalentStations(destCode, station.code)
+                }
                 await MainActor.run {
-                    departures = results
+                    departures = filtered
                     isLoadingDepartures = false
                 }
             } catch {
