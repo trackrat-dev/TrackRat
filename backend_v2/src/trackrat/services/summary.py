@@ -1131,7 +1131,7 @@ class SummaryService:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
         else:
-            headline = f"Past 2h: {dep_on_time_pct:.0f}% on time"
+            headline = f"Past two hours: {dep_on_time_pct:.0f}% on time"
 
         # Status clause
         if cancellations > 0:
@@ -1182,9 +1182,9 @@ class SummaryService:
             headline = f"{cancellations} {cancel_word}"
         elif train_count > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
-            headline = f"Past 2h: every ~{headway:.0f} min"
+            headline = f"Past two hours: every ~{headway:.0f} min"
         else:
-            headline = "Past 2h: 0 trains"
+            headline = "Past two hours: 0 trains"
 
         # Body
         body_parts = []
@@ -1430,9 +1430,9 @@ class SummaryService:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
         elif dep_stats.has_data:
-            headline = f"Past 2h: {dep_stats.on_time_percentage:.0f}% on time"
+            headline = f"Past two hours: {dep_stats.on_time_percentage:.0f}% on time"
         elif train_stats.has_data:
-            headline = f"Past 2h: {train_stats.on_time_percentage:.0f}% on time"
+            headline = f"Past two hours: {train_stats.on_time_percentage:.0f}% on time"
         else:
             return "", ""  # No data
 
@@ -1502,7 +1502,7 @@ class SummaryService:
             headline = f"{cancellations} {cancel_word}"
         elif similar_total > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / similar_total
-            headline = f"Past 2h: every ~{headway:.0f} min"
+            headline = f"Past two hours: every ~{headway:.0f} min"
         elif train_stats.has_data:
             headline = f"Historically ~{train_stats.total_count} trains per month"
         else:
