@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 
 // Matches the base path in vite.config.ts and BrowserRouter basename
 const BASE = '/';
@@ -7,7 +6,6 @@ const BASE = '/';
 const APP_STORE_URL = 'https://apps.apple.com/us/app/trackrat/id6746423610';
 const YOUTUBE_URL = 'https://www.youtube.com/@TrackRat-App/shorts';
 const INSTAGRAM_URL = 'https://www.instagram.com/trackratapp/';
-const GITHUB_URL = 'https://github.com/bokonon1/TrackRat';
 const FEEDBACK_URL = 'https://trackrat.nolt.io/';
 const API_DOCS_URL = 'https://apiv2.trackrat.net/docs';
 const SUPPORT_EMAIL = 'mailto:trackrat@andymartin.cc';
@@ -18,7 +16,7 @@ const features = [
     image: `${BASE}images/1.webp`,
   },
   {
-    title: 'NJ Transit and Amtrak, together',
+    title: 'Browse NJ Transit and Amtrak schedules, together',
     image: `${BASE}images/2.webp`,
   },
   {
@@ -26,13 +24,13 @@ const features = [
     image: `${BASE}images/3.webp`,
   },
   {
-    title: 'Right on your Lock Screen',
+    title: 'Get updates on your Lock Screen',
     image: `${BASE}images/4.webp`,
   },
 ];
 
 const unifiedFeature = {
-  title: 'Metro-North, PATH, LIRR, and more!',
+  title: 'All the same features across Metro-North, PATH, LIRR, and more!',
   images: [
     `${BASE}images/mtn.webp`,
     `${BASE}images/5.webp`,
@@ -41,12 +39,13 @@ const unifiedFeature = {
 };
 
 const transitSystems = [
-  'NJ Transit',
-  'Amtrak',
-  'PATH',
-  'PATCO',
-  'LIRR',
-  'Metro-North',
+  { name: 'Amtrak' },
+  { name: 'LIRR' },
+  { name: 'Metro-North' },
+  { name: 'NJ Transit' },
+  { name: 'NYC Subway', beta: true },
+  { name: 'PATCO' },
+  { name: 'PATH' },
 ];
 
 function IOSBanner() {
@@ -198,12 +197,17 @@ export function LandingPage() {
             Supported Transit Systems
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            {transitSystems.map((name) => (
+            {transitSystems.map((system) => (
               <div
-                key={name}
+                key={system.name}
                 className="bg-surface/80 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-5 text-center"
               >
-                <span className="font-semibold text-lg">{name}</span>
+                <span className="font-semibold text-lg">{system.name}</span>
+                {system.beta && (
+                  <span className="ml-2 text-xs font-medium text-accent bg-accent/15 px-2 py-0.5 rounded-full align-middle">
+                    beta
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -224,30 +228,9 @@ export function LandingPage() {
       {/* Open Source */}
       <section className="px-6 py-12 max-w-4xl mx-auto">
         <h2 className="text-2xl md:text-3xl font-bold text-center mb-8 text-text-primary">
-          Open Source
+          More Resources
         </h2>
         <div className="space-y-8 max-w-2xl mx-auto">
-          <div>
-            <h3 className="font-semibold text-lg mb-2">Apache 2.0 License</h3>
-            <p className="text-text-muted leading-relaxed">
-              TrackRat is open source under the Apache 2.0 license. You
-              can read, fork, and contribute to it on GitHub.
-            </p>
-            <div className="text-center mt-4">
-              <a
-                href={GITHUB_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-text-primary text-background font-semibold rounded-xl hover:opacity-90 transition-opacity"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z" />
-                </svg>
-                View on GitHub
-              </a>
-            </div>
-          </div>
-
           <div>
             <h3 className="font-semibold text-lg mb-2">Public REST API</h3>
             <p className="text-text-muted leading-relaxed">
@@ -263,42 +246,6 @@ export function LandingPage() {
               is free for anyone to use. Build your own transit tools, run
               analyses, or integrate TrackRat data into your projects.
             </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-2">iOS App</h3>
-            <p className="text-text-muted leading-relaxed">
-              The most polished way to use TrackRat is through the iOS app. The core features of TrackRat will always be free.
-            </p>
-            <div className="text-center mt-3">
-              <a
-                href={APP_STORE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <img
-                  src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
-                  alt="Download on the App Store"
-                  className="h-10 inline-block"
-                />
-              </a>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-lg mb-2">Web App</h3>
-            <p className="text-text-muted leading-relaxed">
-              The web app provides cross-platform support for departure lookups,
-              real-time train status, and track predictions.
-            </p>
-            <div className="text-center mt-3">
-              <Link
-                to="/departures"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-accent/20 text-accent font-medium rounded-lg hover:bg-accent/30 transition-colors"
-              >
-                Open Web App
-              </Link>
-            </div>
           </div>
         </div>
       </section>
@@ -333,14 +280,6 @@ export function LandingPage() {
             >
               Submit Feedback
             </a>
-            <a
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-text-muted hover:text-accent transition-colors"
-            >
-              GitHub
-            </a>
           </div>
           <p className="text-text-muted text-xs mt-2">
             Amtrak data powered by{' '}
@@ -352,7 +291,7 @@ export function LandingPage() {
             >
               Amtraker
             </a>
-            {' '}&mdash; thank you for making this possible.
+.
           </p>
           <p className="text-text-muted text-sm mt-4">
             &copy; {new Date().getFullYear()} TrackRat
