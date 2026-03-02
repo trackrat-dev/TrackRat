@@ -153,21 +153,23 @@ struct OnboardingView: View {
             Spacer()
 
             // Continue button (hidden until at least one system selected)
-            if !appState.selectedSystems.isEmpty {
-                Button("Continue") {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        showSystemSelection = false
+            Group {
+                if !appState.selectedSystems.isEmpty {
+                    Button("Continue") {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            showSystemSelection = false
+                        }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(height: 50)
+                    .frame(minWidth: 160)
+                    .background(Color.orange)
+                    .cornerRadius(TrackRatTheme.CornerRadius.md)
+                    .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(height: 50)
-                .frame(minWidth: 160)
-                .background(Color.orange)
-                .cornerRadius(TrackRatTheme.CornerRadius.md)
-                .buttonStyle(.plain)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 40)
