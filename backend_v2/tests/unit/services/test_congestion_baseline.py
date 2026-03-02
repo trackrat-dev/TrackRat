@@ -156,9 +156,9 @@ class TestCongestionBaselineTimezone:
 
         # Query with ET hour matching (correct approach)
         params = _baseline_params(now=BASE_TIME, time_window_hours=1)
-        assert params["current_hour"] == BASE_ET_HOUR, (
-            f"Sanity check: ET hour should be {BASE_ET_HOUR}, got {params['current_hour']}"
-        )
+        assert (
+            params["current_hour"] == BASE_ET_HOUR
+        ), f"Sanity check: ET hour should be {BASE_ET_HOUR}, got {params['current_hour']}"
 
         result = await db_session.execute(BASELINE_SQL, params)
         row = result.mappings().first()
@@ -222,7 +222,9 @@ class TestCongestionBaselinePerDayAveraging:
         train_counts = [2, 4, 6]
         for day_idx, day_offset in enumerate(weekday_offsets):
             for t in range(train_counts[day_idx]):
-                dep_time = BASE_TIME - timedelta(days=day_offset, minutes=t * 5)
+                dep_time = (
+                    BASE_TIME - timedelta(days=day_offset) + timedelta(minutes=t * 5)
+                )
                 await _create_segment_record(
                     db_session,
                     train_id=f"train_d{day_offset}_t{t}",
@@ -255,7 +257,9 @@ class TestCongestionBaselinePerDayAveraging:
 
         for day_offset in weekday_offsets:
             for t in range(3):  # 3 trains per day
-                dep_time = BASE_TIME - timedelta(days=day_offset, minutes=t * 5)
+                dep_time = (
+                    BASE_TIME - timedelta(days=day_offset) + timedelta(minutes=t * 5)
+                )
                 await _create_segment_record(
                     db_session,
                     train_id=f"train_d{day_offset}_t{t}",
@@ -271,9 +275,7 @@ class TestCongestionBaselinePerDayAveraging:
         row = result.mappings().first()
         assert row is not None, "Expected baseline with 3 days of data"
         baseline = float(row["baseline_train_count"])
-        assert baseline == 6.0, (
-            f"Expected 3.0 avg/day * 2 hours = 6.0, got {baseline}"
-        )
+        assert baseline == 6.0, f"Expected 3.0 avg/day * 2 hours = 6.0, got {baseline}"
 
 
 @pytest.mark.asyncio
@@ -305,9 +307,7 @@ class TestCongestionBaselineMinDays:
         params = _baseline_params(now=BASE_TIME, time_window_hours=1)
         result = await db_session.execute(BASELINE_SQL, params)
         row = result.mappings().first()
-        assert row is None, (
-            f"Expected no baseline with only 2 days of data, got {row}"
-        )
+        assert row is None, f"Expected no baseline with only 2 days of data, got {row}"
 
     async def test_returns_baseline_with_3_days(self, db_session: AsyncSession):
         """Exactly 3 days of data should return a baseline."""
@@ -335,9 +335,9 @@ class TestCongestionBaselineMinDays:
         result = await db_session.execute(BASELINE_SQL, params)
         row = result.mappings().first()
         assert row is not None, "Expected baseline with exactly 3 days of data"
-        assert float(row["baseline_train_count"]) == 1.0, (
-            f"Expected 1.0 train/day * 1 hour, got {float(row['baseline_train_count'])}"
-        )
+        assert (
+            float(row["baseline_train_count"]) == 1.0
+        ), f"Expected 1.0 train/day * 1 hour, got {float(row['baseline_train_count'])}"
 
 
 @pytest.mark.asyncio
@@ -374,9 +374,7 @@ class TestCongestionBaselineWeekdayWeekend:
         assert not params["is_weekend"], "Sanity check: BASE_TIME should be a weekday"
         result = await db_session.execute(BASELINE_SQL, params)
         row = result.mappings().first()
-        assert row is None, (
-            "Weekend records should not appear in weekday baseline"
-        )
+        assert row is None, "Weekend records should not appear in weekday baseline"
 
 
 @pytest.mark.asyncio
@@ -410,9 +408,7 @@ class TestCongestionBaselineDataSource:
         params = _baseline_params(now=BASE_TIME, data_source="PATH")
         result = await db_session.execute(BASELINE_SQL, params)
         row = result.mappings().first()
-        assert row is None, (
-            "NJT records should not appear in PATH baseline"
-        )
+        assert row is None, "NJT records should not appear in PATH baseline"
 
     async def test_null_data_source_matches_all(self, db_session: AsyncSession):
         """When data_source is None, all sources should be included."""
@@ -440,6 +436,4 @@ class TestCongestionBaselineDataSource:
         params = _baseline_params(now=BASE_TIME, data_source=None)
         result = await db_session.execute(BASELINE_SQL, params)
         row = result.mappings().first()
-        assert row is not None, (
-            "With data_source=None, all sources should be included"
-        )
+        assert row is not None, "With data_source=None, all sources should be included"
