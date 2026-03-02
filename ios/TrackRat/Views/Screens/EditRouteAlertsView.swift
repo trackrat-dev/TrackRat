@@ -105,13 +105,9 @@ struct EditRouteAlertsView: View {
                                 } else if let lineName = sub.lineName {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
-                                        if let lineId = sub.lineId,
-                                           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }),
-                                           let subtitle = route.terminalSubtitle {
-                                            Text(subtitle)
-                                                .font(.caption2)
-                                                .foregroundColor(.white.opacity(0.5))
-                                        }
+                                        Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.5))
                                     }
                                 } else if let from = sub.fromStationCode, let to = sub.toStationCode {
                                     Label(
