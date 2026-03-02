@@ -464,8 +464,9 @@ class CongestionAnalyzer:
         -- Uses per-day averaging (not /30) so weekday-only or weekend-only
         -- counts are not diluted. Requires >= 3 days of data.
         -- IMPORTANT: hour_of_day/day_of_week in segment_transit_times are stored
-        -- in Eastern Time (via normalize_to_et), so we must compare against
-        -- NOW() AT TIME ZONE 'America/New_York', not raw NOW() (which is UTC).
+        -- in Eastern Time (via ensure_timezone_aware + DB session tz), so we
+        -- must compare against NOW() AT TIME ZONE 'America/New_York', not
+        -- raw NOW() (which is UTC).
         historical_baseline AS (
             SELECT
                 from_station,
