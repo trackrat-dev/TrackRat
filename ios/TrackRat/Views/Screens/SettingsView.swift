@@ -11,12 +11,10 @@ enum SettingsDestination: Hashable {
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
-    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     @State private var showingPaywall = false
-    @State private var showingFeedbackSheet = false
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
 
@@ -82,161 +80,9 @@ struct SettingsView: View {
                     SettingsSection(
                         subscriptionService: subscriptionService,
                         navigationPath: $navigationPath,
-                        showingPaywall: $showingPaywall
+                        showingPaywall: $showingPaywall,
+                        showDebugSections: showDebugSections
                     )
-
-                    // Community section
-                    VStack(spacing: 16) {
-                        // YouTube Channel
-                        Button {
-                            if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
-                                openURL(youtubeURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "play.rectangle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("YouTube Channel")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        // Instagram
-                        Button {
-                            if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
-                                openURL(instagramURL)
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "camera.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Instagram")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "arrow.up.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                    // Report an Issue
-                    Button {
-                        showingFeedbackSheet = true
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        HStack(spacing: 16) {
-                            Image(systemName: "exclamationmark.bubble.fill")
-                                .font(.title2)
-                                .foregroundColor(.orange)
-                                .frame(width: 24, height: 24)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Report an Issue")
-                                    .font(.headline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .multilineTextAlignment(.leading)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.5))
-                        }
-                        .padding()
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.ultraThinMaterial)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .sheet(isPresented: $showingFeedbackSheet) {
-                        FeedbackSheet(
-                            screen: "settings",
-                            trainId: nil,
-                            originCode: nil,
-                            destinationCode: nil
-                        )
-                    }
-
-                    // Debug/TestFlight-only: Advanced Configuration
-                    if showDebugSections {
-                        Button {
-                            navigationPath.append(SettingsDestination.advancedConfiguration)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.orange)
-                                    .frame(width: 24, height: 24)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Advanced Configuration")
-                                        .font(.headline)
-                                        .fontWeight(.medium)
-                                        .foregroundColor(.white)
-                                        .multilineTextAlignment(.leading)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.white.opacity(0.5))
-                            }
-                            .padding()
-                            .frame(maxWidth: .infinity)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    }
                 }
                 .padding()
                 .padding(.bottom, 40)
@@ -291,9 +137,13 @@ struct SettingsView: View {
 
 struct SettingsSection: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.openURL) private var openURL
     @ObservedObject var subscriptionService: SubscriptionService
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
+    var showDebugSections: Bool
+
+    @State private var showingFeedbackSheet = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -394,6 +244,155 @@ struct SettingsSection: View {
             }
             .buttonStyle(.plain)
 
+            // YouTube Channel
+            Button {
+                if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
+                    openURL(youtubeURL)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("YouTube Channel")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Instagram
+            Button {
+                if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
+                    openURL(instagramURL)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "camera.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Instagram")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Report an Issue
+            Button {
+                showingFeedbackSheet = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.bubble.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Report an Issue")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingFeedbackSheet) {
+                FeedbackSheet(
+                    screen: "settings",
+                    trainId: nil,
+                    originCode: nil,
+                    destinationCode: nil
+                )
+            }
+
+            // Debug/TestFlight-only: Advanced Configuration
+            if showDebugSections {
+                Button {
+                    navigationPath.append(SettingsDestination.advancedConfiguration)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "gearshape.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Advanced Configuration")
+                                .font(.headline)
+                                .fontWeight(.medium)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.leading)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 }
