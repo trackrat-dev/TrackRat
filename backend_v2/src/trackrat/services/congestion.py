@@ -460,26 +460,39 @@ class CongestionAnalyzer:
             GROUP BY from_station, to_station, data_source
         ),
         -- Historical baseline for frequency: average train count per time window
-        -- for same hour of day and weekday/weekend pattern over past 30 days
+        -- for same hour of day and weekday/weekend pattern over past 30 days.
+        -- Uses per-day averaging (not /30) so weekday-only or weekend-only
+        -- counts are not diluted. Requires >= 3 days of data.
+        -- IMPORTANT: hour_of_day/day_of_week in segment_transit_times are stored
+        -- in Eastern Time (via normalize_to_et), so we must compare against
+        -- NOW() AT TIME ZONE 'America/New_York', not raw NOW() (which is UTC).
         historical_baseline AS (
             SELECT
-                stt.from_station_code as from_station,
-                stt.to_station_code as to_station,
-                stt.data_source,
-                -- Average trains per time window for this hour/day pattern
-                -- Multiply by time_window_hours to scale from hourly rate
-                (COUNT(*)::float / 30.0) * :time_window_hours as baseline_train_count
-            FROM segment_transit_times stt
-            WHERE stt.departure_time >= NOW() - INTERVAL '30 days'
-              AND stt.hour_of_day = EXTRACT(HOUR FROM NOW())
-              -- Match weekday vs weekend
-              -- EXTRACT(DOW) uses Sun=0,Sat=6; Python weekday() uses Mon=0,Sat=5,Sun=6
-              AND (
-                  (EXTRACT(DOW FROM NOW()) IN (0, 6) AND stt.day_of_week IN (5, 6))
-                  OR (EXTRACT(DOW FROM NOW()) NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
-              )
-              AND (CAST(:data_source AS TEXT) IS NULL OR stt.data_source = CAST(:data_source AS TEXT))
-            GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source
+                from_station,
+                to_station,
+                data_source,
+                AVG(day_count) * :time_window_hours as baseline_train_count
+            FROM (
+                SELECT
+                    stt.from_station_code as from_station,
+                    stt.to_station_code as to_station,
+                    stt.data_source,
+                    stt.departure_time::date as journey_day,
+                    COUNT(DISTINCT stt.journey_id) as day_count
+                FROM segment_transit_times stt
+                WHERE stt.departure_time >= NOW() - INTERVAL '30 days'
+                  AND stt.hour_of_day = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/New_York'))
+                  -- Match weekday vs weekend
+                  -- EXTRACT(DOW) uses Sun=0,Sat=6; Python weekday() uses Mon=0,Sat=5,Sun=6
+                  AND (
+                      (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) IN (0, 6) AND stt.day_of_week IN (5, 6))
+                      OR (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
+                  )
+                  AND (CAST(:data_source AS TEXT) IS NULL OR stt.data_source = CAST(:data_source AS TEXT))
+                GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source, stt.departure_time::date
+            ) daily_stats
+            GROUP BY from_station, to_station, data_source
+            HAVING COUNT(*) >= 3
         )
         SELECT
             sa.from_station,
