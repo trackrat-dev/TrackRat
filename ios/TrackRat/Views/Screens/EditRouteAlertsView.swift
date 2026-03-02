@@ -38,9 +38,6 @@ struct EditRouteAlertsView: View {
             AddRouteAlertView()
                 .environmentObject(appState)
         }
-        .onAppear {
-            autoPopulateIfNeeded()
-        }
         .onDisappear {
             syncIfPossible()
         }
@@ -153,28 +150,6 @@ struct EditRouteAlertsView: View {
     }
 
     // MARK: - Helpers
-
-    /// Auto-populate with home↔work if subscriptions are empty and RatSense has both.
-    private func autoPopulateIfNeeded() {
-        guard alertService.subscriptions.isEmpty else { return }
-        let ratSense = RatSenseService.shared
-
-        guard let home = ratSense.getHomeStation(),
-              let work = ratSense.getWorkStation() else { return }
-
-        // Infer data source from the intersection of both stations and user's selected systems
-        let homeSystems = Stations.systemStringsForStation(home)
-        let workSystems = Stations.systemStringsForStation(work)
-        let selectedStrings = appState.selectedSystems.asRawStrings
-        let common = homeSystems.intersection(workSystems).intersection(selectedStrings)
-        guard let dataSource = common.first ?? homeSystems.intersection(workSystems).first else { return }
-
-        alertService.addStationPairSubscriptions(
-            dataSource: dataSource,
-            fromStationCode: home,
-            toStationCode: work
-        )
-    }
 
     private func syncIfPossible() {
         Task { @MainActor in
