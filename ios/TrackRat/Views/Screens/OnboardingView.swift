@@ -142,7 +142,7 @@ struct OnboardingView: View {
                         subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
                         onTap: {
                             withAnimation(.easeInOut(duration: 0.2)) {
-                                appState.toggleSystem(system)
+                                appState.toggleSystem(system, allowEmpty: true)
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }

@@ -813,9 +813,10 @@ final class AppState: ObservableObject {
         selectedSystems.contains(system)
     }
 
-    /// Toggle a system's selection state (ensures at least one remains selected)
+    /// Toggle a system's selection state
     /// For Amtrak: cycles Off → NEC Only → All → Off
-    func toggleSystem(_ system: TrainSystem) {
+    /// Set allowEmpty to true during onboarding where the UI hides the Continue button when empty
+    func toggleSystem(_ system: TrainSystem, allowEmpty: Bool = false) {
         if system == .amtrak {
             if !selectedSystems.contains(.amtrak) {
                 // Off → NEC Only
@@ -825,14 +826,14 @@ final class AppState: ObservableObject {
                 // NEC Only → All
                 amtrakMode = .all
             } else {
-                // All → Off (unless it's the last system)
-                guard selectedSystems.count > 1 else { return }
+                // All → Off (unless it's the last system and allowEmpty is false)
+                guard allowEmpty || selectedSystems.count > 1 else { return }
                 selectedSystems.remove(.amtrak)
                 amtrakMode = .necOnly
             }
         } else {
             if selectedSystems.contains(system) {
-                guard selectedSystems.count > 1 else { return }
+                guard allowEmpty || selectedSystems.count > 1 else { return }
                 selectedSystems.remove(system)
             } else {
                 selectedSystems.insert(system)
