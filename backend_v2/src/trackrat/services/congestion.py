@@ -403,10 +403,7 @@ class CongestionAnalyzer:
                     ELSE NULL
                 END as scheduled_minutes,
                 -- Track when this segment departed for recency sorting
-                COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) as departure_time,
-                -- Context for frequency baseline comparison
-                EXTRACT(HOUR FROM COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)) as hour_of_day,
-                EXTRACT(DOW FROM COALESCE(sp.from_actual_departure, sp.from_scheduled_departure)) as day_of_week
+                COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) as departure_time
             FROM train_journeys tj
             JOIN stop_pairs sp ON sp.journey_id = tj.id
             WHERE

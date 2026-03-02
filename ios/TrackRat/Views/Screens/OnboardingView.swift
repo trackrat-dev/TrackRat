@@ -615,60 +615,6 @@ struct SystemSelectionCard: View {
     }
 }
 
-struct FavoriteStationRow: View {
-    let stationCode: String
-    let stationName: String
-    let isFavorite: Bool
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(stationName)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Text(stationCode)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            Spacer()
-            Image(systemName: isFavorite ? "heart.fill" : "heart")
-                .foregroundColor(.orange)
-                .font(TrackRatTheme.IconSize.medium)
-        }
-        .padding()
-        .background(Material.ultraThin)
-        .cornerRadius(TrackRatTheme.CornerRadius.md)
-    }
-}
-
-struct FeatureCard: View {
-    let icon: String
-    let title: String
-    let description: String
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(.orange)
-                .frame(width: 24, height: 24)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                
-            }
-            
-            Spacer()
-        }
-        .padding()
-        .background(Material.ultraThin)
-        .cornerRadius(TrackRatTheme.CornerRadius.md)
-    }
-}
-
 // MARK: - Station Model
 struct Station: Identifiable, Equatable {
     let id = UUID()
