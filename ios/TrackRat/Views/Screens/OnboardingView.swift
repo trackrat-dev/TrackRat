@@ -134,7 +134,7 @@ struct OnboardingView: View {
 
             // System selection cards
             VStack(spacing: 12) {
-                ForEach(TrainSystem.allCases, id: \.self) { system in
+                ForEach(TrainSystem.allCases.sorted { $0.displayName < $1.displayName }, id: \.self) { system in
                     SystemSelectionCard(
                         system: system,
                         isSelected: appState.isSystemSelected(system),
