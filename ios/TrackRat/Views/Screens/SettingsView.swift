@@ -66,12 +66,11 @@ struct SettingsView: View {
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
 
-            // Scrollable content
-            ScrollView {
+                // Scrollable content
+                ScrollView {
                 VStack(spacing: 24) {
                     // Subscription Section (includes soft trial state)
                     SubscriptionStatusSection(
@@ -159,7 +158,6 @@ struct SettingsView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                    }
 
                     // Report an Issue
                     Button {
@@ -238,9 +236,11 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    }
                 }
                 .padding()
                 .padding(.bottom, 40)
+            }
             }
             .navigationDestination(for: SettingsDestination.self) { destination in
                 Group {
