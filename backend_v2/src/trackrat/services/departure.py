@@ -772,6 +772,9 @@ class DepartureService:
                         TrainJourney.is_cancelled.is_not(True),
                     )
                 )
+                # Eagerly load stops to prevent greenlet errors during
+                # commit's cascade="all, delete-orphan" orphan check
+                .options(selectinload(TrainJourney.stops))
                 .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())
