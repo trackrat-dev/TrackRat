@@ -65,6 +65,7 @@ urlencode() { jq -rn --arg v "$1" '$v | @uri'; }
 # Also writes response time (seconds) to $TMPDIR/last_time.txt for check_timing().
 api() {
   local result
+  > "$TMPDIR/resp.json"  # Clear stale response from previous call
   result=$(curl -s -o "$TMPDIR/resp.json" -w "%{http_code} %{time_total}" --max-time 15 "$1" 2>/dev/null) || result="000 0"
   echo "${result#* }" > "$TMPDIR/last_time.txt"
   echo "${result%% *}"

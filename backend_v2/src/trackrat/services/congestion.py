@@ -376,6 +376,7 @@ class CongestionAnalyzer:
             JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
             WHERE js.station_code IS NOT NULL
               AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+              AND (CAST(:data_source AS TEXT) IS NULL OR tj_pre.data_source = CAST(:data_source AS TEXT))
             WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
         ),
         segment_data AS (
@@ -411,8 +412,6 @@ class CongestionAnalyzer:
                 sp.to_station IS NOT NULL
                 -- Within time window
                 AND COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) >= :cutoff_time
-                -- Data source filter (if specified)
-                AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                 -- Valid times (at least scheduled times must exist)
                 AND sp.from_scheduled_departure IS NOT NULL
                 AND sp.to_scheduled_arrival IS NOT NULL
@@ -676,6 +675,7 @@ class CongestionAnalyzer:
                 JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
                 WHERE js.station_code IS NOT NULL
                   AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+                  AND (CAST(:data_source AS TEXT) IS NULL OR tj_pre.data_source = CAST(:data_source AS TEXT))
                 WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
@@ -713,8 +713,6 @@ class CongestionAnalyzer:
                     sp.to_station IS NOT NULL
                     -- Within time window
                     AND COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) >= :cutoff_time
-                    -- Data source filter (if specified)
-                    AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only (cancelled trains handled separately)
                     AND NOT tj.is_cancelled
                     -- Valid times
@@ -777,6 +775,7 @@ class CongestionAnalyzer:
                 JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
                 WHERE js.station_code IS NOT NULL
                   AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+                  AND (CAST(:data_source AS TEXT) IS NULL OR tj_pre.data_source = CAST(:data_source AS TEXT))
                 WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
@@ -814,8 +813,6 @@ class CongestionAnalyzer:
                     sp.to_station IS NOT NULL
                     -- Within time window
                     AND COALESCE(sp.from_actual_departure, sp.from_scheduled_departure) >= :cutoff_time
-                    -- Data source filter (if specified)
-                    AND (CAST(:data_source AS TEXT) IS NULL OR tj.data_source = CAST(:data_source AS TEXT))
                     -- Active journeys only
                     AND NOT tj.is_cancelled
                     -- Valid times
