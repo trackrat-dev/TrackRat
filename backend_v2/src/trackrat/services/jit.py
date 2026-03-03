@@ -392,8 +392,17 @@ class JustInTimeUpdateService:
         journey_id = journey.id
 
         async def do_refresh() -> None:
-            # Re-query to get fresh state after potential rollback
-            fresh_journey = await session.get(TrainJourney, journey_id)
+            # Re-query with selectinload to get fresh state after potential
+            # rollback. session.get() returns from identity map without
+            # applying selectinload, causing greenlet errors when collectors
+            # access journey.stops in async context.
+            result = await session.execute(
+                select(TrainJourney)
+                .where(TrainJourney.id == journey_id)
+                .options(selectinload(TrainJourney.stops))
+                .execution_options(populate_existing=True)
+            )
+            fresh_journey = result.scalar_one_or_none()
             if not fresh_journey:
                 raise ValueError(f"Journey {journey_id} not found during refresh")
             collector = await self.get_collector_for_journey(fresh_journey)

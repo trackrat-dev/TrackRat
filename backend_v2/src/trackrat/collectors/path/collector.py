@@ -23,6 +23,7 @@ from trackrat.collectors.path.segment_times import (
     get_segment_times,
 )
 from trackrat.config.stations import (
+    PATH_ROUTES,
     PATH_ROUTE_STOPS,
     get_path_route_and_stops,
     get_station_name,
@@ -489,10 +490,14 @@ class PathCollector:
             # Discovery station not in route (shouldn't happen) - use arrival time
             origin_departure_time = discovered_arrival_time
 
-        # Get line info from headsign
-        line_code, line_name, line_color = _get_line_info_from_headsign(
-            destination_headsign
-        )
+        # Get line info from route_id (accurate) with headsign fallback
+        route_info = PATH_ROUTES.get(route_id)
+        if route_info:
+            line_code, line_name, line_color = route_info
+        else:
+            line_code, line_name, line_color = _get_line_info_from_headsign(
+                destination_headsign
+            )
 
         # Use line color from API if available
         if arrival.line_color:

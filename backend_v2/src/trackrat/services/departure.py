@@ -593,7 +593,11 @@ class DepartureService:
                 and_(
                     JourneyStop.station_code.in_(expand_station_codes(station_code)),
                     TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == target_date,
                     TrainJourney.last_updated_at < cutoff_time,
+                    TrainJourney.is_expired.is_not(True),
+                    TrainJourney.is_completed.is_not(True),
+                    TrainJourney.is_cancelled.is_not(True),
                 )
             )
             .limit(1)
@@ -767,8 +771,14 @@ class DepartureService:
                         TrainJourney.data_source == "NJT",
                         TrainJourney.journey_date == target_date,
                         TrainJourney.last_updated_at < cutoff_time,
+                        TrainJourney.is_expired.is_not(True),
+                        TrainJourney.is_completed.is_not(True),
+                        TrainJourney.is_cancelled.is_not(True),
                     )
                 )
+                # Eagerly load stops to prevent greenlet errors during
+                # commit's cascade="all, delete-orphan" orphan check
+                .options(selectinload(TrainJourney.stops))
                 .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())
