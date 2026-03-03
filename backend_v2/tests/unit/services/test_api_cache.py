@@ -314,7 +314,7 @@ class TestApiCacheService:
                     },
                     {
                         "time_window_hours": 2,
-                        "max_per_segment": 10,
+                        "max_per_segment": 100,
                         "data_source": "SUBWAY",
                     },
                     {
