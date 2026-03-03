@@ -23,8 +23,8 @@ from trackrat.collectors.path.segment_times import (
     get_segment_times,
 )
 from trackrat.config.stations import (
-    PATH_ROUTES,
     PATH_ROUTE_STOPS,
+    PATH_ROUTES,
     get_path_route_and_stops,
     get_station_name,
 )
