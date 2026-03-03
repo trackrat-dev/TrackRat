@@ -131,6 +131,37 @@ Default target is staging; pass a URL as first positional arg for production.
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
 or `.njt-token` file (gitignored) in the repo root. Priority: TRACKRAT_NJT_API_TOKEN > NJT_TOKEN > .njt-token file.
 
+**Server Usage Report:**
+
+Shows how the server is being used: API traffic breakdown, route searches, train follows,
+client versions, latency, scheduler health, errors, and warnings. Queries GCP load balancer
+logs and backend endpoints. Requires GCP service account credentials (same as gcp-logs.py).
+
+```bash
+# Production, last 1 hour (default)
+bash scripts/server-usage.sh
+
+# Staging, last 6 hours
+bash scripts/server-usage.sh --env staging --hours 6
+
+# Last 24 hours, JSON output
+bash scripts/server-usage.sh --hours 24 --json
+
+# Save to file
+bash scripts/server-usage.sh --hours 24 --output /tmp/usage.txt
+```
+
+When the user asks for a server usage summary or "how is the server being used", run this
+script and provide a narrative summary that highlights:
+- **Traffic volume and clients**: e.g. "10 API requests from 3 unique clients (iOS/230,
+  iOS/191, curl). Light overnight traffic."
+- **What people are doing**: specific route searches with station names (e.g. "12 searches
+  for BWI Airport -> Boston Back Bay, 8 for Cornwells Heights -> Absecon"), trains viewed,
+  Live Activity and device registrations, feedback submissions.
+- **Health concerns**: any errors, notable warnings, slow endpoints (route_history and
+  congestion_cache are known to be slow). Zero errors is worth calling out.
+- **Scanner noise**: mention probe count but don't dwell on it unless unusual.
+
 ### Architecture Patterns
 
 **Backend Data Collection (NJT/Amtrak - Multi-Phase):**
