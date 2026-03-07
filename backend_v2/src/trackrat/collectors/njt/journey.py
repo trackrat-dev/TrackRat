@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseJourneyCollector
-from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
+from trackrat.collectors.njt.client import (
+    NJTransitClient,
+    NJTransitNullDataError,
+    TrainNotFoundError,
+)
 from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
@@ -761,8 +765,20 @@ class JourneyCollector(BaseJourneyCollector):
 
         try:
             train_data = await self.njt_client.get_train_stop_list(journey.train_id)
+        except NJTransitNullDataError:
+            # NJT API returned a response with all key fields null — transient
+            # API issue. The train likely still appears on departure boards.
+            # Do NOT increment api_error_count; keep last known data.
+            logger.info(
+                "train_null_data_skipped",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                api_error_count=journey.api_error_count,
+            )
+            return
         except TrainNotFoundError:
-            # Train is no longer available - increment error count
+            # Train is genuinely not available (empty/None response) —
+            # increment error count toward expiry threshold.
             journey.api_error_count = (journey.api_error_count or 0) + 1
             journey.last_updated_at = now_et()
             journey.update_count = (journey.update_count or 0) + 1

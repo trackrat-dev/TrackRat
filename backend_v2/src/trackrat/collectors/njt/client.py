@@ -28,6 +28,17 @@ class TrainNotFoundError(NJTransitAPIError):
     pass
 
 
+class NJTransitNullDataError(NJTransitAPIError):
+    """Exception raised when NJ Transit API returns a response with all key fields null.
+
+    This is a transient API issue — the train still appears on departure boards
+    but the detail API returns null data. Unlike TrainNotFoundError, this should
+    NOT count toward the expiry threshold since the train is still running.
+    """
+
+    pass
+
+
 class NJTransitClient:
     """Async client for NJ Transit rail data API."""
 
@@ -261,16 +272,19 @@ class NJTransitClient:
                 f"Train {train_id} not found - API returned empty response"
             )
 
-        # Check if all required fields are None (train no longer exists)
+        # Check if all required fields are None — transient NJT API issue.
+        # The train may still appear on departure boards (getTrainSchedule)
+        # even though getTrainStopList returns null data. This is distinct from
+        # a genuine TrainNotFoundError and should NOT count toward expiry.
         required_fields = ["TRAIN_ID", "LINECODE", "BACKCOLOR", "DESTINATION"]
         if all(response.get(field) is None for field in required_fields):
             logger.warning(
-                "train_not_found_all_fields_none",
+                "train_null_data_response",
                 train_id=train_id,
                 response_keys=list(response.keys()),
             )
-            raise TrainNotFoundError(
-                f"Train {train_id} not found - API returned null data"
+            raise NJTransitNullDataError(
+                f"Train {train_id} - API returned null data (transient)"
             )
 
         # Validate and parse response
