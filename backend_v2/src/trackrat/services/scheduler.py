@@ -1099,7 +1099,8 @@ class SchedulerService:
             deduplicated_count=len(unique_trains),
         )
 
-        # Filter out trains that already have journeys or collection jobs
+        # Filter out trains that already have OBSERVED journeys.
+        # SCHEDULED trains still need collection to promote them to OBSERVED.
         trains_to_collect = []
         current_date = now_et().date()
 
@@ -1117,9 +1118,17 @@ class SchedulerService:
 
                 if not existing_journey:
                     trains_to_collect.append(original_train_id)
+                elif existing_journey.observation_type == "SCHEDULED":
+                    # SCHEDULED trains need collection to promote to OBSERVED
+                    trains_to_collect.append(original_train_id)
+                    logger.debug(
+                        "amtrak_scheduled_needs_promotion",
+                        train_id=original_train_id,
+                        internal_id=internal_train_id,
+                    )
                 else:
                     logger.debug(
-                        "amtrak_journey_already_exists",
+                        "amtrak_journey_already_observed",
                         train_id=original_train_id,
                         internal_id=internal_train_id,
                     )
