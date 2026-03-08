@@ -323,7 +323,7 @@ final class RouteStatusViewModel: ObservableObject {
                 filteredSegments = response.aggregatedSegments
             } else {
                 filteredSegments = response.aggregatedSegments.filter { segment in
-                    routeStationCodes.contains(segment.fromStation.uppercased()) ||
+                    routeStationCodes.contains(segment.fromStation.uppercased()) &&
                     routeStationCodes.contains(segment.toStation.uppercased())
                 }
             }
