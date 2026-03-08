@@ -1007,13 +1007,14 @@ struct SystemCongestionMapView: UIViewRepresentable {
             for (_, overlay) in context.coordinator.aggregatedOverlayMap {
                 if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer,
                    let segment = overlay.segment {
-                    if segment.cancellationRate > 0 {
-                        // Keep cancelled segments red with dashes
-                        renderer.strokeColor = UIColor.systemRed
-                    } else {
-                        renderer.strokeColor = context.coordinator.getColorForSegmentPublic(segment)
-                        renderer.lineWidth = context.coordinator.getSegmentLineWidthPublic(segment)
+                    var color = context.coordinator.getColorForSegmentPublic(segment)
+                    if segment.cancellationRate > 20 {
+                        color = UIColor.systemRed
+                    } else if segment.cancellationRate > 10 {
+                        color = context.coordinator.escalateColorPublic(color)
                     }
+                    renderer.strokeColor = color
+                    renderer.lineWidth = context.coordinator.getSegmentLineWidthPublic(segment)
                 }
             }
             // Update individual segment colors
@@ -1249,18 +1250,22 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let renderer = MKPolylineRenderer(polyline: polyline)
 
                 if let segment = polyline.segment {
-                    // Check if this segment has cancellations
-                    if segment.cancellationRate > 0 {
-                        renderer.strokeColor = UIColor.systemRed
-                        renderer.lineWidth = 10
-                    } else {
-                        // Use highlight mode to determine color
-                        renderer.strokeColor = getColorForSegment(segment)
-                        renderer.lineWidth = getSegmentLineWidth(segment)
-                        // Add dashed pattern for other types of cancellations
-                        if let dashPattern = segment.dashPattern {
-                            renderer.lineDashPattern = dashPattern
-                        }
+                    // Base color from delay/frequency metrics
+                    var color = getColorForSegment(segment)
+
+                    // Escalate color for significant cancellation rates
+                    if segment.cancellationRate > 20 {
+                        color = UIColor.systemRed
+                    } else if segment.cancellationRate > 10 {
+                        color = escalateColor(color)
+                    }
+
+                    renderer.strokeColor = color
+                    renderer.lineWidth = getSegmentLineWidth(segment)
+
+                    // Dash pattern indicates cancellation severity (>5%)
+                    if let dashPattern = segment.dashPattern {
+                        renderer.lineDashPattern = dashPattern
                     }
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
                 } else {
@@ -1412,6 +1417,18 @@ struct SystemCongestionMapView: UIViewRepresentable {
         /// Public accessor for getSegmentLineWidth (used by updateUIView for mode changes)
         func getSegmentLineWidthPublic(_ segment: CongestionSegment) -> CGFloat {
             getSegmentLineWidth(segment)
+        }
+
+        /// Escalate a health color by one level toward red for cancellation impact
+        private func escalateColor(_ color: UIColor) -> UIColor {
+            if color == UIColor.systemGreen { return UIColor.systemYellow }
+            if color == UIColor.systemYellow { return UIColor.systemOrange }
+            return UIColor.systemRed // orange/red stay red
+        }
+
+        /// Public accessor for escalateColor (used by updateUIView for mode changes)
+        func escalateColorPublic(_ color: UIColor) -> UIColor {
+            escalateColor(color)
         }
 
         private func getRecencyBasedAlpha(for departureTime: Date) -> CGFloat {
