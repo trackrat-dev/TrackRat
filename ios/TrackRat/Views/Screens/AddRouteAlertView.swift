@@ -32,7 +32,7 @@ struct AddRouteAlertView: View {
     @State private var showTrainStationPicker = false
     @State private var departures: [TrainV2] = []
     @State private var isLoadingDepartures = false
-    @State private var weekdaysOnly = true
+    @State private var weekdaysOnly = true  // UI toggle: true = Mon-Fri (31), false = all days (127)
 
     /// Systems available for line mode: user's selected systems that have routes.
     private var availableLineSystems: [TrainSystem] {
@@ -458,7 +458,7 @@ struct AddRouteAlertView: View {
                                 dataSource: train.dataSource,
                                 trainId: train.trainId,
                                 trainName: trainName,
-                                weekdaysOnly: weekdaysOnly
+                                activeDays: weekdaysOnly ? 31 : 127
                             )
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             dismiss()

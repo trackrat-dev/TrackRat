@@ -326,12 +326,22 @@ class RouteAlertSubscription(Base):
     to_station_code = Column(String(10), nullable=True)
     train_id = Column(String(30), nullable=True)
     direction = Column(String(10), nullable=True)
-    weekdays_only = Column(
+    active_days = Column(
+        Integer, default=127, nullable=False, server_default="127"
+    )  # Bitmask: Mon=1, Tue=2, Wed=4, Thu=8, Fri=16, Sat=32, Sun=64
+    active_start_minutes = Column(Integer, nullable=True)  # Minutes from midnight
+    active_end_minutes = Column(Integer, nullable=True)  # Minutes from midnight
+    timezone = Column(String(40), nullable=True)  # IANA timezone
+    delay_threshold_minutes = Column(Integer, nullable=True)  # NULL = system default
+    service_threshold_pct = Column(Integer, nullable=True)  # NULL = system default
+    notify_recovery = Column(
         Boolean, default=False, nullable=False, server_default="false"
     )
+    digest_time_minutes = Column(Integer, nullable=True)  # Minutes from midnight
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_alerted_at = Column(DateTime(timezone=True), nullable=True)
     last_alert_hash = Column(String(64), nullable=True)
+    last_digest_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     device: Mapped["DeviceToken"] = relationship(

@@ -7,7 +7,8 @@ or when train frequency drops significantly below normal levels.
 """
 
 import hashlib
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Time, and_, cast, extract, or_, select
 from sqlalchemy import func as sqla_func
@@ -69,13 +70,17 @@ async def evaluate_route_alerts(
     devices = result.scalars().all()
 
     alerts_sent = 0
-
-    is_weekend = now.weekday() >= 5
+    state_changed = False
 
     for device in devices:
         for sub in device.subscriptions:
-            # Skip weekdays-only subscriptions on weekends
-            if sub.weekdays_only and is_weekend:
+            # Day-of-week check (bitmask: Mon=1, Tue=2, ..., Sun=64)
+            day_bit = 1 << now.weekday()
+            if not (sub.active_days & day_bit):
+                continue
+
+            # Time window check
+            if not _is_within_time_window(sub, now):
                 continue
 
             # Cooldown check
@@ -97,7 +102,13 @@ async def evaluate_route_alerts(
             )
 
             if not journeys:
+                # Recovery check: if we previously alerted and now there are
+                # no journeys to evaluate, skip (don't send recovery when we
+                # simply have no data).
                 continue
+
+            # Per-subscription delay threshold (or system default)
+            delay_threshold = sub.delay_threshold_minutes or DELAY_THRESHOLD_MINUTES
 
             # Count cancellations and delays
             cancelled_count = 0
@@ -110,8 +121,19 @@ async def evaluate_route_alerts(
             for journey in journeys:
                 if journey.is_cancelled:
                     cancelled_count += 1
-                elif _is_significantly_delayed(journey, to_station_code=dest_station):
+                elif _is_significantly_delayed(
+                    journey,
+                    to_station_code=dest_station,
+                    threshold_minutes=delay_threshold,
+                ):
                     delayed_count += 1
+
+            # Per-subscription service threshold (or system default)
+            freq_threshold = (
+                (sub.service_threshold_pct / 100.0)
+                if sub.service_threshold_pct is not None
+                else FREQ_THRESHOLD_REDUCED
+            )
 
             # Determine if alert is warranted
             should_alert = False
@@ -132,7 +154,7 @@ async def evaluate_route_alerts(
                         baseline *= 0.5
                     if baseline is not None and baseline > 0:
                         frequency_factor = active_count / baseline
-                        if frequency_factor < FREQ_THRESHOLD_REDUCED:
+                        if frequency_factor < freq_threshold:
                             should_alert = True
                             alert_type = "reduced_service"
             elif (
@@ -144,6 +166,16 @@ async def evaluate_route_alerts(
                 alert_type = "delay"
 
             if not should_alert:
+                # Recovery: conditions cleared after a previous alert
+                if sub.notify_recovery and sub.last_alert_hash:
+                    sent = await _send_recovery_notification(
+                        sub, device, now, apns_service
+                    )
+                    if sent:
+                        sub.last_alert_hash = None
+                        sub.last_alerted_at = now
+                        alerts_sent += 1
+                        state_changed = True
                 continue
 
             # Dedup via hash
@@ -165,6 +197,7 @@ async def evaluate_route_alerts(
                 delayed_count,
                 total_count,
                 frequency_factor=frequency_factor,
+                delay_threshold=delay_threshold,
             )
 
             # Send
@@ -188,6 +221,7 @@ async def evaluate_route_alerts(
                 sub.last_alerted_at = now
                 sub.last_alert_hash = alert_hash
                 alerts_sent += 1
+                state_changed = True
 
                 logger.info(
                     "route_alert_sent",
@@ -205,7 +239,7 @@ async def evaluate_route_alerts(
                     frequency_factor=frequency_factor,
                 )
 
-    if alerts_sent > 0:
+    if state_changed:
         await db.commit()
 
     logger.info("route_alert_evaluation_complete", alerts_sent=alerts_sent)
@@ -244,14 +278,26 @@ async def _evaluate_train_subscription(
     if not journey:
         return False
 
+    # Per-subscription delay threshold (or system default)
+    delay_threshold = sub.delay_threshold_minutes or DELAY_THRESHOLD_MINUTES
+
     # Determine alert type
     alert_type = ""
     if journey.is_cancelled:
         alert_type = "cancellation"
-    elif _is_significantly_delayed(journey):
+    elif _is_significantly_delayed(journey, threshold_minutes=delay_threshold):
         alert_type = "delay"
 
     if not alert_type:
+        # Recovery: conditions cleared after a previous alert
+        if sub.notify_recovery and sub.last_alert_hash:
+            sent = await _send_recovery_notification(
+                sub, device, now, apns_service
+            )
+            if sent:
+                sub.last_alert_hash = None
+                sub.last_alerted_at = now
+            return sent
         return False
 
     # Compute delay for message
@@ -550,11 +596,98 @@ def _filter_by_direction(
     return filtered
 
 
+def _is_within_time_window(sub: RouteAlertSubscription, now: datetime) -> bool:
+    """Check if the current time falls within the subscription's active time window.
+
+    Returns True if no time window is configured (always active).
+    """
+    if sub.active_start_minutes is None or sub.active_end_minutes is None:
+        return True
+    if not sub.timezone:
+        return True
+
+    try:
+        local_now = datetime.now(ZoneInfo(sub.timezone))
+    except (KeyError, ValueError):
+        # Invalid timezone — treat as always active
+        return True
+
+    current_minutes = local_now.hour * 60 + local_now.minute
+    start = sub.active_start_minutes
+    end = sub.active_end_minutes
+
+    if start <= end:
+        # Normal range: e.g., 6:00 AM (360) to 10:00 AM (600)
+        return start <= current_minutes <= end
+    else:
+        # Wraps midnight: e.g., 10:00 PM (1320) to 6:00 AM (360)
+        return current_minutes >= start or current_minutes <= end
+
+
+async def _send_recovery_notification(
+    sub: RouteAlertSubscription,
+    device: DeviceToken,
+    now: datetime,
+    apns_service: SimpleAPNSService,
+) -> bool:
+    """Send an 'all clear' recovery notification when conditions normalize."""
+    if not device.apns_token:
+        return False
+
+    route_name = _get_route_name(sub)
+    title = f"Route Clear: {route_name}"
+    body = f"Conditions have returned to normal on {route_name}."
+
+    custom_data = {
+        "route_alert": {
+            "data_source": sub.data_source,
+            "line_id": sub.line_id,
+            "direction": sub.direction,
+            "from_station_code": sub.from_station_code,
+            "to_station_code": sub.to_station_code,
+            "train_id": sub.train_id,
+            "alert_type": "recovery",
+        }
+    }
+    sent = await apns_service.send_alert_notification(
+        device.apns_token, title, body, custom_data=custom_data
+    )
+
+    if sent:
+        logger.info(
+            "recovery_alert_sent",
+            device_id=device.device_id,
+            data_source=sub.data_source,
+            line_id=sub.line_id,
+            direction=sub.direction,
+        )
+
+    return sent
+
+
+def _get_route_name(sub: RouteAlertSubscription) -> str:
+    """Build a human-readable route name for a subscription."""
+    if sub.line_id:
+        route = _ROUTES_BY_ID.get(sub.line_id)
+        route_name = route.name if route else sub.line_id
+        if sub.direction:
+            direction_name = get_station_name(sub.direction)
+            route_name = f"{route_name} toward {direction_name}"
+        return route_name
+    elif sub.train_id:
+        return f"Train {sub.train_id}"
+    else:
+        from_name = get_station_name(sub.from_station_code or "")
+        to_name = get_station_name(sub.to_station_code or "")
+        return f"{from_name} → {to_name}"
+
+
 def _is_significantly_delayed(
     journey: TrainJourney,
     to_station_code: str | None = None,
+    threshold_minutes: int = DELAY_THRESHOLD_MINUTES,
 ) -> bool:
-    """Check if a journey has a delay >= DELAY_THRESHOLD_MINUTES.
+    """Check if a journey has a delay >= threshold_minutes.
 
     When *to_station_code* is provided (station-pair subscriptions), also
     checks arrival delay at the destination stop — a train may depart on time
@@ -566,7 +699,7 @@ def _is_significantly_delayed(
         dep_delay = (
             journey.actual_departure - journey.scheduled_departure
         ).total_seconds() / 60
-        departure_delayed = dep_delay >= DELAY_THRESHOLD_MINUTES
+        departure_delayed = dep_delay >= threshold_minutes
 
     if departure_delayed:
         return True
@@ -582,7 +715,7 @@ def _is_significantly_delayed(
                 arr_delay = (
                     stop.actual_arrival - stop.scheduled_arrival
                 ).total_seconds() / 60
-                return arr_delay >= DELAY_THRESHOLD_MINUTES
+                return arr_delay >= threshold_minutes
 
     return False
 
@@ -610,17 +743,10 @@ def _build_alert_message(
     total_count: int,
     *,
     frequency_factor: float | None = None,
+    delay_threshold: int = DELAY_THRESHOLD_MINUTES,
 ) -> tuple[str, str]:
     """Build notification title and body for an alert."""
-    # Describe the route
-    if sub.line_id:
-        route = _ROUTES_BY_ID.get(sub.line_id)
-        route_name = route.name if route else sub.line_id
-        if sub.direction:
-            direction_name = get_station_name(sub.direction)
-            route_name = f"{route_name} toward {direction_name}"
-    else:
-        route_name = f"{sub.from_station_code} → {sub.to_station_code}"
+    route_name = _get_route_name(sub)
 
     if alert_type == "cancellation":
         title = f"{sub.data_source}: Cancellations on {route_name}"
@@ -639,7 +765,7 @@ def _build_alert_message(
     else:
         title = f"{sub.data_source}: Delays on {route_name}"
         body = (
-            f"{delayed_count} of {total_count} trains delayed {DELAY_THRESHOLD_MINUTES}+ min "
+            f"{delayed_count} of {total_count} trains delayed {delay_threshold}+ min "
             f"in the past hour."
         )
 
@@ -676,3 +802,153 @@ def _build_train_alert_message(
         )
 
     return title, body
+
+
+# ---------------------------------------------------------------------------
+# Morning digest evaluation
+# ---------------------------------------------------------------------------
+
+
+async def evaluate_morning_digests(
+    db: AsyncSession, apns_service: SimpleAPNSService
+) -> int:
+    """
+    Send morning digest notifications for subscriptions whose digest time
+    falls within the current 5-minute evaluation window.
+
+    Returns the number of digests sent.
+    """
+    from trackrat.services.summary import SummaryService
+
+    result = await db.execute(
+        select(DeviceToken).options(selectinload(DeviceToken.subscriptions))
+    )
+    devices = result.scalars().all()
+
+    summary_service = SummaryService()
+    digests_sent = 0
+
+    for device in devices:
+        for sub in device.subscriptions:
+            if sub.digest_time_minutes is None or not sub.timezone:
+                continue
+
+            try:
+                local_now = datetime.now(ZoneInfo(sub.timezone))
+            except (KeyError, ValueError):
+                continue
+
+            # Check if within ±2 min window of digest time
+            current_minutes = local_now.hour * 60 + local_now.minute
+            diff = abs(current_minutes - sub.digest_time_minutes)
+            # Handle midnight wrap (e.g., current=1438, digest=2 → diff should be 4)
+            if diff > 720:
+                diff = 1440 - diff
+            if diff > 2:
+                continue
+
+            # Day-of-week check
+            day_bit = 1 << local_now.weekday()
+            if not (sub.active_days & day_bit):
+                continue
+
+            # Already sent today?
+            if sub.last_digest_at:
+                last_digest_local = sub.last_digest_at.astimezone(
+                    ZoneInfo(sub.timezone)
+                )
+                if last_digest_local.date() == local_now.date():
+                    continue
+
+            # Generate summary
+            route_name = _get_route_name(sub)
+            summary = await _generate_digest_summary(db, sub, summary_service)
+
+            if not summary or not device.apns_token:
+                continue
+
+            title = f"Morning Update: {route_name}"
+            custom_data = {
+                "route_alert": {
+                    "data_source": sub.data_source,
+                    "line_id": sub.line_id,
+                    "direction": sub.direction,
+                    "from_station_code": sub.from_station_code,
+                    "to_station_code": sub.to_station_code,
+                    "train_id": sub.train_id,
+                    "alert_type": "digest",
+                }
+            }
+            sent = await apns_service.send_alert_notification(
+                device.apns_token, title, summary, custom_data=custom_data
+            )
+
+            if sent:
+                sub.last_digest_at = datetime.now(timezone.utc)
+                digests_sent += 1
+
+                logger.info(
+                    "morning_digest_sent",
+                    device_id=device.device_id,
+                    data_source=sub.data_source,
+                    line_id=sub.line_id,
+                    route_name=route_name,
+                )
+
+    if digests_sent > 0:
+        await db.commit()
+
+    logger.info("morning_digest_evaluation_complete", digests_sent=digests_sent)
+    return digests_sent
+
+
+async def _generate_digest_summary(
+    db: AsyncSession,
+    sub: RouteAlertSubscription,
+    summary_service: "SummaryService",
+) -> str | None:
+    """Generate digest text for a subscription using SummaryService."""
+    try:
+        if sub.line_id:
+            route = _ROUTES_BY_ID.get(sub.line_id)
+            if not route:
+                return None
+            stations = route.stations
+            from_station = stations[0] if sub.direction == stations[-1] else stations[-1]
+            to_station = sub.direction or stations[-1]
+            result = await summary_service.get_route_summary(
+                db,
+                from_station=from_station,
+                to_station=to_station,
+                data_source=sub.data_source,
+            )
+        elif sub.from_station_code and sub.to_station_code:
+            result = await summary_service.get_route_summary(
+                db,
+                from_station=sub.from_station_code,
+                to_station=sub.to_station_code,
+                data_source=sub.data_source,
+            )
+        elif sub.train_id:
+            result = await summary_service.get_train_summary(
+                db,
+                train_id=sub.train_id,
+            )
+        else:
+            return None
+
+        # Combine headline and body for a concise push notification
+        parts = []
+        if result.headline:
+            parts.append(result.headline)
+        if result.body:
+            parts.append(result.body)
+        return " ".join(parts) if parts else None
+    except Exception:
+        logger.warning(
+            "digest_summary_generation_failed",
+            data_source=sub.data_source,
+            line_id=sub.line_id,
+            exc_info=True,
+        )
+        return None
