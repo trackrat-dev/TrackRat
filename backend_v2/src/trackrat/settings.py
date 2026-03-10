@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     )
     # Developer Chat
     chat_admin_registration_code: str = Field(
-        default="",
+        default="test132T",
         description="Secret code for registering admin devices for developer chat",
     )
 
