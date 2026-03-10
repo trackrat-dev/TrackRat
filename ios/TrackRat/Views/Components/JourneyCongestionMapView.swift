@@ -325,13 +325,8 @@ struct CongestionMapKitView: UIViewRepresentable {
             for polyline in context.coordinator.polylines {
                 if let renderer = mapView.renderer(for: polyline) as? MKPolylineRenderer,
                    let segment = polyline.segment {
-                    if segment.cancellationRate > 0 {
-                        renderer.strokeColor = UIColor.darkGray
-                        renderer.lineWidth = 10
-                    } else {
-                        renderer.strokeColor = context.coordinator.colorForSegment(segment)
-                        renderer.lineWidth = context.coordinator.lineWidthForSegment(segment)
-                    }
+                    renderer.strokeColor = context.coordinator.colorForSegment(segment)
+                    renderer.lineWidth = context.coordinator.lineWidthForSegment(segment)
                     renderer.setNeedsDisplay()
                 }
             }
@@ -446,16 +441,22 @@ struct CongestionMapKitView: UIViewRepresentable {
 
         // MARK: - Public color/width helpers (used by updateUIView and rendererFor)
         func colorForSegment(_ segment: CongestionSegment) -> UIColor {
-            if segment.cancellationRate > 0 { return UIColor.darkGray }
             guard highlightMode != .off else { return UIColor.clear }
+            var color: UIColor
             switch segment.preferredHighlightMode {
-            case .health: return getFrequencyUIColor(for: segment.frequencyFactor)
-            case .delays, .off: return getUIColor(for: segment.congestionFactor)
+            case .health: color = getFrequencyUIColor(for: segment.frequencyFactor)
+            case .delays, .off: color = getUIColor(for: segment.congestionFactor)
             }
+            // Escalate color for significant cancellation rates
+            if segment.cancellationRate > 20 {
+                color = UIColor.systemRed
+            } else if segment.cancellationRate > 10 {
+                color = escalateColor(color)
+            }
+            return color
         }
 
         func lineWidthForSegment(_ segment: CongestionSegment) -> CGFloat {
-            if segment.cancellationRate > 0 { return 10 }
             guard highlightMode != .off else { return 0 }
             switch segment.preferredHighlightMode {
             case .health: return getFrequencyLineWidth(segment.frequencyFactor)
@@ -584,6 +585,13 @@ struct CongestionMapKitView: UIViewRepresentable {
             else if factor >= 0.7 { return 7 }
             else if factor >= 0.5 { return 8 }
             else { return 9 }
+        }
+
+        /// Escalate a health color by one level toward red for cancellation impact
+        private func escalateColor(_ color: UIColor) -> UIColor {
+            if color == UIColor.systemGreen { return UIColor.systemYellow }
+            if color == UIColor.systemYellow { return UIColor.systemOrange }
+            return UIColor.systemRed
         }
 
         private func createStationPinView(for station: JourneyStation) -> UIView {
