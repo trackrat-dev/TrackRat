@@ -449,7 +449,12 @@ struct CongestionMapKitView: UIViewRepresentable {
             if segment.cancellationRate > 0 { return UIColor.darkGray }
             guard highlightMode != .off else { return UIColor.clear }
             switch segment.preferredHighlightMode {
-            case .health: return getFrequencyUIColor(for: segment.frequencyFactor)
+            case .health:
+                // Fall back to delay coloring when no frequency baseline exists yet
+                if let _ = segment.frequencyFactor {
+                    return getFrequencyUIColor(for: segment.frequencyFactor)
+                }
+                return getUIColor(for: segment.congestionFactor)
             case .delays, .off: return getUIColor(for: segment.congestionFactor)
             }
         }
@@ -458,7 +463,15 @@ struct CongestionMapKitView: UIViewRepresentable {
             if segment.cancellationRate > 0 { return 10 }
             guard highlightMode != .off else { return 0 }
             switch segment.preferredHighlightMode {
-            case .health: return getFrequencyLineWidth(segment.frequencyFactor)
+            case .health:
+                // Fall back to delay-based width when no frequency baseline exists yet
+                guard let factor = segment.frequencyFactor else {
+                    return getCongestionLineWidth(segment.congestionFactor)
+                }
+                if factor >= 0.9 { return 5 }
+                else if factor >= 0.7 { return 7 }
+                else if factor >= 0.5 { return 8 }
+                else { return 9 }
             case .delays, .off: return getCongestionLineWidth(segment.congestionFactor)
             }
         }
@@ -576,14 +589,6 @@ struct CongestionMapKitView: UIViewRepresentable {
             else if factor >= 0.7 { return UIColor.systemYellow }
             else if factor >= 0.5 { return UIColor.systemOrange }
             else { return UIColor.systemRed }
-        }
-
-        private func getFrequencyLineWidth(_ frequencyFactor: Double?) -> CGFloat {
-            guard let factor = frequencyFactor else { return 5 }
-            if factor >= 0.9 { return 5 }
-            else if factor >= 0.7 { return 7 }
-            else if factor >= 0.5 { return 8 }
-            else { return 9 }
         }
 
         private func createStationPinView(for station: JourneyStation) -> UIView {
