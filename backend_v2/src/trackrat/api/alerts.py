@@ -8,7 +8,7 @@ active MTA service alerts (planned work, delays).
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
-from sqlalchemy import delete, select
+from sqlalchemy import ColumnElement, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -257,12 +257,16 @@ class ServiceAlertsListResponse(BaseModel):
 
 @router.get("/alerts/service", response_model=ServiceAlertsListResponse)
 async def get_service_alerts(
-    data_source: str | None = Query(None, description="Filter by data source (SUBWAY, LIRR, MNR)"),
-    alert_type: str | None = Query(None, description="Filter by alert type (planned_work, alert, elevator)"),
+    data_source: str | None = Query(
+        None, description="Filter by data source (SUBWAY, LIRR, MNR)"
+    ),
+    alert_type: str | None = Query(
+        None, description="Filter by alert type (planned_work, alert, elevator)"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> ServiceAlertsListResponse:
     """Get active service alerts, optionally filtered by data source and type."""
-    conditions = [ServiceAlert.is_active.is_(True)]
+    conditions: list[ColumnElement[bool]] = [ServiceAlert.is_active.is_(True)]
 
     if data_source:
         conditions.append(ServiceAlert.data_source == data_source)

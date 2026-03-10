@@ -1721,9 +1721,7 @@ class TestDirectionalAlertMessage:
             data_source="NJT",
             line_id="njt-nec",
         )
-        title, body = _build_alert_message(
-            sub, "delay", 0, 3, 4, delay_threshold=5
-        )
+        title, body = _build_alert_message(sub, "delay", 0, 3, 4, delay_threshold=5)
         assert "5+ min" in body
         print(f"  Body with custom threshold: {body}")
 
@@ -1751,9 +1749,7 @@ class TestTimeWindow:
             timezone="America/New_York",
         )
         # 8:00 AM ET
-        with patch(
-            "trackrat.services.alert_evaluator.datetime"
-        ) as mock_dt:
+        with patch("trackrat.services.alert_evaluator.datetime") as mock_dt:
             from zoneinfo import ZoneInfo
 
             mock_dt.now.return_value = datetime(
@@ -1881,9 +1877,7 @@ class TestRecoveryAlerts:
         await db_session.flush()
 
         # Simulate a previous alert by setting last_alert_hash
-        result = await db_session.execute(
-            select(RouteAlertSubscription)
-        )
+        result = await db_session.execute(select(RouteAlertSubscription))
         sub = result.scalar_one()
         sub.last_alert_hash = "previous_alert_hash"
         await db_session.flush()

@@ -9,7 +9,6 @@ and upserts them into the service_alerts table. Supports three alert types:
 """
 
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -70,10 +69,10 @@ def extract_english_text(translated_string: Any) -> str | None:
         return None
     for t in translated_string.translation:
         if t.language == "en":
-            return t.text
+            return str(t.text)
     # Fallback: first translation
     if translated_string.translation:
-        return translated_string.translation[0].text
+        return str(translated_string.translation[0].text)
     return None
 
 
@@ -181,7 +180,7 @@ async def upsert_service_alerts(
         )
     )
     existing_by_id: dict[str, ServiceAlert] = {
-        sa.alert_id: sa for sa in result.scalars().all()
+        sa.alert_id: sa for sa in result.scalars().all() if sa.alert_id is not None
     }
 
     seen_ids: set[str] = set()
@@ -259,9 +258,7 @@ async def collect_service_alerts() -> dict[str, Any]:
                     stats,
                 )
             except httpx.HTTPError as e:
-                logger.warning(
-                    "Failed to fetch %s service alerts: %s", data_source, e
-                )
+                logger.warning("Failed to fetch %s service alerts: %s", data_source, e)
                 all_stats[data_source] = {"error": str(e)}
             except Exception as e:
                 logger.error(

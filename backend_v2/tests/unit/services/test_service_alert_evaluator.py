@@ -230,7 +230,7 @@ class TestFindMatchingAlerts:
         now_epoch = int(time.time())
         alert = self._make_alert(
             active_start=now_epoch - 3600,  # started 1h ago
-            active_end=now_epoch + 3600,    # ends in 1h
+            active_end=now_epoch + 3600,  # ends in 1h
         )
         result = _find_matching_alerts(
             [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
@@ -242,7 +242,7 @@ class TestFindMatchingAlerts:
         now_epoch = int(time.time())
         alert = self._make_alert(
             active_start=now_epoch - 86400,  # started 24h ago
-            active_end=now_epoch - 3600,     # ended 1h ago
+            active_end=now_epoch - 3600,  # ended 1h ago
         )
         result = _find_matching_alerts(
             [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
@@ -284,7 +284,9 @@ class TestBuildServiceAlertMessage:
             include_planned_work=True,
         )
 
-    def _make_alert_obj(self, alert_id="lmm:planned_work:1", header="G train: No weekend service"):
+    def _make_alert_obj(
+        self, alert_id="lmm:planned_work:1", header="G train: No weekend service"
+    ):
         return ServiceAlert(
             alert_id=alert_id,
             data_source="SUBWAY",

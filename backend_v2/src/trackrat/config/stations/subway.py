@@ -21,7 +21,9 @@ SUBWAY_GTFS_RT_FEED_URLS: dict[str, str] = {
 SUBWAY_GTFS_STATIC_URL = "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip"
 
 # GTFS-RT service alerts feed URL
-SUBWAY_ALERTS_FEED_URL = "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts"
+SUBWAY_ALERTS_FEED_URL = (
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts"
+)
 
 
 # Station code -> display name

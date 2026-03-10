@@ -384,13 +384,17 @@ class ServiceAlert(Base):
     __tablename__ = "service_alerts"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    alert_id = Column(String(100), nullable=False)  # MTA entity ID (e.g. "lmm:planned_work:30497")
+    alert_id = Column(
+        String(100), nullable=False
+    )  # MTA entity ID (e.g. "lmm:planned_work:30497")
     data_source = Column(String(10), nullable=False)  # SUBWAY, LIRR, MNR
     alert_type = Column(String(20), nullable=False)  # planned_work, alert, elevator
     affected_route_ids = Column(JSON, nullable=False)  # ["G", "4"] - GTFS route_ids
     header_text = Column(Text, nullable=False)  # English plain text header
     description_text = Column(Text, nullable=True)  # English plain text description
-    active_periods = Column(JSON, nullable=False)  # [{"start": epoch, "end": epoch}, ...]
+    active_periods = Column(
+        JSON, nullable=False
+    )  # [{"start": epoch, "end": epoch}, ...]
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

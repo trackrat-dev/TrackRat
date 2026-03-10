@@ -276,9 +276,7 @@ class TestUpsertServiceAlerts:
         assert stats["inserted"] == 0
 
         result = await db_session.execute(
-            select(ServiceAlert).where(
-                ServiceAlert.alert_id == "lmm:planned_work:10"
-            )
+            select(ServiceAlert).where(ServiceAlert.alert_id == "lmm:planned_work:10")
         )
         row = result.scalar_one()
         assert row.header_text == "UPDATED: G train service change"
@@ -301,9 +299,7 @@ class TestUpsertServiceAlerts:
         assert stats["deactivated"] == 1
 
         result = await db_session.execute(
-            select(ServiceAlert).where(
-                ServiceAlert.alert_id == "lmm:planned_work:21"
-            )
+            select(ServiceAlert).where(ServiceAlert.alert_id == "lmm:planned_work:21")
         )
         row = result.scalar_one()
         assert row.is_active is False
@@ -323,12 +319,8 @@ class TestUpsertServiceAlerts:
 
     async def test_data_source_isolation(self, db_session: AsyncSession):
         """Alerts from different data sources don't interfere."""
-        subway_alerts = [
-            self._make_parsed_alert(alert_id="lmm:planned_work:40")
-        ]
-        lirr_alerts = [
-            self._make_parsed_alert(alert_id="lmm:planned_work:41")
-        ]
+        subway_alerts = [self._make_parsed_alert(alert_id="lmm:planned_work:40")]
+        lirr_alerts = [self._make_parsed_alert(alert_id="lmm:planned_work:41")]
 
         await upsert_service_alerts(db_session, subway_alerts, "SUBWAY")
         await upsert_service_alerts(db_session, lirr_alerts, "LIRR")

@@ -7,8 +7,12 @@ or when train frequency drops significantly below normal levels.
 """
 
 import hashlib
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
+
+if TYPE_CHECKING:
+    from trackrat.services.summary import SummaryService
 
 from sqlalchemy import Time, and_, cast, extract, or_, select
 from sqlalchemy import func as sqla_func
@@ -127,7 +131,7 @@ async def evaluate_route_alerts(
         for sub in device.subscriptions:
             # Day-of-week check (bitmask: Mon=1, Tue=2, ..., Sun=64)
             day_bit = 1 << now.weekday()
-            if not (sub.active_days & day_bit):
+            if not ((sub.active_days or 0) & day_bit):
                 continue
 
             # Time window check
@@ -342,9 +346,7 @@ async def _evaluate_train_subscription(
     if not alert_type:
         # Recovery: conditions cleared after a previous alert
         if sub.notify_recovery and sub.last_alert_hash:
-            sent = await _send_recovery_notification(
-                sub, device, now, apns_service
-            )
+            sent = await _send_recovery_notification(sub, device, now, apns_service)
             if sent:
                 sub.last_alert_hash = None
                 sub.last_alerted_at = now
@@ -901,7 +903,7 @@ async def evaluate_morning_digests(
 
             # Day-of-week check
             day_bit = 1 << local_now.weekday()
-            if not (sub.active_days & day_bit):
+            if not ((sub.active_days or 0) & day_bit):
                 continue
 
             # Already sent today?
@@ -936,7 +938,7 @@ async def evaluate_morning_digests(
             )
 
             if sent:
-                sub.last_digest_at = datetime.now(timezone.utc)
+                sub.last_digest_at = datetime.now(UTC)
                 digests_sent += 1
 
                 logger.info(
@@ -966,7 +968,9 @@ async def _generate_digest_summary(
             if not route:
                 return None
             stations = route.stations
-            from_station = stations[0] if sub.direction == stations[-1] else stations[-1]
+            from_station = (
+                stations[0] if sub.direction == stations[-1] else stations[-1]
+            )
             to_station = sub.direction or stations[-1]
             result = await summary_service.get_route_summary(
                 db,
@@ -1026,7 +1030,9 @@ async def evaluate_service_alerts(
     """
     now = now_et()
     now_epoch = int(now.timestamp())
-    lookahead_epoch = int((now + timedelta(hours=PLANNED_WORK_LOOKAHEAD_HOURS)).timestamp())
+    lookahead_epoch = int(
+        (now + timedelta(hours=PLANNED_WORK_LOOKAHEAD_HOURS)).timestamp()
+    )
 
     # Load devices with subscriptions that opt into planned work
     result = await db.execute(
@@ -1071,8 +1077,11 @@ async def evaluate_service_alerts(
 
             # Find alerts affecting this subscription's routes
             matching_alerts = _find_matching_alerts(
-                all_alerts, sub.data_source, gtfs_route_ids,
-                now_epoch, lookahead_epoch,
+                all_alerts,
+                sub.data_source,
+                gtfs_route_ids,
+                now_epoch,
+                lookahead_epoch,
             )
 
             if not matching_alerts:
@@ -1152,7 +1161,7 @@ def _find_matching_alerts(
 
         # Check if any active period is current or upcoming
         has_relevant_period = False
-        for period in (alert.active_periods or []):
+        for period in alert.active_periods or []:
             start = period.get("start")
             end = period.get("end")
 
@@ -1186,11 +1195,11 @@ def _build_service_alert_message(
     if len(alerts) == 1:
         alert = alerts[0]
         title = f"{sub.data_source}: Planned work on {route_name}"
-        body = alert.header_text
+        body = alert.header_text or ""
     else:
         title = f"{sub.data_source}: {len(alerts)} planned work alerts for {route_name}"
         # Show first alert's header with count
-        body = alerts[0].header_text
+        body = alerts[0].header_text or ""
         if len(alerts) > 1:
             body += f" (+{len(alerts) - 1} more)"
 
