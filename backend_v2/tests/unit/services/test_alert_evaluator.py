@@ -95,6 +95,8 @@ def _make_device_and_sub(
     timezone: str | None = None,
     delay_threshold_minutes: int | None = None,
     service_threshold_pct: int | None = None,
+    notify_cancellation: bool = True,
+    notify_delay: bool = True,
     notify_recovery: bool = False,
     digest_time_minutes: int | None = None,
 ) -> tuple[DeviceToken, RouteAlertSubscription]:
@@ -116,6 +118,8 @@ def _make_device_and_sub(
         timezone=timezone,
         delay_threshold_minutes=delay_threshold_minutes,
         service_threshold_pct=service_threshold_pct,
+        notify_cancellation=notify_cancellation,
+        notify_delay=notify_delay,
         notify_recovery=notify_recovery,
         digest_time_minutes=digest_time_minutes,
     )
@@ -2044,3 +2048,261 @@ class TestCustomThresholdEvaluation:
         count = await evaluate_route_alerts(db_session, apns)
         assert count == 0, "Default threshold should NOT trigger on 6-min delay"
         print("  Verified: default threshold ignores small delay")
+
+
+@pytest.mark.asyncio
+class TestNotifyTypeToggles:
+    """Tests for per-type alert toggles: notify_cancellation and notify_delay."""
+
+    async def test_notify_cancellation_false_skips_cancellation_alert(
+        self, db_session: AsyncSession
+    ):
+        """With notify_cancellation=False, cancellations should not trigger alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_cancellation=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="1001",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Cancellation alert should be suppressed when notify_cancellation=False"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: notify_cancellation=False suppresses cancellation alerts")
+
+    async def test_notify_cancellation_true_sends_cancellation_alert(
+        self, db_session: AsyncSession
+    ):
+        """With notify_cancellation=True (default), cancellations trigger alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_cancellation=True,
+        )
+        _make_journey(
+            db_session,
+            train_id="1001",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Cancellation alert should fire when notify_cancellation=True"
+        print("  Verified: notify_cancellation=True allows cancellation alerts")
+
+    async def test_notify_delay_false_skips_delay_alert(
+        self, db_session: AsyncSession
+    ):
+        """With notify_delay=False, delays should not trigger alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_delay=False,
+        )
+        # Create enough delayed trains to exceed the 50% threshold
+        for i in range(3):
+            _make_journey(
+                db_session,
+                train_id=f"200{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=20,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Delay alert should be suppressed when notify_delay=False"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: notify_delay=False suppresses delay alerts")
+
+    async def test_notify_delay_true_sends_delay_alert(
+        self, db_session: AsyncSession
+    ):
+        """With notify_delay=True (default), delays above threshold trigger alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_delay=True,
+        )
+        for i in range(3):
+            _make_journey(
+                db_session,
+                train_id=f"200{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=20,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Delay alert should fire when notify_delay=True"
+        print("  Verified: notify_delay=True allows delay alerts")
+
+    async def test_both_off_no_realtime_alerts(self, db_session: AsyncSession):
+        """With both toggles off, no real-time alerts are sent (digest still would work)."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_cancellation=False,
+            notify_delay=False,
+        )
+        _make_journey(
+            db_session,
+            train_id="1001",
+            origin="NY",
+            terminal="TR",
+            is_cancelled=True,
+        )
+        for i in range(3):
+            _make_journey(
+                db_session,
+                train_id=f"200{i}",
+                origin="NY",
+                terminal="TR",
+                delay_minutes=20,
+            )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "No real-time alerts when both toggles are off"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: both toggles off suppresses all real-time alerts")
+
+    async def test_recovery_skipped_when_both_off(self, db_session: AsyncSession):
+        """Recovery alerts should not fire when both notify types are disabled."""
+        apns = _make_apns()
+        _, sub = _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_cancellation=False,
+            notify_delay=False,
+            notify_recovery=True,
+        )
+        # Simulate a previous alert that would trigger recovery
+        sub.last_alert_hash = "previous-alert-hash"
+        sub.last_alerted_at = now_et() - timedelta(minutes=60)
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Recovery should not fire when both notify types are off"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: recovery skipped when both notify types are off")
+
+    async def test_recovery_fires_when_cancellation_on(self, db_session: AsyncSession):
+        """Recovery should fire if notify_cancellation is on and conditions cleared."""
+        apns = _make_apns()
+        _, sub = _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_cancellation=True,
+            notify_delay=False,
+            notify_recovery=True,
+        )
+        sub.last_alert_hash = "previous-alert-hash"
+        sub.last_alerted_at = now_et() - timedelta(minutes=60)
+        # No cancelled or delayed journeys — conditions have cleared
+        _make_journey(
+            db_session,
+            train_id="3001",
+            origin="NY",
+            terminal="TR",
+            delay_minutes=0,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Recovery should fire when notify_cancellation=True and conditions cleared"
+        print("  Verified: recovery fires with at least one notify type on")
+
+    async def test_train_notify_cancellation_false(self, db_session: AsyncSession):
+        """Train subscription with notify_cancellation=False skips cancellation alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="1234",
+            notify_cancellation=False,
+        )
+        now = now_et()
+        journey = TrainJourney(
+            train_id="1234",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=30),
+            actual_departure=None,
+            is_cancelled=True,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Train cancellation alert suppressed when notify_cancellation=False"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: train notify_cancellation=False suppresses cancellation")
+
+    async def test_train_notify_delay_false(self, db_session: AsyncSession):
+        """Train subscription with notify_delay=False skips delay alerts."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="5678",
+            notify_delay=False,
+        )
+        now = now_et()
+        sched = now - timedelta(minutes=30)
+        journey = TrainJourney(
+            train_id="5678",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=sched,
+            actual_departure=sched + timedelta(minutes=20),
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Train delay alert suppressed when notify_delay=False"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: train notify_delay=False suppresses delay")

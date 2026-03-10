@@ -337,6 +337,12 @@ class RouteAlertSubscription(Base):
     timezone = Column(String(40), nullable=True)  # IANA timezone
     delay_threshold_minutes = Column(Integer, nullable=True)  # NULL = system default
     service_threshold_pct = Column(Integer, nullable=True)  # NULL = system default
+    notify_cancellation = Column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
+    notify_delay = Column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
     notify_recovery = Column(
         Boolean, default=False, nullable=False, server_default="false"
     )
