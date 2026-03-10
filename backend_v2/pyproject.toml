@@ -46,7 +46,7 @@ google-cloud-storage = "^3.9.0"
 greenlet = "^3.3.2"
 
 # Utilities
-python-dotenv = "^1.2.1"
+python-dotenv = "^1.2.2"
 
 [tool.poetry.group.dev.dependencies]
 # Testing
