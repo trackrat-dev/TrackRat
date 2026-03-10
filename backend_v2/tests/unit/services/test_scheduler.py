@@ -105,6 +105,8 @@ class TestSchedulerService:
                 ("lock_manager_cleanup", CronTrigger, {"hour": 1, "minute": 0}),
                 ("gtfs_feed_refresh", CronTrigger, {"hour": 3, "minute": 0}),
                 ("route_alert_evaluation", IntervalTrigger, {"minutes": 5}),
+                ("morning_digest_evaluation", IntervalTrigger, {"minutes": 5}),
+                ("service_alerts_collection", IntervalTrigger, {"minutes": 15}),
             ]
 
             assert mock_add_job.call_count == len(expected_jobs)

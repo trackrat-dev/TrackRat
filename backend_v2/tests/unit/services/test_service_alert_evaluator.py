@@ -39,7 +39,7 @@ def _make_subscription(
     device_id: str = "test-device-sa",
     apns_token: str = "fake-token-sa",
     data_source: str = "SUBWAY",
-    line_id: str = "subway-G",
+    line_id: str = "subway-g",
     direction: str | None = None,
     include_planned_work: bool = True,
 ) -> tuple[DeviceToken, RouteAlertSubscription]:
@@ -98,21 +98,20 @@ class TestGetGtfsRouteIdsForSubscription:
         sub = RouteAlertSubscription(
             device_id="dev1",
             data_source="SUBWAY",
-            line_id="subway-G",
+            line_id="subway-g",
         )
         result = _get_gtfs_route_ids_for_subscription(sub)
         assert "G" in result
 
-    def test_subway_multi_line_route(self):
-        """Subway routes with multiple lines return all line codes."""
+    def test_subway_single_line_route(self):
+        """Individual subway line returns its GTFS route ID."""
         sub = RouteAlertSubscription(
             device_id="dev1",
             data_source="SUBWAY",
-            line_id="subway-456",
+            line_id="subway-4",
         )
         result = _get_gtfs_route_ids_for_subscription(sub)
-        # subway-456 should map to "4", "5", "6" line codes
-        assert "4" in result or "5" in result or "6" in result
+        assert "4" in result
 
     def test_lirr_maps_via_routes_dict(self):
         """LIRR line codes map to GTFS route IDs via LIRR_ROUTES."""
@@ -276,7 +275,7 @@ class TestFindMatchingAlerts:
 class TestBuildServiceAlertMessage:
     """Tests for _build_service_alert_message() formatting."""
 
-    def _make_sub(self, data_source="SUBWAY", line_id="subway-G"):
+    def _make_sub(self, data_source="SUBWAY", line_id="subway-g"):
         return RouteAlertSubscription(
             device_id="dev1",
             data_source=data_source,
@@ -339,7 +338,7 @@ class TestEvaluateServiceAlerts:
         _make_subscription(
             db_session,
             data_source="SUBWAY",
-            line_id="subway-G",
+            line_id="subway-g",
             include_planned_work=True,
         )
         _make_service_alert(
@@ -369,7 +368,7 @@ class TestEvaluateServiceAlerts:
         _make_subscription(
             db_session,
             data_source="SUBWAY",
-            line_id="subway-G",
+            line_id="subway-g",
             include_planned_work=False,
         )
         _make_service_alert(
@@ -402,7 +401,7 @@ class TestEvaluateServiceAlerts:
         _make_subscription(
             db_session,
             data_source="SUBWAY",
-            line_id="subway-G",
+            line_id="subway-g",
             include_planned_work=True,
         )
         _make_service_alert(
@@ -430,7 +429,7 @@ class TestEvaluateServiceAlerts:
         _make_subscription(
             db_session,
             data_source="SUBWAY",
-            line_id="subway-G",
+            line_id="subway-g",
             include_planned_work=True,
         )
         _make_service_alert(
@@ -461,12 +460,12 @@ class TestEvaluateServiceAlerts:
 
     async def test_no_device_token_skips_send(self, db_session: AsyncSession):
         """Subscriptions on devices without APNS token are skipped."""
-        device = DeviceToken(device_id="no-token-dev", apns_token=None)
+        device = DeviceToken(device_id="no-token-dev", apns_token="")
         db_session.add(device)
         sub = RouteAlertSubscription(
             device_id="no-token-dev",
             data_source="SUBWAY",
-            line_id="subway-G",
+            line_id="subway-g",
             include_planned_work=True,
         )
         db_session.add(sub)
