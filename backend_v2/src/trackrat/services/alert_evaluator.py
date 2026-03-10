@@ -1114,7 +1114,7 @@ async def evaluate_service_alerts(
             if sent:
                 # Track notified alert IDs (keep last 50 to prevent unbounded growth).
                 # Preserve order: existing first, new appended, so [-50:] keeps most recent.
-                notified_ids = list(already_notified)
+                notified_ids = list(sub.last_service_alert_ids or [])
                 for a in new_alerts:
                     if a.alert_id not in already_notified:
                         notified_ids.append(a.alert_id)
