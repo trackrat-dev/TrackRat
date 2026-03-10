@@ -444,7 +444,13 @@ struct CongestionMapKitView: UIViewRepresentable {
             guard highlightMode != .off else { return UIColor.clear }
             var color: UIColor
             switch segment.preferredHighlightMode {
-            case .health: color = getFrequencyUIColor(for: segment.frequencyFactor)
+            case .health:
+                // Fall back to delay coloring when no frequency baseline exists yet
+                if segment.frequencyFactor != nil {
+                    color = getFrequencyUIColor(for: segment.frequencyFactor)
+                } else {
+                    color = getUIColor(for: segment.congestionFactor)
+                }
             case .delays, .off: color = getUIColor(for: segment.congestionFactor)
             }
             // Escalate color for significant cancellation rates
@@ -459,7 +465,15 @@ struct CongestionMapKitView: UIViewRepresentable {
         func lineWidthForSegment(_ segment: CongestionSegment) -> CGFloat {
             guard highlightMode != .off else { return 0 }
             switch segment.preferredHighlightMode {
-            case .health: return getFrequencyLineWidth(segment.frequencyFactor)
+            case .health:
+                // Fall back to delay-based width when no frequency baseline exists yet
+                guard let factor = segment.frequencyFactor else {
+                    return getCongestionLineWidth(segment.congestionFactor)
+                }
+                if factor >= 0.9 { return 5 }
+                else if factor >= 0.7 { return 7 }
+                else if factor >= 0.5 { return 8 }
+                else { return 9 }
             case .delays, .off: return getCongestionLineWidth(segment.congestionFactor)
             }
         }

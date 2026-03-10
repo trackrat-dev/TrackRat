@@ -1375,7 +1375,11 @@ struct SystemCongestionMapView: UIViewRepresentable {
             guard highlightMode != .off else { return UIColor.clear }
             switch segment.preferredHighlightMode {
             case .health:
-                return getFrequencyUIColor(for: segment.frequencyFactor)
+                // Fall back to delay coloring when no frequency baseline exists yet
+                if let _ = segment.frequencyFactor {
+                    return getFrequencyUIColor(for: segment.frequencyFactor)
+                }
+                return getUIColor(for: segment.congestionFactor)
             case .delays, .off:
                 return getUIColor(for: segment.congestionFactor)
             }
@@ -1404,7 +1408,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
             switch segment.preferredHighlightMode {
             case .health:
                 // Use frequency factor for line width (thicker = worse service)
-                guard let factor = segment.frequencyFactor else { return 5 }
+                // Fall back to delay-based width when no frequency baseline exists yet
+                guard let factor = segment.frequencyFactor else {
+                    return getCongestionLineWidth(segment.congestionFactor)
+                }
                 if factor >= 0.9 { return 5 }
                 else if factor >= 0.7 { return 7 }
                 else if factor >= 0.5 { return 8 }
