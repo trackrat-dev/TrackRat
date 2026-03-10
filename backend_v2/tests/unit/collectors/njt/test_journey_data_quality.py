@@ -1557,3 +1557,148 @@ class TestCancelledStopsDepartureInference:
                 f"Non-cancelled stop {stop.station_code} departure_source should be "
                 f"'time_inference', got {stop.departure_source!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# 6. Terminal stop actual_arrival on journey completion
+# ---------------------------------------------------------------------------
+
+
+class TestTerminalStopArrivalOnCompletion:
+    """Test that actual_arrival is propagated to the terminal stop when
+    a journey is detected as completed.
+
+    The NJT collector's Tier 3 time-based inference marks the terminal stop
+    as departed but does NOT set actual_arrival (to avoid fabricating data).
+    However, when the journey completes, the NJT API's TIME field for the
+    terminal stop is real data. The completion code should propagate
+    journey.actual_arrival to the terminal stop's actual_arrival so the
+    OTP query can read it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_terminal_stop_gets_actual_arrival_on_completion(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """When a journey completes via Tier 3 (time inference) at the
+        terminal stop, the stop should still get actual_arrival from the
+        API TIME field — because the completion code propagates it.
+
+        Without the fix, actual_arrival stays NULL on the terminal stop,
+        causing 0% OTP for routes where NJT trains complete via Tier 3.
+        """
+        # Use times well in the past so Tier 3 inference fires reliably
+        # (Tier 3 needs scheduled_departure + 5min < now)
+        base_time = now_et() - timedelta(hours=3)
+        base_time = base_time.replace(second=0, microsecond=0)
+        terminal_arr_time = base_time + timedelta(minutes=65)
+
+        # Create a journey TR -> NY
+        journey = TrainJourney(
+            train_id="3850",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # All stops have departed (TIME field present) and their scheduled
+        # departure is >5 min in the past so Tier 3 fires for any stop
+        # not caught by Tier 1/2.
+        #
+        # The terminal stop (NY) has departed=False (NJT doesn't flip
+        # DEPARTED at terminals), so it falls to Tier 3.
+        builder = StopBuilder()
+        stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+                track="4",
+                sched_dep_date=base_time.strftime(NJT_TIME_FORMAT),
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NP",
+                "Newark Penn",
+                dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+                track="5",
+                sched_arr_date=(base_time + timedelta(minutes=38)).strftime(
+                    NJT_TIME_FORMAT
+                ),
+                sched_dep_date=(base_time + timedelta(minutes=40)).strftime(
+                    NJT_TIME_FORMAT
+                ),
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn",
+                dep_time=(base_time + timedelta(minutes=68)).strftime(NJT_TIME_FORMAT),
+                arr_time=terminal_arr_time.strftime(NJT_TIME_FORMAT),
+                departed=False,  # Terminal — NJT never marks this DEPARTED
+                sched_arr_date=terminal_arr_time.strftime(NJT_TIME_FORMAT),
+                sched_dep_date=(base_time + timedelta(minutes=68)).strftime(
+                    NJT_TIME_FORMAT
+                ),
+            ),
+        ]
+
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, stops
+        )
+        await sqlite_session.flush()
+
+        # check_journey_completion is called separately from update_journey_stops
+        # in the real flow (see update_journey at line ~877)
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops
+        )
+        await sqlite_session.flush()
+
+        # The journey should be completed
+        assert journey.is_completed is True, (
+            "Journey should be marked completed when the terminal stop "
+            "has has_departed_station=True (via Tier 3 time inference)"
+        )
+
+        # The journey-level actual_arrival should be set from API TIME
+        assert journey.actual_arrival is not None, (
+            "journey.actual_arrival should be set from the terminal stop's "
+            "TIME field on completion"
+        )
+
+        # CRITICAL: The terminal stop's actual_arrival should ALSO be set
+        terminal_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        assert terminal_stop is not None
+        assert terminal_stop.actual_arrival is not None, (
+            "Terminal stop actual_arrival must be set on journey completion. "
+            "Without this, the OTP query (which reads journey_stops.actual_arrival) "
+            "excludes the train entirely, producing 0% OTP. "
+            f"departure_source={terminal_stop.departure_source!r}, "
+            f"has_departed_station={terminal_stop.has_departed_station}"
+        )
+
+        # Verify the value matches the journey-level arrival
+        assert terminal_stop.actual_arrival == journey.actual_arrival, (
+            f"Terminal stop actual_arrival ({terminal_stop.actual_arrival}) "
+            f"should match journey.actual_arrival ({journey.actual_arrival})"
+        )
