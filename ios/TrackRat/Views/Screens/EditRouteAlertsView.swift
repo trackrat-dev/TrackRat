@@ -169,7 +169,7 @@ struct EditRouteAlertsView: View {
             AlertCustomizationSheet(subscription: sub) { updated in
                 alertService.updateSubscription(updated)
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([PresentationDetent.medium, .large])
             .presentationDragIndicator(.visible)
         }
     }

@@ -268,4 +268,27 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         digestTimeMinutes = try container.decodeIfPresent(Int.self, forKey: .digestTimeMinutes)
         includePlannedWork = try container.decodeIfPresent(Bool.self, forKey: .includePlannedWork) ?? false
     }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(dataSource, forKey: .dataSource)
+        try container.encodeIfPresent(lineId, forKey: .lineId)
+        try container.encodeIfPresent(lineName, forKey: .lineName)
+        try container.encodeIfPresent(fromStationCode, forKey: .fromStationCode)
+        try container.encodeIfPresent(toStationCode, forKey: .toStationCode)
+        try container.encodeIfPresent(trainId, forKey: .trainId)
+        try container.encodeIfPresent(trainName, forKey: .trainName)
+        try container.encodeIfPresent(direction, forKey: .direction)
+        try container.encode(activeDays, forKey: .activeDays)
+        try container.encodeIfPresent(activeStartMinutes, forKey: .activeStartMinutes)
+        try container.encodeIfPresent(activeEndMinutes, forKey: .activeEndMinutes)
+        try container.encodeIfPresent(timezone, forKey: .timezone)
+        try container.encodeIfPresent(delayThresholdMinutes, forKey: .delayThresholdMinutes)
+        try container.encodeIfPresent(serviceThresholdPct, forKey: .serviceThresholdPct)
+        try container.encode(notifyRecovery, forKey: .notifyRecovery)
+        try container.encodeIfPresent(digestTimeMinutes, forKey: .digestTimeMinutes)
+        try container.encode(includePlannedWork, forKey: .includePlannedWork)
+        // weekdaysOnly intentionally not encoded — legacy decode-only key
+    }
 }
