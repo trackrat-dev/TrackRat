@@ -225,7 +225,11 @@ async def evaluate_route_alerts(
             if not should_alert:
                 # Recovery: conditions cleared after a previous alert
                 # Only check recovery if at least one real-time alert type is enabled
-                if sub.notify_recovery and sub.last_alert_hash and (sub.notify_cancellation or sub.notify_delay):
+                if (
+                    sub.notify_recovery
+                    and sub.last_alert_hash
+                    and (sub.notify_cancellation or sub.notify_delay)
+                ):
                     sent = await _send_recovery_notification(
                         sub, device, now, apns_service
                     )
@@ -343,12 +347,19 @@ async def _evaluate_train_subscription(
     alert_type = ""
     if journey.is_cancelled and sub.notify_cancellation:
         alert_type = "cancellation"
-    elif _is_significantly_delayed(journey, threshold_minutes=delay_threshold) and sub.notify_delay:
+    elif (
+        _is_significantly_delayed(journey, threshold_minutes=delay_threshold)
+        and sub.notify_delay
+    ):
         alert_type = "delay"
 
     if not alert_type:
         # Recovery: conditions cleared after a previous alert
-        if sub.notify_recovery and sub.last_alert_hash and (sub.notify_cancellation or sub.notify_delay):
+        if (
+            sub.notify_recovery
+            and sub.last_alert_hash
+            and (sub.notify_cancellation or sub.notify_delay)
+        ):
             sent = await _send_recovery_notification(sub, device, now, apns_service)
             if sent:
                 sub.last_alert_hash = None

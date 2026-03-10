@@ -340,9 +340,7 @@ class RouteAlertSubscription(Base):
     notify_cancellation = Column(
         Boolean, default=True, nullable=False, server_default="true"
     )
-    notify_delay = Column(
-        Boolean, default=True, nullable=False, server_default="true"
-    )
+    notify_delay = Column(Boolean, default=True, nullable=False, server_default="true")
     notify_recovery = Column(
         Boolean, default=False, nullable=False, server_default="false"
     )

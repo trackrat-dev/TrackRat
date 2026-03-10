@@ -2076,7 +2076,9 @@ class TestNotifyTypeToggles:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 0, "Cancellation alert should be suppressed when notify_cancellation=False"
+        assert (
+            count == 0
+        ), "Cancellation alert should be suppressed when notify_cancellation=False"
         apns.send_alert_notification.assert_not_called()
         print("  Verified: notify_cancellation=False suppresses cancellation alerts")
 
@@ -2102,12 +2104,12 @@ class TestNotifyTypeToggles:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 1, "Cancellation alert should fire when notify_cancellation=True"
+        assert (
+            count == 1
+        ), "Cancellation alert should fire when notify_cancellation=True"
         print("  Verified: notify_cancellation=True allows cancellation alerts")
 
-    async def test_notify_delay_false_skips_delay_alert(
-        self, db_session: AsyncSession
-    ):
+    async def test_notify_delay_false_skips_delay_alert(self, db_session: AsyncSession):
         """With notify_delay=False, delays should not trigger alerts."""
         apns = _make_apns()
         _make_device_and_sub(
@@ -2133,9 +2135,7 @@ class TestNotifyTypeToggles:
         apns.send_alert_notification.assert_not_called()
         print("  Verified: notify_delay=False suppresses delay alerts")
 
-    async def test_notify_delay_true_sends_delay_alert(
-        self, db_session: AsyncSession
-    ):
+    async def test_notify_delay_true_sends_delay_alert(self, db_session: AsyncSession):
         """With notify_delay=True (default), delays above threshold trigger alerts."""
         apns = _make_apns()
         _make_device_and_sub(
@@ -2239,7 +2239,9 @@ class TestNotifyTypeToggles:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 1, "Recovery should fire when notify_cancellation=True and conditions cleared"
+        assert (
+            count == 1
+        ), "Recovery should fire when notify_cancellation=True and conditions cleared"
         print("  Verified: recovery fires with at least one notify type on")
 
     async def test_train_notify_cancellation_false(self, db_session: AsyncSession):
@@ -2270,7 +2272,9 @@ class TestNotifyTypeToggles:
         await db_session.flush()
 
         count = await evaluate_route_alerts(db_session, apns)
-        assert count == 0, "Train cancellation alert suppressed when notify_cancellation=False"
+        assert (
+            count == 0
+        ), "Train cancellation alert suppressed when notify_cancellation=False"
         apns.send_alert_notification.assert_not_called()
         print("  Verified: train notify_cancellation=False suppresses cancellation")
 
