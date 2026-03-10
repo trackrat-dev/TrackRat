@@ -15,7 +15,9 @@ from starlette.testclient import TestClient
 os.environ["TRACKRAT_CHAT_ADMIN_REGISTRATION_CODE"] = "test-secret-code"
 
 
-def _register_device(client: TestClient, device_id: str, apns_token: str = "tok") -> None:
+def _register_device(
+    client: TestClient, device_id: str, apns_token: str = "tok"
+) -> None:
     """Helper to register a device (required before sending chat messages)."""
     resp = client.post(
         "/api/v2/devices/register",
@@ -231,7 +233,10 @@ class TestAdminRegistration:
         for _ in range(2):
             resp = e2e_client.post(
                 "/api/v2/chat/admin/register",
-                json={"device_id": "admin-reg-idem", "registration_code": "test-secret-code"},
+                json={
+                    "device_id": "admin-reg-idem",
+                    "registration_code": "test-secret-code",
+                },
             )
             assert resp.status_code == 200
 
@@ -351,7 +356,9 @@ class TestAdminMarkRead:
         assert resp.json()["marked_count"] == 2
 
         # Conversation should show 0 unread
-        convs = e2e_client.get("/api/v2/chat/admin/conversations?device_id=admin-markread")
+        convs = e2e_client.get(
+            "/api/v2/chat/admin/conversations?device_id=admin-markread"
+        )
         for conv in convs.json()["conversations"]:
             if conv["device_id"] == "user-markread":
                 assert conv["unread_count"] == 0

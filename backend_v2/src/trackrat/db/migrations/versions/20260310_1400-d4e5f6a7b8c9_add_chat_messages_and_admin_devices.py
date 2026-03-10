@@ -56,9 +56,7 @@ def upgrade() -> None:
     )
 
     op.create_index("idx_chat_device_id", "chat_messages", ["device_id"])
-    op.create_index(
-        "idx_chat_created_at", "chat_messages", ["device_id", "created_at"]
-    )
+    op.create_index("idx_chat_created_at", "chat_messages", ["device_id", "created_at"])
     op.create_index(
         "idx_chat_unread",
         "chat_messages",

@@ -7,10 +7,12 @@ registered in the admin_devices table.
 """
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -116,7 +118,7 @@ async def _send_chat_push(
     target_device_id: str,
     title: str,
     body: str,
-    custom_data: dict | None = None,
+    custom_data: dict[str, Any] | None = None,
 ) -> None:
     """Send a push notification for a chat message. Best-effort, never raises."""
     try:
@@ -268,15 +270,18 @@ async def mark_messages_read(
 ) -> MarkReadResponse:
     """Mark messages as read up to a given message ID."""
     now = datetime.now(UTC)
-    result = await db.execute(
-        update(ChatMessage)
-        .where(
-            ChatMessage.device_id == req.device_id,
-            ChatMessage.sender_role == "admin",
-            ChatMessage.read_at.is_(None),
-            ChatMessage.id <= req.up_to_id,
-        )
-        .values(read_at=now)
+    result = cast(
+        CursorResult[tuple[()]],
+        await db.execute(
+            update(ChatMessage)
+            .where(
+                ChatMessage.device_id == req.device_id,
+                ChatMessage.sender_role == "admin",
+                ChatMessage.read_at.is_(None),
+                ChatMessage.id <= req.up_to_id,
+            )
+            .values(read_at=now)
+        ),
     )
     return MarkReadResponse(marked_count=result.rowcount)
 
@@ -438,7 +443,9 @@ async def send_admin_message(
     return SendMessageResponse(id=msg.id, created_at=_format_dt(msg.created_at))
 
 
-@router.post("/admin/conversations/{target_device_id}/read", response_model=MarkReadResponse)
+@router.post(
+    "/admin/conversations/{target_device_id}/read", response_model=MarkReadResponse
+)
 async def mark_admin_messages_read(
     target_device_id: str,
     device_id: str,
@@ -449,13 +456,16 @@ async def mark_admin_messages_read(
         raise HTTPException(status_code=403, detail="Not authorized")
 
     now = datetime.now(UTC)
-    result = await db.execute(
-        update(ChatMessage)
-        .where(
-            ChatMessage.device_id == target_device_id,
-            ChatMessage.sender_role == "user",
-            ChatMessage.read_at.is_(None),
-        )
-        .values(read_at=now)
+    result = cast(
+        CursorResult[tuple[()]],
+        await db.execute(
+            update(ChatMessage)
+            .where(
+                ChatMessage.device_id == target_device_id,
+                ChatMessage.sender_role == "user",
+                ChatMessage.read_at.is_(None),
+            )
+            .values(read_at=now)
+        ),
     )
     return MarkReadResponse(marked_count=result.rowcount)
