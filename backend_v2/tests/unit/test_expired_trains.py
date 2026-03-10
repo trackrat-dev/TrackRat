@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.collectors.njt.client import TrainNotFoundError
+from trackrat.collectors.njt.client import NJTransitNullDataError, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et
@@ -337,3 +337,167 @@ async def test_train_not_found_counted_as_success_in_batch():
     # Journey2 should have incremented error count and be expired
     assert journey2.api_error_count == 3
     assert journey2.is_expired is True
+
+
+@pytest.mark.asyncio
+async def test_null_data_response_does_not_increment_error_count():
+    """Test that NJTransitNullDataError does NOT increment api_error_count.
+
+    When the NJT API returns a response with all key fields null, it's a
+    transient API issue — the train likely still appears on departure boards.
+    This must NOT count toward the 3-strike expiry threshold.
+    """
+    journey = TrainJourney(
+        id=1,
+        train_id="744",
+        journey_date=now_et().date(),
+        line_code="NE",
+        destination="New York",
+        origin_station_code="TR",
+        terminal_station_code="NY",
+        scheduled_departure=now_et() - timedelta(hours=1),
+        data_source="NJT",
+        has_complete_journey=True,
+        api_error_count=0,
+        is_expired=False,
+    )
+
+    session = AsyncMock(spec=AsyncSession)
+    session.flush = AsyncMock()
+
+    # Mock NJT client that raises NJTransitNullDataError (transient null data)
+    njt_client = AsyncMock()
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("Train 744 - API returned null data (transient)")
+    )
+
+    collector = JourneyCollector(njt_client)
+
+    # Call collect_journey_details multiple times
+    for _ in range(5):
+        await collector.collect_journey_details(session, journey)
+
+    # api_error_count must remain 0 — null data responses are NOT errors
+    assert journey.api_error_count == 0, (
+        f"api_error_count should be 0 but was {journey.api_error_count}. "
+        "NJTransitNullDataError must not increment the error counter."
+    )
+    assert journey.is_expired is False, (
+        "Train should NOT be expired after null data responses. "
+        "The train still appears on NJT departure boards."
+    )
+    # session.flush should NOT have been called (no state changes)
+    assert not session.flush.called, (
+        "session.flush should not be called for null data responses "
+        "since no database fields are modified."
+    )
+
+
+@pytest.mark.asyncio
+async def test_null_data_does_not_reset_existing_error_count():
+    """Test that NJTransitNullDataError preserves the existing api_error_count.
+
+    If a train already has 2 genuine TrainNotFoundError strikes, a subsequent
+    null data response should NOT reset the counter — it should leave it as-is.
+    """
+    journey = TrainJourney(
+        id=1,
+        train_id="738",
+        journey_date=now_et().date(),
+        line_code="NE",
+        destination="New York",
+        origin_station_code="TR",
+        terminal_station_code="NY",
+        scheduled_departure=now_et() - timedelta(hours=1),
+        data_source="NJT",
+        has_complete_journey=True,
+        api_error_count=2,  # Already has 2 genuine errors
+        is_expired=False,
+    )
+
+    session = AsyncMock(spec=AsyncSession)
+    session.flush = AsyncMock()
+
+    njt_client = AsyncMock()
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("Train 738 - API returned null data (transient)")
+    )
+
+    collector = JourneyCollector(njt_client)
+    await collector.collect_journey_details(session, journey)
+
+    # Error count should remain at 2 — null data doesn't change it
+    assert journey.api_error_count == 2, (
+        f"api_error_count should remain at 2 but was {journey.api_error_count}. "
+        "Null data responses must not modify the error counter."
+    )
+    assert journey.is_expired is False
+
+
+@pytest.mark.asyncio
+async def test_genuine_not_found_still_expires_after_null_data():
+    """Test that genuine TrainNotFoundError still works after null data responses.
+
+    Scenario: train gets null data responses (ignored), then genuine not-found
+    responses. Only the genuine ones should count toward expiry.
+    """
+    journey = TrainJourney(
+        id=1,
+        train_id="736",
+        journey_date=now_et().date(),
+        line_code="NE",
+        destination="New York",
+        origin_station_code="TR",
+        terminal_station_code="NY",
+        scheduled_departure=now_et() - timedelta(hours=1),
+        data_source="NJT",
+        has_complete_journey=True,
+        api_error_count=0,
+        is_expired=False,
+    )
+
+    session = AsyncMock(spec=AsyncSession)
+    session.flush = AsyncMock()
+
+    njt_client = AsyncMock()
+    collector = JourneyCollector(njt_client)
+
+    # 3 null data responses — should NOT count
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("null data")
+    )
+    for _ in range(3):
+        await collector.collect_journey_details(session, journey)
+
+    assert journey.api_error_count == 0
+    assert journey.is_expired is False
+
+    # Now 2 genuine not-found responses — should count but not yet expire
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=TrainNotFoundError("Train not found")
+    )
+    await collector.collect_journey_details(session, journey)
+    await collector.collect_journey_details(session, journey)
+
+    assert journey.api_error_count == 2
+    assert journey.is_expired is False
+
+    # 1 more null data response — should NOT push to expiry
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("null data")
+    )
+    await collector.collect_journey_details(session, journey)
+
+    assert journey.api_error_count == 2, (
+        "Null data response must not increment error count past 2"
+    )
+    assert journey.is_expired is False
+
+    # 1 more genuine not-found — THIS should expire
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=TrainNotFoundError("Train not found")
+    )
+    await collector.collect_journey_details(session, journey)
+
+    assert journey.api_error_count == 3
+    assert journey.is_expired is True

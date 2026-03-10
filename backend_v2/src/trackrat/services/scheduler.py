@@ -1498,7 +1498,10 @@ class SchedulerService:
             from sqlalchemy import and_, create_engine, delete, select
             from sqlalchemy.orm import selectinload, sessionmaker
 
-            from trackrat.collectors.njt.client import TrainNotFoundError
+            from trackrat.collectors.njt.client import (
+                NJTransitNullDataError,
+                TrainNotFoundError,
+            )
             from trackrat.models.database import JourneySnapshot, JourneyStop
             from trackrat.utils.time import now_et, parse_njt_time
 
@@ -1546,8 +1549,23 @@ class SchedulerService:
 
                 try:
                     train_data = await self.njt_client.get_train_stop_list(train_id)
+                except NJTransitNullDataError:
+                    # NJT API returned a response with all key fields null —
+                    # transient API issue. Do NOT increment api_error_count.
+                    logger.info(
+                        "train_null_data_skipped_sync",
+                        train_id=train_id,
+                        journey_id=journey.id,
+                        api_error_count=journey.api_error_count,
+                    )
+                    return {
+                        "train_id": train_id,
+                        "success": False,
+                        "error": "Transient null data",
+                        "expired": False,
+                    }
                 except TrainNotFoundError:
-                    # Train is no longer available - increment error count
+                    # Train is genuinely not available — increment error count.
                     with session.no_autoflush:
                         journey.api_error_count = (journey.api_error_count or 0) + 1
                         journey.last_updated_at = now_et()
