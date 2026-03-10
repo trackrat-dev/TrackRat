@@ -373,6 +373,7 @@ struct TrainCard: View {
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
 
                     if isExpress {
                         Image(systemName: "bolt.fill")
