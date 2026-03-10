@@ -237,7 +237,12 @@ def e2e_client(test_settings, sync_engine):
     # Override database dependency with real async session maker
     async def get_e2e_test_db():
         async with sessionmaker() as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
     app.dependency_overrides[get_db] = get_e2e_test_db
 
