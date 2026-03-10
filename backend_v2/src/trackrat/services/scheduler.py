@@ -2474,21 +2474,28 @@ class SchedulerService:
                 # Import here to avoid circular imports
                 from trackrat.services.api_cache import ApiCacheService
 
-                # Use async database session for the cache service
-                async with get_session() as session:
-                    cache_service = ApiCacheService()
+                # Wrap in create_task to ensure fresh greenlet context.
+                # APScheduler's AsyncIOExecutor doesn't reliably initialize
+                # SQLAlchemy's greenlet bridge (same pattern as departure cache).
+                async def _inner() -> None:
+                    async with get_session() as session:
+                        cache_service = ApiCacheService()
 
-                    # Pre-compute congestion responses
-                    await cache_service.precompute_congestion_responses(session)
+                        # Pre-compute congestion responses
+                        await cache_service.precompute_congestion_responses(session)
 
-                    # Clean up expired cache entries while we're here
-                    deleted_count = await cache_service.cleanup_expired_cache(session)
-
-                    if deleted_count > 0:
-                        logger.info(
-                            "cleaned_up_expired_api_cache_entries",
-                            deleted_count=deleted_count,
+                        # Clean up expired cache entries while we're here
+                        deleted_count = await cache_service.cleanup_expired_cache(
+                            session
                         )
+
+                        if deleted_count > 0:
+                            logger.info(
+                                "cleaned_up_expired_api_cache_entries",
+                                deleted_count=deleted_count,
+                            )
+
+                await asyncio.create_task(_inner())
 
                 logger.info("congestion_cache_precomputation_completed")
             finally:

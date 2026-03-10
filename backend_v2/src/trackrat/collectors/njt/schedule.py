@@ -175,13 +175,17 @@ class NJTScheduleCollector:
                         datetime.combine(journey_date, datetime.min.time())
                     )
 
-                    result = await self._process_schedule_item(
-                        session,
-                        item,
-                        station_code,
-                        station_name or "",
-                        journey_start_time,
-                    )
+                    # Use savepoint so a single item failure (e.g. unique
+                    # constraint violation) doesn't poison the session for
+                    # all subsequent items in this batch.
+                    async with session.begin_nested():
+                        result = await self._process_schedule_item(
+                            session,
+                            item,
+                            station_code,
+                            station_name or "",
+                            journey_start_time,
+                        )
 
                     if result == "new":
                         stats["new_schedules"] += 1
@@ -410,8 +414,12 @@ class NJTScheduleCollector:
                 # Fetch the train stop list
                 train_data = await self.client.get_train_stop_list(journey.train_id)
 
-                # Process and store the stops
-                await self._update_journey_with_stops(session, journey, train_data)
+                # Use savepoint so a single train failure doesn't poison the
+                # session for all subsequent trains in this batch.
+                async with session.begin_nested():
+                    await self._update_journey_with_stops(
+                        session, journey, train_data
+                    )
 
                 stats["stop_collections_successful"] += 1
 
