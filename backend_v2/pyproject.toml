@@ -51,7 +51,7 @@ python-dotenv = "^1.2.2"
 [tool.poetry.group.dev.dependencies]
 # Testing
 pytest = "^9.0.2"
-pytest-asyncio = "^0.23.3"
+pytest-asyncio = "^1.0.0"
 pytest-cov = "^7.0.0"
 
 # Type Checking
@@ -121,6 +121,7 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 addopts = "-v --tb=short"
 
 [tool.coverage.run]

@@ -286,6 +286,7 @@ async def _calculate_route_stats_sql(
             WHERE js.station_code = ANY(:to_codes)
               AND js.actual_arrival IS NOT NULL
               AND js.scheduled_arrival IS NOT NULL
+              AND js.arrival_source = 'api_observed'
             ORDER BY js.journey_id, js.stop_sequence ASC
         ),
         origin_stops AS (
