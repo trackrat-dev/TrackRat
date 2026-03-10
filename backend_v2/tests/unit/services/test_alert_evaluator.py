@@ -7,6 +7,7 @@ since we cannot hit Apple's servers in tests.
 
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -1768,16 +1769,9 @@ class TestTimeWindow:
             active_end_minutes=600,  # 10:00 AM
             timezone="America/New_York",
         )
-        # 8:00 AM ET
-        with patch("trackrat.services.alert_evaluator.datetime") as mock_dt:
-            from zoneinfo import ZoneInfo
-
-            mock_dt.now.return_value = datetime(
-                2026, 3, 10, 8, 0, 0, tzinfo=ZoneInfo("America/New_York")
-            )
-            mock_dt.side_effect = lambda *a, **k: datetime(*a, **k)
-            # Can't easily mock datetime.now(tz) — test the logic directly
-        result = _is_within_time_window(sub, datetime(2026, 3, 10, 8, 0))
+        # 8:00 AM ET — must be timezone-aware so astimezone() converts correctly
+        et = ZoneInfo("America/New_York")
+        result = _is_within_time_window(sub, datetime(2026, 3, 10, 8, 0, tzinfo=et))
         assert result is True
         print("  Verified: 8:00 AM is within 6:00-10:00 AM window")
 
@@ -1791,10 +1785,11 @@ class TestTimeWindow:
             active_end_minutes=600,  # 10:00 AM
             timezone="America/New_York",
         )
-        result = _is_within_time_window(sub, datetime(2026, 3, 10, 14, 0))
-        # This tests the function with a real timezone lookup
-        assert isinstance(result, bool)
-        print(f"  Time window check returned: {result}")
+        # 2:00 PM ET — outside 6:00-10:00 AM window
+        et = ZoneInfo("America/New_York")
+        result = _is_within_time_window(sub, datetime(2026, 3, 10, 14, 0, tzinfo=et))
+        assert result is False
+        print("  Verified: 2:00 PM is outside 6:00-10:00 AM window")
 
     def test_midnight_wrap_window(self):
         """Should handle windows that wrap midnight (e.g., 10 PM to 6 AM)."""
@@ -1806,9 +1801,11 @@ class TestTimeWindow:
             active_end_minutes=360,  # 6:00 AM
             timezone="America/New_York",
         )
-        result = _is_within_time_window(sub, datetime(2026, 3, 10, 23, 0))
-        assert isinstance(result, bool)
-        print(f"  Midnight wrap check returned: {result}")
+        # 11:00 PM ET — inside 10:00 PM to 6:00 AM wrap window
+        et = ZoneInfo("America/New_York")
+        result = _is_within_time_window(sub, datetime(2026, 3, 10, 23, 0, tzinfo=et))
+        assert result is True
+        print("  Verified: 11:00 PM is within 10:00 PM-6:00 AM wrap window")
 
     def test_invalid_timezone_returns_true(self):
         """Invalid timezone should treat as always active."""
