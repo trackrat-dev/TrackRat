@@ -4,6 +4,7 @@ Main FastAPI application for TrackRat V2.
 This module sets up the FastAPI app with all routers, middleware, and lifecycle events.
 """
 
+import time
 import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from structlog import get_logger
 
 from trackrat.api import (
+    admin,
     alerts,
     feedback,
     health,
@@ -32,6 +34,7 @@ from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import get_settings
 from trackrat.utils.logging import setup_logging
+from trackrat.utils.request_stats import get_request_stats
 
 # Set up logging first
 setup_logging()
@@ -182,7 +185,35 @@ async def suppress_health_check_logs(
     return await call_next(request)
 
 
+@app.middleware("http")
+async def request_stats_middleware(
+    request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
+) -> Response:
+    """Track inbound request metrics for the admin stats page."""
+    start = time.time()
+    response: Response = await call_next(request)
+    duration = time.time() - start
+
+    # Extract the matched route template (e.g. "/api/v2/trains/{train_id}")
+    route = request.scope.get("route")
+    path_template = route.path if route and hasattr(route, "path") else request.url.path
+
+    # Skip noisy internal paths
+    if path_template not in {"/health", "/health/live", "/health/ready", "/metrics"}:
+        query_params = dict(request.query_params)
+        get_request_stats().record_request(
+            path_template=path_template,
+            status_code=response.status_code,
+            user_agent=request.headers.get("user-agent", ""),
+            duration=duration,
+            query_params=query_params if query_params else None,
+        )
+
+    return response
+
+
 # Include routers
+app.include_router(admin.router, include_in_schema=False)
 app.include_router(alerts.router, include_in_schema=False)
 app.include_router(feedback.router, include_in_schema=False)
 app.include_router(health.router, include_in_schema=False)
