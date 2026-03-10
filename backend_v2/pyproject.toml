@@ -13,7 +13,7 @@ python = "^3.11"
 fastapi = "^0.129.0"
 uvicorn = {extras = ["standard"], version = "^0.41.0"}
 pydantic = "^2.5.0"
-pydantic-settings = "^2.1.0"
+pydantic-settings = "^2.13.1"
 
 # Database
 sqlalchemy = "^2.0.46"
