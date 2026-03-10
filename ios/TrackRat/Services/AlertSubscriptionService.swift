@@ -26,15 +26,15 @@ final class AlertSubscriptionService: ObservableObject {
     // MARK: - Mutation
 
     /// Add two line subscriptions (one per direction) for the given route.
-    func addLineSubscriptions(dataSource: String, lineId: String, lineName: String, route: RouteLine) {
+    func addLineSubscriptions(dataSource: String, lineId: String, lineName: String, route: RouteLine, includePlannedWork: Bool = false) {
         guard let first = route.stationCodes.first,
               let last = route.stationCodes.last else { return }
-        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: first)
-        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: last)
+        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: first, includePlannedWork: includePlannedWork)
+        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: last, includePlannedWork: includePlannedWork)
     }
 
     /// Add a single directional line subscription (deduped on lineId + dataSource + direction).
-    func addSingleLineSubscription(dataSource: String, lineId: String, lineName: String, direction: String?) {
+    func addSingleLineSubscription(dataSource: String, lineId: String, lineName: String, direction: String?, includePlannedWork: Bool = false) {
         guard !subscriptions.contains(where: {
             $0.lineId == lineId && $0.dataSource == dataSource && $0.direction == direction
         }) else { return }
@@ -42,7 +42,8 @@ final class AlertSubscriptionService: ObservableObject {
             dataSource: dataSource,
             lineId: lineId,
             lineName: lineName,
-            direction: direction
+            direction: direction,
+            includePlannedWork: includePlannedWork
         )
         subscriptions.append(sub)
         saveToDefaults()
@@ -143,16 +144,26 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     var serviceThresholdPct: Int?    // nil = system default (50)
     var notifyRecovery: Bool
     var digestTimeMinutes: Int?  // Minutes from midnight, nil = disabled
+    var includePlannedWork: Bool
 
     /// Frequency-first systems use service threshold; delay-first use delay threshold.
     static let frequencyFirstSources: Set<String> = ["SUBWAY", "PATH", "PATCO"]
+
+    private enum CodingKeys: String, CodingKey {
+        case id, dataSource, lineId, lineName, fromStationCode, toStationCode
+        case trainId, trainName, direction, activeDays, activeStartMinutes
+        case activeEndMinutes, timezone, delayThresholdMinutes, serviceThresholdPct
+        case notifyRecovery, digestTimeMinutes, includePlannedWork
+        case weekdaysOnly  // Legacy key for migration
+    }
 
     /// Line-based subscription with direction (terminus station code).
     init(
         dataSource: String, lineId: String, lineName: String, direction: String?,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
-        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
+        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil,
+        includePlannedWork: Bool = false
     ) {
         self.id = UUID()
         self.dataSource = dataSource
@@ -171,6 +182,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.serviceThresholdPct = serviceThresholdPct
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
+        self.includePlannedWork = includePlannedWork
     }
 
     /// Station-pair subscription.
@@ -197,6 +209,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.serviceThresholdPct = serviceThresholdPct
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
+        self.includePlannedWork = false
     }
 
     /// Train-specific subscription.
@@ -223,6 +236,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.serviceThresholdPct = serviceThresholdPct
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
+        self.includePlannedWork = false
     }
 
     /// Backward-compatible decoding: new fields default to sensible values if missing.
@@ -237,7 +251,14 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         trainId = try container.decodeIfPresent(String.self, forKey: .trainId)
         trainName = try container.decodeIfPresent(String.self, forKey: .trainName)
         direction = try container.decodeIfPresent(String.self, forKey: .direction)
-        activeDays = try container.decodeIfPresent(Int.self, forKey: .activeDays) ?? 127
+        // Migrate old weekdaysOnly=true → activeDays=31 (Mon-Fri)
+        let oldWeekdaysOnly = try container.decodeIfPresent(Bool.self, forKey: .weekdaysOnly) ?? false
+        let decodedActiveDays = try container.decodeIfPresent(Int.self, forKey: .activeDays)
+        if decodedActiveDays != nil {
+            activeDays = decodedActiveDays!
+        } else {
+            activeDays = oldWeekdaysOnly ? 31 : 127
+        }
         activeStartMinutes = try container.decodeIfPresent(Int.self, forKey: .activeStartMinutes)
         activeEndMinutes = try container.decodeIfPresent(Int.self, forKey: .activeEndMinutes)
         timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
@@ -245,5 +266,6 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         serviceThresholdPct = try container.decodeIfPresent(Int.self, forKey: .serviceThresholdPct)
         notifyRecovery = try container.decodeIfPresent(Bool.self, forKey: .notifyRecovery) ?? false
         digestTimeMinutes = try container.decodeIfPresent(Int.self, forKey: .digestTimeMinutes)
+        includePlannedWork = try container.decodeIfPresent(Bool.self, forKey: .includePlannedWork) ?? false
     }
 }

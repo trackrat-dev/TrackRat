@@ -24,12 +24,14 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
     evaluate_route_alerts,
+    evaluate_service_alerts,
 )
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
 from trackrat.services.apns import SimpleAPNSService
@@ -297,6 +299,19 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=300,
+        )
+
+        # Schedule MTA service alerts collection (every 15 minutes)
+        self.scheduler.add_job(
+            self.run_service_alerts_collection,
+            trigger=IntervalTrigger(
+                minutes=15, start_date=now + timedelta(minutes=4), jitter=60
+            ),
+            id="service_alerts_collection",
+            name="MTA Service Alerts Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=900,  # 15 minute grace period
         )
 
         # Start the scheduler
@@ -3086,6 +3101,10 @@ class SchedulerService:
             async with get_session() as session:
                 await evaluate_route_alerts(session, self.apns_service)
 
+            # Also evaluate service alerts (planned work) in the same cycle
+            async with get_session() as session:
+                await evaluate_service_alerts(session, self.apns_service)
+
         async with get_session() as db:
             safe_interval = calculate_safe_interval(5)
 
@@ -3122,6 +3141,26 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("morning_digest_evaluation_skipped_still_fresh")
+
+    async def run_service_alerts_collection(self) -> None:
+        """Collect MTA service alerts from GTFS-RT feeds."""
+
+        async def do_service_alerts_work() -> None:
+            result = await collect_service_alerts()
+            logger.info("service_alerts_collection_complete", stats=result)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(15)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="service_alerts_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_service_alerts_work,
+            )
+
+            if not executed:
+                logger.debug("service_alerts_collection_skipped_still_fresh")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status and job information."""

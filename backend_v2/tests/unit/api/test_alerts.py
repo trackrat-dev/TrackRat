@@ -492,3 +492,124 @@ class TestDirectionSubscriptions:
         assert len(line_subs) == 2
         assert {s["direction"] for s in line_subs} == {"TR", "NY"}
         print(f"  Mixed subs with direction: {len(subs)} total")
+
+
+class TestPlannedWorkSubscriptions:
+    """Tests for include_planned_work field on subscriptions."""
+
+    def test_include_planned_work_roundtrips(self, e2e_client: TestClient):
+        """include_planned_work=true is stored and returned correctly."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-pw-1", "apns_token": "tok-pw1"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-pw-1",
+                "subscriptions": [
+                    {
+                        "data_source": "SUBWAY",
+                        "line_id": "subway-G",
+                        "include_planned_work": True,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-pw-1")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["include_planned_work"] is True
+        print(f"  include_planned_work roundtrip: {subs[0]['include_planned_work']}")
+
+    def test_include_planned_work_defaults_false(self, e2e_client: TestClient):
+        """include_planned_work defaults to false when not provided."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-pw-2", "apns_token": "tok-pw2"},
+        )
+        e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-pw-2",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "njt-nec"},
+                ],
+            },
+        )
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-pw-2")
+        subs = get_resp.json()["subscriptions"]
+        assert subs[0]["include_planned_work"] is False
+        print(f"  include_planned_work default: {subs[0]['include_planned_work']}")
+
+    def test_mixed_planned_work_subscriptions(self, e2e_client: TestClient):
+        """Mix of planned work opt-in and opt-out subscriptions works."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-pw-3", "apns_token": "tok-pw3"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-pw-3",
+                "subscriptions": [
+                    {
+                        "data_source": "SUBWAY",
+                        "line_id": "subway-G",
+                        "include_planned_work": True,
+                    },
+                    {
+                        "data_source": "NJT",
+                        "line_id": "njt-nec",
+                        "include_planned_work": False,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 2
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-pw-3")
+        subs = get_resp.json()["subscriptions"]
+        pw_values = {s["data_source"]: s["include_planned_work"] for s in subs}
+        assert pw_values["SUBWAY"] is True
+        assert pw_values["NJT"] is False
+
+
+class TestServiceAlertsEndpoint:
+    """GET /api/v2/alerts/service"""
+
+    def test_empty_service_alerts(self, e2e_client: TestClient):
+        """Returns empty list when no service alerts exist."""
+        resp = e2e_client.get("/api/v2/alerts/service")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["count"] == 0
+        assert data["alerts"] == []
+
+    def test_service_alerts_with_data_source_filter(self, e2e_client: TestClient):
+        """Filtering by data_source works."""
+        resp = e2e_client.get("/api/v2/alerts/service?data_source=SUBWAY")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["alerts"], list)
+        assert isinstance(data["count"], int)
+
+    def test_service_alerts_with_alert_type_filter(self, e2e_client: TestClient):
+        """Filtering by alert_type works."""
+        resp = e2e_client.get("/api/v2/alerts/service?alert_type=planned_work")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["alerts"], list)
+
+    def test_service_alerts_with_both_filters(self, e2e_client: TestClient):
+        """Combined data_source and alert_type filters work."""
+        resp = e2e_client.get(
+            "/api/v2/alerts/service?data_source=SUBWAY&alert_type=planned_work"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data["alerts"], list)
