@@ -1344,6 +1344,7 @@ extension APIService {
             let train_id: String?
             let direction: String?
             let weekdays_only: Bool
+            let include_planned_work: Bool
         }
 
         struct SyncRequest: Encodable {
@@ -1359,7 +1360,8 @@ extension APIService {
                 to_station_code: sub.toStationCode,
                 train_id: sub.trainId,
                 direction: sub.direction,
-                weekdays_only: sub.weekdaysOnly
+                weekdays_only: sub.weekdaysOnly,
+                include_planned_work: sub.includePlannedWork
             )
         }
 

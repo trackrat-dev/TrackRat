@@ -105,6 +105,11 @@ struct EditRouteAlertsView: View {
                                         Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
                                             .font(.caption2)
                                             .foregroundColor(.white.opacity(0.5))
+                                        if sub.includePlannedWork {
+                                            Text("Includes planned work alerts")
+                                                .font(.caption2)
+                                                .foregroundColor(.orange.opacity(0.7))
+                                        }
                                     }
                                 } else if let from = sub.fromStationCode, let to = sub.toStationCode {
                                     Label(

@@ -1,11 +1,12 @@
 """
-Route alert subscription API endpoints.
+Route alert subscription and service alert API endpoints.
 
-Allows iOS devices to register for push notifications and manage
-alert subscriptions for delay/cancellation events on specific routes.
+Allows iOS devices to register for push notifications, manage
+alert subscriptions for delay/cancellation events, and query
+active MTA service alerts (planned work, delays).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.db.engine import get_db
-from trackrat.models.database import DeviceToken, RouteAlertSubscription
+from trackrat.models.database import DeviceToken, RouteAlertSubscription, ServiceAlert
 
 logger = get_logger(__name__)
 
@@ -44,6 +45,7 @@ class SubscriptionItem(BaseModel):
     train_id: str | None = None
     direction: str | None = None
     weekdays_only: bool = False
+    include_planned_work: bool = False
 
     @model_validator(mode="after")
     def check_subscription_type(self) -> "SubscriptionItem":
@@ -76,6 +78,7 @@ class SubscriptionResponse(BaseModel):
     train_id: str | None = None
     direction: str | None = None
     weekdays_only: bool = False
+    include_planned_work: bool = False
 
 
 class SyncSubscriptionsResponse(BaseModel):
@@ -148,6 +151,7 @@ async def sync_subscriptions(
             train_id=item.train_id,
             direction=item.direction,
             weekdays_only=item.weekdays_only,
+            include_planned_work=item.include_planned_work,
         )
         db.add(sub)
 
@@ -191,7 +195,71 @@ async def get_subscriptions(
                 train_id=sub.train_id,
                 direction=sub.direction,
                 weekdays_only=sub.weekdays_only,
+                include_planned_work=sub.include_planned_work,
             )
             for sub in device.subscriptions
         ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Service alerts (planned work) endpoints
+# ---------------------------------------------------------------------------
+
+
+class ServiceAlertActivePeriod(BaseModel):
+    start: int | None = None
+    end: int | None = None
+
+
+class ServiceAlertResponse(BaseModel):
+    alert_id: str
+    data_source: str
+    alert_type: str
+    affected_route_ids: list[str]
+    header_text: str
+    description_text: str | None = None
+    active_periods: list[ServiceAlertActivePeriod]
+
+
+class ServiceAlertsListResponse(BaseModel):
+    alerts: list[ServiceAlertResponse]
+    count: int
+
+
+@router.get("/alerts/service", response_model=ServiceAlertsListResponse)
+async def get_service_alerts(
+    data_source: str | None = Query(None, description="Filter by data source (SUBWAY, LIRR, MNR)"),
+    alert_type: str | None = Query(None, description="Filter by alert type (planned_work, alert, elevator)"),
+    db: AsyncSession = Depends(get_db),
+) -> ServiceAlertsListResponse:
+    """Get active service alerts, optionally filtered by data source and type."""
+    conditions = [ServiceAlert.is_active.is_(True)]
+
+    if data_source:
+        conditions.append(ServiceAlert.data_source == data_source)
+    if alert_type:
+        conditions.append(ServiceAlert.alert_type == alert_type)
+
+    result = await db.execute(
+        select(ServiceAlert).where(*conditions).order_by(ServiceAlert.updated_at.desc())
+    )
+    alerts = result.scalars().all()
+
+    return ServiceAlertsListResponse(
+        alerts=[
+            ServiceAlertResponse(
+                alert_id=a.alert_id,
+                data_source=a.data_source,
+                alert_type=a.alert_type,
+                affected_route_ids=a.affected_route_ids or [],
+                header_text=a.header_text,
+                description_text=a.description_text,
+                active_periods=[
+                    ServiceAlertActivePeriod(**p) for p in (a.active_periods or [])
+                ],
+            )
+            for a in alerts
+        ],
+        count=len(alerts),
     )

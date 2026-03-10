@@ -33,6 +33,10 @@ struct AddRouteAlertView: View {
     @State private var departures: [TrainV2] = []
     @State private var isLoadingDepartures = false
     @State private var weekdaysOnly = true
+    @State private var includePlannedWork = false
+
+    /// MTA systems that support planned work / service alert notifications.
+    private static let plannedWorkSystems: Set<TrainSystem> = [.subway, .lirr, .mnr]
 
     /// Systems available for line mode: user's selected systems that have routes.
     private var availableLineSystems: [TrainSystem] {
@@ -97,6 +101,9 @@ struct AddRouteAlertView: View {
                 lineSystem = availableLineSystems.first
             }
         }
+        .onChange(of: lineSystem) { _ in
+            includePlannedWork = false
+        }
     }
 
     // MARK: - Line Mode
@@ -135,6 +142,10 @@ struct AddRouteAlertView: View {
         VStack(spacing: 0) {
             lineSystemPickerRow
 
+            if let system = lineSystem, Self.plannedWorkSystems.contains(system) {
+                plannedWorkToggleRow
+            }
+
             if lineSystem == nil {
                 Spacer()
             } else if filteredRoutes.isEmpty {
@@ -157,7 +168,8 @@ struct AddRouteAlertView: View {
                                     dataSource: route.dataSource,
                                     lineId: route.id,
                                     lineName: route.name,
-                                    route: route
+                                    route: route,
+                                    includePlannedWork: includePlannedWork
                                 )
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -437,6 +449,24 @@ struct AddRouteAlertView: View {
         .tint(.orange)
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    }
+
+    private var plannedWorkToggleRow: some View {
+        Toggle(isOn: $includePlannedWork) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Planned work alerts")
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                Text("Get notified about upcoming service changes")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .tint(.orange)
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        .padding(.horizontal)
+        .padding(.top, 4)
     }
 
     private var departuresList: some View {

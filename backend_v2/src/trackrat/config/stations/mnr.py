@@ -121,6 +121,10 @@ MNR_GTFS_RT_FEED_URL = (
     "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/mnr%2Fgtfs-mnr"
 )
 
+MNR_ALERTS_FEED_URL = (
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fmnr-alerts"
+)
+
 # MNR GTFS stop_id to internal station code mapping
 # Grand Central (stop_id 1) maps to "GCT" for unified experience
 # Codes use M prefix to avoid conflicts with NJT/Amtrak/LIRR

@@ -17,10 +17,13 @@ from structlog import get_logger
 
 from trackrat.config.route_topology import ALL_ROUTES, Route
 from trackrat.config.stations import get_station_name
+from trackrat.config.stations.lirr import LIRR_ROUTES
+from trackrat.config.stations.mnr import MNR_ROUTES
 from trackrat.models.database import (
     DeviceToken,
     JourneyStop,
     RouteAlertSubscription,
+    ServiceAlert,
     TrainJourney,
 )
 from trackrat.services.apns import SimpleAPNSService
@@ -45,8 +48,56 @@ REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
 # Data sources where train_id is stable and represents the same daily service
 STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR"}
 
+# Data sources that support service alerts (MTA systems only)
+SERVICE_ALERT_SOURCES = {"SUBWAY", "LIRR", "MNR"}
+
 # Build route-ID lookup once at import time
 _ROUTES_BY_ID = {route.id: route for route in ALL_ROUTES}
+
+# Build reverse maps from line_code to GTFS route_id for LIRR/MNR
+# LIRR: line_code "LIRR-BB" -> GTFS route_id "1"
+_LIRR_LINE_CODE_TO_GTFS: dict[str, str] = {
+    info[0]: gtfs_id for gtfs_id, info in LIRR_ROUTES.items()
+}
+# MNR: line_code "MNR-HUD" -> GTFS route_id "1"
+_MNR_LINE_CODE_TO_GTFS: dict[str, str] = {
+    info[0]: gtfs_id for gtfs_id, info in MNR_ROUTES.items()
+}
+
+
+def _get_gtfs_route_ids_for_subscription(
+    sub: RouteAlertSubscription,
+) -> set[str]:
+    """Get GTFS route_ids that an alert subscription covers.
+
+    Maps our internal route topology (line_id -> line_codes) to the
+    GTFS route_ids used in MTA service alert feeds.
+
+    For subway: line_codes ARE the GTFS route_ids (e.g. "G", "4")
+    For LIRR: line_codes like "LIRR-BB" map back to GTFS "1" via LIRR_ROUTES
+    For MNR: line_codes like "MNR-HUD" map back to GTFS "1" via MNR_ROUTES
+    """
+    if not sub.line_id:
+        return set()
+
+    route = _ROUTES_BY_ID.get(sub.line_id)
+    if not route:
+        return set()
+
+    gtfs_ids: set[str] = set()
+    for line_code in route.line_codes:
+        if sub.data_source == "SUBWAY":
+            gtfs_ids.add(line_code)
+        elif sub.data_source == "LIRR":
+            gtfs_id = _LIRR_LINE_CODE_TO_GTFS.get(line_code)
+            if gtfs_id:
+                gtfs_ids.add(gtfs_id)
+        elif sub.data_source == "MNR":
+            gtfs_id = _MNR_LINE_CODE_TO_GTFS.get(line_code)
+            if gtfs_id:
+                gtfs_ids.add(gtfs_id)
+
+    return gtfs_ids
 
 
 async def evaluate_route_alerts(
@@ -674,5 +725,198 @@ def _build_train_alert_message(
             f"Train {sub.train_id} ({route_desc}) is delayed "
             f"{delay_minutes} minutes."
         )
+
+    return title, body
+
+
+# ---------------------------------------------------------------------------
+# Service alert (planned work) evaluation
+# ---------------------------------------------------------------------------
+
+# Notify about planned work starting within this window
+PLANNED_WORK_LOOKAHEAD_HOURS = 48
+# Cooldown between service alert notifications per subscription
+SERVICE_ALERT_COOLDOWN_MINUTES = 360  # 6 hours
+
+
+async def evaluate_service_alerts(
+    db: AsyncSession, apns_service: SimpleAPNSService
+) -> int:
+    """Evaluate planned work alerts for subscriptions with include_planned_work=True.
+
+    Checks active service alerts against user subscriptions and sends
+    push notifications for new planned work affecting subscribed routes.
+
+    Returns the number of alerts sent.
+    """
+    now = now_et()
+    now_epoch = int(now.timestamp())
+    lookahead_epoch = int((now + timedelta(hours=PLANNED_WORK_LOOKAHEAD_HOURS)).timestamp())
+
+    # Load devices with subscriptions that opt into planned work
+    result = await db.execute(
+        select(DeviceToken).options(selectinload(DeviceToken.subscriptions))
+    )
+    devices = result.scalars().all()
+
+    # Load all active planned_work alerts for MTA systems
+    alert_result = await db.execute(
+        select(ServiceAlert).where(
+            ServiceAlert.is_active.is_(True),
+            ServiceAlert.alert_type == "planned_work",
+            ServiceAlert.data_source.in_(SERVICE_ALERT_SOURCES),
+        )
+    )
+    all_alerts = list(alert_result.scalars().all())
+
+    if not all_alerts:
+        return 0
+
+    alerts_sent = 0
+
+    for device in devices:
+        if not device.apns_token:
+            continue
+
+        for sub in device.subscriptions:
+            if not sub.include_planned_work:
+                continue
+
+            if sub.data_source not in SERVICE_ALERT_SOURCES:
+                continue
+
+            # Only line-based subscriptions support planned work alerts
+            if not sub.line_id:
+                continue
+
+            # Get GTFS route_ids this subscription covers
+            gtfs_route_ids = _get_gtfs_route_ids_for_subscription(sub)
+            if not gtfs_route_ids:
+                continue
+
+            # Find alerts affecting this subscription's routes
+            matching_alerts = _find_matching_alerts(
+                all_alerts, sub.data_source, gtfs_route_ids,
+                now_epoch, lookahead_epoch,
+            )
+
+            if not matching_alerts:
+                continue
+
+            # Check which alerts are new (not already notified)
+            already_notified = set(sub.last_service_alert_ids or [])
+            new_alerts = [
+                a for a in matching_alerts if a.alert_id not in already_notified
+            ]
+
+            if not new_alerts:
+                continue
+
+            # Build and send notification for new alerts
+            title, body = _build_service_alert_message(sub, new_alerts)
+
+            custom_data = {
+                "service_alert": {
+                    "data_source": sub.data_source,
+                    "line_id": sub.line_id,
+                    "alert_count": len(new_alerts),
+                    "alert_ids": [a.alert_id for a in new_alerts],
+                }
+            }
+            sent = await apns_service.send_alert_notification(
+                device.apns_token, title, body, custom_data=custom_data
+            )
+
+            if sent:
+                # Track notified alert IDs (keep last 50 to prevent unbounded growth)
+                notified_ids = list(already_notified | {a.alert_id for a in new_alerts})
+                sub.last_service_alert_ids = notified_ids[-50:]
+                alerts_sent += 1
+
+                logger.info(
+                    "service_alert_sent",
+                    device_id=device.device_id,
+                    data_source=sub.data_source,
+                    line_id=sub.line_id,
+                    new_alert_count=len(new_alerts),
+                    alert_ids=[a.alert_id for a in new_alerts],
+                )
+
+    if alerts_sent > 0:
+        await db.commit()
+
+    logger.info("service_alert_evaluation_complete", alerts_sent=alerts_sent)
+    return alerts_sent
+
+
+def _find_matching_alerts(
+    alerts: list[ServiceAlert],
+    data_source: str,
+    gtfs_route_ids: set[str],
+    now_epoch: int,
+    lookahead_epoch: int,
+) -> list[ServiceAlert]:
+    """Find service alerts that match a subscription and have upcoming active periods.
+
+    Returns alerts that:
+    1. Are for the same data source
+    2. Affect at least one of the subscription's routes
+    3. Have at least one active period starting within the lookahead window,
+       or are currently active
+    """
+    matching: list[ServiceAlert] = []
+
+    for alert in alerts:
+        if alert.data_source != data_source:
+            continue
+
+        # Check route overlap
+        alert_routes = set(alert.affected_route_ids or [])
+        if not alert_routes & gtfs_route_ids:
+            continue
+
+        # Check if any active period is current or upcoming
+        has_relevant_period = False
+        for period in (alert.active_periods or []):
+            start = period.get("start")
+            end = period.get("end")
+
+            if start is None:
+                continue
+
+            # Currently active (started and not yet ended)
+            if start <= now_epoch and (end is None or end > now_epoch):
+                has_relevant_period = True
+                break
+
+            # Starting within lookahead window
+            if now_epoch < start <= lookahead_epoch:
+                has_relevant_period = True
+                break
+
+        if has_relevant_period:
+            matching.append(alert)
+
+    return matching
+
+
+def _build_service_alert_message(
+    sub: RouteAlertSubscription,
+    alerts: list[ServiceAlert],
+) -> tuple[str, str]:
+    """Build notification title and body for service alert(s)."""
+    route = _ROUTES_BY_ID.get(sub.line_id or "")
+    route_name = route.name if route else (sub.line_id or "Unknown")
+
+    if len(alerts) == 1:
+        alert = alerts[0]
+        title = f"{sub.data_source}: Planned work on {route_name}"
+        body = alert.header_text
+    else:
+        title = f"{sub.data_source}: {len(alerts)} planned work alerts for {route_name}"
+        # Show first alert's header with count
+        body = alerts[0].header_text
+        if len(alerts) > 1:
+            body += f" (+{len(alerts) - 1} more)"
 
     return title, body

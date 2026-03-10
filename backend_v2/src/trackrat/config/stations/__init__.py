@@ -45,6 +45,7 @@ __all__ = [
     # LIRR
     "INTERNAL_TO_LIRR_GTFS_STOP_MAP",
     "LIRR_DISCOVERY_STATIONS",
+    "LIRR_ALERTS_FEED_URL",
     "LIRR_GTFS_RT_FEED_URL",
     "LIRR_GTFS_STOP_TO_INTERNAL_MAP",
     "LIRR_ROUTES",
@@ -55,6 +56,7 @@ __all__ = [
     "INTERNAL_TO_SUBWAY_GTFS_STOP_MAP",
     "SUBWAY_STATION_COMPLEXES",
     "SUBWAY_DISCOVERY_STATIONS",
+    "SUBWAY_ALERTS_FEED_URL",
     "SUBWAY_GTFS_RT_FEED_URLS",
     "SUBWAY_GTFS_STATIC_URL",
     "SUBWAY_GTFS_STOP_TO_INTERNAL_MAP",
@@ -66,6 +68,7 @@ __all__ = [
     # MNR
     "INTERNAL_TO_MNR_GTFS_STOP_MAP",
     "MNR_DISCOVERY_STATIONS",
+    "MNR_ALERTS_FEED_URL",
     "MNR_GTFS_RT_FEED_URL",
     "MNR_GTFS_STOP_TO_INTERNAL_MAP",
     "MNR_ROUTES",
@@ -118,6 +121,7 @@ from trackrat.config.stations.common import (
 # LIRR
 from trackrat.config.stations.lirr import (
     INTERNAL_TO_LIRR_GTFS_STOP_MAP,
+    LIRR_ALERTS_FEED_URL,
     LIRR_DISCOVERY_STATIONS,
     LIRR_GTFS_RT_FEED_URL,
     LIRR_GTFS_STOP_TO_INTERNAL_MAP,
@@ -130,6 +134,7 @@ from trackrat.config.stations.lirr import (
 # MNR
 from trackrat.config.stations.mnr import (
     INTERNAL_TO_MNR_GTFS_STOP_MAP,
+    MNR_ALERTS_FEED_URL,
     MNR_DISCOVERY_STATIONS,
     MNR_GTFS_RT_FEED_URL,
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
@@ -179,6 +184,7 @@ from trackrat.config.stations.path import (
 # Subway
 from trackrat.config.stations.subway import (
     INTERNAL_TO_SUBWAY_GTFS_STOP_MAP,
+    SUBWAY_ALERTS_FEED_URL,
     SUBWAY_DISCOVERY_STATIONS,
     SUBWAY_GTFS_RT_FEED_URLS,
     SUBWAY_GTFS_STATIC_URL,

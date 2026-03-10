@@ -135,6 +135,10 @@ LIRR_GTFS_RT_FEED_URL = (
     "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/lirr%2Fgtfs-lirr"
 )
 
+LIRR_ALERTS_FEED_URL = (
+    "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Flirr-alerts"
+)
+
 # LIRR GTFS stop_id to internal station code mapping
 # Penn Station (stop_id 237) maps to "NY" for unified experience with NJT/Amtrak
 # Atlantic Terminal uses "LAT" to avoid conflict with Atlanta "ATL"

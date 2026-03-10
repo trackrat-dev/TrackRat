@@ -329,9 +329,13 @@ class RouteAlertSubscription(Base):
     weekdays_only = Column(
         Boolean, default=False, nullable=False, server_default="false"
     )
+    include_planned_work = Column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_alerted_at = Column(DateTime(timezone=True), nullable=True)
     last_alert_hash = Column(String(64), nullable=True)
+    last_service_alert_ids = Column(JSON, nullable=True)  # Alert IDs already notified
 
     # Relationships
     device: Mapped["DeviceToken"] = relationship(
@@ -356,6 +360,37 @@ class RouteAlertSubscription(Base):
             "to_station_code",
         ),
         Index("idx_alert_sub_train", "data_source", "train_id"),
+    )
+
+
+class ServiceAlert(Base):
+    """MTA service alerts (planned work, delays, service changes).
+
+    Stores alerts ingested from GTFS-RT service alert feeds for subway,
+    LIRR, and Metro-North. Used to send planned work notifications to
+    users subscribed to affected routes.
+    """
+
+    __tablename__ = "service_alerts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_id = Column(String(100), nullable=False)  # MTA entity ID (e.g. "lmm:planned_work:30497")
+    data_source = Column(String(10), nullable=False)  # SUBWAY, LIRR, MNR
+    alert_type = Column(String(20), nullable=False)  # planned_work, alert, elevator
+    affected_route_ids = Column(JSON, nullable=False)  # ["G", "4"] - GTFS route_ids
+    header_text = Column(Text, nullable=False)  # English plain text header
+    description_text = Column(Text, nullable=True)  # English plain text description
+    active_periods = Column(JSON, nullable=False)  # [{"start": epoch, "end": epoch}, ...]
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    is_active = Column(Boolean, default=True, nullable=False, server_default="true")
+
+    __table_args__ = (
+        UniqueConstraint("alert_id", "data_source", name="uq_service_alert_id"),
+        Index("idx_service_alert_active", "is_active", "data_source"),
+        Index("idx_service_alert_type", "alert_type", "data_source"),
     )
 
 
