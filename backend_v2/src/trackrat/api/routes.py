@@ -162,7 +162,9 @@ async def get_route_history(
                 average_departure_delay_minutes=highlighted_stats[
                     "average_departure_delay_minutes"
                 ],
-                delay_breakdown=DelayBreakdown(**hl_breakdown) if hl_breakdown else None,
+                delay_breakdown=(
+                    DelayBreakdown(**hl_breakdown) if hl_breakdown else None
+                ),
                 track_usage_at_origin=highlighted_stats["track_usage"],
             )
 
@@ -225,7 +227,7 @@ async def _calculate_route_stats_sql(
 ) -> dict[str, Any]:
     """Calculate route statistics using SQL aggregation instead of loading ORM objects."""
 
-    empty_stats = {
+    empty_stats: dict[str, Any] = {
         "total_journeys": 0,
         "on_time_percentage": None,
         "average_delay_minutes": None,
@@ -366,7 +368,11 @@ async def _calculate_route_stats_sql(
     cancelled_count = row["cancelled_count"]
     with_arrival_data = row["with_arrival_data_count"]
     on_time_count = row["on_time_count"]
-    avg_arrival = float(row["avg_arrival_delay"]) if row["avg_arrival_delay"] is not None else None
+    avg_arrival = (
+        float(row["avg_arrival_delay"])
+        if row["avg_arrival_delay"] is not None
+        else None
+    )
     avg_departure = float(row["avg_departure_delay"] or 0)
 
     # Calculate delay breakdown percentages using trains with arrival data as denominator

@@ -128,7 +128,7 @@ class BackupService:
         if self._backup_task and not self._backup_task.done():
             try:
                 await asyncio.wait_for(self._backup_task, timeout=5.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self._backup_task.cancel()
                 try:
                     await self._backup_task
@@ -149,7 +149,7 @@ class BackupService:
                 await asyncio.wait_for(
                     asyncio.Event().wait(), timeout=interval  # Wait indefinitely
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Normal timeout, continue loop
                 continue
             except asyncio.CancelledError:

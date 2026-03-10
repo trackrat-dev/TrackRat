@@ -374,7 +374,9 @@ class LIRRCollector:
                         actual_departure=stop_data["actual_departure"],
                         track=stop_data["track"],
                         has_departed_station=stop_data["has_departed"],
-                        arrival_source="api_observed" if stop_data["actual_arrival"] else None,
+                        arrival_source=(
+                            "api_observed" if stop_data["actual_arrival"] else None
+                        ),
                     )
                     session.add(stop)
                     created_stops.append(stop)

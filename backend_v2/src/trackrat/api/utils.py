@@ -2,7 +2,6 @@
 API utilities for error handling and common operations.
 """
 
-import asyncio
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -29,7 +28,7 @@ def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:
         except (DatabaseError, OperationalError) as e:
             logger.error(f"database_error_{func.__name__}", error=str(e))
             raise HTTPException(503, "Service temporarily unavailable") from e
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             logger.error(f"timeout_{func.__name__}")
             raise HTTPException(504, "Request timeout") from e
         except NJTransitAPIError as e:

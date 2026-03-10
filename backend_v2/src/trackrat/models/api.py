@@ -5,7 +5,7 @@ These models define the API contract for the V2 backend.
 """
 
 from datetime import date, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
@@ -32,7 +32,7 @@ def serialize_eastern_datetime(dt: datetime | None) -> str | None:
 # Enums
 
 
-class TrainStatus(str, Enum):
+class TrainStatus(StrEnum):
     """Train status values."""
 
     ON_TIME = "ON_TIME"
@@ -490,11 +490,14 @@ class AggregateStats(BaseModel):
     """Aggregate statistics for all trains on the route."""
 
     on_time_percentage: float | None = Field(
-        None, ge=0.0, le=100.0,
+        None,
+        ge=0.0,
+        le=100.0,
         description="Null when no arrival data available for non-cancelled trains",
     )
     average_delay_minutes: float | None = Field(
-        None, ge=0.0,
+        None,
+        ge=0.0,
         description="Null when no arrival data available for non-cancelled trains",
     )
     average_departure_delay_minutes: float = Field(

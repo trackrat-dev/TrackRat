@@ -97,7 +97,9 @@ async def _run_stats(
 class TestCalculateRouteStatsEmpty:
     """Verify correct defaults when no journeys match."""
 
-    async def test_empty_journeys_returns_nulls_for_arrival_metrics(self, db_session: AsyncSession):
+    async def test_empty_journeys_returns_nulls_for_arrival_metrics(
+        self, db_session: AsyncSession
+    ):
         result = await _run_stats(db_session)
 
         assert result["total_journeys"] == 0
@@ -105,14 +107,14 @@ class TestCalculateRouteStatsEmpty:
             "on_time_percentage should be None when no arrival data exists, "
             "not 0.0 which would misleadingly suggest all trains are late"
         )
-        assert result["average_delay_minutes"] is None, (
-            "average_delay_minutes should be None when no arrival data exists"
-        )
+        assert (
+            result["average_delay_minutes"] is None
+        ), "average_delay_minutes should be None when no arrival data exists"
         assert result["average_departure_delay_minutes"] == 0.0
         assert result["cancellation_rate"] == 0.0
-        assert result["delay_breakdown"] is None, (
-            "delay_breakdown should be None when no arrival data exists"
-        )
+        assert (
+            result["delay_breakdown"] is None
+        ), "delay_breakdown should be None when no arrival data exists"
         assert result["track_usage"] == {}
 
 
@@ -681,9 +683,9 @@ class TestNoArrivalDataReturnsNull:
         )
 
         # Departure delay should still work (in-progress train has actual_departure)
-        assert result["average_departure_delay_minutes"] >= 0, (
-            "Departure delay should still be computed for trains that have departed"
-        )
+        assert (
+            result["average_departure_delay_minutes"] >= 0
+        ), "Departure delay should still be computed for trains that have departed"
 
     async def test_all_cancelled_returns_null_metrics(self, db_session: AsyncSession):
         """When all trains are cancelled, arrival metrics should be null."""
@@ -701,7 +703,8 @@ class TestNoArrivalDataReturnsNull:
                     {
                         "station_code": "TR",
                         "stop_sequence": 1,
-                        "scheduled_arrival": BASE_TIME + timedelta(hours=1, minutes=i * 30),
+                        "scheduled_arrival": BASE_TIME
+                        + timedelta(hours=1, minutes=i * 30),
                     },
                 ],
             )
@@ -886,9 +889,7 @@ class TestArrivalSourceFiltering:
     scheduled_arrival when no real-time data is available (issue #585).
     """
 
-    async def test_scheduled_fallback_excluded_from_otp(
-        self, db_session: AsyncSession
-    ):
+    async def test_scheduled_fallback_excluded_from_otp(self, db_session: AsyncSession):
         """Stops with arrival_source='scheduled_fallback' should not count toward OTP.
 
         3 trains: 2 with api_observed arrivals (1 on-time, 1 late),
@@ -1002,9 +1003,11 @@ class TestArrivalSourceFiltering:
 
         result = await _run_stats(db_session)
 
-        # Train has actual_arrival but NULL arrival_source -> excluded from OTP
-        assert result["on_time_percentage"] == 0.0, (
-            f"Expected 0% (no api_observed arrivals), got "
-            f"{result['on_time_percentage']}%. NULL arrival_source should "
-            "be excluded from OTP."
+        # Train has actual_arrival but NULL arrival_source -> excluded from OTP.
+        # With no api_observed arrivals, the endpoint returns None (not 0.0)
+        # to avoid misleading "0% on-time" displays.
+        assert result["on_time_percentage"] is None, (
+            f"Expected None (no api_observed arrivals), got "
+            f"{result['on_time_percentage']}. NULL arrival_source should "
+            "be excluded from OTP, yielding null metrics."
         )
