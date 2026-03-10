@@ -247,7 +247,10 @@ async def collect_service_alerts() -> dict[str, Any]:
         for data_source, feed_url in MTA_ALERT_FEEDS.items():
             try:
                 alerts = await fetch_and_parse_alerts(feed_url, data_source)
-                stats = await upsert_service_alerts(session, alerts, data_source)
+                # Use savepoint so a DB error on one feed doesn't poison
+                # the transaction for remaining feeds
+                async with session.begin_nested():
+                    stats = await upsert_service_alerts(session, alerts, data_source)
                 all_stats[data_source] = {
                     "total_parsed": len(alerts),
                     **stats,

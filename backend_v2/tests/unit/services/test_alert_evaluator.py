@@ -531,7 +531,9 @@ class TestAlertEvaluator:
                 # the correct UTC offset for the target date (EST vs EDT).
                 pd = past_date.date()
                 sched = ET.localize(
-                    datetime(pd.year, pd.month, pd.day, fixed_now.hour, fixed_now.minute, 0)
+                    datetime(
+                        pd.year, pd.month, pd.day, fixed_now.hour, fixed_now.minute, 0
+                    )
                     - timedelta(minutes=i * 5)
                 )
                 journey = TrainJourney(
@@ -573,9 +575,7 @@ class TestAlertEvaluator:
             db_session.add(journey)
         await db_session.flush()
 
-        with patch(
-            "trackrat.services.alert_evaluator.now_et", return_value=fixed_now
-        ):
+        with patch("trackrat.services.alert_evaluator.now_et", return_value=fixed_now):
             count = await evaluate_route_alerts(db_session, apns)
         assert count == 1
         apns.send_alert_notification.assert_called_once()

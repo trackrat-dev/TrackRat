@@ -502,3 +502,47 @@ class TestEvaluateServiceAlerts:
         apns = _make_apns()
         count = await evaluate_service_alerts(db_session, apns)
         assert count == 0
+
+    async def test_dedup_truncation_keeps_most_recent(self, db_session: AsyncSession):
+        """When >50 alert IDs accumulate, the 50 most recent are kept.
+
+        This verifies that dedup truncation is deterministic and preserves
+        the newest alert IDs rather than arbitrarily discarding them.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="dedup-trunc-dev",
+            apns_token="token-trunc",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+        )
+        # Pre-populate with 49 already-notified alert IDs
+        old_ids = [f"lmm:planned_work:old-{i}" for i in range(49)]
+        sub.last_service_alert_ids = old_ids
+
+        # Create 3 new matching alerts (total 52 > 50 limit)
+        for i in range(3):
+            _make_service_alert(
+                db_session,
+                alert_id=f"lmm:planned_work:new-{i}",
+                data_source="SUBWAY",
+                route_ids=["G"],
+                header=f"New planned work #{i}",
+            )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+        assert count == 1
+
+        # All 3 new alert IDs must be in the retained list
+        retained = sub.last_service_alert_ids
+        assert len(retained) == 50
+        for i in range(3):
+            assert (
+                f"lmm:planned_work:new-{i}" in retained
+            ), f"New alert ID 'lmm:planned_work:new-{i}' was dropped by truncation"
+        # The oldest IDs should have been trimmed
+        assert "lmm:planned_work:old-0" not in retained
+        assert "lmm:planned_work:old-1" not in retained
