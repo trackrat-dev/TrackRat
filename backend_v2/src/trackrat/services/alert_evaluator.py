@@ -658,7 +658,8 @@ def _is_within_time_window(sub: RouteAlertSubscription, now: datetime) -> bool:
         return True
 
     try:
-        local_now = datetime.now(ZoneInfo(sub.timezone))
+        tz = ZoneInfo(sub.timezone)
+        local_now = now.astimezone(tz)
     except (KeyError, ValueError):
         # Invalid timezone — treat as always active
         return True
@@ -1011,8 +1012,6 @@ async def _generate_digest_summary(
 
 # Notify about planned work starting within this window
 PLANNED_WORK_LOOKAHEAD_HOURS = 48
-# Cooldown between service alert notifications per subscription
-SERVICE_ALERT_COOLDOWN_MINUTES = 360  # 6 hours
 
 
 async def evaluate_service_alerts(

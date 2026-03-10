@@ -1,8 +1,8 @@
 """alert_customization_fields
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: b2c3d4e5f6a7
 Revises: f4a5b6c7d8e9
-Create Date: 2026-03-10 12:00:00.000000
+Create Date: 2026-03-10 12:01:00.000000
 
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "a1b2c3d4e5f6"
+revision = "b2c3d4e5f6a7"
 down_revision = "f4a5b6c7d8e9"
 branch_labels = None
 depends_on = None
