@@ -489,13 +489,22 @@ class DelayBreakdown(BaseModel):
 class AggregateStats(BaseModel):
     """Aggregate statistics for all trains on the route."""
 
-    on_time_percentage: float = Field(..., ge=0.0, le=100.0)
-    average_delay_minutes: float = Field(..., ge=0.0)
+    on_time_percentage: float | None = Field(
+        None, ge=0.0, le=100.0,
+        description="Null when no arrival data available for non-cancelled trains",
+    )
+    average_delay_minutes: float | None = Field(
+        None, ge=0.0,
+        description="Null when no arrival data available for non-cancelled trains",
+    )
     average_departure_delay_minutes: float = Field(
         0.0, ge=0.0, description="Average departure delay at origin in minutes"
     )
     cancellation_rate: float = Field(..., ge=0.0, le=100.0)
-    delay_breakdown: DelayBreakdown
+    delay_breakdown: DelayBreakdown | None = Field(
+        None,
+        description="Null when no arrival data available for non-cancelled trains",
+    )
     track_usage_at_origin: dict[str, int] = Field(
         default_factory=dict, description="Track number to usage percentage mapping"
     )
@@ -505,12 +514,12 @@ class HighlightedTrain(BaseModel):
     """Statistics for a specific train compared to the route."""
 
     train_id: str
-    on_time_percentage: float = Field(..., ge=0.0, le=100.0)
-    average_delay_minutes: float = Field(..., ge=0.0)
+    on_time_percentage: float | None = Field(None, ge=0.0, le=100.0)
+    average_delay_minutes: float | None = Field(None, ge=0.0)
     average_departure_delay_minutes: float = Field(
         0.0, ge=0.0, description="Average departure delay at origin in minutes"
     )
-    delay_breakdown: DelayBreakdown
+    delay_breakdown: DelayBreakdown | None = None
     track_usage_at_origin: dict[str, int] = Field(
         default_factory=dict, description="Track number to usage percentage mapping"
     )

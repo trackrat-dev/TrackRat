@@ -154,6 +154,7 @@ async def get_route_history(
             train_id_filter=highlight_train,
         )
         if highlighted_stats["total_journeys"] > 0:
+            hl_breakdown = highlighted_stats["delay_breakdown"]
             highlighted_train_data = HighlightedTrain(
                 train_id=highlight_train,
                 on_time_percentage=highlighted_stats["on_time_percentage"],
@@ -161,7 +162,7 @@ async def get_route_history(
                 average_departure_delay_minutes=highlighted_stats[
                     "average_departure_delay_minutes"
                 ],
-                delay_breakdown=DelayBreakdown(**highlighted_stats["delay_breakdown"]),
+                delay_breakdown=DelayBreakdown(**hl_breakdown) if hl_breakdown else None,
                 track_usage_at_origin=highlighted_stats["track_usage"],
             )
 
@@ -185,7 +186,11 @@ async def get_route_history(
                 "average_departure_delay_minutes"
             ],
             cancellation_rate=aggregate_stats["cancellation_rate"],
-            delay_breakdown=DelayBreakdown(**aggregate_stats["delay_breakdown"]),
+            delay_breakdown=(
+                DelayBreakdown(**aggregate_stats["delay_breakdown"])
+                if aggregate_stats["delay_breakdown"]
+                else None
+            ),
             track_usage_at_origin=aggregate_stats["track_usage"],
         ),
         highlighted_train=highlighted_train_data,
@@ -222,16 +227,11 @@ async def _calculate_route_stats_sql(
 
     empty_stats = {
         "total_journeys": 0,
-        "on_time_percentage": 0.0,
-        "average_delay_minutes": 0.0,
+        "on_time_percentage": None,
+        "average_delay_minutes": None,
         "average_departure_delay_minutes": 0.0,
         "cancellation_rate": 0.0,
-        "delay_breakdown": {
-            "on_time": 0,
-            "slight": 0,
-            "significant": 0,
-            "major": 0,
-        },
+        "delay_breakdown": None,
         "track_usage": {},
     }
 
@@ -365,19 +365,20 @@ async def _calculate_route_stats_sql(
     cancelled_count = row["cancelled_count"]
     with_arrival_data = row["with_arrival_data_count"]
     on_time_count = row["on_time_count"]
-    avg_arrival = float(row["avg_arrival_delay"] or 0)
+    avg_arrival = float(row["avg_arrival_delay"]) if row["avg_arrival_delay"] is not None else None
     avg_departure = float(row["avg_departure_delay"] or 0)
 
     # Calculate delay breakdown percentages using trains with arrival data as denominator
+    # Return None when no arrival data exists to distinguish "no data" from "0% on-time"
     if with_arrival_data > 0:
-        delay_breakdown = {
+        delay_breakdown: dict[str, int] | None = {
             "on_time": round(on_time_count / with_arrival_data * 100),
             "slight": round(row["slight_count"] / with_arrival_data * 100),
             "significant": round(row["significant_count"] / with_arrival_data * 100),
             "major": round(row["major_count"] / with_arrival_data * 100),
         }
     else:
-        delay_breakdown = {"on_time": 0, "slight": 0, "significant": 0, "major": 0}
+        delay_breakdown = None
 
     # Track usage query (separate for clarity)
     track_sql = text(f"""
@@ -406,7 +407,7 @@ async def _calculate_route_stats_sql(
     return {
         "total_journeys": total_journeys,
         "on_time_percentage": (
-            (on_time_count / with_arrival_data * 100) if with_arrival_data > 0 else 0
+            (on_time_count / with_arrival_data * 100) if with_arrival_data > 0 else None
         ),
         "average_delay_minutes": avg_arrival,
         "average_departure_delay_minutes": avg_departure,

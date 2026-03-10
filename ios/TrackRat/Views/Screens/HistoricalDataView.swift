@@ -485,13 +485,14 @@ class HistoricalDataViewModel: ObservableObject {
     
     private func convertRouteDataToHistoricalData(_ routeData: RouteHistoricalData) -> HistoricalData {
         // Convert route aggregate stats to route stats
+        let breakdown = routeData.aggregateStats.delayBreakdown
         let routeStats = DelayStats(
-            onTime: routeData.aggregateStats.delayBreakdown.onTime,
-            slight: routeData.aggregateStats.delayBreakdown.slight,
-            significant: routeData.aggregateStats.delayBreakdown.significant,
-            major: routeData.aggregateStats.delayBreakdown.major,
+            onTime: breakdown?.onTime ?? 0,
+            slight: breakdown?.slight ?? 0,
+            significant: breakdown?.significant ?? 0,
+            major: breakdown?.major ?? 0,
             total: routeData.route.totalTrains,
-            avgDelay: Int(routeData.aggregateStats.averageDelayMinutes.rounded())
+            avgDelay: routeData.aggregateStats.averageDelayMinutes.map { Int($0.rounded()) } ?? 0
         )
         
         // Convert route track usage to route track stats
@@ -514,13 +515,14 @@ class HistoricalDataViewModel: ObservableObject {
         let trainTrackStats: TrackStats?
         
         if let highlighted = routeData.highlightedTrain {
+            let hlBreakdown = highlighted.delayBreakdown
             trainStats = DelayStats(
-                onTime: highlighted.delayBreakdown.onTime,
-                slight: highlighted.delayBreakdown.slight,
-                significant: highlighted.delayBreakdown.significant,
-                major: highlighted.delayBreakdown.major,
+                onTime: hlBreakdown?.onTime ?? 0,
+                slight: hlBreakdown?.slight ?? 0,
+                significant: hlBreakdown?.significant ?? 0,
+                major: hlBreakdown?.major ?? 0,
                 total: 1, // Individual train has at most 1 journey in the time period
-                avgDelay: Int(highlighted.averageDelayMinutes.rounded())
+                avgDelay: highlighted.averageDelayMinutes.map { Int($0.rounded()) } ?? 0
             )
             
             // Convert highlighted train track usage
