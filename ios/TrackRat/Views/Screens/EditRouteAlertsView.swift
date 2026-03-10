@@ -168,6 +168,7 @@ struct EditRouteAlertsView: View {
         .sheet(item: $customizingSubscription) { sub in
             AlertCustomizationSheet(subscription: sub) { updated in
                 alertService.updateSubscription(updated)
+                syncIfPossible()
             }
             .presentationDetents([PresentationDetent.medium, .large])
             .presentationDragIndicator(.visible)

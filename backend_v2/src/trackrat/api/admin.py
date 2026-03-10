@@ -195,9 +195,10 @@ def _render_html(
 
     # -- Popular route searches --
     route_rows = ""
-    for (from_code, to_code), count in request_stats["route_searches"].items():
-        from_name = get_station_name(from_code)
-        to_name = get_station_name(to_code)
+    for entry in request_stats["route_searches"]:
+        from_name = get_station_name(entry["from"])
+        to_name = get_station_name(entry["to"])
+        count = entry["count"]
         route_rows += (
             f"<tr><td>{_esc(from_name)}</td>"
             f"<td>{_esc(to_name)}</td>"
@@ -350,12 +351,10 @@ async def stats_json(
     request_data = get_request_stats().snapshot()
     db_data = await _db_stats(db)
 
-    # Convert tuple keys to strings for JSON serialization
+    # Convert list-of-dicts to string-keyed dict for JSON consumers
     route_searches = {
-        f"{from_code} -> {to_code}": count
-        for (from_code, to_code), count in get_request_stats()
-        .snapshot()["route_searches"]
-        .items()
+        f"{entry['from']} -> {entry['to']}": entry["count"]
+        for entry in request_data["route_searches"]
     }
     request_data["route_searches"] = route_searches
 

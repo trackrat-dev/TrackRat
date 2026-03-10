@@ -1753,13 +1753,6 @@ class JourneyCollector(BaseJourneyCollector):
                 if last_stop_db.actual_arrival is None:
                     last_stop_db.actual_arrival = arrival_time
 
-                # Propagate to the terminal stop record — the stop-update loop
-                # skips actual_arrival for time_inference stops, but at completion
-                # the API TIME field is real data. Without this, the OTP query
-                # (which reads journey_stops.actual_arrival) excludes these trains.
-                if last_stop_db.actual_arrival is None:
-                    last_stop_db.actual_arrival = journey.actual_arrival
-
             logger.info(
                 "journey_completed",
                 train_id=journey.train_id,
