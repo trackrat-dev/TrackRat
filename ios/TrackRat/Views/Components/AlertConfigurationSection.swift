@@ -1,60 +1,39 @@
 import SwiftUI
 
-struct AlertCustomizationSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var sub: RouteAlertSubscription
-    private let onSave: (RouteAlertSubscription) -> Void
-
-    init(subscription: RouteAlertSubscription, onSave: @escaping (RouteAlertSubscription) -> Void) {
-        _sub = State(initialValue: subscription)
-        self.onSave = onSave
-    }
+/// Reusable alert configuration UI that can be embedded in any ScrollView.
+/// Renders as card-style sections matching the `.ultraThinMaterial` pattern
+/// used throughout the app (e.g., RouteStatusView history cards).
+struct AlertConfigurationSection: View {
+    @Binding var subscription: RouteAlertSubscription
 
     /// Whether this subscription's data source uses frequency-based metrics (subway, PATH, PATCO).
     private var isFrequencyBased: Bool {
-        RouteAlertSubscription.frequencyFirstSources.contains(sub.dataSource)
+        RouteAlertSubscription.frequencyFirstSources.contains(subscription.dataSource)
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                daysSection
-                timeWindowSection
-                thresholdSection
-                recoverySection
-                digestSection
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .navigationTitle("Customize Alert")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(.orange)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        onSave(sub)
-                        dismiss()
-                    }
-                    .foregroundColor(sub.activeDays == 0 ? .gray : .orange)
-                    .fontWeight(.semibold)
-                    .disabled(sub.activeDays == 0)
-                }
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Alert Settings")
+                .font(.headline)
+
+            daysCard
+            timeWindowCard
+            thresholdCard
+            recoveryCard
+            digestCard
         }
-        .preferredColorScheme(.dark)
     }
 
     // MARK: - Days
 
-    private var daysSection: some View {
-        Section {
+    private var daysCard: some View {
+        configCard {
+            Text("Active Days")
+                .font(.subheadline.bold())
+                .foregroundColor(.secondary)
+
             dayPresetRow
             dayGrid
-        } header: {
-            Text("Active Days")
         }
     }
 
@@ -68,17 +47,17 @@ struct AlertCustomizationSheet: View {
 
     private func presetButton(_ label: String, bitmask: Int) -> some View {
         Button {
-            sub.activeDays = bitmask
+            subscription.activeDays = bitmask
         } label: {
             Text(label)
                 .font(.caption)
-                .fontWeight(sub.activeDays == bitmask ? .bold : .regular)
+                .fontWeight(subscription.activeDays == bitmask ? .bold : .regular)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
-                    Capsule().fill(sub.activeDays == bitmask ? Color.orange : Color.white.opacity(0.1))
+                    Capsule().fill(subscription.activeDays == bitmask ? Color.orange : Color.white.opacity(0.1))
                 )
-                .foregroundColor(sub.activeDays == bitmask ? .black : .white)
+                .foregroundColor(subscription.activeDays == bitmask ? .black : .white)
         }
         .buttonStyle(.plain)
     }
@@ -88,15 +67,15 @@ struct AlertCustomizationSheet: View {
         return HStack(spacing: 6) {
             ForEach(0..<7, id: \.self) { index in
                 let bit = 1 << index
-                let isOn = sub.activeDays & bit != 0
+                let isOn = subscription.activeDays & bit != 0
                 Button {
                     if isOn {
                         // Don't allow deselecting the last active day
-                        if sub.activeDays & ~bit != 0 {
-                            sub.activeDays &= ~bit
+                        if subscription.activeDays & ~bit != 0 {
+                            subscription.activeDays &= ~bit
                         }
                     } else {
-                        sub.activeDays |= bit
+                        subscription.activeDays |= bit
                     }
                 } label: {
                     Text(dayNames[index])
@@ -117,21 +96,21 @@ struct AlertCustomizationSheet: View {
 
     // MARK: - Time Window
 
-    private var timeWindowSection: some View {
-        Section {
+    private var timeWindowCard: some View {
+        configCard {
             Toggle(isOn: timeWindowEnabled) {
                 Text("Time window")
             }
             .tint(.orange)
 
-            if sub.activeStartMinutes != nil {
+            if subscription.activeStartMinutes != nil {
                 HStack {
                     Text("From")
                         .foregroundColor(.white.opacity(0.6))
                     Spacer()
                     minutePicker(selection: Binding(
-                        get: { sub.activeStartMinutes ?? 360 },
-                        set: { sub.activeStartMinutes = $0 }
+                        get: { subscription.activeStartMinutes ?? 360 },
+                        set: { subscription.activeStartMinutes = $0 }
                     ))
                 }
                 HStack {
@@ -139,32 +118,30 @@ struct AlertCustomizationSheet: View {
                         .foregroundColor(.white.opacity(0.6))
                     Spacer()
                     minutePicker(selection: Binding(
-                        get: { sub.activeEndMinutes ?? 1200 },
-                        set: { sub.activeEndMinutes = $0 }
+                        get: { subscription.activeEndMinutes ?? 1200 },
+                        set: { subscription.activeEndMinutes = $0 }
                     ))
                 }
-            }
-        } header: {
-            Text("Time Window")
-        } footer: {
-            if sub.activeStartMinutes != nil {
+
                 Text("Alerts only sent during this window. Overnight ranges (e.g. 10pm–6am) are supported.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
         }
     }
 
     private var timeWindowEnabled: Binding<Bool> {
         Binding(
-            get: { sub.activeStartMinutes != nil },
+            get: { subscription.activeStartMinutes != nil },
             set: { enabled in
                 if enabled {
-                    sub.activeStartMinutes = 360   // 6:00 AM
-                    sub.activeEndMinutes = 1200     // 8:00 PM
-                    sub.timezone = TimeZone.current.identifier
+                    subscription.activeStartMinutes = 360   // 6:00 AM
+                    subscription.activeEndMinutes = 1200     // 8:00 PM
+                    subscription.timezone = TimeZone.current.identifier
                 } else {
-                    sub.activeStartMinutes = nil
-                    sub.activeEndMinutes = nil
-                    sub.timezone = nil
+                    subscription.activeStartMinutes = nil
+                    subscription.activeEndMinutes = nil
+                    subscription.timezone = nil
                 }
             }
         )
@@ -187,21 +164,19 @@ struct AlertCustomizationSheet: View {
 
     // MARK: - Threshold
 
-    private var thresholdSection: some View {
-        Section {
+    private var thresholdCard: some View {
+        configCard {
             if isFrequencyBased {
                 serviceThresholdRow
             } else {
                 delayThresholdRow
             }
-        } header: {
-            Text("Sensitivity")
-        } footer: {
-            if isFrequencyBased {
-                Text("Alert when service frequency drops below this level. Default is 50%.")
-            } else {
-                Text("Alert when delays exceed this threshold. Default is 15 minutes.")
-            }
+
+            Text(isFrequencyBased
+                ? "Alert when service frequency drops below this level. Default is 50%."
+                : "Alert when delays exceed this threshold. Default is 15 minutes.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
     }
 
@@ -211,13 +186,13 @@ struct AlertCustomizationSheet: View {
                 .foregroundColor(.white)
             Spacer()
             Menu {
-                Button("Default (15 min)") { sub.delayThresholdMinutes = nil }
+                Button("Default (15 min)") { subscription.delayThresholdMinutes = nil }
                 ForEach([5, 10, 15, 20, 30], id: \.self) { min in
-                    Button("\(min) min") { sub.delayThresholdMinutes = min }
+                    Button("\(min) min") { subscription.delayThresholdMinutes = min }
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text(sub.delayThresholdMinutes.map { "\($0) min" } ?? "Default")
+                    Text(subscription.delayThresholdMinutes.map { "\($0) min" } ?? "Default")
                         .foregroundColor(.white)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
@@ -233,13 +208,13 @@ struct AlertCustomizationSheet: View {
                 .foregroundColor(.white)
             Spacer()
             Menu {
-                Button("Default (50%)") { sub.serviceThresholdPct = nil }
+                Button("Default (50%)") { subscription.serviceThresholdPct = nil }
                 ForEach([30, 40, 50, 60, 70, 80], id: \.self) { pct in
-                    Button("\(pct)%") { sub.serviceThresholdPct = pct }
+                    Button("\(pct)%") { subscription.serviceThresholdPct = pct }
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text(sub.serviceThresholdPct.map { "\($0)%" } ?? "Default")
+                    Text(subscription.serviceThresholdPct.map { "\($0)%" } ?? "Default")
                         .foregroundColor(.white)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
@@ -251,9 +226,9 @@ struct AlertCustomizationSheet: View {
 
     // MARK: - Recovery
 
-    private var recoverySection: some View {
-        Section {
-            Toggle(isOn: $sub.notifyRecovery) {
+    private var recoveryCard: some View {
+        configCard {
+            Toggle(isOn: $subscription.notifyRecovery) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Recovery alerts")
                     Text("Notify when your route returns to normal")
@@ -262,15 +237,13 @@ struct AlertCustomizationSheet: View {
                 }
             }
             .tint(.orange)
-        } header: {
-            Text("Recovery")
         }
     }
 
     // MARK: - Digest
 
-    private var digestSection: some View {
-        Section {
+    private var digestCard: some View {
+        configCard {
             Toggle(isOn: digestEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Morning digest")
@@ -281,39 +254,48 @@ struct AlertCustomizationSheet: View {
             }
             .tint(.orange)
 
-            if sub.digestTimeMinutes != nil {
+            if subscription.digestTimeMinutes != nil {
                 HStack {
                     Text("Digest time")
                         .foregroundColor(.white.opacity(0.6))
                     Spacer()
                     minutePicker(selection: Binding(
-                        get: { sub.digestTimeMinutes ?? 420 },
-                        set: { sub.digestTimeMinutes = $0 }
+                        get: { subscription.digestTimeMinutes ?? 420 },
+                        set: { subscription.digestTimeMinutes = $0 }
                     ))
                 }
-            }
-        } header: {
-            Text("Morning Digest")
-        } footer: {
-            if sub.digestTimeMinutes != nil {
+
                 Text("Sends a route status summary once per day at this time.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
             }
         }
     }
 
     private var digestEnabled: Binding<Bool> {
         Binding(
-            get: { sub.digestTimeMinutes != nil },
+            get: { subscription.digestTimeMinutes != nil },
             set: { enabled in
                 if enabled {
-                    sub.digestTimeMinutes = 420  // 7:00 AM
-                    if sub.timezone == nil {
-                        sub.timezone = TimeZone.current.identifier
+                    subscription.digestTimeMinutes = 420  // 7:00 AM
+                    if subscription.timezone == nil {
+                        subscription.timezone = TimeZone.current.identifier
                     }
                 } else {
-                    sub.digestTimeMinutes = nil
+                    subscription.digestTimeMinutes = nil
                 }
             }
         )
+    }
+
+    // MARK: - Card Helper
+
+    private func configCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 }

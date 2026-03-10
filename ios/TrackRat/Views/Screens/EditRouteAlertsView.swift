@@ -4,9 +4,7 @@ struct EditRouteAlertsView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @State private var showAddSheet = false
-    @State private var selectedRouteStatus: RouteStatusContext?
-    @State private var selectedTrainAlert: RouteAlertSubscription?
-    @State private var customizingSubscription: RouteAlertSubscription?
+    @State private var selectedSubscription: RouteAlertSubscription?
 
     /// Group subscriptions by data source for display, sorted alphabetically within each group.
     private var groupedSubscriptions: [(String, [RouteAlertSubscription])] {
@@ -83,59 +81,43 @@ struct EditRouteAlertsView: View {
             ForEach(groupedSubscriptions, id: \.0) { dataSource, subs in
                 Section(header: Text(dataSource).foregroundColor(.white.opacity(0.7))) {
                     ForEach(subs) { sub in
-                        HStack {
-                            Button {
-                                if sub.trainId != nil {
-                                    selectedTrainAlert = sub
-                                } else {
-                                    selectedRouteStatus = routeStatusContext(for: sub)
-                                }
-                            } label: {
-                                HStack {
-                                    if let trainName = sub.trainName, sub.trainId != nil {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Label(trainName, systemImage: "train.side.front.car")
-                                            scheduleSummary(for: sub)
-                                        }
-                                    } else if let lineName = sub.lineName {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
-                                            Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
-                                                .font(.caption2)
-                                                .foregroundColor(.white.opacity(0.5))
-                                            if sub.includePlannedWork {
-                                                Text("Includes planned work alerts")
-                                                    .font(.caption2)
-                                                    .foregroundColor(.orange.opacity(0.7))
-                                            }
-                                            scheduleSummary(for: sub)
-                                        }
-                                    } else if let from = sub.fromStationCode, let to = sub.toStationCode {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Label(
-                                                "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))",
-                                                systemImage: "arrow.right"
-                                            )
-                                            scheduleSummary(for: sub)
-                                        }
+                        Button {
+                            selectedSubscription = sub
+                        } label: {
+                            HStack {
+                                if let trainName = sub.trainName, sub.trainId != nil {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Label(trainName, systemImage: "train.side.front.car")
+                                        scheduleSummary(for: sub)
                                     }
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                } else if let lineName = sub.lineName {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
+                                        Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
+                                            .font(.caption2)
+                                            .foregroundColor(.white.opacity(0.5))
+                                        if sub.includePlannedWork {
+                                            Text("Includes planned work alerts")
+                                                .font(.caption2)
+                                                .foregroundColor(.orange.opacity(0.7))
+                                        }
+                                        scheduleSummary(for: sub)
+                                    }
+                                } else if let from = sub.fromStationCode, let to = sub.toStationCode {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Label(
+                                            "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))",
+                                            systemImage: "arrow.right"
+                                        )
+                                        scheduleSummary(for: sub)
+                                    }
                                 }
-                                .foregroundColor(.white)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
-
-                            Button {
-                                customizingSubscription = sub
-                            } label: {
-                                Image(systemName: "gearshape")
-                                    .font(.subheadline)
-                                    .foregroundColor(.orange)
-                                    .padding(.leading, 8)
-                            }
-                            .buttonStyle(.plain)
+                            .foregroundColor(.white)
                         }
                     }
                     .onDelete { offsets in
@@ -149,29 +131,28 @@ struct EditRouteAlertsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .sheet(item: $selectedRouteStatus) { context in
-            RouteStatusView(context: context)
+        .sheet(item: $selectedSubscription) { sub in
+            if sub.trainId != nil {
+                NavigationStack {
+                    TrainDetailsView(
+                        trainNumber: sub.trainId ?? "",
+                        dataSource: sub.dataSource,
+                        isSheet: true,
+                        subscription: sub,
+                        onSave: { updated in alertService.updateSubscription(updated) }
+                    )
+                }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $selectedTrainAlert) { sub in
-            NavigationStack {
-                TrainDetailsView(
-                    trainNumber: sub.trainId ?? "",
-                    dataSource: sub.dataSource,
-                    isSheet: true
+            } else {
+                RouteStatusView(
+                    context: routeStatusContext(for: sub),
+                    subscription: sub,
+                    onSave: { updated in alertService.updateSubscription(updated) }
                 )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $customizingSubscription) { sub in
-            AlertCustomizationSheet(subscription: sub) { updated in
-                alertService.updateSubscription(updated)
-                syncIfPossible()
-            }
-            .presentationDetents([PresentationDetent.medium, .large])
-            .presentationDragIndicator(.visible)
         }
     }
 
