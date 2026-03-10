@@ -6,6 +6,10 @@ struct RouteStatusView: View {
     @StateObject private var viewModel: RouteStatusViewModel
     @Environment(\.dismiss) private var dismiss
 
+    /// Mutable subscription for inline configuration (nil when opened without alert context).
+    @State private var subscription: RouteAlertSubscription?
+    private let onSave: ((RouteAlertSubscription) -> Void)?
+
     /// Preferred highlight mode derived from this route's data source
     private var preferredMode: SegmentHighlightMode {
         TrainSystem(rawValue: context.dataSource)?.preferredHighlightMode ?? .delays
@@ -14,6 +18,15 @@ struct RouteStatusView: View {
     init(context: RouteStatusContext) {
         self.context = context
         self._viewModel = StateObject(wrappedValue: RouteStatusViewModel(context: context))
+        self._subscription = State(initialValue: nil)
+        self.onSave = nil
+    }
+
+    init(context: RouteStatusContext, subscription: RouteAlertSubscription, onSave: @escaping (RouteAlertSubscription) -> Void) {
+        self.context = context
+        self._viewModel = StateObject(wrappedValue: RouteStatusViewModel(context: context))
+        self._subscription = State(initialValue: subscription)
+        self.onSave = onSave
     }
 
     var body: some View {
@@ -23,6 +36,13 @@ struct RouteStatusView: View {
                     mapSection
                     operationsSummarySection
                     historySections
+
+                    if let _ = subscription {
+                        AlertConfigurationSection(subscription: Binding(
+                            get: { subscription! },
+                            set: { subscription = $0 }
+                        ))
+                    }
                 }
                 .padding()
             }
@@ -39,6 +59,11 @@ struct RouteStatusView: View {
             }
             .task {
                 await viewModel.loadData()
+            }
+            .onDisappear {
+                if let subscription = subscription {
+                    onSave?(subscription)
+                }
             }
         }
     }

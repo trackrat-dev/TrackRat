@@ -14,12 +14,18 @@ struct TrainDetailsView: View {
     let trainId: Int  // Keep for backwards compatibility
     let isSheet: Bool
 
+    /// Mutable subscription for inline configuration (nil when opened without alert context).
+    @State private var alertSubscription: RouteAlertSubscription?
+    private let onAlertSave: ((RouteAlertSubscription) -> Void)?
+
     // Legacy initializer for database ID
     init(trainId: Int, isSheet: Bool = false) {
         self.trainId = trainId
         self.isSheet = isSheet
         let VModel = TrainDetailsViewModel(trainId: trainId)
         self._viewModel = StateObject(wrappedValue: VModel)
+        self._alertSubscription = State(initialValue: nil)
+        self.onAlertSave = nil
     }
 
     // New initializer for train number
@@ -34,6 +40,24 @@ struct TrainDetailsView: View {
             dataSource: dataSource
         )
         self._viewModel = StateObject(wrappedValue: VModel)
+        self._alertSubscription = State(initialValue: nil)
+        self.onAlertSave = nil
+    }
+
+    // Initializer with alert subscription for inline configuration
+    init(trainNumber: String, dataSource: String, isSheet: Bool = false, subscription: RouteAlertSubscription, onSave: @escaping (RouteAlertSubscription) -> Void) {
+        self.trainId = 0
+        self.isSheet = isSheet
+        let VModel = TrainDetailsViewModel(
+            databaseId: nil,
+            trainNumber: trainNumber,
+            fromStationCode: nil,
+            journeyDate: nil,
+            dataSource: dataSource
+        )
+        self._viewModel = StateObject(wrappedValue: VModel)
+        self._alertSubscription = State(initialValue: subscription)
+        self.onAlertSave = onSave
     }
 
     private var trainNavigationTitle: String {
@@ -136,6 +160,13 @@ struct TrainDetailsView: View {
                                 isLoadingStops: viewModel.isLoadingStops,
                                 prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction
                             )
+
+                            if let _ = alertSubscription {
+                                AlertConfigurationSection(subscription: Binding(
+                                    get: { alertSubscription! },
+                                    set: { alertSubscription = $0 }
+                                ))
+                            }
                         }
                         .padding()
                         // Force view recreation when train identity or status changes
@@ -145,6 +176,11 @@ struct TrainDetailsView: View {
             }
         }
         .navigationBarHidden(true)
+        .onDisappear {
+            if let alertSubscription = alertSubscription {
+                onAlertSave?(alertSubscription)
+            }
+        }
         .task {
             // Check if appState.currentTrain matches this view's train
             // This provides instant display when navigating from the train list
