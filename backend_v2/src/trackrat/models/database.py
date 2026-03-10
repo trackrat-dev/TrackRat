@@ -167,6 +167,9 @@ class JourneyStop(Base):
     # How we determined departure (api_explicit, sequential_inference, time_inference)
     departure_source = Column(String(30))
 
+    # How we determined actual_arrival (api_observed, scheduled_fallback)
+    arrival_source = Column(String(30))
+
     # Track assignment (null until assigned)
     track = Column(String(5))
     track_assigned_at = Column(DateTime(timezone=True))

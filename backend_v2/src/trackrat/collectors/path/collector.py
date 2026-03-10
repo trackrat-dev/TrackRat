@@ -668,6 +668,7 @@ class PathCollector:
                     stop.actual_arrival = stop.scheduled_arrival
                     stop.actual_departure = stop.scheduled_departure
                     stop.departure_source = "inferred_from_discovery"
+                    stop.arrival_source = "scheduled_fallback"
 
                 session.add(stop)
         else:
@@ -997,6 +998,7 @@ class PathCollector:
                 # Use scheduled time instead
                 current.actual_arrival = current.scheduled_arrival
                 current.actual_departure = current.scheduled_arrival
+                current.arrival_source = "scheduled_fallback"
                 if current.departure_source not in ("sequential_consistency",):
                     current.departure_source = "time_corrected"
                 corrections_made += 1
@@ -1057,6 +1059,7 @@ class PathCollector:
                 matched_arrival_count += 1
                 stop.actual_arrival = matched_arrival.arrival_time
                 stop.updated_arrival = matched_arrival.arrival_time
+                stop.arrival_source = "api_observed"
 
                 if matched_arrival.arrival_time <= now:
                     stop.has_departed_station = True
@@ -1081,6 +1084,7 @@ class PathCollector:
                     stop.actual_arrival = stop.scheduled_arrival
                     stop.actual_departure = stop.scheduled_arrival
                     stop.departure_source = "sequential_inference"
+                    stop.arrival_source = "scheduled_fallback"
 
             elif not matched_arrival and stop.scheduled_arrival:
                 grace_period = timedelta(minutes=2)
@@ -1093,6 +1097,7 @@ class PathCollector:
                         stop.actual_arrival = stop.scheduled_arrival
                         stop.actual_departure = stop.scheduled_arrival
                         stop.departure_source = "time_inference"
+                        stop.arrival_source = "scheduled_fallback"
                         if stop.stop_sequence:
                             max_departed_sequence = max(
                                 max_departed_sequence, stop.stop_sequence
@@ -1136,6 +1141,7 @@ class PathCollector:
                     stop.actual_arrival = stop.scheduled_arrival
                     stop.actual_departure = stop.scheduled_arrival
                     stop.departure_source = "sequential_consistency"
+                    stop.arrival_source = "scheduled_fallback"
                     logger.debug(
                         "path_sequential_consistency_fix",
                         station_code=stop.station_code,

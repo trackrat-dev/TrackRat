@@ -52,6 +52,7 @@ async def _create_journey(
     await db.flush()
 
     for i, stop_data in enumerate(stops):
+        actual_arrival = stop_data.get("actual_arrival")
         stop = JourneyStop(
             journey_id=journey.id,
             station_code=stop_data["station_code"],
@@ -60,7 +61,10 @@ async def _create_journey(
             scheduled_departure=stop_data.get("scheduled_departure"),
             actual_departure=stop_data.get("actual_departure"),
             scheduled_arrival=stop_data.get("scheduled_arrival"),
-            actual_arrival=stop_data.get("actual_arrival"),
+            actual_arrival=actual_arrival,
+            arrival_source=stop_data.get(
+                "arrival_source", "api_observed" if actual_arrival else None
+            ),
             track=stop_data.get("track"),
         )
         db.add(stop)
@@ -758,3 +762,135 @@ class TestTrackUsage:
 
         result = await _run_stats(db_session)
         assert result["track_usage"] == {}
+
+
+@pytest.mark.asyncio
+class TestArrivalSourceFiltering:
+    """Verify OTP excludes stops with scheduled_fallback arrival_source.
+
+    This prevents inflated OTP from PATH/MTA collectors that fall back to
+    scheduled_arrival when no real-time data is available (issue #585).
+    """
+
+    async def test_scheduled_fallback_excluded_from_otp(
+        self, db_session: AsyncSession
+    ):
+        """Stops with arrival_source='scheduled_fallback' should not count toward OTP.
+
+        3 trains: 2 with api_observed arrivals (1 on-time, 1 late),
+        1 with scheduled_fallback (appears on-time but is fake data).
+        OTP should be 50% (1/2), not 67% (2/3).
+        """
+        # Train 1: api_observed, on-time
+        await _create_journey(
+            db_session,
+            train_id="train_real_ontime",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=2),
+                    "arrival_source": "api_observed",
+                },
+            ],
+        )
+        # Train 2: api_observed, late (8 min)
+        await _create_journey(
+            db_session,
+            train_id="train_real_late",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=8),
+                    "arrival_source": "api_observed",
+                },
+            ],
+        )
+        # Train 3: scheduled_fallback, appears on-time (but is fake)
+        await _create_journey(
+            db_session,
+            train_id="train_fallback",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1),
+                    "arrival_source": "scheduled_fallback",
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        # Only 2 trains should count toward OTP (the api_observed ones)
+        assert result["on_time_percentage"] == 50.0, (
+            f"Expected 50% (1/2 api_observed trains on-time), got "
+            f"{result['on_time_percentage']}%. scheduled_fallback arrivals "
+            "should be excluded from OTP calculation."
+        )
+        # Average delay should be from real data only: (2 + 8) / 2 = 5.0
+        assert abs(result["average_delay_minutes"] - 5.0) < 0.1, (
+            f"Expected 5.0m avg delay from real data, got "
+            f"{result['average_delay_minutes']}m"
+        )
+
+    async def test_null_arrival_source_excluded_from_otp(
+        self, db_session: AsyncSession
+    ):
+        """Historical data with NULL arrival_source should be excluded from OTP.
+
+        This ensures a safe ramp-up: old data without the field populated
+        doesn't inflate OTP while new data with proper tagging accumulates.
+        """
+        await _create_journey(
+            db_session,
+            train_id="train_legacy",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1),
+                    "arrival_source": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        # Train has actual_arrival but NULL arrival_source -> excluded from OTP
+        assert result["on_time_percentage"] == 0.0, (
+            f"Expected 0% (no api_observed arrivals), got "
+            f"{result['on_time_percentage']}%. NULL arrival_source should "
+            "be excluded from OTP."
+        )

@@ -329,6 +329,7 @@ def update_stop_departure_status(stops: list[JourneyStop], now: datetime) -> Non
                     stop.actual_departure = stop.scheduled_arrival
                 if not stop.actual_arrival:
                     stop.actual_arrival = stop.scheduled_arrival
+                    stop.arrival_source = "scheduled_fallback"
                 stop.departure_source = "sequential_consistency"
                 logger.debug(
                     "mta_sequential_consistency_fix",

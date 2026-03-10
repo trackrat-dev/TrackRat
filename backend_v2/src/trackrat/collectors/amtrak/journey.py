@@ -618,6 +618,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 ),
                 "actual_arrival": actual_arrival,
                 "actual_departure": actual_departure,
+                "arrival_source": "api_observed" if actual_arrival else None,
                 "raw_amtrak_status": amtrak_stop.status,
                 "has_departed_station": departed,  # Now using validated flag
                 "track": track,
@@ -642,6 +643,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     scheduled_departure=scheduled_departure,
                     actual_arrival=actual_arrival,
                     actual_departure=actual_departure,
+                    arrival_source="api_observed" if actual_arrival else None,
                     has_departed_station=departed,
                     raw_amtrak_status=amtrak_stop.status,
                     track=track,

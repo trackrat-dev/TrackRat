@@ -325,6 +325,7 @@ class SubwayCollector:
                         actual_departure=stop_data["actual_departure"],
                         track=stop_data["track"],
                         has_departed_station=stop_data["has_departed"],
+                        arrival_source="api_observed" if stop_data["actual_arrival"] else None,
                     )
                     session.add(stop)
                     created_stops.append(stop)
@@ -343,6 +344,7 @@ class SubwayCollector:
                         track=None,
                         has_departed_station=True,
                         departure_source="synthetic_origin",
+                        arrival_source="scheduled_fallback",
                     )
                     session.add(stop)
                     created_stops.append(stop)
@@ -372,6 +374,7 @@ class SubwayCollector:
                         actual_departure=arr.departure_time,
                         track=arr.track,
                         has_departed_station=False,
+                        arrival_source="api_observed",
                     )
                     session.add(stop)
                     created_stops.append(stop)
@@ -404,6 +407,7 @@ class SubwayCollector:
                 existing_stop = stop_result.scalar_one_or_none()
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
+                    existing_stop.arrival_source = "api_observed"
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                     if arr.track:
@@ -499,6 +503,7 @@ class SubwayCollector:
             stop = stop_result.scalar_one_or_none()
             if stop:
                 stop.actual_arrival = arr.arrival_time
+                stop.arrival_source = "api_observed"
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                 if arr.track:

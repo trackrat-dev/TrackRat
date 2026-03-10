@@ -1344,6 +1344,7 @@ class JourneyCollector(BaseJourneyCollector):
                     and stop.departure_source != "time_inference"
                 ):
                     stop.actual_arrival = normalized["actual_arrival"]
+                    stop.arrival_source = "api_observed"
             else:
                 # Clear any stale actual_arrival from legacy code that wrote
                 # it unconditionally. Non-departed stops shouldn't show arrival.
@@ -1752,6 +1753,7 @@ class JourneyCollector(BaseJourneyCollector):
                 # on-time percentage at terminal destinations.
                 if last_stop_db.actual_arrival is None:
                     last_stop_db.actual_arrival = arrival_time
+                    last_stop_db.arrival_source = "api_observed"
 
                 # Propagate to the terminal stop record — the stop-update loop
                 # skips actual_arrival for time_inference stops, but at completion
@@ -1759,6 +1761,7 @@ class JourneyCollector(BaseJourneyCollector):
                 # (which reads journey_stops.actual_arrival) excludes these trains.
                 if last_stop_db.actual_arrival is None:
                     last_stop_db.actual_arrival = journey.actual_arrival
+                    last_stop_db.arrival_source = "api_observed"
 
             logger.info(
                 "journey_completed",
