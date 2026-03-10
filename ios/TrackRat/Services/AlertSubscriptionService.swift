@@ -70,12 +70,12 @@ final class AlertSubscriptionService: ObservableObject {
         saveToDefaults()
     }
 
-    func addTrainSubscription(dataSource: String, trainId: String, trainName: String, weekdaysOnly: Bool) {
+    func addTrainSubscription(dataSource: String, trainId: String, trainName: String, activeDays: Int = 127) {
         let sub = RouteAlertSubscription(
             dataSource: dataSource,
             trainId: trainId,
             trainName: trainName,
-            weekdaysOnly: weekdaysOnly
+            activeDays: activeDays
         )
         guard !subscriptions.contains(where: {
             $0.trainId == trainId && $0.dataSource == dataSource
@@ -87,6 +87,13 @@ final class AlertSubscriptionService: ObservableObject {
     func removeSubscription(_ sub: RouteAlertSubscription) {
         subscriptions.removeAll { $0.id == sub.id }
         saveToDefaults()
+    }
+
+    func updateSubscription(_ updated: RouteAlertSubscription) {
+        if let index = subscriptions.firstIndex(where: { $0.id == updated.id }) {
+            subscriptions[index] = updated
+            saveToDefaults()
+        }
     }
 
     // MARK: - Backend Sync
@@ -128,10 +135,25 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     let trainId: String?
     let trainName: String?
     let direction: String?
-    let weekdaysOnly: Bool
+    var activeDays: Int          // Bitmask: Mon=1..Sun=64, 127=all
+    var activeStartMinutes: Int? // Minutes from midnight, nil = all day
+    var activeEndMinutes: Int?   // Minutes from midnight, nil = all day
+    var timezone: String?        // IANA timezone
+    var delayThresholdMinutes: Int?  // nil = system default (15)
+    var serviceThresholdPct: Int?    // nil = system default (50)
+    var notifyRecovery: Bool
+    var digestTimeMinutes: Int?  // Minutes from midnight, nil = disabled
+
+    /// Frequency-first systems use service threshold; delay-first use delay threshold.
+    static let frequencyFirstSources: Set<String> = ["SUBWAY", "PATH", "PATCO"]
 
     /// Line-based subscription with direction (terminus station code).
-    init(dataSource: String, lineId: String, lineName: String, direction: String?) {
+    init(
+        dataSource: String, lineId: String, lineName: String, direction: String?,
+        activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
+        timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
+    ) {
         self.id = UUID()
         self.dataSource = dataSource
         self.lineId = lineId
@@ -141,11 +163,23 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.trainId = nil
         self.trainName = nil
         self.direction = direction
-        self.weekdaysOnly = false
+        self.activeDays = activeDays
+        self.activeStartMinutes = activeStartMinutes
+        self.activeEndMinutes = activeEndMinutes
+        self.timezone = timezone
+        self.delayThresholdMinutes = delayThresholdMinutes
+        self.serviceThresholdPct = serviceThresholdPct
+        self.notifyRecovery = notifyRecovery
+        self.digestTimeMinutes = digestTimeMinutes
     }
 
     /// Station-pair subscription.
-    init(dataSource: String, fromStationCode: String, toStationCode: String) {
+    init(
+        dataSource: String, fromStationCode: String, toStationCode: String,
+        activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
+        timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
+    ) {
         self.id = UUID()
         self.dataSource = dataSource
         self.lineId = nil
@@ -155,11 +189,23 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.trainId = nil
         self.trainName = nil
         self.direction = nil
-        self.weekdaysOnly = false
+        self.activeDays = activeDays
+        self.activeStartMinutes = activeStartMinutes
+        self.activeEndMinutes = activeEndMinutes
+        self.timezone = timezone
+        self.delayThresholdMinutes = delayThresholdMinutes
+        self.serviceThresholdPct = serviceThresholdPct
+        self.notifyRecovery = notifyRecovery
+        self.digestTimeMinutes = digestTimeMinutes
     }
 
     /// Train-specific subscription.
-    init(dataSource: String, trainId: String, trainName: String, weekdaysOnly: Bool) {
+    init(
+        dataSource: String, trainId: String, trainName: String,
+        activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
+        timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
+    ) {
         self.id = UUID()
         self.dataSource = dataSource
         self.lineId = nil
@@ -169,10 +215,17 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.trainId = trainId
         self.trainName = trainName
         self.direction = nil
-        self.weekdaysOnly = weekdaysOnly
+        self.activeDays = activeDays
+        self.activeStartMinutes = activeStartMinutes
+        self.activeEndMinutes = activeEndMinutes
+        self.timezone = timezone
+        self.delayThresholdMinutes = delayThresholdMinutes
+        self.serviceThresholdPct = serviceThresholdPct
+        self.notifyRecovery = notifyRecovery
+        self.digestTimeMinutes = digestTimeMinutes
     }
 
-    /// Backward-compatible decoding: new fields default to nil/false if missing.
+    /// Backward-compatible decoding: new fields default to sensible values if missing.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -184,6 +237,13 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         trainId = try container.decodeIfPresent(String.self, forKey: .trainId)
         trainName = try container.decodeIfPresent(String.self, forKey: .trainName)
         direction = try container.decodeIfPresent(String.self, forKey: .direction)
-        weekdaysOnly = try container.decodeIfPresent(Bool.self, forKey: .weekdaysOnly) ?? false
+        activeDays = try container.decodeIfPresent(Int.self, forKey: .activeDays) ?? 127
+        activeStartMinutes = try container.decodeIfPresent(Int.self, forKey: .activeStartMinutes)
+        activeEndMinutes = try container.decodeIfPresent(Int.self, forKey: .activeEndMinutes)
+        timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
+        delayThresholdMinutes = try container.decodeIfPresent(Int.self, forKey: .delayThresholdMinutes)
+        serviceThresholdPct = try container.decodeIfPresent(Int.self, forKey: .serviceThresholdPct)
+        notifyRecovery = try container.decodeIfPresent(Bool.self, forKey: .notifyRecovery) ?? false
+        digestTimeMinutes = try container.decodeIfPresent(Int.self, forKey: .digestTimeMinutes)
     }
 }

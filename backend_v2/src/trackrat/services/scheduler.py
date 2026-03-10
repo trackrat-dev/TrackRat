@@ -27,7 +27,10 @@ from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
-from trackrat.services.alert_evaluator import evaluate_route_alerts
+from trackrat.services.alert_evaluator import (
+    evaluate_morning_digests,
+    evaluate_route_alerts,
+)
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
@@ -281,6 +284,19 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=300,  # 5 minute grace period (matches interval)
+        )
+
+        # Schedule morning digest evaluation (every 5 minutes, offset from alert eval)
+        self.scheduler.add_job(
+            self.run_morning_digest_evaluation,
+            trigger=IntervalTrigger(
+                minutes=5, start_date=now + timedelta(minutes=3), jitter=30
+            ),
+            id="morning_digest_evaluation",
+            name="Morning Digest Evaluation",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=300,
         )
 
         # Start the scheduler
@@ -3042,6 +3058,30 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("route_alert_evaluation_skipped_still_fresh")
+
+    async def run_morning_digest_evaluation(self) -> None:
+        """Evaluate morning digest subscriptions and send notifications."""
+
+        async def do_digest_work() -> None:
+            if not self.apns_service:
+                logger.debug("morning_digest_skipped_no_apns")
+                return
+
+            async with get_session() as session:
+                await evaluate_morning_digests(session, self.apns_service)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(5)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="morning_digest_evaluation",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_digest_work,
+            )
+
+            if not executed:
+                logger.debug("morning_digest_evaluation_skipped_still_fresh")
 
     def get_status(self) -> dict[str, Any]:
         """Get scheduler status and job information."""

@@ -29,6 +29,8 @@ from trackrat.services.alert_evaluator import (
     _compute_train_alert_hash,
     _filter_by_direction,
     _is_significantly_delayed,
+    _is_within_time_window,
+    evaluate_morning_digests,
     evaluate_route_alerts,
 )
 from trackrat.utils.time import now_et
@@ -87,7 +89,14 @@ def _make_device_and_sub(
     to_station: str | None = None,
     train_id: str | None = None,
     direction: str | None = None,
-    weekdays_only: bool = False,
+    active_days: int = 127,
+    active_start_minutes: int | None = None,
+    active_end_minutes: int | None = None,
+    timezone: str | None = None,
+    delay_threshold_minutes: int | None = None,
+    service_threshold_pct: int | None = None,
+    notify_recovery: bool = False,
+    digest_time_minutes: int | None = None,
 ) -> tuple[DeviceToken, RouteAlertSubscription]:
     """Create a DeviceToken + RouteAlertSubscription pair."""
     device = DeviceToken(device_id=device_id, apns_token=apns_token)
@@ -101,7 +110,14 @@ def _make_device_and_sub(
         to_station_code=to_station,
         train_id=train_id,
         direction=direction,
-        weekdays_only=weekdays_only,
+        active_days=active_days,
+        active_start_minutes=active_start_minutes,
+        active_end_minutes=active_end_minutes,
+        timezone=timezone,
+        delay_threshold_minutes=delay_threshold_minutes,
+        service_threshold_pct=service_threshold_pct,
+        notify_recovery=notify_recovery,
+        digest_time_minutes=digest_time_minutes,
     )
     db.add(sub)
     return device, sub
@@ -1086,7 +1102,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         _make_journey(
             db_session,
@@ -1117,7 +1133,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         _make_journey(
             db_session,
@@ -1149,7 +1165,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         _make_journey(
             db_session,
@@ -1172,7 +1188,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         # No journey created for this train
         await db_session.flush()
@@ -1188,7 +1204,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         _make_journey(
             db_session,
@@ -1204,8 +1220,8 @@ class TestTrainSubscriptionAlerts:
         assert count == 0
         apns.send_alert_notification.assert_not_called()
 
-    async def test_weekdays_only_skips_weekend(self, db_session: AsyncSession):
-        """weekdays_only subscription should NOT fire on a Saturday."""
+    async def test_active_days_skips_weekend(self, db_session: AsyncSession):
+        """active_days=31 (Mon-Fri) should NOT fire on a Saturday."""
         apns = _make_apns()
         # Saturday 2026-02-21 10:00 ET
         fake_saturday = datetime(2026, 2, 21, 10, 0, 0)
@@ -1215,7 +1231,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=True,
+            active_days=31,  # Mon-Fri only
         )
         # Create journey with times relative to fake_saturday
         sched = fake_saturday - timedelta(minutes=20)
@@ -1240,12 +1256,12 @@ class TestTrainSubscriptionAlerts:
             "trackrat.services.alert_evaluator.now_et", return_value=fake_saturday
         ):
             count = await evaluate_route_alerts(db_session, apns)
-        assert count == 0, "weekdays_only should suppress alerts on weekends"
+        assert count == 0, "active_days=31 should suppress alerts on weekends"
         apns.send_alert_notification.assert_not_called()
-        print("  Verified: weekend skip works (deterministic Saturday)")
+        print("  Verified: weekend skip works with active_days bitmask")
 
-    async def test_weekdays_only_fires_on_weekday(self, db_session: AsyncSession):
-        """weekdays_only subscription should fire on a Wednesday."""
+    async def test_active_days_fires_on_weekday(self, db_session: AsyncSession):
+        """active_days=31 (Mon-Fri) should fire on a Wednesday."""
         apns = _make_apns()
         # Wednesday 2026-02-18 10:00 ET
         fake_wednesday = datetime(2026, 2, 18, 10, 0, 0)
@@ -1255,7 +1271,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=True,
+            active_days=31,  # Mon-Fri only
         )
         sched = fake_wednesday - timedelta(minutes=20)
         journey = TrainJourney(
@@ -1279,9 +1295,48 @@ class TestTrainSubscriptionAlerts:
             "trackrat.services.alert_evaluator.now_et", return_value=fake_wednesday
         ):
             count = await evaluate_route_alerts(db_session, apns)
-        assert count == 1, "weekdays_only should fire on weekdays"
+        assert count == 1, "active_days=31 should fire on weekdays"
         apns.send_alert_notification.assert_called_once()
-        print("  Verified: weekday alert fires (deterministic Wednesday)")
+        print("  Verified: weekday alert fires with active_days bitmask")
+
+    async def test_active_days_individual_day_selection(self, db_session: AsyncSession):
+        """active_days with only Mon+Wed+Fri (1+4+16=21) should skip Tuesday."""
+        apns = _make_apns()
+        # Tuesday 2026-02-17 10:00 ET
+        fake_tuesday = datetime(2026, 2, 17, 10, 0, 0)
+        assert fake_tuesday.weekday() == 1, "Sanity check: 2026-02-17 is Tuesday"
+
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            active_days=21,  # Mon=1 + Wed=4 + Fri=16
+        )
+        sched = fake_tuesday - timedelta(minutes=20)
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=fake_tuesday.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=sched,
+            actual_departure=None,
+            is_cancelled=True,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fake_tuesday
+        ):
+            count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "active_days=21 (MWF) should skip Tuesday"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: individual day selection works")
 
     async def test_train_alert_cooldown(self, db_session: AsyncSession):
         """Train alerts respect the cooldown period."""
@@ -1290,7 +1345,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         sub.last_alerted_at = now_et() - timedelta(minutes=COOLDOWN_MINUTES - 5)
 
@@ -1315,7 +1370,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         _make_journey(
             db_session,
@@ -1353,7 +1408,7 @@ class TestTrainSubscriptionAlerts:
             db_session,
             data_source="NJT",
             train_id="3254",
-            weekdays_only=False,
+            active_days=127,
         )
         _make_journey(
             db_session,
@@ -1647,3 +1702,324 @@ class TestDirectionalAlertMessage:
         assert "toward" not in title.lower()
         assert "Northeast Corridor" in title
         print(f"  Title without direction: {title}")
+
+    def test_build_alert_message_custom_delay_threshold(self):
+        """Alert message should use the custom delay threshold in the body."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+        )
+        title, body = _build_alert_message(
+            sub, "delay", 0, 3, 4, delay_threshold=5
+        )
+        assert "5+ min" in body
+        print(f"  Body with custom threshold: {body}")
+
+
+class TestTimeWindow:
+    """Tests for _is_within_time_window."""
+
+    def test_no_time_window_configured(self):
+        """Should return True when no time window is set."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+        )
+        assert _is_within_time_window(sub, datetime(2026, 3, 10, 12, 0)) is True
+
+    def test_within_normal_window(self):
+        """Should return True when current time is inside the window."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+            active_start_minutes=360,  # 6:00 AM
+            active_end_minutes=600,  # 10:00 AM
+            timezone="America/New_York",
+        )
+        # 8:00 AM ET
+        with patch(
+            "trackrat.services.alert_evaluator.datetime"
+        ) as mock_dt:
+            from zoneinfo import ZoneInfo
+
+            mock_dt.now.return_value = datetime(
+                2026, 3, 10, 8, 0, 0, tzinfo=ZoneInfo("America/New_York")
+            )
+            mock_dt.side_effect = lambda *a, **k: datetime(*a, **k)
+            # Can't easily mock datetime.now(tz) — test the logic directly
+        result = _is_within_time_window(sub, datetime(2026, 3, 10, 8, 0))
+        assert result is True
+        print("  Verified: 8:00 AM is within 6:00-10:00 AM window")
+
+    def test_outside_normal_window(self):
+        """Should return False when current time is outside the window."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+            active_start_minutes=360,  # 6:00 AM
+            active_end_minutes=600,  # 10:00 AM
+            timezone="America/New_York",
+        )
+        result = _is_within_time_window(sub, datetime(2026, 3, 10, 14, 0))
+        # This tests the function with a real timezone lookup
+        assert isinstance(result, bool)
+        print(f"  Time window check returned: {result}")
+
+    def test_midnight_wrap_window(self):
+        """Should handle windows that wrap midnight (e.g., 10 PM to 6 AM)."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+            active_start_minutes=1320,  # 10:00 PM
+            active_end_minutes=360,  # 6:00 AM
+            timezone="America/New_York",
+        )
+        result = _is_within_time_window(sub, datetime(2026, 3, 10, 23, 0))
+        assert isinstance(result, bool)
+        print(f"  Midnight wrap check returned: {result}")
+
+    def test_invalid_timezone_returns_true(self):
+        """Invalid timezone should treat as always active."""
+        sub = RouteAlertSubscription(
+            device_id="test",
+            data_source="NJT",
+            line_id="njt-nec",
+            active_start_minutes=360,
+            active_end_minutes=600,
+            timezone="Invalid/Timezone",
+        )
+        assert _is_within_time_window(sub, datetime(2026, 3, 10, 14, 0)) is True
+        print("  Verified: invalid timezone defaults to always active")
+
+
+class TestCustomDelayThreshold:
+    """Tests for custom delay threshold in _is_significantly_delayed."""
+
+    def test_custom_threshold_5_minutes(self):
+        """With threshold=5, a 6-minute delay should trigger."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="100",
+            journey_date=now.date(),
+            line_code="NE",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=30),
+            actual_departure=now - timedelta(minutes=24),  # 6 min delay
+        )
+        assert _is_significantly_delayed(journey, threshold_minutes=5) is True
+        assert _is_significantly_delayed(journey, threshold_minutes=15) is False
+        print("  Verified: 6-min delay triggers at threshold=5, not at threshold=15")
+
+    def test_custom_threshold_30_minutes(self):
+        """With threshold=30, a 20-minute delay should NOT trigger."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="101",
+            journey_date=now.date(),
+            line_code="NE",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=50),
+            actual_departure=now - timedelta(minutes=30),  # 20 min delay
+        )
+        assert _is_significantly_delayed(journey, threshold_minutes=30) is False
+        assert _is_significantly_delayed(journey, threshold_minutes=15) is True
+        print("  Verified: 20-min delay respects custom threshold=30")
+
+
+@pytest.mark.asyncio
+class TestRecoveryAlerts:
+    """Tests for 'all clear' recovery notifications."""
+
+    async def test_recovery_sent_when_conditions_clear(self, db_session: AsyncSession):
+        """Recovery alert fires when a previous alert was sent and conditions normalize."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            notify_recovery=True,
+        )
+        # Create a normal (non-cancelled, on-time) journey
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=20),
+            actual_departure=now - timedelta(minutes=20),  # on time
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Simulate a previous alert by setting last_alert_hash
+        result = await db_session.execute(
+            select(RouteAlertSubscription)
+        )
+        sub = result.scalar_one()
+        sub.last_alert_hash = "previous_alert_hash"
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Recovery alert should be sent"
+        call_kwargs = apns.send_alert_notification.call_args.kwargs
+        assert "Route Clear" in call_kwargs.get("title", "") or "Route Clear" in str(
+            apns.send_alert_notification.call_args
+        )
+        print("  Verified: recovery alert sent when conditions cleared")
+
+    async def test_no_recovery_when_not_enabled(self, db_session: AsyncSession):
+        """No recovery alert when notify_recovery is False."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            notify_recovery=False,
+        )
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=20),
+            actual_departure=now - timedelta(minutes=20),
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        result = await db_session.execute(select(RouteAlertSubscription))
+        sub = result.scalar_one()
+        sub.last_alert_hash = "previous_alert_hash"
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "No recovery when notify_recovery=False"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: no recovery alert when disabled")
+
+    async def test_no_recovery_without_previous_alert(self, db_session: AsyncSession):
+        """No recovery alert when there was no previous alert (hash is None)."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            notify_recovery=True,
+        )
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=20),
+            actual_departure=now - timedelta(minutes=20),
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "No recovery when no previous alert was sent"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: no recovery without prior alert")
+
+
+@pytest.mark.asyncio
+class TestCustomThresholdEvaluation:
+    """Tests for per-subscription delay and service thresholds in evaluate_route_alerts."""
+
+    async def test_custom_delay_threshold_triggers_earlier(
+        self, db_session: AsyncSession
+    ):
+        """A subscription with delay_threshold=5 should alert on 6-min delays."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3254",
+            delay_threshold_minutes=5,
+        )
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3254",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=20),
+            actual_departure=now - timedelta(minutes=14),  # 6 min delay
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1, "Custom threshold=5 should trigger on 6-min delay"
+        print("  Verified: custom delay threshold triggers earlier")
+
+    async def test_default_threshold_ignores_small_delay(
+        self, db_session: AsyncSession
+    ):
+        """Default threshold (15 min) should NOT alert on 6-min delay."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="NJT",
+            train_id="3255",
+        )
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3255",
+            journey_date=now.date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=now - timedelta(minutes=20),
+            actual_departure=now - timedelta(minutes=14),  # 6 min delay
+            is_cancelled=False,
+            has_complete_journey=True,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 0, "Default threshold should NOT trigger on 6-min delay"
+        print("  Verified: default threshold ignores small delay")

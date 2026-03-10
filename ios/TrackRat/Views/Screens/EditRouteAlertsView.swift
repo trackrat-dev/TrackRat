@@ -6,6 +6,7 @@ struct EditRouteAlertsView: View {
     @State private var showAddSheet = false
     @State private var selectedRouteStatus: RouteStatusContext?
     @State private var selectedTrainAlert: RouteAlertSubscription?
+    @State private var customizingSubscription: RouteAlertSubscription?
 
     /// Group subscriptions by data source for display, sorted alphabetically within each group.
     private var groupedSubscriptions: [(String, [RouteAlertSubscription])] {
@@ -82,42 +83,54 @@ struct EditRouteAlertsView: View {
             ForEach(groupedSubscriptions, id: \.0) { dataSource, subs in
                 Section(header: Text(dataSource).foregroundColor(.white.opacity(0.7))) {
                     ForEach(subs) { sub in
-                        Button {
-                            if sub.trainId != nil {
-                                selectedTrainAlert = sub
-                            } else {
-                                selectedRouteStatus = routeStatusContext(for: sub)
-                            }
-                        } label: {
-                            HStack {
-                                if let trainName = sub.trainName, sub.trainId != nil {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Label(trainName, systemImage: "train.side.front.car")
-                                        if sub.weekdaysOnly {
-                                            Text("Weekdays only")
+                        HStack {
+                            Button {
+                                if sub.trainId != nil {
+                                    selectedTrainAlert = sub
+                                } else {
+                                    selectedRouteStatus = routeStatusContext(for: sub)
+                                }
+                            } label: {
+                                HStack {
+                                    if let trainName = sub.trainName, sub.trainId != nil {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Label(trainName, systemImage: "train.side.front.car")
+                                            scheduleSummary(for: sub)
+                                        }
+                                    } else if let lineName = sub.lineName {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
+                                            Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
                                                 .font(.caption2)
                                                 .foregroundColor(.white.opacity(0.5))
+                                            scheduleSummary(for: sub)
+                                        }
+                                    } else if let from = sub.fromStationCode, let to = sub.toStationCode {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Label(
+                                                "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))",
+                                                systemImage: "arrow.right"
+                                            )
+                                            scheduleSummary(for: sub)
                                         }
                                     }
-                                } else if let lineName = sub.lineName {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
-                                        Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
-                                            .font(.caption2)
-                                            .foregroundColor(.white.opacity(0.5))
-                                    }
-                                } else if let from = sub.fromStationCode, let to = sub.toStationCode {
-                                    Label(
-                                        "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))",
-                                        systemImage: "arrow.right"
-                                    )
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                .foregroundColor(.white)
                             }
-                            .foregroundColor(.white)
+
+                            Button {
+                                customizingSubscription = sub
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .font(.subheadline)
+                                    .foregroundColor(.orange)
+                                    .padding(.leading, 8)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .onDelete { offsets in
@@ -147,6 +160,80 @@ struct EditRouteAlertsView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        .sheet(item: $customizingSubscription) { sub in
+            AlertCustomizationSheet(subscription: sub) { updated in
+                alertService.updateSubscription(updated)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Schedule Summary
+
+    @ViewBuilder
+    private func scheduleSummary(for sub: RouteAlertSubscription) -> some View {
+        let parts = scheduleParts(for: sub)
+        if !parts.isEmpty {
+            Text(parts.joined(separator: " · "))
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.5))
+        }
+    }
+
+    private func scheduleParts(for sub: RouteAlertSubscription) -> [String] {
+        var parts: [String] = []
+
+        // Day schedule
+        let days = sub.activeDays
+        if days == 31 {
+            parts.append("Weekdays")
+        } else if days == 96 {
+            parts.append("Weekends")
+        } else if days != 127 {
+            parts.append(dayAbbreviations(for: days))
+        }
+
+        // Time window
+        if let start = sub.activeStartMinutes, let end = sub.activeEndMinutes {
+            parts.append("\(formatMinutes(start))–\(formatMinutes(end))")
+        }
+
+        // Custom threshold
+        if let threshold = sub.delayThresholdMinutes {
+            parts.append("≥\(threshold)m delay")
+        }
+        if let pct = sub.serviceThresholdPct {
+            parts.append("≥\(pct)% service")
+        }
+
+        // Recovery
+        if sub.notifyRecovery {
+            parts.append("Recovery")
+        }
+
+        // Digest
+        if let digest = sub.digestTimeMinutes {
+            parts.append("Digest \(formatMinutes(digest))")
+        }
+
+        return parts
+    }
+
+    private func dayAbbreviations(for bitmask: Int) -> String {
+        let names = ["M", "T", "W", "Th", "F", "Sa", "Su"]
+        return names.enumerated()
+            .filter { bitmask & (1 << $0.offset) != 0 }
+            .map(\.element)
+            .joined()
+    }
+
+    private func formatMinutes(_ minutes: Int) -> String {
+        let h = minutes / 60
+        let m = minutes % 60
+        let ampm = h >= 12 ? "pm" : "am"
+        let h12 = h == 0 ? 12 : (h > 12 ? h - 12 : h)
+        return m == 0 ? "\(h12)\(ampm)" : String(format: "%d:%02d%@", h12, m, ampm)
     }
 
     // MARK: - Helpers

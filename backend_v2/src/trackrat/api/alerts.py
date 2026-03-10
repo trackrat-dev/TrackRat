@@ -43,7 +43,14 @@ class SubscriptionItem(BaseModel):
     to_station_code: str | None = None
     train_id: str | None = None
     direction: str | None = None
-    weekdays_only: bool = False
+    active_days: int = 127  # Bitmask: Mon=1..Sun=64, 127=all
+    active_start_minutes: int | None = None  # Minutes from midnight
+    active_end_minutes: int | None = None  # Minutes from midnight
+    timezone: str | None = None  # IANA timezone
+    delay_threshold_minutes: int | None = None  # NULL = system default
+    service_threshold_pct: int | None = None  # NULL = system default
+    notify_recovery: bool = False
+    digest_time_minutes: int | None = None  # Minutes from midnight
 
     @model_validator(mode="after")
     def check_subscription_type(self) -> "SubscriptionItem":
@@ -75,7 +82,14 @@ class SubscriptionResponse(BaseModel):
     to_station_code: str | None = None
     train_id: str | None = None
     direction: str | None = None
-    weekdays_only: bool = False
+    active_days: int = 127
+    active_start_minutes: int | None = None
+    active_end_minutes: int | None = None
+    timezone: str | None = None
+    delay_threshold_minutes: int | None = None
+    service_threshold_pct: int | None = None
+    notify_recovery: bool = False
+    digest_time_minutes: int | None = None
 
 
 class SyncSubscriptionsResponse(BaseModel):
@@ -147,7 +161,14 @@ async def sync_subscriptions(
             to_station_code=item.to_station_code,
             train_id=item.train_id,
             direction=item.direction,
-            weekdays_only=item.weekdays_only,
+            active_days=item.active_days,
+            active_start_minutes=item.active_start_minutes,
+            active_end_minutes=item.active_end_minutes,
+            timezone=item.timezone,
+            delay_threshold_minutes=item.delay_threshold_minutes,
+            service_threshold_pct=item.service_threshold_pct,
+            notify_recovery=item.notify_recovery,
+            digest_time_minutes=item.digest_time_minutes,
         )
         db.add(sub)
 
@@ -190,7 +211,14 @@ async def get_subscriptions(
                 to_station_code=sub.to_station_code,
                 train_id=sub.train_id,
                 direction=sub.direction,
-                weekdays_only=sub.weekdays_only,
+                active_days=sub.active_days,
+                active_start_minutes=sub.active_start_minutes,
+                active_end_minutes=sub.active_end_minutes,
+                timezone=sub.timezone,
+                delay_threshold_minutes=sub.delay_threshold_minutes,
+                service_threshold_pct=sub.service_threshold_pct,
+                notify_recovery=sub.notify_recovery,
+                digest_time_minutes=sub.digest_time_minutes,
             )
             for sub in device.subscriptions
         ],

@@ -215,7 +215,7 @@ class TestTrainSubscriptionValidation:
             json={
                 "device_id": "dev-train-1",
                 "subscriptions": [
-                    {"data_source": "NJT", "train_id": "3254", "weekdays_only": True},
+                    {"data_source": "NJT", "train_id": "3254", "active_days": 31},
                 ],
             },
         )
@@ -224,8 +224,8 @@ class TestTrainSubscriptionValidation:
         ), f"Expected 200, got {resp.status_code}: {resp.json()}"
         assert resp.json()["count"] == 1
 
-    def test_train_id_with_weekdays_only_false(self, e2e_client: TestClient):
-        """Train subscription with weekdays_only=false is accepted."""
+    def test_train_id_with_all_days(self, e2e_client: TestClient):
+        """Train subscription with active_days=127 (all days) is accepted."""
         e2e_client.post(
             "/api/v2/devices/register",
             json={"device_id": "dev-train-2", "apns_token": "tok-train2"},
@@ -238,7 +238,7 @@ class TestTrainSubscriptionValidation:
                     {
                         "data_source": "AMTRAK",
                         "train_id": "A171",
-                        "weekdays_only": False,
+                        "active_days": 127,
                     },
                 ],
             },
@@ -256,7 +256,7 @@ class TestTrainSubscriptionValidation:
             json={
                 "device_id": "dev-train-3",
                 "subscriptions": [
-                    {"data_source": "NJT", "train_id": "3254", "weekdays_only": True},
+                    {"data_source": "NJT", "train_id": "3254", "active_days": 31},
                 ],
             },
         )
@@ -266,14 +266,14 @@ class TestTrainSubscriptionValidation:
         subs = resp.json()["subscriptions"]
         assert len(subs) == 1
         assert subs[0]["train_id"] == "3254"
-        assert subs[0]["weekdays_only"] is True
+        assert subs[0]["active_days"] == 31
         assert subs[0]["data_source"] == "NJT"
         assert subs[0]["line_id"] is None
         assert subs[0]["from_station_code"] is None
         print(f"  Train subscription round-tripped: {subs[0]}")
 
-    def test_weekdays_only_defaults_false(self, e2e_client: TestClient):
-        """weekdays_only defaults to false when not provided."""
+    def test_active_days_defaults_to_127(self, e2e_client: TestClient):
+        """active_days defaults to 127 (all days) when not provided."""
         e2e_client.post(
             "/api/v2/devices/register",
             json={"device_id": "dev-train-4", "apns_token": "tok-train4"},
@@ -290,8 +290,50 @@ class TestTrainSubscriptionValidation:
 
         resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-train-4")
         subs = resp.json()["subscriptions"]
-        assert subs[0]["weekdays_only"] is False
-        print(f"  weekdays_only default: {subs[0]['weekdays_only']}")
+        assert subs[0]["active_days"] == 127
+        print(f"  active_days default: {subs[0]['active_days']}")
+
+    def test_customization_fields_roundtrip(self, e2e_client: TestClient):
+        """All customization fields should round-trip through PUT/GET."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-custom-1", "apns_token": "tok-custom1"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-custom-1",
+                "subscriptions": [
+                    {
+                        "data_source": "NJT",
+                        "line_id": "njt-nec",
+                        "active_days": 31,
+                        "active_start_minutes": 360,
+                        "active_end_minutes": 600,
+                        "timezone": "America/New_York",
+                        "delay_threshold_minutes": 5,
+                        "service_threshold_pct": 70,
+                        "notify_recovery": True,
+                        "digest_time_minutes": 420,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-custom-1")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        s = subs[0]
+        assert s["active_days"] == 31
+        assert s["active_start_minutes"] == 360
+        assert s["active_end_minutes"] == 600
+        assert s["timezone"] == "America/New_York"
+        assert s["delay_threshold_minutes"] == 5
+        assert s["service_threshold_pct"] == 70
+        assert s["notify_recovery"] is True
+        assert s["digest_time_minutes"] == 420
+        print(f"  All customization fields round-tripped: {s}")
 
     def test_mixed_subscription_types(self, e2e_client: TestClient):
         """A sync with all three subscription types is accepted."""
@@ -310,7 +352,7 @@ class TestTrainSubscriptionValidation:
                         "from_station_code": "NY",
                         "to_station_code": "TR",
                     },
-                    {"data_source": "NJT", "train_id": "3254", "weekdays_only": True},
+                    {"data_source": "NJT", "train_id": "3254", "active_days": 31},
                 ],
             },
         )
@@ -436,7 +478,7 @@ class TestDirectionSubscriptions:
                         "from_station_code": "NY",
                         "to_station_code": "TR",
                     },
-                    {"data_source": "NJT", "train_id": "3254", "weekdays_only": True},
+                    {"data_source": "NJT", "train_id": "3254", "active_days": 31},
                 ],
             },
         )

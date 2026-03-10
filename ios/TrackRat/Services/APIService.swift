@@ -1343,7 +1343,14 @@ extension APIService {
             let to_station_code: String?
             let train_id: String?
             let direction: String?
-            let weekdays_only: Bool
+            let active_days: Int
+            let active_start_minutes: Int?
+            let active_end_minutes: Int?
+            let timezone: String?
+            let delay_threshold_minutes: Int?
+            let service_threshold_pct: Int?
+            let notify_recovery: Bool
+            let digest_time_minutes: Int?
         }
 
         struct SyncRequest: Encodable {
@@ -1359,7 +1366,14 @@ extension APIService {
                 to_station_code: sub.toStationCode,
                 train_id: sub.trainId,
                 direction: sub.direction,
-                weekdays_only: sub.weekdaysOnly
+                active_days: sub.activeDays,
+                active_start_minutes: sub.activeStartMinutes,
+                active_end_minutes: sub.activeEndMinutes,
+                timezone: sub.timezone,
+                delay_threshold_minutes: sub.delayThresholdMinutes,
+                service_threshold_pct: sub.serviceThresholdPct,
+                notify_recovery: sub.notifyRecovery,
+                digest_time_minutes: sub.digestTimeMinutes
             )
         }
 
