@@ -574,23 +574,11 @@ struct CongestionMapKitView: UIViewRepresentable {
         }
 
         private func getUIColor(for congestionFactor: Double) -> UIColor {
-            if congestionFactor < 1.05 {
-                return UIColor.systemGreen
-            } else if congestionFactor < 1.25 {
-                return UIColor.systemYellow
-            } else if congestionFactor < 2.0 {
-                return UIColor.systemOrange
-            } else {
-                return UIColor.systemRed
-            }
+            CongestionColors.color(forCongestionFactor: congestionFactor)
         }
 
         private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
-            guard let factor = frequencyFactor else { return UIColor.systemGray }
-            if factor >= 0.9 { return UIColor.systemGreen }
-            else if factor >= 0.7 { return UIColor.systemYellow }
-            else if factor >= 0.5 { return UIColor.systemOrange }
-            else { return UIColor.systemRed }
+            CongestionColors.color(forFrequencyFactor: frequencyFactor)
         }
 
         private func getFrequencyLineWidth(_ frequencyFactor: Double?) -> CGFloat {

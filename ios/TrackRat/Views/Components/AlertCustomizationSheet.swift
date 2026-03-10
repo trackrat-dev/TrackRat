@@ -38,8 +38,9 @@ struct AlertCustomizationSheet: View {
                         onSave(sub)
                         dismiss()
                     }
-                    .foregroundColor(.orange)
+                    .foregroundColor(sub.activeDays == 0 ? .gray : .orange)
                     .fontWeight(.semibold)
+                    .disabled(sub.activeDays == 0)
                 }
             }
         }
@@ -90,7 +91,10 @@ struct AlertCustomizationSheet: View {
                 let isOn = sub.activeDays & bit != 0
                 Button {
                     if isOn {
-                        sub.activeDays &= ~bit
+                        // Don't allow deselecting the last active day
+                        if sub.activeDays & ~bit != 0 {
+                            sub.activeDays &= ~bit
+                        }
                     } else {
                         sub.activeDays |= bit
                     }
@@ -144,7 +148,7 @@ struct AlertCustomizationSheet: View {
             Text("Time Window")
         } footer: {
             if sub.activeStartMinutes != nil {
-                Text("Alerts only sent during this window. Uses your device timezone.")
+                Text("Alerts only sent during this window. Overnight ranges (e.g. 10pm–6am) are supported.")
             }
         }
     }

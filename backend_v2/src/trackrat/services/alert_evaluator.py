@@ -149,6 +149,7 @@ async def evaluate_route_alerts(
                 )
                 if sent:
                     alerts_sent += 1
+                    state_changed = True
                 continue
 
             # Build query for relevant journeys (line / station-pair modes)

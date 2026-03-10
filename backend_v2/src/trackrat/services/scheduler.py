@@ -76,6 +76,29 @@ class SchedulerService:
         self.njt_client: NJTransitClient | None = None
         self.jit_service: JustInTimeUpdateService | None = None
         self._running_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._sync_engine: Any = None  # Lazily created sync engine for NJT
+
+    def _get_sync_engine(self) -> Any:
+        """Get or create a cached synchronous database engine."""
+        if self._sync_engine is None:
+            from sqlalchemy import create_engine
+
+            db_url = str(self.settings.database_url).replace(
+                "postgresql+asyncpg", "postgresql"
+            )
+            self._sync_engine = create_engine(db_url, pool_pre_ping=True)
+        return self._sync_engine
+
+    @staticmethod
+    def _log_task_exception(task: asyncio.Task[Any]) -> None:
+        """Log unhandled exceptions from fire-and-forget tasks."""
+        if not task.cancelled() and task.exception() is not None:
+            logger.error(
+                "background_task_failed",
+                task_name=task.get_name(),
+                error=str(task.exception()),
+                error_type=type(task.exception()).__name__,
+            )
 
     async def start(self) -> None:
         """Start the scheduler and configure jobs."""
@@ -318,10 +341,14 @@ class SchedulerService:
         self.scheduler.start()
 
         # Run initial collections staggered to avoid startup CPU spike
-        asyncio.create_task(self._run_startup_collectors())
+        asyncio.create_task(self._run_startup_collectors()).add_done_callback(
+            self._log_task_exception
+        )
 
         # Check and initialize GTFS feeds on startup (downloads if missing)
-        asyncio.create_task(self.check_and_initialize_gtfs_feeds())
+        asyncio.create_task(self.check_and_initialize_gtfs_feeds()).add_done_callback(
+            self._log_task_exception
+        )
 
         logger.info(
             "scheduler_started", jobs=[job.id for job in self.scheduler.get_jobs()]
@@ -358,6 +385,11 @@ class SchedulerService:
         # Close NJ Transit client
         if self.njt_client:
             await self.njt_client.close()
+
+        # Dispose cached sync engine
+        if self._sync_engine is not None:
+            self._sync_engine.dispose()
+            self._sync_engine = None
 
         logger.info("scheduler_stopped")
 
@@ -1532,10 +1564,9 @@ class SchedulerService:
         Returns:
             Dict with journey info if successful, None if failed
         """
-        sync_engine = None
         try:
             # Use synchronous database operations entirely to avoid greenlet issues
-            from sqlalchemy import and_, create_engine, delete, select
+            from sqlalchemy import and_, delete, select
             from sqlalchemy.orm import selectinload, sessionmaker
 
             from trackrat.collectors.njt.client import (
@@ -1549,15 +1580,7 @@ class SchedulerService:
             if journey_date is None:
                 journey_date = now_et().date()
 
-            # Create synchronous database connection
-            db_url = str(self.settings.database_url).replace(
-                "postgresql+asyncpg", "postgresql"
-            )
-            sync_engine = create_engine(
-                db_url,
-                # PostgreSQL doesn't need special connect_args for basic operations
-            )
-            SyncSession = sessionmaker(sync_engine)
+            SyncSession = sessionmaker(self._get_sync_engine())
 
             with SyncSession() as session:
                 # Find the journey for this train on the specific date (eager load stops)
@@ -1820,19 +1843,23 @@ class SchedulerService:
                     return None
 
         except Exception as e:
-            # Check if it's a database locking issue
-            if "database is locked" in str(e) or "database is busy" in str(e):
+            error_msg = str(e).lower()
+            is_transient = (
+                "serialization failure" in error_msg
+                or "deadlock detected" in error_msg
+                or "could not serialize access" in error_msg
+            )
+            if is_transient:
                 logger.warning(
-                    "safe_journey_collection_database_locked",
+                    "safe_journey_collection_transient_error",
                     train_id=train_id,
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-                # Return a special result indicating we should retry
                 return {
                     "train_id": train_id,
                     "success": False,
-                    "error": "Database locked",
+                    "error": "Transient DB error",
                     "retry_needed": True,
                 }
             else:
@@ -1843,10 +1870,6 @@ class SchedulerService:
                     error_type=type(e).__name__,
                 )
                 return None
-        finally:
-            # Always dispose the sync engine to prevent connection leaks
-            if sync_engine is not None:
-                sync_engine.dispose()
 
     async def collect_njt_journeys_batch(
         self, train_ids: list[str], journey_date: date | None = None
@@ -2291,17 +2314,10 @@ class SchedulerService:
                 logger.info("starting_live_activity_token_cleanup")
 
                 # Use sync database access for consistency with other scheduler methods
-                from sqlalchemy import create_engine, update
+                from sqlalchemy import update
                 from sqlalchemy.orm import sessionmaker
 
-                db_url = str(self.settings.database_url).replace(
-                    "postgresql+asyncpg", "postgresql"
-                )
-                sync_engine = create_engine(
-                    db_url,
-                    # PostgreSQL doesn't need special connect_args for basic operations
-                )
-                SyncSession = sessionmaker(sync_engine)
+                SyncSession = sessionmaker(self._get_sync_engine())
 
                 with SyncSession() as session:
                     # Find expired tokens that are still active
@@ -2330,9 +2346,6 @@ class SchedulerService:
                         tokens_cleaned=cleaned_count,
                         cutoff_time=current_time.isoformat(),
                     )
-
-                # Close sync engine when done
-                sync_engine.dispose()
 
             except Exception as e:
                 logger.error(
@@ -2603,19 +2616,11 @@ class SchedulerService:
                 if task:
                     self._running_tasks[task_id] = task
 
-                from sqlalchemy import and_, create_engine, select
+                from sqlalchemy import and_, select
                 from sqlalchemy.orm import selectinload, sessionmaker
 
                 # Use synchronous database access to avoid greenlet issues in scheduler context
-                # This is a workaround for APScheduler's async executor not properly initializing greenlets
-                db_url = str(self.settings.database_url).replace(
-                    "postgresql+asyncpg", "postgresql"
-                )
-                sync_engine = create_engine(
-                    db_url,
-                    # PostgreSQL doesn't need special connect_args for basic operations
-                )
-                SyncSession = sessionmaker(sync_engine)
+                SyncSession = sessionmaker(self._get_sync_engine())
 
                 with SyncSession() as session:
                     # Get active tokens that haven't expired
@@ -2834,9 +2839,6 @@ class SchedulerService:
                         "live_activity_updates_completed",
                         trains_updated=len(trains_to_update),
                     )
-
-                # Close sync engine when done
-                sync_engine.dispose()
 
             except Exception as e:
                 # Add more context for debugging

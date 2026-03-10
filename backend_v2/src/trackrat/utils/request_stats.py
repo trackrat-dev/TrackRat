@@ -5,6 +5,7 @@ Provides lightweight middleware-compatible tracking of inbound HTTP requests,
 route searches, and client activity. All data resets on server restart.
 """
 
+import random
 import re
 import threading
 import time
@@ -27,8 +28,9 @@ class RequestStats:
     requests_by_client: Counter[str] = field(default_factory=Counter)
     route_searches: Counter[tuple[str, str]] = field(default_factory=Counter)
 
-    # Latency tracking: path_template -> list of durations (capped)
+    # Latency tracking: path_template -> list of durations (reservoir sampling)
     _latencies: dict[str, list[float]] = field(default_factory=dict)
+    _latency_counts: dict[str, int] = field(default_factory=dict)
     _MAX_LATENCY_SAMPLES: int = 500
 
     def record_request(
@@ -49,10 +51,17 @@ class RequestStats:
             self.requests_by_status[status_code] += 1
             self.requests_by_client[client] += 1
 
-            # Latency
+            # Latency — reservoir sampling to keep stats representative
             samples = self._latencies.setdefault(path_template, [])
+            count = self._latency_counts.get(path_template, 0) + 1
+            self._latency_counts[path_template] = count
             if len(samples) < self._MAX_LATENCY_SAMPLES:
                 samples.append(duration)
+            else:
+                # Replace a random sample with decreasing probability
+                idx = random.randint(0, count - 1)
+                if idx < self._MAX_LATENCY_SAMPLES:
+                    samples[idx] = duration
 
             # Track route searches from departures endpoint
             if query_params and path_template == "/api/v2/trains/departures":
@@ -82,7 +91,10 @@ class RequestStats:
                 "requests_by_path": dict(self.requests_by_path.most_common()),
                 "requests_by_status": dict(self.requests_by_status.most_common()),
                 "requests_by_client": dict(self.requests_by_client.most_common()),
-                "route_searches": dict(self.route_searches.most_common(20)),
+                "route_searches": [
+                    {"from": k[0], "to": k[1], "count": v}
+                    for k, v in self.route_searches.most_common(20)
+                ],
                 "latency": latency_stats,
             }
 

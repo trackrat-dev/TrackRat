@@ -491,11 +491,11 @@ class TestLiveActivitySessionScope:
             mock_db = AsyncMock()
             mock_get_session.return_value.__aenter__.return_value = mock_db
 
-            with patch("sqlalchemy.create_engine") as mock_create_engine:
+            with patch.object(
+                scheduler_service, "_get_sync_engine", return_value=Mock()
+            ):
                 with patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker:
                     mock_sync_session = Mock()
-                    mock_sync_engine = Mock()
-                    mock_create_engine.return_value = mock_sync_engine
                     mock_sessionmaker.return_value = Mock(
                         return_value=mock_sync_session
                     )
@@ -540,11 +540,11 @@ class TestLiveActivitySessionScope:
             mock_db = AsyncMock()
             mock_get_session.return_value.__aenter__.return_value = mock_db
 
-            with patch("sqlalchemy.create_engine") as mock_create_engine:
+            with patch.object(
+                scheduler_service, "_get_sync_engine", return_value=Mock()
+            ):
                 with patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker:
                     mock_sync_session = Mock()
-                    mock_sync_engine = Mock()
-                    mock_create_engine.return_value = mock_sync_engine
                     mock_sessionmaker.return_value = Mock(
                         return_value=mock_sync_session
                     )
@@ -621,11 +621,11 @@ class TestLiveActivitySessionScope:
             mock_db = AsyncMock()
             mock_get_session.return_value.__aenter__.return_value = mock_db
 
-            with patch("sqlalchemy.create_engine") as mock_create_engine:
+            with patch.object(
+                scheduler_service, "_get_sync_engine", return_value=Mock()
+            ):
                 with patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker:
                     mock_sync_session = Mock()
-                    mock_sync_engine = Mock()
-                    mock_create_engine.return_value = mock_sync_engine
                     mock_sessionmaker.return_value = Mock(
                         return_value=mock_sync_session
                     )
@@ -687,27 +687,26 @@ class TestLiveActivitySessionScope:
                     mock_sync_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_engine_disposed_after_session_closes(self, scheduler_service):
-        """sync_engine.dispose() should be called after the session context
-        manager exits, to clean up the connection pool.
+    async def test_cached_engine_reused_across_calls(self, scheduler_service):
+        """Sync engine is cached on the scheduler and reused, not created per call.
 
-        Note: dispose() is called after the `with SyncSession()` block ends.
-        When there are active tokens, the full code path runs and dispose()
-        is called. With no tokens, early return skips dispose().
+        The engine is disposed once in stop(), not after each method invocation.
         """
         mock_apns = AsyncMock()
         mock_apns.send_live_activity_update = AsyncMock(return_value=True)
         scheduler_service.apns_service = mock_apns
 
+        mock_sync_engine = Mock()
+
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
             mock_db = AsyncMock()
             mock_get_session.return_value.__aenter__.return_value = mock_db
 
-            with patch("sqlalchemy.create_engine") as mock_create_engine:
+            with patch.object(
+                scheduler_service, "_get_sync_engine", return_value=mock_sync_engine
+            ):
                 with patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker:
                     mock_sync_session = Mock()
-                    mock_sync_engine = Mock()
-                    mock_create_engine.return_value = mock_sync_engine
                     mock_sessionmaker.return_value = Mock(
                         return_value=mock_sync_session
                     )
@@ -759,5 +758,5 @@ class TestLiveActivitySessionScope:
 
                             await scheduler_service.update_live_activities()
 
-                    # Engine should be disposed after use
-                    mock_sync_engine.dispose.assert_called_once()
+                    # Engine is NOT disposed per-call (cached); dispose happens in stop()
+                    mock_sync_engine.dispose.assert_not_called()

@@ -27,11 +27,10 @@ def commit_with_retry(
     log_context: dict[str, Any] | None = None,
 ) -> None:
     """
-    Commit a synchronous database session with retry logic for SQLite locks.
+    Commit a synchronous database session.
 
-    SQLite can raise "database is locked" errors when multiple processes
-    access the database simultaneously. This function retries with exponential
-    backoff to handle transient lock contention.
+    Simple wrapper that commits, retrying on transient PostgreSQL errors
+    (e.g., serialization failures).
 
     Args:
         session: Synchronous SQLAlchemy session to commit
@@ -48,12 +47,15 @@ def commit_with_retry(
             session.commit()
             return
         except Exception as e:
-            is_lock_error = "database is locked" in str(e) or "database is busy" in str(
-                e
+            error_msg = str(e).lower()
+            is_transient = (
+                "serialization failure" in error_msg
+                or "deadlock detected" in error_msg
+                or "could not serialize access" in error_msg
             )
-            if is_lock_error and retry < max_retries - 1:
+            if is_transient and retry < max_retries - 1:
                 logger.warning(
-                    "database_locked_retrying",
+                    "database_transient_error_retrying",
                     retry=retry + 1,
                     error=str(e),
                     **context,

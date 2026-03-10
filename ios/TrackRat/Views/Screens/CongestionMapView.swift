@@ -1343,31 +1343,11 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
         
         private func getUIColor(for congestionFactor: Double) -> UIColor {
-            if congestionFactor < 1.05 {
-                return UIColor.systemGreen
-            } else if congestionFactor < 1.25 {
-                return UIColor.systemYellow
-            } else if congestionFactor < 2.0 {
-                return UIColor.systemOrange
-            } else {
-                return UIColor.systemRed
-            }
+            CongestionColors.color(forCongestionFactor: congestionFactor)
         }
 
-        /// Get color for frequency factor (higher is better)
         private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
-            guard let factor = frequencyFactor else {
-                return UIColor.systemGray  // No frequency data available
-            }
-            if factor >= 0.9 {
-                return UIColor.systemGreen   // Healthy: ≥90% of baseline
-            } else if factor >= 0.7 {
-                return UIColor.systemYellow  // Moderate: 70-90%
-            } else if factor >= 0.5 {
-                return UIColor.systemOrange  // Reduced: 50-70%
-            } else {
-                return UIColor.systemRed     // Severe: <50%
-            }
+            CongestionColors.color(forFrequencyFactor: frequencyFactor)
         }
 
         /// Get color for aggregated segment based on its data source's preferred mode

@@ -333,3 +333,25 @@ extension Stations {
         return getStationCode(normalizedStopName) == stationCode
     }
 }
+
+// MARK: - Congestion Map Color Helpers
+
+/// Shared color helpers used by CongestionMapView and JourneyCongestionMapView.
+enum CongestionColors {
+    /// Color for delay-based congestion factor (higher = more delayed).
+    static func color(forCongestionFactor factor: Double) -> UIColor {
+        if factor < 1.05 { return .systemGreen }
+        else if factor < 1.25 { return .systemYellow }
+        else if factor < 2.0 { return .systemOrange }
+        else { return .systemRed }
+    }
+
+    /// Color for frequency factor (higher = healthier service).
+    static func color(forFrequencyFactor factor: Double?) -> UIColor {
+        guard let factor else { return .systemGray }
+        if factor >= 0.9 { return .systemGreen }
+        else if factor >= 0.7 { return .systemYellow }
+        else if factor >= 0.5 { return .systemOrange }
+        else { return .systemRed }
+    }
+}

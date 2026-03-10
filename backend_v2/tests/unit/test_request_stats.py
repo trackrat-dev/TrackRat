@@ -164,8 +164,9 @@ class TestRequestStats:
         )
 
         snap = stats.snapshot()
-        assert snap["route_searches"][("NY", "TR")] == 2
-        assert snap["route_searches"][("NP", "NY")] == 1
+        searches = {(e["from"], e["to"]): e["count"] for e in snap["route_searches"]}
+        assert searches[("NY", "TR")] == 2
+        assert searches[("NP", "NY")] == 1
 
     def test_route_search_not_tracked_for_other_endpoints(self):
         """Only /departures endpoint triggers route search tracking."""
