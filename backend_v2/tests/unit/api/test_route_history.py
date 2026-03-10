@@ -97,20 +97,22 @@ async def _run_stats(
 class TestCalculateRouteStatsEmpty:
     """Verify correct defaults when no journeys match."""
 
-    async def test_empty_journeys_returns_zeros(self, db_session: AsyncSession):
+    async def test_empty_journeys_returns_nulls_for_arrival_metrics(self, db_session: AsyncSession):
         result = await _run_stats(db_session)
 
         assert result["total_journeys"] == 0
-        assert result["on_time_percentage"] == 0.0
-        assert result["average_delay_minutes"] == 0.0
+        assert result["on_time_percentage"] is None, (
+            "on_time_percentage should be None when no arrival data exists, "
+            "not 0.0 which would misleadingly suggest all trains are late"
+        )
+        assert result["average_delay_minutes"] is None, (
+            "average_delay_minutes should be None when no arrival data exists"
+        )
         assert result["average_departure_delay_minutes"] == 0.0
         assert result["cancellation_rate"] == 0.0
-        assert result["delay_breakdown"] == {
-            "on_time": 0,
-            "slight": 0,
-            "significant": 0,
-            "major": 0,
-        }
+        assert result["delay_breakdown"] is None, (
+            "delay_breakdown should be None when no arrival data exists"
+        )
         assert result["track_usage"] == {}
 
 
@@ -600,6 +602,118 @@ class TestOnTimePercentageDenominator:
         assert breakdown["slight"] == 25
         assert breakdown["significant"] == 25
         assert breakdown["major"] == 25
+
+
+@pytest.mark.asyncio
+class TestNoArrivalDataReturnsNull:
+    """Verify metrics are null (not zero) when no non-cancelled trains have arrival data.
+
+    Reproduces the bug where a route with cancelled trains and in-progress trains
+    showed 0% on-time and 0m delay, which misleadingly looked like all trains
+    were late when in reality there was simply no arrival data yet.
+    """
+
+    async def test_cancelled_plus_in_progress_returns_null_metrics(
+        self, db_session: AsyncSession
+    ):
+        """1 cancelled train + 1 departed-but-not-arrived train = null arrival metrics.
+
+        This is the exact scenario reported: Trenton to NY Penn shows 0% on-time
+        and 0m delay when trains are cancelled and remaining haven't arrived yet.
+        """
+        # Cancelled train
+        await _create_journey(
+            db_session,
+            train_id="cancelled_train",
+            is_cancelled=True,
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                },
+            ],
+        )
+        # In-progress train: has departed but no arrival data yet
+        await _create_journey(
+            db_session,
+            train_id="in_progress_train",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME + timedelta(seconds=20),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["total_journeys"] == 2
+        assert result["cancellation_rate"] == 50.0
+
+        # Arrival-based metrics must be None, not 0
+        assert result["on_time_percentage"] is None, (
+            f"on_time_percentage should be None when no trains have arrival data, "
+            f"got {result['on_time_percentage']}. Showing 0% misleads users into "
+            "thinking all trains are late when there's simply no data yet."
+        )
+        assert result["average_delay_minutes"] is None, (
+            f"average_delay_minutes should be None when no trains have arrival data, "
+            f"got {result['average_delay_minutes']}. Showing 0m misleads users."
+        )
+        assert result["delay_breakdown"] is None, (
+            f"delay_breakdown should be None when no arrival data exists, "
+            f"got {result['delay_breakdown']}."
+        )
+
+        # Departure delay should still work (in-progress train has actual_departure)
+        assert result["average_departure_delay_minutes"] >= 0, (
+            "Departure delay should still be computed for trains that have departed"
+        )
+
+    async def test_all_cancelled_returns_null_metrics(self, db_session: AsyncSession):
+        """When all trains are cancelled, arrival metrics should be null."""
+        for i in range(3):
+            await _create_journey(
+                db_session,
+                train_id=f"all_cancelled_{i}",
+                is_cancelled=True,
+                stops=[
+                    {
+                        "station_code": "NY",
+                        "stop_sequence": 0,
+                        "scheduled_departure": BASE_TIME + timedelta(minutes=i * 30),
+                    },
+                    {
+                        "station_code": "TR",
+                        "stop_sequence": 1,
+                        "scheduled_arrival": BASE_TIME + timedelta(hours=1, minutes=i * 30),
+                    },
+                ],
+            )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["total_journeys"] == 3
+        assert result["cancellation_rate"] == 100.0
+        assert result["on_time_percentage"] is None
+        assert result["average_delay_minutes"] is None
+        assert result["delay_breakdown"] is None
 
 
 @pytest.mark.asyncio

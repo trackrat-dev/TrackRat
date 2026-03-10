@@ -420,11 +420,11 @@ final class APIService: ObservableObject {
             }
             
             struct AggregateStats: Decodable {
-                let onTimePercentage: Double
-                let averageDelayMinutes: Double
+                let onTimePercentage: Double?
+                let averageDelayMinutes: Double?
                 let averageDepartureDelayMinutes: Double?
                 let cancellationRate: Double
-                let delayBreakdown: DelayBreakdown
+                let delayBreakdown: DelayBreakdown?
                 let trackUsageAtOrigin: [String: Int]
 
                 private enum CodingKeys: String, CodingKey {
@@ -436,13 +436,13 @@ final class APIService: ObservableObject {
                     case trackUsageAtOrigin = "track_usage_at_origin"
                 }
             }
-            
+
             struct HighlightedTrainStats: Decodable {
                 let trainId: String
-                let onTimePercentage: Double
-                let averageDelayMinutes: Double
+                let onTimePercentage: Double?
+                let averageDelayMinutes: Double?
                 let averageDepartureDelayMinutes: Double?
-                let delayBreakdown: DelayBreakdown
+                let delayBreakdown: DelayBreakdown?
                 let trackUsageAtOrigin: [String: Int]
 
                 private enum CodingKeys: String, CodingKey {
@@ -498,12 +498,12 @@ final class APIService: ObservableObject {
                 averageDelayMinutes: response.aggregateStats.averageDelayMinutes,
                 averageDepartureDelayMinutes: response.aggregateStats.averageDepartureDelayMinutes ?? 0,
                 cancellationRate: response.aggregateStats.cancellationRate,
-                delayBreakdown: RouteHistoricalData.DelayBreakdown(
-                    onTime: response.aggregateStats.delayBreakdown.onTime,
-                    slight: response.aggregateStats.delayBreakdown.slight,
-                    significant: response.aggregateStats.delayBreakdown.significant,
-                    major: response.aggregateStats.delayBreakdown.major
-                ),
+                delayBreakdown: response.aggregateStats.delayBreakdown.map {
+                    RouteHistoricalData.DelayBreakdown(
+                        onTime: $0.onTime, slight: $0.slight,
+                        significant: $0.significant, major: $0.major
+                    )
+                },
                 trackUsageAtOrigin: response.aggregateStats.trackUsageAtOrigin
             ),
             highlightedTrain: response.highlightedTrain.map { highlighted in
@@ -512,12 +512,12 @@ final class APIService: ObservableObject {
                     averageDelayMinutes: highlighted.averageDelayMinutes,
                     averageDepartureDelayMinutes: highlighted.averageDepartureDelayMinutes ?? 0,
                     cancellationRate: 0.0, // Not provided for individual trains
-                    delayBreakdown: RouteHistoricalData.DelayBreakdown(
-                        onTime: highlighted.delayBreakdown.onTime,
-                        slight: highlighted.delayBreakdown.slight,
-                        significant: highlighted.delayBreakdown.significant,
-                        major: highlighted.delayBreakdown.major
-                    ),
+                    delayBreakdown: highlighted.delayBreakdown.map {
+                        RouteHistoricalData.DelayBreakdown(
+                            onTime: $0.onTime, slight: $0.slight,
+                            significant: $0.significant, major: $0.major
+                        )
+                    },
                     trackUsageAtOrigin: highlighted.trackUsageAtOrigin
                 )
             }

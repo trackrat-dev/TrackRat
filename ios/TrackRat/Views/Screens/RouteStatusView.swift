@@ -174,6 +174,10 @@ struct RouteStatusView: View {
         let total = history.route.totalTrains
         let freqColor = frequencyColor(totalTrains: total, baseline: history.route.baselineTrainCount)
 
+        let stats = history.aggregateStats
+        let onTimeValue = stats.onTimePercentage.map { "\(Int($0))%" } ?? "N/A"
+        let onTimeColor = onTimePercentageColor(stats.onTimePercentage)
+
         if preferredMode == .health {
             // Frequency-focused stats for rapid transit (PATH, Subway, PATCO)
             HStack(spacing: 12) {
@@ -182,34 +186,26 @@ struct RouteStatusView: View {
                     value: formatFrequency(totalTrains: total, hours: hours),
                     color: freqColor
                 )
-                statCard(
-                    title: "On Time",
-                    value: "\(Int(history.aggregateStats.onTimePercentage))%",
-                    color: history.aggregateStats.onTimePercentage >= 80 ? .green : .orange
-                )
+                statCard(title: "On Time", value: onTimeValue, color: onTimeColor)
             }
 
-            if history.aggregateStats.cancellationRate > 0 {
+            if stats.cancellationRate > 0 {
                 HStack(spacing: 12) {
                     statCard(
                         title: "Cancelled",
-                        value: "\(Int(history.aggregateStats.cancellationRate))%",
-                        color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
+                        value: "\(Int(stats.cancellationRate))%",
+                        color: stats.cancellationRate <= 5 ? .green : .red
                     )
                 }
             }
         } else {
             // Delay-focused stats for commuter/intercity rail
             HStack(spacing: 12) {
-                statCard(
-                    title: "On Time",
-                    value: "\(Int(history.aggregateStats.onTimePercentage))%",
-                    color: history.aggregateStats.onTimePercentage >= 80 ? .green : .orange
-                )
+                statCard(title: "On Time", value: onTimeValue, color: onTimeColor)
                 statCard(
                     title: "Cancelled",
-                    value: "\(Int(history.aggregateStats.cancellationRate))%",
-                    color: history.aggregateStats.cancellationRate <= 5 ? .green : .red
+                    value: "\(Int(stats.cancellationRate))%",
+                    color: stats.cancellationRate <= 5 ? .green : .red
                 )
                 statCard(
                     title: "Frequency",
@@ -225,18 +221,34 @@ struct RouteStatusView: View {
                 HStack(spacing: 12) {
                     delayStatCard(
                         title: "Avg Departure Delay",
-                        value: formatDelay(history.aggregateStats.averageDepartureDelayMinutes),
-                        color: history.aggregateStats.averageDepartureDelayMinutes <= 5 ? .green : .orange
+                        value: formatDelay(stats.averageDepartureDelayMinutes),
+                        color: delayColor(stats.averageDepartureDelayMinutes)
                     )
                     delayStatCard(
                         title: "Avg Arrival Delay",
-                        value: formatDelay(history.aggregateStats.averageDelayMinutes),
-                        color: history.aggregateStats.averageDelayMinutes <= 5 ? .green : .orange
+                        value: stats.averageDelayMinutes.map { formatDelay($0) } ?? "N/A",
+                        color: delayColor(stats.averageDelayMinutes)
                     )
                 }
             }
 
         }
+    }
+
+    /// Color for on-time percentage: green >= 80%, orange >= 50%, red < 50%, gray if no data.
+    private func onTimePercentageColor(_ percentage: Double?) -> Color {
+        guard let pct = percentage else { return .secondary }
+        if pct >= 80 { return .green }
+        if pct >= 50 { return .orange }
+        return .red
+    }
+
+    /// Color for delay minutes: green <= 5m, orange <= 15m, red > 15m, gray if no data.
+    private func delayColor(_ minutes: Double?) -> Color {
+        guard let m = minutes else { return .secondary }
+        if m <= 5 { return .green }
+        if m <= 15 { return .orange }
+        return .red
     }
 
     /// Color for frequency based on comparison to historical baseline.
