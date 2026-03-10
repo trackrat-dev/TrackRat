@@ -32,11 +32,11 @@ struct AddRouteAlertView: View {
     @State private var showTrainStationPicker = false
     @State private var departures: [TrainV2] = []
     @State private var isLoadingDepartures = false
-    @State private var weekdaysOnly = true  // UI toggle: true = Mon-Fri (31), false = all days (127)
-    @State private var includePlannedWork = false
 
-    /// MTA systems that support planned work / service alert notifications.
-    private static let plannedWorkSystems: Set<TrainSystem> = [.subway, .lirr, .mnr]
+    // Customization sheet state
+    @State private var draftSubscription: RouteAlertSubscription? = nil
+    @State private var draftRoute: RouteLine? = nil
+    @State private var showCustomizationSheet = false
 
     /// Systems available for line mode: user's selected systems that have routes.
     private var availableLineSystems: [TrainSystem] {
@@ -101,9 +101,29 @@ struct AddRouteAlertView: View {
                 lineSystem = availableLineSystems.first
             }
         }
-        .onChange(of: lineSystem) { _ in
-            includePlannedWork = false
+        .sheet(isPresented: $showCustomizationSheet) {
+            if let draft = draftSubscription {
+                AlertCustomizationSheet(subscription: draft) { customized in
+                    saveCustomizedSubscription(customized)
+                }
+            }
         }
+    }
+
+    // MARK: - Save Customized Subscription
+
+    private func saveCustomizedSubscription(_ sub: RouteAlertSubscription) {
+        if sub.lineId != nil, let route = draftRoute {
+            alertService.addLineSubscriptions(template: sub, route: route)
+        } else if sub.fromStationCode != nil {
+            alertService.addStationPairSubscriptions(template: sub)
+        } else if sub.trainId != nil {
+            alertService.addTrainSubscription(template: sub)
+            dismiss()
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        draftSubscription = nil
+        draftRoute = nil
     }
 
     // MARK: - Line Mode
@@ -142,10 +162,6 @@ struct AddRouteAlertView: View {
         VStack(spacing: 0) {
             lineSystemPickerRow
 
-            if let system = lineSystem, Self.plannedWorkSystems.contains(system) {
-                plannedWorkToggleRow
-            }
-
             if lineSystem == nil {
                 Spacer()
             } else if filteredRoutes.isEmpty {
@@ -163,16 +179,15 @@ struct AddRouteAlertView: View {
                 List {
                     ForEach(filteredRoutes) { route in
                         Button {
-                            withAnimation {
-                                alertService.addLineSubscriptions(
-                                    dataSource: route.dataSource,
-                                    lineId: route.id,
-                                    lineName: route.name,
-                                    route: route,
-                                    includePlannedWork: includePlannedWork
-                                )
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            let ds = route.dataSource
+                            draftSubscription = RouteAlertSubscription(
+                                dataSource: ds,
+                                lineId: route.id,
+                                lineName: route.name,
+                                direction: nil
+                            )
+                            draftRoute = route
+                            showCustomizationSheet = true
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -263,13 +278,13 @@ struct AddRouteAlertView: View {
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         showConfirmation("Already subscribed")
                     } else {
-                        alertService.addStationPairSubscriptions(
+                        draftSubscription = RouteAlertSubscription(
                             dataSource: dataSource,
                             fromStationCode: fromCode,
                             toStationCode: toCode
                         )
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        showConfirmation("Alerts added for both directions")
+                        draftRoute = nil
+                        showCustomizationSheet = true
                     }
 
                     withAnimation {
@@ -339,11 +354,6 @@ struct AddRouteAlertView: View {
                 // Station picker (shown after system selected)
                 if trainSystem != nil {
                     stationPickerRow
-                }
-
-                // Weekdays-only toggle
-                if trainStation != nil {
-                    weekdaysToggleRow
                 }
 
                 // Departures list or loading indicator
@@ -440,35 +450,6 @@ struct AddRouteAlertView: View {
         .buttonStyle(.plain)
     }
 
-    private var weekdaysToggleRow: some View {
-        Toggle(isOn: $weekdaysOnly) {
-            Text("Weekdays only")
-                .font(.subheadline)
-                .foregroundColor(.white)
-        }
-        .tint(.orange)
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-    }
-
-    private var plannedWorkToggleRow: some View {
-        Toggle(isOn: $includePlannedWork) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Planned work alerts")
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                Text("Get notified about upcoming service changes")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.5))
-            }
-        }
-        .tint(.orange)
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        .padding(.horizontal)
-        .padding(.top, 4)
-    }
-
     private var departuresList: some View {
         Group {
             if departures.isEmpty {
@@ -484,14 +465,13 @@ struct AddRouteAlertView: View {
                     ForEach(departures) { train in
                         Button {
                             let trainName = formatTrainName(train)
-                            alertService.addTrainSubscription(
+                            draftSubscription = RouteAlertSubscription(
                                 dataSource: train.dataSource,
                                 trainId: train.trainId,
-                                trainName: trainName,
-                                activeDays: weekdaysOnly ? 31 : 127
+                                trainName: trainName
                             )
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            dismiss()
+                            draftRoute = nil
+                            showCustomizationSheet = true
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {

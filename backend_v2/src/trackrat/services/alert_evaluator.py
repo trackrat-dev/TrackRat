@@ -195,13 +195,13 @@ async def evaluate_route_alerts(
             alert_type = ""
             frequency_factor: float | None = None
 
-            if cancelled_count > 0:
+            if cancelled_count > 0 and sub.notify_cancellation:
                 should_alert = True
                 alert_type = "cancellation"
             elif sub.data_source in FREQUENCY_FIRST_SOURCES:
                 # Frequency-first systems (subway, PATH, PATCO): check
                 # reduced service instead of delays
-                if sub.data_source in REALTIME_SOURCES:
+                if sub.notify_delay and sub.data_source in REALTIME_SOURCES:
                     active_count = total_count - cancelled_count
                     baseline = await _query_baseline_train_count(db, sub, now)
                     # Halve baseline for directional subs since baseline covers both directions
@@ -213,7 +213,8 @@ async def evaluate_route_alerts(
                             should_alert = True
                             alert_type = "reduced_service"
             elif (
-                total_count > 0
+                sub.notify_delay
+                and total_count > 0
                 and (delayed_count / total_count) >= DELAY_PERCENT_THRESHOLD
             ):
                 # Delay-first systems (NJT, Amtrak, LIRR, MNR): check delays
@@ -222,7 +223,8 @@ async def evaluate_route_alerts(
 
             if not should_alert:
                 # Recovery: conditions cleared after a previous alert
-                if sub.notify_recovery and sub.last_alert_hash:
+                # Only check recovery if at least one real-time alert type is enabled
+                if sub.notify_recovery and sub.last_alert_hash and (sub.notify_cancellation or sub.notify_delay):
                     sent = await _send_recovery_notification(
                         sub, device, now, apns_service
                     )
@@ -338,14 +340,14 @@ async def _evaluate_train_subscription(
 
     # Determine alert type
     alert_type = ""
-    if journey.is_cancelled:
+    if journey.is_cancelled and sub.notify_cancellation:
         alert_type = "cancellation"
-    elif _is_significantly_delayed(journey, threshold_minutes=delay_threshold):
+    elif _is_significantly_delayed(journey, threshold_minutes=delay_threshold) and sub.notify_delay:
         alert_type = "delay"
 
     if not alert_type:
         # Recovery: conditions cleared after a previous alert
-        if sub.notify_recovery and sub.last_alert_hash:
+        if sub.notify_recovery and sub.last_alert_hash and (sub.notify_cancellation or sub.notify_delay):
             sent = await _send_recovery_notification(sub, device, now, apns_service)
             if sent:
                 sub.last_alert_hash = None

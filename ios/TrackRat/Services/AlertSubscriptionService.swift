@@ -25,63 +25,73 @@ final class AlertSubscriptionService: ObservableObject {
 
     // MARK: - Mutation
 
-    /// Add two line subscriptions (one per direction) for the given route.
-    func addLineSubscriptions(dataSource: String, lineId: String, lineName: String, route: RouteLine, includePlannedWork: Bool = false) {
+    /// Add two line subscriptions (one per direction) using settings from a template subscription.
+    func addLineSubscriptions(template: RouteAlertSubscription, route: RouteLine) {
         guard let first = route.stationCodes.first,
               let last = route.stationCodes.last else { return }
-        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: first, includePlannedWork: includePlannedWork)
-        addSingleLineSubscription(dataSource: dataSource, lineId: lineId, lineName: lineName, direction: last, includePlannedWork: includePlannedWork)
-    }
-
-    /// Add a single directional line subscription (deduped on lineId + dataSource + direction).
-    func addSingleLineSubscription(dataSource: String, lineId: String, lineName: String, direction: String?, includePlannedWork: Bool = false) {
-        guard !subscriptions.contains(where: {
-            $0.lineId == lineId && $0.dataSource == dataSource && $0.direction == direction
-        }) else { return }
-        let sub = RouteAlertSubscription(
-            dataSource: dataSource,
-            lineId: lineId,
-            lineName: lineName,
-            direction: direction,
-            includePlannedWork: includePlannedWork
-        )
-        subscriptions.append(sub)
+        for direction in [first, last] {
+            guard !subscriptions.contains(where: {
+                $0.lineId == template.lineId && $0.dataSource == template.dataSource && $0.direction == direction
+            }) else { continue }
+            let sub = RouteAlertSubscription(
+                dataSource: template.dataSource,
+                lineId: template.lineId ?? "",
+                lineName: template.lineName ?? "",
+                direction: direction,
+                activeDays: template.activeDays,
+                activeStartMinutes: template.activeStartMinutes,
+                activeEndMinutes: template.activeEndMinutes,
+                timezone: template.timezone,
+                delayThresholdMinutes: template.delayThresholdMinutes,
+                serviceThresholdPct: template.serviceThresholdPct,
+                notifyCancellation: template.notifyCancellation,
+                notifyDelay: template.notifyDelay,
+                notifyRecovery: template.notifyRecovery,
+                digestTimeMinutes: template.digestTimeMinutes,
+                includePlannedWork: template.includePlannedWork
+            )
+            subscriptions.append(sub)
+        }
         saveToDefaults()
     }
 
-    /// Add station-pair subscriptions for both directions.
-    func addStationPairSubscriptions(dataSource: String, fromStationCode: String, toStationCode: String) {
-        addSingleStationPairSubscription(dataSource: dataSource, fromStationCode: fromStationCode, toStationCode: toStationCode)
-        addSingleStationPairSubscription(dataSource: dataSource, fromStationCode: toStationCode, toStationCode: fromStationCode)
-    }
-
-    /// Add a single station-pair subscription (deduped on from + to + dataSource).
-    func addSingleStationPairSubscription(dataSource: String, fromStationCode: String, toStationCode: String) {
-        guard !subscriptions.contains(where: {
-            $0.fromStationCode == fromStationCode &&
-            $0.toStationCode == toStationCode &&
-            $0.dataSource == dataSource
-        }) else { return }
-        let sub = RouteAlertSubscription(
-            dataSource: dataSource,
-            fromStationCode: fromStationCode,
-            toStationCode: toStationCode
-        )
-        subscriptions.append(sub)
+    /// Add station-pair subscriptions for both directions using settings from a template subscription.
+    func addStationPairSubscriptions(template: RouteAlertSubscription) {
+        guard let fromCode = template.fromStationCode,
+              let toCode = template.toStationCode else { return }
+        for (from, to) in [(fromCode, toCode), (toCode, fromCode)] {
+            guard !subscriptions.contains(where: {
+                $0.fromStationCode == from &&
+                $0.toStationCode == to &&
+                $0.dataSource == template.dataSource
+            }) else { continue }
+            let sub = RouteAlertSubscription(
+                dataSource: template.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: template.activeDays,
+                activeStartMinutes: template.activeStartMinutes,
+                activeEndMinutes: template.activeEndMinutes,
+                timezone: template.timezone,
+                delayThresholdMinutes: template.delayThresholdMinutes,
+                serviceThresholdPct: template.serviceThresholdPct,
+                notifyCancellation: template.notifyCancellation,
+                notifyDelay: template.notifyDelay,
+                notifyRecovery: template.notifyRecovery,
+                digestTimeMinutes: template.digestTimeMinutes
+            )
+            subscriptions.append(sub)
+        }
         saveToDefaults()
     }
 
-    func addTrainSubscription(dataSource: String, trainId: String, trainName: String, activeDays: Int = 127) {
-        let sub = RouteAlertSubscription(
-            dataSource: dataSource,
-            trainId: trainId,
-            trainName: trainName,
-            activeDays: activeDays
-        )
+    /// Add a train subscription using settings from a template subscription (deduped on trainId + dataSource).
+    func addTrainSubscription(template: RouteAlertSubscription) {
+        guard let trainId = template.trainId else { return }
         guard !subscriptions.contains(where: {
-            $0.trainId == trainId && $0.dataSource == dataSource
+            $0.trainId == trainId && $0.dataSource == template.dataSource
         }) else { return }
-        subscriptions.append(sub)
+        subscriptions.append(template)
         saveToDefaults()
     }
 
@@ -142,6 +152,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     var timezone: String?        // IANA timezone
     var delayThresholdMinutes: Int?  // nil = system default (15)
     var serviceThresholdPct: Int?    // nil = system default (50)
+    var notifyCancellation: Bool
+    var notifyDelay: Bool
     var notifyRecovery: Bool
     var digestTimeMinutes: Int?  // Minutes from midnight, nil = disabled
     var includePlannedWork: Bool
@@ -153,6 +165,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         case id, dataSource, lineId, lineName, fromStationCode, toStationCode
         case trainId, trainName, direction, activeDays, activeStartMinutes
         case activeEndMinutes, timezone, delayThresholdMinutes, serviceThresholdPct
+        case notifyCancellation, notifyDelay
         case notifyRecovery, digestTimeMinutes, includePlannedWork
         case weekdaysOnly  // Legacy key for migration
     }
@@ -162,6 +175,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         dataSource: String, lineId: String, lineName: String, direction: String?,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        notifyCancellation: Bool = true, notifyDelay: Bool = true,
         notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil,
         includePlannedWork: Bool = false
     ) {
@@ -180,6 +194,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.timezone = timezone
         self.delayThresholdMinutes = delayThresholdMinutes
         self.serviceThresholdPct = serviceThresholdPct
+        self.notifyCancellation = notifyCancellation
+        self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
         self.includePlannedWork = includePlannedWork
@@ -190,6 +206,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         dataSource: String, fromStationCode: String, toStationCode: String,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        notifyCancellation: Bool = true, notifyDelay: Bool = true,
         notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
     ) {
         self.id = UUID()
@@ -207,6 +224,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.timezone = timezone
         self.delayThresholdMinutes = delayThresholdMinutes
         self.serviceThresholdPct = serviceThresholdPct
+        self.notifyCancellation = notifyCancellation
+        self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
         self.includePlannedWork = false
@@ -217,6 +236,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         dataSource: String, trainId: String, trainName: String,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        notifyCancellation: Bool = true, notifyDelay: Bool = true,
         notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
     ) {
         self.id = UUID()
@@ -234,6 +254,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.timezone = timezone
         self.delayThresholdMinutes = delayThresholdMinutes
         self.serviceThresholdPct = serviceThresholdPct
+        self.notifyCancellation = notifyCancellation
+        self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
         self.includePlannedWork = false
@@ -264,6 +286,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
         delayThresholdMinutes = try container.decodeIfPresent(Int.self, forKey: .delayThresholdMinutes)
         serviceThresholdPct = try container.decodeIfPresent(Int.self, forKey: .serviceThresholdPct)
+        notifyCancellation = try container.decodeIfPresent(Bool.self, forKey: .notifyCancellation) ?? true
+        notifyDelay = try container.decodeIfPresent(Bool.self, forKey: .notifyDelay) ?? true
         notifyRecovery = try container.decodeIfPresent(Bool.self, forKey: .notifyRecovery) ?? false
         digestTimeMinutes = try container.decodeIfPresent(Int.self, forKey: .digestTimeMinutes)
         includePlannedWork = try container.decodeIfPresent(Bool.self, forKey: .includePlannedWork) ?? false
@@ -286,6 +310,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(timezone, forKey: .timezone)
         try container.encodeIfPresent(delayThresholdMinutes, forKey: .delayThresholdMinutes)
         try container.encodeIfPresent(serviceThresholdPct, forKey: .serviceThresholdPct)
+        try container.encode(notifyCancellation, forKey: .notifyCancellation)
+        try container.encode(notifyDelay, forKey: .notifyDelay)
         try container.encode(notifyRecovery, forKey: .notifyRecovery)
         try container.encodeIfPresent(digestTimeMinutes, forKey: .digestTimeMinutes)
         try container.encode(includePlannedWork, forKey: .includePlannedWork)

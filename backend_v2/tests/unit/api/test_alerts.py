@@ -613,3 +613,91 @@ class TestServiceAlertsEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data["alerts"], list)
+
+
+class TestNotifyTypeToggleSubscriptions:
+    """Tests for notify_cancellation and notify_delay field round-tripping."""
+
+    def test_notify_toggles_default_to_true(self, e2e_client: TestClient):
+        """When not specified, notify_cancellation and notify_delay default to True."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-notify-1", "apns_token": "tok-notify-1"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-notify-1",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "NE"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        print(f"  Sync response: {resp.json()}")
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-notify-1")
+        assert get_resp.status_code == 200
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["notify_cancellation"] is True
+        assert subs[0]["notify_delay"] is True
+        print("  Verified: defaults are True when not specified")
+
+    def test_notify_toggles_round_trip(self, e2e_client: TestClient):
+        """Setting notify_cancellation=False and notify_delay=False persists correctly."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-notify-2", "apns_token": "tok-notify-2"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-notify-2",
+                "subscriptions": [
+                    {
+                        "data_source": "NJT",
+                        "line_id": "NE",
+                        "notify_cancellation": False,
+                        "notify_delay": False,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-notify-2")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["notify_cancellation"] is False
+        assert subs[0]["notify_delay"] is False
+        print("  Verified: False values round-trip correctly")
+
+    def test_mixed_notify_values(self, e2e_client: TestClient):
+        """One toggle on, one off — verifies independence."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-notify-3", "apns_token": "tok-notify-3"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-notify-3",
+                "subscriptions": [
+                    {
+                        "data_source": "SUBWAY",
+                        "line_id": "1",
+                        "notify_cancellation": True,
+                        "notify_delay": False,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-notify-3")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["notify_cancellation"] is True
+        assert subs[0]["notify_delay"] is False
+        print("  Verified: mixed toggle values round-trip independently")

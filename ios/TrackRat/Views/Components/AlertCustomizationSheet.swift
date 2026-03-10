@@ -15,13 +15,23 @@ struct AlertCustomizationSheet: View {
         RouteAlertSubscription.frequencyFirstSources.contains(sub.dataSource)
     }
 
+    /// MTA systems that support planned work notifications.
+    private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
+
+    /// Whether this is a line subscription on an MTA system (planned work eligible).
+    private var showPlannedWork: Bool {
+        sub.lineId != nil && Self.plannedWorkSystems.contains(sub.dataSource)
+    }
+
     var body: some View {
         NavigationStack {
             List {
+                alertTypesSection
                 daysSection
                 timeWindowSection
-                thresholdSection
-                recoverySection
+                if showPlannedWork {
+                    plannedWorkSection
+                }
                 digestSection
             }
             .listStyle(.insetGrouped)
@@ -44,6 +54,56 @@ struct AlertCustomizationSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Alert Types
+
+    private var alertTypesSection: some View {
+        Section {
+            Toggle(isOn: $sub.notifyCancellation) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cancellations")
+                    Text("Alert when trains are cancelled")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .tint(.orange)
+
+            Toggle(isOn: $sub.notifyDelay) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isFrequencyBased ? "Reduced service" : "Delays")
+                    Text(isFrequencyBased
+                         ? "Alert when service frequency drops"
+                         : "Alert when trains are significantly delayed")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .tint(.orange)
+
+            if sub.notifyDelay {
+                if isFrequencyBased {
+                    serviceThresholdRow
+                } else {
+                    delayThresholdRow
+                }
+            }
+
+            if sub.notifyCancellation || sub.notifyDelay {
+                Toggle(isOn: $sub.notifyRecovery) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Recovery alerts")
+                        Text("Notify when your route returns to normal")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .tint(.orange)
+            }
+        } header: {
+            Text("Real-Time Alerts")
+        }
     }
 
     // MARK: - Days
@@ -183,24 +243,6 @@ struct AlertCustomizationSheet: View {
 
     // MARK: - Threshold
 
-    private var thresholdSection: some View {
-        Section {
-            if isFrequencyBased {
-                serviceThresholdRow
-            } else {
-                delayThresholdRow
-            }
-        } header: {
-            Text("Sensitivity")
-        } footer: {
-            if isFrequencyBased {
-                Text("Alert when service frequency drops below this level. Default is 50%.")
-            } else {
-                Text("Alert when delays exceed this threshold. Default is 15 minutes.")
-            }
-        }
-    }
-
     private var delayThresholdRow: some View {
         HStack {
             Text("Delay threshold")
@@ -245,21 +287,21 @@ struct AlertCustomizationSheet: View {
         }
     }
 
-    // MARK: - Recovery
+    // MARK: - Planned Work
 
-    private var recoverySection: some View {
+    private var plannedWorkSection: some View {
         Section {
-            Toggle(isOn: $sub.notifyRecovery) {
+            Toggle(isOn: $sub.includePlannedWork) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Recovery alerts")
-                    Text("Notify when your route returns to normal")
+                    Text("Planned work alerts")
+                    Text("Get notified about upcoming service changes")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
                 }
             }
             .tint(.orange)
         } header: {
-            Text("Recovery")
+            Text("Planned Work")
         }
     }
 
