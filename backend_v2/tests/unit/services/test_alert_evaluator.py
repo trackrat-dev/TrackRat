@@ -494,7 +494,16 @@ class TestAlertEvaluator:
     async def test_reduced_service_triggers_alert_for_realtime_source(
         self, db_session: AsyncSession
     ):
-        """When train count drops below 50% of baseline, a reduced service alert fires."""
+        """When train count drops below 50% of baseline, a reduced service alert fires.
+
+        Uses a fixed time (Wednesday 2pm ET) to avoid flakiness from midnight
+        crossover, DST transitions, or hour-boundary races between independent
+        now_et() calls in the test helpers vs the evaluator.
+        """
+        # Pin time: Wednesday 2026-01-14 14:00 ET — a weekday, far from
+        # midnight, no DST ambiguity (firmly EST).
+        fixed_now = ET.localize(datetime(2026, 1, 14, 14, 0, 0))
+
         apns = _make_apns()
         _make_device_and_sub(
             db_session,
@@ -503,28 +512,26 @@ class TestAlertEvaluator:
             to_station="B01",
         )
 
-        now = now_et()
-        # Create baseline: 10 trains per matching day, spread within the rolling
-        # 60-minute window (same window the evaluator uses for both current and
-        # baseline counts).
+        # Create baseline: 10 trains per matching weekday, spread within the
+        # rolling 60-minute window the evaluator uses for both current and
+        # baseline counts.
         baseline_days_added = 0
         for days_ago in range(1, 35):
             # Normalize to correct DST offset for the target date — pytz
             # timedelta arithmetic preserves the original UTC offset, so
             # replace() would keep EDT even for dates that should be EST.
-            past_date = ET.normalize(now - timedelta(days=days_ago))
+            past_date = ET.normalize(fixed_now - timedelta(days=days_ago))
             # Must match weekday/weekend pattern
-            if (past_date.weekday() >= 5) != (now.weekday() >= 5):
+            if (past_date.weekday() >= 5) != (fixed_now.weekday() >= 5):
                 continue
             for i in range(10):
-                # Spread trains within the past 50 minutes relative to now's
-                # time-of-day so they fall inside the rolling 60-min window.
-                # Cap at 50 min to avoid crossing midnight into a different date.
-                # Use ET.localize on a naive datetime to get the correct
-                # UTC offset for the target date (EST vs EDT).
+                # Spread trains within the past 50 minutes relative to
+                # fixed_now's time-of-day so they fall inside the rolling
+                # 60-min window. Use ET.localize on a naive datetime to get
+                # the correct UTC offset for the target date (EST vs EDT).
                 pd = past_date.date()
                 sched = ET.localize(
-                    datetime(pd.year, pd.month, pd.day, now.hour, now.minute, 0)
+                    datetime(pd.year, pd.month, pd.day, fixed_now.hour, fixed_now.minute, 0)
                     - timedelta(minutes=i * 5)
                 )
                 journey = TrainJourney(
@@ -546,21 +553,30 @@ class TestAlertEvaluator:
             if baseline_days_added >= MIN_BASELINE_DAYS + 1:
                 break
 
-        # Current hour: only 3 trains running (30% of baseline ~10)
+        # Current hour: only 3 trains (30% of baseline ~10)
         for i in range(3):
-            _make_journey(
-                db_session,
+            sched = fixed_now - timedelta(minutes=10 + i * 10)
+            journey = TrainJourney(
                 train_id=f"current-{i}",
-                data_source="SUBWAY",
+                journey_date=fixed_now.date(),
                 line_code="A",
-                origin="A01",
-                terminal="B01",
-                delay_minutes=0,
-                minutes_ago=10 + i * 10,
+                line_name="A Train",
+                destination="Far Rockaway",
+                origin_station_code="A01",
+                terminal_station_code="B01",
+                data_source="SUBWAY",
+                scheduled_departure=sched,
+                actual_departure=sched,
+                is_cancelled=False,
+                has_complete_journey=True,
             )
+            db_session.add(journey)
         await db_session.flush()
 
-        count = await evaluate_route_alerts(db_session, apns)
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fixed_now
+        ):
+            count = await evaluate_route_alerts(db_session, apns)
         assert count == 1
         apns.send_alert_notification.assert_called_once()
 
