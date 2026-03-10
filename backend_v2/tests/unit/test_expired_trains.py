@@ -368,7 +368,9 @@ async def test_null_data_response_does_not_increment_error_count():
     # Mock NJT client that raises NJTransitNullDataError (transient null data)
     njt_client = AsyncMock()
     njt_client.get_train_stop_list = AsyncMock(
-        side_effect=NJTransitNullDataError("Train 744 - API returned null data (transient)")
+        side_effect=NJTransitNullDataError(
+            "Train 744 - API returned null data (transient)"
+        )
     )
 
     collector = JourneyCollector(njt_client)
@@ -420,7 +422,9 @@ async def test_null_data_does_not_reset_existing_error_count():
 
     njt_client = AsyncMock()
     njt_client.get_train_stop_list = AsyncMock(
-        side_effect=NJTransitNullDataError("Train 738 - API returned null data (transient)")
+        side_effect=NJTransitNullDataError(
+            "Train 738 - API returned null data (transient)"
+        )
     )
 
     collector = JourneyCollector(njt_client)
@@ -488,9 +492,9 @@ async def test_genuine_not_found_still_expires_after_null_data():
     )
     await collector.collect_journey_details(session, journey)
 
-    assert journey.api_error_count == 2, (
-        "Null data response must not increment error count past 2"
-    )
+    assert (
+        journey.api_error_count == 2
+    ), "Null data response must not increment error count past 2"
     assert journey.is_expired is False
 
     # 1 more genuine not-found — THIS should expire

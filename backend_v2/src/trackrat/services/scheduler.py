@@ -2665,7 +2665,9 @@ class SchedulerService:
                             end_reason = (
                                 "expired"
                                 if journey.is_expired
-                                else "completed" if journey.is_completed else "cancelled"
+                                else (
+                                    "completed" if journey.is_completed else "cancelled"
+                                )
                             )
 
                             logger.info(
@@ -2771,13 +2773,17 @@ class SchedulerService:
                         for token in tokens:
                             try:
                                 # Calculate content state specific to this token's journey segment
-                                content_state = self._calculate_live_activity_content_state(
-                                    journey, token, session
+                                content_state = (
+                                    self._calculate_live_activity_content_state(
+                                        journey, token, session
+                                    )
                                 )
 
                                 # Send token-specific update via APNS
-                                success = await self.apns_service.send_live_activity_update(
-                                    token.push_token, content_state
+                                success = (
+                                    await self.apns_service.send_live_activity_update(
+                                        token.push_token, content_state
+                                    )
                                 )
 
                                 # Mark token as inactive if it failed with 410

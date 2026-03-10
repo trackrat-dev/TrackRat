@@ -1444,12 +1444,12 @@ class TestTerminalStopActualArrival:
             sqlite_session, journey, stops_data
         )
 
-        assert journey.is_completed is True, (
-            f"Expected is_completed=True, got {journey.is_completed}"
-        )
-        assert journey.actual_arrival is not None, (
-            "Expected journey.actual_arrival to be set on completion"
-        )
+        assert (
+            journey.is_completed is True
+        ), f"Expected is_completed=True, got {journey.is_completed}"
+        assert (
+            journey.actual_arrival is not None
+        ), "Expected journey.actual_arrival to be set on completion"
 
         # The critical assertion: terminal stop must have actual_arrival
         terminal_stop = await sqlite_session.scalar(
@@ -1511,11 +1511,16 @@ class TestTerminalStopActualArrival:
         builder = StopBuilder()
         stops_data = [
             _make_stop_with_sched_fields(
-                builder, "TR", "Trenton",
-                dep_time=base_time.strftime(NJT_TIME_FORMAT), departed=True,
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
             ),
             _make_stop_with_sched_fields(
-                builder, "NY", "New York",
+                builder,
+                "NY",
+                "New York",
                 dep_time=later_arrival.strftime(NJT_TIME_FORMAT),
                 arr_time=later_arrival.strftime(NJT_TIME_FORMAT),
                 departed=False,
@@ -1853,16 +1858,12 @@ class TestTerminalStopArrivalOnCompletion:
             ),
         ]
 
-        await journey_collector.update_journey_stops(
-            sqlite_session, journey, stops
-        )
+        await journey_collector.update_journey_stops(sqlite_session, journey, stops)
         await sqlite_session.flush()
 
         # check_journey_completion is called separately from update_journey_stops
         # in the real flow (see update_journey at line ~877)
-        await journey_collector.check_journey_completion(
-            sqlite_session, journey, stops
-        )
+        await journey_collector.check_journey_completion(sqlite_session, journey, stops)
         await sqlite_session.flush()
 
         # The journey should be completed

@@ -417,9 +417,7 @@ class NJTScheduleCollector:
                 # Use savepoint so a single train failure doesn't poison the
                 # session for all subsequent trains in this batch.
                 async with session.begin_nested():
-                    await self._update_journey_with_stops(
-                        session, journey, train_data
-                    )
+                    await self._update_journey_with_stops(session, journey, train_data)
 
                 stats["stop_collections_successful"] += 1
 

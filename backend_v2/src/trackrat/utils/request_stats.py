@@ -10,6 +10,7 @@ import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -21,10 +22,10 @@ class RequestStats:
 
     # Counters
     total_requests: int = 0
-    requests_by_path: Counter = field(default_factory=Counter)
-    requests_by_status: Counter = field(default_factory=Counter)
-    requests_by_client: Counter = field(default_factory=Counter)
-    route_searches: Counter = field(default_factory=Counter)
+    requests_by_path: Counter[str] = field(default_factory=Counter)
+    requests_by_status: Counter[int] = field(default_factory=Counter)
+    requests_by_client: Counter[str] = field(default_factory=Counter)
+    route_searches: Counter[tuple[str, str]] = field(default_factory=Counter)
 
     # Latency tracking: path_template -> list of durations (capped)
     _latencies: dict[str, list[float]] = field(default_factory=dict)
@@ -60,7 +61,7 @@ class RequestStats:
                 if from_station and to_station:
                     self.route_searches[(from_station, to_station)] += 1
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         """Return a point-in-time copy of all stats."""
         with self._lock:
             latency_stats = {}

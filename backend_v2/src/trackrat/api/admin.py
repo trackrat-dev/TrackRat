@@ -7,7 +7,7 @@ All request-level stats are in-memory and reset on restart.
 """
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
@@ -40,30 +40,31 @@ async def _db_stats(db: AsyncSession) -> dict[str, Any]:
     live_activity_count = 0
 
     try:
-        provider_stmt = select(
-            TrainJourney.data_source,
-            func.count().label("total_today"),
-            func.sum(
-                case(
-                    (
-                        (TrainJourney.is_completed.is_not(True))
-                        & (TrainJourney.is_cancelled.is_not(True))
-                        & (TrainJourney.last_updated_at > now - timedelta(hours=2)),
-                        1,
-                    ),
-                    else_=0,
-                )
-            ).label("active"),
-            func.sum(case((TrainJourney.is_cancelled.is_(True), 1), else_=0)).label(
-                "cancelled"
-            ),
-            func.max(TrainJourney.last_updated_at).label("last_update"),
-        ).where(
-            TrainJourney.journey_date == today,
-        ).group_by(
-            TrainJourney.data_source
-        ).order_by(
-            TrainJourney.data_source
+        provider_stmt = (
+            select(
+                TrainJourney.data_source,
+                func.count().label("total_today"),
+                func.sum(
+                    case(
+                        (
+                            (TrainJourney.is_completed.is_not(True))
+                            & (TrainJourney.is_cancelled.is_not(True))
+                            & (TrainJourney.last_updated_at > now - timedelta(hours=2)),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("active"),
+                func.sum(case((TrainJourney.is_cancelled.is_(True), 1), else_=0)).label(
+                    "cancelled"
+                ),
+                func.max(TrainJourney.last_updated_at).label("last_update"),
+            )
+            .where(
+                TrainJourney.journey_date == today,
+            )
+            .group_by(TrainJourney.data_source)
+            .order_by(TrainJourney.data_source)
         )
 
         provider_result = await db.execute(provider_stmt)
@@ -117,7 +118,7 @@ def _scheduler_stats() -> list[dict[str, Any]]:
     try:
         scheduler = get_scheduler()
         status = scheduler.get_status()
-        return status.get("jobs", [])
+        return cast(list[dict[str, Any]], status.get("jobs", []))
     except Exception:
         return []
 
@@ -144,7 +145,7 @@ def _format_duration(ms: float) -> str:
 
 
 def _render_html(
-    request_stats: dict,
+    request_stats: dict[str, Any],
     db_stats: dict[str, Any],
     scheduler_jobs: list[dict[str, Any]],
     settings: Settings,
@@ -208,8 +209,14 @@ def _render_html(
     for p in db_stats["providers"]:
         fresh_cls = ""
         if p["freshness_min"] is not None:
-            fresh_cls = "ok" if p["freshness_min"] < 10 else ("warn" if p["freshness_min"] < 30 else "err")
-        fresh_str = f"{p['freshness_min']}m ago" if p["freshness_min"] is not None else "never"
+            fresh_cls = (
+                "ok"
+                if p["freshness_min"] < 10
+                else ("warn" if p["freshness_min"] < 30 else "err")
+            )
+        fresh_str = (
+            f"{p['freshness_min']}m ago" if p["freshness_min"] is not None else "never"
+        )
         provider_rows += (
             f"<tr><td><strong>{_esc(p['source'])}</strong></td>"
             f"<td class='num'>{p['active']}</td>"

@@ -31,7 +31,6 @@ from tests.factories.amtrak import (
     create_amtrak_station_data,
 )
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -123,9 +122,7 @@ class TestScheduleAmtrakJourneyCollections:
     """
 
     @pytest.mark.asyncio
-    async def test_scheduled_trains_are_collected_not_skipped(
-        self, scheduler_service
-    ):
+    async def test_scheduled_trains_are_collected_not_skipped(self, scheduler_service):
         """SCHEDULED trains must be included in batch collection.
 
         This is the core regression test for the bug: previously, any train
@@ -156,9 +153,7 @@ class TestScheduleAmtrakJourneyCollections:
             with patch("trackrat.services.scheduler.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-                await scheduler_service.schedule_amtrak_journey_collections(
-                    train_ids
-                )
+                await scheduler_service.schedule_amtrak_journey_collections(train_ids)
 
             # Verify batch job was scheduled with BOTH trains (not just the new one)
             mock_scheduler.add_job.assert_called_once()
@@ -190,9 +185,7 @@ class TestScheduleAmtrakJourneyCollections:
             with patch("trackrat.services.scheduler.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-                await scheduler_service.schedule_amtrak_journey_collections(
-                    train_ids
-                )
+                await scheduler_service.schedule_amtrak_journey_collections(train_ids)
 
             # No batch job should be scheduled for already-OBSERVED trains
             mock_scheduler.add_job.assert_not_called()
@@ -216,18 +209,14 @@ class TestScheduleAmtrakJourneyCollections:
             with patch("trackrat.services.scheduler.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-                await scheduler_service.schedule_amtrak_journey_collections(
-                    train_ids
-                )
+                await scheduler_service.schedule_amtrak_journey_collections(train_ids)
 
             mock_scheduler.add_job.assert_called_once()
             batch_trains = mock_scheduler.add_job.call_args.kwargs["args"][0]
             assert "999-4" in batch_trains
 
     @pytest.mark.asyncio
-    async def test_mixed_observation_types_filters_correctly(
-        self, scheduler_service
-    ):
+    async def test_mixed_observation_types_filters_correctly(self, scheduler_service):
         """With a mix of SCHEDULED, OBSERVED, and new trains, only non-OBSERVED
         trains should be collected."""
         train_ids = ["100-4", "200-4", "300-4"]
@@ -251,15 +240,13 @@ class TestScheduleAmtrakJourneyCollections:
             with patch("trackrat.services.scheduler.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-                await scheduler_service.schedule_amtrak_journey_collections(
-                    train_ids
-                )
+                await scheduler_service.schedule_amtrak_journey_collections(train_ids)
 
             mock_scheduler.add_job.assert_called_once()
             batch_trains = mock_scheduler.add_job.call_args.kwargs["args"][0]
-            assert len(batch_trains) == 2, (
-                f"Expected SCHEDULED + new = 2, got {len(batch_trains)}"
-            )
+            assert (
+                len(batch_trains) == 2
+            ), f"Expected SCHEDULED + new = 2, got {len(batch_trains)}"
             assert "100-4" in batch_trains, "SCHEDULED train A100 should be collected"
             assert "300-4" in batch_trains, "New train A300 should be collected"
             assert "200-4" not in batch_trains, "OBSERVED train A200 should be skipped"
@@ -296,9 +283,7 @@ class TestScheduleAmtrakJourneyCollections:
             with patch("trackrat.services.scheduler.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-                await scheduler_service.schedule_amtrak_journey_collections(
-                    train_ids
-                )
+                await scheduler_service.schedule_amtrak_journey_collections(train_ids)
 
             # Should only have 1 train after deduplication (first occurrence kept)
             mock_scheduler.add_job.assert_called_once()
@@ -355,9 +340,7 @@ class TestCollectJourneyDetailsPromotion:
         }
 
         with patch.object(journey_collector, "client", mock_client):
-            with patch(
-                "trackrat.collectors.amtrak.journey.now_et"
-            ) as mock_now:
+            with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 15, 0, 0))
 
                 with patch(
@@ -376,9 +359,9 @@ class TestCollectJourneyDetailsPromotion:
             "Journey should be promoted from SCHEDULED to OBSERVED after "
             "JIT refresh fetches real-time API data"
         )
-        assert journey.first_seen_at is not None, (
-            "first_seen_at should be set when promoting to OBSERVED"
-        )
+        assert (
+            journey.first_seen_at is not None
+        ), "first_seen_at should be set when promoting to OBSERVED"
         assert journey.update_count == 1, "update_count should be incremented"
 
     @pytest.mark.asyncio
@@ -411,9 +394,7 @@ class TestCollectJourneyDetailsPromotion:
         }
 
         with patch.object(journey_collector, "client", mock_client):
-            with patch(
-                "trackrat.collectors.amtrak.journey.now_et"
-            ) as mock_now:
+            with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 15, 0, 0))
 
                 with patch(
@@ -428,9 +409,9 @@ class TestCollectJourneyDetailsPromotion:
                     )
 
         assert journey.observation_type == "OBSERVED"
-        assert journey.first_seen_at == original_first_observed, (
-            "first_seen_at should NOT be overwritten for already-OBSERVED journeys"
-        )
+        assert (
+            journey.first_seen_at == original_first_observed
+        ), "first_seen_at should NOT be overwritten for already-OBSERVED journeys"
         assert journey.update_count == 6
 
     @pytest.mark.asyncio
@@ -461,9 +442,7 @@ class TestCollectJourneyDetailsPromotion:
         mock_client.get_all_trains.return_value = {}
 
         with patch.object(journey_collector, "client", mock_client):
-            with patch(
-                "trackrat.collectors.amtrak.journey.now_et"
-            ) as mock_now:
+            with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
                 mock_now.return_value = ET.localize(datetime(2025, 7, 5, 15, 0, 0))
 
                 with patch(
@@ -477,12 +456,12 @@ class TestCollectJourneyDetailsPromotion:
                         mock_db_session, journey
                     )
 
-        assert journey.observation_type == "SCHEDULED", (
-            "Should remain SCHEDULED when API returns no data"
-        )
-        assert journey.api_error_count == 1, (
-            "api_error_count should increment when train not found"
-        )
+        assert (
+            journey.observation_type == "SCHEDULED"
+        ), "Should remain SCHEDULED when API returns no data"
+        assert (
+            journey.api_error_count == 1
+        ), "api_error_count should increment when train not found"
 
 
 # ---------------------------------------------------------------------------
@@ -503,9 +482,7 @@ class TestLiveActivitySessionScope:
     """
 
     @pytest.mark.asyncio
-    async def test_session_execute_called_within_context(
-        self, scheduler_service
-    ):
+    async def test_session_execute_called_within_context(self, scheduler_service):
         """Verify that session.execute is called (proving it's within the
         context manager scope — a closed session would raise)."""
         scheduler_service.apns_service = AsyncMock()
@@ -527,14 +504,13 @@ class TestLiveActivitySessionScope:
                     mock_empty_result = Mock()
                     mock_empty_result.scalars.return_value = []
                     mock_sync_session.execute.return_value = mock_empty_result
-                    mock_sync_session.__enter__ = Mock(
-                        return_value=mock_sync_session
-                    )
+                    mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
                     mock_sync_session.__exit__ = Mock(return_value=None)
 
                     with patch(
                         "trackrat.services.scheduler.run_with_freshness_check"
                     ) as mock_freshness_check:
+
                         async def execute_task_func(
                             db, task_name, minimum_interval_seconds, task_func
                         ):
@@ -552,9 +528,7 @@ class TestLiveActivitySessionScope:
                     mock_sync_session.__exit__.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_session_scalar_called_for_journey_lookup(
-        self, scheduler_service
-    ):
+    async def test_session_scalar_called_for_journey_lookup(self, scheduler_service):
         """Verify that session.scalar (journey lookup) runs within the session
         context — this was one of the DB ops outside the `with` block."""
         scheduler_service.apns_service = AsyncMock()
@@ -601,9 +575,7 @@ class TestLiveActivitySessionScope:
 
                     mock_sync_session.execute.return_value = mock_tokens_result
                     mock_sync_session.scalar.return_value = mock_journey
-                    mock_sync_session.__enter__ = Mock(
-                        return_value=mock_sync_session
-                    )
+                    mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
                     mock_sync_session.__exit__ = Mock(return_value=None)
 
                     with patch.object(
@@ -614,6 +586,7 @@ class TestLiveActivitySessionScope:
                         with patch(
                             "trackrat.services.scheduler.run_with_freshness_check"
                         ) as mock_freshness_check:
+
                             async def execute_task_func(
                                 db,
                                 task_name,
@@ -681,9 +654,7 @@ class TestLiveActivitySessionScope:
 
                     mock_sync_session.execute.return_value = mock_tokens_result
                     mock_sync_session.scalar.return_value = mock_journey
-                    mock_sync_session.__enter__ = Mock(
-                        return_value=mock_sync_session
-                    )
+                    mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
                     mock_sync_session.__exit__ = Mock(return_value=None)
 
                     with patch.object(
@@ -694,6 +665,7 @@ class TestLiveActivitySessionScope:
                         with patch(
                             "trackrat.services.scheduler.run_with_freshness_check"
                         ) as mock_freshness_check:
+
                             async def execute_task_func(
                                 db,
                                 task_name,
@@ -708,9 +680,9 @@ class TestLiveActivitySessionScope:
                             await scheduler_service.update_live_activities()
 
                     # Token should be marked inactive
-                    assert mock_token.is_active is False, (
-                        "Token should be deactivated on 410 response"
-                    )
+                    assert (
+                        mock_token.is_active is False
+                    ), "Token should be deactivated on 410 response"
                     # session.commit() should have been called within context
                     mock_sync_session.commit.assert_called_once()
 
@@ -765,9 +737,7 @@ class TestLiveActivitySessionScope:
 
                     mock_sync_session.execute.return_value = mock_tokens_result
                     mock_sync_session.scalar.return_value = mock_journey
-                    mock_sync_session.__enter__ = Mock(
-                        return_value=mock_sync_session
-                    )
+                    mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
                     mock_sync_session.__exit__ = Mock(return_value=None)
 
                     with patch.object(
@@ -778,6 +748,7 @@ class TestLiveActivitySessionScope:
                         with patch(
                             "trackrat.services.scheduler.run_with_freshness_check"
                         ) as mock_freshness_check:
+
                             async def execute_task_func(
                                 db, task_name, minimum_interval_seconds, task_func
                             ):
