@@ -1,7 +1,7 @@
 """add_arrival_source_to_journey_stops
 
-Revision ID: d4e5f6a7b8c9
-Revises: c3d4e5f6a7b8
+Revision ID: d4e5f6a7b8ca
+Revises: d4e5f6a7b8c9
 Create Date: 2026-03-10 16:04:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "d4e5f6a7b8c9"
-down_revision = "c3d4e5f6a7b8"
+revision = "d4e5f6a7b8ca"
+down_revision = "d4e5f6a7b8c9"
 branch_labels = None
 depends_on = None
 

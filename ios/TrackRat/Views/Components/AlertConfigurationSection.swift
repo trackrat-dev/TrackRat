@@ -11,15 +11,25 @@ struct AlertConfigurationSection: View {
         RouteAlertSubscription.frequencyFirstSources.contains(subscription.dataSource)
     }
 
+    /// MTA systems that support planned work notifications.
+    private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
+
+    /// Whether this is a line subscription on an MTA system (planned work eligible).
+    private var showPlannedWork: Bool {
+        subscription.lineId != nil && Self.plannedWorkSystems.contains(subscription.dataSource)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Alert Settings")
                 .font(.headline)
 
+            alertTypesCard
             daysCard
             timeWindowCard
-            thresholdCard
-            recoveryCard
+            if showPlannedWork {
+                plannedWorkCard
+            }
             digestCard
         }
     }
@@ -162,23 +172,59 @@ struct AlertConfigurationSection: View {
             .labelsHidden()
     }
 
-    // MARK: - Threshold
+    // MARK: - Alert Types
 
-    private var thresholdCard: some View {
+    private var alertTypesCard: some View {
         configCard {
-            if isFrequencyBased {
-                serviceThresholdRow
-            } else {
-                delayThresholdRow
+            Text("Real-Time Alerts")
+                .font(.subheadline.bold())
+                .foregroundColor(.secondary)
+
+            Toggle(isOn: $subscription.notifyCancellation) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cancellations")
+                    Text("Alert when trains are cancelled")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .tint(.orange)
+
+            Toggle(isOn: $subscription.notifyDelay) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isFrequencyBased ? "Reduced service" : "Delays")
+                    Text(isFrequencyBased
+                         ? "Alert when service frequency drops"
+                         : "Alert when trains are significantly delayed")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+            }
+            .tint(.orange)
+
+            if subscription.notifyDelay {
+                if isFrequencyBased {
+                    serviceThresholdRow
+                } else {
+                    delayThresholdRow
+                }
             }
 
-            Text(isFrequencyBased
-                ? "Alert when service frequency drops below this level. Default is 50%."
-                : "Alert when delays exceed this threshold. Default is 15 minutes.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            if subscription.notifyCancellation || subscription.notifyDelay {
+                Toggle(isOn: $subscription.notifyRecovery) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Recovery alerts")
+                        Text("Notify when your route returns to normal")
+                            .font(.caption2)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .tint(.orange)
+            }
         }
     }
+
+    // MARK: - Threshold
 
     private var delayThresholdRow: some View {
         HStack {
@@ -224,14 +270,14 @@ struct AlertConfigurationSection: View {
         }
     }
 
-    // MARK: - Recovery
+    // MARK: - Planned Work
 
-    private var recoveryCard: some View {
+    private var plannedWorkCard: some View {
         configCard {
-            Toggle(isOn: $subscription.notifyRecovery) {
+            Toggle(isOn: $subscription.includePlannedWork) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Recovery alerts")
-                    Text("Notify when your route returns to normal")
+                    Text("Planned work alerts")
+                    Text("Get notified about upcoming service changes")
                         .font(.caption2)
                         .foregroundColor(.white.opacity(0.5))
                 }

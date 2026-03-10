@@ -1,7 +1,7 @@
 """add_notify_cancellation_delay_fields
 
 Revision ID: d5e6f7a8b9c0
-Revises: d4e5f6a7b8c9
+Revises: d4e5f6a7b8ca
 Create Date: 2026-03-10 15:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "d5e6f7a8b9c0"
-down_revision = "d4e5f6a7b8c9"
+down_revision = "d4e5f6a7b8ca"
 branch_labels = None
 depends_on = None
 
