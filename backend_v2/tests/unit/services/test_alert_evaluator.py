@@ -31,7 +31,7 @@ from trackrat.services.alert_evaluator import (
     _is_significantly_delayed,
     evaluate_route_alerts,
 )
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ET, now_et
 
 
 def _make_apns(send_returns: bool = True) -> AsyncMock:
@@ -493,7 +493,10 @@ class TestAlertEvaluator:
         # baseline counts).
         baseline_days_added = 0
         for days_ago in range(1, 35):
-            past_date = now - timedelta(days=days_ago)
+            # Normalize to correct DST offset for the target date — pytz
+            # timedelta arithmetic preserves the original UTC offset, so
+            # replace() would keep EDT even for dates that should be EST.
+            past_date = ET.normalize(now - timedelta(days=days_ago))
             # Must match weekday/weekend pattern
             if (past_date.weekday() >= 5) != (now.weekday() >= 5):
                 continue
@@ -501,9 +504,13 @@ class TestAlertEvaluator:
                 # Spread trains within the past 50 minutes relative to now's
                 # time-of-day so they fall inside the rolling 60-min window.
                 # Cap at 50 min to avoid crossing midnight into a different date.
-                sched = past_date.replace(
-                    hour=now.hour, minute=now.minute, second=0, microsecond=0
-                ) - timedelta(minutes=i * 5)
+                # Use ET.localize on a naive datetime to get the correct
+                # UTC offset for the target date (EST vs EDT).
+                pd = past_date.date()
+                sched = ET.localize(
+                    datetime(pd.year, pd.month, pd.day, now.hour, now.minute, 0)
+                    - timedelta(minutes=i * 5)
+                )
                 journey = TrainJourney(
                     train_id=f"baseline-{days_ago}-{i}",
                     journey_date=sched.date(),
@@ -594,13 +601,15 @@ class TestAlertEvaluator:
         # 60-minute window
         baseline_days_added = 0
         for days_ago in range(1, 35):
-            past_date = now - timedelta(days=days_ago)
+            past_date = ET.normalize(now - timedelta(days=days_ago))
             if (past_date.weekday() >= 5) != (now.weekday() >= 5):
                 continue
             for i in range(6):
-                sched = past_date.replace(
-                    hour=now.hour, minute=now.minute, second=0, microsecond=0
-                ) - timedelta(minutes=i * 10)
+                pd = past_date.date()
+                sched = ET.localize(
+                    datetime(pd.year, pd.month, pd.day, now.hour, now.minute, 0)
+                    - timedelta(minutes=i * 10)
+                )
                 journey = TrainJourney(
                     train_id=f"path-base-{days_ago}-{i}",
                     journey_date=sched.date(),
@@ -740,13 +749,15 @@ class TestSystemAwareAlertPriority:
         # Create baseline: 10 trains per comparable day
         baseline_days_added = 0
         for days_ago in range(1, 35):
-            past_date = now - timedelta(days=days_ago)
+            past_date = ET.normalize(now - timedelta(days=days_ago))
             if (past_date.weekday() >= 5) != (now.weekday() >= 5):
                 continue
             for i in range(10):
-                sched = past_date.replace(
-                    hour=now.hour, minute=now.minute, second=0, microsecond=0
-                ) - timedelta(minutes=i * 5)
+                pd = past_date.date()
+                sched = ET.localize(
+                    datetime(pd.year, pd.month, pd.day, now.hour, now.minute, 0)
+                    - timedelta(minutes=i * 5)
+                )
                 journey = TrainJourney(
                     train_id=f"njt-base-{days_ago}-{i}",
                     journey_date=sched.date(),

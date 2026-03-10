@@ -1343,7 +1343,203 @@ class TestExplicitCancellationReason:
 
 
 # ---------------------------------------------------------------------------
-# 7. Pydantic field validators normalize NJT API values
+# 7. Terminal stop actual_arrival on journey completion
+# ---------------------------------------------------------------------------
+
+
+class TestTerminalStopActualArrival:
+    """Terminal stops (e.g., NY Penn) never get DEPARTED='YES' from NJT API.
+    Their departure_source ends up as 'time_inference', which the normal
+    actual_arrival logic skips. The fix sets actual_arrival on the terminal
+    stop when check_journey_completion detects the journey is done."""
+
+    @pytest.mark.asyncio
+    async def test_terminal_stop_gets_actual_arrival_on_completion(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """When a journey completes, the terminal stop must have actual_arrival
+        set so route history stats can compute on-time percentage."""
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        arrival_time = base_time + timedelta(minutes=60)
+
+        journey = TrainJourney(
+            train_id="7804",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Penn Station New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Create stops: origin (TR), intermediate (NB), terminal (NY)
+        stops_info = [
+            ("TR", "Trenton", 0),
+            ("NB", "New Brunswick", 1),
+            ("NY", "New York Penn Station", 2),
+        ]
+        for code, name, seq in stops_info:
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=seq,
+                scheduled_departure=base_time + timedelta(minutes=seq * 30),
+                scheduled_arrival=(
+                    base_time + timedelta(minutes=seq * 30) if seq > 0 else None
+                ),
+            )
+            # Terminal stop: simulate time_inference departure (the scenario
+            # that causes the bug — NJT never sends DEPARTED="YES" for terminals)
+            if code == "NY":
+                stop.has_departed_station = True
+                stop.departure_source = "time_inference"
+            elif code == "NB":
+                stop.has_departed_station = True
+                stop.departure_source = "api_explicit"
+                stop.actual_departure = base_time + timedelta(minutes=32)
+            else:
+                stop.has_departed_station = True
+                stop.departure_source = "api_explicit"
+                stop.actual_departure = base_time + timedelta(minutes=1)
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        # Build API stop data — terminal has TIME (arrival estimate) but no DEPARTED
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NB",
+                "New Brunswick",
+                dep_time=(base_time + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=28)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=arrival_time.strftime(NJT_TIME_FORMAT),
+                arr_time=arrival_time.strftime(NJT_TIME_FORMAT),
+                departed=False,  # NJT never marks terminal as departed
+            ),
+        ]
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_completed is True, (
+            f"Expected is_completed=True, got {journey.is_completed}"
+        )
+        assert journey.actual_arrival is not None, (
+            "Expected journey.actual_arrival to be set on completion"
+        )
+
+        # The critical assertion: terminal stop must have actual_arrival
+        terminal_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        assert terminal_stop.actual_arrival is not None, (
+            "Terminal stop (NY) must have actual_arrival set on journey completion. "
+            "Without this, route history stats show 0% on-time for terminal destinations."
+        )
+
+    @pytest.mark.asyncio
+    async def test_terminal_stop_actual_arrival_not_overwritten(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """If the terminal stop already has actual_arrival, completion should
+        not overwrite it (preserves the frozen value from an earlier cycle)."""
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        original_arrival = base_time + timedelta(minutes=58)
+        later_arrival = base_time + timedelta(minutes=60)
+
+        journey = TrainJourney(
+            train_id="7806",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Penn Station New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        for code, name, seq in [("TR", "Trenton", 0), ("NY", "New York", 1)]:
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=seq,
+                scheduled_departure=base_time + timedelta(minutes=seq * 60),
+                scheduled_arrival=(
+                    base_time + timedelta(minutes=seq * 60) if seq > 0 else None
+                ),
+                has_departed_station=True,
+                departure_source="time_inference" if code == "NY" else "api_explicit",
+            )
+            if code == "NY":
+                stop.actual_arrival = original_arrival  # Already set
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder, "TR", "Trenton",
+                dep_time=base_time.strftime(NJT_TIME_FORMAT), departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder, "NY", "New York",
+                dep_time=later_arrival.strftime(NJT_TIME_FORMAT),
+                arr_time=later_arrival.strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        terminal_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        assert terminal_stop.actual_arrival == original_arrival, (
+            f"Terminal stop actual_arrival should not be overwritten. "
+            f"Expected {original_arrival}, got {terminal_stop.actual_arrival}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 8. Pydantic field validators normalize NJT API values
 # ---------------------------------------------------------------------------
 
 

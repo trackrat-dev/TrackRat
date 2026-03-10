@@ -1741,7 +1741,17 @@ class JourneyCollector(BaseJourneyCollector):
             # Set actual arrival from the last stop's data
             last_stop_api = stops_data[-1]
             if last_stop_api.TIME:
-                journey.actual_arrival = parse_njt_time(last_stop_api.TIME)
+                arrival_time = parse_njt_time(last_stop_api.TIME)
+                journey.actual_arrival = arrival_time
+
+                # Also set actual_arrival on the terminal stop itself.
+                # Terminal stops never get DEPARTED="YES" from the NJT API,
+                # so their departure_source is always "time_inference", which
+                # prevents the normal actual_arrival logic from writing it.
+                # Setting it here ensures route history stats can compute
+                # on-time percentage at terminal destinations.
+                if last_stop_db.actual_arrival is None:
+                    last_stop_db.actual_arrival = arrival_time
 
             logger.info(
                 "journey_completed",
