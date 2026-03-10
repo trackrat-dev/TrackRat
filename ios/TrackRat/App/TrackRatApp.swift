@@ -39,6 +39,8 @@ struct TrackRatApp: App {
                     AppDelegate.pendingColdLaunchRouteStatus = nil
                     appState.pendingRouteStatus = pending
                 }
+                // Start polling for chat unread count
+                ChatService.shared.startUnreadPolling()
             }
             .onOpenURL { url in
                 print("🔗 App received URL: \(url)")
@@ -160,12 +162,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     AppDelegate.pendingColdLaunchRouteStatus = context
                 }
             }
+        } else if let type = userInfo["type"] as? String, type == "chat_message" {
+            // Chat push notification — refresh unread count
+            Task { @MainActor in
+                await ChatService.shared.refreshUnreadCount()
+            }
         }
         completionHandler()
     }
-    
+
     // MARK: - Push Notification Delegate Methods
-    
+
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let tokenString = deviceToken.map { String(format: "%02x", $0) }.joined()
 
