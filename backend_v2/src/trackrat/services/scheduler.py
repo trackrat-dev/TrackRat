@@ -1099,7 +1099,8 @@ class SchedulerService:
             deduplicated_count=len(unique_trains),
         )
 
-        # Filter out trains that already have journeys or collection jobs
+        # Filter out trains that already have OBSERVED journeys.
+        # SCHEDULED trains still need collection to promote them to OBSERVED.
         trains_to_collect = []
         current_date = now_et().date()
 
@@ -1117,9 +1118,17 @@ class SchedulerService:
 
                 if not existing_journey:
                     trains_to_collect.append(original_train_id)
+                elif existing_journey.observation_type == "SCHEDULED":
+                    # SCHEDULED trains need collection to promote to OBSERVED
+                    trains_to_collect.append(original_train_id)
+                    logger.debug(
+                        "amtrak_scheduled_needs_promotion",
+                        train_id=original_train_id,
+                        internal_id=internal_train_id,
+                    )
                 else:
                     logger.debug(
-                        "amtrak_journey_already_exists",
+                        "amtrak_journey_already_observed",
                         train_id=original_train_id,
                         internal_id=internal_train_id,
                     )
@@ -2578,209 +2587,209 @@ class SchedulerService:
                             LiveActivityToken.expires_at > now_et(),
                         )
                     )
-                # Use synchronous query execution
-                result = session.execute(stmt)
-                active_tokens = list(result.scalars())
+                    # Use synchronous query execution
+                    result = session.execute(stmt)
+                    active_tokens = list(result.scalars())
 
-                if not active_tokens:
-                    logger.debug("no_active_live_activity_tokens")
-                    return
+                    if not active_tokens:
+                        logger.debug("no_active_live_activity_tokens")
+                        return
 
-                # Group by train number for efficiency
-                trains_to_update: dict[str, list[Any]] = {}
-                for token in active_tokens:
-                    if (
-                        token.train_number
-                        and token.train_number not in trains_to_update
-                    ):
-                        trains_to_update[token.train_number] = []
-                    if token.train_number:
-                        trains_to_update[token.train_number].append(token)
+                    # Group by train number for efficiency
+                    trains_to_update: dict[str, list[Any]] = {}
+                    for token in active_tokens:
+                        if (
+                            token.train_number
+                            and token.train_number not in trains_to_update
+                        ):
+                            trains_to_update[token.train_number] = []
+                        if token.train_number:
+                            trains_to_update[token.train_number].append(token)
 
-                logger.info(
-                    "live_activity_tokens_found",
-                    token_count=len(active_tokens),
-                    train_count=len(trains_to_update),
-                )
-
-                # Check if APNS service is available
-                if not self.apns_service:
-                    logger.warning(
-                        "apns_service_not_available",
-                        reason="Service not initialized during startup",
+                    logger.info(
+                        "live_activity_tokens_found",
+                        token_count=len(active_tokens),
+                        train_count=len(trains_to_update),
                     )
-                    return
 
-                # Update each train's Live Activities
-                for train_number, tokens in trains_to_update.items():
-                    # Get latest journey for this train
-                    journey_stmt = (
-                        select(TrainJourney)
-                        .where(
-                            and_(
-                                TrainJourney.train_id == train_number,
-                                TrainJourney.journey_date == now_et().date(),
+                    # Check if APNS service is available
+                    if not self.apns_service:
+                        logger.warning(
+                            "apns_service_not_available",
+                            reason="Service not initialized during startup",
+                        )
+                        return
+
+                    # Update each train's Live Activities
+                    for train_number, tokens in trains_to_update.items():
+                        # Get latest journey for this train
+                        journey_stmt = (
+                            select(TrainJourney)
+                            .where(
+                                and_(
+                                    TrainJourney.train_id == train_number,
+                                    TrainJourney.journey_date == now_et().date(),
+                                )
+                            )
+                            .options(
+                                selectinload(TrainJourney.stops),
+                                selectinload(TrainJourney.snapshots),
                             )
                         )
-                        .options(
-                            selectinload(TrainJourney.stops),
-                            selectinload(TrainJourney.snapshots),
-                        )
-                    )
 
-                    journey = session.scalar(journey_stmt)
+                        journey = session.scalar(journey_stmt)
 
-                    if not journey:
-                        logger.warning(
-                            "journey_not_found_for_live_activity",
-                            train_number=train_number,
-                        )
-                        continue
+                        if not journey:
+                            logger.warning(
+                                "journey_not_found_for_live_activity",
+                                train_number=train_number,
+                            )
+                            continue
 
-                    # Check if journey is expired, completed, or cancelled
-                    # If so, send end events to all Live Activities tracking this train
-                    should_end = (
-                        journey.is_expired
-                        or journey.is_completed
-                        or journey.is_cancelled
-                    )
-
-                    if should_end:
-                        end_reason = (
-                            "expired"
-                            if journey.is_expired
-                            else "completed" if journey.is_completed else "cancelled"
+                        # Check if journey is expired, completed, or cancelled
+                        # If so, send end events to all Live Activities tracking this train
+                        should_end = (
+                            journey.is_expired
+                            or journey.is_completed
+                            or journey.is_cancelled
                         )
 
-                        logger.info(
-                            "live_activity_ending",
-                            train_number=train_number,
-                            reason=end_reason,
-                            tokens_count=len(tokens),
-                        )
+                        if should_end:
+                            end_reason = (
+                                "expired"
+                                if journey.is_expired
+                                else "completed" if journey.is_completed else "cancelled"
+                            )
 
-                        # Send end event to each token
+                            logger.info(
+                                "live_activity_ending",
+                                train_number=train_number,
+                                reason=end_reason,
+                                tokens_count=len(tokens),
+                            )
+
+                            # Send end event to each token
+                            for token in tokens:
+                                try:
+                                    # Calculate final content state
+                                    final_content_state = (
+                                        self._calculate_live_activity_content_state(
+                                            journey, token, session
+                                        )
+                                    )
+                                    # Add end reason to content state
+                                    final_content_state["endReason"] = end_reason
+
+                                    if self.apns_service:
+                                        await self.apns_service.send_live_activity_end(
+                                            token.push_token, final_content_state
+                                        )
+
+                                    # Mark token as inactive since Live Activity is ending
+                                    token.is_active = False
+                                    session.commit()
+
+                                except Exception as e:
+                                    logger.error(
+                                        "live_activity_end_failed",
+                                        train_number=train_number,
+                                        error=str(e),
+                                        error_type=type(e).__name__,
+                                    )
+
+                            continue  # Skip normal update processing
+
+                        # Check if journey data is stale (>60 seconds old)
+                        if journey.last_updated_at is None or self._is_stale(
+                            ensure_timezone_aware(journey.last_updated_at)
+                        ):
+                            logger.info(
+                                "live_activity_journey_stale",
+                                train_number=train_number,
+                                last_updated=(
+                                    ensure_timezone_aware(
+                                        journey.last_updated_at
+                                    ).isoformat()
+                                    if journey.last_updated_at
+                                    else None
+                                ),
+                            )
+
+                            # Refresh the data using JIT service
+                            if self.jit_service:
+                                try:
+                                    # Create an async session for the JIT service
+                                    async with get_session() as jit_session:
+                                        refreshed_journey = (
+                                            await self.jit_service.ensure_fresh_data(
+                                                jit_session,
+                                                train_number,
+                                                journey.journey_date,
+                                                force_refresh=True,
+                                            )
+                                        )
+
+                                        if refreshed_journey:
+                                            # Remove stale journey from session identity map
+                                            # so we get fresh data including updated stops
+                                            # (session.refresh doesn't reload eagerly-loaded relationships)
+                                            session.expunge(journey)
+                                            # Re-query to get fresh data from database
+                                            refreshed_journey_obj = session.scalar(
+                                                journey_stmt
+                                            )
+                                            if refreshed_journey_obj:
+                                                journey = refreshed_journey_obj
+                                                logger.info(
+                                                    "live_activity_journey_refreshed",
+                                                    train_number=train_number,
+                                                    new_last_updated=(
+                                                        ensure_timezone_aware(
+                                                            journey.last_updated_at
+                                                        ).isoformat()
+                                                        if journey.last_updated_at
+                                                        else None
+                                                    ),
+                                                )
+                                except Exception as e:
+                                    logger.warning(
+                                        "live_activity_refresh_failed",
+                                        train_number=train_number,
+                                        error=str(e),
+                                        error_type=type(e).__name__,
+                                    )
+                                    # Continue with stale data rather than failing
+
+                        # Process each token individually to calculate personalized content state
                         for token in tokens:
                             try:
-                                # Calculate final content state
-                                final_content_state = (
-                                    self._calculate_live_activity_content_state(
-                                        journey, token, session
-                                    )
+                                # Calculate content state specific to this token's journey segment
+                                content_state = self._calculate_live_activity_content_state(
+                                    journey, token, session
                                 )
-                                # Add end reason to content state
-                                final_content_state["endReason"] = end_reason
 
-                                if self.apns_service:
-                                    await self.apns_service.send_live_activity_end(
-                                        token.push_token, final_content_state
-                                    )
+                                # Send token-specific update via APNS
+                                success = await self.apns_service.send_live_activity_update(
+                                    token.push_token, content_state
+                                )
 
-                                # Mark token as inactive since Live Activity is ending
-                                token.is_active = False
-                                session.commit()
+                                # Mark token as inactive if it failed with 410
+                                if not success:
+                                    token.is_active = False
+                                    session.commit()
 
                             except Exception as e:
                                 logger.error(
-                                    "live_activity_end_failed",
+                                    "live_activity_update_failed",
                                     train_number=train_number,
                                     error=str(e),
                                     error_type=type(e).__name__,
                                 )
 
-                        continue  # Skip normal update processing
-
-                    # Check if journey data is stale (>60 seconds old)
-                    if journey.last_updated_at is None or self._is_stale(
-                        ensure_timezone_aware(journey.last_updated_at)
-                    ):
-                        logger.info(
-                            "live_activity_journey_stale",
-                            train_number=train_number,
-                            last_updated=(
-                                ensure_timezone_aware(
-                                    journey.last_updated_at
-                                ).isoformat()
-                                if journey.last_updated_at
-                                else None
-                            ),
-                        )
-
-                        # Refresh the data using JIT service
-                        if self.jit_service:
-                            try:
-                                # Create an async session for the JIT service
-                                async with get_session() as jit_session:
-                                    refreshed_journey = (
-                                        await self.jit_service.ensure_fresh_data(
-                                            jit_session,
-                                            train_number,
-                                            journey.journey_date,
-                                            force_refresh=True,
-                                        )
-                                    )
-
-                                    if refreshed_journey:
-                                        # Remove stale journey from session identity map
-                                        # so we get fresh data including updated stops
-                                        # (session.refresh doesn't reload eagerly-loaded relationships)
-                                        session.expunge(journey)
-                                        # Re-query to get fresh data from database
-                                        refreshed_journey_obj = session.scalar(
-                                            journey_stmt
-                                        )
-                                        if refreshed_journey_obj:
-                                            journey = refreshed_journey_obj
-                                            logger.info(
-                                                "live_activity_journey_refreshed",
-                                                train_number=train_number,
-                                                new_last_updated=(
-                                                    ensure_timezone_aware(
-                                                        journey.last_updated_at
-                                                    ).isoformat()
-                                                    if journey.last_updated_at
-                                                    else None
-                                                ),
-                                            )
-                            except Exception as e:
-                                logger.warning(
-                                    "live_activity_refresh_failed",
-                                    train_number=train_number,
-                                    error=str(e),
-                                    error_type=type(e).__name__,
-                                )
-                                # Continue with stale data rather than failing
-
-                    # Process each token individually to calculate personalized content state
-                    for token in tokens:
-                        try:
-                            # Calculate content state specific to this token's journey segment
-                            content_state = self._calculate_live_activity_content_state(
-                                journey, token, session
-                            )
-
-                            # Send token-specific update via APNS
-                            success = await self.apns_service.send_live_activity_update(
-                                token.push_token, content_state
-                            )
-
-                            # Mark token as inactive if it failed with 410
-                            if not success:
-                                token.is_active = False
-                                session.commit()
-
-                        except Exception as e:
-                            logger.error(
-                                "live_activity_update_failed",
-                                train_number=train_number,
-                                error=str(e),
-                                error_type=type(e).__name__,
-                            )
-
-                logger.info(
-                    "live_activity_updates_completed",
-                    trains_updated=len(trains_to_update),
-                )
+                    logger.info(
+                        "live_activity_updates_completed",
+                        trains_updated=len(trains_to_update),
+                    )
 
                 # Close sync engine when done
                 sync_engine.dispose()

@@ -527,6 +527,15 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         # Update journey with latest data
         journey.last_updated_at = now_et()
         journey.update_count = (journey.update_count or 0) + 1
+        # Promote SCHEDULED → OBSERVED when we have real-time API data
+        if journey.observation_type == "SCHEDULED":
+            journey.observation_type = "OBSERVED"
+            journey.first_seen_at = now_et()
+            logger.info(
+                "upgraded_amtrak_scheduled_to_observed_via_jit",
+                train_id=journey.train_id,
+                journey_date=str(journey.journey_date),
+            )
         journey.destination = train_data.destName
         journey.is_cancelled = train_data.trainState == "Cancelled"
         journey.is_completed = train_data.trainState == "Terminated"
