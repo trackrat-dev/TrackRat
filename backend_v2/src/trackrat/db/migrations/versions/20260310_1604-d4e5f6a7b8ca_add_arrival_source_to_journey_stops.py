@@ -1,7 +1,7 @@
 """add_arrival_source_to_journey_stops
 
 Revision ID: d4e5f6a7b8ca
-Revises: d4e5f6a7b8c9
+Revises: dd52bfbaffec
 Create Date: 2026-03-10 16:04:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "d4e5f6a7b8ca"
-down_revision = "d4e5f6a7b8c9"
+down_revision = "dd52bfbaffec"
 branch_labels = None
 depends_on = None
 

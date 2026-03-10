@@ -214,10 +214,12 @@ async def send_message(
     if not await _device_exists(db, req.device_id):
         raise HTTPException(status_code=404, detail="Device not registered")
 
+    now = datetime.now(UTC)
     msg = ChatMessage(
         device_id=req.device_id,
         sender_role="user",
         message=req.message.strip(),
+        created_at=now,
     )
     db.add(msg)
     await db.flush()
@@ -415,10 +417,12 @@ async def send_admin_message(
     if not await _device_exists(db, target_device_id):
         raise HTTPException(status_code=404, detail="Target device not found")
 
+    now = datetime.now(UTC)
     msg = ChatMessage(
         device_id=target_device_id,
         sender_role="admin",
         message=req.message.strip(),
+        created_at=now,
     )
     db.add(msg)
     await db.flush()

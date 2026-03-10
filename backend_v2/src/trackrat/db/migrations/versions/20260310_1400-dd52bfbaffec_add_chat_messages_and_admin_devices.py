@@ -1,6 +1,6 @@
 """add_chat_messages_and_admin_devices
 
-Revision ID: d4e5f6a7b8c9
+Revision ID: dd52bfbaffec
 Revises: c3d4e5f6a7b8
 Create Date: 2026-03-10 14:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "d4e5f6a7b8c9"
+revision = "dd52bfbaffec"
 down_revision = "c3d4e5f6a7b8"
 branch_labels = None
 depends_on = None
