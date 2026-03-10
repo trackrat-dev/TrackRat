@@ -5,6 +5,8 @@ enum SettingsDestination: Hashable {
     case tripHistory
     case favoriteStations
     case routeAlerts
+    case chat
+    case adminChat
     case advancedConfiguration
 }
 
@@ -17,6 +19,10 @@ struct SettingsView: View {
     @State private var showingPaywall = false
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
+    @State private var showingAdminRegistration = false
+    @State private var adminRegistrationCode = ""
+    @State private var adminRegistrationError: String?
+    @ObservedObject private var chatService = ChatService.shared
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -34,6 +40,11 @@ struct SettingsView: View {
                     Text("Settings")
                         .font(.headline)
                         .foregroundColor(.white)
+                        .onTapGesture(count: 5) {
+                            if !chatService.isAdmin {
+                                showingAdminRegistration = true
+                            }
+                        }
 
                     if subscriptionService.isPro {
                         HStack(spacing: 4) {
@@ -79,6 +90,7 @@ struct SettingsView: View {
                     // Settings section
                     SettingsSection(
                         subscriptionService: subscriptionService,
+                        chatService: chatService,
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
                         showDebugSections: showDebugSections
@@ -97,6 +109,10 @@ struct SettingsView: View {
                         OnboardingView(isRepeating: true)
                     case .routeAlerts:
                         EditRouteAlertsView()
+                    case .chat:
+                        ChatView(targetDeviceId: nil)
+                    case .adminChat:
+                        AdminChatListView()
                     case .advancedConfiguration:
                         AdvancedConfigurationView()
                     }
@@ -120,6 +136,27 @@ struct SettingsView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
         }
+        .alert("Admin Registration", isPresented: $showingAdminRegistration) {
+            TextField("Registration Code", text: $adminRegistrationCode)
+                .textInputAutocapitalization(.never)
+            Button("Register") {
+                Task {
+                    do {
+                        try await chatService.registerAsAdmin(code: adminRegistrationCode)
+                        adminRegistrationCode = ""
+                    } catch {
+                        adminRegistrationError = "Invalid code"
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {
+                adminRegistrationCode = ""
+            }
+        } message: {
+            if let error = adminRegistrationError {
+                Text(error)
+            }
+        }
     }
 
     /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
@@ -139,6 +176,7 @@ struct SettingsSection: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openURL) private var openURL
     @ObservedObject var subscriptionService: SubscriptionService
+    @ObservedObject var chatService: ChatService
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
     var showDebugSections: Bool
@@ -243,6 +281,98 @@ struct SettingsSection: View {
                 )
             }
             .buttonStyle(.plain)
+
+            // Chat with Developer
+            Button {
+                if subscriptionService.hasAccess(to: .developerChat) {
+                    navigationPath.append(SettingsDestination.chat)
+                } else {
+                    showingPaywall = true
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    Text("Chat with Developer")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+
+                    if !subscriptionService.hasAccess(to: .developerChat) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.caption2)
+                            Text("PRO")
+                                .font(.caption2.bold())
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(.orange.opacity(0.2)))
+                    } else {
+                        if chatService.unreadCount > 0 {
+                            Text("\(chatService.unreadCount)")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(.orange))
+                        }
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Admin Inbox (visible only to admin)
+            if chatService.isAdmin {
+                Button {
+                    navigationPath.append(SettingsDestination.adminChat)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "tray.full.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
+
+                        Text("Developer Inbox")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
 
             // YouTube Channel
             Button {

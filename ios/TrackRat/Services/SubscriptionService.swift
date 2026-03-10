@@ -24,6 +24,7 @@ enum PremiumFeature: String, CaseIterable {
     case historicalData = "Historical Analytics"
     case tripStatistics = "Trip History (beta)"
     case ratSense = "RatSense AI"
+    case developerChat = "Chat with Developer"
 
     var displayName: String { rawValue }
 
@@ -36,6 +37,7 @@ enum PremiumFeature: String, CaseIterable {
         case .tripStatistics: return "chart.bar.fill"
         case .ratSense: return "brain.head.profile"
         case .supportDevelopment: return "heart.fill"
+        case .developerChat: return "bubble.left.and.bubble.right.fill"
         }
     }
 }
@@ -48,6 +50,7 @@ enum PaywallContext {
     case historicalData
     case tripStatistics
     case congestionMap
+    case developerChat
     case generic
 
     var headline: String {
@@ -62,6 +65,8 @@ enum PaywallContext {
             return "Your Commute Story"
         case .congestionMap:
             return "Network Traffic"
+        case .developerChat:
+            return "Talk to the Developer"
         case .generic:
             return "Upgrade to Pro"
         }
@@ -79,6 +84,8 @@ enum PaywallContext {
             return "Track every trip and see your on-time percentage"
         case .congestionMap:
             return "See real-time train congestion across the network"
+        case .developerChat:
+            return "Chat directly with the developer for help and suggestions"
         case .generic:
             return "Your subscription supports new experiments"
         }

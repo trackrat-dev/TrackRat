@@ -23,6 +23,9 @@
 		A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */; };
 		A11A0DB82F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */; };
 		A11A0DB92F4B83CF00C96DA1 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB72F4B83CF00C96DA1 /* APIService.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F3 /* ChatService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* ChatService.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F5 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F4 /* ChatView.swift */; };
+		A1B2C3D4E5F6A7B8C9D0E1F7 /* AdminChatListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F6 /* AdminChatListView.swift */; };
 		A11A0DBA2F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */; };
 		A11A0DBB2F4B83CF00C96DA1 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB72F4B83CF00C96DA1 /* APIService.swift */; };
 		A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */; };
@@ -187,6 +190,9 @@
 		A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripSelectionView.swift; path = Views/Screens/TripSelectionView.swift; sourceTree = "<group>"; };
 		A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AlertSubscriptionService.swift; path = TrackRat/Services/AlertSubscriptionService.swift; sourceTree = "<group>"; };
 		A11A0DB72F4B83CF00C96DA1 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = APIService.swift; path = TrackRat/Services/APIService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F2 /* ChatService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatService.swift; path = TrackRat/Services/ChatService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F4 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatView.swift; path = Views/Screens/ChatView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6A7B8C9D0E1F6 /* AdminChatListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdminChatListView.swift; path = Views/Screens/AdminChatListView.swift; sourceTree = "<group>"; };
 		A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AddRouteAlertView.swift; path = Views/Screens/AddRouteAlertView.swift; sourceTree = "<group>"; };
 		A11A0DBD2F4B840B00C96DA1 /* EditRouteAlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditRouteAlertsView.swift; path = Views/Screens/EditRouteAlertsView.swift; sourceTree = "<group>"; };
 		A1ROUTE0012F5000000000001 /* RouteStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteStatusView.swift; path = Views/Screens/RouteStatusView.swift; sourceTree = "<group>"; };
@@ -349,6 +355,9 @@
 				A12C314F2F1DB9E400CAF76D /* SubscriptionService.swift */,
 				A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */,
 				A11A0DB72F4B83CF00C96DA1 /* APIService.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F2 /* ChatService.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F4 /* ChatView.swift */,
+				A1B2C3D4E5F6A7B8C9D0E1F6 /* AdminChatListView.swift */,
 				A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */,
 				A1EA529C2F23A2450023CC09 /* Configuration.storekit */,
 			);
@@ -717,6 +726,9 @@
 				A12C31422F1DA61700CAF76D /* PaywallView.swift in Sources */,
 				A11A0DBA2F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */,
 				A11A0DBB2F4B83CF00C96DA1 /* APIService.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F3 /* ChatService.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F5 /* ChatView.swift in Sources */,
+				A1B2C3D4E5F6A7B8C9D0E1F7 /* AdminChatListView.swift in Sources */,
 				A1AD0D0D2E106D32003DA39F /* LiveActivityModels.swift in Sources */,
 				A17A63DE2EE60474003BD685 /* OperationsSummaryView.swift in Sources */,
 				A1875C7F2E400F4F00FCC7FC /* SettingsView.swift in Sources */,
