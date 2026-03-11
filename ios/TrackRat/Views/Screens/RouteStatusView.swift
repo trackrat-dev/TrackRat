@@ -4,6 +4,7 @@ import MapKit
 struct RouteStatusView: View {
     let context: RouteStatusContext
     @StateObject private var viewModel: RouteStatusViewModel
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
     /// Mutable subscription for inline configuration (nil when opened without alert context).
@@ -29,12 +30,18 @@ struct RouteStatusView: View {
         self.onSave = onSave
     }
 
+    /// Train selected for detail sheet
+    @State private var selectedTrain: TrainV2?
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     mapSection
                     operationsSummarySection
+                    serviceAlertsSection
+                    upcomingTrainsSection
+
                     historySections
 
                     if let _ = subscription {
@@ -65,6 +72,33 @@ struct RouteStatusView: View {
                     onSave?(subscription)
                 }
             }
+            .sheet(item: $selectedTrain) { train in
+                NavigationStack {
+                    TrainDetailsView(
+                        trainNumber: train.trainId,
+                        fromStation: context.effectiveFromStation,
+                        journeyDate: train.journeyDate,
+                        dataSource: train.dataSource,
+                        isSheet: true
+                    )
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    /// Dismiss this sheet and navigate to the full departures list in the main app.
+    private func navigateToAllDepartures() {
+        guard let to = context.effectiveToStation,
+              let from = context.effectiveFromStation else { return }
+        let destination = Stations.displayName(for: to)
+        // Dismiss the route status sheet first, then navigate
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            appState.navigationPath.append(
+                NavigationDestination.trainList(destination: destination, departureStationCode: from)
+            )
         }
     }
 
@@ -106,6 +140,64 @@ struct RouteStatusView: View {
             fromStation: context.effectiveFromStation,
             toStation: context.effectiveToStation
         )
+    }
+
+    // MARK: - Service Alerts Section
+
+    @ViewBuilder
+    private var serviceAlertsSection: some View {
+        if !viewModel.serviceAlerts.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Service Alerts (\(viewModel.serviceAlerts.count))", systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+                    .foregroundColor(.orange)
+
+                ForEach(viewModel.serviceAlerts) { alert in
+                    ServiceAlertCard(alert: alert)
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
+    }
+
+    // MARK: - Upcoming Trains Section
+
+    @ViewBuilder
+    private var upcomingTrainsSection: some View {
+        if !viewModel.upcomingTrains.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Upcoming Trains")
+                    .font(.headline)
+
+                ForEach(viewModel.upcomingTrains) { train in
+                    Button {
+                        selectedTrain = train
+                    } label: {
+                        UpcomingTrainRow(train: train, dataSource: context.dataSource)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if context.effectiveFromStation != nil && context.effectiveToStation != nil {
+                    Button {
+                        navigateToAllDepartures()
+                    } label: {
+                        HStack {
+                            Text("View All Departures")
+                                .font(.subheadline.bold())
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
     }
 
     // MARK: - History Sections (Past Hour, Past 24 Hours, Past 7 Days)
@@ -307,6 +399,141 @@ struct RouteStatusView: View {
     }
 }
 
+// MARK: - Service Alert Card
+
+private struct ServiceAlertCard: View {
+    let alert: V2ServiceAlert
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(alert.alertTypeLabel.uppercased())
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(alertTypeColor.opacity(0.2)))
+                    .foregroundColor(alertTypeColor)
+                Spacer()
+            }
+
+            Text(alert.headerText)
+                .font(.subheadline)
+                .foregroundColor(.primary)
+
+            if let description = alert.descriptionText, !description.isEmpty {
+                Text(description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(isExpanded ? nil : 3)
+
+                if description.count > 120 {
+                    Button(isExpanded ? "Show Less" : "Show More") {
+                        withAnimation { isExpanded.toggle() }
+                    }
+                    .font(.caption.bold())
+                    .foregroundColor(.orange)
+                }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
+    }
+
+    private var alertTypeColor: Color {
+        switch alert.alertType {
+        case "planned_work": return .yellow
+        case "alert": return .red
+        case "elevator": return .blue
+        default: return .orange
+        }
+    }
+}
+
+// MARK: - Upcoming Train Row
+
+private struct UpcomingTrainRow: View {
+    let train: TrainV2
+    let dataSource: String
+
+    /// Whether this transit system uses synthetic train IDs (e.g., subway, PATCO)
+    private var useSyntheticId: Bool {
+        TrainSystem.syntheticTrainIdSources.contains(dataSource)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Line color indicator
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(hex: train.line.color))
+                .frame(width: 4, height: 40)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    if useSyntheticId {
+                        Text(train.line.name)
+                            .font(.subheadline.bold())
+                    } else {
+                        Text("Train \(train.trainId)")
+                            .font(.subheadline.bold())
+                    }
+                    Text("→ \(train.destination)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+                HStack(spacing: 8) {
+                    if let track = train.departure.track, !track.isEmpty {
+                        Text("Track \(track)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    if train.isCancelled {
+                        Text("Cancelled")
+                            .font(.caption.bold())
+                            .foregroundColor(.red)
+                    }
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(departureTimeString)
+                    .font(.subheadline.bold())
+                delayBadge
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
+    }
+
+    private var departureTimeString: String {
+        let time = train.departure.updatedTime ?? train.departure.scheduledTime
+        guard let time = time else { return "--" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: time)
+    }
+
+    @ViewBuilder
+    private var delayBadge: some View {
+        if train.isCancelled {
+            EmptyView()
+        } else if train.departure.delayMinutes > 0 {
+            Text("+\(train.departure.delayMinutes)m")
+                .font(.caption.bold())
+                .foregroundColor(.red)
+        } else {
+            Text("On Time")
+                .font(.caption)
+                .foregroundColor(.green)
+        }
+    }
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -319,6 +546,15 @@ final class RouteStatusViewModel: ObservableObject {
     @Published var mapRegion = MKCoordinateRegion()
     @Published var isLoadingMap = false
     @Published var mapError: String?
+
+    // Service alerts (MTA systems only)
+    @Published var serviceAlerts: [V2ServiceAlert] = []
+
+    // Upcoming trains
+    @Published var upcomingTrains: [TrainV2] = []
+
+    /// Data sources that have service alert data
+    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
 
     // History state - per-section loading and error
     @Published var pastHourData: RouteHistoricalData?
@@ -339,6 +575,8 @@ final class RouteStatusViewModel: ObservableObject {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadCongestionMap() }
             group.addTask { await self.loadAllHistory() }
+            group.addTask { await self.loadServiceAlerts() }
+            group.addTask { await self.loadUpcomingTrains() }
         }
     }
 
@@ -412,6 +650,37 @@ final class RouteStatusViewModel: ObservableObject {
             longitudeDelta: (maxLon - minLon) * 1.4 + 0.01
         )
         mapRegion = MKCoordinateRegion(center: center, span: span)
+    }
+
+    // MARK: - Service Alerts
+
+    private func loadServiceAlerts() async {
+        guard Self.serviceAlertSystems.contains(context.dataSource) else { return }
+        do {
+            let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: context.dataSource)
+            serviceAlerts = alerts
+        } catch {
+            // Silent failure — section just won't appear
+            print("⚠️ Failed to load service alerts: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Upcoming Trains
+
+    private func loadUpcomingTrains() async {
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else { return }
+        do {
+            let dataSource = TrainSystem(rawValue: context.dataSource)
+            let trains = try await APIService.shared.searchTrains(
+                fromStationCode: from,
+                toStationCode: to,
+                dataSources: dataSource.map { Set([$0]) }
+            )
+            upcomingTrains = Array(trains.prefix(5))
+        } catch {
+            print("⚠️ Failed to load upcoming trains: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - History
@@ -498,4 +767,5 @@ final class RouteStatusViewModel: ObservableObject {
         fromStationCode: "NY",
         toStationCode: "TR"
     ))
+    .environmentObject(AppState())
 }

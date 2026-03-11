@@ -1128,6 +1128,50 @@ struct OperationsSummaryResponse: Codable {
     }
 }
 
+// MARK: - Service Alert Models
+
+struct V2ServiceAlertActivePeriod: Codable {
+    let start: Int?
+    let end: Int?
+}
+
+struct V2ServiceAlert: Codable, Identifiable {
+    let alertId: String
+    let dataSource: String
+    let alertType: String
+    let affectedRouteIds: [String]
+    let headerText: String
+    let descriptionText: String?
+    let activePeriods: [V2ServiceAlertActivePeriod]
+
+    var id: String { alertId }
+
+    enum CodingKeys: String, CodingKey {
+        case alertId = "alert_id"
+        case dataSource = "data_source"
+        case alertType = "alert_type"
+        case affectedRouteIds = "affected_route_ids"
+        case headerText = "header_text"
+        case descriptionText = "description_text"
+        case activePeriods = "active_periods"
+    }
+
+    /// Human-readable alert type label
+    var alertTypeLabel: String {
+        switch alertType {
+        case "planned_work": return "Planned Work"
+        case "alert": return "Alert"
+        case "elevator": return "Elevator"
+        default: return alertType.capitalized
+        }
+    }
+}
+
+struct V2ServiceAlertsResponse: Codable {
+    let alerts: [V2ServiceAlert]
+    let count: Int
+}
+
 // MARK: - Delay Forecast Models
 
 /// Delay probability breakdown
