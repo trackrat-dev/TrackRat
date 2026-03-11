@@ -114,11 +114,12 @@ struct RouteStatusView: View {
         guard let to = context.effectiveToStation,
               let from = context.effectiveFromStation else { return }
         let destination = Stations.displayName(for: to)
-        // Dismiss the route status sheet first, then navigate
+        // Use pendingNavigation so the main NavigationStack handles it after sheet dismisses
         dismiss()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            appState.navigationPath.append(
-                NavigationDestination.trainList(destination: destination, departureStationCode: from)
+            appState.pendingNavigation = .trainList(
+                destination: destination,
+                departureStationCode: from
             )
         }
     }
@@ -679,7 +680,16 @@ final class RouteStatusViewModel: ObservableObject {
         guard Self.serviceAlertSystems.contains(context.dataSource) else { return }
         do {
             let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: context.dataSource)
-            serviceAlerts = alerts
+            let relevantRouteIds = context.gtfsRouteIds
+            if relevantRouteIds.isEmpty {
+                // No line context — show all alerts for this data source
+                serviceAlerts = alerts
+            } else {
+                // Filter to alerts affecting this route's line(s)
+                serviceAlerts = alerts.filter { alert in
+                    !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
+                }
+            }
         } catch {
             // Silent failure — section just won't appear
             print("⚠️ Failed to load service alerts: \(error.localizedDescription)")

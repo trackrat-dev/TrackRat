@@ -582,14 +582,19 @@ class SummaryService:
                 if journey.stops:
                     last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
                     if last_stop.actual_arrival and last_stop.scheduled_arrival:
-                        delay = (
-                            last_stop.actual_arrival - last_stop.scheduled_arrival
-                        ).total_seconds() / 60
-                        line_data["total_delay_minutes"] += max(0, delay)
-                        if delay <= ON_TIME_THRESHOLD_MINUTES:
-                            line_data["on_time_count"] += 1
+                        # Exclude scheduled_fallback arrivals — they always show
+                        # 0 delay (actual == scheduled) and inflate on-time stats
+                        if last_stop.arrival_source == "scheduled_fallback":
+                            pass
+                        else:
+                            delay = (
+                                last_stop.actual_arrival - last_stop.scheduled_arrival
+                            ).total_seconds() / 60
+                            line_data["total_delay_minutes"] += max(0, delay)
+                            if delay <= ON_TIME_THRESHOLD_MINUTES:
+                                line_data["on_time_count"] += 1
                     else:
-                        # No arrival data, assume on time
+                        # No arrival data (in-progress), assume on time
                         line_data["on_time_count"] += 1
 
         return {

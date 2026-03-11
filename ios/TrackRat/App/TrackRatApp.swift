@@ -595,6 +595,37 @@ struct RouteStatusContext: Identifiable, Equatable {
         return []
     }
 
+    /// GTFS route IDs for filtering service alerts by relevance.
+    /// Maps internal lineId to the GTFS route_ids used in MTA alert feeds.
+    var gtfsRouteIds: Set<String> {
+        guard let lineId = lineId else { return [] }
+
+        if dataSource == "SUBWAY" {
+            // "subway-1" → "1", "subway-6x" → "6X", "subway-a-rockaway" → "A"
+            let suffix = String(lineId.dropFirst("subway-".count))
+            let routeId = suffix.split(separator: "-").first.map(String.init) ?? suffix
+            return [routeId.uppercased()]
+        }
+
+        // LIRR/MNR: line_code → GTFS route_id (mirrors backend LIRR_ROUTES/MNR_ROUTES)
+        let lirrMapping: [String: String] = [
+            "lirr-babylon": "1", "lirr-hempstead": "2", "lirr-oyster-bay": "3",
+            "lirr-ronkonkoma": "4", "lirr-montauk": "5", "lirr-long-beach": "6",
+            "lirr-far-rockaway": "7", "lirr-west-hempstead": "8",
+            "lirr-port-washington": "9", "lirr-port-jefferson": "10",
+            "lirr-belmont-park": "11", "lirr-greenport": "13",
+        ]
+        let mnrMapping: [String: String] = [
+            "mnr-hudson": "1", "mnr-harlem": "2", "mnr-new-haven": "3",
+            "mnr-new-canaan": "4", "mnr-danbury": "5", "mnr-waterbury": "6",
+        ]
+
+        if let gtfsId = lirrMapping[lineId] ?? mnrMapping[lineId] {
+            return [gtfsId]
+        }
+        return []
+    }
+
     /// First station code (for API calls)
     var effectiveFromStation: String? {
         if let from = fromStationCode { return from }

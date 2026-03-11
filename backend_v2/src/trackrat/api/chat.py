@@ -4,6 +4,18 @@ Developer chat API endpoints.
 Enables two-party messaging between users and the developer (admin).
 Users send messages via their device_id; admin is identified by device_id
 registered in the admin_devices table.
+
+Auth pattern note:
+  GET endpoints (get_messages, get_unread_count, admin conversations) use
+  X-Device-Id header for device identification — standard for read-only calls.
+
+  POST endpoints (send_message, mark_read, admin register) use device_id in
+  the request body — these already carry a JSON payload, so the device_id is
+  included there for simplicity and atomic request semantics.
+
+  If header-based auth middleware is added later, the body-based POST endpoints
+  will need to be updated to match. See SendMessageRequest, MarkReadRequest,
+  and AdminRegisterRequest models.
 """
 
 from datetime import UTC, datetime
