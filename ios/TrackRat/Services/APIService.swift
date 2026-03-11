@@ -155,8 +155,30 @@ final class APIService: ObservableObject {
         }
     }
     
+    // MARK: - Service Alerts
+
+    func fetchServiceAlerts(dataSource: String) async throws -> [V2ServiceAlert] {
+        guard var components = URLComponents(string: "\(baseURL)/v2/alerts/service") else {
+            throw APIError.invalidURL
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "data_source", value: dataSource)
+        ]
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        return try await executeWithRetry {
+            let (data, _) = try await self.session.data(from: url)
+            let response = try self.decoder.decode(V2ServiceAlertsResponse.self, from: data)
+            return response.alerts
+        }
+    }
+
     // MARK: - Train Details
-    
+
     func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil, dataSource: String? = nil) async throws -> TrainV2 {
         var components = URLComponents(string: "\(baseURL)/v2/trains/\(id)")!
 

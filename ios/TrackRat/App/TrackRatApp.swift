@@ -158,7 +158,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 if let appState = AppDelegate.appState {
                     appState.pendingRouteStatus = context
                 } else {
-                    // Cold launch: appState not yet available, stash for pickup in onAppear
+                    AppDelegate.pendingColdLaunchRouteStatus = context
+                }
+            }
+        } else if let serviceAlert = userInfo["service_alert"] as? [String: Any] {
+            let context = RouteStatusContext(
+                dataSource: serviceAlert["data_source"] as? String ?? "",
+                lineId: serviceAlert["line_id"] as? String,
+                fromStationCode: nil,
+                toStationCode: nil
+            )
+            Task { @MainActor in
+                if let appState = AppDelegate.appState {
+                    appState.pendingRouteStatus = context
+                } else {
                     AppDelegate.pendingColdLaunchRouteStatus = context
                 }
             }
