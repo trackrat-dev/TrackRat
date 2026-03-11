@@ -605,12 +605,16 @@ async def get_train_history(
             else 0
         )
 
+        # Exclude scheduled_fallback arrivals — they always show 0 delay
+        # (actual == scheduled) and inflate on-time percentages
         arrival_delay = (
             int(
                 (last_stop.actual_arrival - last_stop.scheduled_arrival).total_seconds()
                 / 60
             )
-            if last_stop.actual_arrival and last_stop.scheduled_arrival
+            if last_stop.actual_arrival
+            and last_stop.scheduled_arrival
+            and last_stop.arrival_source != "scheduled_fallback"
             else 0
         )
 
@@ -750,7 +754,7 @@ async def get_train_history(
             if not first_stop or not last_stop:
                 continue
 
-            # Calculate delays
+            # Exclude scheduled_fallback arrivals — inflates OTP
             arrival_delay = (
                 int(
                     (
@@ -758,7 +762,9 @@ async def get_train_history(
                     ).total_seconds()
                     / 60
                 )
-                if last_stop.actual_arrival and last_stop.scheduled_arrival
+                if last_stop.actual_arrival
+                and last_stop.scheduled_arrival
+                and last_stop.arrival_source != "scheduled_fallback"
                 else 0
             )
 
