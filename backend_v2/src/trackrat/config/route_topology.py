@@ -1512,6 +1512,23 @@ SUBWAY_5 = Route(
     data_source="SUBWAY",
     line_codes=frozenset({"5"}),
     stations=(
+        # Rush-hour Brooklyn extension (Flatbush Av → Bowling Green)
+        # 5 trains run extended service on 2-line tracks during peak hours
+        "S247",
+        "S246",
+        "S245",
+        "S244",
+        "S243",
+        "S242",
+        "S241",
+        "S239",
+        "S238",
+        "S237",
+        "S236",
+        "S235",
+        "S234",
+        "S423",
+        # Regular 5 service (Bowling Green → Eastchester-Dyre Av)
         "S420",
         "S419",
         "S418",
