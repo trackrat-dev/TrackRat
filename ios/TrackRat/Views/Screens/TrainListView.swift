@@ -96,6 +96,24 @@ struct TrainListView: View {
                 }
                 .buttonStyle(.plain)
 
+                // Route status button
+                if let destinationCode = Stations.getStationCode(destination) {
+                    Button {
+                        appState.pendingRouteStatus = RouteStatusContext(
+                            dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
+                            lineId: nil,
+                            fromStationCode: departureStationCode,
+                            toStationCode: destinationCode
+                        )
+                    } label: {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(TrackRatTheme.IconSize.small)
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 // Close button
                 Button("Close") {
                     appState.navigationPath = NavigationPath()

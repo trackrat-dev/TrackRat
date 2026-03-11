@@ -57,6 +57,27 @@ struct RouteStatusView: View {
             .navigationTitle(context.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if subscription == nil,
+                   let from = context.fromStationCode,
+                   let to = context.toStationCode {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            let destinationName = Stations.displayName(for: to)
+                            dismiss()
+                            // Brief delay to let the sheet dismiss before triggering navigation
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                appState.pendingNavigation = .trainList(
+                                    destination: destinationName,
+                                    departureStationCode: from
+                                )
+                            }
+                        } label: {
+                            Label("Departures", systemImage: "list.bullet")
+                                .labelStyle(.titleAndIcon)
+                                .font(.subheadline)
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark.circle.fill")
