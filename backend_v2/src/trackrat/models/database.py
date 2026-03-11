@@ -185,7 +185,7 @@ class JourneyStop(Base):
 
     # Relationships
     journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="stops"
+        "TrainJourney", back_populates="stops", lazy="raise_on_sql"
     )
 
     __table_args__ = (
@@ -242,7 +242,7 @@ class JourneySnapshot(Base):
 
     # Relationships
     journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="snapshots"
+        "TrainJourney", back_populates="snapshots", lazy="raise_on_sql"
     )
 
     __table_args__ = (
@@ -309,6 +309,7 @@ class DeviceToken(Base):
         cascade="all, delete-orphan",
         foreign_keys="RouteAlertSubscription.device_id",
         primaryjoin="DeviceToken.device_id == RouteAlertSubscription.device_id",
+        lazy="raise_on_sql",
     )
 
 
@@ -359,6 +360,7 @@ class RouteAlertSubscription(Base):
         "DeviceToken",
         back_populates="subscriptions",
         foreign_keys=[device_id],
+        lazy="raise_on_sql",
     )
 
     __table_args__ = (
@@ -443,7 +445,7 @@ class SegmentTransitTime(Base):
 
     # Relationships
     journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="segment_times"
+        "TrainJourney", back_populates="segment_times", lazy="raise_on_sql"
     )
 
     __table_args__ = (
@@ -492,7 +494,7 @@ class StationDwellTime(Base):
 
     # Relationships
     journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="dwell_times"
+        "TrainJourney", back_populates="dwell_times", lazy="raise_on_sql"
     )
 
     __table_args__ = (
@@ -534,7 +536,7 @@ class JourneyProgress(Base):
 
     # Relationships
     journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="progress"
+        "TrainJourney", back_populates="progress", lazy="raise_on_sql"
     )
 
     __table_args__ = (Index("idx_journey_progress", "journey_id", "captured_at"),)
@@ -662,7 +664,8 @@ class GTFSRoute(Base):
 
     # Relationships
     trips: Mapped[list["GTFSTrip"]] = relationship(
-        "GTFSTrip", back_populates="route", cascade="all, delete-orphan"
+        "GTFSTrip", back_populates="route", cascade="all, delete-orphan",
+        lazy="raise_on_sql",
     )
 
     __table_args__ = (
@@ -686,9 +689,12 @@ class GTFSTrip(Base):
     direction_id = Column(Integer)  # 0=outbound, 1=inbound
 
     # Relationships
-    route: Mapped["GTFSRoute"] = relationship("GTFSRoute", back_populates="trips")
+    route: Mapped["GTFSRoute"] = relationship(
+        "GTFSRoute", back_populates="trips", lazy="raise_on_sql"
+    )
     stop_times: Mapped[list["GTFSStopTime"]] = relationship(
-        "GTFSStopTime", back_populates="trip", cascade="all, delete-orphan"
+        "GTFSStopTime", back_populates="trip", cascade="all, delete-orphan",
+        lazy="raise_on_sql",
     )
 
     __table_args__ = (
@@ -720,7 +726,9 @@ class GTFSStopTime(Base):
     drop_off_type = Column(Integer, default=0)
 
     # Relationships
-    trip: Mapped["GTFSTrip"] = relationship("GTFSTrip", back_populates="stop_times")
+    trip: Mapped["GTFSTrip"] = relationship(
+        "GTFSTrip", back_populates="stop_times", lazy="raise_on_sql"
+    )
 
     __table_args__ = (
         Index("idx_gtfs_stop_time_trip", "trip_id", "stop_sequence"),

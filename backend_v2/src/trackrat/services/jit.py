@@ -271,7 +271,21 @@ class JustInTimeUpdateService:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-                # Return stale data rather than failing
+                # Clear session error state (e.g., PendingRollbackError from failed
+                # flush/commit) so subsequent operations on this session still work.
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+                # Re-query journey since rollback expires all ORM objects.
+                # Without this, accessing journey.stops would trigger a lazy load
+                # that fails with raise_on_sql.
+                try:
+                    journey = await session.scalar(stmt)
+                    if not journey:
+                        return None
+                except Exception:
+                    return None
         else:
             logger.debug(
                 "journey_data_fresh",
