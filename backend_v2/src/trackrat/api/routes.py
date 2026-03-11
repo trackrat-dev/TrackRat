@@ -124,7 +124,7 @@ async def get_route_history(
     now = now_et()
     cutoff_time = None
     if hours:
-        # Hours-based filtering: use timestamp on origin stop departure
+        # Hours-based filtering: use timestamp on destination stop arrival
         cutoff_time = now - timedelta(hours=hours)
         start_date = cutoff_time.date()
     else:
@@ -237,12 +237,14 @@ async def _calculate_route_stats_sql(
         "track_usage": {},
     }
 
-    # Build the time filter clause for origin stop
-    time_filter = ""
+    # Build the time filter clause for destination stop arrival
+    # Filter by when trains ARRIVED at destination, not when they departed origin.
+    # This ensures "last hour" stats reflect trains with actual arrival data.
+    dest_time_filter = ""
     if cutoff_time:
-        time_filter = """
-            AND fs.scheduled_departure >= :cutoff_time
-            AND fs.scheduled_departure <= :now_time
+        dest_time_filter = """
+            AND COALESCE(ts.actual_arrival, ts.scheduled_arrival) >= :cutoff_time
+            AND COALESCE(ts.actual_arrival, ts.scheduled_arrival) <= :now_time
         """
 
     train_filter = ""
@@ -261,12 +263,12 @@ async def _calculate_route_stats_sql(
               SELECT 1 FROM journey_stops fs
               WHERE fs.journey_id = tj.id
                 AND fs.station_code = ANY(:from_codes)
-                {time_filter}
                 AND EXISTS (
                     SELECT 1 FROM journey_stops ts
                     WHERE ts.journey_id = tj.id
                       AND ts.station_code = ANY(:to_codes)
                       AND ts.stop_sequence > fs.stop_sequence
+                      {dest_time_filter}
                 )
           )
         ORDER BY tj.journey_date DESC
