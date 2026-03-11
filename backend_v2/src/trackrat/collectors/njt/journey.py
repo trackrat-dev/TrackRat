@@ -783,11 +783,20 @@ class JourneyCollector(BaseJourneyCollector):
             journey.last_updated_at = now_et()
             journey.update_count = (journey.update_count or 0) + 1
 
-            # After 3 failed attempts, mark as expired
+            # After 3 failed attempts, attempt last-chance completion then expire
             if journey.api_error_count >= 3:
-                journey.is_expired = True
+                # Train disappeared from API — likely completed its run.
+                # Check if penultimate stop departed, which means the train
+                # reached its terminal. We can't set terminal actual_arrival
+                # (no API data), but marking the journey completed is still
+                # valuable for analytics that only need completion status.
+                if not journey.is_completed:
+                    await self._attempt_completion_on_expiry(session, journey)
+
+                if not journey.is_completed:
+                    journey.is_expired = True
                 logger.warning(
-                    "train_marked_expired",
+                    "train_marked_expired" if journey.is_expired else "train_completed_on_expiry",
                     train_id=journey.train_id,
                     journey_id=journey.id,
                     api_error_count=journey.api_error_count,
@@ -1704,6 +1713,57 @@ class JourneyCollector(BaseJourneyCollector):
                 total_stops=len(sequences),
             )
 
+    async def _attempt_completion_on_expiry(
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+    ) -> None:
+        """Last-chance completion when a train disappears from the NJT API.
+
+        If the penultimate stop has departed, the train reached its terminal.
+        We can't set terminal actual_arrival (no API data available), but we
+        mark the journey completed and use scheduled_arrival as a fallback
+        so route history stats aren't N/A.
+        """
+        # Get last two stops by sequence
+        last_two_stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence.desc())
+            .limit(2)
+        )
+        result = await session.execute(last_two_stmt)
+        last_two = result.scalars().all()
+
+        if len(last_two) < 2:
+            return
+
+        terminal_stop = last_two[0]
+        penultimate_stop = last_two[1]
+
+        if not penultimate_stop.has_departed_station:
+            return
+
+        # Penultimate stop departed — train reached its terminal
+        journey.is_completed = True
+
+        # Use scheduled_arrival as fallback for the terminal stop if we have it
+        if terminal_stop.actual_arrival is None and terminal_stop.scheduled_arrival:
+            terminal_stop.actual_arrival = terminal_stop.scheduled_arrival
+            terminal_stop.arrival_source = "scheduled_fallback"
+            journey.actual_arrival = terminal_stop.scheduled_arrival
+
+        logger.info(
+            "journey_completed_on_expiry",
+            train_id=journey.train_id,
+            journey_id=journey.id,
+            terminal_arrival_source=terminal_stop.arrival_source,
+        )
+
+        # Run full analysis on completed journey
+        transit_analyzer = TransitAnalyzer()
+        await transit_analyzer.analyze_journey(session, journey)
+
     async def check_journey_completion(
         self,
         session: AsyncSession,
@@ -1720,23 +1780,54 @@ class JourneyCollector(BaseJourneyCollector):
         if not stops_data:
             return
 
-        # Check if last stop has departed (using database state, not raw API flag)
-        # This uses the inferred departure status from the three-tier logic:
+        # Check if journey is completed by examining stop departure status.
+        # Uses the inferred departure status from the three-tier logic:
         # 1. api_explicit: DEPARTED="YES" from API
         # 2. sequential_inference: earlier stops have departed
         # 3. time_inference: >5 minutes past scheduled time
+        #
+        # Terminal stops (e.g., NY Penn) never get DEPARTED="YES" from the
+        # NJT API, and sequential_inference can't fire (nothing after them).
+        # So we also check if the penultimate stop has departed — if it has,
+        # the train has necessarily reached the terminal.
 
-        # Get the last stop from the database
-        last_stop_stmt = select(JourneyStop).where(
-            and_(
-                JourneyStop.journey_id == journey.id,
-                JourneyStop.stop_sequence == len(stops_data) - 1,
-            )
+        # Get the last stop from the database (by max stop_sequence, not len)
+        last_stop_stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence.desc())
+            .limit(1)
         )
         result = await session.execute(last_stop_stmt)
         last_stop_db = result.scalar_one_or_none()
 
-        if last_stop_db and last_stop_db.has_departed_station:
+        if not last_stop_db:
+            return
+
+        # Terminal stop departed directly (rare for NJT terminals, but possible)
+        terminal_reached = last_stop_db.has_departed_station
+
+        # If not, check if the penultimate stop has departed.
+        # Use ORDER BY desc with offset to handle non-contiguous sequences
+        # (e.g., after phantom stop deletion: 0, 1, 3).
+        if not terminal_reached and last_stop_db.stop_sequence > 0:
+            penultimate_stmt = (
+                select(JourneyStop)
+                .where(
+                    and_(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.stop_sequence < last_stop_db.stop_sequence,
+                    )
+                )
+                .order_by(JourneyStop.stop_sequence.desc())
+                .limit(1)
+            )
+            result = await session.execute(penultimate_stmt)
+            penultimate_stop = result.scalar_one_or_none()
+            if penultimate_stop and penultimate_stop.has_departed_station:
+                terminal_reached = True
+
+        if terminal_reached:
             journey.is_completed = True
 
             # Set actual arrival from the last stop's data
