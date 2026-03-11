@@ -1445,12 +1445,13 @@ extension APIService {
         guard var components = URLComponents(string: "\(baseURL)/v2/chat/messages") else {
             throw APIError.invalidURL
         }
-        var items = [URLQueryItem(name: "device_id", value: deviceId),
-                     URLQueryItem(name: "limit", value: String(limit))]
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
         if let before { items.append(URLQueryItem(name: "before", value: String(before))) }
         components.queryItems = items
         guard let url = components.url else { throw APIError.invalidURL }
-        let (data, _) = try await session.data(from: url)
+        var request = URLRequest(url: url)
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        let (data, _) = try await session.data(for: request)
         return try JSONDecoder().decode(ChatMessagesResponse.self, from: data)
     }
 
@@ -1469,12 +1470,12 @@ extension APIService {
     }
 
     func getChatUnreadCount(deviceId: String) async throws -> Int {
-        guard var components = URLComponents(string: "\(baseURL)/v2/chat/unread-count") else {
+        guard let url = URL(string: "\(baseURL)/v2/chat/unread-count") else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
-        guard let url = components.url else { throw APIError.invalidURL }
-        let (data, _) = try await session.data(from: url)
+        var request = URLRequest(url: url)
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        let (data, _) = try await session.data(for: request)
         let resp = try JSONDecoder().decode(ChatUnreadCountResponse.self, from: data)
         return resp.unread_count
     }
@@ -1506,12 +1507,12 @@ extension APIService {
     }
 
     func getChatConversations(deviceId: String) async throws -> [ChatConversationResponse] {
-        guard var components = URLComponents(string: "\(baseURL)/v2/chat/admin/conversations") else {
+        guard let url = URL(string: "\(baseURL)/v2/chat/admin/conversations") else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
-        guard let url = components.url else { throw APIError.invalidURL }
-        let (data, _) = try await session.data(from: url)
+        var request = URLRequest(url: url)
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        let (data, _) = try await session.data(for: request)
         return try JSONDecoder().decode(ChatConversationsResponse.self, from: data).conversations
     }
 
@@ -1519,12 +1520,13 @@ extension APIService {
         guard var components = URLComponents(string: "\(baseURL)/v2/chat/admin/conversations/\(targetDeviceId)/messages") else {
             throw APIError.invalidURL
         }
-        var items = [URLQueryItem(name: "device_id", value: deviceId),
-                     URLQueryItem(name: "limit", value: String(limit))]
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
         if let before { items.append(URLQueryItem(name: "before", value: String(before))) }
         components.queryItems = items
         guard let url = components.url else { throw APIError.invalidURL }
-        let (data, _) = try await session.data(from: url)
+        var request = URLRequest(url: url)
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        let (data, _) = try await session.data(for: request)
         return try JSONDecoder().decode(ChatMessagesResponse.self, from: data)
     }
 
@@ -1545,13 +1547,12 @@ extension APIService {
     }
 
     func markAdminChatMessagesRead(deviceId: String, targetDeviceId: String) async throws {
-        guard var components = URLComponents(string: "\(baseURL)/v2/chat/admin/conversations/\(targetDeviceId)/read") else {
+        guard let url = URL(string: "\(baseURL)/v2/chat/admin/conversations/\(targetDeviceId)/read") else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "device_id", value: deviceId)]
-        guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
         let (_, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw APIError.invalidParameters

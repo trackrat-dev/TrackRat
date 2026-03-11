@@ -82,12 +82,24 @@ class TestUserGetMessages:
     """GET /api/v2/chat/messages"""
 
     def test_get_empty_messages(self, e2e_client: TestClient):
-        """Getting messages for a device with no messages returns empty list."""
-        resp = e2e_client.get("/api/v2/chat/messages?device_id=no-messages-device")
+        """Getting messages for a registered device with no messages returns empty list."""
+        _register_device(e2e_client, "no-messages-device")
+        resp = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers={"X-Device-Id": "no-messages-device"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["messages"] == []
         assert data["has_more"] is False
+
+    def test_get_messages_unregistered_device(self, e2e_client: TestClient):
+        """Getting messages for an unregistered device returns 404."""
+        resp = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers={"X-Device-Id": "nonexistent-device"},
+        )
+        assert resp.status_code == 404
 
     def test_get_messages_after_send(self, e2e_client: TestClient):
         """Messages appear in the list after being sent."""
@@ -101,7 +113,10 @@ class TestUserGetMessages:
             json={"device_id": "chat-user-getmsg", "message": "Second message"},
         )
 
-        resp = e2e_client.get("/api/v2/chat/messages?device_id=chat-user-getmsg")
+        resp = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers={"X-Device-Id": "chat-user-getmsg"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert len(data["messages"]) == 2
@@ -123,7 +138,8 @@ class TestUserGetMessages:
 
         # Get messages before the last one, limit 2
         resp = e2e_client.get(
-            f"/api/v2/chat/messages?device_id=chat-user-page&before={msg_ids[-1]}&limit=2"
+            f"/api/v2/chat/messages?before={msg_ids[-1]}&limit=2",
+            headers={"X-Device-Id": "chat-user-page"},
         )
         data = resp.json()
         assert len(data["messages"]) == 2
@@ -137,9 +153,21 @@ class TestUnreadCount:
 
     def test_unread_count_zero(self, e2e_client: TestClient):
         """Unread count is 0 when no admin messages exist."""
-        resp = e2e_client.get("/api/v2/chat/unread-count?device_id=unread-user")
+        _register_device(e2e_client, "unread-user")
+        resp = e2e_client.get(
+            "/api/v2/chat/unread-count",
+            headers={"X-Device-Id": "unread-user"},
+        )
         assert resp.status_code == 200
         assert resp.json()["unread_count"] == 0
+
+    def test_unread_count_unregistered_device(self, e2e_client: TestClient):
+        """Unread count for an unregistered device returns 404."""
+        resp = e2e_client.get(
+            "/api/v2/chat/unread-count",
+            headers={"X-Device-Id": "nonexistent-device"},
+        )
+        assert resp.status_code == 404
 
     def test_unread_count_after_admin_reply(self, e2e_client: TestClient):
         """Unread count reflects admin messages not yet read."""
@@ -162,7 +190,10 @@ class TestUnreadCount:
             json={"device_id": "admin-unread", "message": "What's up?"},
         )
 
-        resp = e2e_client.get("/api/v2/chat/unread-count?device_id=chat-user-unread")
+        resp = e2e_client.get(
+            "/api/v2/chat/unread-count",
+            headers={"X-Device-Id": "chat-user-unread"},
+        )
         assert resp.json()["unread_count"] == 2
 
 
@@ -192,7 +223,10 @@ class TestMarkRead:
         assert mark_resp.json()["marked_count"] == 1
 
         # Unread count should be 1
-        unread = e2e_client.get("/api/v2/chat/unread-count?device_id=chat-user-read")
+        unread = e2e_client.get(
+            "/api/v2/chat/unread-count",
+            headers={"X-Device-Id": "chat-user-read"},
+        )
         assert unread.json()["unread_count"] == 1
 
         # Mark all as read
@@ -202,7 +236,10 @@ class TestMarkRead:
         )
         assert mark_resp2.json()["marked_count"] == 1
 
-        unread2 = e2e_client.get("/api/v2/chat/unread-count?device_id=chat-user-read")
+        unread2 = e2e_client.get(
+            "/api/v2/chat/unread-count",
+            headers={"X-Device-Id": "chat-user-read"},
+        )
         assert unread2.json()["unread_count"] == 0
 
 
@@ -246,7 +283,10 @@ class TestAdminConversations:
 
     def test_non_admin_rejected(self, e2e_client: TestClient):
         """Non-admin device gets 403."""
-        resp = e2e_client.get("/api/v2/chat/admin/conversations?device_id=not-admin")
+        resp = e2e_client.get(
+            "/api/v2/chat/admin/conversations",
+            headers={"X-Device-Id": "not-admin"},
+        )
         assert resp.status_code == 403
 
     def test_list_conversations(self, e2e_client: TestClient):
@@ -265,7 +305,10 @@ class TestAdminConversations:
             json={"device_id": "conv-user-b", "message": "Hello from B"},
         )
 
-        resp = e2e_client.get("/api/v2/chat/admin/conversations?device_id=admin-conv")
+        resp = e2e_client.get(
+            "/api/v2/chat/admin/conversations",
+            headers={"X-Device-Id": "admin-conv"},
+        )
         assert resp.status_code == 200
         data = resp.json()
         conversations = data["conversations"]
@@ -304,7 +347,10 @@ class TestAdminSendMessage:
         assert resp.json()["id"] > 0
 
         # User should see both messages
-        msgs = e2e_client.get("/api/v2/chat/messages?device_id=chat-user-reply")
+        msgs = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers={"X-Device-Id": "chat-user-reply"},
+        )
         messages = msgs.json()["messages"]
         assert len(messages) == 2
         assert messages[0]["sender_role"] == "user"
@@ -350,14 +396,16 @@ class TestAdminMarkRead:
 
         # Admin marks as read
         resp = e2e_client.post(
-            "/api/v2/chat/admin/conversations/user-markread/read?device_id=admin-markread"
+            "/api/v2/chat/admin/conversations/user-markread/read",
+            headers={"X-Device-Id": "admin-markread"},
         )
         assert resp.status_code == 200
         assert resp.json()["marked_count"] == 2
 
         # Conversation should show 0 unread
         convs = e2e_client.get(
-            "/api/v2/chat/admin/conversations?device_id=admin-markread"
+            "/api/v2/chat/admin/conversations",
+            headers={"X-Device-Id": "admin-markread"},
         )
         for conv in convs.json()["conversations"]:
             if conv["device_id"] == "user-markread":
@@ -366,7 +414,8 @@ class TestAdminMarkRead:
     def test_admin_mark_read_non_admin_rejected(self, e2e_client: TestClient):
         """Non-admin cannot mark admin messages as read."""
         resp = e2e_client.post(
-            "/api/v2/chat/admin/conversations/some-user/read?device_id=not-admin"
+            "/api/v2/chat/admin/conversations/some-user/read",
+            headers={"X-Device-Id": "not-admin"},
         )
         assert resp.status_code == 403
 
@@ -390,7 +439,8 @@ class TestAdminGetConversationMessages:
         )
 
         resp = e2e_client.get(
-            "/api/v2/chat/admin/conversations/chat-user-view/messages?device_id=admin-view"
+            "/api/v2/chat/admin/conversations/chat-user-view/messages",
+            headers={"X-Device-Id": "admin-view"},
         )
         assert resp.status_code == 200
         messages = resp.json()["messages"]
@@ -401,6 +451,7 @@ class TestAdminGetConversationMessages:
     def test_non_admin_rejected(self, e2e_client: TestClient):
         """Non-admin cannot view conversation messages."""
         resp = e2e_client.get(
-            "/api/v2/chat/admin/conversations/some-user/messages?device_id=not-admin"
+            "/api/v2/chat/admin/conversations/some-user/messages",
+            headers={"X-Device-Id": "not-admin"},
         )
         assert resp.status_code == 403
