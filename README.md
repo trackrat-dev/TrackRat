@@ -26,7 +26,9 @@ TrackRat tracks trains across seven transit systems in real time, predicts platf
 - **Real-Time Tracking** — Live train status, delays, and journey progress across all systems
 - **Delay Forecasting** — ML-powered delay and cancellation probability predictions
 - **Live Activities** — Real-time iOS Lock Screen and Dynamic Island updates
-- **Route Alerts** — Push notifications for delays and cancellations on subscribed routes
+- **Route Alerts** — Push notifications for delays, cancellations, and service changes on subscribed routes, with customizable schedules, thresholds, and per-type toggles
+- **Service Alerts** — MTA planned work and service change notifications for Subway, LIRR, and Metro-North
+- **Developer Chat** — In-app messaging between users and the developer
 - **Congestion Maps** — Live network congestion monitoring
 - **1,000+ Stations** across the Northeast Corridor
 
@@ -112,6 +114,7 @@ open TrackRat.xcodeproj
 | `APNS_TEAM_ID` | No | Apple Developer Team ID (for Live Activities) |
 | `APNS_KEY_ID` | No | Apple Push Notification key ID |
 | `APNS_AUTH_KEY_PATH` | No | Path to `.p8` auth key file |
+| `CHAT_ADMIN_REGISTRATION_CODE` | No | Secret code for registering admin devices for developer chat |
 
 See `backend_v2/.env.example` for the full list.
 
@@ -122,7 +125,7 @@ TrackRat/
 ├── backend_v2/          # Python FastAPI backend
 │   ├── src/trackrat/
 │   │   ├── api/         # API endpoints (FastAPI routers)
-│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway)
+│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, service_alerts)
 │   │   ├── config/      # Station configs, route topology
 │   │   ├── models/      # SQLAlchemy + Pydantic models
 │   │   ├── services/    # Business logic, ML predictions, scheduling
@@ -171,6 +174,10 @@ GET  /api/v2/predictions/track              # ML platform predictions
 GET  /api/v2/predictions/delay              # Delay/cancellation forecasts
 POST /api/v2/devices/register              # Register device for push notifications
 PUT  /api/v2/alerts/subscriptions          # Sync route alert subscriptions
+GET  /api/v2/alerts/service                # MTA service alerts (planned work, delays)
+GET  /api/v2/chat/messages                 # Chat message history
+POST /api/v2/chat/messages                 # Send a chat message
+GET  /admin/stats                           # Server usage statistics
 GET  /health                                # Health check
 ```
 
