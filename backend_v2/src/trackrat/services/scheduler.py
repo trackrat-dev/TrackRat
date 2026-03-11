@@ -86,7 +86,14 @@ class SchedulerService:
             db_url = str(self.settings.database_url).replace(
                 "postgresql+asyncpg", "postgresql"
             )
-            self._sync_engine = create_engine(db_url, pool_pre_ping=True)
+            self._sync_engine = create_engine(
+                db_url,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+                pool_timeout=30,
+                pool_recycle=3600,
+            )
         return self._sync_engine
 
     @staticmethod
