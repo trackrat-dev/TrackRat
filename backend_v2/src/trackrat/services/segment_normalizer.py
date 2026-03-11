@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 # Segments beyond this threshold are dropped as anomalous — typically caused
 # by sparse GTFS-RT stop lists creating phantom cross-branch connections.
 _MAX_UNMATCHED_SEGMENT_KM: dict[str, float] = {
-    "SUBWAY": 10.0,
+    "SUBWAY": 5.0,
 }
 
 
