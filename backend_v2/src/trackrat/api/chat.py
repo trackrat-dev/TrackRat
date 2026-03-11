@@ -9,7 +9,7 @@ registered in the admin_devices table.
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select, update
 from sqlalchemy.engine import CursorResult
@@ -192,13 +192,15 @@ async def _get_messages_page(
 
 @router.get("/messages", response_model=MessagesResponse)
 async def get_messages(
-    device_id: str,
     before: int | None = None,
     limit: int = 50,
+    x_device_id: str = Header(),
     db: AsyncSession = Depends(get_db),
 ) -> MessagesResponse:
     """Get paginated message history for a device."""
-    return await _get_messages_page(db, device_id, before, limit)
+    if not await _device_exists(db, x_device_id):
+        raise HTTPException(status_code=404, detail="Device not registered")
+    return await _get_messages_page(db, x_device_id, before, limit)
 
 
 @router.post("/messages", response_model=SendMessageResponse)
@@ -250,13 +252,15 @@ async def send_message(
 
 @router.get("/unread-count", response_model=UnreadCountResponse)
 async def get_unread_count(
-    device_id: str,
+    x_device_id: str = Header(),
     db: AsyncSession = Depends(get_db),
 ) -> UnreadCountResponse:
     """Get count of unread messages from admin for this device."""
+    if not await _device_exists(db, x_device_id):
+        raise HTTPException(status_code=404, detail="Device not registered")
     result = await db.execute(
         select(func.count(ChatMessage.id)).where(
-            ChatMessage.device_id == device_id,
+            ChatMessage.device_id == x_device_id,
             ChatMessage.sender_role == "admin",
             ChatMessage.read_at.is_(None),
         )
@@ -322,11 +326,11 @@ async def register_admin(
 
 @router.get("/admin/conversations", response_model=ConversationsResponse)
 async def get_conversations(
-    device_id: str,
+    x_device_id: str = Header(),
     db: AsyncSession = Depends(get_db),
 ) -> ConversationsResponse:
     """List all conversations (admin only)."""
-    if not await _is_admin(db, device_id):
+    if not await _is_admin(db, x_device_id):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     # Subquery for latest message per device
@@ -385,13 +389,13 @@ async def get_conversations(
 )
 async def get_conversation_messages(
     target_device_id: str,
-    device_id: str,
     before: int | None = None,
     limit: int = 50,
+    x_device_id: str = Header(),
     db: AsyncSession = Depends(get_db),
 ) -> MessagesResponse:
     """Get messages for a specific conversation (admin only)."""
-    if not await _is_admin(db, device_id):
+    if not await _is_admin(db, x_device_id):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     return await _get_messages_page(db, target_device_id, before, limit)
@@ -452,11 +456,11 @@ async def send_admin_message(
 )
 async def mark_admin_messages_read(
     target_device_id: str,
-    device_id: str,
+    x_device_id: str = Header(),
     db: AsyncSession = Depends(get_db),
 ) -> MarkReadResponse:
     """Mark user messages as read in a conversation (admin only)."""
-    if not await _is_admin(db, device_id):
+    if not await _is_admin(db, x_device_id):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     now = datetime.now(UTC)
