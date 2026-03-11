@@ -61,8 +61,12 @@ def _make_train_data():
     """Create realistic NJT train stop list response."""
     builder = StopBuilder()
     stops = [
-        builder.build_stop("NY", "New York Penn", "11-Mar-2026 08:00:00 AM", departed=True, track="5"),
-        builder.build_stop("NP", "Newark Penn", "11-Mar-2026 08:20:00 AM", departed=True),
+        builder.build_stop(
+            "NY", "New York Penn", "11-Mar-2026 08:00:00 AM", departed=True, track="5"
+        ),
+        builder.build_stop(
+            "NP", "Newark Penn", "11-Mar-2026 08:20:00 AM", departed=True
+        ),
         builder.build_stop("TR", "Trenton", "11-Mar-2026 09:00:00 AM", departed=False),
     ]
     return create_stop_list_response("1234", stops=stops)
@@ -128,7 +132,9 @@ class TestSessionSplitting:
 
         with patch("trackrat.services.scheduler.commit_with_retry"):
             # Patch sessionmaker to return our tracking sessions
-            with patch("sqlalchemy.orm.sessionmaker", return_value=TrackingSessionMaker()):
+            with patch(
+                "sqlalchemy.orm.sessionmaker", return_value=TrackingSessionMaker()
+            ):
                 result = await scheduler_service._collect_single_njt_journey_safe(
                     "1234", date(2026, 3, 11)
                 )
@@ -140,9 +146,9 @@ class TestSessionSplitting:
             "This causes connection pool exhaustion under concurrent load."
         )
         # Phase 1 read + Phase 3 write = 2 separate sessions
-        assert call_count[0] == 2, (
-            f"Expected 2 separate session opens (read + write), got {call_count[0]}"
-        )
+        assert (
+            call_count[0] == 2
+        ), f"Expected 2 separate session opens (read + write), got {call_count[0]}"
 
     @pytest.mark.asyncio
     async def test_two_sessions_for_train_not_found(self, scheduler_service):
@@ -158,7 +164,9 @@ class TestSessionSplitting:
         class TrackingSession:
             def __init__(self):
                 self._execute_result = Mock()
-                self._execute_result.first.return_value = _make_journey_row(api_error_count=0)
+                self._execute_result.first.return_value = _make_journey_row(
+                    api_error_count=0
+                )
 
             def __enter__(self):
                 nonlocal session_context_active
@@ -194,7 +202,9 @@ class TestSessionSplitting:
         scheduler_service.njt_client.get_train_stop_list = mock_api_call
 
         with patch("trackrat.services.scheduler.commit_with_retry"):
-            with patch("sqlalchemy.orm.sessionmaker", return_value=TrackingSessionMaker()):
+            with patch(
+                "sqlalchemy.orm.sessionmaker", return_value=TrackingSessionMaker()
+            ):
                 result = await scheduler_service._collect_single_njt_journey_safe(
                     "1234", date(2026, 3, 11)
                 )
@@ -202,9 +212,9 @@ class TestSessionSplitting:
         assert result is not None
         assert result["success"] is False
         assert result["error"] == "Train not found"
-        assert not session_open_during_api_call, (
-            "DB session was open during API call on TrainNotFoundError path"
-        )
+        assert (
+            not session_open_during_api_call
+        ), "DB session was open during API call on TrainNotFoundError path"
         # Phase 1 read + error write = 2 sessions
         assert call_count[0] == 2
 
@@ -251,9 +261,9 @@ class TestSessionSplitting:
         assert result["success"] is False
         assert result["error"] == "Transient null data"
         # Only Phase 1 read — no write needed
-        assert call_count[0] == 1, (
-            f"NullDataError should only open 1 session (read), got {call_count[0]}"
-        )
+        assert (
+            call_count[0] == 1
+        ), f"NullDataError should only open 1 session (read), got {call_count[0]}"
 
 
 class TestSemaphoreConcurrencyLimit:
@@ -312,7 +322,9 @@ class TestSemaphoreConcurrencyLimit:
         scheduler_service.njt_client.get_train_stop_list = slow_api_call
 
         with patch("trackrat.services.scheduler.commit_with_retry"):
-            with patch("sqlalchemy.orm.sessionmaker", return_value=SimpleSessionMaker()):
+            with patch(
+                "sqlalchemy.orm.sessionmaker", return_value=SimpleSessionMaker()
+            ):
                 # Fire 20 concurrent collections
                 tasks = [
                     asyncio.create_task(
@@ -356,7 +368,9 @@ class TestSemaphoreConcurrencyLimit:
             def __init__(self):
                 self._execute_result = Mock()
                 # Return expired journey for task 2 so it exits early
-                self._execute_result.first.return_value = _make_journey_row(is_expired=True)
+                self._execute_result.first.return_value = _make_journey_row(
+                    is_expired=True
+                )
 
             def __enter__(self):
                 return self
@@ -391,7 +405,9 @@ class TestSemaphoreConcurrencyLimit:
         async def task1():
             """Holds the semaphore during a long API call."""
             with patch("trackrat.services.scheduler.commit_with_retry"):
-                with patch("sqlalchemy.orm.sessionmaker", return_value=SimpleSessionMaker()):
+                with patch(
+                    "sqlalchemy.orm.sessionmaker", return_value=SimpleSessionMaker()
+                ):
                     return await scheduler_service._collect_single_njt_journey_safe(
                         "1111", date(2026, 3, 11)
                     )
@@ -400,7 +416,9 @@ class TestSemaphoreConcurrencyLimit:
             """Should be able to read DB and exit early (expired journey)
             even while task1 holds the semaphore."""
             await api_started.wait()  # Ensure task1 has the semaphore
-            with patch("sqlalchemy.orm.sessionmaker", return_value=SimpleSessionMaker()):
+            with patch(
+                "sqlalchemy.orm.sessionmaker", return_value=SimpleSessionMaker()
+            ):
                 return await scheduler_service._collect_single_njt_journey_safe(
                     "2222", date(2026, 3, 11)
                 )
@@ -410,7 +428,9 @@ class TestSemaphoreConcurrencyLimit:
 
         # Task 2 should complete quickly (expired journey, no API call needed)
         result2 = await asyncio.wait_for(t2, timeout=2.0)
-        assert result2 is None, "Expired journey should return None without waiting for semaphore"
+        assert (
+            result2 is None
+        ), "Expired journey should return None without waiting for semaphore"
 
         # Let task 1 finish
         api_can_finish.set()
@@ -458,7 +478,9 @@ class TestCodePaths:
         class ExpiredSession:
             def __init__(self):
                 self._execute_result = Mock()
-                self._execute_result.first.return_value = _make_journey_row(is_expired=True)
+                self._execute_result.first.return_value = _make_journey_row(
+                    is_expired=True
+                )
 
             def __enter__(self):
                 return self
@@ -498,7 +520,9 @@ class TestCodePaths:
         class WriteSession:
             def __init__(self):
                 self._execute_result = Mock()
-                self._execute_result.first.return_value = _make_journey_row(api_error_count=2)
+                self._execute_result.first.return_value = _make_journey_row(
+                    api_error_count=2
+                )
 
             def __enter__(self):
                 return self
@@ -602,7 +626,9 @@ class TestCodePaths:
                 return WriteSession()
 
         train_data = _make_train_data()
-        scheduler_service.njt_client.get_train_stop_list = AsyncMock(return_value=train_data)
+        scheduler_service.njt_client.get_train_stop_list = AsyncMock(
+            return_value=train_data
+        )
 
         with patch("trackrat.services.scheduler.commit_with_retry"):
             with patch("sqlalchemy.orm.sessionmaker", return_value=SessionMaker()):
@@ -616,9 +642,9 @@ class TestCodePaths:
         assert result["stops_count"] == 3
         assert result["destination"] == "Test Destination"
         # Should have written stops + snapshot
-        assert len(written_objects) >= 3, (
-            f"Expected at least 3 written objects (3 stops + snapshot), got {len(written_objects)}"
-        )
+        assert (
+            len(written_objects) >= 3
+        ), f"Expected at least 3 written objects (3 stops + snapshot), got {len(written_objects)}"
 
     @pytest.mark.asyncio
     async def test_journey_disappeared_between_phases(self, scheduler_service):
@@ -663,7 +689,9 @@ class TestCodePaths:
                 "1234", date(2026, 3, 11)
             )
 
-        assert result is None, "Should return None when journey disappears between phases"
+        assert (
+            result is None
+        ), "Should return None when journey disappears between phases"
 
     @pytest.mark.asyncio
     async def test_transient_db_error_returns_retry_needed(self, scheduler_service):

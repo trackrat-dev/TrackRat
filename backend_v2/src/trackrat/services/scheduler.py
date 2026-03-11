@@ -77,7 +77,9 @@ class SchedulerService:
         self.jit_service: JustInTimeUpdateService | None = None
         self._running_tasks: dict[str, asyncio.Task[Any]] = {}
         self._sync_engine: Any = None  # Lazily created sync engine for NJT
-        self._njt_collection_semaphore = asyncio.Semaphore(10)  # Cap concurrent NJT collections
+        self._njt_collection_semaphore = asyncio.Semaphore(
+            10
+        )  # Cap concurrent NJT collections
 
     def _get_sync_engine(self) -> Any:
         """Get or create a cached synchronous database engine."""
@@ -1711,23 +1713,17 @@ class SchedulerService:
                                 first_stop.DEP_TIME
                             )
                         if last_stop.TIME:
-                            journey.scheduled_arrival = parse_njt_time(
-                                last_stop.TIME
-                            )
+                            journey.scheduled_arrival = parse_njt_time(last_stop.TIME)
 
                     # Delete existing stops
                     session.execute(
-                        delete(JourneyStop).where(
-                            JourneyStop.journey_id == journey.id
-                        )
+                        delete(JourneyStop).where(JourneyStop.journey_id == journey.id)
                     )
 
                     # Create new stops
                     for idx, stop_data in enumerate(train_data.STOPS):
                         scheduled_arrival = (
-                            parse_njt_time(stop_data.TIME)
-                            if stop_data.TIME
-                            else None
+                            parse_njt_time(stop_data.TIME) if stop_data.TIME else None
                         )
                         scheduled_departure = (
                             parse_njt_time(stop_data.DEP_TIME)
@@ -1735,9 +1731,7 @@ class SchedulerService:
                             else None
                         )
 
-                        is_stop_cancelled = (
-                            stop_data.STOP_STATUS or ""
-                        ) == "CANCELLED"
+                        is_stop_cancelled = (stop_data.STOP_STATUS or "") == "CANCELLED"
                         actual_arrival = None
                         actual_departure = None
                         if stop_data.DEPARTED == "YES" and not is_stop_cancelled:
@@ -1805,9 +1799,7 @@ class SchedulerService:
                                     pass
                             break
 
-                    train_status = self._determine_train_status_sync(
-                        train_data.STOPS
-                    )
+                    train_status = self._determine_train_status_sync(train_data.STOPS)
 
                     snapshot = JourneySnapshot(
                         journey_id=journey.id,

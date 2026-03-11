@@ -161,10 +161,22 @@ async def _create_tr_to_ny_journey(
 
     stops = [
         ("TR", "Trenton", 0, True, base_time, base_time),
-        ("NP", "Newark Penn", 1, penultimate_departed,
-         base_time + timedelta(minutes=40), base_time + timedelta(minutes=42)),
-        ("NY", "New York Penn", 2, terminal_departed,
-         base_time + timedelta(minutes=60), base_time + timedelta(minutes=60)),
+        (
+            "NP",
+            "Newark Penn",
+            1,
+            penultimate_departed,
+            base_time + timedelta(minutes=40),
+            base_time + timedelta(minutes=42),
+        ),
+        (
+            "NY",
+            "New York Penn",
+            2,
+            terminal_departed,
+            base_time + timedelta(minutes=60),
+            base_time + timedelta(minutes=60),
+        ),
     ]
 
     for code, name, seq, departed, sched_arr, sched_dep in stops:
@@ -175,7 +187,9 @@ async def _create_tr_to_ny_journey(
             stop_sequence=seq,
             has_departed_station=departed,
             scheduled_arrival=sched_arr,
-            scheduled_departure=sched_dep if code != "NY" else None,  # Terminal has no departure
+            scheduled_departure=(
+                sched_dep if code != "NY" else None
+            ),  # Terminal has no departure
         )
         session.add(stop)
 
@@ -207,16 +221,29 @@ class TestTerminalStopCompletion:
         builder = StopBuilder()
         ny_arrival_time = base_time + timedelta(minutes=58)
         stops_data = [
-            _make_stop(builder, "TR", "Trenton", base_time.strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NP", "Newark Penn",
-                       (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
-                       arr_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NY", "New York Penn",
-                       None,  # No DEP_TIME for terminal
-                       arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
-                       departed=False),  # Terminal never gets DEPARTED=YES
+            _make_stop(
+                builder,
+                "TR",
+                "Trenton",
+                base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NP",
+                "Newark Penn",
+                (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NY",
+                "New York Penn",
+                None,  # No DEP_TIME for terminal
+                arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),  # Terminal never gets DEPARTED=YES
         ]
         # Terminal stop has no DEP_TIME
         stops_data[2].DEP_TIME = None
@@ -226,9 +253,9 @@ class TestTerminalStopCompletion:
         )
 
         # Journey should be marked completed
-        assert journey.is_completed is True, (
-            "Journey should be completed when penultimate stop has departed"
-        )
+        assert (
+            journey.is_completed is True
+        ), "Journey should be completed when penultimate stop has departed"
 
         # Terminal stop should have actual_arrival set from API TIME field
         ny_stop = await sqlite_session.scalar(
@@ -237,12 +264,12 @@ class TestTerminalStopCompletion:
                 JourneyStop.station_code == "NY",
             )
         )
-        assert ny_stop.actual_arrival is not None, (
-            "Terminal stop actual_arrival should be set from API"
-        )
-        assert ny_stop.arrival_source == "api_observed", (
-            f"Terminal arrival_source should be 'api_observed', got '{ny_stop.arrival_source}'"
-        )
+        assert (
+            ny_stop.actual_arrival is not None
+        ), "Terminal stop actual_arrival should be set from API"
+        assert (
+            ny_stop.arrival_source == "api_observed"
+        ), f"Terminal arrival_source should be 'api_observed', got '{ny_stop.arrival_source}'"
         print(f"  Terminal actual_arrival: {ny_stop.actual_arrival}")
         print(f"  Terminal arrival_source: {ny_stop.arrival_source}")
         print(f"  Journey is_completed: {journey.is_completed}")
@@ -260,13 +287,21 @@ class TestTerminalStopCompletion:
 
         builder = StopBuilder()
         stops_data = [
-            _make_stop(builder, "TR", "Trenton", base_time.strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NP", "Newark Penn",
-                       (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
-                       departed=False),
-            _make_stop(builder, "NY", "New York Penn",
-                       None, departed=False),
+            _make_stop(
+                builder,
+                "TR",
+                "Trenton",
+                base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NP",
+                "Newark Penn",
+                (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+            _make_stop(builder, "NY", "New York Penn", None, departed=False),
         ]
         stops_data[2].DEP_TIME = None
 
@@ -274,9 +309,9 @@ class TestTerminalStopCompletion:
             sqlite_session, journey, stops_data
         )
 
-        assert journey.is_completed is not True, (
-            "Journey should NOT be completed when penultimate stop hasn't departed"
-        )
+        assert (
+            journey.is_completed is not True
+        ), "Journey should NOT be completed when penultimate stop hasn't departed"
         print(f"  Journey is_completed: {journey.is_completed}")
 
     @pytest.mark.asyncio
@@ -287,22 +322,37 @@ class TestTerminalStopCompletion:
         for edge cases where it does fire."""
         base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
         journey = await _create_tr_to_ny_journey(
-            sqlite_session, base_time,
-            penultimate_departed=True, terminal_departed=True,
+            sqlite_session,
+            base_time,
+            penultimate_departed=True,
+            terminal_departed=True,
         )
 
         builder = StopBuilder()
         ny_arrival_time = base_time + timedelta(minutes=58)
         stops_data = [
-            _make_stop(builder, "TR", "Trenton", base_time.strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NP", "Newark Penn",
-                       (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NY", "New York Penn",
-                       None,
-                       arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
-                       departed=True),
+            _make_stop(
+                builder,
+                "TR",
+                "Trenton",
+                base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NP",
+                "Newark Penn",
+                (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NY",
+                "New York Penn",
+                None,
+                arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
         ]
         stops_data[2].DEP_TIME = None
 
@@ -310,9 +360,9 @@ class TestTerminalStopCompletion:
             sqlite_session, journey, stops_data
         )
 
-        assert journey.is_completed is True, (
-            "Journey should be completed when terminal stop has departed"
-        )
+        assert (
+            journey.is_completed is True
+        ), "Journey should be completed when terminal stop has departed"
         print(f"  Journey is_completed: {journey.is_completed}")
 
 
@@ -351,19 +401,28 @@ class TestStopSequenceRobustness:
         # Create stops with a gap: sequences 0, 1, 3 (stop 2 was deleted)
         stops_db = [
             JourneyStop(
-                journey_id=journey.id, station_code="TR", station_name="Trenton",
-                stop_sequence=0, has_departed_station=True,
+                journey_id=journey.id,
+                station_code="TR",
+                station_name="Trenton",
+                stop_sequence=0,
+                has_departed_station=True,
                 scheduled_arrival=base_time,
             ),
             JourneyStop(
-                journey_id=journey.id, station_code="NP", station_name="Newark Penn",
-                stop_sequence=1, has_departed_station=True,
+                journey_id=journey.id,
+                station_code="NP",
+                station_name="Newark Penn",
+                stop_sequence=1,
+                has_departed_station=True,
                 scheduled_arrival=base_time + timedelta(minutes=40),
             ),
             # stop_sequence=2 was deleted (phantom stop)
             JourneyStop(
-                journey_id=journey.id, station_code="NY", station_name="New York Penn",
-                stop_sequence=3, has_departed_station=False,
+                journey_id=journey.id,
+                station_code="NY",
+                station_name="New York Penn",
+                stop_sequence=3,
+                has_departed_station=False,
                 scheduled_arrival=base_time + timedelta(minutes=60),
             ),
         ]
@@ -375,15 +434,28 @@ class TestStopSequenceRobustness:
         builder = StopBuilder()
         ny_arrival_time = base_time + timedelta(minutes=58)
         stops_data = [
-            _make_stop(builder, "TR", "Trenton", base_time.strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NP", "Newark Penn",
-                       (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
-                       departed=True),
-            _make_stop(builder, "NY", "New York Penn",
-                       None,
-                       arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
-                       departed=False),
+            _make_stop(
+                builder,
+                "TR",
+                "Trenton",
+                base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NP",
+                "Newark Penn",
+                (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NY",
+                "New York Penn",
+                None,
+                arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
         ]
         stops_data[2].DEP_TIME = None
 
@@ -406,9 +478,9 @@ class TestStopSequenceRobustness:
                 JourneyStop.station_code == "NY",
             )
         )
-        assert ny_stop.arrival_source == "api_observed", (
-            f"Expected 'api_observed', got '{ny_stop.arrival_source}'"
-        )
+        assert (
+            ny_stop.arrival_source == "api_observed"
+        ), f"Expected 'api_observed', got '{ny_stop.arrival_source}'"
         print(f"  Gap test: journey completed with stop_sequences [0, 1, 3]")
 
 
@@ -431,13 +503,11 @@ class TestCompletionOnExpiry:
             sqlite_session, base_time, penultimate_departed=True
         )
 
-        await journey_collector._attempt_completion_on_expiry(
-            sqlite_session, journey
-        )
+        await journey_collector._attempt_completion_on_expiry(sqlite_session, journey)
 
-        assert journey.is_completed is True, (
-            "Journey should be completed on expiry when penultimate stop departed"
-        )
+        assert (
+            journey.is_completed is True
+        ), "Journey should be completed on expiry when penultimate stop departed"
         # Since we don't have API data, terminal uses scheduled_fallback
         ny_stop = await sqlite_session.scalar(
             select(JourneyStop).where(
@@ -445,12 +515,12 @@ class TestCompletionOnExpiry:
                 JourneyStop.station_code == "NY",
             )
         )
-        assert ny_stop.actual_arrival is not None, (
-            "Terminal actual_arrival should be set from scheduled_arrival fallback"
-        )
-        assert ny_stop.arrival_source == "scheduled_fallback", (
-            f"Expected 'scheduled_fallback', got '{ny_stop.arrival_source}'"
-        )
+        assert (
+            ny_stop.actual_arrival is not None
+        ), "Terminal actual_arrival should be set from scheduled_arrival fallback"
+        assert (
+            ny_stop.arrival_source == "scheduled_fallback"
+        ), f"Expected 'scheduled_fallback', got '{ny_stop.arrival_source}'"
         print(f"  Expiry completion: actual_arrival={ny_stop.actual_arrival}")
         print(f"  Expiry completion: arrival_source={ny_stop.arrival_source}")
 
@@ -465,9 +535,7 @@ class TestCompletionOnExpiry:
             sqlite_session, base_time, penultimate_departed=False
         )
 
-        await journey_collector._attempt_completion_on_expiry(
-            sqlite_session, journey
-        )
+        await journey_collector._attempt_completion_on_expiry(sqlite_session, journey)
 
         assert journey.is_completed is not True, (
             "Journey should NOT be completed on expiry when penultimate stop "
@@ -500,12 +568,10 @@ class TestCompletionOnExpiry:
 
         # This should be a no-op since the caller guards with `not journey.is_completed`
         # But test the method directly to ensure it doesn't corrupt data
-        await journey_collector._attempt_completion_on_expiry(
-            sqlite_session, journey
-        )
+        await journey_collector._attempt_completion_on_expiry(sqlite_session, journey)
 
         await sqlite_session.refresh(ny_stop)
-        assert ny_stop.arrival_source == "api_observed", (
-            "Existing api_observed arrival should not be overwritten by expiry"
-        )
+        assert (
+            ny_stop.arrival_source == "api_observed"
+        ), "Existing api_observed arrival should not be overwritten by expiry"
         print(f"  Preserved arrival_source: {ny_stop.arrival_source}")

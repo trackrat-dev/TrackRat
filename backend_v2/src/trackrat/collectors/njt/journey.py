@@ -796,7 +796,11 @@ class JourneyCollector(BaseJourneyCollector):
                 if not journey.is_completed:
                     journey.is_expired = True
                 logger.warning(
-                    "train_marked_expired" if journey.is_expired else "train_completed_on_expiry",
+                    (
+                        "train_marked_expired"
+                        if journey.is_expired
+                        else "train_completed_on_expiry"
+                    ),
                     train_id=journey.train_id,
                     journey_id=journey.id,
                     api_error_count=journey.api_error_count,
@@ -1810,7 +1814,11 @@ class JourneyCollector(BaseJourneyCollector):
         # If not, check if the penultimate stop has departed.
         # Use ORDER BY desc with offset to handle non-contiguous sequences
         # (e.g., after phantom stop deletion: 0, 1, 3).
-        if not terminal_reached and last_stop_db.stop_sequence > 0:
+        if (
+            not terminal_reached
+            and last_stop_db.stop_sequence is not None
+            and last_stop_db.stop_sequence > 0
+        ):
             penultimate_stmt = (
                 select(JourneyStop)
                 .where(

@@ -34,6 +34,13 @@ async def test_train_expiry_after_three_failures():
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
 
+    # Mock session.execute for _attempt_completion_on_expiry queries
+    mock_result = AsyncMock()
+    scalars_mock = Mock()
+    scalars_mock.all = Mock(return_value=[])  # No stops found — skip completion
+    mock_result.scalars = Mock(return_value=scalars_mock)
+    session.execute = AsyncMock(return_value=mock_result)
+
     # Mock NJT client that raises TrainNotFoundError
     njt_client = AsyncMock()
     njt_client.get_train_stop_list = AsyncMock(
@@ -462,6 +469,13 @@ async def test_genuine_not_found_still_expires_after_null_data():
 
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
+
+    # Mock session.execute for _attempt_completion_on_expiry queries
+    mock_result = AsyncMock()
+    scalars_mock = Mock()
+    scalars_mock.all = Mock(return_value=[])  # No stops found — skip completion
+    mock_result.scalars = Mock(return_value=scalars_mock)
+    session.execute = AsyncMock(return_value=mock_result)
 
     njt_client = AsyncMock()
     collector = JourneyCollector(njt_client)

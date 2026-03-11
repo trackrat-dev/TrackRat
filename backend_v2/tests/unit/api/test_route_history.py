@@ -1085,9 +1085,9 @@ class TestCutoffTimeFiltersByArrival:
             f"got {result['total_journeys']}. The cutoff should filter by "
             "destination arrival time, not origin departure time."
         )
-        assert result["on_time_percentage"] is not None, (
-            "on_time_percentage should not be N/A for a train that already arrived"
-        )
+        assert (
+            result["on_time_percentage"] is not None
+        ), "on_time_percentage should not be N/A for a train that already arrived"
 
     async def test_recently_departed_but_not_arrived_excluded(
         self, db_session: AsyncSession
@@ -1129,9 +1129,7 @@ class TestCutoffTimeFiltersByArrival:
             "en route should not be included in arrival-based stats."
         )
 
-    async def test_train_arrived_before_cutoff_excluded(
-        self, db_session: AsyncSession
-    ):
+    async def test_train_arrived_before_cutoff_excluded(self, db_session: AsyncSession):
         """A train that arrived 2 hours ago should NOT appear in 'last hour' stats."""
         now = BASE_TIME + timedelta(hours=4)
         cutoff = now - timedelta(hours=1)

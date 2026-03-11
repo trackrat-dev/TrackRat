@@ -664,7 +664,9 @@ class GTFSRoute(Base):
 
     # Relationships
     trips: Mapped[list["GTFSTrip"]] = relationship(
-        "GTFSTrip", back_populates="route", cascade="all, delete-orphan",
+        "GTFSTrip",
+        back_populates="route",
+        cascade="all, delete-orphan",
         lazy="raise_on_sql",
     )
 
@@ -693,7 +695,9 @@ class GTFSTrip(Base):
         "GTFSRoute", back_populates="trips", lazy="raise_on_sql"
     )
     stop_times: Mapped[list["GTFSStopTime"]] = relationship(
-        "GTFSStopTime", back_populates="trip", cascade="all, delete-orphan",
+        "GTFSStopTime",
+        back_populates="trip",
+        cascade="all, delete-orphan",
         lazy="raise_on_sql",
     )
 
