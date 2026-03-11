@@ -86,7 +86,18 @@ class SchedulerService:
             db_url = str(self.settings.database_url).replace(
                 "postgresql+asyncpg", "postgresql"
             )
-            self._sync_engine = create_engine(db_url, pool_pre_ping=True)
+            self._sync_engine = create_engine(
+                db_url,
+                pool_pre_ping=True,
+                pool_size=10,
+                max_overflow=20,
+                pool_timeout=30,
+                pool_recycle=3600,
+                connect_args={
+                    "application_name": "trackrat-v2-sync",
+                    "options": "-c statement_timeout=60000 -c jit=off -c timezone=America/New_York",
+                },
+            )
         return self._sync_engine
 
     @staticmethod
@@ -2842,7 +2853,12 @@ class SchedulerService:
 
             except Exception as e:
                 # Add more context for debugging
-                import greenlet  # type: ignore[import-untyped]
+                try:
+                    import greenlet  # type: ignore[import-untyped]
+
+                    greenlet_info = str(greenlet.getcurrent())
+                except ImportError:
+                    greenlet_info = "greenlet not available"
 
                 logger.error(
                     "live_activity_update_error",
@@ -2854,9 +2870,7 @@ class SchedulerService:
                         if (task := asyncio.current_task()) is not None
                         else None
                     ),
-                    greenlet_current=(
-                        str(greenlet.getcurrent()) if greenlet else "no greenlet module"
-                    ),
+                    greenlet_current=greenlet_info,
                 )
             finally:
                 # Remove from running tasks
