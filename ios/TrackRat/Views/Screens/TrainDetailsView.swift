@@ -85,6 +85,25 @@ struct TrainDetailsView: View {
                             )
                         }
 
+                        // Route status button
+                        if let train = viewModel.train,
+                           let fromCode = appState.departureStationCode,
+                           let toCode = appState.destinationStationCode {
+                            Button {
+                                appState.pendingRouteStatus = RouteStatusContext(
+                                    dataSource: train.dataSource,
+                                    lineId: nil,
+                                    fromStationCode: fromCode,
+                                    toStationCode: toCode
+                                )
+                            } label: {
+                                Image(systemName: "chart.bar.xaxis")
+                                    .font(TrackRatTheme.IconSize.small)
+                                    .foregroundColor(.white)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
                         Button("Close") {
                             if isSheet {
                                 dismiss()
