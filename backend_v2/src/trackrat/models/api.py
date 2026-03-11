@@ -63,7 +63,7 @@ class LineInfo(BaseModel):
 class StationInfo(BaseModel):
     """Station information with timing data only."""
 
-    code: str = Field(..., min_length=1, max_length=4)
+    code: str = Field(..., min_length=1, max_length=10)
     name: str
     scheduled_time: datetime | None = None
     updated_time: datetime | None = None
@@ -78,7 +78,7 @@ class StationInfo(BaseModel):
 class SimpleStationInfo(BaseModel):
     """Simple station information without timing data."""
 
-    code: str = Field(..., min_length=1, max_length=4)
+    code: str = Field(..., min_length=1, max_length=10)
     name: str
 
 
@@ -344,7 +344,7 @@ class TrainHistoryResponse(BaseModel):
 class OccupiedTracksResponse(BaseModel):
     """Response for occupied tracks endpoint."""
 
-    station_code: str = Field(..., min_length=1, max_length=4)
+    station_code: str = Field(..., min_length=1, max_length=10)
     station_name: str
     occupied_tracks: list[str]
     last_updated: datetime
@@ -466,8 +466,8 @@ class AmtrakTrainData(BaseModel):
 class HistoricalRouteInfo(BaseModel):
     """Route information for route-based historical data."""
 
-    from_station: str = Field(..., min_length=1, max_length=4)
-    to_station: str = Field(..., min_length=1, max_length=4)
+    from_station: str = Field(..., min_length=1, max_length=10)
+    to_station: str = Field(..., min_length=1, max_length=10)
     total_trains: int = Field(..., ge=0)
     data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
     baseline_train_count: float | None = Field(
