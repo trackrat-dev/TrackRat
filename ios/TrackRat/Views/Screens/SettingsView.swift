@@ -117,19 +117,6 @@ struct SettingsView: View {
                         AdvancedConfigurationView()
                     }
                 }
-                .toolbar {
-                    if destination != .routeAlerts {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                dismiss()
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(TrackRatTheme.IconSize.xsmall)
-                                    .foregroundColor(.white)
-                            }
-                        }
-                    }
-                }
             }
             .navigationBarHidden(true)
         }

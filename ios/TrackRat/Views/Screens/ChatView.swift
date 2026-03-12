@@ -26,8 +26,17 @@ struct ChatView: View {
 
     private let maxMessageLength = 255
 
+    private var headerTitle: String {
+        isAdminMode ? "User \(targetDeviceId?.prefix(8) ?? "")" : "Chat with Developer"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            TrackRatNavigationHeader(
+                title: headerTitle,
+                showBackButton: false
+            )
+
             // Messages
             ScrollViewReader { proxy in
                 ScrollView {
@@ -91,8 +100,7 @@ struct ChatView: View {
             }
         }
         .background(TrackRatTheme.Colors.primaryBackground)
-        .navigationTitle(isAdminMode ? "User \(targetDeviceId?.prefix(8) ?? "")" : "Chat with Developer")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .task {
             await loadMessages()
             startPolling()
@@ -297,26 +305,5 @@ private struct MessageBubble: View {
             if !isMine { Spacer(minLength: 60) }
         }
         .padding(.vertical, 1)
-    }
-}
-
-// MARK: - Empty State
-
-struct ChatEmptyState: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("Chat with the Developer")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text("Have a question or suggestion? Send a message and you'll hear back directly.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
