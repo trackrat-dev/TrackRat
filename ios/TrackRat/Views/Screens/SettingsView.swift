@@ -144,6 +144,8 @@ struct SettingsView: View {
                     do {
                         try await chatService.registerAsAdmin(code: adminRegistrationCode)
                         adminRegistrationCode = ""
+                    } catch APIError.serverError {
+                        adminRegistrationError = "Admin registration not available on this server"
                     } catch {
                         adminRegistrationError = "Invalid code"
                     }
