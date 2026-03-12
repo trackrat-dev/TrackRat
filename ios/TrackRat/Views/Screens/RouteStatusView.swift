@@ -84,10 +84,21 @@ struct RouteStatusView: View {
                 }
             }
             .task {
+                // Initialize draft subscription for alert config if not yet subscribed
+                if matchingSubscriptions.isEmpty && draftSubscription == nil,
+                   let from = context.fromStationCode, let to = context.toStationCode {
+                    draftSubscription = RouteAlertSubscription(
+                        dataSource: context.dataSource,
+                        fromStationCode: from,
+                        toStationCode: to,
+                        activeDays: 0
+                    )
+                }
                 await viewModel.loadData()
             }
             .onDisappear {
                 // Persist any edited subscriptions back to the service
+                guard !editedSubscriptions.isEmpty else { return }
                 for (_, edited) in editedSubscriptions {
                     alertService.updateSubscription(edited)
                 }
@@ -138,7 +149,15 @@ struct RouteStatusView: View {
             )
         } else {
             return Binding(
-                get: { draftSubscription ?? makeDraftSubscription() },
+                get: {
+                    // Draft is initialized in .task; fallback should never be needed
+                    draftSubscription ?? RouteAlertSubscription(
+                        dataSource: context.dataSource,
+                        fromStationCode: context.fromStationCode ?? "",
+                        toStationCode: context.toStationCode ?? "",
+                        activeDays: 0
+                    )
+                },
                 set: { draftSubscription = $0 }
             )
         }
@@ -146,13 +165,20 @@ struct RouteStatusView: View {
 
     /// Handle active days changes: auto-subscribe when going non-zero, auto-unsubscribe when zero.
     private func handleActiveDaysChange(_ newDays: Int) {
+        guard let from = context.fromStationCode, let to = context.toStationCode else { return }
+
         if newDays > 0 && !isSubscribed {
-            // Auto-subscribe
-            guard let draft = draftSubscription else { return }
-            alertService.addStationPairSubscriptions(template: draft)
-            // Move draft settings into edited subscriptions for the newly-created subs
+            // Auto-subscribe — use draft or create a fresh template
+            let template = draftSubscription ?? RouteAlertSubscription(
+                dataSource: context.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: newDays
+            )
+            alertService.addStationPairSubscriptions(template: template)
+            // Move settings into edited subscriptions for the newly-created subs
             for sub in alertService.subscriptions(for: context) {
-                var edited = RouteAlertSubscription.copySettings(from: draft, to: sub)
+                var edited = RouteAlertSubscription.copySettings(from: template, to: sub)
                 edited.activeDays = newDays
                 editedSubscriptions[sub.id] = edited
                 alertService.updateSubscription(edited)
@@ -161,32 +187,20 @@ struct RouteStatusView: View {
             syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } else if newDays == 0 && isSubscribed {
-            // Auto-unsubscribe
+            // Auto-unsubscribe — reset draft for potential re-subscribe
             for sub in matchingSubscriptions {
                 alertService.removeSubscription(sub)
             }
             editedSubscriptions.removeAll()
-            // Reset draft for potential re-subscribe
-            draftSubscription = nil
+            draftSubscription = RouteAlertSubscription(
+                dataSource: context.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: 0
+            )
             syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
-    }
-
-    /// Create a draft subscription with days set to None (0).
-    private func makeDraftSubscription() -> RouteAlertSubscription {
-        guard let from = context.fromStationCode, let to = context.toStationCode else {
-            fatalError("makeDraftSubscription called without station pair")
-        }
-        let draft = RouteAlertSubscription(
-            dataSource: context.dataSource,
-            fromStationCode: from,
-            toStationCode: to,
-            activeDays: 0
-        )
-        // Cache it so subsequent reads return the same instance
-        DispatchQueue.main.async { draftSubscription = draft }
-        return draft
     }
 
 
