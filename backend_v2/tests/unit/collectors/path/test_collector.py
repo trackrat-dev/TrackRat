@@ -58,6 +58,36 @@ class TestGeneratePathTrainId:
         id2 = _generate_path_train_id("PJS", "33rd Street", dt)
         assert id1 != id2
 
+    def test_sub_minute_differences_produce_same_id(self):
+        """Departure times within the same minute should produce the same ID.
+
+        The RidePATH API only provides integer-minute precision. Back-calculating
+        origin departure from different stations can produce sub-minute differences
+        due to the API's last_updated timestamp. Rounding prevents duplicate
+        journey records for the same physical train.
+        """
+        dt1 = datetime(2026, 1, 19, 10, 30, 5)
+        dt2 = datetime(2026, 1, 19, 10, 30, 25)
+        id1 = _generate_path_train_id("PHO", "33rd Street", dt1)
+        id2 = _generate_path_train_id("PHO", "33rd Street", dt2)
+        assert id1 == id2, f"Sub-minute difference should produce same ID: {id1} vs {id2}"
+
+    def test_rounding_crosses_minute_boundary(self):
+        """Departure at :45 seconds should round up to the next minute."""
+        dt1 = datetime(2026, 1, 19, 10, 30, 45)
+        dt2 = datetime(2026, 1, 19, 10, 31, 10)
+        id1 = _generate_path_train_id("PHO", "33rd Street", dt1)
+        id2 = _generate_path_train_id("PHO", "33rd Street", dt2)
+        assert id1 == id2, f"45s rounds up, 10s rounds down — both to :31: {id1} vs {id2}"
+
+    def test_five_minute_difference_produces_different_ids(self):
+        """Departure times 5+ minutes apart should still produce different IDs."""
+        dt1 = datetime(2026, 1, 19, 10, 30, 0)
+        dt2 = datetime(2026, 1, 19, 10, 35, 0)
+        id1 = _generate_path_train_id("PHO", "33rd Street", dt1)
+        id2 = _generate_path_train_id("PHO", "33rd Street", dt2)
+        assert id1 != id2, "5-minute difference should produce different IDs"
+
 
 class TestGetLineInfoFromHeadsign:
     """Tests for line info extraction from headsign."""

@@ -159,6 +159,12 @@ def _generate_path_train_id(
     """Generate a stable train ID for PATH trains.
 
     Uses origin station, destination, and departure time to create a unique ID.
+    The departure time is rounded to the nearest minute before generating the
+    timestamp, because the RidePATH API only provides integer-minute countdown
+    precision. Without rounding, the same physical train observed at different
+    stations (or across collection cycles) produces slightly different
+    back-calculated origin times due to sub-minute noise, creating duplicate
+    journey records.
 
     Args:
         origin_station: Station code where train departs (e.g., 'PHO')
@@ -169,7 +175,14 @@ def _generate_path_train_id(
         Generated train ID (e.g., 'PATH_PHO_33rd_1705500000')
     """
     dest_short = headsign[:10].replace(" ", "").lower() if headsign else "unk"
-    ts = int(departure_time.timestamp()) if departure_time else 0
+    if departure_time:
+        # Round to nearest minute to eliminate false sub-minute precision
+        rounded = departure_time.replace(second=0, microsecond=0)
+        if departure_time.second >= 30:
+            rounded += timedelta(minutes=1)
+        ts = int(rounded.timestamp())
+    else:
+        ts = 0
     return f"PATH_{origin_station}_{dest_short}_{ts}"
 
 

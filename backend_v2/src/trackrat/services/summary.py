@@ -1206,6 +1206,12 @@ class SummaryService:
             body_parts.append(
                 f"No trains departed in the past {SUMMARY_TIME_WINDOW_MINUTES // 60} hours."
             )
+        else:
+            headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
+            body_parts.append(
+                f"{train_count} trains departed in the past {SUMMARY_TIME_WINDOW_MINUTES // 60} hours,"
+                f" averaging every {headway:.0f} minutes."
+            )
 
         return headline, " ".join(body_parts)
 
