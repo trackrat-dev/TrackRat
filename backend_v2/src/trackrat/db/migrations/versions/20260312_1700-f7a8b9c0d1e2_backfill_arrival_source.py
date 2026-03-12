@@ -25,8 +25,7 @@ def upgrade() -> None:
     """
     # Batch 1: Stops on completed journeys where actual != scheduled
     # (strong signal these were API-observed arrivals)
-    op.execute(
-        """
+    op.execute("""
         UPDATE journey_stops js
         SET arrival_source = 'api_observed'
         FROM train_journeys tj
@@ -35,14 +34,12 @@ def upgrade() -> None:
           AND js.actual_arrival IS NOT NULL
           AND js.scheduled_arrival IS NOT NULL
           AND js.actual_arrival != js.scheduled_arrival
-        """
-    )
+        """)
 
     # Batch 2: Stops on completed journeys where actual == scheduled
     # (could be scheduled_fallback or exact on-time, but on a completed
     # journey we trust the data)
-    op.execute(
-        """
+    op.execute("""
         UPDATE journey_stops js
         SET arrival_source = 'api_observed'
         FROM train_journeys tj
@@ -50,20 +47,17 @@ def upgrade() -> None:
           AND js.arrival_source IS NULL
           AND js.actual_arrival IS NOT NULL
           AND tj.is_completed = true
-        """
-    )
+        """)
 
     # Batch 3: Remaining stops with actual_arrival on non-completed journeys
     # where actual == scheduled. These are departed intermediate stops.
-    op.execute(
-        """
+    op.execute("""
         UPDATE journey_stops
         SET arrival_source = 'api_observed'
         WHERE arrival_source IS NULL
           AND actual_arrival IS NOT NULL
           AND has_departed_station = true
-        """
-    )
+        """)
 
 
 def downgrade() -> None:
@@ -73,10 +67,8 @@ def downgrade() -> None:
     so it clears all arrival_source. This is safe because the column was
     recently added and a full re-collection will repopulate it.
     """
-    op.execute(
-        """
+    op.execute("""
         UPDATE journey_stops
         SET arrival_source = NULL
         WHERE arrival_source IS NOT NULL
-        """
-    )
+        """)

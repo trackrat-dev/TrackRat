@@ -70,7 +70,9 @@ class TestGeneratePathTrainId:
         dt2 = datetime(2026, 1, 19, 10, 30, 25)
         id1 = _generate_path_train_id("PHO", "33rd Street", dt1)
         id2 = _generate_path_train_id("PHO", "33rd Street", dt2)
-        assert id1 == id2, f"Sub-minute difference should produce same ID: {id1} vs {id2}"
+        assert (
+            id1 == id2
+        ), f"Sub-minute difference should produce same ID: {id1} vs {id2}"
 
     def test_rounding_crosses_minute_boundary(self):
         """Departure at :45 seconds should round up to the next minute."""
@@ -78,7 +80,9 @@ class TestGeneratePathTrainId:
         dt2 = datetime(2026, 1, 19, 10, 31, 10)
         id1 = _generate_path_train_id("PHO", "33rd Street", dt1)
         id2 = _generate_path_train_id("PHO", "33rd Street", dt2)
-        assert id1 == id2, f"45s rounds up, 10s rounds down — both to :31: {id1} vs {id2}"
+        assert (
+            id1 == id2
+        ), f"45s rounds up, 10s rounds down — both to :31: {id1} vs {id2}"
 
     def test_five_minute_difference_produces_different_ids(self):
         """Departure times 5+ minutes apart should still produce different IDs."""

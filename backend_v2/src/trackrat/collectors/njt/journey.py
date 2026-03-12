@@ -1358,10 +1358,7 @@ class JourneyCollector(BaseJourneyCollector):
                 ):
                     stop.actual_arrival = normalized["actual_arrival"]
                     stop.arrival_source = "api_observed"
-                elif (
-                    stop.actual_arrival is not None
-                    and stop.arrival_source is None
-                ):
+                elif stop.actual_arrival is not None and stop.arrival_source is None:
                     # Backfill arrival_source for stops written before the column existed
                     stop.arrival_source = "api_observed"
             else:
