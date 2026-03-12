@@ -121,7 +121,7 @@ struct TrainListView: View {
                     Button {
                         appState.pendingRouteStatus = RouteStatusContext(
                             dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
-                            lineId: nil,
+                            lineId: viewModel.trains.first?.line.code,
                             fromStationCode: departureStationCode,
                             toStationCode: destinationCode
                         )
