@@ -14,7 +14,7 @@ struct AddRouteAlertView: View {
     /// Data sources with stable daily train IDs suitable for recurring alerts.
     static let stableTrainIdSystems: Set<TrainSystem> = [.njt, .amtrak, .lirr, .mnr]
 
-    @State private var mode: AlertMode = .line
+    @State private var mode: AlertMode = .stations
 
     // Station-pair state
     @State private var showFromPicker = false
