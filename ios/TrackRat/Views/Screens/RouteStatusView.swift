@@ -500,14 +500,38 @@ private struct ServiceAlertCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(alert.alertTypeLabel.uppercased())
                     .font(.caption2.bold())
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Capsule().fill(alertTypeColor.opacity(0.2)))
                     .foregroundColor(alertTypeColor)
+
+                if alert.isActiveNow && !alert.activePeriods.isEmpty {
+                    Text("ACTIVE NOW")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(Color.green.opacity(0.2)))
+                        .foregroundColor(.green)
+                }
+
                 Spacer()
+            }
+
+            if let periodText = alert.activePeriodText {
+                HStack(spacing: 4) {
+                    Image(systemName: "calendar")
+                        .font(.caption2)
+                    Text(periodText)
+                        .font(.caption)
+                    if alert.additionalPeriodCount > 0 {
+                        Text("(+\(alert.additionalPeriodCount) more)")
+                            .font(.caption)
+                    }
+                }
+                .foregroundColor(.secondary)
             }
 
             Text(alert.headerText)

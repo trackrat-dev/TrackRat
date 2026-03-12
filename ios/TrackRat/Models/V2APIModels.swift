@@ -1165,6 +1165,94 @@ struct V2ServiceAlert: Codable, Identifiable {
         default: return alertType.capitalized
         }
     }
+
+    /// Whether any active period covers the current time
+    var isActiveNow: Bool {
+        guard !activePeriods.isEmpty else { return true } // No periods = always active
+        let now = Date().timeIntervalSince1970
+        return activePeriods.contains { period in
+            let start = period.start.map { TimeInterval($0) } ?? 0
+            let end = period.end.map { TimeInterval($0) } ?? .infinity
+            return now >= start && now <= end
+        }
+    }
+
+    /// Formatted string for the most relevant active period
+    var activePeriodText: String? {
+        guard !activePeriods.isEmpty else { return nil }
+
+        let now = Date()
+        let nowEpoch = now.timeIntervalSince1970
+
+        // Find the current or next-upcoming period
+        let sorted = activePeriods.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        let relevant = sorted.first { period in
+            let end = period.end.map { TimeInterval($0) } ?? .infinity
+            return end >= nowEpoch
+        } ?? sorted.last!
+
+        return Self.formatPeriod(relevant, relativeTo: now)
+    }
+
+    /// Additional period count beyond the displayed one
+    var additionalPeriodCount: Int {
+        max(0, activePeriods.count - 1)
+    }
+
+    private static func formatPeriod(_ period: V2ServiceAlertActivePeriod, relativeTo now: Date) -> String {
+        let calendar = Calendar.current
+        let startDate = period.start.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+        let endDate = period.end.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        timeFormatter.timeZone = TimeZone(identifier: "America/New_York")
+
+        let dateTimeFormatter = DateFormatter()
+        dateTimeFormatter.dateFormat = "MMM d, h:mm a"
+        dateTimeFormatter.timeZone = TimeZone(identifier: "America/New_York")
+
+        let dateOnlyFormatter = DateFormatter()
+        dateOnlyFormatter.dateFormat = "MMM d"
+        dateOnlyFormatter.timeZone = TimeZone(identifier: "America/New_York")
+
+        switch (startDate, endDate) {
+        case let (.some(start), .some(end)):
+            let tz = TimeZone(identifier: "America/New_York")!
+            let sameDay = calendar.isDate(start, inSameDayAs: end)
+            // Check if times are midnight (all-day events)
+            let startComps = calendar.dateComponents(in: tz, from: start)
+            let endComps = calendar.dateComponents(in: tz, from: end)
+            let startIsMidnight = startComps.hour == 0 && startComps.minute == 0
+            let endIsMidnight = endComps.hour == 0 && endComps.minute == 0
+
+            if startIsMidnight && endIsMidnight {
+                // All-day: "Mar 14" or "Mar 14–16"
+                if sameDay || calendar.isDate(end, inSameDayAs: calendar.date(byAdding: .day, value: 1, to: start)!) {
+                    return dateOnlyFormatter.string(from: start)
+                } else {
+                    // End midnight means "through" the previous day
+                    let adjustedEnd = calendar.date(byAdding: .day, value: -1, to: end) ?? end
+                    if calendar.component(.month, from: start) == calendar.component(.month, from: adjustedEnd) {
+                        return "\(dateOnlyFormatter.string(from: start))–\(calendar.component(.day, from: adjustedEnd))"
+                    }
+                    return "\(dateOnlyFormatter.string(from: start)) – \(dateOnlyFormatter.string(from: adjustedEnd))"
+                }
+            } else if sameDay {
+                // Same day with times: "Mar 14, 10:00 PM – 5:00 AM"
+                return "\(dateOnlyFormatter.string(from: start)), \(timeFormatter.string(from: start)) – \(timeFormatter.string(from: end))"
+            } else {
+                // Multi-day with times: "Mar 14, 10:00 PM – Mar 16, 5:00 AM"
+                return "\(dateTimeFormatter.string(from: start)) – \(dateTimeFormatter.string(from: end))"
+            }
+        case let (.some(start), .none):
+            return "Starting \(dateTimeFormatter.string(from: start))"
+        case let (.none, .some(end)):
+            return "Until \(dateTimeFormatter.string(from: end))"
+        case (.none, .none):
+            return "Ongoing"
+        }
+    }
 }
 
 struct V2ServiceAlertsResponse: Codable {
