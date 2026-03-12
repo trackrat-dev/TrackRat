@@ -625,7 +625,7 @@ private struct UpcomingTrainRow: View {
                         .font(.subheadline.bold())
                 }
                 HStack(spacing: 8) {
-                    if let track = train.departure.track, !track.isEmpty {
+                    if let track = train.track, !track.isEmpty {
                         Text("Track \(track)")
                             .font(.caption)
                             .foregroundColor(.secondary)

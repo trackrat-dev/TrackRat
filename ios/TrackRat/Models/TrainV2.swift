@@ -70,7 +70,8 @@ struct TrainV2: Identifiable, Codable {
     }
     
     var track: String? {
-        departure.track
+        guard !TrainSystem.noTrackDisplaySources.contains(dataSource) else { return nil }
+        return departure.track
     }
     
     var delayMinutes: Int {

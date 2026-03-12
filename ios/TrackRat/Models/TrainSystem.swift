@@ -80,6 +80,10 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// These systems should display destination or line name instead of raw train ID.
     static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
 
+    /// Systems where boarding track numbers are not meaningful to display.
+    /// Subway and PATH use fixed platforms, not assignable tracks.
+    static let noTrackDisplaySources: Set<String> = ["PATH", "SUBWAY"]
+
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
         switch self {
