@@ -287,6 +287,8 @@ async def mark_messages_read(
     db: AsyncSession = Depends(get_db),
 ) -> MarkReadResponse:
     """Mark messages as read up to a given message ID."""
+    if not await _device_exists(db, req.device_id):
+        raise HTTPException(status_code=404, detail="Device not registered")
     now = datetime.now(UTC)
     result = cast(
         CursorResult[tuple[()]],

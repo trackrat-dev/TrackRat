@@ -243,6 +243,15 @@ class TestMarkRead:
         assert unread2.json()["unread_count"] == 0
 
 
+    def test_mark_read_unregistered_device(self, e2e_client: TestClient):
+        """Marking messages read for an unregistered device returns 404."""
+        resp = e2e_client.post(
+            "/api/v2/chat/messages/read",
+            json={"device_id": "nonexistent-device", "up_to_id": 1},
+        )
+        assert resp.status_code == 404
+
+
 class TestAdminRegistration:
     """POST /api/v2/chat/admin/register"""
 
