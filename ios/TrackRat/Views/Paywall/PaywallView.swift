@@ -51,7 +51,7 @@ struct PaywallView: View {
 
                     // Developer message
                     VStack(spacing: 20) {
-                        Image(systemName: "heart.fill")
+                        Image(systemName: "hand.wave.fill")
                             .font(.system(size: 36))
                             .foregroundColor(.orange)
 
