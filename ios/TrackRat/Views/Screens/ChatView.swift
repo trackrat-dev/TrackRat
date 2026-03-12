@@ -307,24 +307,3 @@ private struct MessageBubble: View {
         .padding(.vertical, 1)
     }
 }
-
-// MARK: - Empty State
-
-struct ChatEmptyState: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 40))
-                .foregroundStyle(.secondary)
-            Text("Chat with the Developer")
-                .font(.headline)
-                .foregroundStyle(.white)
-            Text("Have a question or suggestion? Send a message and you'll hear back directly.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
