@@ -217,6 +217,13 @@ struct MapContainerView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .sheet(item: $appState.pendingChatNavigation) { context in
+                NavigationStack {
+                    ChatView(targetDeviceId: context.adminTargetDeviceId)
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
         .task {
             // Load congestion data when map container appears, but don't block UI
