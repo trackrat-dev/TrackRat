@@ -1199,6 +1199,11 @@ struct V2ServiceAlert: Codable, Identifiable {
         max(0, activePeriods.count - 1)
     }
 
+    /// Earliest start time across all active periods (for chronological sorting)
+    var earliestStartEpoch: TimeInterval {
+        activePeriods.compactMap { $0.start }.map { TimeInterval($0) }.min() ?? 0
+    }
+
     private static func formatPeriod(_ period: V2ServiceAlertActivePeriod, relativeTo now: Date) -> String {
         let calendar = Calendar.current
         let startDate = period.start.map { Date(timeIntervalSince1970: TimeInterval($0)) }
