@@ -67,7 +67,8 @@ struct AlertConfigurationSection: View {
     private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
 
     private var showPlannedWork: Bool {
-        subscription.lineId != nil && Self.plannedWorkSystems.contains(subscription.dataSource)
+        (subscription.lineId != nil || subscription.fromStationCode != nil)
+            && Self.plannedWorkSystems.contains(subscription.dataSource)
     }
 
     var body: some View {
@@ -97,7 +98,7 @@ struct AlertConfigurationSection: View {
                     .tint(.orange)
                 }
 
-                // Planned work (MTA lines only)
+                // Planned work (MTA systems only)
                 if showPlannedWork {
                     Divider().opacity(0.3)
                     Toggle(isOn: $subscription.includePlannedWork) {
