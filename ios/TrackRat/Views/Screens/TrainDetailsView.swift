@@ -472,20 +472,9 @@ struct CombinedDetailsCard: View {
                         .padding(.horizontal, 20)
                     }
 
-                    // Action buttons row
-                    HStack(spacing: 20) {
-                        if let originCode = appState.departureStationCode,
-                           !originCode.isEmpty {
-                            TrackTrainInlineButton(
-                                train: train,
-                                originCode: originCode,
-                                destinationCode: selectedDestinationCode ?? "",
-                                destinationName: selectedDestination,
-                                textColor: .black.opacity(0.6)
-                            )
-                        }
-
-                        // Route details button
+                    // Action buttons
+                    VStack(spacing: 12) {
+                        // Route alerts button on its own line
                         if let fromCode = appState.departureStationCode,
                            let toCode = selectedDestinationCode {
                             Button {
@@ -496,20 +485,33 @@ struct CombinedDetailsCard: View {
                                     toStationCode: toCode
                                 )
                             } label: {
-                                Label("Route Details", systemImage: "chart.bar.xaxis")
+                                Label("Route Alerts", systemImage: "bell.badge")
                                     .font(.subheadline)
                                     .foregroundColor(.black.opacity(0.6))
                             }
                             .buttonStyle(.plain)
                         }
 
-                        FeedbackButton(
-                            screen: "train_details",
-                            trainId: train.trainId,
-                            originCode: appState.departureStationCode,
-                            destinationCode: selectedDestinationCode,
-                            textColor: .black.opacity(0.6)
-                        )
+                        HStack(spacing: 20) {
+                            if let originCode = appState.departureStationCode,
+                               !originCode.isEmpty {
+                                TrackTrainInlineButton(
+                                    train: train,
+                                    originCode: originCode,
+                                    destinationCode: selectedDestinationCode ?? "",
+                                    destinationName: selectedDestination,
+                                    textColor: .black.opacity(0.6)
+                                )
+                            }
+
+                            FeedbackButton(
+                                screen: "train_details",
+                                trainId: train.trainId,
+                                originCode: appState.departureStationCode,
+                                destinationCode: selectedDestinationCode,
+                                textColor: .black.opacity(0.6)
+                            )
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 8)

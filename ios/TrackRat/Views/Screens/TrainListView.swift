@@ -116,7 +116,7 @@ struct TrainListView: View {
                 }
                 .buttonStyle(.plain)
 
-                // Route details button
+                // Route alerts button
                 if let destinationCode = Stations.getStationCode(destination) {
                     Button {
                         appState.pendingRouteStatus = RouteStatusContext(
@@ -127,9 +127,9 @@ struct TrainListView: View {
                         )
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "chart.bar.xaxis")
+                            Image(systemName: "bell.badge")
                                 .font(.subheadline)
-                            Text("Route Details")
+                            Text("Route Alerts")
                                 .font(.subheadline)
                         }
                         .foregroundColor(.white.opacity(0.8))
