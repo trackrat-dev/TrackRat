@@ -1032,13 +1032,14 @@ async def _generate_digest_summary(
         else:
             return None
 
-        # Combine headline and body for a concise push notification
-        parts = []
-        if result.headline:
-            parts.append(result.headline)
+        # For push notifications, use body (descriptive) over headline (terse)
+        # to avoid redundancy — headline contains stats like "85% on time" or
+        # "every ~10 min" that the body already describes in natural language.
         if result.body:
-            parts.append(result.body)
-        return " ".join(parts) if parts else None
+            return result.body
+        if result.headline:
+            return result.headline
+        return None
     except Exception:
         logger.warning(
             "digest_summary_generation_failed",
