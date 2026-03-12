@@ -1,7 +1,7 @@
 """add_cancellation_threshold_pct
 
 Revision ID: e6f7a8b9c0d1
-Revises: d4e5f6a7b8ca
+Revises: d5e6f7a8b9c0
 Create Date: 2026-03-12 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "e6f7a8b9c0d1"
-down_revision = "d4e5f6a7b8ca"
+down_revision = "d5e6f7a8b9c0"
 branch_labels = None
 depends_on = None
 
