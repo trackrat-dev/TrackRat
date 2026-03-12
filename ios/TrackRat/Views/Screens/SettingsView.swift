@@ -376,77 +376,60 @@ struct SettingsSection: View {
                 .buttonStyle(.plain)
             }
 
-            // YouTube Channel
-            Button {
-                if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
-                    openURL(youtubeURL)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+            // YouTube & Instagram
+            HStack(spacing: 12) {
+                Button {
+                    if let youtubeURL = URL(string: "https://www.youtube.com/@TrackRat-App/shorts") {
+                        openURL(youtubeURL)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("YouTube Channel")
+                        Text("YouTube")
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
                     }
-
-                    Spacer()
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
+                .buttonStyle(.plain)
 
-            // Instagram
-            Button {
-                if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
-                    openURL(instagramURL)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "camera.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+                Button {
+                    if let instagramURL = URL(string: "https://www.instagram.com/trackratapp/") {
+                        openURL(instagramURL)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "camera.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 4) {
                         Text("Instagram")
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
                     }
-
-                    Spacer()
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             // Report an Issue
             Button {
