@@ -1371,6 +1371,7 @@ extension APIService {
             let timezone: String?
             let delay_threshold_minutes: Int?
             let service_threshold_pct: Int?
+            let cancellation_threshold_pct: Int?
             let notify_cancellation: Bool
             let notify_delay: Bool
             let notify_recovery: Bool
@@ -1397,6 +1398,7 @@ extension APIService {
                 timezone: sub.timezone,
                 delay_threshold_minutes: sub.delayThresholdMinutes,
                 service_threshold_pct: sub.serviceThresholdPct,
+                cancellation_threshold_pct: sub.cancellationThresholdPct,
                 notify_cancellation: sub.notifyCancellation,
                 notify_delay: sub.notifyDelay,
                 notify_recovery: sub.notifyRecovery,

@@ -11,6 +11,9 @@ struct RouteStatusView: View {
     /// Locally-edited copies of matching subscriptions, keyed by ID.
     @State private var editedSubscriptions: [UUID: RouteAlertSubscription] = [:]
 
+    /// Selected history time period for the segmented picker.
+    @State private var selectedHistoryPeriod: HistoryPeriod = .hour
+
     /// Preferred highlight mode derived from this route's data source
     private var preferredMode: SegmentHighlightMode {
         TrainSystem(rawValue: context.dataSource)?.preferredHighlightMode ?? .delays
@@ -40,12 +43,10 @@ struct RouteStatusView: View {
                 VStack(spacing: 16) {
                     mapSection
                     operationsSummarySection
-                    serviceAlertsSection
-                    upcomingTrainsSection
-
                     historySections
-
                     alertSubscriptionSection
+                    upcomingTrainsSection
+                    serviceAlertsSection
                 }
                 .padding()
             }
@@ -113,6 +114,11 @@ struct RouteStatusView: View {
             // Show configuration for each matching subscription
             ForEach(matchingSubscriptions) { sub in
                 AlertConfigurationSection(subscription: binding(for: sub))
+            }
+
+            // Daily Digest (shown per subscription)
+            ForEach(matchingSubscriptions) { sub in
+                DigestConfigurationSection(subscription: binding(for: sub))
             }
 
             // Unsubscribe button
@@ -263,7 +269,7 @@ struct RouteStatusView: View {
                 Text("Upcoming Trains")
                     .font(.headline)
 
-                ForEach(viewModel.upcomingTrains) { train in
+                ForEach(viewModel.upcomingTrains.prefix(3)) { train in
                     Button {
                         selectedTrain = train
                     } label: {
@@ -293,65 +299,76 @@ struct RouteStatusView: View {
         }
     }
 
-    // MARK: - History Sections (Past Hour, Past 24 Hours, Past 7 Days)
+    // MARK: - History Sections (Unified with Segmented Picker)
 
     @ViewBuilder
     private var historySections: some View {
-        timePeriodSection(
-            title: "Past Hour",
-            data: viewModel.pastHourData,
-            isLoading: viewModel.isLoadingPastHour,
-            error: viewModel.pastHourError,
-            hours: 1
-        )
-        timePeriodSection(
-            title: "Past 24 Hours",
-            data: viewModel.past24HoursData,
-            isLoading: viewModel.isLoadingPast24Hours,
-            error: viewModel.past24HoursError,
-            hours: 24
-        )
-        timePeriodSection(
-            title: "Past 7 Days",
-            data: viewModel.past7DaysData,
-            isLoading: viewModel.isLoadingPast7Days,
-            error: viewModel.past7DaysError,
-            hours: 168
-        )
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Route Performance")
+                    .font(.headline)
+                Spacer()
+                Picker("", selection: $selectedHistoryPeriod) {
+                    ForEach(HistoryPeriod.allCases, id: \.self) { period in
+                        Text(period.label).tag(period)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
+
+            switch selectedHistoryPeriod {
+            case .hour:
+                historyPeriodContent(
+                    data: viewModel.pastHourData,
+                    isLoading: viewModel.isLoadingPastHour,
+                    error: viewModel.pastHourError,
+                    hours: 1
+                )
+            case .day:
+                historyPeriodContent(
+                    data: viewModel.past24HoursData,
+                    isLoading: viewModel.isLoadingPast24Hours,
+                    error: viewModel.past24HoursError,
+                    hours: 24
+                )
+            case .week:
+                historyPeriodContent(
+                    data: viewModel.past7DaysData,
+                    isLoading: viewModel.isLoadingPast7Days,
+                    error: viewModel.past7DaysError,
+                    hours: 168
+                )
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 
     @ViewBuilder
-    private func timePeriodSection(
-        title: String,
+    private func historyPeriodContent(
         data: RouteHistoricalData?,
         isLoading: Bool,
         error: String?,
         hours: Double
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline)
-
-            if isLoading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
-            } else if let history = data, history.route.totalTrains > 0 {
-                historyContent(history, hours: hours)
-            } else if let error = error {
-                Text("Could not load history: \(error)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding()
-            } else {
-                Text("No trains in this time period")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding()
-            }
+        if isLoading {
+            ProgressView()
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding()
+        } else if let history = data, history.route.totalTrains > 0 {
+            historyContent(history, hours: hours)
+        } else if let error = error {
+            Text("Could not load history: \(error)")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding()
+        } else {
+            Text("No trains in this time period")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding()
         }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 
     @ViewBuilder
@@ -492,6 +509,20 @@ struct RouteStatusView: View {
     }
 }
 
+// MARK: - History Period
+
+enum HistoryPeriod: CaseIterable {
+    case hour, day, week
+
+    var label: String {
+        switch self {
+        case .hour: return "Hour"
+        case .day: return "Day"
+        case .week: return "Week"
+        }
+    }
+}
+
 // MARK: - Service Alert Card
 
 private struct ServiceAlertCard: View {
@@ -586,18 +617,12 @@ private struct UpcomingTrainRow: View {
                 .frame(width: 4, height: 40)
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    if useSyntheticId {
-                        Text(train.line.name)
-                            .font(.subheadline.bold())
-                    } else {
-                        Text("Train \(train.trainId)")
-                            .font(.subheadline.bold())
-                    }
-                    Text("→ \(train.destination)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                if useSyntheticId {
+                    Text(train.line.name)
+                        .font(.subheadline.bold())
+                } else {
+                    Text("Train \(train.trainId)")
+                        .font(.subheadline.bold())
                 }
                 HStack(spacing: 8) {
                     if let track = train.departure.track, !track.isEmpty {
@@ -621,7 +646,7 @@ private struct UpcomingTrainRow: View {
                 delayBadge
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .padding(.horizontal, 10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
     }

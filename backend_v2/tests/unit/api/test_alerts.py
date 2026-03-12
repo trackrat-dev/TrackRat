@@ -579,6 +579,115 @@ class TestPlannedWorkSubscriptions:
         assert pw_values["NJT"] is False
 
 
+class TestCancellationThreshold:
+    """Tests for cancellation_threshold_pct field on subscriptions."""
+
+    def test_cancellation_threshold_roundtrips(self, e2e_client: TestClient):
+        """cancellation_threshold_pct is stored and returned correctly."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-ct-1", "apns_token": "tok-ct1"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-ct-1",
+                "subscriptions": [
+                    {
+                        "data_source": "SUBWAY",
+                        "line_id": "subway-G",
+                        "cancellation_threshold_pct": 50,
+                        "notify_cancellation": True,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-ct-1")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 1
+        assert subs[0]["cancellation_threshold_pct"] == 50
+        assert subs[0]["notify_cancellation"] is True
+        print(
+            f"  cancellation_threshold_pct roundtrip: {subs[0]['cancellation_threshold_pct']}"
+        )
+
+    def test_cancellation_threshold_defaults_null(self, e2e_client: TestClient):
+        """cancellation_threshold_pct defaults to null when not provided."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-ct-2", "apns_token": "tok-ct2"},
+        )
+        e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-ct-2",
+                "subscriptions": [
+                    {"data_source": "NJT", "line_id": "njt-nec"},
+                ],
+            },
+        )
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-ct-2")
+        subs = get_resp.json()["subscriptions"]
+        assert subs[0]["cancellation_threshold_pct"] is None
+        print(
+            f"  cancellation_threshold_pct default: {subs[0]['cancellation_threshold_pct']}"
+        )
+
+    def test_sensitivity_levels_roundtrip(self, e2e_client: TestClient):
+        """All three sensitivity levels (none=off, severe=50, all=90) round-trip correctly."""
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-ct-3", "apns_token": "tok-ct3"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-ct-3",
+                "subscriptions": [
+                    {
+                        "data_source": "SUBWAY",
+                        "line_id": "subway-G",
+                        "notify_cancellation": False,
+                        "cancellation_threshold_pct": None,
+                    },
+                    {
+                        "data_source": "PATH",
+                        "line_id": "path-hob-33",
+                        "notify_cancellation": True,
+                        "cancellation_threshold_pct": 50,
+                    },
+                    {
+                        "data_source": "SUBWAY",
+                        "line_id": "subway-L",
+                        "notify_cancellation": True,
+                        "cancellation_threshold_pct": 90,
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 3
+
+        get_resp = e2e_client.get("/api/v2/alerts/subscriptions/dev-ct-3")
+        subs = get_resp.json()["subscriptions"]
+        assert len(subs) == 3
+
+        by_line = {s["line_id"]: s for s in subs}
+        # None: off
+        assert by_line["subway-G"]["notify_cancellation"] is False
+        assert by_line["subway-G"]["cancellation_threshold_pct"] is None
+        # Severe Only: 50%
+        assert by_line["path-hob-33"]["notify_cancellation"] is True
+        assert by_line["path-hob-33"]["cancellation_threshold_pct"] == 50
+        # All: 90%
+        assert by_line["subway-L"]["notify_cancellation"] is True
+        assert by_line["subway-L"]["cancellation_threshold_pct"] == 90
+        print(f"  All three sensitivity levels verified")
+
+
 class TestServiceAlertsEndpoint:
     """GET /api/v2/alerts/service"""
 

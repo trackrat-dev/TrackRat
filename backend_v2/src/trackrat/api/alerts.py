@@ -50,6 +50,7 @@ class SubscriptionItem(BaseModel):
     timezone: str | None = None  # IANA timezone
     delay_threshold_minutes: int | None = None  # NULL = system default
     service_threshold_pct: int | None = None  # NULL = system default
+    cancellation_threshold_pct: int | None = None  # NULL = system default
     notify_cancellation: bool = True
     notify_delay: bool = True
     notify_recovery: bool = False
@@ -92,6 +93,7 @@ class SubscriptionResponse(BaseModel):
     timezone: str | None = None
     delay_threshold_minutes: int | None = None
     service_threshold_pct: int | None = None
+    cancellation_threshold_pct: int | None = None
     notify_cancellation: bool = True
     notify_delay: bool = True
     notify_recovery: bool = False
@@ -174,6 +176,7 @@ async def sync_subscriptions(
             timezone=item.timezone,
             delay_threshold_minutes=item.delay_threshold_minutes,
             service_threshold_pct=item.service_threshold_pct,
+            cancellation_threshold_pct=item.cancellation_threshold_pct,
             notify_cancellation=item.notify_cancellation,
             notify_delay=item.notify_delay,
             notify_recovery=item.notify_recovery,
@@ -227,6 +230,7 @@ async def get_subscriptions(
                 timezone=sub.timezone,
                 delay_threshold_minutes=sub.delay_threshold_minutes,
                 service_threshold_pct=sub.service_threshold_pct,
+                cancellation_threshold_pct=sub.cancellation_threshold_pct,
                 notify_cancellation=sub.notify_cancellation,
                 notify_delay=sub.notify_delay,
                 notify_recovery=sub.notify_recovery,

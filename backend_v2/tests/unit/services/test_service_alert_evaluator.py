@@ -378,8 +378,13 @@ class TestGetRouteNameForSubscription:
 class TestBuildServiceAlertMessage:
     """Tests for _build_service_alert_message() formatting."""
 
-    def _make_sub(self, data_source="SUBWAY", line_id="subway-g",
-                  from_station_code=None, to_station_code=None):
+    def _make_sub(
+        self,
+        data_source="SUBWAY",
+        line_id="subway-g",
+        from_station_code=None,
+        to_station_code=None,
+    ):
         return RouteAlertSubscription(
             device_id="dev1",
             data_source=data_source,
@@ -645,9 +650,7 @@ class TestEvaluateServiceAlerts:
         assert sa_payload["to_station_code"] == "SH06"
         assert "line_id" not in sa_payload
 
-    async def test_station_pair_no_match_sends_nothing(
-        self, db_session: AsyncSession
-    ):
+    async def test_station_pair_no_match_sends_nothing(self, db_session: AsyncSession):
         """Station-pair sub with no matching route for the alert sends nothing."""
         device = DeviceToken(device_id="station-dev2", apns_token="token-sp2")
         db_session.add(device)

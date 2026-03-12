@@ -44,6 +44,7 @@ final class AlertSubscriptionService: ObservableObject {
                 timezone: template.timezone,
                 delayThresholdMinutes: template.delayThresholdMinutes,
                 serviceThresholdPct: template.serviceThresholdPct,
+                cancellationThresholdPct: template.cancellationThresholdPct,
                 notifyCancellation: template.notifyCancellation,
                 notifyDelay: template.notifyDelay,
                 notifyRecovery: template.notifyRecovery,
@@ -75,6 +76,7 @@ final class AlertSubscriptionService: ObservableObject {
                 timezone: template.timezone,
                 delayThresholdMinutes: template.delayThresholdMinutes,
                 serviceThresholdPct: template.serviceThresholdPct,
+                cancellationThresholdPct: template.cancellationThresholdPct,
                 notifyCancellation: template.notifyCancellation,
                 notifyDelay: template.notifyDelay,
                 notifyRecovery: template.notifyRecovery,
@@ -169,6 +171,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     var timezone: String?        // IANA timezone
     var delayThresholdMinutes: Int?  // nil = system default (15)
     var serviceThresholdPct: Int?    // nil = system default (50)
+    var cancellationThresholdPct: Int? // nil = system default
     var notifyCancellation: Bool
     var notifyDelay: Bool
     var notifyRecovery: Bool
@@ -182,7 +185,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         case id, dataSource, lineId, lineName, fromStationCode, toStationCode
         case trainId, trainName, direction, activeDays, activeStartMinutes
         case activeEndMinutes, timezone, delayThresholdMinutes, serviceThresholdPct
-        case notifyCancellation, notifyDelay
+        case cancellationThresholdPct, notifyCancellation, notifyDelay
         case notifyRecovery, digestTimeMinutes, includePlannedWork
         case weekdaysOnly  // Legacy key for migration
     }
@@ -192,6 +195,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         dataSource: String, lineId: String, lineName: String, direction: String?,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        cancellationThresholdPct: Int? = nil,
         notifyCancellation: Bool = true, notifyDelay: Bool = true,
         notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil,
         includePlannedWork: Bool = false
@@ -211,6 +215,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.timezone = timezone
         self.delayThresholdMinutes = delayThresholdMinutes
         self.serviceThresholdPct = serviceThresholdPct
+        self.cancellationThresholdPct = cancellationThresholdPct
         self.notifyCancellation = notifyCancellation
         self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
@@ -223,6 +228,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         dataSource: String, fromStationCode: String, toStationCode: String,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        cancellationThresholdPct: Int? = nil,
         notifyCancellation: Bool = true, notifyDelay: Bool = true,
         notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
     ) {
@@ -241,6 +247,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.timezone = timezone
         self.delayThresholdMinutes = delayThresholdMinutes
         self.serviceThresholdPct = serviceThresholdPct
+        self.cancellationThresholdPct = cancellationThresholdPct
         self.notifyCancellation = notifyCancellation
         self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
@@ -253,6 +260,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         dataSource: String, trainId: String, trainName: String,
         activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        cancellationThresholdPct: Int? = nil,
         notifyCancellation: Bool = true, notifyDelay: Bool = true,
         notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
     ) {
@@ -271,6 +279,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.timezone = timezone
         self.delayThresholdMinutes = delayThresholdMinutes
         self.serviceThresholdPct = serviceThresholdPct
+        self.cancellationThresholdPct = cancellationThresholdPct
         self.notifyCancellation = notifyCancellation
         self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
@@ -303,6 +312,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         timezone = try container.decodeIfPresent(String.self, forKey: .timezone)
         delayThresholdMinutes = try container.decodeIfPresent(Int.self, forKey: .delayThresholdMinutes)
         serviceThresholdPct = try container.decodeIfPresent(Int.self, forKey: .serviceThresholdPct)
+        cancellationThresholdPct = try container.decodeIfPresent(Int.self, forKey: .cancellationThresholdPct)
         notifyCancellation = try container.decodeIfPresent(Bool.self, forKey: .notifyCancellation) ?? true
         notifyDelay = try container.decodeIfPresent(Bool.self, forKey: .notifyDelay) ?? true
         notifyRecovery = try container.decodeIfPresent(Bool.self, forKey: .notifyRecovery) ?? false
@@ -327,6 +337,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(timezone, forKey: .timezone)
         try container.encodeIfPresent(delayThresholdMinutes, forKey: .delayThresholdMinutes)
         try container.encodeIfPresent(serviceThresholdPct, forKey: .serviceThresholdPct)
+        try container.encodeIfPresent(cancellationThresholdPct, forKey: .cancellationThresholdPct)
         try container.encode(notifyCancellation, forKey: .notifyCancellation)
         try container.encode(notifyDelay, forKey: .notifyDelay)
         try container.encode(notifyRecovery, forKey: .notifyRecovery)

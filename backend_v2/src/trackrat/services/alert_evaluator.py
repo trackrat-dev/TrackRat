@@ -70,9 +70,7 @@ _MNR_LINE_CODE_TO_GTFS: dict[str, str] = {
 }
 
 
-def _line_codes_to_gtfs_ids(
-    data_source: str, line_codes: frozenset[str]
-) -> set[str]:
+def _line_codes_to_gtfs_ids(data_source: str, line_codes: frozenset[str]) -> set[str]:
     """Map internal line_codes to GTFS route_ids for a given data source."""
     gtfs_ids: set[str] = set()
     for line_code in line_codes:
@@ -104,15 +102,16 @@ def _get_gtfs_route_ids_for_subscription(
         route = _ROUTES_BY_ID.get(sub.line_id)
         if not route:
             return set()
-        return _line_codes_to_gtfs_ids(sub.data_source, route.line_codes)
+        return _line_codes_to_gtfs_ids(sub.data_source or "", route.line_codes)
 
     if sub.from_station_code and sub.to_station_code:
         gtfs_ids: set[str] = set()
+        ds = sub.data_source or ""
         for route in ALL_ROUTES:
-            if route.data_source != sub.data_source:
+            if route.data_source != ds:
                 continue
             if route.contains_segment(sub.from_station_code, sub.to_station_code):
-                gtfs_ids |= _line_codes_to_gtfs_ids(sub.data_source, route.line_codes)
+                gtfs_ids |= _line_codes_to_gtfs_ids(ds, route.line_codes)
         return gtfs_ids
 
     return set()
@@ -210,8 +209,21 @@ async def evaluate_route_alerts(
             frequency_factor: float | None = None
 
             if cancelled_count > 0 and sub.notify_cancellation:
-                should_alert = True
-                alert_type = "cancellation"
+                # For frequency-first systems with a cancellation threshold,
+                # only alert if cancellation rate exceeds the threshold
+                if (
+                    sub.data_source in FREQUENCY_FIRST_SOURCES
+                    and sub.cancellation_threshold_pct is not None
+                    and total_count > 0
+                ):
+                    cancellation_rate = cancelled_count / total_count
+                    cancel_threshold = 1.0 - sub.cancellation_threshold_pct / 100.0
+                    if cancellation_rate >= cancel_threshold:
+                        should_alert = True
+                        alert_type = "cancellation"
+                else:
+                    should_alert = True
+                    alert_type = "cancellation"
             elif sub.data_source in FREQUENCY_FIRST_SOURCES:
                 # Frequency-first systems (subway, PATH, PATCO): check
                 # reduced service instead of delays
@@ -1122,7 +1134,7 @@ async def evaluate_service_alerts(
             # Build and send notification for new alerts
             title, body = _build_service_alert_message(sub, new_alerts)
 
-            alert_payload: dict = {
+            alert_payload: dict[str, object] = {
                 "data_source": sub.data_source,
                 "alert_count": len(new_alerts),
                 "alert_ids": [a.alert_id for a in new_alerts],
@@ -1228,7 +1240,7 @@ def _get_route_name_for_subscription(sub: RouteAlertSubscription) -> str:
                 continue
             if route.contains_segment(sub.from_station_code, sub.to_station_code):
                 return route.name
-    return sub.data_source
+    return sub.data_source or "Unknown"
 
 
 def _build_service_alert_message(
