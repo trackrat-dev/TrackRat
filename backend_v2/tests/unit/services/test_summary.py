@@ -280,7 +280,8 @@ class TestSummaryService:
         summary = summary_service._generate_route_summary(route_journeys, "NY", "NP")
 
         assert summary.scope == "route"
-        assert summary.headline == "Past two hours"
+        assert "Past two hours:" in summary.headline
+        assert "% on time" in summary.headline
         assert summary.metrics is not None
         assert summary.metrics.train_count == 2
 
@@ -495,7 +496,7 @@ class TestSummaryService:
         )
 
         assert summary.scope == "train"
-        assert summary.headline == "Past two hours"
+        assert "on time" in summary.headline.lower()
         assert summary.metrics.on_time_percentage >= 90
 
     def test_generate_train_summary_poor_performance(self, summary_service):
@@ -542,7 +543,7 @@ class TestSummaryService:
         )
 
         assert summary.scope == "train"
-        assert summary.headline == "Past two hours"
+        assert "on time" in summary.headline.lower()  # Shows on-time percentage (0%)
         assert summary.metrics.on_time_percentage == 0  # All late
 
     def test_generate_train_summary_no_history(self, summary_service):
@@ -613,7 +614,7 @@ class TestSummaryService:
 
         assert summary.scope == "train"
         # Should show similar trains data even with no history for this train
-        assert summary.headline == "Past two hours"
+        assert "on time" in summary.headline.lower()
         assert "NJ Transit" in summary.body
         assert summary.metrics is not None
         assert summary.metrics.train_count == 5
@@ -1257,7 +1258,8 @@ class TestFormatFrequencyRouteHeadlineBody:
         print(f"body: {body!r}")
         print(f"expected_headway: {expected_headway}")
         assert headline == "Past two hours: every ~10 min"
-        assert body == ""
+        assert "12 trains departed" in body
+        assert "every 10 minutes" in body
 
     def test_single_train_headway(self, summary_service):
         """1 train over 120min → large headway."""
@@ -1320,13 +1322,13 @@ class TestFormatFrequencyRouteHeadlineBody:
         # No "others departed" since train_count=0
         assert "others departed" not in body
 
-    def test_normal_service_has_empty_body(self, summary_service):
-        """Normal service body should be empty since headline has all the info."""
+    def test_body_mentions_time_window(self, summary_service):
+        """Body should reference the 2-hour time window."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=12, cancellations=0
         )
         print(f"body: {body!r}")
-        assert body == ""
+        assert "2 hours" in body
 
 
 class TestFormatFrequencyTrainHeadlineBody:
@@ -1472,8 +1474,8 @@ class TestFormatFrequencyTrainHeadlineBody:
         assert "Cancelled 3 times" in body
         assert "past 30 days" in body
 
-    def test_similar_trains_no_redundant_headway_in_body(self, summary_service):
-        """Body should not repeat headway info already in headline."""
+    def test_similar_trains_body_includes_headway(self, summary_service):
+        """Body should show headway calculation for similar trains."""
         dep_stats = OnTimeStats(
             on_time_percentage=95.0,
             average_delay_minutes=1.0,
@@ -1492,6 +1494,4 @@ class TestFormatFrequencyTrainHeadlineBody:
         print(f"headline: {headline!r}")
         print(f"body: {body!r}")
         expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 6  # 20
-        assert headline == f"Past two hours: every ~{expected_headway:.0f} min"
-        # No redundant body - headline already conveys frequency
-        assert body == ""
+        assert "every 20 minutes" in body
