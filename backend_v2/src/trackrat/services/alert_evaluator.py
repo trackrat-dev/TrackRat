@@ -70,39 +70,52 @@ _MNR_LINE_CODE_TO_GTFS: dict[str, str] = {
 }
 
 
+def _line_codes_to_gtfs_ids(
+    data_source: str, line_codes: frozenset[str]
+) -> set[str]:
+    """Map internal line_codes to GTFS route_ids for a given data source."""
+    gtfs_ids: set[str] = set()
+    for line_code in line_codes:
+        if data_source == "SUBWAY":
+            gtfs_ids.add(line_code)
+        elif data_source == "LIRR":
+            gtfs_id = _LIRR_LINE_CODE_TO_GTFS.get(line_code)
+            if gtfs_id:
+                gtfs_ids.add(gtfs_id)
+        elif data_source == "MNR":
+            gtfs_id = _MNR_LINE_CODE_TO_GTFS.get(line_code)
+            if gtfs_id:
+                gtfs_ids.add(gtfs_id)
+    return gtfs_ids
+
+
 def _get_gtfs_route_ids_for_subscription(
     sub: RouteAlertSubscription,
 ) -> set[str]:
     """Get GTFS route_ids that an alert subscription covers.
 
-    Maps our internal route topology (line_id -> line_codes) to the
-    GTFS route_ids used in MTA service alert feeds.
+    Maps our internal route topology to the GTFS route_ids used in
+    MTA service alert feeds.
 
-    For subway: line_codes ARE the GTFS route_ids (e.g. "G", "4")
-    For LIRR: line_codes like "LIRR-BB" map back to GTFS "1" via LIRR_ROUTES
-    For MNR: line_codes like "MNR-HUD" map back to GTFS "1" via MNR_ROUTES
+    Supports both line-based subs (direct route lookup) and station-pair
+    subs (finds all routes covering the segment).
     """
-    if not sub.line_id:
-        return set()
+    if sub.line_id:
+        route = _ROUTES_BY_ID.get(sub.line_id)
+        if not route:
+            return set()
+        return _line_codes_to_gtfs_ids(sub.data_source, route.line_codes)
 
-    route = _ROUTES_BY_ID.get(sub.line_id)
-    if not route:
-        return set()
+    if sub.from_station_code and sub.to_station_code:
+        gtfs_ids: set[str] = set()
+        for route in ALL_ROUTES:
+            if route.data_source != sub.data_source:
+                continue
+            if route.contains_segment(sub.from_station_code, sub.to_station_code):
+                gtfs_ids |= _line_codes_to_gtfs_ids(sub.data_source, route.line_codes)
+        return gtfs_ids
 
-    gtfs_ids: set[str] = set()
-    for line_code in route.line_codes:
-        if sub.data_source == "SUBWAY":
-            gtfs_ids.add(line_code)
-        elif sub.data_source == "LIRR":
-            gtfs_id = _LIRR_LINE_CODE_TO_GTFS.get(line_code)
-            if gtfs_id:
-                gtfs_ids.add(gtfs_id)
-        elif sub.data_source == "MNR":
-            gtfs_id = _MNR_LINE_CODE_TO_GTFS.get(line_code)
-            if gtfs_id:
-                gtfs_ids.add(gtfs_id)
-
-    return gtfs_ids
+    return set()
 
 
 async def evaluate_route_alerts(
@@ -1080,10 +1093,6 @@ async def evaluate_service_alerts(
             if sub.data_source not in SERVICE_ALERT_SOURCES:
                 continue
 
-            # Only line-based subscriptions support planned work alerts
-            if not sub.line_id:
-                continue
-
             # Get GTFS route_ids this subscription covers
             gtfs_route_ids = _get_gtfs_route_ids_for_subscription(sub)
             if not gtfs_route_ids:
@@ -1113,14 +1122,17 @@ async def evaluate_service_alerts(
             # Build and send notification for new alerts
             title, body = _build_service_alert_message(sub, new_alerts)
 
-            custom_data = {
-                "service_alert": {
-                    "data_source": sub.data_source,
-                    "line_id": sub.line_id,
-                    "alert_count": len(new_alerts),
-                    "alert_ids": [a.alert_id for a in new_alerts],
-                }
+            alert_payload: dict = {
+                "data_source": sub.data_source,
+                "alert_count": len(new_alerts),
+                "alert_ids": [a.alert_id for a in new_alerts],
             }
+            if sub.line_id:
+                alert_payload["line_id"] = sub.line_id
+            if sub.from_station_code:
+                alert_payload["from_station_code"] = sub.from_station_code
+                alert_payload["to_station_code"] = sub.to_station_code
+            custom_data = {"service_alert": alert_payload}
             sent = await apns_service.send_alert_notification(
                 device.apns_token, title, body, custom_data=custom_data
             )
@@ -1140,6 +1152,8 @@ async def evaluate_service_alerts(
                     device_id=device.device_id,
                     data_source=sub.data_source,
                     line_id=sub.line_id,
+                    from_station=sub.from_station_code,
+                    to_station=sub.to_station_code,
                     new_alert_count=len(new_alerts),
                     alert_ids=[a.alert_id for a in new_alerts],
                 )
@@ -1202,13 +1216,27 @@ def _find_matching_alerts(
     return matching
 
 
+def _get_route_name_for_subscription(sub: RouteAlertSubscription) -> str:
+    """Get a human-readable route name for a subscription."""
+    if sub.line_id:
+        route = _ROUTES_BY_ID.get(sub.line_id)
+        return route.name if route else sub.line_id
+    if sub.from_station_code and sub.to_station_code:
+        # Find the first matching route name for this station pair
+        for route in ALL_ROUTES:
+            if route.data_source != sub.data_source:
+                continue
+            if route.contains_segment(sub.from_station_code, sub.to_station_code):
+                return route.name
+    return sub.data_source
+
+
 def _build_service_alert_message(
     sub: RouteAlertSubscription,
     alerts: list[ServiceAlert],
 ) -> tuple[str, str]:
     """Build notification title and body for service alert(s)."""
-    route = _ROUTES_BY_ID.get(sub.line_id or "")
-    route_name = route.name if route else (sub.line_id or "Unknown")
+    route_name = _get_route_name_for_subscription(sub)
 
     if len(alerts) == 1:
         alert = alerts[0]
