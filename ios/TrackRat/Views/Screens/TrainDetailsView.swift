@@ -85,25 +85,6 @@ struct TrainDetailsView: View {
                             )
                         }
 
-                        // Route status button
-                        if let train = viewModel.train,
-                           let fromCode = appState.departureStationCode,
-                           let toCode = appState.destinationStationCode {
-                            Button {
-                                appState.pendingRouteStatus = RouteStatusContext(
-                                    dataSource: train.dataSource,
-                                    lineId: nil,
-                                    fromStationCode: fromCode,
-                                    toStationCode: toCode
-                                )
-                            } label: {
-                                Image(systemName: "chart.bar.xaxis")
-                                    .font(TrackRatTheme.IconSize.small)
-                                    .foregroundColor(.white)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
                         Button("Close") {
                             if isSheet {
                                 dismiss()
@@ -502,6 +483,24 @@ struct CombinedDetailsCard: View {
                                 destinationName: selectedDestination,
                                 textColor: .black.opacity(0.6)
                             )
+                        }
+
+                        // Route details button
+                        if let fromCode = appState.departureStationCode,
+                           let toCode = selectedDestinationCode {
+                            Button {
+                                appState.pendingRouteStatus = RouteStatusContext(
+                                    dataSource: train.dataSource,
+                                    lineId: nil,
+                                    fromStationCode: fromCode,
+                                    toStationCode: toCode
+                                )
+                            } label: {
+                                Label("Route Details", systemImage: "chart.bar.xaxis")
+                                    .font(.subheadline)
+                                    .foregroundColor(.black.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         FeedbackButton(

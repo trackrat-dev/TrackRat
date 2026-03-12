@@ -75,8 +75,6 @@
 		A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */; };
 		728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E6F30618D8429081157633 /* AlertConfigurationSection.swift */; };
 		8DA494D9EB3E4FFD97C93AB7 /* AlertConfigurationSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E6F30618D8429081157633 /* AlertConfigurationSection.swift */; };
-		A1CUS001A08F441C994FCA1C /* AlertCustomizationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CUS000A08F441C994FCA1C /* AlertCustomizationSheet.swift */; };
-		A1CUS002A08F441C994FCA1C /* AlertCustomizationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CUS000A08F441C994FCA1C /* AlertCustomizationSheet.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
@@ -228,7 +226,6 @@
 		A1875C7E2E400F4F00FCC7FC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SettingsView.swift; path = Views/Screens/SettingsView.swift; sourceTree = "<group>"; };
 		A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DateSelectorSheet.swift; path = TrackRat/Views/Components/DateSelectorSheet.swift; sourceTree = "<group>"; };
 		60E6F30618D8429081157633 /* AlertConfigurationSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AlertConfigurationSection.swift; path = TrackRat/Views/Components/AlertConfigurationSection.swift; sourceTree = "<group>"; };
-		A1CUS000A08F441C994FCA1C /* AlertCustomizationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AlertCustomizationSheet.swift; path = TrackRat/Views/Components/AlertCustomizationSheet.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
@@ -349,7 +346,6 @@
 				A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */,
 				A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */,
 				60E6F30618D8429081157633 /* AlertConfigurationSection.swift */,
-				A1CUS000A08F441C994FCA1C /* AlertCustomizationSheet.swift */,
 				A1D88F602F27083000111466 /* RouteTopology.swift */,
 				A12C31402F1DA61700CAF76D /* PaywallView.swift */,
 				A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */,
@@ -707,7 +703,6 @@
 				A1D88F632F27083000111466 /* RouteTopology.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */,
-				A1CUS001A08F441C994FCA1C /* AlertCustomizationSheet.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
 				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
@@ -753,7 +748,6 @@
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,
 				A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				8DA494D9EB3E4FFD97C93AB7 /* AlertConfigurationSection.swift in Sources */,
-				A1CUS002A08F441C994FCA1C /* AlertCustomizationSheet.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
 				A12C31452F1DA62600CAF76D /* ProFeatureLockView.swift in Sources */,

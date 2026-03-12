@@ -95,6 +95,23 @@ final class AlertSubscriptionService: ObservableObject {
         saveToDefaults()
     }
 
+    /// Find subscriptions matching a route context (by dataSource + station codes or lineId).
+    func subscriptions(for context: RouteStatusContext) -> [RouteAlertSubscription] {
+        subscriptions.filter { sub in
+            guard sub.dataSource == context.dataSource else { return false }
+            // Match line subscriptions
+            if let lineId = sub.lineId, lineId == context.lineId {
+                return true
+            }
+            // Match station-pair subscriptions (either direction)
+            if let from = sub.fromStationCode, let to = sub.toStationCode,
+               let ctxFrom = context.fromStationCode, let ctxTo = context.toStationCode {
+                return (from == ctxFrom && to == ctxTo) || (from == ctxTo && to == ctxFrom)
+            }
+            return false
+        }
+    }
+
     func removeSubscription(_ sub: RouteAlertSubscription) {
         subscriptions.removeAll { $0.id == sub.id }
         saveToDefaults()

@@ -1,5 +1,45 @@
 import SwiftUI
 
+/// Sheet wrapper around AlertConfigurationSection for use during subscription creation.
+/// Presents Cancel/Save buttons and only commits changes on explicit Save.
+struct AlertConfigurationSheetWrapper: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var sub: RouteAlertSubscription
+    private let onSave: (RouteAlertSubscription) -> Void
+
+    init(subscription: RouteAlertSubscription, onSave: @escaping (RouteAlertSubscription) -> Void) {
+        _sub = State(initialValue: subscription)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                AlertConfigurationSection(subscription: $sub)
+                    .padding()
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Customize Alert")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(.orange)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        onSave(sub)
+                        dismiss()
+                    }
+                    .foregroundColor(.orange)
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
 /// Reusable alert configuration UI that can be embedded in any ScrollView.
 /// Renders as card-style sections matching the `.ultraThinMaterial` pattern
 /// used throughout the app (e.g., RouteStatusView history cards).

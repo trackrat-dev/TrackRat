@@ -145,13 +145,9 @@ struct EditRouteAlertsView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             } else {
-                RouteStatusView(
-                    context: routeStatusContext(for: sub),
-                    subscription: sub,
-                    onSave: { updated in alertService.updateSubscription(updated) }
-                )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                RouteStatusView(context: routeStatusContext(for: sub))
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
         }
     }

@@ -73,47 +73,6 @@ struct TrainListView: View {
 
                 Spacer()
 
-                // Date picker button - Pro feature
-                Button {
-                    if subscriptionService.isPro {
-                        showDatePicker = true
-                    } else {
-                        showingPaywall = true
-                    }
-                } label: {
-                    ZStack {
-                        Image(systemName: "calendar")
-                            .font(TrackRatTheme.IconSize.small)
-                        if !subscriptionService.isPro {
-                            Image(systemName: "lock.fill")
-                                .font(.caption2)
-                                .foregroundColor(.orange)
-                                .offset(x: 8, y: -8)
-                        }
-                    }
-                    .foregroundColor(.white.opacity(0.8))
-                    .frame(minWidth: 44, minHeight: 44)
-                }
-                .buttonStyle(.plain)
-
-                // Route status button
-                if let destinationCode = Stations.getStationCode(destination) {
-                    Button {
-                        appState.pendingRouteStatus = RouteStatusContext(
-                            dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
-                            lineId: nil,
-                            fromStationCode: departureStationCode,
-                            toStationCode: destinationCode
-                        )
-                    } label: {
-                        Image(systemName: "chart.bar.xaxis")
-                            .font(TrackRatTheme.IconSize.small)
-                            .foregroundColor(.white.opacity(0.8))
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                }
-
                 // Close button
                 Button("Close") {
                     appState.navigationPath = NavigationPath()
@@ -125,6 +84,64 @@ struct TrainListView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
+
+            // Action buttons row
+            HStack(spacing: 12) {
+                // Schedule picker - Pro feature
+                Button {
+                    if subscriptionService.isPro {
+                        showDatePicker = true
+                    } else {
+                        showingPaywall = true
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        ZStack {
+                            Image(systemName: "calendar")
+                                .font(.subheadline)
+                            if !subscriptionService.isPro {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 7))
+                                    .foregroundColor(.orange)
+                                    .offset(x: 7, y: -7)
+                            }
+                        }
+                        Text("Schedules")
+                            .font(.subheadline)
+                    }
+                    .foregroundColor(.white.opacity(0.8))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+
+                // Route details button
+                if let destinationCode = Stations.getStationCode(destination) {
+                    Button {
+                        appState.pendingRouteStatus = RouteStatusContext(
+                            dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
+                            lineId: nil,
+                            fromStationCode: departureStationCode,
+                            toStationCode: destinationCode
+                        )
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chart.bar.xaxis")
+                                .font(.subheadline)
+                            Text("Route Details")
+                                .font(.subheadline)
+                        }
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
 
             // Scrollable content
             ScrollView {
