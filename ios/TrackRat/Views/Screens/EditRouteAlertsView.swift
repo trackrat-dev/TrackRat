@@ -15,24 +15,27 @@ struct EditRouteAlertsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            TrackRatNavigationHeader(
+                title: "Route Alerts",
+                showBackButton: false
+            ) {
+                Button {
+                    showAddSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                        .foregroundColor(.orange)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+            }
+
             if alertService.subscriptions.isEmpty {
                 emptyState
             } else {
                 subscriptionList
             }
         }
-        .navigationTitle("Route Alerts")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundColor(.orange)
-                }
-            }
-        }
+        .navigationBarHidden(true)
         .sheet(isPresented: $showAddSheet) {
             AddRouteAlertView()
                 .environmentObject(appState)

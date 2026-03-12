@@ -7,7 +7,12 @@ struct AdminChatListView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            TrackRatNavigationHeader(
+                title: "Developer Inbox",
+                showBackButton: false
+            )
+
             if isLoading && conversations.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -35,8 +40,7 @@ struct AdminChatListView: View {
             }
         }
         .background(TrackRatTheme.Colors.primaryBackground)
-        .navigationTitle("Developer Inbox")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .navigationDestination(for: String.self) { deviceId in
             ChatView(targetDeviceId: deviceId)
         }

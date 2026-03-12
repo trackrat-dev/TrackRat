@@ -26,8 +26,17 @@ struct ChatView: View {
 
     private let maxMessageLength = 255
 
+    private var headerTitle: String {
+        isAdminMode ? "User \(targetDeviceId?.prefix(8) ?? "")" : "Chat with Developer"
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+            TrackRatNavigationHeader(
+                title: headerTitle,
+                showBackButton: false
+            )
+
             // Messages
             ScrollViewReader { proxy in
                 ScrollView {
@@ -91,8 +100,7 @@ struct ChatView: View {
             }
         }
         .background(TrackRatTheme.Colors.primaryBackground)
-        .navigationTitle(isAdminMode ? "User \(targetDeviceId?.prefix(8) ?? "")" : "Chat with Developer")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .task {
             await loadMessages()
             startPolling()
