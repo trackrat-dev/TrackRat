@@ -7,12 +7,33 @@ Create Date: 2026-03-12 17:00:00.000000
 """
 
 from alembic import op
+from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = "f7a8b9c0d1e2"
 down_revision = "e6f7a8b9c0d1"
 branch_labels = None
 depends_on = None
+
+# Process rows in chunks to avoid long-running transactions that block
+# health checks and cause MIG instance restarts on large databases.
+BATCH_SIZE = 10000
+
+
+def _batched_update(conn, query: str, description: str) -> int:
+    """Run an UPDATE in batches, committing after each chunk.
+
+    Returns total rows updated.
+    """
+    total = 0
+    while True:
+        result = conn.execute(text(query))
+        rows = result.rowcount
+        if rows == 0:
+            break
+        total += rows
+        conn.commit()
+    return total
 
 
 def upgrade() -> None:
@@ -22,42 +43,56 @@ def upgrade() -> None:
     backfill. Stops with actual_arrival data but NULL arrival_source are
     excluded from OTP calculations, causing routes to report NULL on-time
     percentage despite having hundreds of trains with arrival data.
+
+    Uses batched updates to avoid blocking the health check on large databases.
     """
+    conn = op.get_bind()
+
     # Batch 1: Stops on completed journeys where actual != scheduled
     # (strong signal these were API-observed arrivals)
-    op.execute("""
-        UPDATE journey_stops js
+    _batched_update(conn, f"""
+        UPDATE journey_stops
         SET arrival_source = 'api_observed'
-        FROM train_journeys tj
-        WHERE tj.id = js.journey_id
-          AND js.arrival_source IS NULL
-          AND js.actual_arrival IS NOT NULL
-          AND js.scheduled_arrival IS NOT NULL
-          AND js.actual_arrival != js.scheduled_arrival
-        """)
+        WHERE id IN (
+            SELECT js.id FROM journey_stops js
+            JOIN train_journeys tj ON tj.id = js.journey_id
+            WHERE js.arrival_source IS NULL
+              AND js.actual_arrival IS NOT NULL
+              AND js.scheduled_arrival IS NOT NULL
+              AND js.actual_arrival != js.scheduled_arrival
+            LIMIT {BATCH_SIZE}
+        )
+        """, "actual != scheduled")
 
     # Batch 2: Stops on completed journeys where actual == scheduled
     # (could be scheduled_fallback or exact on-time, but on a completed
     # journey we trust the data)
-    op.execute("""
-        UPDATE journey_stops js
+    _batched_update(conn, f"""
+        UPDATE journey_stops
         SET arrival_source = 'api_observed'
-        FROM train_journeys tj
-        WHERE tj.id = js.journey_id
-          AND js.arrival_source IS NULL
-          AND js.actual_arrival IS NOT NULL
-          AND tj.is_completed = true
-        """)
+        WHERE id IN (
+            SELECT js.id FROM journey_stops js
+            JOIN train_journeys tj ON tj.id = js.journey_id
+            WHERE js.arrival_source IS NULL
+              AND js.actual_arrival IS NOT NULL
+              AND tj.is_completed = true
+            LIMIT {BATCH_SIZE}
+        )
+        """, "completed journeys")
 
     # Batch 3: Remaining stops with actual_arrival on non-completed journeys
     # where actual == scheduled. These are departed intermediate stops.
-    op.execute("""
+    _batched_update(conn, f"""
         UPDATE journey_stops
         SET arrival_source = 'api_observed'
-        WHERE arrival_source IS NULL
-          AND actual_arrival IS NOT NULL
-          AND has_departed_station = true
-        """)
+        WHERE id IN (
+            SELECT id FROM journey_stops
+            WHERE arrival_source IS NULL
+              AND actual_arrival IS NOT NULL
+              AND has_departed_station = true
+            LIMIT {BATCH_SIZE}
+        )
+        """, "departed stops")
 
 
 def downgrade() -> None:
