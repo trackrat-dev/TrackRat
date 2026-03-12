@@ -14,6 +14,9 @@ struct RouteStatusView: View {
     /// Selected history time period for the segmented picker.
     @State private var selectedHistoryPeriod: HistoryPeriod = .hour
 
+    /// Selected service alert filter (active vs upcoming).
+    @State private var selectedAlertFilter: ServiceAlertFilter = .active
+
     /// Preferred highlight mode derived from this route's data source
     private var preferredMode: SegmentHighlightMode {
         TrainSystem(rawValue: context.dataSource)?.preferredHighlightMode ?? .delays
@@ -246,13 +249,39 @@ struct RouteStatusView: View {
     @ViewBuilder
     private var serviceAlertsSection: some View {
         if !viewModel.serviceAlerts.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Service Alerts (\(viewModel.serviceAlerts.count))", systemImage: "exclamationmark.triangle.fill")
-                    .font(.headline)
-                    .foregroundColor(.orange)
+            let activeAlerts = viewModel.serviceAlerts
+                .filter { $0.isActiveNow }
+                .sorted { $0.earliestStartEpoch < $1.earliestStartEpoch }
+            let upcomingAlerts = viewModel.serviceAlerts
+                .filter { !$0.isActiveNow }
+                .sorted { $0.earliestStartEpoch < $1.earliestStartEpoch }
+            let filteredAlerts = selectedAlertFilter == .active ? activeAlerts : upcomingAlerts
 
-                ForEach(viewModel.serviceAlerts) { alert in
-                    ServiceAlertCard(alert: alert)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Service Alerts (\(viewModel.serviceAlerts.count))", systemImage: "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundColor(.orange)
+                    Spacer()
+                    Picker("", selection: $selectedAlertFilter) {
+                        ForEach(ServiceAlertFilter.allCases, id: \.self) { filter in
+                            Text(filter.label(activeCount: activeAlerts.count, upcomingCount: upcomingAlerts.count)).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 220)
+                }
+
+                if filteredAlerts.isEmpty {
+                    Text(selectedAlertFilter == .active ? "No active alerts" : "No upcoming alerts")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(filteredAlerts) { alert in
+                        ServiceAlertCard(alert: alert)
+                    }
                 }
             }
             .padding()
@@ -519,6 +548,19 @@ enum HistoryPeriod: CaseIterable {
         case .hour: return "Hour"
         case .day: return "Day"
         case .week: return "Week"
+        }
+    }
+}
+
+// MARK: - Service Alert Filter
+
+enum ServiceAlertFilter: CaseIterable {
+    case active, upcoming
+
+    func label(activeCount: Int, upcomingCount: Int) -> String {
+        switch self {
+        case .active: return "Active (\(activeCount))"
+        case .upcoming: return "Upcoming (\(upcomingCount))"
         }
     }
 }
