@@ -22,6 +22,8 @@ from trackrat.services.alert_evaluator import (
     _build_service_alert_message,
     _find_matching_alerts,
     _get_gtfs_route_ids_for_subscription,
+    _get_route_name_for_subscription,
+    _line_codes_to_gtfs_ids,
     evaluate_service_alerts,
 )
 
@@ -134,13 +136,36 @@ class TestGetGtfsRouteIdsForSubscription:
         result = _get_gtfs_route_ids_for_subscription(sub)
         assert len(result) > 0
 
-    def test_no_line_id_returns_empty(self):
-        """Subscriptions without line_id return empty set."""
+    def test_station_pair_returns_matching_route_ids(self):
+        """Station-pair subs return GTFS IDs for routes covering that segment."""
+        # NY and JAM are both on LIRR Babylon Branch
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="LIRR",
+            from_station_code="NY",
+            to_station_code="JAM",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        # Should find at least the Babylon branch GTFS ID
+        assert len(result) > 0
+
+    def test_station_pair_no_matching_route_returns_empty(self):
+        """Station-pair with stations not on any shared route returns empty."""
         sub = RouteAlertSubscription(
             device_id="dev1",
             data_source="SUBWAY",
-            from_station_code="A42",
-            to_station_code="A36",
+            from_station_code="FAKE1",
+            to_station_code="FAKE2",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert result == set()
+
+    def test_train_specific_sub_returns_empty(self):
+        """Train-specific subs (no line_id, no station pair) return empty."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SUBWAY",
+            train_id="3254",
         )
         result = _get_gtfs_route_ids_for_subscription(sub)
         assert result == set()
@@ -272,14 +297,95 @@ class TestFindMatchingAlerts:
         assert len(result) == 1
 
 
+class TestLineCodesToGtfsIds:
+    """Tests for _line_codes_to_gtfs_ids() helper."""
+
+    def test_subway_line_codes_are_gtfs_ids(self):
+        """Subway line codes map directly to GTFS route IDs."""
+        result = _line_codes_to_gtfs_ids("SUBWAY", frozenset({"G", "F"}))
+        assert result == {"G", "F"}
+
+    def test_lirr_maps_via_reverse_dict(self):
+        """LIRR line codes map to GTFS IDs via LIRR_ROUTES reverse map."""
+        result = _line_codes_to_gtfs_ids("LIRR", frozenset({"LIRR-BB"}))
+        assert len(result) > 0
+
+    def test_mnr_maps_via_reverse_dict(self):
+        """MNR line codes map to GTFS IDs via MNR_ROUTES reverse map."""
+        result = _line_codes_to_gtfs_ids("MNR", frozenset({"MNR-HUD"}))
+        assert len(result) > 0
+
+    def test_unknown_source_returns_empty(self):
+        """Non-MTA data source returns empty set."""
+        result = _line_codes_to_gtfs_ids("NJT", frozenset({"NEC"}))
+        assert result == set()
+
+    def test_empty_line_codes_returns_empty(self):
+        """Empty line_codes input returns empty set."""
+        result = _line_codes_to_gtfs_ids("SUBWAY", frozenset())
+        assert result == set()
+
+
+class TestGetRouteNameForSubscription:
+    """Tests for _get_route_name_for_subscription()."""
+
+    def test_line_based_sub_returns_route_name(self):
+        """Line-based subscription returns the route's display name."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SUBWAY",
+            line_id="subway-g",
+        )
+        name = _get_route_name_for_subscription(sub)
+        assert name  # Should be a non-empty string
+        assert name != "SUBWAY"  # Should be the route name, not fallback
+
+    def test_station_pair_sub_returns_route_name(self):
+        """Station-pair subscription returns the name of a matching route."""
+        # NY and JAM are on LIRR Babylon Branch
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="LIRR",
+            from_station_code="NY",
+            to_station_code="JAM",
+        )
+        name = _get_route_name_for_subscription(sub)
+        assert name  # Should find a route name
+        assert name != "LIRR"  # Should not be the fallback
+
+    def test_station_pair_no_match_returns_data_source(self):
+        """Station-pair with no matching route falls back to data_source."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SUBWAY",
+            from_station_code="FAKE1",
+            to_station_code="FAKE2",
+        )
+        name = _get_route_name_for_subscription(sub)
+        assert name == "SUBWAY"
+
+    def test_train_specific_sub_returns_data_source(self):
+        """Train-specific sub (no line_id, no stations) falls back to data_source."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SUBWAY",
+            train_id="3254",
+        )
+        name = _get_route_name_for_subscription(sub)
+        assert name == "SUBWAY"
+
+
 class TestBuildServiceAlertMessage:
     """Tests for _build_service_alert_message() formatting."""
 
-    def _make_sub(self, data_source="SUBWAY", line_id="subway-g"):
+    def _make_sub(self, data_source="SUBWAY", line_id="subway-g",
+                  from_station_code=None, to_station_code=None):
         return RouteAlertSubscription(
             device_id="dev1",
             data_source=data_source,
             line_id=line_id,
+            from_station_code=from_station_code,
+            to_station_code=to_station_code,
             include_planned_work=True,
         )
 
@@ -317,6 +423,25 @@ class TestBuildServiceAlertMessage:
 
         assert "2" in title
         assert "+1 more" in body
+
+    def test_station_pair_sub_uses_route_name(self):
+        """Station-pair sub message uses the matched route name, not station codes."""
+        # SH11 and SH06 are on the A train
+        sub = self._make_sub(
+            data_source="SUBWAY",
+            line_id=None,
+            from_station_code="SH11",
+            to_station_code="SH06",
+        )
+        alert = self._make_alert_obj(header="A train: Weekend changes")
+        title, body = _build_service_alert_message(sub, [alert])
+
+        assert "SUBWAY" in title
+        assert "planned work" in title.lower()
+        # Should use a route name, not "Unknown" or raw station codes
+        assert "Unknown" not in title
+        assert "SH11" not in title
+        assert body == "A train: Weekend changes"
 
 
 @pytest.mark.asyncio
@@ -480,22 +605,66 @@ class TestEvaluateServiceAlerts:
         count = await evaluate_service_alerts(db_session, apns)
         assert count == 0
 
-    async def test_station_pair_subscription_skipped(self, db_session: AsyncSession):
-        """Station-pair subscriptions (no line_id) are skipped for service alerts."""
+    async def test_station_pair_subscription_sends_notification(
+        self, db_session: AsyncSession
+    ):
+        """Station-pair subscriptions receive planned work alerts for matching routes."""
         device = DeviceToken(device_id="station-dev", apns_token="token-sp")
         db_session.add(device)
+        # SH11 and SH06 are both on the A train route
         sub = RouteAlertSubscription(
             device_id="station-dev",
             data_source="SUBWAY",
-            from_station_code="A42",
-            to_station_code="A36",
+            from_station_code="SH11",
+            to_station_code="SH06",
             include_planned_work=True,
         )
         db_session.add(sub)
         _make_service_alert(
             db_session,
             data_source="SUBWAY",
-            route_ids=["A", "C", "E"],
+            route_ids=["A"],
+            header="A train: No service this weekend",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+        assert count == 1
+
+        call_args = apns.send_alert_notification.call_args
+        title = call_args.args[1]
+        body = call_args.args[2]
+        assert "SUBWAY" in title
+        assert "A train: No service this weekend" in body
+
+        # custom_data should include station pair info
+        custom_data = call_args.kwargs.get("custom_data") or call_args.args[3]
+        sa_payload = custom_data["service_alert"]
+        assert sa_payload["from_station_code"] == "SH11"
+        assert sa_payload["to_station_code"] == "SH06"
+        assert "line_id" not in sa_payload
+
+    async def test_station_pair_no_match_sends_nothing(
+        self, db_session: AsyncSession
+    ):
+        """Station-pair sub with no matching route for the alert sends nothing."""
+        device = DeviceToken(device_id="station-dev2", apns_token="token-sp2")
+        db_session.add(device)
+        # SH11 and SH06 are on the A train, but alert is for G
+        sub = RouteAlertSubscription(
+            device_id="station-dev2",
+            data_source="SUBWAY",
+            from_station_code="SH11",
+            to_station_code="SH06",
+            include_planned_work=True,
+        )
+        db_session.add(sub)
+        _make_service_alert(
+            db_session,
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G train: No service this weekend",
         )
         await db_session.flush()
 
