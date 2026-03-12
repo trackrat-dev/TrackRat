@@ -1249,7 +1249,7 @@ class TestFormatFrequencyRouteHeadlineBody:
         return SummaryService()
 
     def test_normal_service_shows_headway(self, summary_service):
-        """12 trains over 120min → headline shows Past two hours + ~10 min headway."""
+        """12 trains over 120min → headline shows headway, body has train count."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=12, cancellations=0
         )
@@ -1322,13 +1322,14 @@ class TestFormatFrequencyRouteHeadlineBody:
         # No "others departed" since train_count=0
         assert "others departed" not in body
 
-    def test_body_mentions_time_window(self, summary_service):
-        """Body should reference the 2-hour time window."""
+    def test_normal_service_body_describes_frequency(self, summary_service):
+        """Normal service body should describe train count and average headway."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=12, cancellations=0
         )
         print(f"body: {body!r}")
-        assert "2 hours" in body
+        assert "12 trains departed in the past 2 hours" in body
+        assert "averaging every 10 minutes" in body
 
 
 class TestFormatFrequencyTrainHeadlineBody:
