@@ -11,6 +11,9 @@ struct RouteStatusView: View {
     /// Locally-edited copies of matching subscriptions, keyed by ID.
     @State private var editedSubscriptions: [UUID: RouteAlertSubscription] = [:]
 
+    /// Draft subscription used when no matching subscription exists yet.
+    @State private var draftSubscription: RouteAlertSubscription?
+
     /// Selected history time period for the segmented picker.
     @State private var selectedHistoryPeriod: HistoryPeriod = .hour
 
@@ -110,74 +113,82 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private var alertSubscriptionSection: some View {
-        if isSubscribed {
-            // Show configuration for each matching subscription
-            ForEach(matchingSubscriptions) { sub in
-                AlertConfigurationSection(subscription: binding(for: sub))
-            }
-
-            // Daily Digest (shown per subscription)
-            ForEach(matchingSubscriptions) { sub in
-                DigestConfigurationSection(subscription: binding(for: sub))
-            }
-
-            // Unsubscribe button
-            Button(role: .destructive) {
-                for sub in matchingSubscriptions {
-                    alertService.removeSubscription(sub)
+        if context.fromStationCode != nil && context.toStationCode != nil {
+            AlertConfigurationSection(subscription: alertConfigBinding)
+                .onChange(of: alertConfigBinding.wrappedValue.activeDays) { _, newDays in
+                    handleActiveDaysChange(newDays)
                 }
-                editedSubscriptions.removeAll()
-                syncIfPossible()
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } label: {
-                HStack {
-                    Image(systemName: "bell.slash")
-                    Text("Unsubscribe from alerts")
-                }
-                .font(.subheadline)
-                .foregroundColor(.red)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-            }
-            .buttonStyle(.plain)
-        } else if context.fromStationCode != nil && context.toStationCode != nil {
-            // Subscribe button
-            Button {
-                subscribeToRoute()
-            } label: {
-                HStack {
-                    Image(systemName: "bell.badge")
-                    Text("Get alerts for this route")
-                }
-                .font(.subheadline.bold())
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Capsule().fill(.orange))
-            }
-            .buttonStyle(.plain)
+            DigestConfigurationSection(subscription: alertConfigBinding)
         }
     }
 
-    /// Create a binding that reads from edited copy (or falls back to original) and writes to editedSubscriptions.
-    private func binding(for sub: RouteAlertSubscription) -> Binding<RouteAlertSubscription> {
-        Binding(
-            get: { editedSubscriptions[sub.id] ?? sub },
-            set: { editedSubscriptions[sub.id] = $0 }
-        )
+    /// Single binding for alert configuration.
+    /// Uses the first matching subscription (syncing edits to all), or the draft if none exist.
+    private var alertConfigBinding: Binding<RouteAlertSubscription> {
+        if let first = matchingSubscriptions.first {
+            return Binding(
+                get: { editedSubscriptions[first.id] ?? first },
+                set: { newValue in
+                    // Apply edits to all matching subscriptions
+                    for sub in matchingSubscriptions {
+                        let edited = RouteAlertSubscription.copySettings(from: newValue, to: editedSubscriptions[sub.id] ?? sub)
+                        editedSubscriptions[sub.id] = edited
+                    }
+                }
+            )
+        } else {
+            return Binding(
+                get: { draftSubscription ?? makeDraftSubscription() },
+                set: { draftSubscription = $0 }
+            )
+        }
     }
 
-    private func subscribeToRoute() {
-        guard let from = context.fromStationCode, let to = context.toStationCode else { return }
-        let template = RouteAlertSubscription(
+    /// Handle active days changes: auto-subscribe when going non-zero, auto-unsubscribe when zero.
+    private func handleActiveDaysChange(_ newDays: Int) {
+        if newDays > 0 && !isSubscribed {
+            // Auto-subscribe
+            guard let draft = draftSubscription else { return }
+            alertService.addStationPairSubscriptions(template: draft)
+            // Move draft settings into edited subscriptions for the newly-created subs
+            for sub in alertService.subscriptions(for: context) {
+                var edited = RouteAlertSubscription.copySettings(from: draft, to: sub)
+                edited.activeDays = newDays
+                editedSubscriptions[sub.id] = edited
+                alertService.updateSubscription(edited)
+            }
+            draftSubscription = nil
+            syncIfPossible()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } else if newDays == 0 && isSubscribed {
+            // Auto-unsubscribe
+            for sub in matchingSubscriptions {
+                alertService.removeSubscription(sub)
+            }
+            editedSubscriptions.removeAll()
+            // Reset draft for potential re-subscribe
+            draftSubscription = nil
+            syncIfPossible()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
+    }
+
+    /// Create a draft subscription with days set to None (0).
+    private func makeDraftSubscription() -> RouteAlertSubscription {
+        guard let from = context.fromStationCode, let to = context.toStationCode else {
+            fatalError("makeDraftSubscription called without station pair")
+        }
+        let draft = RouteAlertSubscription(
             dataSource: context.dataSource,
             fromStationCode: from,
-            toStationCode: to
+            toStationCode: to,
+            activeDays: 0
         )
-        alertService.addStationPairSubscriptions(template: template)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        // Cache it so subsequent reads return the same instance
+        DispatchQueue.main.async { draftSubscription = draft }
+        return draft
     }
+
 
     private func syncIfPossible() {
         Task { @MainActor in

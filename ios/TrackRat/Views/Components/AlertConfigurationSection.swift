@@ -77,6 +77,15 @@ struct AlertConfigurationSection: View {
                 .font(.headline)
 
             configCard {
+                // Active Days (top — controls subscribe/unsubscribe)
+                Text("Active Days")
+                    .font(.subheadline.bold())
+                    .foregroundColor(.secondary)
+                dayPresetRow
+                dayGrid
+
+                Divider().opacity(0.3)
+
                 // Cancellations
                 sensitivityRow(
                     label: "Cancellations",
@@ -93,7 +102,7 @@ struct AlertConfigurationSection: View {
                 if subscription.notifyCancellation || subscription.notifyDelay {
                     Divider().opacity(0.3)
                     Toggle(isOn: $subscription.notifyRecovery) {
-                        Text("Recovery alerts")
+                        Text("Notify on recovery")
                     }
                     .tint(.orange)
                 }
@@ -106,15 +115,6 @@ struct AlertConfigurationSection: View {
                     }
                     .tint(.orange)
                 }
-
-                Divider().opacity(0.3)
-
-                // Active Days
-                Text("Active Days")
-                    .font(.subheadline.bold())
-                    .foregroundColor(.secondary)
-                dayPresetRow
-                dayGrid
 
                 Divider().opacity(0.3)
 
@@ -245,6 +245,7 @@ struct AlertConfigurationSection: View {
 
     private var dayPresetRow: some View {
         HStack(spacing: 12) {
+            presetButton("None", bitmask: 0)
             presetButton("Weekdays", bitmask: 31)
             presetButton("Weekends", bitmask: 96)
             presetButton("Every Day", bitmask: 127)
@@ -276,9 +277,7 @@ struct AlertConfigurationSection: View {
                 let isOn = subscription.activeDays & bit != 0
                 Button {
                     if isOn {
-                        if subscription.activeDays & ~bit != 0 {
-                            subscription.activeDays &= ~bit
-                        }
+                        subscription.activeDays &= ~bit
                     } else {
                         subscription.activeDays |= bit
                     }
