@@ -135,7 +135,7 @@ struct EditRouteAlertsView: View {
             if sub.trainId != nil {
                 NavigationStack {
                     TrainDetailsView(
-                        trainNumber: sub.trainId ?? "",
+                        trainNumber: sub.trainId!,
                         dataSource: sub.dataSource,
                         isSheet: true,
                         subscription: sub,

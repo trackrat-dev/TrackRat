@@ -121,6 +121,7 @@ struct RouteStatusView: View {
                     alertService.removeSubscription(sub)
                 }
                 editedSubscriptions.removeAll()
+                syncIfPossible()
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             } label: {
                 HStack {
