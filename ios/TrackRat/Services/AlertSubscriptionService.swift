@@ -181,6 +181,24 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     /// Frequency-first systems use service threshold; delay-first use delay threshold.
     static let frequencyFirstSources: Set<String> = ["SUBWAY", "PATH", "PATCO"]
 
+    /// Copy mutable alert settings from `source` onto `target`, preserving target's identity fields.
+    static func copySettings(from source: RouteAlertSubscription, to target: RouteAlertSubscription) -> RouteAlertSubscription {
+        var result = target
+        result.activeDays = source.activeDays
+        result.activeStartMinutes = source.activeStartMinutes
+        result.activeEndMinutes = source.activeEndMinutes
+        result.timezone = source.timezone
+        result.delayThresholdMinutes = source.delayThresholdMinutes
+        result.serviceThresholdPct = source.serviceThresholdPct
+        result.cancellationThresholdPct = source.cancellationThresholdPct
+        result.notifyCancellation = source.notifyCancellation
+        result.notifyDelay = source.notifyDelay
+        result.notifyRecovery = source.notifyRecovery
+        result.digestTimeMinutes = source.digestTimeMinutes
+        result.includePlannedWork = source.includePlannedWork
+        return result
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, dataSource, lineId, lineName, fromStationCode, toStationCode
         case trainId, trainName, direction, activeDays, activeStartMinutes
