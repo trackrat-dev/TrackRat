@@ -242,7 +242,6 @@ class TestMarkRead:
         )
         assert unread2.json()["unread_count"] == 0
 
-
     def test_mark_read_unregistered_device(self, e2e_client: TestClient):
         """Marking messages read for an unregistered device returns 404."""
         resp = e2e_client.post(
