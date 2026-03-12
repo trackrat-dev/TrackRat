@@ -740,6 +740,8 @@ class PathCollector:
                     TrainJourney.origin_station_code == origin_station,
                     TrainJourney.scheduled_departure >= time_min,
                     TrainJourney.scheduled_departure <= time_max,
+                    TrainJourney.is_completed == False,  # noqa: E712
+                    TrainJourney.is_expired == False,  # noqa: E712
                 )
             )
             .with_for_update(skip_locked=True)

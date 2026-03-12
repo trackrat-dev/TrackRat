@@ -46,6 +46,8 @@ def _is_postgresql_concurrency_error(error: Exception) -> bool:
         "deadlock detected",
         "could not serialize access due to concurrent update",
         "could not serialize access due to read/write dependencies",
+        # Statement cancellation (e.g., asyncpg command_timeout)
+        "canceling statement due to user request",
         # Temporary resource issues
         "too many connections",
         "connection pool exhausted",

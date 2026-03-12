@@ -301,6 +301,12 @@ class JustInTimeUpdateService:
 
         return journey
 
+    # Data sources with high-frequency background collectors (every 4 min).
+    # JIT refresh for these sources creates lock contention with negligible
+    # freshness gain, so we use the collector interval as the staleness baseline.
+    _HIGH_FREQ_COLLECTOR_SOURCES = {"PATH", "LIRR", "MNR", "SUBWAY"}
+    _HIGH_FREQ_STALENESS_SECONDS = 240  # 4 minutes, matches collector interval
+
     def needs_refresh(self, journey: TrainJourney) -> bool:
         """Determine if a journey needs a data refresh.
 
@@ -321,6 +327,11 @@ class JustInTimeUpdateService:
         # Check staleness
         if journey.last_updated_at is None:
             return True
+
+        # High-frequency collector sources use longer staleness to avoid
+        # lock contention between JIT and the background collector
+        if journey.data_source in self._HIGH_FREQ_COLLECTOR_SOURCES:
+            return is_stale(journey.last_updated_at, self._HIGH_FREQ_STALENESS_SECONDS)
 
         # Use tighter staleness for trains departing soon
         staleness_threshold = self.settings.data_staleness_seconds

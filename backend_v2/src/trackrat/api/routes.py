@@ -287,10 +287,12 @@ async def _calculate_route_stats_sql(
                     AS arrival_delay_minutes
             FROM journey_stops js
             INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
+            INNER JOIN train_journeys tj ON tj.id = rj.journey_id
             WHERE js.station_code = ANY(:to_codes)
               AND js.actual_arrival IS NOT NULL
               AND js.scheduled_arrival IS NOT NULL
-              AND js.arrival_source = 'api_observed'
+              AND (js.arrival_source = 'api_observed'
+                   OR (tj.is_completed = true AND js.arrival_source IS NOT NULL))
             ORDER BY js.journey_id, js.stop_sequence ASC
         ),
         origin_stops AS (
