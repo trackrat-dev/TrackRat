@@ -64,7 +64,7 @@ final class TripRecordingService {
                 scheduled: destStop?.scheduledArrival,
                 actual: destStop?.actualArrival ?? destStop?.updatedArrival
             ),
-            track: originStop?.track,
+            track: train.track,
             lastUpdated: Date()
         )
 
