@@ -1239,7 +1239,8 @@ enum APIError: LocalizedError {
     case decodingError
     case invalidParameters
     case encodingError
-    
+    case serverError
+
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "Invalid URL"
@@ -1247,6 +1248,7 @@ enum APIError: LocalizedError {
         case .decodingError: return "Failed to decode response"
         case .invalidParameters: return "Invalid parameters provided"
         case .encodingError: return "Failed to encode request body"
+        case .serverError: return "Server error"
         }
     }
 }
@@ -1526,7 +1528,7 @@ extension APIService {
         request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, registration_code: registrationCode))
         let (_, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw APIError.invalidParameters
+            throw http.statusCode == 503 ? APIError.serverError : APIError.invalidParameters
         }
     }
 
