@@ -6,28 +6,29 @@ struct RouteStatusView: View {
     @StateObject private var viewModel: RouteStatusViewModel
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var alertService = AlertSubscriptionService.shared
 
-    /// Mutable subscription for inline configuration (nil when opened without alert context).
-    @State private var subscription: RouteAlertSubscription?
-    private let onSave: ((RouteAlertSubscription) -> Void)?
+    /// Locally-edited copies of matching subscriptions, keyed by ID.
+    @State private var editedSubscriptions: [UUID: RouteAlertSubscription] = [:]
 
     /// Preferred highlight mode derived from this route's data source
     private var preferredMode: SegmentHighlightMode {
         TrainSystem(rawValue: context.dataSource)?.preferredHighlightMode ?? .delays
     }
 
+    /// Matching subscriptions from the service.
+    private var matchingSubscriptions: [RouteAlertSubscription] {
+        alertService.subscriptions(for: context)
+    }
+
+    /// Whether the user is currently subscribed to alerts for this route.
+    private var isSubscribed: Bool {
+        !matchingSubscriptions.isEmpty
+    }
+
     init(context: RouteStatusContext) {
         self.context = context
         self._viewModel = StateObject(wrappedValue: RouteStatusViewModel(context: context))
-        self._subscription = State(initialValue: nil)
-        self.onSave = nil
-    }
-
-    init(context: RouteStatusContext, subscription: RouteAlertSubscription, onSave: @escaping (RouteAlertSubscription) -> Void) {
-        self.context = context
-        self._viewModel = StateObject(wrappedValue: RouteStatusViewModel(context: context))
-        self._subscription = State(initialValue: subscription)
-        self.onSave = onSave
     }
 
     /// Train selected for detail sheet
@@ -44,12 +45,7 @@ struct RouteStatusView: View {
 
                     historySections
 
-                    if let _ = subscription {
-                        AlertConfigurationSection(subscription: Binding(
-                            get: { subscription! },
-                            set: { subscription = $0 }
-                        ))
-                    }
+                    alertSubscriptionSection
                 }
                 .padding()
             }
@@ -57,14 +53,12 @@ struct RouteStatusView: View {
             .navigationTitle(context.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if subscription == nil,
-                   let from = context.fromStationCode,
+                if let from = context.fromStationCode,
                    let to = context.toStationCode {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
                             let destinationName = Stations.displayName(for: to)
                             dismiss()
-                            // Brief delay to let the sheet dismiss before triggering navigation
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 appState.pendingNavigation = .trainList(
                                     destination: destinationName,
@@ -89,9 +83,11 @@ struct RouteStatusView: View {
                 await viewModel.loadData()
             }
             .onDisappear {
-                if let subscription = subscription {
-                    onSave?(subscription)
+                // Persist any edited subscriptions back to the service
+                for (_, edited) in editedSubscriptions {
+                    alertService.updateSubscription(edited)
                 }
+                syncIfPossible()
             }
             .sheet(item: $selectedTrain) { train in
                 NavigationStack {
@@ -106,6 +102,81 @@ struct RouteStatusView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+        }
+    }
+
+    // MARK: - Alert Subscription Section
+
+    @ViewBuilder
+    private var alertSubscriptionSection: some View {
+        if isSubscribed {
+            // Show configuration for each matching subscription
+            ForEach(matchingSubscriptions) { sub in
+                AlertConfigurationSection(subscription: binding(for: sub))
+            }
+
+            // Unsubscribe button
+            Button(role: .destructive) {
+                for sub in matchingSubscriptions {
+                    alertService.removeSubscription(sub)
+                }
+                editedSubscriptions.removeAll()
+                syncIfPossible()
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } label: {
+                HStack {
+                    Image(systemName: "bell.slash")
+                    Text("Unsubscribe from alerts")
+                }
+                .font(.subheadline)
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+            }
+            .buttonStyle(.plain)
+        } else if context.fromStationCode != nil && context.toStationCode != nil {
+            // Subscribe button
+            Button {
+                subscribeToRoute()
+            } label: {
+                HStack {
+                    Image(systemName: "bell.badge")
+                    Text("Get alerts for this route")
+                }
+                .font(.subheadline.bold())
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Capsule().fill(.orange))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Create a binding that reads from edited copy (or falls back to original) and writes to editedSubscriptions.
+    private func binding(for sub: RouteAlertSubscription) -> Binding<RouteAlertSubscription> {
+        Binding(
+            get: { editedSubscriptions[sub.id] ?? sub },
+            set: { editedSubscriptions[sub.id] = $0 }
+        )
+    }
+
+    private func subscribeToRoute() {
+        guard let from = context.fromStationCode, let to = context.toStationCode else { return }
+        let template = RouteAlertSubscription(
+            dataSource: context.dataSource,
+            fromStationCode: from,
+            toStationCode: to
+        )
+        alertService.addStationPairSubscriptions(template: template)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func syncIfPossible() {
+        Task { @MainActor in
+            guard let token = AppDelegate.deviceToken else { return }
+            await alertService.syncWithBackend(apnsToken: token)
         }
     }
 

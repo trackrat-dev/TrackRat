@@ -103,7 +103,7 @@ struct AddRouteAlertView: View {
         }
         .sheet(isPresented: $showCustomizationSheet) {
             if let draft = draftSubscription {
-                AlertCustomizationSheet(subscription: draft) { customized in
+                AlertConfigurationSheetWrapper(subscription: draft) { customized in
                     saveCustomizedSubscription(customized)
                 }
             }
