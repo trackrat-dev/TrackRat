@@ -172,8 +172,6 @@ struct SettingsSection: View {
     @Binding var paywallContext: PaywallContext
     var showDebugSections: Bool
 
-    @State private var showingFeedbackSheet = false
-
     var body: some View {
         VStack(spacing: 16) {
             // Train Systems
@@ -206,6 +204,38 @@ struct SettingsSection: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.ultraThinMaterial)
             )
+
+            // Route Alerts
+            Button {
+                navigationPath.append(SettingsDestination.routeAlerts)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            } label: {
+                HStack(spacing: 16) {
+                    Image(systemName: "bell.badge.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    Text("Route Alerts (beta)")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
 
             // Favorite Stations
             Button {
@@ -241,39 +271,7 @@ struct SettingsSection: View {
             }
             .buttonStyle(.plain)
 
-            // Route Alerts
-            Button {
-                navigationPath.append(SettingsDestination.routeAlerts)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "bell.badge.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    Text("Route Alerts (beta)")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.leading)
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Chat with Developer
+            // Developer Chat
             Button {
                 if subscriptionService.hasAccess(to: .developerChat) {
                     navigationPath.append(SettingsDestination.chat)
@@ -289,7 +287,7 @@ struct SettingsSection: View {
                         .foregroundColor(.orange)
                         .frame(width: 24, height: 24)
 
-                    Text("Chat with Developer")
+                    Text("Developer Chat")
                         .font(.headline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
@@ -325,46 +323,8 @@ struct SettingsSection: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
             }
             .buttonStyle(.plain)
-
-            // Admin Inbox (visible only to admin)
-            if chatService.isAdmin {
-                Button {
-                    navigationPath.append(SettingsDestination.adminChat)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    HStack(spacing: 16) {
-                        Image(systemName: "tray.full.fill")
-                            .font(.title2)
-                            .foregroundColor(.orange)
-                            .frame(width: 24, height: 24)
-
-                        Text("Developer Inbox")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.ultraThinMaterial)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
 
             // YouTube & Instagram
             HStack(spacing: 12) {
@@ -421,46 +381,34 @@ struct SettingsSection: View {
                 .buttonStyle(.plain)
             }
 
-            // Report an Issue
-            Button {
-                showingFeedbackSheet = true
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.bubble.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+            // Admin Inbox (visible only to admin)
+            if chatService.isAdmin {
+                Button {
+                    navigationPath.append(SettingsDestination.adminChat)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "tray.full.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Report an Issue")
+                        Text("Developer Inbox")
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
                             .multilineTextAlignment(.leading)
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
                     }
-
-                    Spacer()
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                    .padding()
+                    .frame(maxWidth: .infinity)
                 }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-            .sheet(isPresented: $showingFeedbackSheet) {
-                FeedbackSheet(
-                    screen: "settings",
-                    trainId: nil,
-                    originCode: nil,
-                    destinationCode: nil
-                )
+                .buttonStyle(.plain)
             }
 
             // Debug/TestFlight-only: Advanced Configuration

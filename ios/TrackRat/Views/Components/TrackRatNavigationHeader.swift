@@ -10,7 +10,24 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
     var subtitle: String? = nil
     var showBackButton: Bool = true
     var showCloseButton: Bool = true
+    var onBackAction: (() -> Void)? = nil
     var trailingContent: (() -> TrailingContent)?
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        showBackButton: Bool = true,
+        showCloseButton: Bool = true,
+        onBackAction: (() -> Void)? = nil,
+        @ViewBuilder trailingContent: @escaping () -> TrailingContent
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.showBackButton = showBackButton
+        self.showCloseButton = showCloseButton
+        self.onBackAction = onBackAction
+        self.trailingContent = trailingContent
+    }
 
     var body: some View {
         ZStack {
@@ -36,7 +53,9 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
                 // Back button
                 if showBackButton {
                     Button {
-                        if !appState.navigationPath.isEmpty {
+                        if let onBackAction = onBackAction {
+                            onBackAction()
+                        } else if !appState.navigationPath.isEmpty {
                             appState.navigationPath.removeLast()
                         }
                     } label: {
@@ -78,12 +97,14 @@ extension TrackRatNavigationHeader where TrailingContent == EmptyView {
         title: String,
         subtitle: String? = nil,
         showBackButton: Bool = true,
-        showCloseButton: Bool = true
+        showCloseButton: Bool = true,
+        onBackAction: (() -> Void)? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
         self.showBackButton = showBackButton
         self.showCloseButton = showCloseButton
+        self.onBackAction = onBackAction
         self.trailingContent = nil
     }
 }
