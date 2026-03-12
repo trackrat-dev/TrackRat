@@ -17,26 +17,12 @@ enum SubscriptionStatus: Equatable {
 // MARK: - Premium Feature
 
 enum PremiumFeature: String, CaseIterable {
-    case supportDevelopment = "Support Active Development"
-    case liveActivities = "Live Activities"
-    case delayForecasts = "Delay Forecasts"
-    case congestionMap = "Live Congestion Map"
-    case historicalData = "Historical Analytics"
-    case tripStatistics = "Trip History (beta)"
-    case ratSense = "RatSense AI"
     case developerChat = "Chat with Developer"
 
     var displayName: String { rawValue }
 
     var iconName: String {
         switch self {
-        case .liveActivities: return "pin.fill"
-        case .delayForecasts: return "chart.line.uptrend.xyaxis"
-        case .congestionMap: return "map.circle.fill"
-        case .historicalData: return "clock.arrow.circlepath"
-        case .tripStatistics: return "chart.bar.fill"
-        case .ratSense: return "brain.head.profile"
-        case .supportDevelopment: return "heart.fill"
         case .developerChat: return "bubble.left.and.bubble.right.fill"
         }
     }
@@ -45,49 +31,24 @@ enum PremiumFeature: String, CaseIterable {
 // MARK: - Paywall Context
 
 enum PaywallContext {
-    case liveActivities
-    case delayForecasts
-    case historicalData
-    case tripStatistics
-    case congestionMap
     case developerChat
     case generic
 
     var headline: String {
         switch self {
-        case .liveActivities:
-            return "Track on Lock Screen"
-        case .delayForecasts:
-            return "See What's Coming"
-        case .historicalData:
-            return "Learn Your Route"
-        case .tripStatistics:
-            return "Your Commute Story"
-        case .congestionMap:
-            return "Network Traffic"
         case .developerChat:
-            return "Talk to the Developer"
+            return "Support TrackRat"
         case .generic:
-            return "Upgrade to Pro"
+            return "Support TrackRat"
         }
     }
 
     var subtext: String {
         switch self {
-        case .liveActivities:
-            return "Follow your train in real-time without opening the app"
-        case .delayForecasts:
-            return "Get delay and cancellation forecasts before you leave"
-        case .historicalData:
-            return "See this week's train schedule"
-        case .tripStatistics:
-            return "Track every trip and see your on-time percentage"
-        case .congestionMap:
-            return "See real-time train congestion across the network"
         case .developerChat:
-            return "Chat directly with the developer for help and suggestions"
+            return "Subscribe to chat directly with the developer"
         case .generic:
-            return "Your subscription supports new experiments"
+            return "Your subscription keeps TrackRat running"
         }
     }
 }

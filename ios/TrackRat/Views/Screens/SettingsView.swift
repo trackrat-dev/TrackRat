@@ -93,6 +93,7 @@ struct SettingsView: View {
                         chatService: chatService,
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
+                        paywallContext: $paywallContext,
                         showDebugSections: showDebugSections
                     )
                 }
@@ -168,6 +169,7 @@ struct SettingsSection: View {
     @ObservedObject var chatService: ChatService
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
+    @Binding var paywallContext: PaywallContext
     var showDebugSections: Bool
 
     @State private var showingFeedbackSheet = false
@@ -276,6 +278,7 @@ struct SettingsSection: View {
                 if subscriptionService.hasAccess(to: .developerChat) {
                     navigationPath.append(SettingsDestination.chat)
                 } else {
+                    paywallContext = .developerChat
                     showingPaywall = true
                 }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -516,7 +519,7 @@ struct SubscriptionStatusSection: View {
         } else {
             // Not subscribed, no soft trial - show upgrade prompt
             UpgradePromptCard(
-                subtext: "Support continued development and get every feature.",
+                subtext: "Help cover hosting costs and get direct access to the developer.",
                 showingPaywall: $showingPaywall
             )
         }

@@ -5,11 +5,8 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: TrainDetailsViewModel
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
-    @State private var showingPaywall = false
-    @State private var paywallContext: PaywallContext = .generic
 
     let trainId: Int  // Keep for backwards compatibility
     let isSheet: Bool
@@ -119,10 +116,8 @@ struct TrainDetailsView: View {
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
                             // Train performance summary (similar trains + historical)
-                            // Visible for Pro subscribers or when beta feature flag is enabled
                             // Hide after train departs from user's origin station
-                            if (subscriptionService.isPro || appState.showDepartureOdds),
-                               let originCode = appState.departureStationCode,
+                            if let originCode = appState.departureStationCode,
                                !train.hasTrainDepartedFromStation(originCode) {
                                 TrainStatsSummaryView(
                                     trainId: train.trainId,
@@ -240,16 +235,6 @@ struct TrainDetailsView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: paywallContext)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-    }
-
-    private func showPaywall(for context: PaywallContext) {
-        paywallContext = context
-        showingPaywall = true
     }
 }
 
@@ -259,10 +244,6 @@ struct CombinedDetailsCard: View {
     let selectedDestination: String?
     let selectedDestinationCode: String?
     @EnvironmentObject private var appState: AppState
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @State private var showingPaywall = false
-    @State private var paywallContext: PaywallContext = .generic
-
     // ViewModel provided properties
     let displayableTrainStops: [StopV2]
     let hasPreviousDisplayStops: Bool
@@ -540,16 +521,6 @@ struct CombinedDetailsCard: View {
         .background(Color.white.opacity(0.9))
         .cornerRadius(TrackRatTheme.CornerRadius.lg)
         .trackRatShadow()
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: paywallContext)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-        }
-    }
-
-    private func showPaywall(for context: PaywallContext) {
-        paywallContext = context
-        showingPaywall = true
     }
 }
 

@@ -12,17 +12,11 @@ final class TripRecordingService {
     private var activeTripId: UUID?
     private var destinationCode: String?
 
-    // Reference to subscription service for Pro check
-    private var subscriptionService: SubscriptionService {
-        SubscriptionService.shared
-    }
-
     private init() {}
 
     // MARK: - Public API
 
     /// Called once when train departs from user's origin station - creates the trip record
-    /// Note: Trip recording is gated to Pro users only
     @MainActor
     func recordDeparture(
         train: TrainV2,
@@ -31,12 +25,6 @@ final class TripRecordingService {
         originName: String,
         destinationName: String
     ) {
-        // Trip recording is a Pro feature
-        guard subscriptionService.isPro else {
-            print("TripRecording: Skipping - not a Pro user")
-            return
-        }
-
         guard let stops = train.stops else {
             print("TripRecording: No stops data - cannot record trip")
             return

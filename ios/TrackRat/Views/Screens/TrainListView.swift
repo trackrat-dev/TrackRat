@@ -3,8 +3,6 @@ import SwiftUI
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
 
@@ -23,7 +21,6 @@ struct TrainListView: View {
     // Date selection for future schedules
     @State private var selectedDate: Date = Date()
     @State private var showDatePicker: Bool = false
-    @State private var showingPaywall: Bool = false
 
     /// Check if viewing a future date (not today)
     private var isFutureDate: Bool {
@@ -89,23 +86,11 @@ struct TrainListView: View {
             HStack(spacing: 12) {
                 // Schedule picker - Pro feature
                 Button {
-                    if subscriptionService.isPro {
-                        showDatePicker = true
-                    } else {
-                        showingPaywall = true
-                    }
+                    showDatePicker = true
                 } label: {
                     HStack(spacing: 6) {
-                        ZStack {
-                            Image(systemName: "calendar")
-                                .font(.subheadline)
-                            if !subscriptionService.isPro {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 7))
-                                    .foregroundColor(.orange)
-                                    .offset(x: 7, y: -7)
-                            }
-                        }
+                        Image(systemName: "calendar")
+                            .font(.subheadline)
                         Text("Schedules")
                             .font(.subheadline)
                     }
@@ -268,11 +253,6 @@ struct TrainListView: View {
         }
         .sheet(isPresented: $showDatePicker) {
             DateSelectorSheet(selectedDate: $selectedDate)
-        }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .historicalData)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
         }
         .onAppear {
             isViewVisible = true

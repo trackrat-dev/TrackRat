@@ -49,48 +49,33 @@ struct PaywallView: View {
                     }
                     .padding(.horizontal)
 
-                    // Header
-                    VStack(spacing: 16) {
-                        // Pro badge
-                        HStack(spacing: 8) {
-                            Image(systemName: "star.fill")
-                                .foregroundColor(.orange)
-                            Text("TrackRat Pro")
-                                .font(.title2.bold())
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(
-                            Capsule()
-                                .fill(.orange.opacity(0.2))
-                                .overlay(
-                                    Capsule()
-                                        .stroke(.orange.opacity(0.5), lineWidth: 1)
-                                )
-                        )
+                    // Developer message
+                    VStack(spacing: 20) {
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 36))
+                            .foregroundColor(.orange)
 
-                        // Context-specific headline
-                        Text(context.headline)
-                            .font(.title.bold())
+                        Text("Hey, thanks for using TrackRat.")
+                            .font(.title3.weight(.medium))
                             .foregroundColor(.white)
                             .multilineTextAlignment(.center)
 
-                        Text(context.subtext)
-                            .font(.body)
-                            .foregroundColor(.white.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-                    .padding(.top, 20)
+                        Text("I built this app because I ride these trains every day and wanted something better. Every feature you see \u{2014} the live tracking, delay forecasts, congestion maps \u{2014} all of that is free and always will be.\n\nSubscribing helps me cover server and hosting costs, and gives me room to keep experimenting with new features and analysis.\n\nAs a thank you, subscribers get priority support and can make feature requests through an in-app chat directly with me.")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                            .multilineTextAlignment(.leading)
+                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                    // Feature list
-                    VStack(alignment: .leading, spacing: 16) {
-                        ForEach(PremiumFeature.allCases, id: \.rawValue) { feature in
-                            FeatureRow(feature: feature)
-                        }
+                        // Signature
+                        Text("Andy")
+                            .font(.custom("Snell Roundhand", size: 28))
+                            .foregroundColor(.white.opacity(0.9))
+                            .italic()
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.trailing, 8)
                     }
-                    .padding()
+                    .padding(24)
                     .background(
                         RoundedRectangle(cornerRadius: 16)
                             .fill(.white.opacity(0.05))
@@ -139,7 +124,6 @@ struct PaywallView: View {
                                 PricingOptionView(
                                     product: monthly,
                                     isSelected: selectedProduct?.id == monthly.id,
-                                    badge: nil,
                                     subtitle: subscriptionSubtitle(for: monthly)
                                 ) {
                                     selectedProduct = monthly
@@ -360,37 +344,11 @@ struct PaywallView: View {
     }
 }
 
-// MARK: - Feature Row
-
-private struct FeatureRow: View {
-    let feature: PremiumFeature
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: feature.iconName)
-                .font(.body)
-                .foregroundColor(.orange)
-                .frame(width: 24)
-
-            Text(feature.displayName)
-                .font(.subheadline)
-                .foregroundColor(.white)
-
-            Spacer()
-
-            Image(systemName: "checkmark")
-                .font(.caption.bold())
-                .foregroundColor(.green)
-        }
-    }
-}
-
 // MARK: - Pricing Option
 
 private struct PricingOptionView: View {
     let product: Product
     let isSelected: Bool
-    let badge: String?
     let subtitle: String
     let onSelect: () -> Void
 
@@ -398,23 +356,9 @@ private struct PricingOptionView: View {
         Button(action: onSelect) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(product.displayName)
-                            .font(.headline)
-                            .foregroundColor(.white)
-
-                        if let badge = badge {
-                            Text(badge)
-                                .font(.caption2.bold())
-                                .foregroundColor(.orange)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(.orange.opacity(0.2))
-                                )
-                        }
-                    }
+                    Text(product.displayName)
+                        .font(.headline)
+                        .foregroundColor(.white)
 
                     Text(subtitle)
                         .font(.caption)
@@ -446,7 +390,6 @@ private struct PricingOptionView: View {
 
 private struct PurchaseSuccessOverlay: View {
     @State private var checkmarkScale: CGFloat = 0
-    @State private var showConfetti = false
 
     var body: some View {
         ZStack {
@@ -477,7 +420,7 @@ private struct PurchaseSuccessOverlay: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
-                    Text("Reach out if you have ideas for new features")
+                    Text("Head to Settings to chat with me anytime")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
@@ -493,5 +436,5 @@ private struct PurchaseSuccessOverlay: View {
 }
 
 #Preview {
-    PaywallView(context: .liveActivities)
+    PaywallView(context: .developerChat)
 }
