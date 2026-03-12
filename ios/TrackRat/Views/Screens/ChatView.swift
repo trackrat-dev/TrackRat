@@ -69,7 +69,7 @@ struct ChatView: View {
             // Read-only banner
             if isReadOnly {
                 VStack(spacing: 8) {
-                    Text("Subscribe to TrackRat Pro to continue the conversation")
+                    Text("Subscribe to continue the conversation")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

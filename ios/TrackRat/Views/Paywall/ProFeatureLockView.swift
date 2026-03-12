@@ -1,101 +1,6 @@
 import SwiftUI
 import UIKit
 
-/// A reusable component that displays a locked state for premium features
-/// Use this inline in views where premium features would normally appear
-struct ProFeatureLockView: View {
-    let feature: PremiumFeature
-    let context: PaywallContext
-    @Binding var showingPaywall: Bool
-    /// When true, uses dark text colors suitable for light backgrounds
-    var useLightBackground: Bool = false
-
-    var body: some View {
-        Button {
-            showingPaywall = true
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } label: {
-            HStack(spacing: 12) {
-                // Lock icon - always orange regardless of background
-                Image(systemName: "lock.fill")
-                    .font(.title3)
-                    .foregroundColor(.orange)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(feature.displayName)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(useLightBackground ? .black : .white)
-
-                        // Pro badge - always orange regardless of background
-                        Text("PRO")
-                            .font(.caption2.bold())
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule()
-                                    .fill(.orange.opacity(0.2))
-                            )
-                    }
-
-                    Text(context.subtext)
-                        .font(.caption)
-                        .foregroundColor(useLightBackground ? .black.opacity(0.6) : .white.opacity(0.6))
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(useLightBackground ? .black.opacity(0.4) : .white.opacity(0.4))
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.orange.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(.orange.opacity(0.3), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-/// A compact lock indicator for use in smaller spaces
-struct ProBadgeLock: View {
-    @Binding var showingPaywall: Bool
-
-    var body: some View {
-        Button {
-            showingPaywall = true
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "lock.fill")
-                    .font(.caption2)
-                Text("PRO")
-                    .font(.caption2.bold())
-            }
-            .foregroundColor(.orange)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(.orange.opacity(0.15))
-                    .overlay(
-                        Capsule()
-                            .stroke(.orange.opacity(0.3), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 /// A full-width upgrade prompt card
 struct UpgradePromptCard: View {
     var headline: String? = nil
@@ -109,9 +14,9 @@ struct UpgradePromptCard: View {
         } label: {
             VStack(spacing: 12) {
                 HStack {
-                    Image(systemName: "star.fill")
+                    Image(systemName: "heart.fill")
                         .foregroundColor(.orange)
-                    Text("TrackRat Pro")
+                    Text("Support TrackRat")
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
@@ -130,7 +35,7 @@ struct UpgradePromptCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack {
-                    Text("Support & Unlock")
+                    Text("Learn More")
                         .font(.subheadline.weight(.semibold))
                         .foregroundColor(.white)
 
@@ -166,50 +71,9 @@ struct UpgradePromptCard: View {
     }
 }
 
-/// View modifier to conditionally show paywall sheet
-struct PaywallSheetModifier: ViewModifier {
-    @Binding var isPresented: Bool
-    let context: PaywallContext
-
-    func body(content: Content) -> some View {
-        content
-            .sheet(isPresented: $isPresented) {
-                PaywallView(context: context)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-            }
-    }
-}
-
-extension View {
-    /// Adds a paywall sheet that can be triggered by setting isPresented to true
-    func paywallSheet(isPresented: Binding<Bool>, context: PaywallContext) -> some View {
-        modifier(PaywallSheetModifier(isPresented: isPresented, context: context))
-    }
-}
-
-#Preview("ProFeatureLockView") {
-    VStack {
-        ProFeatureLockView(
-            feature: .historicalData,
-            context: .historicalData,
-            showingPaywall: .constant(false)
-        )
-        .padding()
-    }
-    .background(Color.black)
-}
-
-#Preview("ProBadgeLock") {
-    ProBadgeLock(showingPaywall: .constant(false))
-        .padding()
-        .background(Color.black)
-}
-
 #Preview("UpgradePromptCard") {
     UpgradePromptCard(
-        headline: "Track on Lock Screen",
-        subtext: "Follow your train in real-time without opening the app",
+        subtext: "Support continued development and unlock developer chat.",
         showingPaywall: .constant(false)
     )
     .padding()
