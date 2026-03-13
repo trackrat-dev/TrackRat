@@ -396,7 +396,9 @@ async def register_admin(
     if not settings.chat_admin_registration_code:
         raise HTTPException(status_code=503, detail="Admin registration not configured")
 
-    if not hmac.compare_digest(req.registration_code, settings.chat_admin_registration_code):
+    if not hmac.compare_digest(
+        req.registration_code, settings.chat_admin_registration_code
+    ):
         logger.warning(
             "admin_registration_failed",
             device_id=req.device_id[:8] + "...",

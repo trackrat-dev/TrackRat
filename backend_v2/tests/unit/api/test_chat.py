@@ -140,7 +140,9 @@ class TestUserSendMessage:
             json={"device_id": "chat-user-rereg", "apns_token": "tok2"},
         )
         assert resp.status_code == 200
-        assert resp.json()["chat_token"] is None, "Re-registration should not issue a new token"
+        assert (
+            resp.json()["chat_token"] is None
+        ), "Re-registration should not issue a new token"
 
         # Original token still works
         resp = e2e_client.post(
