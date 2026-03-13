@@ -7,7 +7,7 @@ Create Date: 2026-03-12 17:00:00.000000
 """
 
 from alembic import op
-from sqlalchemy import text
+from sqlalchemy import Connection, text
 
 # revision identifiers, used by Alembic.
 revision = "f7a8b9c0d1e2"
@@ -20,7 +20,7 @@ depends_on = None
 BATCH_SIZE = 10000
 
 
-def _batched_update(conn, query: str, description: str) -> int:
+def _batched_update(conn: Connection, query: str, description: str) -> int:
     """Run an UPDATE in batches, committing after each chunk.
 
     Returns total rows updated.
@@ -50,7 +50,9 @@ def upgrade() -> None:
 
     # Batch 1: Stops on completed journeys where actual != scheduled
     # (strong signal these were API-observed arrivals)
-    _batched_update(conn, f"""
+    _batched_update(
+        conn,
+        f"""
         UPDATE journey_stops
         SET arrival_source = 'api_observed'
         WHERE id IN (
@@ -62,12 +64,16 @@ def upgrade() -> None:
               AND js.actual_arrival != js.scheduled_arrival
             LIMIT {BATCH_SIZE}
         )
-        """, "actual != scheduled")
+        """,
+        "actual != scheduled",
+    )
 
     # Batch 2: Stops on completed journeys where actual == scheduled
     # (could be scheduled_fallback or exact on-time, but on a completed
     # journey we trust the data)
-    _batched_update(conn, f"""
+    _batched_update(
+        conn,
+        f"""
         UPDATE journey_stops
         SET arrival_source = 'api_observed'
         WHERE id IN (
@@ -78,11 +84,15 @@ def upgrade() -> None:
               AND tj.is_completed = true
             LIMIT {BATCH_SIZE}
         )
-        """, "completed journeys")
+        """,
+        "completed journeys",
+    )
 
     # Batch 3: Remaining stops with actual_arrival on non-completed journeys
     # where actual == scheduled. These are departed intermediate stops.
-    _batched_update(conn, f"""
+    _batched_update(
+        conn,
+        f"""
         UPDATE journey_stops
         SET arrival_source = 'api_observed'
         WHERE id IN (
@@ -92,7 +102,9 @@ def upgrade() -> None:
               AND has_departed_station = true
             LIMIT {BATCH_SIZE}
         )
-        """, "departed stops")
+        """,
+        "departed stops",
+    )
 
 
 def downgrade() -> None:
