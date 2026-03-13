@@ -399,14 +399,10 @@ class SubwayCollector:
             journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
+            # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries)
+            stops_by_code = {s.station_code: s for s in journey.stops}
             for arr in arrivals:
-                stop_result = await session.execute(
-                    select(JourneyStop).where(
-                        JourneyStop.journey_id == journey.id,
-                        JourneyStop.station_code == arr.station_code,
-                    )
-                )
-                existing_stop = stop_result.scalar_one_or_none()
+                existing_stop = stops_by_code.get(arr.station_code)
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
                     existing_stop.arrival_source = "api_observed"
@@ -416,12 +412,9 @@ class SubwayCollector:
                         existing_stop.track = arr.track
 
             now = now_et()
-            stop_result = await session.execute(
-                select(JourneyStop)
-                .where(JourneyStop.journey_id == journey.id)
-                .order_by(JourneyStop.stop_sequence)
+            journey_stops = sorted(
+                journey.stops, key=lambda s: s.stop_sequence or 0
             )
-            journey_stops = list(stop_result.scalars().all())
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
@@ -495,14 +488,10 @@ class SubwayCollector:
             )
             return
 
+        # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries)
+        stops_by_code = {s.station_code: s for s in journey.stops}
         for arr in best_trip:
-            stop_result = await session.execute(
-                select(JourneyStop).where(
-                    JourneyStop.journey_id == journey.id,
-                    JourneyStop.station_code == arr.station_code,
-                )
-            )
-            stop = stop_result.scalar_one_or_none()
+            stop = stops_by_code.get(arr.station_code)
             if stop:
                 stop.actual_arrival = arr.arrival_time
                 stop.arrival_source = "api_observed"
@@ -517,12 +506,7 @@ class SubwayCollector:
         journey.actual_arrival = last_stop.arrival_time
 
         now = now_et()
-        stop_result = await session.execute(
-            select(JourneyStop)
-            .where(JourneyStop.journey_id == journey.id)
-            .order_by(JourneyStop.stop_sequence)
-        )
-        journey_stops = list(stop_result.scalars().all())
+        journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now)
         check_journey_completed(journey, journey_stops)
