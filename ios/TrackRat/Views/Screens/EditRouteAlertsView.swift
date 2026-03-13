@@ -2,6 +2,7 @@ import SwiftUI
 
 struct EditRouteAlertsView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @State private var showAddSheet = false
     @State private var selectedSubscription: RouteAlertSubscription?
@@ -17,7 +18,8 @@ struct EditRouteAlertsView: View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: "Route Alerts",
-                showBackButton: false
+                showBackButton: true,
+                onBackAction: { dismiss() }
             ) {
                 Button {
                     showAddSheet = true
