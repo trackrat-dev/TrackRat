@@ -16,7 +16,7 @@ struct UpgradePromptCard: View {
                 HStack {
                     Image(systemName: "heart.fill")
                         .foregroundColor(.orange)
-                    Text("Support TrackRat")
+                    Text("TrackRat Pro")
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()

@@ -71,7 +71,7 @@ struct PaywallView: View {
 
                         // Signature
                         Text("Andy")
-                            .font(.custom("Snell Roundhand", size: 28))
+                            .font(.custom("Bradley Hand", size: 32))
                             .foregroundColor(.white.opacity(0.9))
                             .italic()
                             .frame(maxWidth: .infinity, alignment: .trailing)

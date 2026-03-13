@@ -37,9 +37,9 @@ enum PaywallContext {
     var headline: String {
         switch self {
         case .developerChat:
-            return "Support TrackRat"
+            return "TrackRat Pro"
         case .generic:
-            return "Support TrackRat"
+            return "TrackRat Pro"
         }
     }
 
