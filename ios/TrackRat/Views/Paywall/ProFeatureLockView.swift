@@ -4,7 +4,7 @@ import UIKit
 /// A full-width upgrade prompt card
 struct UpgradePromptCard: View {
     var headline: String? = nil
-    let subtext: String
+    var subtext: String? = nil
     @Binding var showingPaywall: Bool
 
     var body: some View {
@@ -14,7 +14,7 @@ struct UpgradePromptCard: View {
         } label: {
             VStack(spacing: 12) {
                 HStack {
-                    Image(systemName: "heart.fill")
+                    Image(systemName: "dumbbell.fill")
                         .foregroundColor(.orange)
                     Text("TrackRat Pro")
                         .font(.headline)
@@ -29,10 +29,12 @@ struct UpgradePromptCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Text(subtext)
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.7))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if let subtext, !subtext.isEmpty {
+                    Text(subtext)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 HStack {
                     Text("Learn More")

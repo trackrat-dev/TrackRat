@@ -475,7 +475,6 @@ struct SubscriptionStatusSection: View {
         } else {
             // Not subscribed, no soft trial - show upgrade prompt
             UpgradePromptCard(
-                subtext: "Subscribe to help cover hosting costs and get direct access to the developer.",
                 showingPaywall: $showingPaywall
             )
         }
