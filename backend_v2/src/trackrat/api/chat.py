@@ -5,19 +5,16 @@ Enables two-party messaging between users and the developer (admin).
 Users send messages via their device_id; admin is identified by device_id
 registered in the admin_devices table.
 
-Auth pattern note:
-  GET endpoints (get_messages, get_unread_count, admin conversations) use
-  X-Device-Id header for device identification — standard for read-only calls.
+Auth model:
+  User endpoints require a bearer token (returned by POST /devices/register)
+  sent as Authorization: Bearer <token>. The token proves device ownership.
 
-  POST endpoints (send_message, mark_read, admin register) use device_id in
-  the request body — these already carry a JSON payload, so the device_id is
-  included there for simplicity and atomic request semantics.
-
-  If header-based auth middleware is added later, the body-based POST endpoints
-  will need to be updated to match. See SendMessageRequest, MarkReadRequest,
-  and AdminRegisterRequest models.
+  Admin endpoints verify admin status via the admin_devices table, using
+  X-Device-Id header for identification.
 """
 
+import hashlib
+import time
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -37,6 +34,51 @@ logger = get_logger("trackrat.api.chat")
 router = APIRouter(prefix="/api/v2/chat", tags=["chat"])
 
 MAX_MESSAGE_LENGTH = 255
+
+# --- Rate Limiter ---
+
+RATE_LIMIT_MAX_MESSAGES = 10
+RATE_LIMIT_WINDOW_SECONDS = 60
+
+
+class _ChatRateLimiter:
+    """In-memory per-device rate limiter for chat message sending."""
+
+    def __init__(self) -> None:
+        self._timestamps: dict[str, list[float]] = {}
+        self._call_count = 0
+
+    def check(self, device_id: str) -> bool:
+        """Return True if the request is allowed, False if rate-limited."""
+        now = time.monotonic()
+        window_start = now - RATE_LIMIT_WINDOW_SECONDS
+
+        timestamps = self._timestamps.get(device_id, [])
+        timestamps = [t for t in timestamps if t > window_start]
+
+        if len(timestamps) >= RATE_LIMIT_MAX_MESSAGES:
+            self._timestamps[device_id] = timestamps
+            return False
+
+        timestamps.append(now)
+        self._timestamps[device_id] = timestamps
+
+        # Periodic cleanup of stale entries
+        self._call_count += 1
+        if self._call_count % 100 == 0:
+            self._cleanup(window_start)
+
+        return True
+
+    def _cleanup(self, window_start: float) -> None:
+        stale = [
+            k for k, v in self._timestamps.items() if not v or v[-1] < window_start
+        ]
+        for k in stale:
+            del self._timestamps[k]
+
+
+_rate_limiter = _ChatRateLimiter()
 
 
 # --- Request/Response Models ---
@@ -124,6 +166,34 @@ async def _device_exists(db: AsyncSession, device_id: str) -> bool:
     return result.scalar() is not None
 
 
+async def _verify_device(
+    db: AsyncSession, device_id: str, authorization: str | None
+) -> None:
+    """Verify device ownership via bearer token. Raises HTTPException on failure."""
+    result = await db.execute(
+        select(DeviceToken.chat_token_hash)
+        .where(DeviceToken.device_id == device_id)
+        .limit(1)
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Device not registered")
+
+    stored_hash = row[0]
+    if stored_hash is None:
+        # Device registered before auth was added — require re-registration
+        raise HTTPException(
+            status_code=401, detail="Chat token required. Re-register device."
+        )
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    token = authorization[7:]  # Strip "Bearer "
+    if hashlib.sha256(token.encode()).hexdigest() != stored_hash:
+        raise HTTPException(status_code=401, detail="Invalid chat token")
+
+
 async def _send_chat_push(
     request: Request,
     db: AsyncSession,
@@ -207,11 +277,11 @@ async def get_messages(
     before: int | None = None,
     limit: int = 50,
     x_device_id: str = Header(),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> MessagesResponse:
     """Get paginated message history for a device."""
-    if not await _device_exists(db, x_device_id):
-        raise HTTPException(status_code=404, detail="Device not registered")
+    await _verify_device(db, x_device_id, authorization)
     return await _get_messages_page(db, x_device_id, before, limit)
 
 
@@ -219,14 +289,19 @@ async def get_messages(
 async def send_message(
     req: SendMessageRequest,
     request: Request,
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> SendMessageResponse:
     """Send a message from a user."""
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty")
 
-    if not await _device_exists(db, req.device_id):
-        raise HTTPException(status_code=404, detail="Device not registered")
+    await _verify_device(db, req.device_id, authorization)
+
+    if not _rate_limiter.check(req.device_id):
+        raise HTTPException(
+            status_code=429, detail="Too many messages. Try again later."
+        )
 
     now = datetime.now(UTC)
     msg = ChatMessage(
@@ -265,11 +340,11 @@ async def send_message(
 @router.get("/unread-count", response_model=UnreadCountResponse)
 async def get_unread_count(
     x_device_id: str = Header(),
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> UnreadCountResponse:
     """Get count of unread messages from admin for this device."""
-    if not await _device_exists(db, x_device_id):
-        raise HTTPException(status_code=404, detail="Device not registered")
+    await _verify_device(db, x_device_id, authorization)
     result = await db.execute(
         select(func.count(ChatMessage.id)).where(
             ChatMessage.device_id == x_device_id,
@@ -284,11 +359,11 @@ async def get_unread_count(
 @router.post("/messages/read", response_model=MarkReadResponse)
 async def mark_messages_read(
     req: MarkReadRequest,
+    authorization: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> MarkReadResponse:
     """Mark messages as read up to a given message ID."""
-    if not await _device_exists(db, req.device_id):
-        raise HTTPException(status_code=404, detail="Device not registered")
+    await _verify_device(db, req.device_id, authorization)
     now = datetime.now(UTC)
     result = cast(
         CursorResult[tuple[()]],

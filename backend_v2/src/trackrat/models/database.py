@@ -297,6 +297,7 @@ class DeviceToken(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     device_id = Column(String(64), unique=True, nullable=False)
     apns_token = Column(String, nullable=False)
+    chat_token_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

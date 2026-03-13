@@ -6,6 +6,9 @@ alert subscriptions for delay/cancellation events, and query
 active MTA service alerts (planned work, delays).
 """
 
+import hashlib
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
 from sqlalchemy import ColumnElement, delete, select
@@ -35,6 +38,7 @@ class DeviceRegisterRequest(BaseModel):
 
 class DeviceRegisterResponse(BaseModel):
     status: str = "registered"
+    chat_token: str | None = None
 
 
 class SubscriptionItem(BaseModel):
@@ -120,25 +124,35 @@ class GetSubscriptionsResponse(BaseModel):
 async def register_device(
     request: DeviceRegisterRequest, db: AsyncSession = Depends(get_db)
 ) -> DeviceRegisterResponse:
-    """Register or update a device's APNS token."""
+    """Register or update a device's APNS token.
+
+    Returns a chat_token that must be sent as Authorization: Bearer <token>
+    on chat endpoints. The token is regenerated on every registration call.
+    """
     existing = await db.execute(
         select(DeviceToken).where(DeviceToken.device_id == request.device_id)
     )
-    token = existing.scalar_one_or_none()
+    device = existing.scalar_one_or_none()
 
-    if token:
-        token.apns_token = request.apns_token
+    # Generate a new chat token on every registration
+    chat_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(chat_token.encode()).hexdigest()
+
+    if device:
+        device.apns_token = request.apns_token
+        device.chat_token_hash = token_hash
     else:
-        token = DeviceToken(
+        device = DeviceToken(
             device_id=request.device_id,
             apns_token=request.apns_token,
+            chat_token_hash=token_hash,
         )
-        db.add(token)
+        db.add(device)
 
     await db.commit()
 
     logger.info("device_registered", device_id=request.device_id)
-    return DeviceRegisterResponse()
+    return DeviceRegisterResponse(chat_token=chat_token)
 
 
 @router.put("/alerts/subscriptions", response_model=SyncSubscriptionsResponse)

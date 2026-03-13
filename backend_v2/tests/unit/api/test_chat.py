@@ -2,8 +2,8 @@
 Tests for the developer chat API endpoints.
 
 Uses the e2e_client fixture for real database integration.
-Tests cover: user messaging, admin registration, admin messaging,
-read receipts, pagination, and authorization.
+Tests cover: user messaging, admin messaging, read receipts, pagination,
+authorization (bearer token + admin registration code), and rate limiting.
 """
 
 import os
@@ -17,23 +17,37 @@ os.environ["TRACKRAT_CHAT_ADMIN_REGISTRATION_CODE"] = "test-secret-code"
 
 def _register_device(
     client: TestClient, device_id: str, apns_token: str = "tok"
-) -> None:
-    """Helper to register a device (required before sending chat messages)."""
+) -> str:
+    """Register a device and return its chat_token."""
     resp = client.post(
         "/api/v2/devices/register",
         json={"device_id": device_id, "apns_token": apns_token},
     )
     assert resp.status_code == 200
+    token = resp.json()["chat_token"]
+    assert token is not None, "Expected chat_token in registration response"
+    return token
 
 
-def _register_admin(client: TestClient, device_id: str) -> None:
-    """Helper to register a device as admin."""
-    _register_device(client, device_id, f"tok-{device_id}")
+def _auth_header(token: str) -> dict[str, str]:
+    """Build an Authorization header dict for a chat token."""
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _user_headers(device_id: str, token: str) -> dict[str, str]:
+    """Build combined X-Device-Id + Authorization headers."""
+    return {"X-Device-Id": device_id, **_auth_header(token)}
+
+
+def _register_admin(client: TestClient, device_id: str) -> str:
+    """Register a device as admin. Returns the chat_token."""
+    token = _register_device(client, device_id, f"tok-{device_id}")
     resp = client.post(
         "/api/v2/chat/admin/register",
         json={"device_id": device_id, "registration_code": "test-secret-code"},
     )
     assert resp.status_code == 200, f"Admin registration failed: {resp.json()}"
+    return token
 
 
 class TestUserSendMessage:
@@ -41,10 +55,11 @@ class TestUserSendMessage:
 
     def test_send_message(self, e2e_client: TestClient):
         """User can send a message after registering their device."""
-        _register_device(e2e_client, "chat-user-1")
+        token = _register_device(e2e_client, "chat-user-1")
         resp = e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-1", "message": "Hello developer!"},
+            headers=_auth_header(token),
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -59,23 +74,79 @@ class TestUserSendMessage:
         )
         assert resp.status_code == 404
 
+    def test_send_message_no_auth_token(self, e2e_client: TestClient):
+        """Sending without Authorization header returns 401."""
+        _register_device(e2e_client, "chat-user-noauth")
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "chat-user-noauth", "message": "Hello"},
+        )
+        assert resp.status_code == 401
+        assert "Authorization" in resp.json()["detail"]
+
+    def test_send_message_wrong_token(self, e2e_client: TestClient):
+        """Sending with an invalid token returns 401."""
+        _register_device(e2e_client, "chat-user-wrongtok")
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "chat-user-wrongtok", "message": "Hello"},
+            headers={"Authorization": "Bearer totally-wrong-token"},
+        )
+        assert resp.status_code == 401
+        assert "Invalid" in resp.json()["detail"]
+
+    def test_send_message_other_devices_token(self, e2e_client: TestClient):
+        """Using another device's token returns 401 (token is per-device)."""
+        _register_device(e2e_client, "chat-user-A-cross")
+        token_b = _register_device(e2e_client, "chat-user-B-cross")
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "chat-user-A-cross", "message": "Hello"},
+            headers=_auth_header(token_b),
+        )
+        assert resp.status_code == 401
+
     def test_send_empty_message(self, e2e_client: TestClient):
         """Empty messages are rejected."""
-        _register_device(e2e_client, "chat-user-empty")
+        token = _register_device(e2e_client, "chat-user-empty")
         resp = e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-empty", "message": "   "},
+            headers=_auth_header(token),
         )
         assert resp.status_code == 400
 
     def test_message_too_long(self, e2e_client: TestClient):
         """Messages exceeding 255 characters are rejected by Pydantic validation."""
-        _register_device(e2e_client, "chat-user-long")
+        token = _register_device(e2e_client, "chat-user-long")
         resp = e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-long", "message": "x" * 256},
+            headers=_auth_header(token),
         )
         assert resp.status_code == 422  # Pydantic validation error
+
+    def test_token_regenerated_on_reregistration(self, e2e_client: TestClient):
+        """Re-registering a device generates a new token; old token stops working."""
+        token1 = _register_device(e2e_client, "chat-user-rereg")
+        token2 = _register_device(e2e_client, "chat-user-rereg")
+        assert token1 != token2, "Re-registration should produce a new token"
+
+        # Old token should fail
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "chat-user-rereg", "message": "With old token"},
+            headers=_auth_header(token1),
+        )
+        assert resp.status_code == 401
+
+        # New token should work
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "chat-user-rereg", "message": "With new token"},
+            headers=_auth_header(token2),
+        )
+        assert resp.status_code == 200
 
 
 class TestUserGetMessages:
@@ -83,10 +154,10 @@ class TestUserGetMessages:
 
     def test_get_empty_messages(self, e2e_client: TestClient):
         """Getting messages for a registered device with no messages returns empty list."""
-        _register_device(e2e_client, "no-messages-device")
+        token = _register_device(e2e_client, "no-messages-device")
         resp = e2e_client.get(
             "/api/v2/chat/messages",
-            headers={"X-Device-Id": "no-messages-device"},
+            headers=_user_headers("no-messages-device", token),
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -101,21 +172,32 @@ class TestUserGetMessages:
         )
         assert resp.status_code == 404
 
+    def test_get_messages_no_auth(self, e2e_client: TestClient):
+        """Getting messages without auth token returns 401."""
+        _register_device(e2e_client, "get-noauth-device")
+        resp = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers={"X-Device-Id": "get-noauth-device"},
+        )
+        assert resp.status_code == 401
+
     def test_get_messages_after_send(self, e2e_client: TestClient):
         """Messages appear in the list after being sent."""
-        _register_device(e2e_client, "chat-user-getmsg")
+        token = _register_device(e2e_client, "chat-user-getmsg")
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-getmsg", "message": "First message"},
+            headers=_auth_header(token),
         )
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-getmsg", "message": "Second message"},
+            headers=_auth_header(token),
         )
 
         resp = e2e_client.get(
             "/api/v2/chat/messages",
-            headers={"X-Device-Id": "chat-user-getmsg"},
+            headers=_user_headers("chat-user-getmsg", token),
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -127,19 +209,20 @@ class TestUserGetMessages:
 
     def test_pagination_with_before(self, e2e_client: TestClient):
         """Pagination using 'before' cursor works correctly."""
-        _register_device(e2e_client, "chat-user-page")
+        token = _register_device(e2e_client, "chat-user-page")
         msg_ids = []
         for i in range(5):
             resp = e2e_client.post(
                 "/api/v2/chat/messages",
                 json={"device_id": "chat-user-page", "message": f"Msg {i}"},
+                headers=_auth_header(token),
             )
             msg_ids.append(resp.json()["id"])
 
         # Get messages before the last one, limit 2
         resp = e2e_client.get(
             f"/api/v2/chat/messages?before={msg_ids[-1]}&limit=2",
-            headers={"X-Device-Id": "chat-user-page"},
+            headers=_user_headers("chat-user-page", token),
         )
         data = resp.json()
         assert len(data["messages"]) == 2
@@ -153,10 +236,10 @@ class TestUnreadCount:
 
     def test_unread_count_zero(self, e2e_client: TestClient):
         """Unread count is 0 when no admin messages exist."""
-        _register_device(e2e_client, "unread-user")
+        token = _register_device(e2e_client, "unread-user")
         resp = e2e_client.get(
             "/api/v2/chat/unread-count",
-            headers={"X-Device-Id": "unread-user"},
+            headers=_user_headers("unread-user", token),
         )
         assert resp.status_code == 200
         assert resp.json()["unread_count"] == 0
@@ -169,15 +252,25 @@ class TestUnreadCount:
         )
         assert resp.status_code == 404
 
+    def test_unread_count_no_auth(self, e2e_client: TestClient):
+        """Unread count without auth token returns 401."""
+        _register_device(e2e_client, "unread-noauth")
+        resp = e2e_client.get(
+            "/api/v2/chat/unread-count",
+            headers={"X-Device-Id": "unread-noauth"},
+        )
+        assert resp.status_code == 401
+
     def test_unread_count_after_admin_reply(self, e2e_client: TestClient):
         """Unread count reflects admin messages not yet read."""
-        _register_device(e2e_client, "chat-user-unread")
+        token = _register_device(e2e_client, "chat-user-unread")
         _register_admin(e2e_client, "admin-unread")
 
         # User sends a message
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-unread", "message": "Help!"},
+            headers=_auth_header(token),
         )
 
         # Admin replies
@@ -192,7 +285,7 @@ class TestUnreadCount:
 
         resp = e2e_client.get(
             "/api/v2/chat/unread-count",
-            headers={"X-Device-Id": "chat-user-unread"},
+            headers=_user_headers("chat-user-unread", token),
         )
         assert resp.json()["unread_count"] == 2
 
@@ -202,7 +295,7 @@ class TestMarkRead:
 
     def test_mark_messages_read(self, e2e_client: TestClient):
         """Marking messages as read decrements unread count."""
-        _register_device(e2e_client, "chat-user-read")
+        token = _register_device(e2e_client, "chat-user-read")
         _register_admin(e2e_client, "admin-read")
 
         # Admin sends two messages
@@ -219,13 +312,14 @@ class TestMarkRead:
         mark_resp = e2e_client.post(
             "/api/v2/chat/messages/read",
             json={"device_id": "chat-user-read", "up_to_id": resp1.json()["id"]},
+            headers=_auth_header(token),
         )
         assert mark_resp.json()["marked_count"] == 1
 
         # Unread count should be 1
         unread = e2e_client.get(
             "/api/v2/chat/unread-count",
-            headers={"X-Device-Id": "chat-user-read"},
+            headers=_user_headers("chat-user-read", token),
         )
         assert unread.json()["unread_count"] == 1
 
@@ -233,12 +327,13 @@ class TestMarkRead:
         mark_resp2 = e2e_client.post(
             "/api/v2/chat/messages/read",
             json={"device_id": "chat-user-read", "up_to_id": resp2.json()["id"]},
+            headers=_auth_header(token),
         )
         assert mark_resp2.json()["marked_count"] == 1
 
         unread2 = e2e_client.get(
             "/api/v2/chat/unread-count",
-            headers={"X-Device-Id": "chat-user-read"},
+            headers=_user_headers("chat-user-read", token),
         )
         assert unread2.json()["unread_count"] == 0
 
@@ -249,6 +344,15 @@ class TestMarkRead:
             json={"device_id": "nonexistent-device", "up_to_id": 1},
         )
         assert resp.status_code == 404
+
+    def test_mark_read_no_auth(self, e2e_client: TestClient):
+        """Marking messages read without auth token returns 401."""
+        _register_device(e2e_client, "markread-noauth")
+        resp = e2e_client.post(
+            "/api/v2/chat/messages/read",
+            json={"device_id": "markread-noauth", "up_to_id": 1},
+        )
+        assert resp.status_code == 401
 
 
 class TestAdminRegistration:
@@ -302,15 +406,17 @@ class TestAdminConversations:
         _register_admin(e2e_client, "admin-conv")
 
         # Two users send messages
-        _register_device(e2e_client, "conv-user-a")
-        _register_device(e2e_client, "conv-user-b")
+        token_a = _register_device(e2e_client, "conv-user-a")
+        token_b = _register_device(e2e_client, "conv-user-b")
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "conv-user-a", "message": "Hello from A"},
+            headers=_auth_header(token_a),
         )
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "conv-user-b", "message": "Hello from B"},
+            headers=_auth_header(token_b),
         )
 
         resp = e2e_client.get(
@@ -338,12 +444,13 @@ class TestAdminSendMessage:
     def test_admin_reply(self, e2e_client: TestClient):
         """Admin can reply to a user's conversation."""
         _register_admin(e2e_client, "admin-reply")
-        _register_device(e2e_client, "chat-user-reply")
+        token = _register_device(e2e_client, "chat-user-reply")
 
         # User sends message
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-reply", "message": "Question?"},
+            headers=_auth_header(token),
         )
 
         # Admin replies
@@ -357,7 +464,7 @@ class TestAdminSendMessage:
         # User should see both messages
         msgs = e2e_client.get(
             "/api/v2/chat/messages",
-            headers={"X-Device-Id": "chat-user-reply"},
+            headers=_user_headers("chat-user-reply", token),
         )
         messages = msgs.json()["messages"]
         assert len(messages) == 2
@@ -390,16 +497,18 @@ class TestAdminMarkRead:
     def test_admin_marks_user_messages_read(self, e2e_client: TestClient):
         """Admin marking messages as read updates read_at for user messages."""
         _register_admin(e2e_client, "admin-markread")
-        _register_device(e2e_client, "user-markread")
+        token = _register_device(e2e_client, "user-markread")
 
         # User sends messages
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "user-markread", "message": "Msg 1"},
+            headers=_auth_header(token),
         )
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "user-markread", "message": "Msg 2"},
+            headers=_auth_header(token),
         )
 
         # Admin marks as read
@@ -434,12 +543,13 @@ class TestAdminGetConversationMessages:
     def test_admin_views_conversation(self, e2e_client: TestClient):
         """Admin can view a specific user's conversation history."""
         _register_admin(e2e_client, "admin-view")
-        _register_device(e2e_client, "chat-user-view")
+        token = _register_device(e2e_client, "chat-user-view")
 
         # User sends, admin replies
         e2e_client.post(
             "/api/v2/chat/messages",
             json={"device_id": "chat-user-view", "message": "User says hi"},
+            headers=_auth_header(token),
         )
         e2e_client.post(
             "/api/v2/chat/admin/conversations/chat-user-view/messages",
@@ -463,3 +573,80 @@ class TestAdminGetConversationMessages:
             headers={"X-Device-Id": "not-admin"},
         )
         assert resp.status_code == 403
+
+
+class TestRateLimiting:
+    """Rate limiting on POST /api/v2/chat/messages"""
+
+    def test_rate_limit_exceeded(self, e2e_client: TestClient):
+        """Sending too many messages in a short window returns 429."""
+        token = _register_device(e2e_client, "ratelimit-user")
+
+        # Send messages up to the limit (10)
+        for i in range(10):
+            resp = e2e_client.post(
+                "/api/v2/chat/messages",
+                json={"device_id": "ratelimit-user", "message": f"Msg {i}"},
+                headers=_auth_header(token),
+            )
+            assert (
+                resp.status_code == 200
+            ), f"Message {i} should succeed, got {resp.status_code}"
+
+        # 11th message should be rate-limited
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "ratelimit-user", "message": "One too many"},
+            headers=_auth_header(token),
+        )
+        assert resp.status_code == 429
+        assert "Too many" in resp.json()["detail"]
+
+    def test_rate_limit_per_device(self, e2e_client: TestClient):
+        """Rate limiting is per-device — one device's limit doesn't affect another."""
+        token_a = _register_device(e2e_client, "ratelimit-a")
+        token_b = _register_device(e2e_client, "ratelimit-b")
+
+        # Fill up device A's rate limit
+        for i in range(10):
+            e2e_client.post(
+                "/api/v2/chat/messages",
+                json={"device_id": "ratelimit-a", "message": f"A-{i}"},
+                headers=_auth_header(token_a),
+            )
+
+        # Device B should still be able to send
+        resp = e2e_client.post(
+            "/api/v2/chat/messages",
+            json={"device_id": "ratelimit-b", "message": "B is fine"},
+            headers=_auth_header(token_b),
+        )
+        assert resp.status_code == 200
+
+
+class TestDeviceRegistration:
+    """POST /api/v2/devices/register — chat_token field"""
+
+    def test_registration_returns_chat_token(self, e2e_client: TestClient):
+        """Device registration response includes a chat_token."""
+        resp = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "reg-token-test", "apns_token": "tok"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "registered"
+        assert data["chat_token"] is not None
+        assert len(data["chat_token"]) > 20  # token_urlsafe(32) is ~43 chars
+
+    def test_reregistration_changes_token(self, e2e_client: TestClient):
+        """Re-registering the same device produces a different chat_token."""
+        resp1 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "reg-change-test", "apns_token": "tok1"},
+        )
+        resp2 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "reg-change-test", "apns_token": "tok2"},
+        )
+        assert resp1.json()["chat_token"] != resp2.json()["chat_token"]

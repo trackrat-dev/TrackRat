@@ -1329,7 +1329,12 @@ extension PlatformPrediction {
 // MARK: - Route Alert Subscriptions
 
 extension APIService {
-    func registerDevice(deviceId: String, apnsToken: String) async throws {
+    struct DeviceRegisterResponse: Decodable {
+        let status: String
+        let chat_token: String?
+    }
+
+    func registerDevice(deviceId: String, apnsToken: String) async throws -> DeviceRegisterResponse {
         let endpoint = "/v2/devices/register"
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError.invalidURL
@@ -1347,11 +1352,12 @@ extension APIService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         if let httpResponse = response as? HTTPURLResponse,
            httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
             throw APIError.invalidParameters
         }
+        return try JSONDecoder().decode(DeviceRegisterResponse.self, from: data)
     }
 
     func syncAlertSubscriptions(deviceId: String, subscriptions: [RouteAlertSubscription]) async throws {
@@ -1477,6 +1483,9 @@ extension APIService {
         guard let url = components.url else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        if let token = AlertSubscriptionService.shared.chatToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         let (data, _) = try await session.data(for: request)
         return try JSONDecoder().decode(ChatMessagesResponse.self, from: data)
     }
@@ -1487,6 +1496,9 @@ extension APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = AlertSubscriptionService.shared.chatToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, message: message))
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
@@ -1501,6 +1513,9 @@ extension APIService {
         }
         var request = URLRequest(url: url)
         request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        if let token = AlertSubscriptionService.shared.chatToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         let (data, _) = try await session.data(for: request)
         let resp = try JSONDecoder().decode(ChatUnreadCountResponse.self, from: data)
         return resp.unread_count
@@ -1512,6 +1527,9 @@ extension APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = AlertSubscriptionService.shared.chatToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, up_to_id: upToId))
         let (_, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
