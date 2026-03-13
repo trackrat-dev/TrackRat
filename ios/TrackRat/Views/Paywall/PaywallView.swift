@@ -62,12 +62,18 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("The core app experience is free. Subscribing helps me keep the servers running and experiment with new capabilities.\n\nAs a thank you, TrackRat Pro members can use the in-app chat system to request features, flag potential issues, or brainstorm ways an app like this could make people\u{2019}s commutes better.\n\nAll the best,")
+                        Text("The core app experience is free. Subscribing helps me keep the servers running and experiment with new capabilities.\n\nAs a thank you, TrackRat Pro members can use the in-app chat system to request new features, flag potential issues, or brainstorm ways an app like this can make people\u{2019}s commutes better.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        Text("All the best,")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.8))
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .padding(.trailing, 8)
 
                         // Signature
                         Text("Andy")
