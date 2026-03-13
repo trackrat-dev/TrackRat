@@ -323,6 +323,10 @@ struct SettingsSection: View {
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
             }
             .buttonStyle(.plain)
 
@@ -407,6 +411,10 @@ struct SettingsSection: View {
                     }
                     .padding()
                     .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    )
                 }
                 .buttonStyle(.plain)
             }
