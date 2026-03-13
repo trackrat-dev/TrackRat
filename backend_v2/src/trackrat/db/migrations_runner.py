@@ -93,7 +93,7 @@ async def run_migrations() -> None:
                 env=env,
                 capture_output=True,
                 text=True,
-                timeout=30,  # 30 second timeout should be plenty
+                timeout=600,  # 10 minutes for data-heavy backfill migrations
                 cwd=str(backend_dir),  # Run from backend_v2 directory
                 check=False,  # We'll check returncode ourselves for better error messages
             )
@@ -124,7 +124,7 @@ async def run_migrations() -> None:
             logger.info("Alembic upgrade completed successfully")
 
         except subprocess.TimeoutExpired as err:
-            logger.error("Database migrations timed out after 30 seconds")
+            logger.error("Database migrations timed out after 600 seconds")
             raise RuntimeError(
                 "Migration timeout - possible database connection issue"
             ) from err
