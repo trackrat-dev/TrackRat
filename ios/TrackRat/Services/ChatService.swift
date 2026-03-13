@@ -131,6 +131,8 @@ final class ChatService: ObservableObject {
     }
 
     func refreshUnreadCount() async {
+        // Skip if no chat token yet (device not registered — avoids 401 spam)
+        guard AlertSubscriptionService.shared.chatToken != nil else { return }
         do {
             unreadCount = try await APIService.shared.getChatUnreadCount(deviceId: deviceId)
         } catch {

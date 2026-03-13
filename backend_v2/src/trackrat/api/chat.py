@@ -14,6 +14,7 @@ Auth model:
 """
 
 import hashlib
+import hmac
 import time
 from datetime import UTC, datetime
 from typing import Any, cast
@@ -190,7 +191,7 @@ async def _verify_device(
         raise HTTPException(status_code=401, detail="Authorization header required")
 
     token = authorization[7:]  # Strip "Bearer "
-    if hashlib.sha256(token.encode()).hexdigest() != stored_hash:
+    if not hmac.compare_digest(hashlib.sha256(token.encode()).hexdigest(), stored_hash):
         raise HTTPException(status_code=401, detail="Invalid chat token")
 
 
@@ -395,7 +396,7 @@ async def register_admin(
     if not settings.chat_admin_registration_code:
         raise HTTPException(status_code=503, detail="Admin registration not configured")
 
-    if req.registration_code != settings.chat_admin_registration_code:
+    if not hmac.compare_digest(req.registration_code, settings.chat_admin_registration_code):
         logger.warning(
             "admin_registration_failed",
             device_id=req.device_id[:8] + "...",

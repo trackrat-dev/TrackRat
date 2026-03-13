@@ -18,14 +18,18 @@ os.environ["TRACKRAT_CHAT_ADMIN_REGISTRATION_CODE"] = "test-secret-code"
 def _register_device(
     client: TestClient, device_id: str, apns_token: str = "tok"
 ) -> str:
-    """Register a device and return its chat_token."""
+    """Register a device and return its chat_token.
+
+    Only the first registration for a given device_id returns a token.
+    Subsequent calls return chat_token=None (token is stable).
+    """
     resp = client.post(
         "/api/v2/devices/register",
         json={"device_id": device_id, "apns_token": apns_token},
     )
     assert resp.status_code == 200
     token = resp.json()["chat_token"]
-    assert token is not None, "Expected chat_token in registration response"
+    assert token is not None, "Expected chat_token on first registration"
     return token
 
 
@@ -126,25 +130,23 @@ class TestUserSendMessage:
         )
         assert resp.status_code == 422  # Pydantic validation error
 
-    def test_token_regenerated_on_reregistration(self, e2e_client: TestClient):
-        """Re-registering a device generates a new token; old token stops working."""
-        token1 = _register_device(e2e_client, "chat-user-rereg")
-        token2 = _register_device(e2e_client, "chat-user-rereg")
-        assert token1 != token2, "Re-registration should produce a new token"
+    def test_token_stable_on_reregistration(self, e2e_client: TestClient):
+        """Re-registering a device does not rotate the token; original keeps working."""
+        token = _register_device(e2e_client, "chat-user-rereg")
 
-        # Old token should fail
+        # Re-register — should return chat_token=None (token already exists)
         resp = e2e_client.post(
-            "/api/v2/chat/messages",
-            json={"device_id": "chat-user-rereg", "message": "With old token"},
-            headers=_auth_header(token1),
+            "/api/v2/devices/register",
+            json={"device_id": "chat-user-rereg", "apns_token": "tok2"},
         )
-        assert resp.status_code == 401
+        assert resp.status_code == 200
+        assert resp.json()["chat_token"] is None, "Re-registration should not issue a new token"
 
-        # New token should work
+        # Original token still works
         resp = e2e_client.post(
             "/api/v2/chat/messages",
-            json={"device_id": "chat-user-rereg", "message": "With new token"},
-            headers=_auth_header(token2),
+            json={"device_id": "chat-user-rereg", "message": "Still works"},
+            headers=_auth_header(token),
         )
         assert resp.status_code == 200
 
@@ -639,14 +641,16 @@ class TestDeviceRegistration:
         assert data["chat_token"] is not None
         assert len(data["chat_token"]) > 20  # token_urlsafe(32) is ~43 chars
 
-    def test_reregistration_changes_token(self, e2e_client: TestClient):
-        """Re-registering the same device produces a different chat_token."""
+    def test_reregistration_returns_null_token(self, e2e_client: TestClient):
+        """Re-registering the same device returns chat_token=None (token is stable)."""
         resp1 = e2e_client.post(
             "/api/v2/devices/register",
             json={"device_id": "reg-change-test", "apns_token": "tok1"},
         )
+        assert resp1.json()["chat_token"] is not None
+
         resp2 = e2e_client.post(
             "/api/v2/devices/register",
             json={"device_id": "reg-change-test", "apns_token": "tok2"},
         )
-        assert resp1.json()["chat_token"] != resp2.json()["chat_token"]
+        assert resp2.json()["chat_token"] is None

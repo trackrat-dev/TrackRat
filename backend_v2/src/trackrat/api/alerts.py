@@ -126,32 +126,34 @@ async def register_device(
 ) -> DeviceRegisterResponse:
     """Register or update a device's APNS token.
 
-    Returns a chat_token that must be sent as Authorization: Bearer <token>
-    on chat endpoints. The token is regenerated on every registration call.
+    Returns a chat_token on first registration or when none exists.
+    Subsequent calls with an existing token return chat_token=None
+    (the client should keep the token it already has).
     """
     existing = await db.execute(
         select(DeviceToken).where(DeviceToken.device_id == request.device_id)
     )
     device = existing.scalar_one_or_none()
 
-    # Generate a new chat token on every registration
-    chat_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(chat_token.encode()).hexdigest()
-
+    chat_token: str | None = None
     if device:
         device.apns_token = request.apns_token
-        device.chat_token_hash = token_hash
+        if not device.chat_token_hash:
+            # First time issuing a token for a legacy device
+            chat_token = secrets.token_urlsafe(32)
+            device.chat_token_hash = hashlib.sha256(chat_token.encode()).hexdigest()
     else:
+        chat_token = secrets.token_urlsafe(32)
         device = DeviceToken(
             device_id=request.device_id,
             apns_token=request.apns_token,
-            chat_token_hash=token_hash,
+            chat_token_hash=hashlib.sha256(chat_token.encode()).hexdigest(),
         )
         db.add(device)
 
     await db.commit()
 
-    logger.info("device_registered", device_id=request.device_id)
+    logger.info("device_registered", device_id=request.device_id[:8] + "...")
     return DeviceRegisterResponse(chat_token=chat_token)
 
 
