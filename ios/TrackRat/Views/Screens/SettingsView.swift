@@ -171,33 +171,78 @@ struct SettingsSection: View {
     @Binding var showingPaywall: Bool
     @Binding var paywallContext: PaywallContext
     var showDebugSections: Bool
+    @State private var isEditingTrainSystems = false
+
+    private var enabledSystemsSummary: String {
+        let sorted = TrainSystem.allCases
+            .filter { appState.isSystemSelected($0) }
+            .sorted { $0.displayName < $1.displayName }
+        if sorted.isEmpty { return "None selected" }
+        return sorted.map { system in
+            var name = system.displayName
+            if system == .amtrak {
+                name += " (\(appState.amtrakMode.label))"
+            }
+            return name
+        }.joined(separator: ", ")
+    }
 
     var body: some View {
         VStack(spacing: 16) {
             // Train Systems
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 16) {
+                    Image(systemName: "tram.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
                     Text("Train Systems")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.7))
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+
                     Spacer()
+
+                    Button(isEditingTrainSystems ? "Done" : "Edit") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditingTrainSystems.toggle()
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.orange)
                 }
                 .padding()
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                if isEditingTrainSystems {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
 
-                let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
-                ForEach(sortedSystems, id: \.self) { system in
-                    TrainSystemRow(
-                        system: system,
-                        isSelected: appState.isSystemSelected(system),
-                        isLast: system == sortedSystems.last,
-                        subtitle: system == .amtrak ? appState.amtrakMode.label : nil
-                    ) {
-                        appState.toggleSystem(system)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
+                    ForEach(sortedSystems, id: \.self) { system in
+                        TrainSystemRow(
+                            system: system,
+                            isSelected: appState.isSystemSelected(system),
+                            isLast: system == sortedSystems.last,
+                            subtitle: system == .amtrak ? appState.amtrakMode.label : nil
+                        ) {
+                            appState.toggleSystem(system)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
                     }
+                } else {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+
+                    HStack(spacing: 16) {
+                        Text(enabledSystemsSummary)
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineLimit(2)
+                        Spacer()
+                    }
+                    .padding()
                 }
             }
             .background(
