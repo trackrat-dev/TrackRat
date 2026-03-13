@@ -14,12 +14,28 @@ struct UpgradePromptCard: View {
         } label: {
             VStack(spacing: 12) {
                 HStack {
-                    Image(systemName: "dumbbell.fill")
+                    Image(systemName: "star.fill")
                         .foregroundColor(.orange)
                     Text("TrackRat Pro")
                         .font(.headline)
                         .foregroundColor(.white)
                     Spacer()
+
+                    HStack(spacing: 4) {
+                        Text("Learn More")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+
+                        Image(systemName: "arrow.right")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(.orange)
+                    )
                 }
 
                 if let headline, !headline.isEmpty {
@@ -35,23 +51,6 @@ struct UpgradePromptCard: View {
                         .foregroundColor(.white.opacity(0.7))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                HStack {
-                    Text("Learn More")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white)
-
-                    Image(systemName: "arrow.right")
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(
-                    Capsule()
-                        .fill(.orange)
-                )
-                .padding(.top, 4)
             }
             .padding()
             .background(
