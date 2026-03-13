@@ -27,7 +27,7 @@ struct ChatView: View {
     private let maxMessageLength = 255
 
     private var headerTitle: String {
-        isAdminMode ? "User \(targetDeviceId?.prefix(8) ?? "")" : "Chat with Developer"
+        isAdminMode ? "User \(targetDeviceId?.prefix(8) ?? "")" : "Developer Chat"
     }
 
     var body: some View {
@@ -99,7 +99,6 @@ struct ChatView: View {
                 inputBar
             }
         }
-        .background(TrackRatTheme.Colors.primaryBackground)
         .navigationBarHidden(true)
         .task {
             await loadMessages()

@@ -39,7 +39,6 @@ struct AdminChatListView: View {
                 .listStyle(.plain)
             }
         }
-        .background(TrackRatTheme.Colors.primaryBackground)
         .navigationBarHidden(true)
         .navigationDestination(for: String.self) { deviceId in
             ChatView(targetDeviceId: deviceId)
