@@ -37,6 +37,17 @@ struct ChatView: View {
                 showBackButton: false
             )
 
+            // Error banner
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.red.opacity(0.8))
+            }
+
             // Messages
             ScrollViewReader { proxy in
                 ScrollView {
@@ -161,6 +172,8 @@ struct ChatView: View {
             messages = result.messages
             hasMore = result.hasMore
             errorMessage = nil
+        } catch let error as APIError where error == .chatNotRegistered {
+            errorMessage = error.errorDescription
         } catch {
             errorMessage = "Could not load messages"
         }

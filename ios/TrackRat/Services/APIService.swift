@@ -1240,6 +1240,7 @@ enum APIError: LocalizedError {
     case invalidParameters
     case encodingError
     case serverError
+    case chatNotRegistered
 
     var errorDescription: String? {
         switch self {
@@ -1249,6 +1250,7 @@ enum APIError: LocalizedError {
         case .invalidParameters: return "Invalid parameters provided"
         case .encodingError: return "Failed to encode request body"
         case .serverError: return "Server error"
+        case .chatNotRegistered: return "Enable notifications to use chat"
         }
     }
 }
@@ -1334,7 +1336,7 @@ extension APIService {
         let chat_token: String?
     }
 
-    func registerDevice(deviceId: String, apnsToken: String) async throws -> DeviceRegisterResponse {
+    func registerDevice(deviceId: String, apnsToken: String, forceChatToken: Bool = false) async throws -> DeviceRegisterResponse {
         let endpoint = "/v2/devices/register"
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError.invalidURL
@@ -1343,9 +1345,10 @@ extension APIService {
         struct RegisterRequest: Encodable {
             let device_id: String
             let apns_token: String
+            let force_chat_token: Bool
         }
 
-        let body = RegisterRequest(device_id: deviceId, apns_token: apnsToken)
+        let body = RegisterRequest(device_id: deviceId, apns_token: apnsToken, force_chat_token: forceChatToken)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1473,6 +1476,16 @@ extension APIService {
         let status: String
     }
 
+    private func checkChatResponse(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse, http.statusCode != 200 else { return }
+        switch http.statusCode {
+        case 401: throw APIError.chatNotRegistered
+        case 404: throw APIError.chatNotRegistered
+        case 429: throw APIError.invalidParameters
+        default: throw APIError.serverError
+        }
+    }
+
     func getChatMessages(deviceId: String, before: Int? = nil, limit: Int = 50) async throws -> ChatMessagesResponse {
         guard var components = URLComponents(string: "\(baseURL)/v2/chat/messages") else {
             throw APIError.invalidURL
@@ -1486,7 +1499,8 @@ extension APIService {
         if let token = AlertSubscriptionService.shared.chatToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try checkChatResponse(response)
         return try JSONDecoder().decode(ChatMessagesResponse.self, from: data)
     }
 
@@ -1516,7 +1530,8 @@ extension APIService {
         if let token = AlertSubscriptionService.shared.chatToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        try checkChatResponse(response)
         let resp = try JSONDecoder().decode(ChatUnreadCountResponse.self, from: data)
         return resp.unread_count
     }
@@ -1532,9 +1547,7 @@ extension APIService {
         }
         request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, up_to_id: upToId))
         let (_, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw APIError.invalidParameters
-        }
+        try checkChatResponse(response)
     }
 
     func registerChatAdmin(deviceId: String, registrationCode: String) async throws {

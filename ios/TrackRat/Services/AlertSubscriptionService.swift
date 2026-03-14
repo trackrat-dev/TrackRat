@@ -137,7 +137,11 @@ final class AlertSubscriptionService: ObservableObject {
 
     func syncWithBackend(apnsToken: String) async {
         do {
-            let response = try await APIService.shared.registerDevice(deviceId: deviceId, apnsToken: apnsToken)
+            // Request a new chat token if we don't have one (e.g. after app reinstall)
+            let needsToken = chatToken == nil
+            let response = try await APIService.shared.registerDevice(
+                deviceId: deviceId, apnsToken: apnsToken, forceChatToken: needsToken
+            )
             if let token = response.chat_token {
                 UserDefaults.standard.set(token, forKey: chatTokenKey)
             }

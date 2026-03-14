@@ -34,6 +34,7 @@ class DeviceRegisterRequest(BaseModel):
 
     device_id: str
     apns_token: str
+    force_chat_token: bool = False
 
 
 class DeviceRegisterResponse(BaseModel):
@@ -129,6 +130,9 @@ async def register_device(
     Returns a chat_token on first registration or when none exists.
     Subsequent calls with an existing token return chat_token=None
     (the client should keep the token it already has).
+
+    Set force_chat_token=true to rotate and receive a new chat token
+    (e.g. after app reinstall when the client lost its stored token).
     """
     existing = await db.execute(
         select(DeviceToken).where(DeviceToken.device_id == request.device_id)
@@ -138,8 +142,8 @@ async def register_device(
     chat_token: str | None = None
     if device:
         device.apns_token = request.apns_token
-        if not device.chat_token_hash:
-            # First time issuing a token for a legacy device
+        if not device.chat_token_hash or request.force_chat_token:
+            # Issue a new token: first time for legacy device, or client lost its token
             chat_token = secrets.token_urlsafe(32)
             device.chat_token_hash = hashlib.sha256(chat_token.encode()).hexdigest()
     else:
