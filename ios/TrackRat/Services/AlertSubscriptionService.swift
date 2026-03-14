@@ -25,75 +25,30 @@ final class AlertSubscriptionService: ObservableObject {
 
     // MARK: - Mutation
 
-    /// Add two line subscriptions (one per direction) using settings from a template subscription.
-    func addLineSubscriptions(template: RouteAlertSubscription, route: RouteLine) {
-        guard let first = route.stationCodes.first,
-              let last = route.stationCodes.last else { return }
-        for direction in [first, last] {
-            guard !subscriptions.contains(where: {
-                $0.lineId == template.lineId && $0.dataSource == template.dataSource && $0.direction == direction
-            }) else { continue }
-            let sub = RouteAlertSubscription(
-                dataSource: template.dataSource,
-                lineId: template.lineId ?? "",
-                lineName: template.lineName ?? "",
-                direction: direction,
-                activeDays: template.activeDays,
-                activeStartMinutes: template.activeStartMinutes,
-                activeEndMinutes: template.activeEndMinutes,
-                timezone: template.timezone,
-                delayThresholdMinutes: template.delayThresholdMinutes,
-                serviceThresholdPct: template.serviceThresholdPct,
-                cancellationThresholdPct: template.cancellationThresholdPct,
-                notifyCancellation: template.notifyCancellation,
-                notifyDelay: template.notifyDelay,
-                notifyRecovery: template.notifyRecovery,
-                digestTimeMinutes: template.digestTimeMinutes,
-                includePlannedWork: template.includePlannedWork
-            )
-            subscriptions.append(sub)
+    /// Add fully-configured subscriptions, deduplicating against existing ones.
+    /// Supports line (lineId+direction), station-pair (from+to), and train (trainId) subscriptions.
+    func addSubscriptions(_ subs: [RouteAlertSubscription]) {
+        for sub in subs {
+            let isDuplicate: Bool
+            if let lineId = sub.lineId, let direction = sub.direction {
+                isDuplicate = subscriptions.contains {
+                    $0.lineId == lineId && $0.dataSource == sub.dataSource && $0.direction == direction
+                }
+            } else if let from = sub.fromStationCode, let to = sub.toStationCode {
+                isDuplicate = subscriptions.contains {
+                    $0.fromStationCode == from && $0.toStationCode == to && $0.dataSource == sub.dataSource
+                }
+            } else if let trainId = sub.trainId {
+                isDuplicate = subscriptions.contains {
+                    $0.trainId == trainId && $0.dataSource == sub.dataSource
+                }
+            } else {
+                isDuplicate = false
+            }
+            if !isDuplicate {
+                subscriptions.append(sub)
+            }
         }
-        saveToDefaults()
-    }
-
-    /// Add station-pair subscriptions for both directions using settings from a template subscription.
-    func addStationPairSubscriptions(template: RouteAlertSubscription) {
-        guard let fromCode = template.fromStationCode,
-              let toCode = template.toStationCode else { return }
-        for (from, to) in [(fromCode, toCode), (toCode, fromCode)] {
-            guard !subscriptions.contains(where: {
-                $0.fromStationCode == from &&
-                $0.toStationCode == to &&
-                $0.dataSource == template.dataSource
-            }) else { continue }
-            let sub = RouteAlertSubscription(
-                dataSource: template.dataSource,
-                fromStationCode: from,
-                toStationCode: to,
-                activeDays: template.activeDays,
-                activeStartMinutes: template.activeStartMinutes,
-                activeEndMinutes: template.activeEndMinutes,
-                timezone: template.timezone,
-                delayThresholdMinutes: template.delayThresholdMinutes,
-                serviceThresholdPct: template.serviceThresholdPct,
-                cancellationThresholdPct: template.cancellationThresholdPct,
-                notifyCancellation: template.notifyCancellation,
-                notifyDelay: template.notifyDelay,
-                notifyRecovery: template.notifyRecovery,
-                digestTimeMinutes: template.digestTimeMinutes
-            )
-            subscriptions.append(sub)
-        }
-        saveToDefaults()
-    }
-
-    /// Add a train subscription using settings from a template subscription (deduped on trainId + dataSource).
-    func addTrainSubscription(template: RouteAlertSubscription) {
-        guard let trainId = template.trainId else { return }
-        guard !subscriptions.contains(where: {
-            $0.trainId == trainId && $0.dataSource == template.dataSource
-        }) else { return }
-        subscriptions.append(template)
         saveToDefaults()
     }
 
