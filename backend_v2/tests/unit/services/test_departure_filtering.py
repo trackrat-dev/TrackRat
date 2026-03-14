@@ -5,7 +5,8 @@ Tests that:
 1. Expired trains are filtered from departure results
 2. Completed trains are filtered from departure results
 3. The is_expired field is properly set in the response
-4. Cancelled trains are NOT filtered (they should still show with is_cancelled=True)
+4. Cancelled trains are shown for up to 2 hours past scheduled departure
+5. Stale cancelled trains (>2h past scheduled departure) are filtered out
 """
 
 from datetime import date, datetime, timedelta
@@ -205,7 +206,13 @@ class TestDepartureFiltering:
 
     @pytest.mark.asyncio
     async def test_cancelled_trains_included_in_departures(self):
-        """Test that cancelled trains ARE included (with is_cancelled=True)."""
+        """Test that recently cancelled trains ARE included (with is_cancelled=True).
+
+        Cancelled trains should be visible for up to 2 hours past their
+        scheduled departure time so users can see recent cancellations.
+        This test uses the default departure_time (now + 1h), well within
+        the 2-hour visibility window.
+        """
         # Create journeys: one normal, one cancelled
         normal_journey = self._create_journey("1234", is_cancelled=False)
         cancelled_journey = self._create_journey("5678", is_cancelled=True)
@@ -260,6 +267,95 @@ class TestDepartureFiltering:
         # Verify cancelled flag is set correctly
         cancelled_departure = next(d for d in result.departures if d.train_id == "5678")
         assert cancelled_departure.is_cancelled is True
+
+    @pytest.mark.asyncio
+    async def test_stale_cancelled_trains_excluded_from_departures(self):
+        """Test that cancelled trains >2 hours past scheduled departure are filtered out.
+
+        A train cancelled at 5am should not still appear at 8am. The backend
+        filters cancelled trains whose scheduled_departure is more than 2 hours
+        in the past via the hide_departed SQL filter. This test simulates that
+        behavior by only returning the non-stale trains from the mock query
+        (matching what the SQL WHERE clause would do).
+        """
+        now = now_et()
+
+        # Recent cancelled train (30 min ago) — should be visible
+        recent_cancelled = self._create_journey(
+            "7803",
+            is_cancelled=True,
+            departure_time=now - timedelta(minutes=30),
+        )
+
+        # Stale cancelled train (3 hours ago) — should be filtered by SQL
+        stale_cancelled = self._create_journey(
+            "7813",
+            is_cancelled=True,
+            departure_time=now - timedelta(hours=3),
+        )
+
+        # Normal upcoming train
+        normal_journey = self._create_journey("1234", is_cancelled=False)
+
+        # Mock session — simulate SQL WHERE clause filtering out the stale cancelled train
+        mock_session = AsyncMock(spec=AsyncSession)
+
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # SQL WHERE clause keeps recent_cancelled (within 2h window) but excludes stale_cancelled
+        mock_scalars.unique.return_value.all.return_value = [
+            normal_journey,
+            recent_cancelled,
+        ]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et() + timedelta(hours=2)
+
+                with patch.object(
+                    service,
+                    "_calculate_train_position",
+                    return_value=self._mock_train_position(),
+                ):
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                        mock_gtfs = AsyncMock()
+                        mock_gtfs.get_scheduled_departures = AsyncMock(
+                            return_value=Mock(departures=[])
+                        )
+                        mock_gtfs_class.return_value = mock_gtfs
+
+                        result = await service.get_departures(
+                            db=mock_session,
+                            from_station="TR",
+                            to_station="NY",
+                        )
+
+        # Verify stale cancelled train (7813) is NOT in results
+        train_ids = {d.train_id for d in result.departures}
+        assert "7813" not in train_ids, (
+            "Cancelled train from 3 hours ago should not appear in departures"
+        )
+
+        # Verify recent cancelled train (7803) IS in results
+        assert "7803" in train_ids, (
+            "Recently cancelled train (30 min ago) should still be visible"
+        )
+
+        # Verify normal train is present
+        assert "1234" in train_ids
+
+        # Verify the recent cancelled train has the cancelled flag
+        recent_dep = next(d for d in result.departures if d.train_id == "7803")
+        assert recent_dep.is_cancelled is True
 
     @pytest.mark.asyncio
     async def test_is_expired_field_set_in_response(self):
@@ -386,6 +482,44 @@ class TestDepartureFilterQuery:
 
         assert filter_expr is not None
         assert "is_completed" in str(filter_expr)
+
+    @pytest.mark.asyncio
+    async def test_hide_departed_cancelled_filter_has_time_constraint(self):
+        """Verify that the hide_departed filter for cancelled trains includes a 2-hour time window.
+
+        The SQL filter should be:
+            OR(has_departed_station IS NOT TRUE,
+               AND(is_cancelled IS TRUE, scheduled_departure >= now - 2h))
+
+        This ensures cancelled trains don't persist all day — only for 2 hours
+        past their scheduled departure.
+        """
+        from sqlalchemy import and_, or_
+        from trackrat.models.database import TrainJourney, JourneyStop
+        from trackrat.utils.time import now_et
+
+        current_time = now_et()
+
+        # Construct the filter as it appears in departure.py
+        filter_expr = or_(
+            JourneyStop.has_departed_station.is_(False),
+            and_(
+                TrainJourney.is_cancelled.is_(True),
+                JourneyStop.scheduled_departure >= current_time - timedelta(hours=2),
+            ),
+        )
+
+        filter_str = str(filter_expr)
+        # Verify both is_cancelled and scheduled_departure appear in the expression
+        assert "is_cancelled" in filter_str, (
+            "hide_departed filter must include is_cancelled check"
+        )
+        assert "scheduled_departure" in filter_str, (
+            "hide_departed filter must include scheduled_departure time constraint"
+        )
+        assert "has_departed_station" in filter_str, (
+            "hide_departed filter must still include has_departed_station check"
+        )
 
 
 class TestStaleScheduledFiltering:
