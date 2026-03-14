@@ -79,12 +79,14 @@ class TrainJourney(Base):
         "JourneyStop",
         back_populates="journey",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     snapshots: Mapped[list["JourneySnapshot"]] = relationship(
         "JourneySnapshot",
         back_populates="journey",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     progress: Mapped["JourneyProgress"] = relationship(
@@ -92,24 +94,28 @@ class TrainJourney(Base):
         back_populates="journey",
         uselist=False,
         primaryjoin="and_(TrainJourney.id==JourneyProgress.journey_id)",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     segment_times: Mapped[list["SegmentTransitTime"]] = relationship(
         "SegmentTransitTime",
         back_populates="journey",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     dwell_times: Mapped[list["StationDwellTime"]] = relationship(
         "StationDwellTime",
         back_populates="journey",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     progress_snapshots: Mapped[list["JourneyProgress"]] = relationship(
         "JourneyProgress",
         back_populates="journey",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         overlaps="progress",
         lazy="raise_on_sql",
     )
@@ -140,7 +146,7 @@ class JourneyStop(Base):
     __tablename__ = "journey_stops"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False)
     station_code = Column(String(10), nullable=False)
     station_name = Column(String(100), nullable=False)
     stop_sequence = Column(
@@ -223,7 +229,7 @@ class JourneySnapshot(Base):
     __tablename__ = "journey_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False)
     captured_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -424,7 +430,7 @@ class SegmentTransitTime(Base):
     __tablename__ = "segment_transit_times"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False)
     from_station_code = Column(String(10), nullable=False)
     to_station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False)
@@ -469,7 +475,7 @@ class StationDwellTime(Base):
     __tablename__ = "station_dwell_times"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False)
     station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False)
     line_code = Column(String(10))
@@ -510,7 +516,7 @@ class JourneyProgress(Base):
     __tablename__ = "journey_progress"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    journey_id = Column(Integer, ForeignKey("train_journeys.id"), nullable=False)
+    journey_id = Column(Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False)
     captured_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
