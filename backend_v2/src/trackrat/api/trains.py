@@ -224,9 +224,9 @@ async def get_train_details(
         )
 
     # Get fresh train data
-    # For Amtrak trains, we don't need an NJT client
+    # NJT client is only needed for NJ Transit trains
     njt_client = None
-    if not is_amtrak_train(train_id):
+    if data_source in (None, "NJT") and not is_amtrak_train(train_id):
         njt_client = NJTransitClient()
 
     try:

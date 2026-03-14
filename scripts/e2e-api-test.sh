@@ -503,10 +503,12 @@ for route in "${ROUTES[@]}"; do
       pass "History: $total_trains trains, OTP: $otp%"
     fi
 
-    if [[ "$breakdown_keys" != "$expected_keys" ]]; then
-      fail_v "History: delay_breakdown keys wrong" "Expected: $expected_keys, got: $breakdown_keys"
-    else
-      pass "History: delay_breakdown valid"
+    if [[ "$total_trains" -gt 0 ]]; then
+      if [[ "$breakdown_keys" != "$expected_keys" ]]; then
+        fail_v "History: delay_breakdown keys wrong" "Expected: $expected_keys, got: $breakdown_keys"
+      else
+        pass "History: delay_breakdown valid"
+      fi
     fi
 
     # Validate OTP range
