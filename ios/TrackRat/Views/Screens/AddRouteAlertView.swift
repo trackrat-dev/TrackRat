@@ -36,7 +36,9 @@ struct AddRouteAlertView: View {
     // Customization sheet state
     @State private var draftSubscription: RouteAlertSubscription? = nil
     @State private var draftRoute: RouteLine? = nil
+    @State private var draftDirections: [DirectionDraft] = []
     @State private var showCustomizationSheet = false
+    @State private var showDirectionalSheet = false
 
     /// User's selected systems that support real-time alerts.
     private var alertCapableSystems: Set<TrainSystem> {
@@ -108,26 +110,35 @@ struct AddRouteAlertView: View {
         .sheet(isPresented: $showCustomizationSheet) {
             if let draft = draftSubscription {
                 AlertConfigurationSheetWrapper(subscription: draft) { customized in
-                    saveCustomizedSubscription(customized)
+                    saveTrainSubscription(customized)
                 }
+            }
+        }
+        .sheet(isPresented: $showDirectionalSheet) {
+            DirectionalAlertConfigurationSheet(directions: draftDirections) { subs in
+                saveDirectionalSubscriptions(subs)
             }
         }
     }
 
-    // MARK: - Save Customized Subscription
+    // MARK: - Save Subscriptions
 
-    private func saveCustomizedSubscription(_ sub: RouteAlertSubscription) {
-        if sub.lineId != nil, let route = draftRoute {
-            alertService.addLineSubscriptions(template: sub, route: route)
-        } else if sub.fromStationCode != nil {
-            alertService.addStationPairSubscriptions(template: sub)
-        } else if sub.trainId != nil {
-            alertService.addTrainSubscription(template: sub)
-            dismiss()
-        }
+    private func saveTrainSubscription(_ sub: RouteAlertSubscription) {
+        alertService.addSubscriptions([sub])
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         draftSubscription = nil
+        dismiss()
+    }
+
+    private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
+        alertService.addSubscriptions(subs)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        draftDirections = []
         draftRoute = nil
+        withAnimation {
+            fromStation = nil
+            toStation = nil
+        }
     }
 
     // MARK: - Line Mode
@@ -187,14 +198,37 @@ struct AddRouteAlertView: View {
                         ForEach(filteredRoutes) { route in
                             Button {
                                 let ds = route.dataSource
-                                draftSubscription = RouteAlertSubscription(
-                                    dataSource: ds,
-                                    lineId: route.id,
-                                    lineName: route.name,
-                                    direction: nil
+                                guard let first = route.stationCodes.first,
+                                      let last = route.stationCodes.last else { return }
+
+                                let existingSubs = alertService.subscriptions.filter {
+                                    $0.lineId == route.id && $0.dataSource == ds
+                                }
+                                let subscribedDirs = Set(existingSubs.compactMap(\.direction))
+
+                                let subToLast = RouteAlertSubscription(
+                                    dataSource: ds, lineId: route.id, lineName: route.name, direction: last
                                 )
+                                let subToFirst = RouteAlertSubscription(
+                                    dataSource: ds, lineId: route.id, lineName: route.name, direction: first
+                                )
+
+                                draftDirections = [
+                                    DirectionDraft(
+                                        label: "To \(Stations.displayName(for: last))",
+                                        subscription: subToLast,
+                                        enabled: !subscribedDirs.contains(last),
+                                        alreadySubscribed: subscribedDirs.contains(last)
+                                    ),
+                                    DirectionDraft(
+                                        label: "To \(Stations.displayName(for: first))",
+                                        subscription: subToFirst,
+                                        enabled: !subscribedDirs.contains(first),
+                                        alreadySubscribed: subscribedDirs.contains(first)
+                                    ),
+                                ]
                                 draftRoute = route
-                                showCustomizationSheet = true
+                                showDirectionalSheet = true
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
@@ -275,32 +309,43 @@ struct AddRouteAlertView: View {
                     let common = fromSystems.intersection(toSystems).intersection(alertCapableStrings)
                     let dataSource = common.first ?? fromSystems.intersection(toSystems).first ?? "NJT"
 
-                    let bothExist = alertService.subscriptions.contains(where: {
+                    let existsAB = alertService.subscriptions.contains {
                         $0.fromStationCode == fromCode &&
                         $0.toStationCode == toCode &&
                         $0.dataSource == dataSource
-                    }) && alertService.subscriptions.contains(where: {
+                    }
+                    let existsBA = alertService.subscriptions.contains {
                         $0.fromStationCode == toCode &&
                         $0.toStationCode == fromCode &&
                         $0.dataSource == dataSource
-                    })
+                    }
 
-                    if bothExist {
+                    if existsAB && existsBA {
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         showConfirmation("Already subscribed")
                     } else {
-                        draftSubscription = RouteAlertSubscription(
-                            dataSource: dataSource,
-                            fromStationCode: fromCode,
-                            toStationCode: toCode
+                        let subAB = RouteAlertSubscription(
+                            dataSource: dataSource, fromStationCode: fromCode, toStationCode: toCode
                         )
+                        let subBA = RouteAlertSubscription(
+                            dataSource: dataSource, fromStationCode: toCode, toStationCode: fromCode
+                        )
+                        draftDirections = [
+                            DirectionDraft(
+                                label: "To \(Stations.displayName(for: toCode))",
+                                subscription: subAB,
+                                enabled: !existsAB,
+                                alreadySubscribed: existsAB
+                            ),
+                            DirectionDraft(
+                                label: "To \(Stations.displayName(for: fromCode))",
+                                subscription: subBA,
+                                enabled: !existsBA,
+                                alreadySubscribed: existsBA
+                            ),
+                        ]
                         draftRoute = nil
-                        showCustomizationSheet = true
-                    }
-
-                    withAnimation {
-                        fromStation = nil
-                        toStation = nil
+                        showDirectionalSheet = true
                     }
                 } label: {
                     Text("Add Alert")

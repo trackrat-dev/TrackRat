@@ -151,14 +151,46 @@ struct RouteStatusView: View {
         guard let from = context.fromStationCode, let to = context.toStationCode else { return }
 
         if newDays > 0 && !isSubscribed {
-            // Auto-subscribe — use draft or create a fresh template
+            // Auto-subscribe — create both directions from draft or fresh template
             let template = draftSubscription ?? RouteAlertSubscription(
                 dataSource: context.dataSource,
                 fromStationCode: from,
                 toStationCode: to,
                 activeDays: newDays
             )
-            alertService.addStationPairSubscriptions(template: template)
+            let subAB = RouteAlertSubscription(
+                dataSource: template.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: template.activeDays,
+                activeStartMinutes: template.activeStartMinutes,
+                activeEndMinutes: template.activeEndMinutes,
+                timezone: template.timezone,
+                delayThresholdMinutes: template.delayThresholdMinutes,
+                serviceThresholdPct: template.serviceThresholdPct,
+                cancellationThresholdPct: template.cancellationThresholdPct,
+                notifyCancellation: template.notifyCancellation,
+                notifyDelay: template.notifyDelay,
+                notifyRecovery: template.notifyRecovery,
+                digestTimeMinutes: template.digestTimeMinutes
+            )
+            let subBA = RouteAlertSubscription(
+                dataSource: template.dataSource,
+                fromStationCode: to,
+                toStationCode: from,
+                activeDays: template.activeDays,
+                activeStartMinutes: template.activeStartMinutes,
+                activeEndMinutes: template.activeEndMinutes,
+                timezone: template.timezone,
+                delayThresholdMinutes: template.delayThresholdMinutes,
+                serviceThresholdPct: template.serviceThresholdPct,
+                cancellationThresholdPct: template.cancellationThresholdPct,
+                notifyCancellation: template.notifyCancellation,
+                notifyDelay: template.notifyDelay,
+                notifyRecovery: template.notifyRecovery,
+                digestTimeMinutes: template.digestTimeMinutes
+            )
+            alertService.addSubscriptions([subAB, subBA])
             // Move settings into edited subscriptions for the newly-created subs
             for sub in alertService.subscriptions(for: context) {
                 var edited = RouteAlertSubscription.copySettings(from: template, to: sub)
