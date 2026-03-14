@@ -17,7 +17,7 @@ pydantic-settings = "^2.13.1"
 
 # Database
 sqlalchemy = "^2.0.46"
-alembic = "^1.13.1"
+alembic = "^1.18.4"
 asyncpg = "^0.31.0"
 psycopg2-binary = "^2.9.11"  # For Alembic migrations (sync driver)
 
