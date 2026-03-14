@@ -191,27 +191,29 @@ struct SettingsSection: View {
         VStack(spacing: 16) {
             // Train Systems
             VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    Image(systemName: "tram.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    Text("Train Systems")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-
-                    Spacer()
-
-                    Button(isEditingTrainSystems ? "Done" : "Edit") {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isEditingTrainSystems.toggle()
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isEditingTrainSystems.toggle()
                     }
-                    .font(.subheadline)
-                    .foregroundColor(.orange)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "tram.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
+
+                        Text("Train Systems")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+
+                        Spacer()
+
+                        Text(isEditingTrainSystems ? "Done" : "Edit")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                    }
                 }
                 .padding()
 
