@@ -1030,8 +1030,8 @@ class TestAlertHelpers:
         title, body = _build_alert_message(
             sub, "cancellation", 2, 0, 10, frequency_factor=None
         )
-        assert "Cancellation" in title
-        assert "2 trains cancelled" in body
+        assert "20% of trains cancelled" in title
+        assert "Over the past hour" in body
         print(f"  Title: {title}")
         print(f"  Body: {body}")
 
@@ -1710,7 +1710,7 @@ class TestDirectionalAlertMessage:
     """Tests for direction in alert message formatting."""
 
     def test_build_alert_message_with_direction(self):
-        """Alert message should include 'toward <station name>' when direction is set."""
+        """Alert message body should include 'toward <station name>' when direction is set."""
         sub = RouteAlertSubscription(
             device_id="test",
             data_source="NJT",
@@ -1718,33 +1718,37 @@ class TestDirectionalAlertMessage:
             direction="TR",
         )
         title, body = _build_alert_message(sub, "delay", 0, 3, 4)
-        assert "toward" in title.lower()
-        assert "Trenton" in title or "TR" in title
+        assert "75% of trains delayed" in title
+        assert "toward" in body.lower()
+        assert "Trenton" in body or "TR" in body
         print(f"  Title with direction: {title}")
         print(f"  Body: {body}")
 
     def test_build_alert_message_without_direction(self):
-        """Alert message without direction should just show route name."""
+        """Alert message body should show route name without direction."""
         sub = RouteAlertSubscription(
             device_id="test",
             data_source="NJT",
             line_id="njt-nec",
         )
         title, body = _build_alert_message(sub, "delay", 0, 3, 4)
-        assert "toward" not in title.lower()
-        assert "Northeast Corridor" in title
+        assert "toward" not in body.lower()
+        assert "Northeast Corridor" in body
         print(f"  Title without direction: {title}")
+        print(f"  Body: {body}")
 
     def test_build_alert_message_custom_delay_threshold(self):
-        """Alert message should use the custom delay threshold in the body."""
+        """Alert message title shows percentage of delayed trains."""
         sub = RouteAlertSubscription(
             device_id="test",
             data_source="NJT",
             line_id="njt-nec",
         )
         title, body = _build_alert_message(sub, "delay", 0, 3, 4, delay_threshold=5)
-        assert "5+ min" in body
-        print(f"  Body with custom threshold: {body}")
+        assert "75% of trains delayed" in title
+        assert "Over the past hour" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
 
 
 class TestTimeWindow:
