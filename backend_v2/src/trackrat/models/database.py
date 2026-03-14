@@ -313,6 +313,7 @@ class DeviceToken(Base):
         "RouteAlertSubscription",
         back_populates="device",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         foreign_keys="RouteAlertSubscription.device_id",
         primaryjoin="DeviceToken.device_id == RouteAlertSubscription.device_id",
         lazy="raise_on_sql",
@@ -674,6 +675,7 @@ class GTFSRoute(Base):
         "GTFSTrip",
         back_populates="route",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
 
@@ -691,7 +693,7 @@ class GTFSTrip(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     data_source = Column(String(10), nullable=False)
     trip_id = Column(String(100), nullable=False)  # GTFS trip_id
-    route_id = Column(Integer, ForeignKey("gtfs_routes.id"), nullable=False)
+    route_id = Column(Integer, ForeignKey("gtfs_routes.id", ondelete="CASCADE"), nullable=False)
     service_id = Column(String(50), nullable=False)  # Links to calendar
     trip_headsign = Column(String(100))  # Destination name
     train_id = Column(String(20))  # Extracted train number if available
@@ -705,6 +707,7 @@ class GTFSTrip(Base):
         "GTFSStopTime",
         back_populates="trip",
         cascade="all, delete-orphan",
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
 
@@ -721,7 +724,7 @@ class GTFSStopTime(Base):
     __tablename__ = "gtfs_stop_times"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    trip_id = Column(Integer, ForeignKey("gtfs_trips.id"), nullable=False)
+    trip_id = Column(Integer, ForeignKey("gtfs_trips.id", ondelete="CASCADE"), nullable=False)
     stop_sequence = Column(Integer, nullable=False)
 
     # GTFS stop_id and our mapped station code
