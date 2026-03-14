@@ -184,7 +184,7 @@ struct SettingsSection: View {
                 name += " (\(appState.amtrakMode.label))"
             }
             return name
-        }.joined(separator: ", ")
+        }.joined(separator: "\n")
     }
 
     var body: some View {
@@ -239,7 +239,7 @@ struct SettingsSection: View {
                         Text(enabledSystemsSummary)
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.7))
-                            .lineLimit(2)
+                            .lineLimit(nil)
                         Spacer()
                     }
                     .padding()
