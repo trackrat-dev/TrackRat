@@ -84,6 +84,17 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Subway and PATH use fixed platforms, not assignable tracks.
     static let noTrackDisplaySources: Set<String> = ["PATH", "SUBWAY"]
 
+    /// Whether this system has real-time data capable of generating meaningful route alerts.
+    /// Schedule-only systems (e.g., PATCO) cannot detect delays or cancellations.
+    var supportsAlerts: Bool {
+        switch self {
+        case .njt, .amtrak, .path, .lirr, .mnr, .subway:
+            return true
+        case .patco:
+            return false
+        }
+    }
+
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
         switch self {

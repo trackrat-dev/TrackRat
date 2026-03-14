@@ -38,10 +38,14 @@ struct AddRouteAlertView: View {
     @State private var draftRoute: RouteLine? = nil
     @State private var showCustomizationSheet = false
 
-    /// Systems available for line mode: user's selected systems that have routes.
+    /// User's selected systems that support real-time alerts.
+    private var alertCapableSystems: Set<TrainSystem> {
+        appState.selectedSystems.filter { $0.supportsAlerts }
+    }
+
+    /// Systems available for line mode: alert-capable systems sorted for display.
     private var availableLineSystems: [TrainSystem] {
-        appState.selectedSystems
-            .sorted { $0.displayName < $1.displayName }
+        alertCapableSystems.sorted { $0.displayName < $1.displayName }
     }
 
     /// Routes filtered to the selected line system, excluding fully-subscribed lines.
@@ -160,56 +164,60 @@ struct AddRouteAlertView: View {
 
     private var lineList: some View {
         VStack(spacing: 0) {
-            lineSystemPickerRow
-
-            if lineSystem == nil {
-                Spacer()
-            } else if filteredRoutes.isEmpty {
-                VStack(spacing: 12) {
-                    Spacer()
-                    Image(systemName: "checkmark.circle")
-                        .font(.system(size: 40))
-                        .foregroundColor(.orange)
-                    Text("All available routes subscribed")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                    Spacer()
-                }
+            if availableLineSystems.isEmpty {
+                noEligibleSystemsView(detail: "Your selected systems are schedule-only and cannot detect delays.")
             } else {
-                List {
-                    ForEach(filteredRoutes) { route in
-                        Button {
-                            let ds = route.dataSource
-                            draftSubscription = RouteAlertSubscription(
-                                dataSource: ds,
-                                lineId: route.id,
-                                lineName: route.name,
-                                direction: nil
-                            )
-                            draftRoute = route
-                            showCustomizationSheet = true
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(route.name)
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                    if let subtitle = route.terminalSubtitle {
-                                        Text(subtitle)
-                                            .font(.caption)
-                                            .foregroundColor(.white.opacity(0.7))
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: "plus.circle")
-                                    .foregroundColor(.orange)
-                            }
-                        }
-                        .buttonStyle(.plain)
+                lineSystemPickerRow
+
+                if lineSystem == nil {
+                    Spacer()
+                } else if filteredRoutes.isEmpty {
+                    VStack(spacing: 12) {
+                        Spacer()
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 40))
+                            .foregroundColor(.orange)
+                        Text("All available routes subscribed")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Spacer()
                     }
+                } else {
+                    List {
+                        ForEach(filteredRoutes) { route in
+                            Button {
+                                let ds = route.dataSource
+                                draftSubscription = RouteAlertSubscription(
+                                    dataSource: ds,
+                                    lineId: route.id,
+                                    lineName: route.name,
+                                    direction: nil
+                                )
+                                draftRoute = route
+                                showCustomizationSheet = true
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(route.name)
+                                            .font(.headline)
+                                            .foregroundColor(.white)
+                                        if let subtitle = route.terminalSubtitle {
+                                            Text(subtitle)
+                                                .font(.caption)
+                                                .foregroundColor(.white.opacity(0.7))
+                                        }
+                                    }
+                                    Spacer()
+                                    Image(systemName: "plus.circle")
+                                        .foregroundColor(.orange)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
             }
         }
     }
@@ -218,6 +226,9 @@ struct AddRouteAlertView: View {
 
     private var stationPairPicker: some View {
         VStack(spacing: 16) {
+            if alertCapableSystems.isEmpty {
+                noEligibleSystemsView(detail: "Your selected systems are schedule-only and cannot detect delays.")
+            } else {
             // First station
             Button {
                 showFromPicker = true
@@ -259,9 +270,9 @@ struct AddRouteAlertView: View {
                     let toCode = to.code
                     let fromSystems = Stations.systemStringsForStation(fromCode)
                     let toSystems = Stations.systemStringsForStation(toCode)
-                    let selectedStrings = appState.selectedSystems.asRawStrings
-                    // Pick a system shared by both stations that the user has enabled
-                    let common = fromSystems.intersection(toSystems).intersection(selectedStrings)
+                    let alertCapableStrings = alertCapableSystems.asRawStrings
+                    // Pick a system shared by both stations that supports alerts
+                    let common = fromSystems.intersection(toSystems).intersection(alertCapableStrings)
                     let dataSource = common.first ?? fromSystems.intersection(toSystems).first ?? "NJT"
 
                     let bothExist = alertService.subscriptions.contains(where: {
@@ -315,13 +326,14 @@ struct AddRouteAlertView: View {
             }
 
             Spacer()
+            } // else alertCapableSystems not empty
         }
         .padding()
         .sheet(isPresented: $showFromPicker) {
             StationPickerSheet(
                 selectedStation: $fromStation,
                 disabledStation: toStation,
-                selectedSystems: appState.selectedSystems,
+                selectedSystems: alertCapableSystems,
                 onStationSelected: { station in
                     fromStation = station
                     showFromPicker = false
@@ -332,7 +344,7 @@ struct AddRouteAlertView: View {
             StationPickerSheet(
                 selectedStation: $toStation,
                 disabledStation: fromStation,
-                selectedSystems: appState.selectedSystems,
+                selectedSystems: alertCapableSystems,
                 onStationSelected: { station in
                     toStation = station
                     showToPicker = false
@@ -346,7 +358,7 @@ struct AddRouteAlertView: View {
     private var trainPicker: some View {
         VStack(spacing: 16) {
             if availableTrainSystems.isEmpty {
-                noEligibleSystemsView
+                noEligibleSystemsView(detail: "Train alerts require NJ Transit, Amtrak, LIRR, or Metro-North.")
             } else {
                 // System picker
                 systemPickerRow
@@ -384,15 +396,20 @@ struct AddRouteAlertView: View {
         }
     }
 
-    private var noEligibleSystemsView: some View {
+    private func noEligibleSystemsView(detail: String) -> some View {
         VStack(spacing: 12) {
             Spacer()
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 36))
                 .foregroundColor(.white.opacity(0.3))
-            Text("Train alerts require NJ Transit, Amtrak, LIRR, or Metro-North.")
+            Text("Route alerts require real-time data.")
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Text(detail)
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Spacer()
