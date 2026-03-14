@@ -268,7 +268,7 @@ struct AlertConfigurationSection: View {
                         Text("From")
                             .foregroundColor(.white.opacity(0.6))
                         Spacer()
-                        minutePicker(selection: Binding(
+                        minuteOfDayPicker(selection: Binding(
                             get: { subscription.activeStartMinutes ?? 360 },
                             set: { subscription.activeStartMinutes = $0 }
                         ))
@@ -277,7 +277,7 @@ struct AlertConfigurationSection: View {
                         Text("To")
                             .foregroundColor(.white.opacity(0.6))
                         Spacer()
-                        minutePicker(selection: Binding(
+                        minuteOfDayPicker(selection: Binding(
                             get: { subscription.activeEndMinutes ?? 1200 },
                             set: { subscription.activeEndMinutes = $0 }
                         ))
@@ -456,21 +456,6 @@ struct AlertConfigurationSection: View {
         )
     }
 
-    private func minutePicker(selection: Binding<Int>) -> some View {
-        let date = Binding<Date>(
-            get: {
-                Calendar.current.startOfDay(for: Date())
-                    .addingTimeInterval(TimeInterval(selection.wrappedValue * 60))
-            },
-            set: { newDate in
-                let comps = Calendar.current.dateComponents([.hour, .minute], from: newDate)
-                selection.wrappedValue = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-            }
-        )
-        return DatePicker("", selection: date, displayedComponents: .hourAndMinute)
-            .labelsHidden()
-    }
-
     // MARK: - Card Helper
 
     private func configCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -510,7 +495,7 @@ struct DigestConfigurationSection: View {
                         Text("Digest time")
                             .foregroundColor(.white.opacity(0.6))
                         Spacer()
-                        minutePicker(selection: Binding(
+                        minuteOfDayPicker(selection: Binding(
                             get: { subscription.digestTimeMinutes ?? 420 },
                             set: { subscription.digestTimeMinutes = $0 }
                         ))
@@ -543,18 +528,22 @@ struct DigestConfigurationSection: View {
         )
     }
 
-    private func minutePicker(selection: Binding<Int>) -> some View {
-        let date = Binding<Date>(
-            get: {
-                Calendar.current.startOfDay(for: Date())
-                    .addingTimeInterval(TimeInterval(selection.wrappedValue * 60))
-            },
-            set: { newDate in
-                let comps = Calendar.current.dateComponents([.hour, .minute], from: newDate)
-                selection.wrappedValue = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-            }
-        )
-        return DatePicker("", selection: date, displayedComponents: .hourAndMinute)
-            .labelsHidden()
-    }
+}
+
+// MARK: - Shared Helpers
+
+/// Time-of-day picker that converts between minutes-from-midnight and a Date for DatePicker.
+func minuteOfDayPicker(selection: Binding<Int>) -> some View {
+    let date = Binding<Date>(
+        get: {
+            Calendar.current.startOfDay(for: Date())
+                .addingTimeInterval(TimeInterval(selection.wrappedValue * 60))
+        },
+        set: { newDate in
+            let comps = Calendar.current.dateComponents([.hour, .minute], from: newDate)
+            selection.wrappedValue = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+        }
+    )
+    return DatePicker("", selection: date, displayedComponents: .hourAndMinute)
+        .labelsHidden()
 }

@@ -187,31 +187,37 @@ class AlertSubscriptionServiceTests: XCTestCase {
 
     func testCopySettings_preservesIdentityFields() {
         let source = RouteAlertSubscription(
-            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
+            dataSource: "SUBWAY", lineId: "A", lineName: "A Train", direction: "INWOOD",
             activeDays: 31, activeStartMinutes: 360, activeEndMinutes: 540,
-            delayThresholdMinutes: 10, notifyCancellation: false, notifyDelay: true,
-            notifyRecovery: true, digestTimeMinutes: 420
+            delayThresholdMinutes: 10, serviceThresholdPct: 50, cancellationThresholdPct: 90,
+            notifyCancellation: false, notifyDelay: true,
+            notifyRecovery: true, digestTimeMinutes: 420,
+            includePlannedWork: true
         )
         let target = RouteAlertSubscription(
-            dataSource: "NJT", fromStationCode: "TR", toStationCode: "NY"
+            dataSource: "SUBWAY", lineId: "A", lineName: "A Train", direction: "FAR_ROCKAWAY"
         )
 
         let result = RouteAlertSubscription.copySettings(from: source, to: target)
 
         // Identity preserved
-        XCTAssertEqual(result.fromStationCode, "TR", "Target from station should be preserved")
-        XCTAssertEqual(result.toStationCode, "NY", "Target to station should be preserved")
+        XCTAssertEqual(result.lineId, "A", "Target lineId should be preserved")
+        XCTAssertEqual(result.direction, "FAR_ROCKAWAY", "Target direction should be preserved")
         XCTAssertEqual(result.id, target.id, "Target id should be preserved")
+        XCTAssertEqual(result.dataSource, "SUBWAY", "Target dataSource should be preserved")
 
         // Settings copied
         XCTAssertEqual(result.activeDays, 31, "Active days should be copied from source")
         XCTAssertEqual(result.activeStartMinutes, 360, "Start minutes should be copied from source")
         XCTAssertEqual(result.activeEndMinutes, 540, "End minutes should be copied from source")
         XCTAssertEqual(result.delayThresholdMinutes, 10, "Delay threshold should be copied from source")
+        XCTAssertEqual(result.serviceThresholdPct, 50, "Service threshold should be copied from source")
+        XCTAssertEqual(result.cancellationThresholdPct, 90, "Cancellation threshold should be copied from source")
         XCTAssertEqual(result.notifyCancellation, false, "Cancellation toggle should be copied from source")
         XCTAssertEqual(result.notifyDelay, true, "Delay toggle should be copied from source")
         XCTAssertEqual(result.notifyRecovery, true, "Recovery toggle should be copied from source")
         XCTAssertEqual(result.digestTimeMinutes, 420, "Digest time should be copied from source")
+        XCTAssertEqual(result.includePlannedWork, true, "Planned work toggle should be copied from source")
     }
 
     // MARK: - Commute Scenario: Independent Direction Configuration

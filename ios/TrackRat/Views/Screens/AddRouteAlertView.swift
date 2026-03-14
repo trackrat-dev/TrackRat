@@ -131,6 +131,10 @@ struct AddRouteAlertView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         draftDirections = []
         draftRoute = nil
+        withAnimation {
+            fromStation = nil
+            toStation = nil
+        }
     }
 
     // MARK: - Line Mode
@@ -331,11 +335,6 @@ struct AddRouteAlertView: View {
                         ]
                         draftRoute = nil
                         showDirectionalSheet = true
-                    }
-
-                    withAnimation {
-                        fromStation = nil
-                        toStation = nil
                     }
                 } label: {
                     Text("Add Alert")
