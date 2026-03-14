@@ -190,7 +190,8 @@ class DepartureService:
                     JourneyStop.has_departed_station.is_(False),
                     and_(
                         TrainJourney.is_cancelled.is_(True),
-                        JourneyStop.scheduled_departure >= now_et() - timedelta(hours=2),
+                        JourneyStop.scheduled_departure
+                        >= now_et() - timedelta(hours=2),
                     ),
                 )
             )

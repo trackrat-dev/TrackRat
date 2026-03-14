@@ -341,14 +341,14 @@ class TestDepartureFiltering:
 
         # Verify stale cancelled train (7813) is NOT in results
         train_ids = {d.train_id for d in result.departures}
-        assert "7813" not in train_ids, (
-            "Cancelled train from 3 hours ago should not appear in departures"
-        )
+        assert (
+            "7813" not in train_ids
+        ), "Cancelled train from 3 hours ago should not appear in departures"
 
         # Verify recent cancelled train (7803) IS in results
-        assert "7803" in train_ids, (
-            "Recently cancelled train (30 min ago) should still be visible"
-        )
+        assert (
+            "7803" in train_ids
+        ), "Recently cancelled train (30 min ago) should still be visible"
 
         # Verify normal train is present
         assert "1234" in train_ids
@@ -511,15 +511,15 @@ class TestDepartureFilterQuery:
 
         filter_str = str(filter_expr)
         # Verify both is_cancelled and scheduled_departure appear in the expression
-        assert "is_cancelled" in filter_str, (
-            "hide_departed filter must include is_cancelled check"
-        )
-        assert "scheduled_departure" in filter_str, (
-            "hide_departed filter must include scheduled_departure time constraint"
-        )
-        assert "has_departed_station" in filter_str, (
-            "hide_departed filter must still include has_departed_station check"
-        )
+        assert (
+            "is_cancelled" in filter_str
+        ), "hide_departed filter must include is_cancelled check"
+        assert (
+            "scheduled_departure" in filter_str
+        ), "hide_departed filter must include scheduled_departure time constraint"
+        assert (
+            "has_departed_station" in filter_str
+        ), "hide_departed filter must still include has_departed_station check"
 
 
 class TestStaleScheduledFiltering:

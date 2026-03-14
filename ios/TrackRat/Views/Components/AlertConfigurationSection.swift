@@ -102,7 +102,6 @@ struct DirectionalAlertConfigurationSheet: View {
                         if directions[selectedIndex].enabled {
                             copySettingsButton
                             AlertConfigurationSection(subscription: currentSubscription)
-                            DigestConfigurationSection(subscription: currentSubscription)
                         }
                     }
                 }
@@ -579,7 +578,9 @@ struct AlertConfigurationSection: View {
                 } else {
                     subscription.activeStartMinutes = nil
                     subscription.activeEndMinutes = nil
-                    subscription.timezone = nil
+                    if subscription.digestTimeMinutes == nil {
+                        subscription.timezone = nil
+                    }
                 }
             }
         )
@@ -595,68 +596,6 @@ struct AlertConfigurationSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
-}
-
-// MARK: - Digest Configuration Section
-
-/// Standalone digest card, separated from alert settings.
-struct DigestConfigurationSection: View {
-    @Binding var subscription: RouteAlertSubscription
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Daily Digest")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: digestEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Daily digest")
-                        Text("Route status summary at a set time")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-                .tint(.orange)
-
-                if subscription.digestTimeMinutes != nil {
-                    HStack {
-                        Text("Digest time")
-                            .foregroundColor(.white.opacity(0.6))
-                        Spacer()
-                        minuteOfDayPicker(selection: Binding(
-                            get: { subscription.digestTimeMinutes ?? 420 },
-                            set: { subscription.digestTimeMinutes = $0 }
-                        ))
-                    }
-
-                    Text("Sends a route status summary once per day at this time.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        }
-    }
-
-    private var digestEnabled: Binding<Bool> {
-        Binding(
-            get: { subscription.digestTimeMinutes != nil },
-            set: { enabled in
-                if enabled {
-                    subscription.digestTimeMinutes = 420  // 7:00 AM
-                    if subscription.timezone == nil {
-                        subscription.timezone = TimeZone.current.identifier
-                    }
-                } else {
-                    subscription.digestTimeMinutes = nil
-                }
-            }
-        )
-    }
-
 }
 
 // MARK: - Shared Helpers

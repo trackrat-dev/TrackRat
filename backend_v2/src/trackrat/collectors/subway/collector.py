@@ -412,9 +412,7 @@ class SubwayCollector:
                         existing_stop.track = arr.track
 
             now = now_et()
-            journey_stops = sorted(
-                journey.stops, key=lambda s: s.stop_sequence or 0
-            )
+            journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)

@@ -724,9 +724,9 @@ class TestDeviceRegistration:
             "/api/v2/chat/messages",
             headers=_user_headers("force-inval-dev", old_token),
         )
-        assert resp_fail.status_code == 401, (
-            f"Old token should be rejected after rotation, got {resp_fail.status_code}"
-        )
+        assert (
+            resp_fail.status_code == 401
+        ), f"Old token should be rejected after rotation, got {resp_fail.status_code}"
 
         # New token should work
         resp_new = e2e_client.get(
