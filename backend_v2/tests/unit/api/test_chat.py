@@ -656,3 +656,99 @@ class TestDeviceRegistration:
             json={"device_id": "reg-change-test", "apns_token": "tok2"},
         )
         assert resp2.json()["chat_token"] is None
+
+    def test_force_chat_token_issues_new_token(self, e2e_client: TestClient):
+        """force_chat_token=true rotates the token and returns a new one.
+
+        This covers the reinstall scenario: client lost its stored token
+        but the server still has the old hash. Without force_chat_token,
+        the server returns None and the client is permanently locked out.
+        """
+        # Initial registration — get the first token
+        resp1 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "force-tok-dev", "apns_token": "tok1"},
+        )
+        original_token = resp1.json()["chat_token"]
+        assert original_token is not None
+
+        # Normal re-registration — no token returned
+        resp2 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "force-tok-dev", "apns_token": "tok2"},
+        )
+        assert resp2.json()["chat_token"] is None
+
+        # Force token rotation — new token returned
+        resp3 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={
+                "device_id": "force-tok-dev",
+                "apns_token": "tok3",
+                "force_chat_token": True,
+            },
+        )
+        new_token = resp3.json()["chat_token"]
+        assert new_token is not None, "force_chat_token should return a new token"
+        assert new_token != original_token, "New token should differ from original"
+
+    def test_force_chat_token_invalidates_old_token(self, e2e_client: TestClient):
+        """After force_chat_token, the old token no longer works for chat."""
+        # Register and get original token
+        resp1 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "force-inval-dev", "apns_token": "tok1"},
+        )
+        old_token = resp1.json()["chat_token"]
+
+        # Verify old token works
+        resp_ok = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers=_user_headers("force-inval-dev", old_token),
+        )
+        assert resp_ok.status_code == 200
+
+        # Force rotation
+        resp2 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={
+                "device_id": "force-inval-dev",
+                "apns_token": "tok2",
+                "force_chat_token": True,
+            },
+        )
+        new_token = resp2.json()["chat_token"]
+
+        # Old token should no longer work
+        resp_fail = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers=_user_headers("force-inval-dev", old_token),
+        )
+        assert resp_fail.status_code == 401, (
+            f"Old token should be rejected after rotation, got {resp_fail.status_code}"
+        )
+
+        # New token should work
+        resp_new = e2e_client.get(
+            "/api/v2/chat/messages",
+            headers=_user_headers("force-inval-dev", new_token),
+        )
+        assert resp_new.status_code == 200
+
+    def test_force_chat_token_false_does_not_rotate(self, e2e_client: TestClient):
+        """Explicitly passing force_chat_token=false behaves like omitting it."""
+        resp1 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "force-false-dev", "apns_token": "tok1"},
+        )
+        assert resp1.json()["chat_token"] is not None
+
+        resp2 = e2e_client.post(
+            "/api/v2/devices/register",
+            json={
+                "device_id": "force-false-dev",
+                "apns_token": "tok2",
+                "force_chat_token": False,
+            },
+        )
+        assert resp2.json()["chat_token"] is None
