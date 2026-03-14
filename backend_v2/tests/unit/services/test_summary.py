@@ -1249,7 +1249,7 @@ class TestFormatFrequencyRouteHeadlineBody:
         return SummaryService()
 
     def test_normal_service_shows_headway(self, summary_service):
-        """12 trains over 120min → headline shows headway, body has train count."""
+        """12 trains over 120min → headline shows headway, body has concise frequency."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=12, cancellations=0
         )
@@ -1258,8 +1258,7 @@ class TestFormatFrequencyRouteHeadlineBody:
         print(f"body: {body!r}")
         print(f"expected_headway: {expected_headway}")
         assert headline == "Past two hours: every ~10 min"
-        assert "12 trains departed" in body
-        assert "every 10 minutes" in body
+        assert "Trains running every 10 minutes" in body
 
     def test_single_train_headway(self, summary_service):
         """1 train over 120min → large headway."""
@@ -1323,13 +1322,12 @@ class TestFormatFrequencyRouteHeadlineBody:
         assert "others departed" not in body
 
     def test_normal_service_body_describes_frequency(self, summary_service):
-        """Normal service body should describe train count and average headway."""
+        """Normal service body should describe concise frequency."""
         headline, body = summary_service._format_frequency_route_headline_body(
             train_count=12, cancellations=0
         )
         print(f"body: {body!r}")
-        assert "12 trains departed in the past 2 hours" in body
-        assert "averaging every 10 minutes" in body
+        assert "Trains running every 10 minutes" in body
 
 
 class TestFormatFrequencyTrainHeadlineBody:

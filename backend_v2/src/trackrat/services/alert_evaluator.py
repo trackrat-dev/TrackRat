@@ -728,7 +728,7 @@ async def _send_recovery_notification(
         return False
 
     route_name = _get_route_name(sub)
-    title = f"Route Clear: {route_name}"
+    title = "Route Clear"
     body = f"Conditions have returned to normal on {route_name}."
 
     custom_data = {
@@ -842,11 +842,9 @@ def _build_alert_message(
     route_name = _get_route_name(sub)
 
     if alert_type == "cancellation":
-        title = f"{sub.data_source}: Cancellations on {route_name}"
-        if cancelled_count == 1:
-            body = f"1 train cancelled in the past hour ({total_count} total)."
-        else:
-            body = f"{cancelled_count} trains cancelled in the past hour ({total_count} total)."
+        cancel_pct = int(cancelled_count / total_count * 100) if total_count else 0
+        title = f"{sub.data_source}: {cancel_pct}% of trains cancelled"
+        body = f"Over the past hour for {route_name}"
     elif alert_type == "reduced_service":
         pct = int((frequency_factor or 0) * 100)
         title = f"{sub.data_source}: Reduced service on {route_name}"
@@ -856,11 +854,9 @@ def _build_alert_message(
             f"({pct}% of normal). Expect longer waits."
         )
     else:
-        title = f"{sub.data_source}: Delays on {route_name}"
-        body = (
-            f"{delayed_count} of {total_count} trains delayed {delay_threshold}+ min "
-            f"in the past hour."
-        )
+        delay_pct = int(delayed_count / total_count * 100) if total_count else 0
+        title = f"{sub.data_source}: {delay_pct}% of trains delayed"
+        body = f"Over the past hour for {route_name}"
 
     return title, body
 

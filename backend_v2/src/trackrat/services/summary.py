@@ -1204,10 +1204,8 @@ class SummaryService:
                 )
         elif train_count > 0:
             headway = SUMMARY_TIME_WINDOW_MINUTES / train_count
-            train_word = "train" if train_count == 1 else "trains"
             body_parts.append(
-                f"{train_count} {train_word} departed in the past {SUMMARY_TIME_WINDOW_MINUTES // 60} hours, "
-                f"averaging every {headway:.0f} minutes."
+                f"Trains running every {headway:.0f} minutes."
             )
         else:
             body_parts.append(

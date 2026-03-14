@@ -163,10 +163,8 @@ class TestAlertEvaluator:
         apns.send_alert_notification.assert_called_once()
 
         call_args = apns.send_alert_notification.call_args
-        assert (
-            "Cancellation" in call_args.args[1]
-            or "cancellation" in call_args.args[1].lower()
-        )
+        title = call_args.args[1]
+        assert "cancelled" in title.lower(), f"Title should mention cancelled: {title}"
 
     async def test_delay_above_threshold_triggers_alert(self, db_session: AsyncSession):
         """When >=50% of trains are delayed 15+ min, an alert fires."""
@@ -373,9 +371,9 @@ class TestAlertEvaluator:
         assert count == 1
 
         call_args = apns.send_alert_notification.call_args
-        body = call_args.args[2]
-        # Should mention 1 cancelled, not 2
-        assert "1 train cancelled" in body
+        title = call_args.args[1]
+        # Should mention 100% (1/1 matching train cancelled), not 50% (2 total across lines)
+        assert "100% of trains cancelled" in title
 
     async def test_station_pair_matches_origin_destination(
         self, db_session: AsyncSession
@@ -863,7 +861,7 @@ class TestSystemAwareAlertPriority:
 
         call_args = apns.send_alert_notification.call_args
         title = call_args.args[1]
-        assert "Cancellation" in title
+        assert "cancelled" in title.lower(), f"Title should mention cancelled: {title}"
         assert "SUBWAY" in title
         print(f"  Verified: SUBWAY cancellation fires correctly — {title}")
 
@@ -1030,8 +1028,8 @@ class TestAlertHelpers:
         title, body = _build_alert_message(
             sub, "cancellation", 2, 0, 10, frequency_factor=None
         )
-        assert "Cancellation" in title
-        assert "2 trains cancelled" in body
+        assert "20% of trains cancelled" in title
+        assert "Over the past hour" in body
         print(f"  Title: {title}")
         print(f"  Body: {body}")
 
@@ -1596,8 +1594,11 @@ class TestDirectionalAlertEvaluation:
 
         call_args = apns.send_alert_notification.call_args
         title = call_args.args[1]
-        assert "toward" in title.lower(), f"Title should mention direction: {title}"
+        body = call_args.args[2]
+        assert "delayed" in title.lower(), f"Title should mention delayed: {title}"
+        assert "toward" in body.lower(), f"Body should mention direction: {body}"
         print(f"  Title: {title}")
+        print(f"  Body: {body}")
 
     async def test_no_direction_includes_both_directions(
         self, db_session: AsyncSession
@@ -1710,7 +1711,7 @@ class TestDirectionalAlertMessage:
     """Tests for direction in alert message formatting."""
 
     def test_build_alert_message_with_direction(self):
-        """Alert message should include 'toward <station name>' when direction is set."""
+        """Alert message body should include 'toward <station name>' when direction is set."""
         sub = RouteAlertSubscription(
             device_id="test",
             data_source="NJT",
@@ -1718,33 +1719,37 @@ class TestDirectionalAlertMessage:
             direction="TR",
         )
         title, body = _build_alert_message(sub, "delay", 0, 3, 4)
-        assert "toward" in title.lower()
-        assert "Trenton" in title or "TR" in title
+        assert "75% of trains delayed" in title
+        assert "toward" in body.lower()
+        assert "Trenton" in body or "TR" in body
         print(f"  Title with direction: {title}")
         print(f"  Body: {body}")
 
     def test_build_alert_message_without_direction(self):
-        """Alert message without direction should just show route name."""
+        """Alert message body should show route name without direction."""
         sub = RouteAlertSubscription(
             device_id="test",
             data_source="NJT",
             line_id="njt-nec",
         )
         title, body = _build_alert_message(sub, "delay", 0, 3, 4)
-        assert "toward" not in title.lower()
-        assert "Northeast Corridor" in title
+        assert "toward" not in body.lower()
+        assert "Northeast Corridor" in body
         print(f"  Title without direction: {title}")
+        print(f"  Body: {body}")
 
     def test_build_alert_message_custom_delay_threshold(self):
-        """Alert message should use the custom delay threshold in the body."""
+        """Alert message title shows percentage of delayed trains."""
         sub = RouteAlertSubscription(
             device_id="test",
             data_source="NJT",
             line_id="njt-nec",
         )
         title, body = _build_alert_message(sub, "delay", 0, 3, 4, delay_threshold=5)
-        assert "5+ min" in body
-        print(f"  Body with custom threshold: {body}")
+        assert "75% of trains delayed" in title
+        assert "Over the past hour" in body
+        print(f"  Title: {title}")
+        print(f"  Body: {body}")
 
 
 class TestTimeWindow:
