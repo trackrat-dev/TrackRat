@@ -237,12 +237,19 @@ struct SettingsSection: View {
                     Divider()
                         .background(Color.white.opacity(0.1))
 
-                    HStack(spacing: 16) {
-                        Text(enabledSystemsSummary)
-                            .font(.subheadline)
-                            .foregroundColor(.white.opacity(0.7))
-                            .lineLimit(2)
-                        Spacer()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditingTrainSystems.toggle()
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack(spacing: 16) {
+                            Text(enabledSystemsSummary)
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.7))
+                                .lineLimit(2)
+                            Spacer()
+                        }
                     }
                     .padding()
                 }
