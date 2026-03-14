@@ -17,7 +17,6 @@ struct AlertConfigurationSheetWrapper: View {
             ScrollView {
                 VStack(spacing: 12) {
                     AlertConfigurationSection(subscription: $sub)
-                    DigestConfigurationSection(subscription: $sub)
                 }
                 .padding()
             }
@@ -54,10 +53,18 @@ enum AlertSensitivity: String, CaseIterable {
 
 // MARK: - Alert Configuration Section
 
-/// Unified alert settings card: alert types, recovery, planned work, active days, time window.
-/// Digest is handled separately by `DigestConfigurationSection`.
+/// Unified alert settings card: active days, alert types, and collapsible advanced options
+/// (recovery, planned work, time window, daily digest).
 struct AlertConfigurationSection: View {
     @Binding var subscription: RouteAlertSubscription
+    @State private var showCustomDays = false
+    @State private var showMoreOptions = false
+
+    private static let presetBitmasks: Set<Int> = [0, 31, 96, 127]
+
+    private var isCustomDays: Bool {
+        !Self.presetBitmasks.contains(subscription.activeDays)
+    }
 
     private var isFrequencyBased: Bool {
         RouteAlertSubscription.frequencyFirstSources.contains(subscription.dataSource)
@@ -71,6 +78,13 @@ struct AlertConfigurationSection: View {
             && Self.plannedWorkSystems.contains(subscription.dataSource)
     }
 
+    private var hasActiveAdvancedOptions: Bool {
+        subscription.notifyRecovery
+            || subscription.includePlannedWork
+            || subscription.activeStartMinutes != nil
+            || subscription.digestTimeMinutes != nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Alert Settings")
@@ -82,89 +96,184 @@ struct AlertConfigurationSection: View {
                     .font(.subheadline.bold())
                     .foregroundColor(.secondary)
                 dayPresetRow
-                dayGrid
+
+                if isCustomDays || showCustomDays {
+                    dayGrid
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 Divider().opacity(0.3)
 
                 // Cancellations
                 sensitivityRow(
                     label: "Cancellations",
+                    hint: cancellationSensitivity.wrappedValue == .severeOnly
+                        ? "Major cancellations only"
+                        : "All cancellations",
                     sensitivity: cancellationSensitivity
                 )
 
                 // Reduced Service / Delays
                 sensitivityRow(
                     label: isFrequencyBased ? "Reduced Service" : "Delays",
+                    hint: isFrequencyBased
+                        ? (delaySensitivity.wrappedValue == .severeOnly ? "50%+ service reduction" : "Any service reduction")
+                        : (delaySensitivity.wrappedValue == .severeOnly ? "20+ min delays" : "5+ min delays"),
                     sensitivity: delaySensitivity
                 )
 
-                // Recovery (only when at least one alert type is active)
-                if subscription.notifyCancellation || subscription.notifyDelay {
-                    Divider().opacity(0.3)
-                    Toggle(isOn: $subscription.notifyRecovery) {
-                        Text("Notify on recovery")
-                    }
-                    .tint(.orange)
-                }
-
-                // Planned work (MTA systems only)
-                if showPlannedWork {
-                    Divider().opacity(0.3)
-                    Toggle(isOn: $subscription.includePlannedWork) {
-                        Text("Planned work")
-                    }
-                    .tint(.orange)
-                }
-
                 Divider().opacity(0.3)
 
-                // Time Window
-                Toggle(isOn: timeWindowEnabled) {
-                    Text("Time Window")
-                }
-                .tint(.orange)
+                // More Options (collapsible advanced settings)
+                moreOptionsButton
 
-                if subscription.activeStartMinutes != nil {
-                    HStack {
-                        Text("From")
-                            .foregroundColor(.white.opacity(0.6))
-                        Spacer()
-                        minutePicker(selection: Binding(
-                            get: { subscription.activeStartMinutes ?? 360 },
-                            set: { subscription.activeStartMinutes = $0 }
-                        ))
-                    }
-                    HStack {
-                        Text("To")
-                            .foregroundColor(.white.opacity(0.6))
-                        Spacer()
-                        minutePicker(selection: Binding(
-                            get: { subscription.activeEndMinutes ?? 1200 },
-                            set: { subscription.activeEndMinutes = $0 }
-                        ))
-                    }
-
-                    Text("Alerts only sent during this window. Overnight ranges (e.g. 10pm–6am) are supported.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                if showMoreOptions || hasActiveAdvancedOptions {
+                    moreOptionsContent
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
         }
     }
 
-    // MARK: - Sensitivity Rows
+    // MARK: - More Options
 
-    private func sensitivityRow(label: String, sensitivity: Binding<AlertSensitivity>) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Picker("", selection: sensitivity) {
-                ForEach(AlertSensitivity.allCases, id: \.self) { level in
-                    Text(level.rawValue).tag(level)
+    private var moreOptionsButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showMoreOptions.toggle()
+            }
+        } label: {
+            HStack {
+                Text("More Options")
+                    .foregroundColor(.white)
+                if hasActiveAdvancedOptions {
+                    Circle()
+                        .fill(Color.orange)
+                        .frame(width: 6, height: 6)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(showMoreOptions || hasActiveAdvancedOptions ? 90 : 0))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var moreOptionsContent: some View {
+        // Recovery (only when at least one alert type is active)
+        if subscription.notifyCancellation || subscription.notifyDelay {
+            Toggle(isOn: $subscription.notifyRecovery) {
+                Text("Notify on recovery")
+            }
+            .tint(.orange)
+        }
+
+        // Planned work (MTA systems only)
+        if showPlannedWork {
+            Toggle(isOn: $subscription.includePlannedWork) {
+                Text("Planned work")
+            }
+            .tint(.orange)
+        }
+
+        // Time Window
+        Toggle(isOn: timeWindowEnabled) {
+            Text("Time window")
+        }
+        .tint(.orange)
+
+        if subscription.activeStartMinutes != nil {
+            HStack {
+                Text("From")
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+                minutePicker(selection: Binding(
+                    get: { subscription.activeStartMinutes ?? 360 },
+                    set: { subscription.activeStartMinutes = $0 }
+                ))
+            }
+            HStack {
+                Text("To")
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+                minutePicker(selection: Binding(
+                    get: { subscription.activeEndMinutes ?? 1200 },
+                    set: { subscription.activeEndMinutes = $0 }
+                ))
+            }
+
+            Text("Alerts only sent during this window. Overnight ranges (e.g. 10pm–6am) are supported.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+
+        Divider().opacity(0.3)
+
+        // Daily Digest
+        Toggle(isOn: digestEnabled) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Daily digest")
+                Text("Route status summary at a set time")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+        }
+        .tint(.orange)
+
+        if subscription.digestTimeMinutes != nil {
+            HStack {
+                Text("Digest time")
+                    .foregroundColor(.white.opacity(0.6))
+                Spacer()
+                minutePicker(selection: Binding(
+                    get: { subscription.digestTimeMinutes ?? 420 },
+                    set: { subscription.digestTimeMinutes = $0 }
+                ))
+            }
+        }
+    }
+
+    // MARK: - Digest
+
+    private var digestEnabled: Binding<Bool> {
+        Binding(
+            get: { subscription.digestTimeMinutes != nil },
+            set: { enabled in
+                if enabled {
+                    subscription.digestTimeMinutes = 420  // 7:00 AM
+                    if subscription.timezone == nil {
+                        subscription.timezone = TimeZone.current.identifier
+                    }
+                } else {
+                    subscription.digestTimeMinutes = nil
                 }
             }
-            .pickerStyle(.segmented)
-            .frame(width: 180)
+        )
+    }
+
+    // MARK: - Sensitivity Rows
+
+    private func sensitivityRow(label: String, hint: String?, sensitivity: Binding<AlertSensitivity>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                Spacer()
+                Picker("", selection: sensitivity) {
+                    ForEach(AlertSensitivity.allCases, id: \.self) { level in
+                        Text(level.rawValue).tag(level)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 180)
+            }
+            if let hint, sensitivity.wrappedValue != .none {
+                Text(hint)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
@@ -244,17 +353,37 @@ struct AlertConfigurationSection: View {
     // MARK: - Days
 
     private var dayPresetRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             presetButton("None", bitmask: 0)
             presetButton("Weekdays", bitmask: 31)
             presetButton("Weekends", bitmask: 96)
             presetButton("Every Day", bitmask: 127)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showCustomDays.toggle()
+                }
+            } label: {
+                Text("Custom")
+                    .font(.caption)
+                    .fontWeight(isCustomDays ? .bold : .regular)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule().fill(isCustomDays ? Color.orange : Color.white.opacity(0.1))
+                    )
+                    .foregroundColor(isCustomDays ? .black : .white)
+            }
+            .buttonStyle(.plain)
         }
     }
 
     private func presetButton(_ label: String, bitmask: Int) -> some View {
         Button {
             subscription.activeDays = bitmask
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showCustomDays = false
+            }
         } label: {
             Text(label)
                 .font(.caption)
@@ -344,78 +473,3 @@ struct AlertConfigurationSection: View {
     }
 }
 
-// MARK: - Digest Configuration Section
-
-/// Standalone digest card, separated from alert settings.
-struct DigestConfigurationSection: View {
-    @Binding var subscription: RouteAlertSubscription
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Daily Digest")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle(isOn: digestEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Daily digest")
-                        Text("Route status summary at a set time")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-                .tint(.orange)
-
-                if subscription.digestTimeMinutes != nil {
-                    HStack {
-                        Text("Digest time")
-                            .foregroundColor(.white.opacity(0.6))
-                        Spacer()
-                        minutePicker(selection: Binding(
-                            get: { subscription.digestTimeMinutes ?? 420 },
-                            set: { subscription.digestTimeMinutes = $0 }
-                        ))
-                    }
-
-                    Text("Sends a route status summary once per day at this time.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        }
-    }
-
-    private var digestEnabled: Binding<Bool> {
-        Binding(
-            get: { subscription.digestTimeMinutes != nil },
-            set: { enabled in
-                if enabled {
-                    subscription.digestTimeMinutes = 420  // 7:00 AM
-                    if subscription.timezone == nil {
-                        subscription.timezone = TimeZone.current.identifier
-                    }
-                } else {
-                    subscription.digestTimeMinutes = nil
-                }
-            }
-        )
-    }
-
-    private func minutePicker(selection: Binding<Int>) -> some View {
-        let date = Binding<Date>(
-            get: {
-                Calendar.current.startOfDay(for: Date())
-                    .addingTimeInterval(TimeInterval(selection.wrappedValue * 60))
-            },
-            set: { newDate in
-                let comps = Calendar.current.dateComponents([.hour, .minute], from: newDate)
-                selection.wrappedValue = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
-            }
-        )
-        return DatePicker("", selection: date, displayedComponents: .hourAndMinute)
-            .labelsHidden()
-    }
-}

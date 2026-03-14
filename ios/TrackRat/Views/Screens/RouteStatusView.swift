@@ -113,7 +113,6 @@ struct RouteStatusView: View {
                 .onChange(of: alertConfigBinding.wrappedValue.activeDays) { _, newDays in
                     handleActiveDaysChange(newDays)
                 }
-            DigestConfigurationSection(subscription: alertConfigBinding)
         }
     }
 
