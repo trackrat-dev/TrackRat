@@ -376,6 +376,8 @@ struct AddRouteAlertView: View {
                     Spacer()
                 } else if trainStation != nil {
                     departuresList
+                } else {
+                    Spacer()
                 }
             }
         }
