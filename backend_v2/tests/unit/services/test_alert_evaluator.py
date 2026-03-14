@@ -163,10 +163,8 @@ class TestAlertEvaluator:
         apns.send_alert_notification.assert_called_once()
 
         call_args = apns.send_alert_notification.call_args
-        assert (
-            "Cancellation" in call_args.args[1]
-            or "cancellation" in call_args.args[1].lower()
-        )
+        title = call_args.args[1]
+        assert "cancelled" in title.lower(), f"Title should mention cancelled: {title}"
 
     async def test_delay_above_threshold_triggers_alert(self, db_session: AsyncSession):
         """When >=50% of trains are delayed 15+ min, an alert fires."""
@@ -373,9 +371,9 @@ class TestAlertEvaluator:
         assert count == 1
 
         call_args = apns.send_alert_notification.call_args
-        body = call_args.args[2]
-        # Should mention 1 cancelled, not 2
-        assert "1 train cancelled" in body
+        title = call_args.args[1]
+        # Should mention 100% (1/1 matching train cancelled), not 50% (2 total across lines)
+        assert "100% of trains cancelled" in title
 
     async def test_station_pair_matches_origin_destination(
         self, db_session: AsyncSession
@@ -863,7 +861,7 @@ class TestSystemAwareAlertPriority:
 
         call_args = apns.send_alert_notification.call_args
         title = call_args.args[1]
-        assert "Cancellation" in title
+        assert "cancelled" in title.lower(), f"Title should mention cancelled: {title}"
         assert "SUBWAY" in title
         print(f"  Verified: SUBWAY cancellation fires correctly — {title}")
 
@@ -1596,8 +1594,11 @@ class TestDirectionalAlertEvaluation:
 
         call_args = apns.send_alert_notification.call_args
         title = call_args.args[1]
-        assert "toward" in title.lower(), f"Title should mention direction: {title}"
+        body = call_args.args[2]
+        assert "delayed" in title.lower(), f"Title should mention delayed: {title}"
+        assert "toward" in body.lower(), f"Body should mention direction: {body}"
         print(f"  Title: {title}")
+        print(f"  Body: {body}")
 
     async def test_no_direction_includes_both_directions(
         self, db_session: AsyncSession
