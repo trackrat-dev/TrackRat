@@ -178,7 +178,7 @@ struct SettingsSection: View {
     private var routeAlertsSummary: String? {
         let subs = alertService.subscriptions
         guard !subs.isEmpty else { return nil }
-        return subs.map { $0.displayName }.sorted().joined(separator: "\n")
+        return "You're being alerted on: " + subs.map { $0.displayName }.sorted().joined(separator: ", ") + "."
     }
 
     private var enabledSystemsSummary: String {
@@ -193,7 +193,7 @@ struct SettingsSection: View {
             }
             return name
         }.joined(separator: ", ")
-        return "You're currently following: \(names)"
+        return "You're currently following: \(names)."
     }
 
     var body: some View {
