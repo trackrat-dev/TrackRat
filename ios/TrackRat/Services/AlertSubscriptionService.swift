@@ -147,6 +147,28 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     var digestTimeMinutes: Int?  // Minutes from midnight, nil = disabled
     var includePlannedWork: Bool
 
+    /// Human-readable name for this subscription (e.g. "Hoboken to 33rd Street").
+    var displayName: String {
+        if let trainName = trainName {
+            return trainName
+        } else if let lineName = lineName {
+            guard let direction = direction else { return lineName }
+            let directionName = Stations.displayName(for: direction)
+            if let lineId = lineId,
+               let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+                let stations = route.stationCodes
+                let fromCode = direction == stations.last ? stations.first : stations.last
+                if let fromCode = fromCode {
+                    return "\(Stations.displayName(for: fromCode)) to \(directionName)"
+                }
+            }
+            return "\(lineName) to \(directionName)"
+        } else if let from = fromStationCode, let to = toStationCode {
+            return "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))"
+        }
+        return "Unknown"
+    }
+
     /// Frequency-first systems use service threshold; delay-first use delay threshold.
     static let frequencyFirstSources: Set<String> = ["SUBWAY", "PATH", "PATCO"]
 

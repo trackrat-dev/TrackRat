@@ -90,14 +90,14 @@ struct EditRouteAlertsView: View {
                             selectedSubscription = sub
                         } label: {
                             HStack {
-                                if let trainName = sub.trainName, sub.trainId != nil {
+                                if sub.trainName != nil && sub.trainId != nil {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Label(trainName, systemImage: "train.side.front.car")
+                                        Label(sub.displayName, systemImage: "train.side.front.car")
                                         scheduleSummary(for: sub)
                                     }
                                 } else if let lineName = sub.lineName {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Label(lineDisplayName(sub: sub, lineName: lineName), systemImage: "tram.fill")
+                                        Label(sub.displayName, systemImage: "tram.fill")
                                         Text("\(TrainSystem(rawValue: sub.dataSource)?.displayName ?? sub.dataSource): \(lineName)")
                                             .font(.caption2)
                                             .foregroundColor(.white.opacity(0.5))
@@ -108,12 +108,9 @@ struct EditRouteAlertsView: View {
                                         }
                                         scheduleSummary(for: sub)
                                     }
-                                } else if let from = sub.fromStationCode, let to = sub.toStationCode {
+                                } else if sub.fromStationCode != nil && sub.toStationCode != nil {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Label(
-                                            "\(Stations.displayName(for: from)) to \(Stations.displayName(for: to))",
-                                            systemImage: "arrow.right"
-                                        )
+                                        Label(sub.displayName, systemImage: "arrow.right")
                                         scheduleSummary(for: sub)
                                     }
                                 }
@@ -231,22 +228,6 @@ struct EditRouteAlertsView: View {
             guard let token = AppDelegate.deviceToken else { return }
             await alertService.syncWithBackend(apnsToken: token)
         }
-    }
-
-    /// Build display name for a line subscription, showing "{from} to {destination}".
-    private func lineDisplayName(sub: RouteAlertSubscription, lineName: String) -> String {
-        guard let direction = sub.direction else { return lineName }
-        let directionName = Stations.displayName(for: direction)
-        // Use route station codes to find the "from" terminus
-        if let lineId = sub.lineId,
-           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
-            let stations = route.stationCodes
-            let fromCode = direction == stations.last ? stations.first : stations.last
-            if let fromCode = fromCode {
-                return "\(Stations.displayName(for: fromCode)) to \(directionName)"
-            }
-        }
-        return "\(lineName) to \(directionName)"
     }
 
     /// Build a RouteStatusContext for a subscription, using direction to set from/to.
