@@ -160,6 +160,8 @@ struct RouteStatusView: View {
             // Check freemium limit before auto-subscribing
             if !subscriptionService.isPro
                 && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit {
+                // Reset activeDays so the UI reverts to "None" when paywall is dismissed
+                draftSubscription?.activeDays = 0
                 showingPaywall = true
                 return
             }
