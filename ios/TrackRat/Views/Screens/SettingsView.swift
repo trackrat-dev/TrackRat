@@ -260,13 +260,23 @@ struct SettingsSection: View {
 
                     let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
                     ForEach(sortedSystems, id: \.self) { system in
+                        let isSelected = appState.isSystemSelected(system)
+                        let atFreeLimit = !subscriptionService.isPro
+                            && !isSelected
+                            && appState.selectedSystems.count >= SubscriptionService.freeTrainSystemLimit
                         TrainSystemRow(
                             system: system,
-                            isSelected: appState.isSystemSelected(system),
+                            isSelected: isSelected,
                             isLast: system == sortedSystems.last,
-                            subtitle: system == .amtrak ? appState.amtrakMode.label : nil
+                            subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
+                            showProBadge: atFreeLimit
                         ) {
-                            appState.toggleSystem(system)
+                            if atFreeLimit {
+                                paywallContext = .trainSystems
+                                showingPaywall = true
+                            } else {
+                                appState.toggleSystem(system)
+                            }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
                     }
@@ -356,7 +366,13 @@ struct SettingsSection: View {
                         .background(Color.white.opacity(0.1))
 
                     Button {
-                        showAddRouteAlert = true
+                        if !subscriptionService.isPro
+                            && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit {
+                            paywallContext = .routeAlerts
+                            showingPaywall = true
+                        } else {
+                            showAddRouteAlert = true
+                        }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
                         HStack(spacing: 12) {
@@ -1260,6 +1276,7 @@ private struct TrainSystemRow: View {
     let isSelected: Bool
     let isLast: Bool
     var subtitle: String? = nil
+    var showProBadge: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -1282,6 +1299,15 @@ private struct TrainSystemRow: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
+                    }
+
+                    if showProBadge {
+                        Text("PRO")
+                            .font(.caption2.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(.orange))
                     }
 
                     Spacer()

@@ -18,12 +18,16 @@ enum SubscriptionStatus: Equatable {
 
 enum PremiumFeature: String, CaseIterable {
     case developerChat = "Chat with Developer"
+    case multipleTrainSystems = "Multiple Train Systems"
+    case unlimitedAlerts = "Unlimited Route Alerts"
 
     var displayName: String { rawValue }
 
     var iconName: String {
         switch self {
         case .developerChat: return "bubble.left.and.bubble.right.fill"
+        case .multipleTrainSystems: return "tram.fill"
+        case .unlimitedAlerts: return "bell.badge.fill"
         }
     }
 }
@@ -32,23 +36,18 @@ enum PremiumFeature: String, CaseIterable {
 
 enum PaywallContext {
     case developerChat
+    case trainSystems
+    case routeAlerts
     case generic
 
-    var headline: String {
+    var subtext: String? {
         switch self {
-        case .developerChat:
-            return "TrackRat Pro"
-        case .generic:
-            return "TrackRat Pro"
-        }
-    }
-
-    var subtext: String {
-        switch self {
-        case .developerChat:
-            return "Subscribe to chat directly with the developer"
-        case .generic:
-            return "Your subscription keeps TrackRat running"
+        case .trainSystems:
+            return "Free users can follow one train system. Upgrade to Pro to track all 7 systems \u{2014} start with a free 1-week trial."
+        case .routeAlerts:
+            return "Free users get one route alert. Upgrade to Pro for unlimited alerts across all your routes \u{2014} start with a free 1-week trial."
+        case .developerChat, .generic:
+            return nil
         }
     }
 }
@@ -82,6 +81,10 @@ final class SubscriptionService: ObservableObject {
     // Product IDs - configure these in App Store Connect
     static let monthlyProductId = "com.trackrat.pro.monthly"
     private let productIds: Set<String> = [monthlyProductId]
+
+    // Free tier limits
+    static let freeTrainSystemLimit = 1
+    static let freeRouteAlertLimit = 1
 
     // MARK: - Computed Properties
 

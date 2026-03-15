@@ -4,7 +4,8 @@ import UserNotifications
 struct OnboardingView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
+
     @State private var homeStation: Station? = nil
     @State private var workStation: Station? = nil
     @State private var otherFavorites: [Station] = []
@@ -16,6 +17,7 @@ struct OnboardingView: View {
     @State private var isCompletingOnboarding = false
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
+    @State private var showingPaywall = false
 
     private enum StationType {
         case home, work
@@ -116,6 +118,9 @@ struct OnboardingView: View {
                 }
             )
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .trainSystems)
+        }
     }
 
     // MARK: - Train System Selection
@@ -136,13 +141,22 @@ struct OnboardingView: View {
             // System selection cards
             VStack(spacing: 12) {
                 ForEach(TrainSystem.allCases.sorted { $0.displayName < $1.displayName }, id: \.self) { system in
+                    let isSelected = appState.isSystemSelected(system)
+                    let atFreeLimit = !subscriptionService.isPro
+                        && !isSelected
+                        && appState.selectedSystems.count >= SubscriptionService.freeTrainSystemLimit
                     SystemSelectionCard(
                         system: system,
-                        isSelected: appState.isSystemSelected(system),
+                        isSelected: isSelected,
                         subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
+                        showProBadge: atFreeLimit,
                         onTap: {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                appState.toggleSystem(system, allowEmpty: true)
+                            if atFreeLimit {
+                                showingPaywall = true
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    appState.toggleSystem(system, allowEmpty: true)
+                                }
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
@@ -566,6 +580,7 @@ struct SystemSelectionCard: View {
     let system: TrainSystem
     let isSelected: Bool
     var subtitle: String? = nil
+    var showProBadge: Bool = false
     let onTap: () -> Void
 
     var body: some View {
@@ -603,6 +618,14 @@ struct SystemSelectionCard: View {
                             .background(
                                 Capsule().fill(.orange.opacity(0.2))
                             )
+                    }
+                    if showProBadge {
+                        Text("PRO")
+                            .font(.caption2.bold())
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(.orange))
                     }
                 }
 

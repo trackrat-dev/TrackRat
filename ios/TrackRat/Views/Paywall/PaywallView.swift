@@ -94,6 +94,15 @@ struct PaywallView: View {
                     )
                     .padding(.horizontal)
 
+                    // Context-specific messaging (for train system / route alert limits)
+                    if let subtext = context.subtext {
+                        Text(subtext)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+
                     // Pricing options
                     if subscriptionService.isLoading && subscriptionService.availableProducts.isEmpty {
                         ProgressView()
@@ -428,7 +437,7 @@ private struct PurchaseSuccessOverlay: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
-                    Text("Head to Settings to chat with me anytime")
+                    Text("You now have full access to all TrackRat features")
                         .font(.subheadline)
                         .foregroundColor(.white.opacity(0.7))
                         .multilineTextAlignment(.center)
