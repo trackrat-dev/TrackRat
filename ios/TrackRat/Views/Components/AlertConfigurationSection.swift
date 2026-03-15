@@ -73,63 +73,75 @@ struct DirectionalAlertConfigurationSheet: View {
 
     private var currentSubscription: Binding<RouteAlertSubscription> {
         Binding(
-            get: { directions[selectedIndex].subscription },
-            set: { directions[selectedIndex].subscription = $0 }
+            get: { directions[safeIndex].subscription },
+            set: { directions[safeIndex].subscription = $0 }
         )
     }
 
     private var currentEnabled: Binding<Bool> {
         Binding(
-            get: { directions[selectedIndex].enabled },
-            set: { directions[selectedIndex].enabled = $0 }
+            get: { directions[safeIndex].enabled },
+            set: { directions[safeIndex].enabled = $0 }
         )
     }
 
+    /// Clamped index to prevent out-of-range crashes when SwiftUI
+    /// evaluates the sheet body with an empty or stale directions array.
+    private var safeIndex: Int {
+        guard !directions.isEmpty else { return 0 }
+        return min(selectedIndex, directions.count - 1)
+    }
+
+    @ViewBuilder
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    directionPicker
+        if directions.isEmpty {
+            Color.clear
+        } else {
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        directionPicker
 
-                    if directions[selectedIndex].alreadySubscribed {
-                        alreadySubscribedBanner
-                    } else {
-                        Toggle("Enable this direction", isOn: currentEnabled)
-                            .tint(.orange)
-                            .padding()
-                            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+                        if directions[safeIndex].alreadySubscribed {
+                            alreadySubscribedBanner
+                        } else {
+                            Toggle("Enable this direction", isOn: currentEnabled)
+                                .tint(.orange)
+                                .padding()
+                                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
 
-                        if directions[selectedIndex].enabled {
-                            copySettingsButton
-                            AlertConfigurationSection(subscription: currentSubscription)
+                            if directions[safeIndex].enabled {
+                                copySettingsButton
+                                AlertConfigurationSection(subscription: currentSubscription)
+                            }
                         }
                     }
+                    .padding()
                 }
-                .padding()
-            }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Customize Alert")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(.orange)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        let enabledSubs = directions
-                            .filter { $0.enabled && !$0.alreadySubscribed }
-                            .map(\.subscription)
-                        onSave(enabledSubs)
-                        dismiss()
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle("Customize Alert")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") { dismiss() }
+                            .foregroundColor(.orange)
                     }
-                    .foregroundColor(.orange)
-                    .fontWeight(.semibold)
-                    .disabled(!canSave)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") {
+                            let enabledSubs = directions
+                                .filter { $0.enabled && !$0.alreadySubscribed }
+                                .map(\.subscription)
+                            onSave(enabledSubs)
+                            dismiss()
+                        }
+                        .foregroundColor(.orange)
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                    }
                 }
             }
+            .preferredColorScheme(.dark)
         }
-        .preferredColorScheme(.dark)
     }
 
     // MARK: - Direction Picker
@@ -162,13 +174,13 @@ struct DirectionalAlertConfigurationSheet: View {
     @ViewBuilder
     private var copySettingsButton: some View {
         if directions.count == 2 {
-            let otherIndex = selectedIndex == 0 ? 1 : 0
+            let otherIndex = safeIndex == 0 ? 1 : 0
             let other = directions[otherIndex]
             if other.enabled && !other.alreadySubscribed {
                 Button {
-                    directions[selectedIndex].subscription = RouteAlertSubscription.copySettings(
+                    directions[safeIndex].subscription = RouteAlertSubscription.copySettings(
                         from: directions[otherIndex].subscription,
-                        to: directions[selectedIndex].subscription
+                        to: directions[safeIndex].subscription
                     )
                 } label: {
                     Label("Copy settings from \(directions[otherIndex].label)", systemImage: "doc.on.doc")
