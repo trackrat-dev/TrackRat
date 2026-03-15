@@ -204,7 +204,7 @@ class AlertConfigurationTests: XCTestCase {
         XCTAssertEqual(sub.delayThresholdMinutes, 5, "All delay should be 5 minutes")
     }
 
-    // MARK: - Reduced Service Sensitivity Thresholds (Frequency-Based)
+    // MARK: - Fewer Trains Sensitivity Thresholds (Frequency-Based)
 
     func testReducedService_severeSetsFiftyPercent() {
         var sub = RouteAlertSubscription(
