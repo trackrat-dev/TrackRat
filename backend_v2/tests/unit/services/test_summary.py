@@ -1520,8 +1520,8 @@ class TestComputeTrainsByHeadway:
         service = SummaryService()
         trains_by_category = {
             DELAY_CATEGORY_ON_TIME: [
-                self._make_train("A", 0),   # first train — excluded
-                self._make_train("B", 3),   # 3 min gap → 0-5
+                self._make_train("A", 0),  # first train — excluded
+                self._make_train("B", 3),  # 3 min gap → 0-5
                 self._make_train("C", 10),  # 7 min gap → 5-10
                 self._make_train("D", 25),  # 15 min gap → 10-20
                 self._make_train("E", 50),  # 25 min gap → 20+
@@ -1581,9 +1581,7 @@ class TestComputeTrainsByHeadway:
 
         result = service._compute_trains_by_headway(trains_by_category)
 
-        all_ids = [
-            t.train_id for trains in result.values() for t in trains
-        ]
+        all_ids = [t.train_id for trains in result.values() for t in trains]
         print(f"All train IDs in bins: {all_ids}")
         assert "CANCEL" not in all_ids
         # B is 4 min after A → 0-5 bin
@@ -1622,8 +1620,8 @@ class TestComputeTrainsByHeadway:
         base = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
         trains_by_category = {
             DELAY_CATEGORY_ON_TIME: [
-                self._make_train("A", 0),   # earliest
-                self._make_train("C", 8),   # third
+                self._make_train("A", 0),  # earliest
+                self._make_train("C", 8),  # third
             ],
             DELAY_CATEGORY_SLIGHT_DELAY: [
                 TrainDelaySummary(
@@ -1662,7 +1660,10 @@ class TestComputeTrainsByHeadway:
         print(f"Total trains: {total}")
         assert total == 0
         assert set(result.keys()) == {
-            HEADWAY_BIN_0_5, HEADWAY_BIN_5_10, HEADWAY_BIN_10_20, HEADWAY_BIN_20_PLUS
+            HEADWAY_BIN_0_5,
+            HEADWAY_BIN_5_10,
+            HEADWAY_BIN_10_20,
+            HEADWAY_BIN_20_PLUS,
         }
 
     def test_boundary_values(self):
@@ -1671,7 +1672,7 @@ class TestComputeTrainsByHeadway:
         trains_by_category = {
             DELAY_CATEGORY_ON_TIME: [
                 self._make_train("A", 0),
-                self._make_train("B", 5),   # exactly 5 → 5-10 bin
+                self._make_train("B", 5),  # exactly 5 → 5-10 bin
                 self._make_train("C", 15),  # exactly 10 → 10-20 bin
                 self._make_train("D", 35),  # exactly 20 → 20+ bin
             ],
