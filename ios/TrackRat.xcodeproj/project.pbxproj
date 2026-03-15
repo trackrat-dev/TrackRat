@@ -106,6 +106,7 @@
 		A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E42DFC73650002FB39 /* BuildTests.swift */; };
 		A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E52DFC73650002FB39 /* StationsTests.swift */; };
 		446F271841A8FA59C62FA628 /* TrainSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */; };
+		C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */; };
 		A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E62DFC73650002FB39 /* TrainTests.swift */; };
 		A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E72DFC73650002FB39 /* APIServiceTests.swift */; };
 		A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60E82DFC73650002FB39 /* StorageServiceTests.swift */; };
@@ -256,6 +257,7 @@
 		A1BA60E42DFC73650002FB39 /* BuildTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildTests.swift; sourceTree = "<group>"; };
 		A1BA60E52DFC73650002FB39 /* StationsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StationsTests.swift; sourceTree = "<group>"; };
 		BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainSystemTests.swift; sourceTree = "<group>"; };
+		C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTopologyTests.swift; sourceTree = "<group>"; };
 		A1BA60E62DFC73650002FB39 /* TrainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainTests.swift; sourceTree = "<group>"; };
 		A1BA60E72DFC73650002FB39 /* APIServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIServiceTests.swift; sourceTree = "<group>"; };
 		A1BA60E82DFC73650002FB39 /* StorageServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageServiceTests.swift; sourceTree = "<group>"; };
@@ -462,6 +464,7 @@
 		A1BA60F42DFC73650002FB39 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */,
 				A1BA60E52DFC73650002FB39 /* StationsTests.swift */,
 				BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */,
 				A1BA60E62DFC73650002FB39 /* TrainTests.swift */,
@@ -752,6 +755,7 @@
 			files = (
 				A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */,
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
+				C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */,
 				446F271841A8FA59C62FA628 /* TrainSystemTests.swift in Sources */,
 				A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */,
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,

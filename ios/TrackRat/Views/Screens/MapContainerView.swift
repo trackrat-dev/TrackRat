@@ -57,6 +57,7 @@ struct MapContainerView: View {
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var selectedSegment: CongestionSegment?
+    @State private var selectedIndividualSegment: IndividualJourneySegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @ObservedObject private var ratSenseService = RatSenseService.shared
     @ObservedObject private var feedbackService = JourneyFeedbackService.shared
@@ -141,7 +142,7 @@ struct MapContainerView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: { individualSegment in
-                    print("Tapped individual segment: \(individualSegment.trainDisplayName)")
+                    selectedIndividualSegment = individualSegment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             )
@@ -362,8 +363,19 @@ struct MapContainerView: View {
                 .presentationDetents([.height(600), .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(item: $selectedIndividualSegment) { segment in
+            TrainDetailsView(
+                trainNumber: segment.trainId,
+                fromStation: segment.fromStation,
+                journeyDate: segment.actualDeparture,
+                dataSource: segment.dataSource,
+                isSheet: true
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
     }
-    
+
     private func handleNavigationChange(_ navigationPath: NavigationPath) {
         if navigationPath.isEmpty {
             // Back to home - cancel any pending operations
