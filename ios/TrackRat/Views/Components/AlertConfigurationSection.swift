@@ -109,9 +109,13 @@ struct DirectionalAlertConfigurationSheet: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Save") {
-                            let enabledSubs = directions
-                                .filter { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
-                                .map(\.subscription)
+                            let enabledSubs = directions.enumerated()
+                                .filter { index, draft in
+                                    !draft.alreadySubscribed
+                                    && draft.subscription.activeDays != 0
+                                    && (index == 0 || subscriptionService.isPro)
+                                }
+                                .map(\.element.subscription)
                             onSave(enabledSubs)
                             dismiss()
                         }
@@ -159,7 +163,7 @@ struct DirectionalAlertConfigurationSheet: View {
                 HStack {
                     Image(systemName: "lock.fill")
                         .foregroundColor(.orange)
-                    Text("Upgrade to Pro to add both directions")
+                    Text("Start a free trial and upgrade to Pro to add more than one route alert")
                         .foregroundColor(.white.opacity(0.7))
                     Spacer()
                     Text("PRO")
