@@ -157,13 +157,6 @@ struct Stations {
         return ["NJT"]
     }
 
-    /// Check if a station should be visible based on selected system strings
-    /// A station is visible if ANY of the selected systems serve it
-    static func isStationVisible(_ code: String, withSystemStrings selectedSystems: Set<String>) -> Bool {
-        let stationSystems = systemStringsForStation(code)
-        return !stationSystems.isDisjoint(with: selectedSystems)
-    }
-
     // MARK: - Station Code Equivalence
 
     /// Returns true if two station codes refer to the same physical station.

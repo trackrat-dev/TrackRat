@@ -135,6 +135,28 @@ class TrainSystemTests: XCTestCase {
                      "Boston South should be primary for Amtrak NEC-only, primary: \(grouped.primary)")
     }
 
+    func testSearchGrouped_emptySelectedSystemsPutsAllInOther() {
+        let empty: Set<TrainSystem> = []
+        let grouped = Stations.searchGrouped("Penn", selectedSystems: empty)
+
+        XCTAssertTrue(grouped.primary.isEmpty,
+                     "Empty selectedSystems should produce empty primary, got: \(grouped.primary)")
+        XCTAssertFalse(grouped.other.isEmpty,
+                      "Empty selectedSystems should put all results in other, got: \(grouped.other)")
+    }
+
+    func testSearchGrouped_multiSystemStationAppearsInPrimaryForAnyActiveSystem() {
+        // NY Penn is served by NJT, AMTRAK, and LIRR
+        // It should appear in primary when ANY of those systems is selected
+        for system: TrainSystem in [.njt, .amtrak, .lirr] {
+            let grouped = Stations.searchGrouped("New York Penn", selectedSystems: [system])
+            let primaryHasNYPenn = grouped.primary.contains("New York Penn Station")
+            XCTAssertTrue(primaryHasNYPenn,
+                         "NY Penn should be primary when \(system.displayName) is selected, " +
+                         "primary: \(grouped.primary), other: \(grouped.other)")
+        }
+    }
+
     func testSearchGrouped_noMatchReturnsEmpty() {
         let grouped = Stations.searchGrouped("XYZNOMATCH", selectedSystems: [.njt])
         XCTAssertTrue(grouped.primary.isEmpty, "Non-existent query should return empty primary")
