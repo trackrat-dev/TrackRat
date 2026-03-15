@@ -225,6 +225,22 @@ struct MapContainerView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(item: $selectedSegment) { segment in
+                SegmentTrainDetailsView(segment: segment)
+                    .presentationDetents([.height(600), .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $selectedIndividualSegment) { segment in
+                TrainDetailsView(
+                    trainNumber: segment.trainId,
+                    fromStation: segment.fromStation,
+                    journeyDate: segment.actualDeparture,
+                    dataSource: segment.dataSource,
+                    isSheet: true
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
         .task {
             // Load congestion data when map container appears, but don't block UI
@@ -357,22 +373,6 @@ struct MapContainerView: View {
             // This ensures sheet is fully expanded before NavigationStack swaps content
             guard let destination = pendingDestination else { return }
             handlePendingNavigation(destination)
-        }
-        .sheet(item: $selectedSegment) { segment in
-            SegmentTrainDetailsView(segment: segment)
-                .presentationDetents([.height(600), .large])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(item: $selectedIndividualSegment) { segment in
-            TrainDetailsView(
-                trainNumber: segment.trainId,
-                fromStation: segment.fromStation,
-                journeyDate: segment.actualDeparture,
-                dataSource: segment.dataSource,
-                isSheet: true
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
     }
 
