@@ -1,68 +1,82 @@
 import SwiftUI
 
-/// A row-based chart showing trains bucketed by headway (gap since prior departure).
+/// A column-based chart showing trains bucketed by headway (gap since prior departure).
 /// Used for frequency-first systems (PATH, Subway, PATCO) where service frequency
 /// matters more than schedule adherence.
+/// Layout matches TrainDistributionChart: categories as columns, trains stacked vertically.
 struct TrainFrequencyChart: View {
     let trainsByHeadway: [String: [TrainDelaySummary]]
     let onTrainTap: (String) -> Void
 
     private let bins: [(key: String, label: String, color: Color)] = [
-        ("0_5_min", "0–5 min", .green),
-        ("5_10_min", "5–10 min", .yellow),
-        ("10_20_min", "10–20 min", .orange),
+        ("0_5_min", "0-5m", .green),
+        ("5_10_min", "5-10m", .yellow),
+        ("10_20_min", "10-20m", .orange),
         ("20_plus_min", "20+ min", .red),
     ]
 
-    /// Maximum trains to show per row before showing "+N more"
-    private let maxVisibleTrains = 6
+    /// Maximum trains to show per column before showing "+N more"
+    private let maxVisibleTrains = 5
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .bottom, spacing: 8) {
             ForEach(bins, id: \.key) { bin in
-                let trains = trainsByHeadway[bin.key] ?? []
-                headwayRow(label: bin.label, color: bin.color, trains: trains)
+                headwayColumn(
+                    label: bin.label,
+                    color: bin.color,
+                    trains: trainsByHeadway[bin.key] ?? []
+                )
             }
         }
         .padding(.vertical, 8)
     }
 
-    private func headwayRow(label: String, color: Color, trains: [TrainDelaySummary]) -> some View {
-        HStack(spacing: 6) {
+    private func headwayColumn(label: String, color: Color, trains: [TrainDelaySummary]) -> some View {
+        VStack(spacing: 4) {
+            // Train pills stack
+            if trains.isEmpty {
+                Text("—")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.3))
+                    .frame(width: 52, height: 24)
+            } else {
+                let visibleTrains = Array(trains.prefix(maxVisibleTrains))
+                let remainingCount = trains.count - visibleTrains.count
+
+                VStack(spacing: 2) {
+                    // Overflow indicator at top if needed
+                    if remainingCount > 0 {
+                        Text("+\(remainingCount)")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white.opacity(0.5))
+                            .frame(width: 52, height: 18)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(color.opacity(0.3))
+                            )
+                    }
+
+                    // Train pills (reversed so newest at bottom)
+                    ForEach(visibleTrains.reversed()) { train in
+                        trainPill(train: train, color: color)
+                    }
+                }
+            }
+
             // Bin label
             Text(label)
                 .font(.caption2)
                 .foregroundColor(.white.opacity(0.6))
                 .textProtected()
-                .frame(width: 56, alignment: .leading)
 
-            if trains.isEmpty {
-                Text("—")
-                    .font(.caption2)
-                    .foregroundColor(.white.opacity(0.3))
-            } else {
-                let visible = Array(trains.prefix(maxVisibleTrains))
-                let remaining = trains.count - visible.count
-
-                ForEach(visible) { train in
-                    trainPill(train: train, color: color)
-                }
-
-                if remaining > 0 {
-                    Text("+\(remaining)")
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white.opacity(0.5))
-                        .frame(minWidth: 28, minHeight: 22)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(color.opacity(0.3))
-                        )
-                }
-            }
-
-            Spacer(minLength: 0)
+            // Count
+            Text("(\(trains.count))")
+                .font(.caption2)
+                .foregroundColor(.white.opacity(0.4))
+                .textProtected()
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func trainPill(train: TrainDelaySummary, color: Color) -> some View {
@@ -75,7 +89,7 @@ struct TrainFrequencyChart: View {
                 .foregroundColor(.white)
                 .textProtected()
                 .lineLimit(1)
-                .frame(minWidth: 40, minHeight: 22)
+                .frame(minWidth: 52, minHeight: 24)
                 .padding(.horizontal, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
