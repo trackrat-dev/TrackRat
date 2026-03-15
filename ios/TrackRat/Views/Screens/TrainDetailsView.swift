@@ -143,19 +143,6 @@ struct TrainDetailsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    // Report an Issue button
-                    FeedbackButton(
-                        screen: "train_details",
-                        trainId: train.trainId,
-                        originCode: appState.departureStationCode,
-                        destinationCode: appState.destinationStationCode,
-                        textColor: .white.opacity(0.8),
-                        label: "Report",
-                        font: .subheadline
-                    )
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.white.opacity(0.12)))
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
@@ -226,6 +213,15 @@ struct TrainDetailsView: View {
                                     set: { alertSubscription = $0 }
                                 ))
                             }
+
+                            // Report an issue button
+                            FeedbackButton(
+                                screen: "train_details",
+                                trainId: train.trainId,
+                                originCode: appState.departureStationCode,
+                                destinationCode: appState.destinationStationCode
+                            )
+                            .padding(.top, 8)
                         }
                         .padding()
                         // Force view recreation when train identity or status changes
