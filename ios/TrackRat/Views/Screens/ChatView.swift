@@ -35,6 +35,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: headerTitle,
+                showBackButton: true,
                 onBackAction: { dismiss() }
             )
 

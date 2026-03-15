@@ -11,6 +11,7 @@ struct AdminChatListView: View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: "Developer Inbox",
+                showBackButton: true,
                 onBackAction: { dismiss() }
             )
 
