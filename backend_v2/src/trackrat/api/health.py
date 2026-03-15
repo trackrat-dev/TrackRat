@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -158,12 +159,18 @@ async def readiness_probe(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
         # Check scheduler is running
         scheduler = get_scheduler()
         if not scheduler.scheduler.running:
-            return {"status": "not_ready", "reason": "scheduler_not_running"}
+            return JSONResponse(
+                status_code=503,
+                content={"status": "not_ready", "reason": "scheduler_not_running"},
+            )
 
         return {"status": "ready"}
     except Exception as e:
         logger.error("readiness_check_failed", error=str(e))
-        return {"status": "not_ready", "reason": str(e)}
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "reason": str(e)},
+        )
 
 
 @router.get("/scheduler/status")

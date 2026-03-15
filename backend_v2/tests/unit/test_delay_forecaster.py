@@ -939,7 +939,7 @@ class TestStopLevelForecasting:
             ) as mock_hour_day,
             patch.object(forecaster, "_get_congestion_multiplier", return_value=1.0),
         ):
-            sched_dep = datetime(2026, 2, 8, 8, 30)  # 8:30 AM on a Sunday (dow=6)
+            sched_dep = datetime(2026, 2, 8, 8, 30)  # 8:30 AM on a Sunday (isodow=7)
 
             forecast = await forecaster.forecast(
                 train_id="TEST123",
@@ -954,7 +954,7 @@ class TestStopLevelForecasting:
 
             # Hour/day should be called with NY (origin), not NP (user's station)
             mock_hour_day.assert_called_once_with(
-                mock_db, "NY", "NJT", sched_dep.hour, sched_dep.weekday()
+                mock_db, "NY", "NJT", sched_dep.hour, sched_dep.isoweekday()
             )
             assert "time_pattern" in forecast.factors
 

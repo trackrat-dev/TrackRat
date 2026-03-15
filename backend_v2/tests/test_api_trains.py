@@ -79,9 +79,6 @@ async def test_get_departures_with_data(client, db_session):
     # Mock JIT service to not refresh
     with patch("trackrat.api.trains.JustInTimeUpdateService") as mock_jit:
         mock_service = AsyncMock()
-        mock_service.ensure_fresh_departures = AsyncMock(
-            return_value={journey.id: True}
-        )
         mock_jit.return_value.__aenter__.return_value = mock_service
 
         # Test from NY

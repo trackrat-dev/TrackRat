@@ -80,8 +80,12 @@ class SubwayCollector:
 
     async def run(self) -> dict[str, Any]:
         """Main entry point. Creates a database session and runs collection."""
-        async with get_session() as session:
-            return await self.collect(session)
+        try:
+            async with get_session() as session:
+                return await self.collect(session)
+        finally:
+            if self._owns_client:
+                await self.client.close()
 
     async def collect(self, session: AsyncSession) -> dict[str, Any]:
         """

@@ -178,21 +178,24 @@ class DepartureService:
             TrainJourney.is_expired.is_not(True),
             # Filter out completed trains (journey finished)
             TrainJourney.is_completed.is_not(True),
+            # Filter out stale cancelled trains regardless of hide_departed.
+            # Users need to see recent cancellations but not ones from hours ago.
+            or_(
+                TrainJourney.is_cancelled.is_not(True),
+                JourneyStop.scheduled_departure >= now_et() - timedelta(hours=2),
+            ),
         ]
 
         # PERFORMANCE: Filter out trains that have already departed from origin station
-        # This reduces payload size significantly when using hide_departed=true
-        # Show cancelled trains for up to 2 hours past their scheduled departure —
-        # users need to see recent cancellations, but not stale ones from hours ago
+        # This reduces payload size significantly when using hide_departed=true.
+        # Cancelled trains always have has_departed_station=False, but the base
+        # filter above already handles their 2-hour time window, so we only need
+        # to check has_departed_station for non-cancelled trains here.
         if hide_departed:
             departure_filters.append(
                 or_(
                     JourneyStop.has_departed_station.is_(False),
-                    and_(
-                        TrainJourney.is_cancelled.is_(True),
-                        JourneyStop.scheduled_departure
-                        >= now_et() - timedelta(hours=2),
-                    ),
+                    TrainJourney.is_cancelled.is_(True),
                 )
             )
 

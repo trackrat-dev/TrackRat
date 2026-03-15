@@ -135,7 +135,6 @@ class TestAmtrakCollectionPipeline:
             "trackrat.services.departure.JustInTimeUpdateService"
         ) as mock_jit_class:
             mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
             mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
 
             with patch(
@@ -389,7 +388,6 @@ class TestAmtrakCollectionPipeline:
             "trackrat.services.departure.JustInTimeUpdateService"
         ) as mock_jit_class:
             mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
             mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
 
             with patch(
@@ -482,7 +480,6 @@ class TestAmtrakCollectionPipeline:
             "trackrat.services.departure.JustInTimeUpdateService"
         ) as mock_jit_class:
             mock_jit_service = AsyncMock()
-            mock_jit_service.ensure_fresh_departures = AsyncMock()
             mock_jit_class.return_value.__aenter__.return_value = mock_jit_service
 
             with patch(

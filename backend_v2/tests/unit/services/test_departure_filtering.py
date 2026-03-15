@@ -274,9 +274,9 @@ class TestDepartureFiltering:
 
         A train cancelled at 5am should not still appear at 8am. The backend
         filters cancelled trains whose scheduled_departure is more than 2 hours
-        in the past via the hide_departed SQL filter. This test simulates that
-        behavior by only returning the non-stale trains from the mock query
-        (matching what the SQL WHERE clause would do).
+        in the past via a base SQL filter (regardless of hide_departed). This
+        test simulates that behavior by only returning the non-stale trains from
+        the mock query (matching what the SQL WHERE clause would do).
         """
         now = now_et()
 
@@ -484,42 +484,62 @@ class TestDepartureFilterQuery:
         assert "is_completed" in str(filter_expr)
 
     @pytest.mark.asyncio
-    async def test_hide_departed_cancelled_filter_has_time_constraint(self):
-        """Verify that the hide_departed filter for cancelled trains includes a 2-hour time window.
+    async def test_base_cancelled_filter_has_time_constraint(self):
+        """Verify that the base departure filters include a 2-hour time window for cancelled trains.
 
-        The SQL filter should be:
-            OR(has_departed_station IS NOT TRUE,
-               AND(is_cancelled IS TRUE, scheduled_departure >= now - 2h))
+        Regardless of hide_departed, the SQL filter should be:
+            OR(is_cancelled IS NOT TRUE,
+               scheduled_departure >= now - 2h)
 
-        This ensures cancelled trains don't persist all day — only for 2 hours
-        past their scheduled departure.
+        This prevents stale cancelled trains from lingering in results all day.
         """
-        from sqlalchemy import and_, or_
+        from sqlalchemy import or_
         from trackrat.models.database import TrainJourney, JourneyStop
         from trackrat.utils.time import now_et
 
         current_time = now_et()
 
-        # Construct the filter as it appears in departure.py
+        # Construct the filter as it appears in departure.py (base filters)
         filter_expr = or_(
-            JourneyStop.has_departed_station.is_(False),
-            and_(
-                TrainJourney.is_cancelled.is_(True),
-                JourneyStop.scheduled_departure >= current_time - timedelta(hours=2),
-            ),
+            TrainJourney.is_cancelled.is_not(True),
+            JourneyStop.scheduled_departure >= current_time - timedelta(hours=2),
         )
 
         filter_str = str(filter_expr)
-        # Verify both is_cancelled and scheduled_departure appear in the expression
+        assert (
+            "is_cancelled" in filter_str
+        ), "Base filter must include is_cancelled check"
+        assert (
+            "scheduled_departure" in filter_str
+        ), "Base filter must include scheduled_departure time constraint"
+
+    @pytest.mark.asyncio
+    async def test_hide_departed_filter_allows_cancelled_trains_through(self):
+        """Verify that the hide_departed filter lets cancelled trains pass through.
+
+        The hide_departed SQL filter should be:
+            OR(has_departed_station IS FALSE, is_cancelled IS TRUE)
+
+        Cancelled trains always have has_departed_station=False, but we
+        explicitly allow them through so the base filter's 2-hour window
+        is the sole gatekeeper for stale cancelled trains.
+        """
+        from sqlalchemy import or_
+        from trackrat.models.database import TrainJourney, JourneyStop
+
+        # Construct the filter as it appears in departure.py
+        filter_expr = or_(
+            JourneyStop.has_departed_station.is_(False),
+            TrainJourney.is_cancelled.is_(True),
+        )
+
+        filter_str = str(filter_expr)
         assert (
             "is_cancelled" in filter_str
         ), "hide_departed filter must include is_cancelled check"
         assert (
-            "scheduled_departure" in filter_str
-        ), "hide_departed filter must include scheduled_departure time constraint"
-        assert (
             "has_departed_station" in filter_str
-        ), "hide_departed filter must still include has_departed_station check"
+        ), "hide_departed filter must include has_departed_station check"
 
 
 class TestStaleScheduledFiltering:

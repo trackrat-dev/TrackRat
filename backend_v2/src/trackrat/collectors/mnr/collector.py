@@ -84,8 +84,12 @@ class MNRCollector:
         Returns:
             Statistics dict with discovery/update counts
         """
-        async with get_session() as session:
-            return await self.collect(session)
+        try:
+            async with get_session() as session:
+                return await self.collect(session)
+        finally:
+            if self._owns_client:
+                await self.client.close()
 
     async def collect(self, session: AsyncSession) -> dict[str, Any]:
         """
