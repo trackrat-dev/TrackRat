@@ -725,6 +725,10 @@ class SummaryMetricsResponse(BaseModel):
     trains_by_category: dict[str, list[TrainDelaySummaryResponse]] | None = Field(
         None, description="Trains grouped by delay category for visualization"
     )
+    trains_by_headway: dict[str, list[TrainDelaySummaryResponse]] | None = Field(
+        None,
+        description="Trains grouped by headway gap (frequency-first systems only)",
+    )
 
 
 class OperationsSummaryResponse(BaseModel):

@@ -196,9 +196,20 @@ struct OperationsSummaryView: View {
                         .lineSpacing(2)
                         .padding(.horizontal, 14)
 
-                    // Train distribution chart
-                    if let trainsByCategory = summary.metrics?.trainsByCategory,
-                       !trainsByCategory.values.allSatisfy({ $0.isEmpty }) {
+                    // Train chart: frequency (headway) for PATH/Subway/PATCO,
+                    // delay distribution for schedule-based systems
+                    if let trainsByHeadway = summary.metrics?.trainsByHeadway,
+                       !trainsByHeadway.values.allSatisfy({ $0.isEmpty }) {
+                        Divider()
+                            .background(Color.white.opacity(0.2))
+                            .padding(.horizontal, 14)
+
+                        TrainFrequencyChart(trainsByHeadway: trainsByHeadway) { trainId in
+                            onTrainTap?(trainId)
+                        }
+                        .padding(.horizontal, 10)
+                    } else if let trainsByCategory = summary.metrics?.trainsByCategory,
+                              !trainsByCategory.values.allSatisfy({ $0.isEmpty }) {
                         Divider()
                             .background(Color.white.opacity(0.2))
                             .padding(.horizontal, 14)
