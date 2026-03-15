@@ -4,6 +4,7 @@ struct ChatView: View {
     /// When nil, this is the user's own chat. When set, this is admin viewing a specific conversation.
     let targetDeviceId: String?
 
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var chatService = ChatService.shared
     @State private var messages: [ChatMessage] = []
     @State private var messageText = ""
@@ -34,7 +35,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: headerTitle,
-                showBackButton: false
+                onBackAction: { dismiss() }
             )
 
             // Error banner

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AdminChatListView: View {
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject private var chatService = ChatService.shared
     @State private var conversations: [ChatConversation] = []
     @State private var isLoading = false
@@ -10,7 +11,7 @@ struct AdminChatListView: View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: "Developer Inbox",
-                showBackButton: false
+                onBackAction: { dismiss() }
             )
 
             if isLoading && conversations.isEmpty {
