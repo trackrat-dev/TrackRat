@@ -215,11 +215,7 @@ struct SettingsSection: View {
             .sorted(by: { $0.displayName < $1.displayName })
         if sorted.isEmpty { return "No systems selected" }
         let lines = sorted.map { system in
-            var name = system.displayName
-            if system == .amtrak {
-                name += " (\(appState.amtrakMode.label))"
-            }
-            return "• \(name)"
+            "• \(system.displayName)"
         }
         return "Following:\n" + lines.joined(separator: "\n")
     }
@@ -263,8 +259,7 @@ struct SettingsSection: View {
                         TrainSystemRow(
                             system: system,
                             isSelected: appState.isSystemSelected(system),
-                            isLast: system == sortedSystems.last,
-                            subtitle: system == .amtrak ? appState.amtrakMode.label : nil
+                            isLast: system == sortedSystems.last
                         ) {
                             appState.toggleSystem(system)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -731,8 +726,7 @@ struct SettingsSection: View {
             StationPickerSheet(
                 selectedStation: $pickerStation,
                 disabledStation: nil,
-                selectedSystems: appState.selectedSystems,
-                amtrakMode: appState.amtrakMode
+                selectedSystems: appState.selectedSystems
             ) { station in
                 switch stationPickerRole {
                 case .home:

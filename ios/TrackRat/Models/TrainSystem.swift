@@ -1,27 +1,5 @@
 import Foundation
 
-/// Amtrak coverage mode: NEC-only or all routes
-enum AmtrakMode: String, CaseIterable {
-    case necOnly = "NEC_ONLY"
-    case all = "ALL"
-
-    /// Label shown as subtitle on Amtrak toggle buttons
-    var label: String {
-        switch self {
-        case .necOnly: return "NEC Only"
-        case .all: return "All Routes"
-        }
-    }
-
-    /// Cycle to next mode
-    var next: AmtrakMode {
-        switch self {
-        case .necOnly: return .all
-        case .all: return .necOnly
-        }
-    }
-}
-
 /// Represents the different train systems supported by TrackRat
 enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case njt = "NJT"
@@ -153,16 +131,6 @@ extension Set where Element == TrainSystem {
 // MARK: - Stations Extensions (TrainSystem-aware wrappers)
 
 extension Stations {
-    /// Station codes on the Amtrak NEC + Keystone routes (used for NEC-only filtering)
-    static let amtrakNECStations: Set<String> = {
-        let necRouteIds: Set<String> = ["amtrak-nec", "amtrak-keystone"]
-        var codes = Set<String>()
-        for route in RouteTopology.allRoutes where necRouteIds.contains(route.id) {
-            codes.formUnion(route.stationCodes)
-        }
-        return codes
-    }()
-
     /// Returns the train systems that serve a given station
     /// Defaults to NJT + Amtrak if not explicitly mapped (most NJT commuter stations)
     static func systemsForStation(_ code: String) -> Set<TrainSystem> {
@@ -170,17 +138,12 @@ extension Stations {
         return Set(rawSystems.compactMap { TrainSystem(rawValue: $0) })
     }
 
-    /// Check if a station should be visible based on selected systems and Amtrak mode
-    /// A station is visible if ANY of the selected systems serve it
-    static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>, amtrakMode: AmtrakMode = .all) -> Bool {
+    /// Check if a station should be visible based on selected systems.
+    /// A station is visible if ANY of the selected systems serve it.
+    static func isStationVisible(_ code: String, withSystems selectedSystems: Set<TrainSystem>) -> Bool {
+        let stationSystems = systemStringsForStation(code)
         for system in selectedSystems {
-            if system == .amtrak && amtrakMode == .necOnly {
-                // NEC-only: restrict to NEC + Keystone stations
-                if amtrakNECStations.contains(code) { return true }
-            } else {
-                let stationSystems = systemStringsForStation(code)
-                if stationSystems.contains(system.rawValue) { return true }
-            }
+            if stationSystems.contains(system.rawValue) { return true }
         }
         return false
     }
@@ -189,15 +152,14 @@ extension Stations {
     /// Returns stations matching selected systems first, then stations on other systems.
     static func searchGrouped(
         _ query: String,
-        selectedSystems: Set<TrainSystem>,
-        amtrakMode: AmtrakMode = .all
+        selectedSystems: Set<TrainSystem>
     ) -> (primary: [String], other: [String]) {
         let all = search(query)
         var primary: [String] = []
         var other: [String] = []
         for name in all {
             guard let code = getStationCode(name) else { continue }
-            if isStationVisible(code, withSystems: selectedSystems, amtrakMode: amtrakMode) {
+            if isStationVisible(code, withSystems: selectedSystems) {
                 primary.append(name)
             } else {
                 other.append(name)

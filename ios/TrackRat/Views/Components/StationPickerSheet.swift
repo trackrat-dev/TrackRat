@@ -12,7 +12,6 @@ struct StationPickerSheet: View {
     @Binding var selectedStation: Station?
     let disabledStation: Station?  // Station that should be shown as disabled
     var selectedSystems: Set<TrainSystem>? = nil  // Optional: filter stations by selected systems
-    var amtrakMode: AmtrakMode = .all
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -27,7 +26,7 @@ struct StationPickerSheet: View {
 
         if let systems = selectedSystems, !systems.isEmpty {
             allStations = allStations.filter { station in
-                Stations.isStationVisible(station.code, withSystems: systems, amtrakMode: amtrakMode)
+                Stations.isStationVisible(station.code, withSystems: systems)
             }
         }
 

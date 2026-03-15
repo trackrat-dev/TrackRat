@@ -41,7 +41,7 @@ struct TripSelectionView: View {
         let query = searchText.trimmingCharacters(in: .whitespaces)
 
         // Search stations grouped by active system membership
-        let grouped = Stations.searchGrouped(query, selectedSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+        let grouped = Stations.searchGrouped(query, selectedSystems: appState.selectedSystems)
 
         // Generate potential train numbers for dual search
         let trainNumbers = getPotentialTrainNumbers(query)

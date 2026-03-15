@@ -9,7 +9,7 @@ struct DestinationPickerView: View {
     @State private var searchTask: Task<Void, Never>?
 
     private var searchResults: (stations: [String], otherSystemStations: [String]) {
-        let grouped = Stations.searchGrouped(searchText, selectedSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+        let grouped = Stations.searchGrouped(searchText, selectedSystems: appState.selectedSystems)
         // Filter out the current departure station from both lists
         let primary = grouped.primary.filter { $0 != appState.selectedDeparture }
         let other = grouped.other.filter { $0 != appState.selectedDeparture }

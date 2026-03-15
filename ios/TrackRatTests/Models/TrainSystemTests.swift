@@ -124,15 +124,14 @@ class TrainSystemTests: XCTestCase {
                       "Jamaica should not be in 'primary' for NJT-only, primary: \(grouped.primary)")
     }
 
-    func testSearchGrouped_amtrakNECMode() {
-        // With Amtrak NEC-only, non-NEC Amtrak stations should go to other
+    func testSearchGrouped_amtrakSelected() {
+        // With Amtrak selected, Amtrak stations should appear in primary
         let amtrakOnly: Set<TrainSystem> = [.amtrak]
-        let grouped = Stations.searchGrouped("Boston", selectedSystems: amtrakOnly, amtrakMode: .necOnly)
+        let grouped = Stations.searchGrouped("Boston", selectedSystems: amtrakOnly)
 
-        // Boston South is on the NEC, should be in primary
         let primaryHasBoston = grouped.primary.contains { $0.contains("Boston") }
         XCTAssertTrue(primaryHasBoston,
-                     "Boston South should be primary for Amtrak NEC-only, primary: \(grouped.primary)")
+                     "Boston should be primary when Amtrak is selected, primary: \(grouped.primary)")
     }
 
     func testSearchGrouped_emptySelectedSystemsPutsAllInOther() {

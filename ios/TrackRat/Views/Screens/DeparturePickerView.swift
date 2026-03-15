@@ -88,7 +88,7 @@ struct DeparturePickerView: View {
         let query = searchText.trimmingCharacters(in: .whitespaces)
 
         // Search stations grouped by active system membership
-        let grouped = Stations.searchGrouped(query, selectedSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+        let grouped = Stations.searchGrouped(query, selectedSystems: appState.selectedSystems)
 
         // Check if input also looks like a train number
         let trainNumber = isLikelyTrainNumber(query) ? query : nil

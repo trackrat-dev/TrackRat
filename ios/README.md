@@ -47,7 +47,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 ### Train System Filtering
 - **Per-System Toggles**: Users can enable/disable each transit system in Settings
 - **Default Systems**: NJT and Amtrak enabled by default; others require opt-in
-- **Amtrak Tri-State**: Off → NEC Only → All (covers Southeast Corridor expansion)
+- **Simple Toggles**: Each system is on or off (Amtrak shows all routes when enabled)
 - **Map Layer Filtering**: Disabled systems hidden from congestion map and route overlays
 - **Station Filtering**: Disabled systems excluded from station picker and onboarding
 - **TrainSystem.swift**: Model for system preferences with UserDefaults persistence

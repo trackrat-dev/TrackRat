@@ -124,7 +124,7 @@ This document contains detailed design specifications, screen documentation, and
 - **Favorite Stations**: Inline editing (no separate view)
 - **Route Alerts**: Inline management (no separate EditRouteAlertsView)
 - **Train System Preferences**: Enable/disable transit systems
-- **Amtrak Mode**: Tri-state toggle (Off / NEC Only / All)
+- **Train System Toggles**: Simple on/off per system (including Amtrak)
 - User preferences and settings
 - Quick access to advanced configuration
 
@@ -640,7 +640,7 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 
 #### Settings Redesign
 - **Rebranded "My Profile" to "Settings"** with gear icon in tab bar
-- **Amtrak Tri-State Toggle**: Off → NEC Only → All (consolidated from separate toggles)
+- **Train System Toggles**: Simple on/off per system (Amtrak simplified from tri-state to binary toggle)
 - **Health Indicator Auto-Coloring**: Congestion map segments auto-colored by train system (deprecated manual picker)
 
 #### NYC Subway Support (iOS)

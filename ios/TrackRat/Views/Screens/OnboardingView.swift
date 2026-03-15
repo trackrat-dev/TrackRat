@@ -95,7 +95,6 @@ struct OnboardingView: View {
                 selectedStation: binding(for: stationBeingEdited),
                 disabledStation: disabledStation(for: stationBeingEdited),
                 selectedSystems: appState.selectedSystems,
-                amtrakMode: appState.amtrakMode,
                 onStationSelected: { station in
                     // Explicitly handle station assignment with proper state update
                     DispatchQueue.main.async {
@@ -139,7 +138,6 @@ struct OnboardingView: View {
                     SystemSelectionCard(
                         system: system,
                         isSelected: appState.isSystemSelected(system),
-                        subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
                         onTap: {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 appState.toggleSystem(system, allowEmpty: true)
