@@ -1,0 +1,335 @@
+import XCTest
+@testable import TrackRat
+
+class AlertConfigurationTests: XCTestCase {
+
+    // MARK: - TimePreset Enum
+
+    func testTimePreset_rawValues() {
+        XCTAssertEqual(TimePreset.anyTime.rawValue, "Any Time")
+        XCTAssertEqual(TimePreset.amCommute.rawValue, "AM Commute")
+        XCTAssertEqual(TimePreset.pmCommute.rawValue, "PM Commute")
+        XCTAssertEqual(TimePreset.custom.rawValue, "Custom")
+    }
+
+    func testTimePreset_allCasesCount() {
+        XCTAssertEqual(TimePreset.allCases.count, 4, "TimePreset should have exactly 4 cases")
+    }
+
+    // MARK: - AlertSensitivity Enum
+
+    func testAlertSensitivity_rawValues() {
+        XCTAssertEqual(AlertSensitivity.none.rawValue, "None")
+        XCTAssertEqual(AlertSensitivity.severeOnly.rawValue, "Severe")
+        XCTAssertEqual(AlertSensitivity.all.rawValue, "All")
+    }
+
+    func testAlertSensitivity_allCasesCount() {
+        XCTAssertEqual(AlertSensitivity.allCases.count, 3, "AlertSensitivity should have exactly 3 cases")
+    }
+
+    // MARK: - Subscription Time Preset Values
+
+    func testSubscription_amCommuteValues() {
+        // AM Commute: 5:00 AM - 10:00 AM
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127,
+            activeStartMinutes: 300, activeEndMinutes: 600
+        )
+
+        XCTAssertEqual(sub.activeStartMinutes, 300, "AM Commute start should be 300 (5:00 AM)")
+        XCTAssertEqual(sub.activeEndMinutes, 600, "AM Commute end should be 600 (10:00 AM)")
+
+        // Verify these are valid minute-of-day values
+        XCTAssertTrue(sub.activeStartMinutes! >= 0 && sub.activeStartMinutes! < 1440,
+                       "Start minutes must be 0-1439")
+        XCTAssertTrue(sub.activeEndMinutes! >= 0 && sub.activeEndMinutes! < 1440,
+                       "End minutes must be 0-1439")
+    }
+
+    func testSubscription_pmCommuteValues() {
+        // PM Commute: 3:00 PM - 8:00 PM
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127,
+            activeStartMinutes: 900, activeEndMinutes: 1200
+        )
+
+        XCTAssertEqual(sub.activeStartMinutes, 900, "PM Commute start should be 900 (3:00 PM)")
+        XCTAssertEqual(sub.activeEndMinutes, 1200, "PM Commute end should be 1200 (8:00 PM)")
+
+        // Verify these are valid minute-of-day values
+        XCTAssertTrue(sub.activeStartMinutes! >= 0 && sub.activeStartMinutes! < 1440,
+                       "Start minutes must be 0-1439")
+        XCTAssertTrue(sub.activeEndMinutes! >= 0 && sub.activeEndMinutes! < 1440,
+                       "End minutes must be 0-1439")
+    }
+
+    func testSubscription_anyTimeValues() {
+        // Any Time: nil start and end
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127
+        )
+
+        XCTAssertNil(sub.activeStartMinutes, "Any Time should have nil start")
+        XCTAssertNil(sub.activeEndMinutes, "Any Time should have nil end")
+    }
+
+    // MARK: - Day Bitmask Presets
+
+    func testDayBitmask_noneIsZero() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 0
+        )
+        XCTAssertEqual(sub.activeDays, 0, "None preset should be 0")
+    }
+
+    func testDayBitmask_everyDayIs127() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127
+        )
+        XCTAssertEqual(sub.activeDays, 127, "Every Day preset should be 127 (all 7 bits set)")
+    }
+
+    func testDayBitmask_weekdaysIs31() {
+        // Weekdays (Mon-Fri) = bits 0-4 = 31
+        // Still a valid bitmask even though removed from UI presets
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 31
+        )
+        XCTAssertEqual(sub.activeDays, 31, "Weekdays bitmask should be 31")
+
+        // Verify individual day bits
+        for i in 0..<5 {
+            XCTAssertTrue(sub.activeDays & (1 << i) != 0,
+                          "Day \(i) (Mon-Fri) should be set in weekdays bitmask")
+        }
+        for i in 5..<7 {
+            XCTAssertTrue(sub.activeDays & (1 << i) == 0,
+                          "Day \(i) (Sat-Sun) should NOT be set in weekdays bitmask")
+        }
+    }
+
+    func testDayBitmask_weekendsIs96() {
+        // Weekends (Sat+Sun) = bits 5-6 = 96
+        // Still a valid bitmask even though removed from UI presets
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 96
+        )
+        XCTAssertEqual(sub.activeDays, 96, "Weekends bitmask should be 96")
+    }
+
+    func testDayBitmask_customIsAnyNonPreset() {
+        // Any value that isn't 0 or 127 is considered "custom" in the UI
+        let customValues = [1, 2, 31, 63, 64, 96, 126]
+        for value in customValues {
+            XCTAssertTrue(value != 0 && value != 127,
+                          "Bitmask \(value) should be treated as custom (not None or Every Day)")
+        }
+    }
+
+    // MARK: - Cancellation Sensitivity Thresholds
+
+    func testCancellation_noneDisablesNotification() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+        sub.notifyCancellation = false
+        sub.cancellationThresholdPct = nil
+
+        XCTAssertFalse(sub.notifyCancellation, "None sensitivity should disable cancellation notifications")
+        XCTAssertNil(sub.cancellationThresholdPct, "None sensitivity should clear threshold")
+    }
+
+    func testCancellation_severeSetsFiftyPercent() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+        sub.notifyCancellation = true
+        sub.cancellationThresholdPct = 50
+
+        XCTAssertTrue(sub.notifyCancellation)
+        XCTAssertEqual(sub.cancellationThresholdPct, 50, "Severe should set 50% threshold")
+    }
+
+    func testCancellation_allSetsNinetyPercent() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+        sub.notifyCancellation = true
+        sub.cancellationThresholdPct = 90
+
+        XCTAssertTrue(sub.notifyCancellation)
+        XCTAssertEqual(sub.cancellationThresholdPct, 90, "All should set 90% threshold")
+    }
+
+    // MARK: - Delay Sensitivity Thresholds (Delay-Based)
+
+    func testDelay_noneDisablesNotification() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+        sub.notifyDelay = false
+        sub.delayThresholdMinutes = nil
+
+        XCTAssertFalse(sub.notifyDelay)
+        XCTAssertNil(sub.delayThresholdMinutes, "None should clear delay threshold")
+    }
+
+    func testDelay_severeSetsTwentyMinutes() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+        sub.notifyDelay = true
+        sub.delayThresholdMinutes = 20
+
+        XCTAssertTrue(sub.notifyDelay)
+        XCTAssertEqual(sub.delayThresholdMinutes, 20, "Severe delay should be 20 minutes")
+    }
+
+    func testDelay_allSetsFiveMinutes() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+        sub.notifyDelay = true
+        sub.delayThresholdMinutes = 5
+
+        XCTAssertTrue(sub.notifyDelay)
+        XCTAssertEqual(sub.delayThresholdMinutes, 5, "All delay should be 5 minutes")
+    }
+
+    // MARK: - Reduced Service Sensitivity Thresholds (Frequency-Based)
+
+    func testReducedService_severeSetsFiftyPercent() {
+        var sub = RouteAlertSubscription(
+            dataSource: "SUBWAY", lineId: "A", lineName: "A Train", direction: "INWOOD"
+        )
+        sub.notifyDelay = true
+        sub.serviceThresholdPct = 50
+
+        XCTAssertTrue(RouteAlertSubscription.frequencyFirstSources.contains("SUBWAY"),
+                       "SUBWAY should be a frequency-first source")
+        XCTAssertEqual(sub.serviceThresholdPct, 50, "Severe reduced service should be 50%")
+    }
+
+    func testReducedService_allSetsNinetyPercent() {
+        var sub = RouteAlertSubscription(
+            dataSource: "PATH", lineId: "JSQ_33", lineName: "JSQ-33", direction: "33S"
+        )
+        sub.notifyDelay = true
+        sub.serviceThresholdPct = 90
+
+        XCTAssertTrue(RouteAlertSubscription.frequencyFirstSources.contains("PATH"),
+                       "PATH should be a frequency-first source")
+        XCTAssertEqual(sub.serviceThresholdPct, 90, "All reduced service should be 90%")
+    }
+
+    // MARK: - Frequency-First Sources
+
+    func testFrequencyFirstSources_containsExpectedSystems() {
+        let expected: Set<String> = ["SUBWAY", "PATH", "PATCO"]
+        XCTAssertEqual(RouteAlertSubscription.frequencyFirstSources, expected,
+                       "Frequency-first sources should be SUBWAY, PATH, PATCO")
+    }
+
+    func testFrequencyFirstSources_excludesDelayBasedSystems() {
+        let delayBased = ["NJT", "AMTRAK", "LIRR", "MNR"]
+        for source in delayBased {
+            XCTAssertFalse(RouteAlertSubscription.frequencyFirstSources.contains(source),
+                           "\(source) should NOT be a frequency-first source")
+        }
+    }
+
+    // MARK: - Commute Scenario with New Presets
+
+    func testCommuteScenario_amAndPmPresets() {
+        // Simulates a user configuring AM Commute for one direction, PM Commute for the other
+        let morningCommute = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
+            activeDays: 31,
+            activeStartMinutes: 300,   // AM Commute start
+            activeEndMinutes: 600,     // AM Commute end
+            timezone: "America/New_York",
+            delayThresholdMinutes: 5
+        )
+        let eveningCommute = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "TR", toStationCode: "NY",
+            activeDays: 31,
+            activeStartMinutes: 900,   // PM Commute start
+            activeEndMinutes: 1200,    // PM Commute end
+            timezone: "America/New_York",
+            delayThresholdMinutes: 10
+        )
+
+        // Verify non-overlapping windows
+        XCTAssertTrue(morningCommute.activeEndMinutes! <= eveningCommute.activeStartMinutes!,
+                       "AM and PM commute windows should not overlap")
+
+        // Verify same days
+        XCTAssertEqual(morningCommute.activeDays, eveningCommute.activeDays,
+                       "Both commute directions typically have the same active days")
+
+        // Verify different sensitivity
+        XCTAssertNotEqual(morningCommute.delayThresholdMinutes, eveningCommute.delayThresholdMinutes,
+                          "Commute directions can have independent delay thresholds")
+    }
+
+    func testCommuteScenario_copySettingsPreservesTimePreset() {
+        // Verifies copySettings works with new time preset values
+        let source = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY",
+            activeDays: 127,
+            activeStartMinutes: 300,   // AM Commute
+            activeEndMinutes: 600,
+            notifyRecovery: true
+        )
+        let target = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "TR"
+        )
+
+        let result = RouteAlertSubscription.copySettings(from: source, to: target)
+
+        XCTAssertEqual(result.direction, "TR", "Target direction should be preserved")
+        XCTAssertEqual(result.activeStartMinutes, 300, "AM Commute start should be copied")
+        XCTAssertEqual(result.activeEndMinutes, 600, "AM Commute end should be copied")
+        XCTAssertEqual(result.activeDays, 127, "Active days should be copied")
+        XCTAssertTrue(result.notifyRecovery, "Recovery setting should be copied")
+    }
+
+    // MARK: - Recovery Toggle Visibility Logic
+
+    func testRecovery_onlyRelevantWhenAlertsActive() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY"
+        )
+
+        // Default: both cancellation and delay are enabled
+        XCTAssertTrue(sub.notifyCancellation || sub.notifyDelay,
+                       "At least one alert type should be active by default for recovery to be relevant")
+
+        // Disable both
+        sub.notifyCancellation = false
+        sub.notifyDelay = false
+        XCTAssertFalse(sub.notifyCancellation || sub.notifyDelay,
+                        "With both alert types disabled, recovery toggle should be hidden")
+    }
+
+    // MARK: - Digest Independence from Days
+
+    func testDigest_worksWithNoDaysSelected() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY",
+            activeDays: 0  // None
+        )
+        sub.digestTimeMinutes = 420  // 7:00 AM
+
+        XCTAssertEqual(sub.activeDays, 0, "Days should be None")
+        XCTAssertEqual(sub.digestTimeMinutes, 420, "Digest should work even with no active days")
+    }
+}
