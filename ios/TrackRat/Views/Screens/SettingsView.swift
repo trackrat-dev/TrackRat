@@ -172,6 +172,13 @@ struct SettingsSection: View {
     @Binding var paywallContext: PaywallContext
     var showDebugSections: Bool
     @State private var isEditingTrainSystems = false
+    @ObservedObject private var alertService = AlertSubscriptionService.shared
+
+    private var routeAlertsSummary: String? {
+        let subs = alertService.subscriptions
+        guard !subs.isEmpty else { return nil }
+        return subs.map { $0.displayName }.sorted().joined(separator: "\n")
+    }
 
     private var enabledSystemsSummary: String {
         let sorted = TrainSystem.allCases
@@ -265,25 +272,40 @@ struct SettingsSection: View {
                 navigationPath.append(SettingsDestination.routeAlerts)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "bell.badge.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+                VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "bell.badge.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    Text("Route Alerts (beta)")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.leading)
+                        Text("Route Alerts")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
 
-                    Spacer()
+                        Spacer()
 
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                    .padding()
+
+                    if let summary = routeAlertsSummary {
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+
+                        HStack(spacing: 16) {
+                            Text(summary)
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.7))
+                                .lineLimit(nil)
+                            Spacer()
+                        }
+                        .padding()
+                    }
                 }
-                .padding()
                 .frame(maxWidth: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
