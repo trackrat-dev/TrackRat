@@ -194,7 +194,7 @@ struct DirectionalAlertConfigurationSheet: View {
 
 // MARK: - Alert Sensitivity
 
-/// Tri-state alert sensitivity for cancellation and delay/reduced-service controls.
+/// Tri-state alert sensitivity for cancellation and delay/fewer-trains controls.
 enum AlertSensitivity: String, CaseIterable {
     case none = "None"
     case severeOnly = "Severe"
@@ -263,11 +263,11 @@ struct AlertConfigurationSection: View {
                     sensitivity: cancellationSensitivity
                 )
 
-                // Reduced Service / Delays
+                // Fewer Trains / Delays
                 sensitivityRow(
-                    label: isFrequencyBased ? "Reduced Service" : "Delays",
+                    label: isFrequencyBased ? "Fewer Trains" : "Delays",
                     hint: isFrequencyBased
-                        ? (delaySensitivity.wrappedValue == .severeOnly ? "50%+ service reduction" : "Any service reduction")
+                        ? (delaySensitivity.wrappedValue == .severeOnly ? "50%+ fewer trains" : "Any reduction in trains")
                         : (delaySensitivity.wrappedValue == .severeOnly ? "20+ min delays" : "5+ min delays"),
                     sensitivity: delaySensitivity
                 )
@@ -454,7 +454,7 @@ struct AlertConfigurationSection: View {
         )
     }
 
-    // MARK: - Delay / Reduced Service Sensitivity Binding
+    // MARK: - Delay / Fewer Trains Sensitivity Binding
 
     private var delaySensitivity: Binding<AlertSensitivity> {
         Binding(
