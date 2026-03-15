@@ -444,12 +444,12 @@ struct SettingsSection: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } onClear: {
                         if let code = RatSenseService.shared.getHomeStation() {
-                            // Only remove from favorites if not also the work station
+                            // Clear designation first so loadFavoriteStations() won't re-add it
+                            RatSenseService.shared.setHomeStation(nil)
                             if code != RatSenseService.shared.getWorkStation() {
                                 appState.removeFavoriteStation(code: code)
                             }
                         }
-                        RatSenseService.shared.setHomeStation(nil)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
 
@@ -465,12 +465,12 @@ struct SettingsSection: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } onClear: {
                         if let code = RatSenseService.shared.getWorkStation() {
-                            // Only remove from favorites if not also the home station
+                            // Clear designation first so loadFavoriteStations() won't re-add it
+                            RatSenseService.shared.setWorkStation(nil)
                             if code != RatSenseService.shared.getHomeStation() {
                                 appState.removeFavoriteStation(code: code)
                             }
                         }
-                        RatSenseService.shared.setWorkStation(nil)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
 
@@ -834,35 +834,47 @@ private struct FavoriteStationRow: View {
         return Stations.stationName(forCode: code) ?? Stations.displayName(for: code)
     }
 
+    private var iconName: String {
+        switch label {
+        case "Home": return "house.fill"
+        case "Work": return "building.2.fill"
+        default: return "heart.fill"
+        }
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 12) {
+            Image(systemName: iconName)
+                .font(.body)
+                .foregroundColor(.orange)
+                .frame(width: 24)
+
+            if let name = stationName {
+                Text(name)
+                    .font(.subheadline)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+            } else if label != nil {
+                Text("Not set")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.3))
+                    .italic()
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                // Tappable label + station name area (for home/work station picking)
-                Button(action: onTap) {
-                    HStack(spacing: 12) {
-                        if let label = label {
-                            Text(label)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundColor(.white.opacity(0.5))
-                                .frame(width: 44, alignment: .leading)
-                        }
-
-                        if let name = stationName {
-                            Text(name)
-                                .font(.subheadline)
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                        } else if label != nil {
-                            Text("Not set")
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.3))
-                                .italic()
-                        }
+                if label != nil {
+                    Button(action: onTap) {
+                        rowContent
+                            .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                } else {
+                    rowContent
                 }
-                .buttonStyle(.plain)
-                .disabled(label == nil)  // "Other" rows don't need tap-to-change
 
                 Spacer()
 
