@@ -7,6 +7,9 @@ struct TrackTrainInlineButton: View {
     let destinationCode: String
     let destinationName: String?
     var textColor: Color = .black.opacity(0.6)
+    var activeLabel: String = "Stop tracking"
+    var inactiveLabel: String = "Track this train"
+    var font: Font = .footnote
 
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @State private var isStarting = false
@@ -21,9 +24,9 @@ struct TrackTrainInlineButton: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: isTrackingThisTrain ? "antenna.radiowaves.left.and.right.slash" : "antenna.radiowaves.left.and.right")
-                    .font(.footnote)
-                Text(isTrackingThisTrain ? "Stop tracking" : "Track this train")
-                    .font(.footnote)
+                    .font(font)
+                Text(isTrackingThisTrain ? activeLabel : inactiveLabel)
+                    .font(font)
             }
             .foregroundColor(textColor)
         }

@@ -62,6 +62,8 @@ struct FeedbackButton: View {
     let originCode: String?
     let destinationCode: String?
     var textColor: Color = .white.opacity(0.6)
+    var label: String = "Report an issue"
+    var font: Font = .footnote
 
     @State private var showingSheet = false
 
@@ -72,9 +74,9 @@ struct FeedbackButton: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.bubble")
-                    .font(.footnote)
-                Text("Report an issue")
-                    .font(.footnote)
+                    .font(font)
+                Text(label)
+                    .font(font)
             }
             .foregroundColor(textColor)
         }

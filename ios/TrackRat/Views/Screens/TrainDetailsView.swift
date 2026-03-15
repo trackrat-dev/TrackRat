@@ -97,6 +97,70 @@ struct TrainDetailsView: View {
                 }
             )
 
+            // Action buttons row
+            if let train = viewModel.train {
+                HStack(spacing: 12) {
+                    // Watch button (Live Activity)
+                    if let originCode = appState.departureStationCode,
+                       !originCode.isEmpty {
+                        TrackTrainInlineButton(
+                            train: train,
+                            originCode: originCode,
+                            destinationCode: appState.destinationStationCode ?? "",
+                            destinationName: appState.selectedDestination,
+                            textColor: .white.opacity(0.8),
+                            activeLabel: "Unwatch",
+                            inactiveLabel: "Watch",
+                            font: .subheadline
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                    }
+
+                    // Alerts button
+                    if let fromCode = appState.departureStationCode,
+                       let toCode = appState.destinationStationCode {
+                        Button {
+                            appState.pendingRouteStatus = RouteStatusContext(
+                                dataSource: train.dataSource,
+                                lineId: nil,
+                                fromStationCode: fromCode,
+                                toStationCode: toCode
+                            )
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bell.badge")
+                                    .font(.subheadline)
+                                Text("Alerts")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Report an Issue button
+                    FeedbackButton(
+                        screen: "train_details",
+                        trainId: train.trainId,
+                        originCode: appState.departureStationCode,
+                        destinationCode: appState.destinationStationCode,
+                        textColor: .white.opacity(0.8),
+                        label: "Report",
+                        font: .subheadline
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
+
             // Scrollable content
             ScrollView {
                 VStack {
@@ -453,49 +517,6 @@ struct CombinedDetailsCard: View {
                         .padding(.horizontal, 20)
                     }
 
-                    // Action buttons
-                    VStack(spacing: 12) {
-                        // Route alerts button on its own line
-                        if let fromCode = appState.departureStationCode,
-                           let toCode = selectedDestinationCode {
-                            Button {
-                                appState.pendingRouteStatus = RouteStatusContext(
-                                    dataSource: train.dataSource,
-                                    lineId: nil,
-                                    fromStationCode: fromCode,
-                                    toStationCode: toCode
-                                )
-                            } label: {
-                                Label("Route Alerts", systemImage: "bell.badge")
-                                    .font(.subheadline)
-                                    .foregroundColor(.black.opacity(0.6))
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        HStack(spacing: 20) {
-                            if let originCode = appState.departureStationCode,
-                               !originCode.isEmpty {
-                                TrackTrainInlineButton(
-                                    train: train,
-                                    originCode: originCode,
-                                    destinationCode: selectedDestinationCode ?? "",
-                                    destinationName: selectedDestination,
-                                    textColor: .black.opacity(0.6)
-                                )
-                            }
-
-                            FeedbackButton(
-                                screen: "train_details",
-                                trainId: train.trainId,
-                                originCode: appState.departureStationCode,
-                                destinationCode: selectedDestinationCode,
-                                textColor: .black.opacity(0.6)
-                            )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 8)
                 } else if isLoadingStops {
                     // Show loading indicator while fetching stops data
                     HStack(spacing: 8) {
