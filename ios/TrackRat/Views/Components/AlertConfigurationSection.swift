@@ -305,7 +305,6 @@ struct AlertConfigurationSection: View {
                 }
             }
         }
-    }
 
     // MARK: - Time Presets
 
