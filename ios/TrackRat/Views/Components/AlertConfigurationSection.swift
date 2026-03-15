@@ -239,11 +239,10 @@ struct AlertConfigurationSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        configCard {
             Text(headerText)
                 .font(.headline)
 
-            configCard {
                 // Day selection (top — controls subscribe/unsubscribe)
                 dayPresetRow
 
