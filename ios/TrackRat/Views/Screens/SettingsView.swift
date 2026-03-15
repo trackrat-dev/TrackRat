@@ -180,46 +180,6 @@ struct SettingsSection: View {
         case home, work, other
     }
 
-    private var routeAlertsSummary: String? {
-        let subs = alertService.subscriptions
-        guard !subs.isEmpty else { return nil }
-        let lines = subs.map { $0.displayName }.sorted().map { "• \($0)" }
-        return "Alerting on:\n" + lines.joined(separator: "\n")
-    }
-
-    private var favoritesSummary: String {
-        let favorites = appState.favoriteStations
-        guard !favorites.isEmpty else { return "No favorite stations set." }
-        let homeCode = RatSenseService.shared.getHomeStation()
-        let workCode = RatSenseService.shared.getWorkStation()
-        var lines: [String] = []
-        if let code = homeCode, favorites.contains(where: { $0.id == code }) {
-            lines.append("Home: \(Stations.displayName(for: code))")
-        }
-        if let code = workCode, favorites.contains(where: { $0.id == code }) {
-            lines.append("Work: \(Stations.displayName(for: code))")
-        }
-        let specialCodes = Set([homeCode, workCode].compactMap { $0 })
-        let others = favorites.filter { !specialCodes.contains($0.id) }
-            .sorted(by: { $0.name < $1.name })
-        if !others.isEmpty {
-            lines.append("Favorites:")
-            lines.append(contentsOf: others.map { "• \($0.name)" })
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private var enabledSystemsSummary: String {
-        let sorted = TrainSystem.allCases
-            .filter { appState.isSystemSelected($0) }
-            .sorted(by: { $0.displayName < $1.displayName })
-        if sorted.isEmpty { return "No systems selected" }
-        let lines = sorted.map { system in
-            "• \(system.displayName)"
-        }
-        return "Following:\n" + lines.joined(separator: "\n")
-    }
-
     var body: some View {
         VStack(spacing: 16) {
             // Train Systems
@@ -266,25 +226,34 @@ struct SettingsSection: View {
                         }
                     }
                 } else {
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                    let selectedSystems = TrainSystem.allCases
+                        .filter { appState.isSystemSelected($0) }
+                        .sorted { $0.displayName < $1.displayName }
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isEditingTrainSystems.toggle()
+                    if !selectedSystems.isEmpty {
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isEditingTrainSystems = true
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            VStack(spacing: 0) {
+                                ForEach(selectedSystems, id: \.self) { system in
+                                    TrainSystemRow(
+                                        system: system,
+                                        isSelected: true,
+                                        isLast: system == selectedSystems.last,
+                                        subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
+                                        showControls: false
+                                    ) {}
+                                }
+                            }
                         }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        HStack(spacing: 16) {
-                            Text(enabledSystemsSummary)
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.7))
-                                .multilineTextAlignment(.leading)
-                                .lineLimit(nil)
-                            Spacer()
-                        }
+                        .buttonStyle(.plain)
                     }
-                    .padding()
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -366,7 +335,7 @@ struct SettingsSection: View {
                     }
                     .padding()
                 } else {
-                    if let summary = routeAlertsSummary {
+                    if !alertService.subscriptions.isEmpty {
                         Divider()
                             .background(Color.white.opacity(0.1))
 
@@ -376,16 +345,13 @@ struct SettingsSection: View {
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         } label: {
-                            HStack {
-                                Text(summary)
-                                    .font(.subheadline)
-                                    .foregroundColor(.white.opacity(0.7))
-                                    .multilineTextAlignment(.leading)
-                                    .lineLimit(nil)
-                                Spacer()
+                            VStack(spacing: 0) {
+                                ForEach(alertService.subscriptions) { sub in
+                                    RouteAlertRow(subscription: sub, showControls: false)
+                                }
                             }
                         }
-                        .padding()
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -520,16 +486,52 @@ struct SettingsSection: View {
                         }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        HStack {
-                            Text(favoritesSummary)
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.7))
-                                .multilineTextAlignment(.leading)
-                                .lineLimit(nil)
-                            Spacer()
+                        VStack(spacing: 0) {
+                            let homeCode = RatSenseService.shared.getHomeStation()
+                            let workCode = RatSenseService.shared.getWorkStation()
+                            let otherFavorites = appState.favoriteStations.filter {
+                                $0.id != homeCode && $0.id != workCode
+                            }
+
+                            if homeCode != nil {
+                                FavoriteStationRow(
+                                    label: "Home",
+                                    stationCode: homeCode,
+                                    isLast: workCode == nil && otherFavorites.isEmpty,
+                                    showControls: false
+                                )
+                            }
+
+                            if workCode != nil {
+                                FavoriteStationRow(
+                                    label: "Work",
+                                    stationCode: workCode,
+                                    isLast: otherFavorites.isEmpty,
+                                    showControls: false
+                                )
+                            }
+
+                            ForEach(otherFavorites) { fav in
+                                FavoriteStationRow(
+                                    label: nil,
+                                    stationCode: fav.id,
+                                    isLast: fav.id == otherFavorites.last?.id,
+                                    showControls: false
+                                )
+                            }
+
+                            if appState.favoriteStations.isEmpty {
+                                HStack {
+                                    Text("No favorite stations set.")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white.opacity(0.5))
+                                    Spacer()
+                                }
+                                .padding()
+                            }
                         }
                     }
-                    .padding()
+                    .buttonStyle(.plain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -820,8 +822,9 @@ private struct FavoriteStationRow: View {
     let label: String?  // "Home", "Work", or nil for other favorites
     let stationCode: String?
     let isLast: Bool
-    let onTap: () -> Void
-    let onClear: () -> Void
+    var showControls: Bool = true
+    var onTap: () -> Void = {}
+    var onClear: () -> Void = {}
 
     private var stationName: String? {
         guard let code = stationCode else { return nil }
@@ -860,7 +863,7 @@ private struct FavoriteStationRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                if label != nil {
+                if showControls && label != nil {
                     Button(action: onTap) {
                         rowContent
                             .contentShape(Rectangle())
@@ -872,7 +875,7 @@ private struct FavoriteStationRow: View {
 
                 Spacer()
 
-                if stationCode != nil {
+                if showControls && stationCode != nil {
                     Button(action: onClear) {
                         Image(systemName: "xmark.circle.fill")
                             .font(.body)
@@ -896,36 +899,47 @@ private struct FavoriteStationRow: View {
 
 private struct RouteAlertRow: View {
     let subscription: RouteAlertSubscription
-    let onTap: () -> Void
-    let onDelete: () -> Void
+    var showControls: Bool = true
+    var onTap: () -> Void = {}
+    var onDelete: () -> Void = {}
+
+    private var rowContent: some View {
+        HStack(spacing: 8) {
+            Image(systemName: iconName)
+                .font(.caption)
+                .foregroundColor(.orange)
+                .frame(width: 16)
+
+            Text(subscription.displayName)
+                .font(.subheadline)
+                .foregroundColor(.white)
+                .lineLimit(1)
+
+            Spacer()
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Button(action: onTap) {
-                    HStack(spacing: 8) {
-                        Image(systemName: iconName)
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                            .frame(width: 16)
-
-                        Text(subscription.displayName)
-                            .font(.subheadline)
-                            .foregroundColor(.white)
-                            .lineLimit(1)
-
-                        Spacer()
+                if showControls {
+                    Button(action: onTap) {
+                        rowContent
+                            .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                } else {
+                    rowContent
                 }
-                .buttonStyle(.plain)
 
-                Button(action: onDelete) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.3))
+                if showControls {
+                    Button(action: onDelete) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal)
             .padding(.vertical, 10)
@@ -1254,47 +1268,58 @@ private struct TrainSystemRow: View {
     let isSelected: Bool
     let isLast: Bool
     var subtitle: String? = nil
+    var showControls: Bool = true
     let action: () -> Void
 
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    Image(systemName: system.icon)
-                        .font(.title2)
-                        .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
-                        .frame(width: 24, height: 24)
+    private var rowContent: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                Image(systemName: system.icon)
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
+                    .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(system.displayName + (system.isBeta ? " (beta)" : ""))
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(system.displayName + (system.isBeta ? " (beta)" : ""))
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
 
-                        if let subtitle, isSelected {
-                            Text(subtitle)
-                                .font(.caption)
-                                .foregroundColor(.orange)
-                        }
+                    if let subtitle, isSelected {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundColor(.orange)
                     }
+                }
 
-                    Spacer()
+                Spacer()
 
+                if showControls {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
                 }
-                .padding()
-                .contentShape(Rectangle())
+            }
+            .padding()
+            .contentShape(Rectangle())
 
-                if !isLast {
-                    Divider()
-                        .background(Color.white.opacity(0.1))
-                        .padding(.leading, 56)
-                }
+            if !isLast {
+                Divider()
+                    .background(Color.white.opacity(0.1))
+                    .padding(.leading, 56)
             }
         }
-        .buttonStyle(.plain)
+    }
+
+    var body: some View {
+        if showControls {
+            Button(action: action) {
+                rowContent
+            }
+            .buttonStyle(.plain)
+        } else {
+            rowContent
+        }
     }
 }
 
