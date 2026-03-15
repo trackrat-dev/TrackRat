@@ -8,21 +8,18 @@ struct DestinationPickerView: View {
     @State private var navigationBarVisible = false
     @State private var searchTask: Task<Void, Never>?
 
-    private var searchResults: [String] {
-        let results = Stations.search(searchText)
-        // Filter out the current departure station and stations not in selected systems
-        return results.filter { stationName in
-            guard stationName != appState.selectedDeparture else { return false }
-            guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
-        }
+    private var searchResults: (stations: [String], otherSystemStations: [String]) {
+        let grouped = Stations.searchGrouped(searchText, selectedSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+        // Filter out the current departure station from both lists
+        let primary = grouped.primary.filter { $0 != appState.selectedDeparture }
+        let other = grouped.other.filter { $0 != appState.selectedDeparture }
+        return (stations: primary, otherSystemStations: other)
     }
 
-    // Get favorite stations (filtered to exclude departure station and non-selected systems)
+    // Favorite stations — always visible, excluding departure station
     private var favoriteStations: [FavoriteStation] {
         return appState.favoriteStations.filter { station in
-            station.id != appState.departureStationCode &&
-            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+            station.id != appState.departureStationCode
         }
     }
     
@@ -99,7 +96,7 @@ struct DestinationPickerView: View {
                                         }
                                     }
                                     .onSubmit {
-                                        if let firstResult = searchResults.first {
+                                        if let firstResult = searchResults.stations.first ?? searchResults.otherSystemStations.first {
                                             selectDestination(firstResult)
                                         }
                                     }
@@ -121,44 +118,34 @@ struct DestinationPickerView: View {
                         // Search results - take full page when searching
                         if isSearching {
                             VStack(spacing: 8) {
-                                ForEach(searchResults, id: \.self) { station in
+                                ForEach(searchResults.stations, id: \.self) { station in
                                     Button {
                                         selectDestination(station)
                                     } label: {
-                                        HStack {
-                                            HStack {
-                                                Text(Stations.displayName(for: station))
-                                                    .font(.body)
-                                                    .foregroundColor(.white)
-                                                    .textProtected()
-                                                Spacer()
-                                            }
-
-                                            if let code = Stations.getStationCode(station) {
-                                                StationIconView(
-                                                    stationCode: code,
-                                                    isStationFavorited: appState.isStationFavorited(code: code)
-                                                ) {
-                                                    withAnimation(.easeInOut(duration: 0.2)) {
-                                                        appState.toggleFavoriteStation(code: code, name: station)
-                                                    }
-                                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                                }
-                                                .padding(.leading, 8)
-                                            }
-                                        }
-                                        .padding()
-                                        .background(
-                                            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                                .fill(TrackRatTheme.Colors.surfaceCard)
-                                                .overlay(
-                                                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                                                )
-                                        )
+                                        destinationSearchRow(station: station)
                                     }
                                     .buttonStyle(.plain)
                                     .padding(.horizontal)
+                                }
+
+                                // Stations from non-active transit systems
+                                if !searchResults.otherSystemStations.isEmpty {
+                                    Text("Other systems")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+                                        .padding(.top, 4)
+
+                                    ForEach(searchResults.otherSystemStations, id: \.self) { station in
+                                        Button {
+                                            selectDestination(station)
+                                        } label: {
+                                            otherSystemDestinationRow(station: station)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.horizontal)
+                                    }
                                 }
                             }
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -192,6 +179,84 @@ struct DestinationPickerView: View {
         }
     }
     
+    // MARK: - Station Search Rows
+
+    @ViewBuilder
+    private func destinationSearchRow(station: String) -> some View {
+        HStack {
+            HStack {
+                Text(Stations.displayName(for: station))
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .textProtected()
+                Spacer()
+            }
+
+            if let code = Stations.getStationCode(station) {
+                StationIconView(
+                    stationCode: code,
+                    isStationFavorited: appState.isStationFavorited(code: code)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: station)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .fill(TrackRatTheme.Colors.surfaceCard)
+                .overlay(
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func otherSystemDestinationRow(station: String) -> some View {
+        HStack {
+            HStack {
+                Text(Stations.displayName(for: station))
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.7))
+                    .textProtected()
+
+                if let code = Stations.getStationCode(station),
+                   let system = Stations.primarySystem(forStationCode: code) {
+                    SystemBadge(system: system)
+                }
+
+                Spacer()
+            }
+
+            if let code = Stations.getStationCode(station) {
+                StationIconView(
+                    stationCode: code,
+                    isStationFavorited: appState.isStationFavorited(code: code)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: station)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .fill(TrackRatTheme.Colors.surfaceCard.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.border.opacity(0.6), lineWidth: 1)
+                )
+        )
+    }
+
     private func selectDestination(_ destination: String) {
         // Immediate UI state updates
         appState.selectedDestination = destination

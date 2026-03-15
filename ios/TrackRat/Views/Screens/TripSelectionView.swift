@@ -24,9 +24,7 @@ struct TripSelectionView: View {
 
     // Whether the RatSense suggestion button should be visible
     private var isRatSenseSuggestionVisible: Bool {
-        guard let suggestion = ratSenseService.suggestedJourney,
-              Stations.isStationVisible(suggestion.fromStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
-              Stations.isStationVisible(suggestion.toStation, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode),
+        guard ratSenseService.suggestedJourney != nil,
               !liveActivityService.isActivityActive,
               !isSearching else {
             return false
@@ -34,27 +32,21 @@ struct TripSelectionView: View {
         return true
     }
 
-    // Get favorite stations filtered by selected systems
+    // Favorite stations — always visible regardless of active systems
     private var favoriteStations: [FavoriteStation] {
-        return appState.favoriteStations.filter { station in
-            Stations.isStationVisible(station.id, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
-        }
+        return appState.favoriteStations
     }
-    
-    private var searchResults: (stations: [String], trainNumbers: [String]) {
+
+    private var searchResults: (stations: [String], otherSystemStations: [String], trainNumbers: [String]) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
 
-        // Search stations and filter by selected systems
-        let allStationResults = Stations.search(query)
-        let stationResults = allStationResults.filter { stationName in
-            guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
-        }
+        // Search stations grouped by active system membership
+        let grouped = Stations.searchGrouped(query, selectedSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
 
         // Generate potential train numbers for dual search
         let trainNumbers = getPotentialTrainNumbers(query)
 
-        return (stations: stationResults, trainNumbers: trainNumbers)
+        return (stations: grouped.primary, otherSystemStations: grouped.other, trainNumbers: trainNumbers)
     }
     
     // Generate potential train numbers for NJT, Amtrak, LIRR, and MNR
@@ -203,7 +195,7 @@ struct TripSelectionView: View {
                                 // Native sheet automatically handles expansion when keyboard appears
                             }
                             .onSubmit {
-                                if let firstResult = searchResults.stations.first,
+                                if let firstResult = searchResults.stations.first ?? searchResults.otherSystemStations.first,
                                    let code = Stations.getStationCode(firstResult) {
                                     selectOriginStation(name: firstResult, code: code)
                                 }
@@ -240,47 +232,39 @@ struct TripSelectionView: View {
                             ForEach(searchResults.trainNumbers, id: \.self) { trainNumber in
                                 trainSearchCard(for: trainNumber)
                             }
-                            
+
                             ForEach(searchResults.stations.prefix(5), id: \.self) { station in
                                 Button {
                                     if let code = Stations.getStationCode(station) {
                                         selectOriginStation(name: station, code: code)
                                     }
                                 } label: {
-                                    HStack {
-                                        HStack {
-                                            Text(station)
-                                                .font(.body)
-                                                .foregroundColor(.white)
-                                                .textProtected()
-                                            Spacer()
-                                        }
-
-                                        if let code = Stations.getStationCode(station) {
-                                            StationIconView(
-                                                stationCode: code,
-                                                isStationFavorited: appState.isStationFavorited(code: code)
-                                            ) {
-                                                withAnimation(.easeInOut(duration: 0.2)) {
-                                                    appState.toggleFavoriteStation(code: code, name: station)
-                                                }
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                            }
-                                            .padding(.leading, 8)
-                                        }
-                                    }
-                                    .padding()
-                                    .background(
-                                        RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                            .fill(TrackRatTheme.Colors.surfaceCard)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
-                                                    .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
-                                            )
-                                    )
+                                    stationSearchRow(station: station)
                                 }
                                 .buttonStyle(.plain)
                                 .padding(.horizontal)
+                            }
+
+                            // Stations from non-active transit systems
+                            if !searchResults.otherSystemStations.isEmpty {
+                                Text("Other systems")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 4)
+
+                                ForEach(searchResults.otherSystemStations.prefix(5), id: \.self) { station in
+                                    Button {
+                                        if let code = Stations.getStationCode(station) {
+                                            selectOriginStation(name: station, code: code)
+                                        }
+                                    } label: {
+                                        otherSystemStationRow(station: station)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal)
+                                }
                             }
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -394,8 +378,86 @@ struct TripSelectionView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
+    // MARK: - Station Search Rows
+
+    @ViewBuilder
+    private func stationSearchRow(station: String) -> some View {
+        HStack {
+            HStack {
+                Text(station)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .textProtected()
+                Spacer()
+            }
+
+            if let code = Stations.getStationCode(station) {
+                StationIconView(
+                    stationCode: code,
+                    isStationFavorited: appState.isStationFavorited(code: code)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: station)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .fill(TrackRatTheme.Colors.surfaceCard)
+                .overlay(
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func otherSystemStationRow(station: String) -> some View {
+        HStack {
+            HStack {
+                Text(station)
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.7))
+                    .textProtected()
+
+                if let code = Stations.getStationCode(station),
+                   let system = Stations.primarySystem(forStationCode: code) {
+                    SystemBadge(system: system)
+                }
+
+                Spacer()
+            }
+
+            if let code = Stations.getStationCode(station) {
+                StationIconView(
+                    stationCode: code,
+                    isStationFavorited: appState.isStationFavorited(code: code)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: station)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .fill(TrackRatTheme.Colors.surfaceCard.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.border.opacity(0.6), lineWidth: 1)
+                )
+        )
+    }
+
     // MARK: - Train Search UI
-    
+
     @ViewBuilder
     private func trainSearchCard(for trainNumber: String) -> some View {
         let state = trainValidationStates[trainNumber] ?? .unknown

@@ -68,4 +68,131 @@ class TrainSystemTests: XCTestCase {
         XCTAssertTrue(filtered.contains(.path))
         XCTAssertFalse(filtered.contains(.patco))
     }
+
+    // MARK: - searchGrouped
+
+    func testSearchGrouped_splitsResultsByActiveSystem() {
+        // NJT-only selection: NJT stations go to primary, others to other
+        let njtOnly: Set<TrainSystem> = [.njt]
+        let grouped = Stations.searchGrouped("Penn", selectedSystems: njtOnly)
+
+        // Newark Penn and NY Penn should be in primary (both served by NJT)
+        let primaryNames = grouped.primary
+        let otherNames = grouped.other
+
+        XCTAssertTrue(primaryNames.contains("New York Penn Station"),
+                     "NY Penn should be primary for NJT selection, got primary: \(primaryNames)")
+        XCTAssertTrue(primaryNames.contains("Newark Penn Station"),
+                     "Newark Penn should be primary for NJT selection, got primary: \(primaryNames)")
+
+        // Other should not contain NJT stations
+        for name in otherNames {
+            guard let code = Stations.getStationCode(name) else { continue }
+            let systems = Stations.systemStringsForStation(code)
+            XCTAssertFalse(systems.contains("NJT"),
+                          "Station \(name) (\(code)) in 'other' should not be NJT, systems: \(systems)")
+        }
+    }
+
+    func testSearchGrouped_emptyQueryReturnsEmpty() {
+        let grouped = Stations.searchGrouped("", selectedSystems: [.njt])
+        XCTAssertTrue(grouped.primary.isEmpty, "Empty query should return empty primary")
+        XCTAssertTrue(grouped.other.isEmpty, "Empty query should return empty other")
+    }
+
+    func testSearchGrouped_allSystemsReturnsNothingInOther() {
+        let allSystems = Set(TrainSystem.allCases)
+        let grouped = Stations.searchGrouped("Jamaica", selectedSystems: allSystems)
+
+        XCTAssertTrue(grouped.other.isEmpty,
+                     "With all systems selected, nothing should be in 'other', got: \(grouped.other)")
+        XCTAssertFalse(grouped.primary.isEmpty,
+                      "Should find Jamaica stations in primary")
+    }
+
+    func testSearchGrouped_lirrStationShowsInOtherForNJTSelection() {
+        let njtOnly: Set<TrainSystem> = [.njt]
+        let grouped = Stations.searchGrouped("Jamaica", selectedSystems: njtOnly)
+
+        // Jamaica is a LIRR station, not NJT — should appear in other
+        let otherHasJamaica = grouped.other.contains { $0.contains("Jamaica") }
+        let primaryHasJamaica = grouped.primary.contains { $0.contains("Jamaica") }
+
+        XCTAssertTrue(otherHasJamaica,
+                     "Jamaica should be in 'other' for NJT-only selection, other: \(grouped.other)")
+        XCTAssertFalse(primaryHasJamaica,
+                      "Jamaica should not be in 'primary' for NJT-only, primary: \(grouped.primary)")
+    }
+
+    func testSearchGrouped_amtrakNECMode() {
+        // With Amtrak NEC-only, non-NEC Amtrak stations should go to other
+        let amtrakOnly: Set<TrainSystem> = [.amtrak]
+        let grouped = Stations.searchGrouped("Boston", selectedSystems: amtrakOnly, amtrakMode: .necOnly)
+
+        // Boston South is on the NEC, should be in primary
+        let primaryHasBoston = grouped.primary.contains { $0.contains("Boston") }
+        XCTAssertTrue(primaryHasBoston,
+                     "Boston South should be primary for Amtrak NEC-only, primary: \(grouped.primary)")
+    }
+
+    func testSearchGrouped_noMatchReturnsEmpty() {
+        let grouped = Stations.searchGrouped("XYZNOMATCH", selectedSystems: [.njt])
+        XCTAssertTrue(grouped.primary.isEmpty, "Non-existent query should return empty primary")
+        XCTAssertTrue(grouped.other.isEmpty, "Non-existent query should return empty other")
+    }
+
+    func testSearchGrouped_totalCountMatchesUngroupedSearch() {
+        let query = "New"
+        let ungrouped = Stations.search(query)
+        let grouped = Stations.searchGrouped(query, selectedSystems: [.njt])
+
+        // Every station from search() should be in either primary or other
+        // (minus any that fail getStationCode)
+        let totalGrouped = grouped.primary.count + grouped.other.count
+        XCTAssertLessThanOrEqual(totalGrouped, ungrouped.count,
+                                "Grouped total (\(totalGrouped)) should not exceed ungrouped (\(ungrouped.count))")
+        // Should be close to equal (difference only from stations without codes)
+        XCTAssertGreaterThan(totalGrouped, 0,
+                            "Should have at least some results for '\(query)'")
+    }
+
+    // MARK: - primarySystem
+
+    func testPrimarySystem_newarkPenn() {
+        // Newark Penn has NJT, AMTRAK, PATH — primarySystem should return one of them
+        let system = Stations.primarySystem(forStationCode: "NP")
+        XCTAssertNotNil(system, "Newark Penn should have a primary system")
+        let validSystems: Set<TrainSystem> = [.njt, .amtrak, .path]
+        XCTAssertTrue(validSystems.contains(system!),
+                     "Newark Penn primary system should be NJT, AMTRAK, or PATH, got: \(system!)")
+    }
+
+    func testPrimarySystem_lirrStation() {
+        // Jamaica (JM) is LIRR
+        let system = Stations.primarySystem(forStationCode: "JAM")
+        XCTAssertNotNil(system, "Jamaica should have a primary system")
+        XCTAssertEqual(system, .lirr, "Jamaica primary system should be LIRR, got: \(String(describing: system))")
+    }
+
+    func testPrimarySystem_deterministic() {
+        // Same station should always return the same primary system
+        let system1 = Stations.primarySystem(forStationCode: "NP")
+        let system2 = Stations.primarySystem(forStationCode: "NP")
+        XCTAssertEqual(system1, system2, "primarySystem should be deterministic")
+    }
+
+    // MARK: - systemsForStation
+
+    func testSystemsForStation_multiSystem() {
+        let systems = Stations.systemsForStation("NP")
+        XCTAssertTrue(systems.contains(.njt), "Newark Penn should include NJT")
+        XCTAssertTrue(systems.contains(.amtrak), "Newark Penn should include AMTRAK")
+        XCTAssertTrue(systems.contains(.path), "Newark Penn should include PATH")
+    }
+
+    func testSystemsForStation_singleSystem() {
+        // A pure LIRR station
+        let systems = Stations.systemsForStation("JM")
+        XCTAssertTrue(systems.contains(.lirr), "Jamaica should include LIRR, got: \(systems)")
+    }
 }

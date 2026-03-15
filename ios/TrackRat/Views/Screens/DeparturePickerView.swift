@@ -1,5 +1,24 @@
 import SwiftUI
 
+/// Small colored pill showing which transit system a station belongs to.
+/// Used in search results to identify stations from non-active systems.
+struct SystemBadge: View {
+    let system: TrainSystem
+
+    var body: some View {
+        Text(system.displayName)
+            .font(.caption2)
+            .fontWeight(.medium)
+            .foregroundColor(.white.opacity(0.9))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill((Color(hex: system.color) ?? .gray).opacity(0.7))
+            )
+    }
+}
+
 /// A view that displays the appropriate icon for a station based on whether it's a home station, work station, or regular favorite
 struct StationIconView: View {
     let stationCode: String
@@ -65,20 +84,16 @@ struct DeparturePickerView: View {
     @State private var isSearchingTrain = false
     @State private var searchTask: Task<Void, Never>?
 
-    private var searchResults: (stations: [String], trainNumber: String?) {
+    private var searchResults: (stations: [String], otherSystemStations: [String], trainNumber: String?) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
-        
-        // Always search stations, filtered by selected systems
-        let stationResults = Stations.search(query).filter { stationName in
-            guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
-        }
-        
+
+        // Search stations grouped by active system membership
+        let grouped = Stations.searchGrouped(query, selectedSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+
         // Check if input also looks like a train number
         let trainNumber = isLikelyTrainNumber(query) ? query : nil
-        
-        
-        return (stations: stationResults, trainNumber: trainNumber)
+
+        return (stations: grouped.primary, otherSystemStations: grouped.other, trainNumber: trainNumber)
     }
     
     // Computed property for dynamic spacing
@@ -282,7 +297,7 @@ struct DeparturePickerView: View {
                     }
                 }
                 .onSubmit {
-                    if let firstResult = searchResults.stations.first,
+                    if let firstResult = searchResults.stations.first ?? searchResults.otherSystemStations.first,
                        let code = Stations.getStationCode(firstResult) {
                         selectDeparture(name: firstResult, code: code)
                     }
@@ -315,22 +330,91 @@ struct DeparturePickerView: View {
         VStack(spacing: 8) {
             trainSearchResultView
             stationResultsView
+
+            // Stations from non-active transit systems
+            if !searchResults.otherSystemStations.isEmpty {
+                Text("Other systems")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 4)
+
+                otherSystemStationResultsView
+            }
         }
     }
-    
+
+    @ViewBuilder
+    private func stationRow(_ station: String) -> some View {
+        HStack {
+            HStack {
+                Text(station)
+                    .font(.body)
+                    .foregroundColor(.white)
+                    .textProtected()
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(TrackRatTheme.IconSize.xsmall)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+
+            if let code = Stations.getStationCode(station) {
+                StationIconView(
+                    stationCode: code,
+                    isStationFavorited: appState.isStationFavorited(code: code)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: station)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.white.opacity(0.15))
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.white.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 24)
+    }
+
     @ViewBuilder
     private var stationResultsView: some View {
         ForEach(searchResults.stations, id: \.self) { station in
+            stationRow(station)
+                .onTapGesture {
+                    if let code = Stations.getStationCode(station) {
+                        selectDeparture(name: station, code: code)
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var otherSystemStationResultsView: some View {
+        ForEach(searchResults.otherSystemStations, id: \.self) { station in
             HStack {
                 HStack {
                     Text(station)
                         .font(.body)
-                        .foregroundColor(.white)
+                        .foregroundColor(.white.opacity(0.7))
                         .textProtected()
+
+                    if let code = Stations.getStationCode(station),
+                       let system = Stations.primarySystem(forStationCode: code) {
+                        SystemBadge(system: system)
+                    }
+
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(TrackRatTheme.IconSize.xsmall)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.white.opacity(0.4))
                 }
 
                 if let code = Stations.getStationCode(station) {
@@ -349,13 +433,18 @@ struct DeparturePickerView: View {
             .padding()
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(.white.opacity(0.15))
+                    .fill(.white.opacity(0.1))
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(.white.opacity(0.2), lineWidth: 1)
+                            .stroke(.white.opacity(0.15), lineWidth: 1)
                     )
             )
             .padding(.horizontal, 24)
+            .onTapGesture {
+                if let code = Stations.getStationCode(station) {
+                    selectDeparture(name: station, code: code)
+                }
+            }
         }
     }
     
