@@ -43,7 +43,7 @@ enum PaywallContext {
     var subtext: String? {
         switch self {
         case .trainSystems:
-            return "Free users can follow one train system. Upgrade to Pro to track all 7 systems \u{2014} start with a free 1-week trial."
+            return "Start a 1-week free trial to follow multiple train systems at a time"
         case .routeAlerts:
             return "Free users get one route alert. Upgrade to Pro for unlimited alerts across all your routes \u{2014} start with a free 1-week trial."
         case .developerChat, .generic:
