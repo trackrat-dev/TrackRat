@@ -29,7 +29,7 @@
 		A11A0DBA2F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */; };
 		A11A0DBB2F4B83CF00C96DA1 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB72F4B83CF00C96DA1 /* APIService.swift */; };
 		A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */; };
-		A11A0DC02F4B840B00C96DA1 /* EditRouteAlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBD2F4B840B00C96DA1 /* EditRouteAlertsView.swift */; };
+		A1STNPK0012F6000000000002 /* StationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1STNPK0012F6000000000001 /* StationPickerSheet.swift */; };
 		A1ROUTE0012F5000000000002 /* RouteStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ROUTE0012F5000000000001 /* RouteStatusView.swift */; };
 		A11A0DC12F4B840B00C96DA1 /* AddRouteAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */; };
 		A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */; };
@@ -197,7 +197,7 @@
 		A1B2C3D4E5F6A7B8C9D0E1F4 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatView.swift; path = TrackRat/Views/Screens/ChatView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F6 /* AdminChatListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdminChatListView.swift; path = TrackRat/Views/Screens/AdminChatListView.swift; sourceTree = "<group>"; };
 		A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AddRouteAlertView.swift; path = Views/Screens/AddRouteAlertView.swift; sourceTree = "<group>"; };
-		A11A0DBD2F4B840B00C96DA1 /* EditRouteAlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EditRouteAlertsView.swift; path = Views/Screens/EditRouteAlertsView.swift; sourceTree = "<group>"; };
+		A1STNPK0012F6000000000001 /* StationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationPickerSheet.swift; path = Views/Components/StationPickerSheet.swift; sourceTree = "<group>"; };
 		A1ROUTE0012F5000000000001 /* RouteStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteStatusView.swift; path = Views/Screens/RouteStatusView.swift; sourceTree = "<group>"; };
 		A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
 		A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StaticTrackDistributionService.swift; path = Services/StaticTrackDistributionService.swift; sourceTree = "<group>"; };
@@ -402,7 +402,7 @@
 				A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */,
 				A1875C7E2E400F4F00FCC7FC /* SettingsView.swift */,
 				A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */,
-				A11A0DBD2F4B840B00C96DA1 /* EditRouteAlertsView.swift */,
+				A1STNPK0012F6000000000001 /* StationPickerSheet.swift */,
 				A1ROUTE0012F5000000000001 /* RouteStatusView.swift */,
 				A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */,
 				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
@@ -690,7 +690,7 @@
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
 				A12C31482F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,
 				A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */,
-				A11A0DC02F4B840B00C96DA1 /* EditRouteAlertsView.swift in Sources */,
+				A1STNPK0012F6000000000002 /* StationPickerSheet.swift in Sources */,
 				A1ROUTE0012F5000000000002 /* RouteStatusView.swift in Sources */,
 				A11A0DC12F4B840B00C96DA1 /* AddRouteAlertView.swift in Sources */,
 				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,

@@ -709,7 +709,7 @@ final class AppState: ObservableObject {
     // MapContainerView observes this and handles: expand sheet → wait → navigate
     @Published var pendingNavigation: NavigationDestination? = nil
 
-    // Route status sheet - set by notification tap or EditRouteAlertsView row tap
+    // Route status sheet - set by notification tap or route alert row tap
     @Published var pendingRouteStatus: RouteStatusContext? = nil
 
     // Chat sheet - set by chat notification tap
