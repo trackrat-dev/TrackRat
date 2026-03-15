@@ -36,7 +36,7 @@ struct SettingsView: View {
                 // Center title with Pro badge
                 HStack(spacing: 8) {
                     Text("Settings")
-                        .font(.headline)
+                        .font(TrackRatTheme.Typography.title3)
                         .foregroundColor(.white)
                         .onTapGesture(count: 5) {
                             if !chatService.isAdmin {
