@@ -4,6 +4,7 @@ struct AddRouteAlertView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     enum AlertMode: String, CaseIterable {
         case line = "Line"
@@ -119,7 +120,13 @@ struct AddRouteAlertView: View {
 
     // MARK: - Save Subscriptions
 
+    private var atAlertLimit: Bool {
+        !subscriptionService.isPro
+            && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
+    }
+
     private func saveTrainSubscription(_ sub: RouteAlertSubscription) {
+        guard !atAlertLimit else { dismiss(); return }
         alertService.addSubscriptions([sub])
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         draftSubscription = nil
@@ -127,6 +134,7 @@ struct AddRouteAlertView: View {
     }
 
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
+        guard !atAlertLimit else { return }
         alertService.addSubscriptions(subs)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         directionalSheetData = nil

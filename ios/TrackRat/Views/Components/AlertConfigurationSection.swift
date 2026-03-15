@@ -59,9 +59,12 @@ struct DirectionDraft {
 
 /// Sheet that shows both directions of a route with independent alert settings.
 /// Each direction is shown inline with its own configuration section.
+/// For free users, only the first direction is configurable; the second shows a Pro upsell.
 struct DirectionalAlertConfigurationSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var directions: [DirectionDraft]
+    @State private var showingPaywall = false
     private let onSave: ([RouteAlertSubscription]) -> Void
 
     init(directions: [DirectionDraft], onSave: @escaping ([RouteAlertSubscription]) -> Void) {
@@ -84,6 +87,8 @@ struct DirectionalAlertConfigurationSheet: View {
                         ForEach(0..<directions.count, id: \.self) { i in
                             if directions[i].alreadySubscribed {
                                 alreadySubscribedBanner(label: directions[i].label)
+                            } else if i > 0 && !subscriptionService.isPro {
+                                proLockedDirectionBanner(label: directions[i].label)
                             } else {
                                 AlertConfigurationSection(
                                     subscription: $directions[i].subscription,
@@ -117,6 +122,9 @@ struct DirectionalAlertConfigurationSheet: View {
                 }
             }
             .preferredColorScheme(.dark)
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView(context: .routeAlerts)
+            }
         }
     }
 
@@ -135,6 +143,37 @@ struct DirectionalAlertConfigurationSheet: View {
             .padding()
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
+    }
+
+    // MARK: - Pro Locked Direction Banner
+
+    private func proLockedDirectionBanner(label: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.headline)
+            Button {
+                showingPaywall = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } label: {
+                HStack {
+                    Image(systemName: "lock.fill")
+                        .foregroundColor(.orange)
+                    Text("Upgrade to Pro to add both directions")
+                        .foregroundColor(.white.opacity(0.7))
+                    Spacer()
+                    Text("PRO")
+                        .font(.caption2.bold())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(.orange))
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+            }
+            .buttonStyle(.plain)
         }
     }
 }
