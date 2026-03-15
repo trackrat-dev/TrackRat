@@ -36,9 +36,7 @@ struct AddRouteAlertView: View {
     // Customization sheet state
     @State private var draftSubscription: RouteAlertSubscription? = nil
     @State private var draftRoute: RouteLine? = nil
-    @State private var draftDirections: [DirectionDraft] = []
-    @State private var showCustomizationSheet = false
-    @State private var showDirectionalSheet = false
+    @State private var directionalSheetData: DirectionalSheetData? = nil
 
     /// User's selected systems that support real-time alerts.
     private var alertCapableSystems: Set<TrainSystem> {
@@ -107,15 +105,13 @@ struct AddRouteAlertView: View {
                 lineSystem = availableLineSystems.first
             }
         }
-        .sheet(isPresented: $showCustomizationSheet) {
-            if let draft = draftSubscription {
-                AlertConfigurationSheetWrapper(subscription: draft) { customized in
-                    saveTrainSubscription(customized)
-                }
+        .sheet(item: $draftSubscription) { draft in
+            AlertConfigurationSheetWrapper(subscription: draft) { customized in
+                saveTrainSubscription(customized)
             }
         }
-        .sheet(isPresented: $showDirectionalSheet) {
-            DirectionalAlertConfigurationSheet(directions: draftDirections) { subs in
+        .sheet(item: $directionalSheetData) { data in
+            DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
                 saveDirectionalSubscriptions(subs)
             }
         }
@@ -133,7 +129,7 @@ struct AddRouteAlertView: View {
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
         alertService.addSubscriptions(subs)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        draftDirections = []
+        directionalSheetData = nil
         draftRoute = nil
         withAnimation {
             fromStation = nil
@@ -213,22 +209,19 @@ struct AddRouteAlertView: View {
                                     dataSource: ds, lineId: route.id, lineName: route.name, direction: first
                                 )
 
-                                draftDirections = [
+                                draftRoute = route
+                                directionalSheetData = DirectionalSheetData(directions: [
                                     DirectionDraft(
                                         label: "To \(Stations.displayName(for: last))",
                                         subscription: subToLast,
-                                        enabled: !subscribedDirs.contains(last),
                                         alreadySubscribed: subscribedDirs.contains(last)
                                     ),
                                     DirectionDraft(
                                         label: "To \(Stations.displayName(for: first))",
                                         subscription: subToFirst,
-                                        enabled: !subscribedDirs.contains(first),
                                         alreadySubscribed: subscribedDirs.contains(first)
                                     ),
-                                ]
-                                draftRoute = route
-                                showDirectionalSheet = true
+                                ])
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 4) {
@@ -330,22 +323,19 @@ struct AddRouteAlertView: View {
                         let subBA = RouteAlertSubscription(
                             dataSource: dataSource, fromStationCode: toCode, toStationCode: fromCode
                         )
-                        draftDirections = [
+                        draftRoute = nil
+                        directionalSheetData = DirectionalSheetData(directions: [
                             DirectionDraft(
                                 label: "To \(Stations.displayName(for: toCode))",
                                 subscription: subAB,
-                                enabled: !existsAB,
                                 alreadySubscribed: existsAB
                             ),
                             DirectionDraft(
                                 label: "To \(Stations.displayName(for: fromCode))",
                                 subscription: subBA,
-                                enabled: !existsBA,
                                 alreadySubscribed: existsBA
                             ),
-                        ]
-                        draftRoute = nil
-                        showDirectionalSheet = true
+                        ])
                     }
                 } label: {
                     Text("Add Alert")
@@ -535,7 +525,6 @@ struct AddRouteAlertView: View {
                                 trainName: trainName
                             )
                             draftRoute = nil
-                            showCustomizationSheet = true
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {

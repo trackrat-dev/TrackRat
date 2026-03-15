@@ -197,9 +197,9 @@ struct EditRouteAlertsView: View {
             parts.append("Recovery")
         }
 
-        // Digest
+        // Daily Status Summary
         if let digest = sub.digestTimeMinutes {
-            parts.append("Digest \(formatMinutes(digest))")
+            parts.append("Summary \(formatMinutes(digest))")
         }
 
         return parts

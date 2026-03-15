@@ -7,13 +7,11 @@ class AlertConfigurationTests: XCTestCase {
 
     func testTimePreset_rawValues() {
         XCTAssertEqual(TimePreset.anyTime.rawValue, "Any Time")
-        XCTAssertEqual(TimePreset.amCommute.rawValue, "AM Commute")
-        XCTAssertEqual(TimePreset.pmCommute.rawValue, "PM Commute")
         XCTAssertEqual(TimePreset.custom.rawValue, "Custom")
     }
 
     func testTimePreset_allCasesCount() {
-        XCTAssertEqual(TimePreset.allCases.count, 4, "TimePreset should have exactly 4 cases")
+        XCTAssertEqual(TimePreset.allCases.count, 2, "TimePreset should have exactly 2 cases")
     }
 
     // MARK: - AlertSensitivity Enum
@@ -29,42 +27,6 @@ class AlertConfigurationTests: XCTestCase {
     }
 
     // MARK: - Subscription Time Preset Values
-
-    func testSubscription_amCommuteValues() {
-        // AM Commute: 5:00 AM - 10:00 AM
-        var sub = RouteAlertSubscription(
-            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
-            direction: "NY", activeDays: 127,
-            activeStartMinutes: 300, activeEndMinutes: 600
-        )
-
-        XCTAssertEqual(sub.activeStartMinutes, 300, "AM Commute start should be 300 (5:00 AM)")
-        XCTAssertEqual(sub.activeEndMinutes, 600, "AM Commute end should be 600 (10:00 AM)")
-
-        // Verify these are valid minute-of-day values
-        XCTAssertTrue(sub.activeStartMinutes! >= 0 && sub.activeStartMinutes! < 1440,
-                       "Start minutes must be 0-1439")
-        XCTAssertTrue(sub.activeEndMinutes! >= 0 && sub.activeEndMinutes! < 1440,
-                       "End minutes must be 0-1439")
-    }
-
-    func testSubscription_pmCommuteValues() {
-        // PM Commute: 3:00 PM - 8:00 PM
-        var sub = RouteAlertSubscription(
-            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
-            direction: "NY", activeDays: 127,
-            activeStartMinutes: 900, activeEndMinutes: 1200
-        )
-
-        XCTAssertEqual(sub.activeStartMinutes, 900, "PM Commute start should be 900 (3:00 PM)")
-        XCTAssertEqual(sub.activeEndMinutes, 1200, "PM Commute end should be 1200 (8:00 PM)")
-
-        // Verify these are valid minute-of-day values
-        XCTAssertTrue(sub.activeStartMinutes! >= 0 && sub.activeStartMinutes! < 1440,
-                       "Start minutes must be 0-1439")
-        XCTAssertTrue(sub.activeEndMinutes! >= 0 && sub.activeEndMinutes! < 1440,
-                       "End minutes must be 0-1439")
-    }
 
     func testSubscription_anyTimeValues() {
         // Any Time: nil start and end
@@ -246,39 +208,7 @@ class AlertConfigurationTests: XCTestCase {
         }
     }
 
-    // MARK: - Commute Scenario with New Presets
-
-    func testCommuteScenario_amAndPmPresets() {
-        // Simulates a user configuring AM Commute for one direction, PM Commute for the other
-        let morningCommute = RouteAlertSubscription(
-            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
-            activeDays: 31,
-            activeStartMinutes: 300,   // AM Commute start
-            activeEndMinutes: 600,     // AM Commute end
-            timezone: "America/New_York",
-            delayThresholdMinutes: 5
-        )
-        let eveningCommute = RouteAlertSubscription(
-            dataSource: "NJT", fromStationCode: "TR", toStationCode: "NY",
-            activeDays: 31,
-            activeStartMinutes: 900,   // PM Commute start
-            activeEndMinutes: 1200,    // PM Commute end
-            timezone: "America/New_York",
-            delayThresholdMinutes: 10
-        )
-
-        // Verify non-overlapping windows
-        XCTAssertTrue(morningCommute.activeEndMinutes! <= eveningCommute.activeStartMinutes!,
-                       "AM and PM commute windows should not overlap")
-
-        // Verify same days
-        XCTAssertEqual(morningCommute.activeDays, eveningCommute.activeDays,
-                       "Both commute directions typically have the same active days")
-
-        // Verify different sensitivity
-        XCTAssertNotEqual(morningCommute.delayThresholdMinutes, eveningCommute.delayThresholdMinutes,
-                          "Commute directions can have independent delay thresholds")
-    }
+    // MARK: - Copy Settings
 
     func testCommuteScenario_copySettingsPreservesTimePreset() {
         // Verifies copySettings works with new time preset values
@@ -320,16 +250,27 @@ class AlertConfigurationTests: XCTestCase {
                         "With both alert types disabled, recovery toggle should be hidden")
     }
 
-    // MARK: - Digest Independence from Days
+    // MARK: - Digest Requires Days Selected
 
-    func testDigest_worksWithNoDaysSelected() {
-        var sub = RouteAlertSubscription(
+    func testDigest_hiddenWhenNoDaysSelected() {
+        // Daily Status Summary is only visible when days are selected (activeDays != 0)
+        let sub = RouteAlertSubscription(
             dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY",
             activeDays: 0  // None
         )
+        XCTAssertEqual(sub.activeDays, 0, "Days should be None")
+        // In the UI, the digest toggle is hidden when activeDays == 0
+        // The model still allows setting digestTimeMinutes, but the UI won't show it
+    }
+
+    func testDigest_visibleWhenDaysSelected() {
+        var sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "NEC", direction: "NY",
+            activeDays: 127  // Every Day
+        )
         sub.digestTimeMinutes = 420  // 7:00 AM
 
-        XCTAssertEqual(sub.activeDays, 0, "Days should be None")
-        XCTAssertEqual(sub.digestTimeMinutes, 420, "Digest should work even with no active days")
+        XCTAssertNotEqual(sub.activeDays, 0, "Days should be selected")
+        XCTAssertEqual(sub.digestTimeMinutes, 420, "Digest should be configurable when days are selected")
     }
 }

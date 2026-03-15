@@ -44,52 +44,33 @@ struct AlertConfigurationSheetWrapper: View {
 
 // MARK: - Directional Alert Configuration Sheet
 
+/// Identifiable wrapper for presenting a directional sheet via `.sheet(item:)`.
+struct DirectionalSheetData: Identifiable {
+    let id = UUID()
+    let directions: [DirectionDraft]
+}
+
 /// A direction draft for use in the directional configuration sheet.
 struct DirectionDraft {
     let label: String
     var subscription: RouteAlertSubscription
-    var enabled: Bool
     let alreadySubscribed: Bool
 }
 
 /// Sheet that shows both directions of a route with independent alert settings.
-/// Each direction can be enabled/disabled and configured separately.
+/// Each direction is shown inline with its own configuration section.
 struct DirectionalAlertConfigurationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var directions: [DirectionDraft]
-    @State private var selectedIndex: Int
     private let onSave: ([RouteAlertSubscription]) -> Void
 
     init(directions: [DirectionDraft], onSave: @escaping ([RouteAlertSubscription]) -> Void) {
-        let firstNew = directions.firstIndex(where: { !$0.alreadySubscribed }) ?? 0
         _directions = State(initialValue: directions)
-        _selectedIndex = State(initialValue: firstNew)
         self.onSave = onSave
     }
 
     private var canSave: Bool {
-        directions.contains { $0.enabled && !$0.alreadySubscribed }
-    }
-
-    private var currentSubscription: Binding<RouteAlertSubscription> {
-        Binding(
-            get: { directions[safeIndex].subscription },
-            set: { directions[safeIndex].subscription = $0 }
-        )
-    }
-
-    private var currentEnabled: Binding<Bool> {
-        Binding(
-            get: { directions[safeIndex].enabled },
-            set: { directions[safeIndex].enabled = $0 }
-        )
-    }
-
-    /// Clamped index to prevent out-of-range crashes when SwiftUI
-    /// evaluates the sheet body with an empty or stale directions array.
-    private var safeIndex: Int {
-        guard !directions.isEmpty else { return 0 }
-        return min(selectedIndex, directions.count - 1)
+        directions.contains { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
     }
 
     @ViewBuilder
@@ -99,20 +80,15 @@ struct DirectionalAlertConfigurationSheet: View {
         } else {
             NavigationStack {
                 ScrollView {
-                    VStack(spacing: 12) {
-                        directionPicker
-
-                        if directions[safeIndex].alreadySubscribed {
-                            alreadySubscribedBanner
-                        } else {
-                            Toggle("Enable this direction", isOn: currentEnabled)
-                                .tint(.orange)
-                                .padding()
-                                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-
-                            if directions[safeIndex].enabled {
-                                copySettingsButton
-                                AlertConfigurationSection(subscription: currentSubscription)
+                    VStack(spacing: 20) {
+                        ForEach(0..<directions.count, id: \.self) { i in
+                            if directions[i].alreadySubscribed {
+                                alreadySubscribedBanner(label: directions[i].label)
+                            } else {
+                                AlertConfigurationSection(
+                                    subscription: $directions[i].subscription,
+                                    headerText: directions[i].label
+                                )
                             }
                         }
                     }
@@ -129,7 +105,7 @@ struct DirectionalAlertConfigurationSheet: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Save") {
                             let enabledSubs = directions
-                                .filter { $0.enabled && !$0.alreadySubscribed }
+                                .filter { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
                                 .map(\.subscription)
                             onSave(enabledSubs)
                             dismiss()
@@ -144,50 +120,21 @@ struct DirectionalAlertConfigurationSheet: View {
         }
     }
 
-    // MARK: - Direction Picker
-
-    private var directionPicker: some View {
-        Picker("Direction", selection: $selectedIndex) {
-            ForEach(0..<directions.count, id: \.self) { i in
-                Text(directions[i].label).tag(i)
-            }
-        }
-        .pickerStyle(.segmented)
-    }
-
     // MARK: - Already Subscribed Banner
 
-    private var alreadySubscribedBanner: some View {
-        HStack {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(.green)
-            Text("Already subscribed")
-                .foregroundColor(.white.opacity(0.7))
-        }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-    }
-
-    // MARK: - Copy Settings Button
-
-    @ViewBuilder
-    private var copySettingsButton: some View {
-        if directions.count == 2 {
-            let otherIndex = safeIndex == 0 ? 1 : 0
-            let other = directions[otherIndex]
-            if other.enabled && !other.alreadySubscribed {
-                Button {
-                    directions[safeIndex].subscription = RouteAlertSubscription.copySettings(
-                        from: directions[otherIndex].subscription,
-                        to: directions[safeIndex].subscription
-                    )
-                } label: {
-                    Label("Copy settings from \(directions[otherIndex].label)", systemImage: "doc.on.doc")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
+    private func alreadySubscribedBanner(label: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.headline)
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                Text("Already subscribed")
+                    .foregroundColor(.white.opacity(0.7))
             }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
         }
     }
 }
@@ -206,16 +153,15 @@ enum AlertSensitivity: String, CaseIterable {
 /// Quick time window presets for common commute patterns.
 enum TimePreset: String, CaseIterable {
     case anyTime = "Any Time"
-    case amCommute = "AM Commute"
-    case pmCommute = "PM Commute"
     case custom = "Custom"
 }
 
 // MARK: - Alert Configuration Section
 
-/// Unified alert settings card: day/time selection, alert types, recovery, planned work, and daily digest.
+/// Unified alert settings card: day/time selection, alert types, recovery, planned work, and daily status summary.
 struct AlertConfigurationSection: View {
     @Binding var subscription: RouteAlertSubscription
+    var headerText: String = "Alert Settings"
     @State private var showCustomDays = false
     @State private var showCustomTime = false
 
@@ -238,12 +184,10 @@ struct AlertConfigurationSection: View {
     }
 
     private var activeTimePreset: TimePreset {
-        guard let start = subscription.activeStartMinutes,
-              let end = subscription.activeEndMinutes else {
+        guard subscription.activeStartMinutes != nil,
+              subscription.activeEndMinutes != nil else {
             return .anyTime
         }
-        if start == 300 && end == 600 { return .amCommute }
-        if start == 900 && end == 1200 { return .pmCommute }
         return .custom
     }
 
@@ -253,7 +197,7 @@ struct AlertConfigurationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Alert Settings")
+            Text(headerText)
                 .font(.headline)
 
             configCard {
@@ -298,30 +242,25 @@ struct AlertConfigurationSection: View {
                         }
                         .tint(.orange)
                     }
-                }
 
-                Divider().opacity(0.3)
+                    Divider().opacity(0.3)
 
-                // Daily digest (always visible)
-                Toggle(isOn: digestEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Daily digest")
-                        Text("Route status summary at a set time")
-                            .font(.caption2)
-                            .foregroundColor(.white.opacity(0.5))
+                    // Daily status summary
+                    Toggle(isOn: digestEnabled) {
+                        Text("Daily Status Summary")
                     }
-                }
-                .tint(.orange)
+                    .tint(.orange)
 
-                if subscription.digestTimeMinutes != nil {
-                    HStack {
-                        Text("Digest time")
-                            .foregroundColor(.white.opacity(0.6))
-                        Spacer()
-                        minuteOfDayPicker(selection: Binding(
-                            get: { subscription.digestTimeMinutes ?? 420 },
-                            set: { subscription.digestTimeMinutes = $0 }
-                        ))
+                    if subscription.digestTimeMinutes != nil {
+                        HStack {
+                            Text("Digest time")
+                                .foregroundColor(.white.opacity(0.6))
+                            Spacer()
+                            minuteOfDayPicker(selection: Binding(
+                                get: { subscription.digestTimeMinutes ?? 420 },
+                                set: { subscription.digestTimeMinutes = $0 }
+                            ))
+                        }
                     }
                 }
             }
@@ -333,8 +272,6 @@ struct AlertConfigurationSection: View {
     private var timePresetRow: some View {
         HStack(spacing: 8) {
             timePresetButton(.anyTime)
-            timePresetButton(.amCommute)
-            timePresetButton(.pmCommute)
 
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -374,14 +311,6 @@ struct AlertConfigurationSection: View {
                     if subscription.digestTimeMinutes == nil {
                         subscription.timezone = nil
                     }
-                case .amCommute:
-                    subscription.activeStartMinutes = 300   // 5:00 AM
-                    subscription.activeEndMinutes = 600      // 10:00 AM
-                    subscription.timezone = TimeZone.current.identifier
-                case .pmCommute:
-                    subscription.activeStartMinutes = 900   // 3:00 PM
-                    subscription.activeEndMinutes = 1200     // 8:00 PM
-                    subscription.timezone = TimeZone.current.identifier
                 case .custom:
                     break
                 }
@@ -421,10 +350,6 @@ struct AlertConfigurationSection: View {
                 set: { subscription.activeEndMinutes = $0 }
             ))
         }
-
-        Text("Overnight ranges (e.g. 10pm–6am) are supported.")
-            .font(.caption2)
-            .foregroundColor(.secondary)
     }
 
     // MARK: - Digest
