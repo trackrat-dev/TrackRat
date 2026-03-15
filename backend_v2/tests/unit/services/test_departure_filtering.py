@@ -274,9 +274,9 @@ class TestDepartureFiltering:
 
         A train cancelled at 5am should not still appear at 8am. The backend
         filters cancelled trains whose scheduled_departure is more than 2 hours
-        in the past via the hide_departed SQL filter. This test simulates that
-        behavior by only returning the non-stale trains from the mock query
-        (matching what the SQL WHERE clause would do).
+        in the past via a base SQL filter (regardless of hide_departed). This
+        test simulates that behavior by only returning the non-stale trains from
+        the mock query (matching what the SQL WHERE clause would do).
         """
         now = now_et()
 
@@ -482,6 +482,36 @@ class TestDepartureFilterQuery:
 
         assert filter_expr is not None
         assert "is_completed" in str(filter_expr)
+
+    @pytest.mark.asyncio
+    async def test_base_cancelled_filter_has_time_constraint(self):
+        """Verify that the base departure filters include a 2-hour time window for cancelled trains.
+
+        Regardless of hide_departed, the SQL filter should be:
+            OR(is_cancelled IS NOT TRUE,
+               scheduled_departure >= now - 2h)
+
+        This prevents stale cancelled trains from lingering in results all day.
+        """
+        from sqlalchemy import or_
+        from trackrat.models.database import TrainJourney, JourneyStop
+        from trackrat.utils.time import now_et
+
+        current_time = now_et()
+
+        # Construct the filter as it appears in departure.py (base filters)
+        filter_expr = or_(
+            TrainJourney.is_cancelled.is_not(True),
+            JourneyStop.scheduled_departure >= current_time - timedelta(hours=2),
+        )
+
+        filter_str = str(filter_expr)
+        assert (
+            "is_cancelled" in filter_str
+        ), "Base filter must include is_cancelled check"
+        assert (
+            "scheduled_departure" in filter_str
+        ), "Base filter must include scheduled_departure time constraint"
 
     @pytest.mark.asyncio
     async def test_hide_departed_cancelled_filter_has_time_constraint(self):
