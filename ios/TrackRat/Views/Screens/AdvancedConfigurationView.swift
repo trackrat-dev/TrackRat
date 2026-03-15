@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AdvancedConfigurationView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var themeManager: ThemeManager
     @State private var showClearHistoryConfirmation = false
@@ -19,8 +20,7 @@ struct AdvancedConfigurationView: View {
         VStack(spacing: 0) {
             TrackRatNavigationHeader(
                 title: "Advanced Configuration",
-                showBackButton: false,
-                showCloseButton: true
+                onBackAction: { dismiss() }
             )
 
             ScrollView {
