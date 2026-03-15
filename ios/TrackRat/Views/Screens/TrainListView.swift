@@ -66,7 +66,7 @@ struct TrainListView: View {
                 // Center title
                 VStack(spacing: 2) {
                     Text(destination)
-                        .font(.headline)
+                        .font(TrackRatTheme.Typography.title3)
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)

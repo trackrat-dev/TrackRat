@@ -34,7 +34,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
             // Center title - truly centered regardless of leading/trailing content
             VStack(spacing: 0) {
                 Text(title)
-                    .font(.headline)
+                    .font(TrackRatTheme.Typography.title3)
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
