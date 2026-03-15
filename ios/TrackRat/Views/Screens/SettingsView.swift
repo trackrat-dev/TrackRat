@@ -440,7 +440,10 @@ struct SettingsSection: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } onClear: {
                         if let code = RatSenseService.shared.getHomeStation() {
-                            appState.removeFavoriteStation(code: code)
+                            // Only remove from favorites if not also the work station
+                            if code != RatSenseService.shared.getWorkStation() {
+                                appState.removeFavoriteStation(code: code)
+                            }
                         }
                         RatSenseService.shared.setHomeStation(nil)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -458,7 +461,10 @@ struct SettingsSection: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } onClear: {
                         if let code = RatSenseService.shared.getWorkStation() {
-                            appState.removeFavoriteStation(code: code)
+                            // Only remove from favorites if not also the home station
+                            if code != RatSenseService.shared.getHomeStation() {
+                                appState.removeFavoriteStation(code: code)
+                            }
                         }
                         RatSenseService.shared.setWorkStation(nil)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -726,14 +732,17 @@ struct SettingsSection: View {
             ) { station in
                 switch stationPickerRole {
                 case .home:
-                    // Remove old home station from favorites if it exists
-                    if let oldCode = RatSenseService.shared.getHomeStation() {
+                    // Remove old home from favorites only if it's not also the work station
+                    if let oldCode = RatSenseService.shared.getHomeStation(),
+                       oldCode != RatSenseService.shared.getWorkStation() {
                         appState.removeFavoriteStation(code: oldCode)
                     }
                     RatSenseService.shared.setHomeStation(station.code)
                     appState.addFavoriteStation(code: station.code, name: station.name)
                 case .work:
-                    if let oldCode = RatSenseService.shared.getWorkStation() {
+                    // Remove old work from favorites only if it's not also the home station
+                    if let oldCode = RatSenseService.shared.getWorkStation(),
+                       oldCode != RatSenseService.shared.getHomeStation() {
                         appState.removeFavoriteStation(code: oldCode)
                     }
                     RatSenseService.shared.setWorkStation(station.code)
