@@ -184,4 +184,30 @@ extension Stations {
         }
         return false
     }
+
+    /// Search stations grouped by active system membership.
+    /// Returns stations matching selected systems first, then stations on other systems.
+    static func searchGrouped(
+        _ query: String,
+        selectedSystems: Set<TrainSystem>,
+        amtrakMode: AmtrakMode = .all
+    ) -> (primary: [String], other: [String]) {
+        let all = search(query)
+        var primary: [String] = []
+        var other: [String] = []
+        for name in all {
+            guard let code = getStationCode(name) else { continue }
+            if isStationVisible(code, withSystems: selectedSystems, amtrakMode: amtrakMode) {
+                primary.append(name)
+            } else {
+                other.append(name)
+            }
+        }
+        return (primary, other)
+    }
+
+    /// Returns the primary train system for a station (for badge display).
+    static func primarySystem(forStationCode code: String) -> TrainSystem? {
+        systemsForStation(code).min(by: { $0.displayName < $1.displayName })
+    }
 }

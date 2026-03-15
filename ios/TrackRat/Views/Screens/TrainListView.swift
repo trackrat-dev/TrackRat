@@ -15,6 +15,17 @@ struct TrainListView: View {
         Stations.displayName(for: departureStationCode)
     }
 
+    /// Data sources to query: user's selected systems plus systems serving the selected stations.
+    /// Ensures departures appear even when stations are from non-active systems.
+    private var effectiveSystems: Set<TrainSystem> {
+        var systems = appState.selectedSystems
+        systems.formUnion(Stations.systemsForStation(departureStationCode))
+        if let toCode = Stations.getStationCode(destination) {
+            systems.formUnion(Stations.systemsForStation(toCode))
+        }
+        return systems
+    }
+
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
@@ -141,7 +152,7 @@ struct TrainListView: View {
                                     destination: destination,
                                     fromStationCode: departureStationCode,
                                     date: selectedDate,
-                                    selectedSystems: appState.selectedSystems
+                                    selectedSystems: effectiveSystems
                                 )
                             }
                         }
@@ -238,7 +249,7 @@ struct TrainListView: View {
                 destination: destination,
                 fromStationCode: departureStationCode,
                 date: selectedDate,
-                selectedSystems: appState.selectedSystems
+                selectedSystems: effectiveSystems
             )
         }
         .task(id: isViewVisible) {
@@ -248,7 +259,7 @@ struct TrainListView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled, isViewVisible, !isFutureDate else { break }
-                await viewModel.refreshTrains(date: selectedDate, selectedSystems: appState.selectedSystems)
+                await viewModel.refreshTrains(date: selectedDate, selectedSystems: effectiveSystems)
             }
         }
         .sheet(isPresented: $showDatePicker) {
