@@ -95,6 +95,30 @@ struct TrainListView: View {
 
             // Action buttons row
             HStack(spacing: 12) {
+                // Route alerts button
+                if let destinationCode = Stations.getStationCode(destination) {
+                    Button {
+                        appState.pendingRouteStatus = RouteStatusContext(
+                            dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
+                            lineId: viewModel.trains.first?.line.code,
+                            fromStationCode: departureStationCode,
+                            toStationCode: destinationCode
+                        )
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "bell.badge")
+                                .font(.subheadline)
+                            Text("Alerts")
+                                .font(.subheadline)
+                        }
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 // Schedule picker - Pro feature
                 Button {
                     showDatePicker = true
@@ -111,30 +135,6 @@ struct TrainListView: View {
                     .background(Capsule().fill(Color.white.opacity(0.12)))
                 }
                 .buttonStyle(.plain)
-
-                // Route alerts button
-                if let destinationCode = Stations.getStationCode(destination) {
-                    Button {
-                        appState.pendingRouteStatus = RouteStatusContext(
-                            dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
-                            lineId: viewModel.trains.first?.line.code,
-                            fromStationCode: departureStationCode,
-                            toStationCode: destinationCode
-                        )
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "bell.badge")
-                                .font(.subheadline)
-                            Text("Route Alerts")
-                                .font(.subheadline)
-                        }
-                        .foregroundColor(.white.opacity(0.8))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
-                    }
-                    .buttonStyle(.plain)
-                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
