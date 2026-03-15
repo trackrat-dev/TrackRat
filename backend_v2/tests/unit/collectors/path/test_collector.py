@@ -19,7 +19,9 @@ from trackrat.collectors.path.collector import (
     _headsign_matches_station,
     _infer_origin_station,
     _normalize_headsign,
+    _normalize_line_color,
 )
+from trackrat.config.stations.path import get_path_route_and_stops
 from trackrat.collectors.path.ridepath_client import PathArrival
 from trackrat.models.database import JourneyStop, TrainJourney
 
@@ -364,6 +366,142 @@ class TestInferOriginStation:
         # Harrison (PHR) at index 1, forward direction → origin is PNK
         result = _infer_origin_station("PHR", "PWC")
         assert result == "PNK"
+
+    def test_hoboken_to_33rd_with_orange_color_infers_jsq_origin(self):
+        """Test that JSQ-33H train at Hoboken is correctly identified via orange color.
+
+        Bug fix: Without color, _infer_origin_station("PHO", "P33") returns PHO
+        (HOB-33 route) because PHO is at index 0 in HOB-33 but index 3 in JSQ-33H.
+        With orange color (FF9900), JSQ-33H is correctly selected → origin = PJS.
+        """
+        # Orange = JSQ-33H (route 1024), not HOB-33 (route 859, blue #4d92fb)
+        result = _infer_origin_station("PHO", "P33", line_color="FF9900")
+        assert result == "PJS", (
+            f"Expected PJS (JSQ-33H origin) but got {result}. "
+            "Orange color should disambiguate JSQ-33H from HOB-33 at Hoboken."
+        )
+
+    def test_hoboken_to_33rd_with_blue_color_infers_hoboken_origin(self):
+        """Test that HOB-33 train at Hoboken is correctly identified via blue color.
+
+        Blue (#4d92fb) = HOB-33 (route 859). Origin should be PHO (Hoboken).
+        """
+        result = _infer_origin_station("PHO", "P33", line_color="4D92FB")
+        assert result == "PHO", (
+            f"Expected PHO (HOB-33 origin) but got {result}. "
+            "Blue color should select HOB-33 route."
+        )
+
+    def test_hoboken_to_33rd_without_color_backward_compat(self):
+        """Test that without color, existing behavior is preserved."""
+        # Without color, HOB-33 wins (PHO at index 0 beats JSQ-33H at index 3)
+        result = _infer_origin_station("PHO", "P33")
+        assert result == "PHO"
+
+    def test_color_disambiguation_with_hash_prefix(self):
+        """Test color matching works with # prefix."""
+        result = _infer_origin_station("PHO", "P33", line_color="#ff9900")
+        assert result == "PJS"
+
+    def test_color_disambiguation_with_comma_separated(self):
+        """Test color matching works with comma-separated multi-color values."""
+        # API sometimes returns "4D92FB,FF9900" — first color used
+        result = _infer_origin_station("PHO", "P33", line_color="4D92FB,FF9900")
+        assert result == "PHO", "First color (blue) should select HOB-33"
+
+    def test_christopher_to_33rd_with_orange_color_infers_jsq(self):
+        """Test JSQ-33H train at Christopher St with orange color → PJS origin.
+
+        Christopher St (PCH) is in HOB-33 (idx 1), JSQ-33 (idx 3), and JSQ-33H (idx 4).
+        Orange color filters to JSQ-33 and JSQ-33H; JSQ-33H has more stops → PJS.
+        """
+        result = _infer_origin_station("PCH", "P33", line_color="FF9900")
+        assert result == "PJS"
+
+
+class TestNormalizeLineColor:
+    """Tests for _normalize_line_color helper."""
+
+    def test_bare_hex(self):
+        assert _normalize_line_color("D93A30") == "#d93a30"
+
+    def test_with_hash(self):
+        assert _normalize_line_color("#FF9900") == "#ff9900"
+
+    def test_comma_separated_takes_first(self):
+        assert _normalize_line_color("4D92FB,FF9900") == "#4d92fb"
+
+    def test_whitespace_stripped(self):
+        assert _normalize_line_color(" D93A30 ") == "#d93a30"
+
+
+class TestGetPathRouteAndStopsColorDisambiguation:
+    """Tests for get_path_route_and_stops with line_color disambiguation."""
+
+    def test_pjs_to_p33_without_color_returns_longest_route(self):
+        """PJS→P33 matches JSQ-33 (861) and JSQ-33H (1024). Without color,
+        should prefer longest route (JSQ-33H has 9 stops vs JSQ-33's 8)."""
+        result = get_path_route_and_stops("PJS", "P33")
+        assert result is not None
+        route_id, stops = result
+        # Should prefer JSQ-33H (1024) — longer route
+        assert route_id == "1024", (
+            f"Expected route 1024 (JSQ-33H, 9 stops) but got {route_id}. "
+            "Longest route should be preferred when ambiguous."
+        )
+        assert "PHO" in stops, "JSQ-33H route should include Hoboken"
+
+    def test_pjs_to_p33_with_orange_color(self):
+        """PJS→P33 with orange color — both JSQ-33 and JSQ-33H are orange,
+        so longest route (JSQ-33H) should be selected."""
+        result = get_path_route_and_stops("PJS", "P33", line_color="FF9900")
+        assert result is not None
+        route_id, stops = result
+        assert route_id == "1024", "Orange color + longest-route should select JSQ-33H"
+
+    def test_pho_to_p33_with_blue_color(self):
+        """PHO→P33 with blue color should select HOB-33 (859)."""
+        result = get_path_route_and_stops("PHO", "P33", line_color="4D92FB")
+        assert result is not None
+        route_id, stops = result
+        assert route_id == "859", "Blue color should select HOB-33"
+        assert stops[0] == "PHO"
+        assert stops[-1] == "P33"
+
+    def test_pho_to_p33_with_orange_color(self):
+        """PHO→P33 with orange color should select JSQ-33H (1024), not HOB-33."""
+        result = get_path_route_and_stops("PHO", "P33", line_color="FF9900")
+        assert result is not None
+        route_id, stops = result
+        assert route_id == "1024", (
+            f"Expected route 1024 (JSQ-33H) but got {route_id}. "
+            "Orange color should filter out HOB-33 (blue)."
+        )
+        # Stops should be from PHO to P33 (subset of JSQ-33H)
+        assert stops[0] == "PHO"
+        assert stops[-1] == "P33"
+
+    def test_nwk_wtc_unaffected_by_color(self):
+        """NWK-WTC route has no ambiguity — color should not change result."""
+        result_no_color = get_path_route_and_stops("PNK", "PWC")
+        result_with_color = get_path_route_and_stops("PNK", "PWC", line_color="D93A30")
+        assert result_no_color is not None
+        assert result_with_color is not None
+        assert result_no_color[0] == result_with_color[0] == "862"
+
+    def test_backward_compat_no_color(self):
+        """All existing routes still resolve without color parameter."""
+        # HOB-33
+        result = get_path_route_and_stops("PHO", "P33")
+        assert result is not None
+
+        # NWK-WTC
+        result = get_path_route_and_stops("PNK", "PWC")
+        assert result is not None
+
+        # HOB-WTC
+        result = get_path_route_and_stops("PHO", "PWC")
+        assert result is not None
 
 
 # =============================================================================

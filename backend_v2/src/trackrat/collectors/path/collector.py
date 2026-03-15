@@ -222,9 +222,27 @@ def _normalize_headsign(headsign: str) -> str:
     return h.replace(" ", "_")
 
 
+def _normalize_line_color(color: str) -> str:
+    """Normalize a line color for comparison.
+
+    Handles API colors like "D93A30", "4D92FB,FF9900", "#ff9900".
+
+    Args:
+        color: Raw color string from API or config
+
+    Returns:
+        Lowercase hex color with # prefix (first color if comma-separated)
+    """
+    color = color.split(",")[0].strip().lower()
+    if not color.startswith("#"):
+        color = f"#{color}"
+    return color
+
+
 def _infer_origin_station(
     current_station: str,
     destination_station: str,
+    line_color: str | None = None,
 ) -> str:
     """Infer the origin station for a train seen mid-route.
 
@@ -232,9 +250,14 @@ def _infer_origin_station(
     (in either direction), then picks the one where current_station is closest
     to the start (giving us the most complete journey).
 
+    When line_color is provided (from the RidePATH API), uses it to disambiguate
+    overlapping routes. For example, a train at PHO heading to P33 could be
+    HOB-33 (blue #4d92fb) or JSQ-33H (orange #ff9900) — color resolves this.
+
     Args:
         current_station: Station code where the train was seen
         destination_station: Train's destination station code
+        line_color: Optional line color from API for route disambiguation
 
     Returns:
         Origin station code (first stop of the best matching route),
@@ -261,6 +284,19 @@ def _infer_origin_station(
     if not matching_routes:
         # No matching route - use current station as origin
         return current_station
+
+    # Filter by line color when available to disambiguate overlapping routes.
+    # e.g., at PHO heading to P33: HOB-33 (blue) vs JSQ-33H (orange).
+    if line_color and len(matching_routes) > 1:
+        normalized_color = _normalize_line_color(line_color)
+        color_filtered = [
+            r
+            for r in matching_routes
+            if PATH_ROUTES.get(r[0])
+            and _normalize_line_color(PATH_ROUTES[r[0]][2]) == normalized_color
+        ]
+        if color_filtered:
+            matching_routes = color_filtered
 
     # Filter out shuttle routes whose raw PATH_ROUTE_STOPS definition is a
     # contiguous prefix of a longer matching route.  e.g., NWK-HAR shuttle
@@ -473,12 +509,16 @@ class PathCollector:
             return False
 
         # Infer the true origin station (may be different if discovered mid-route)
+        # Pass line_color to disambiguate overlapping routes (e.g., HOB-33 vs JSQ-33H)
         origin_station = _infer_origin_station(
-            discovered_at_station, destination_station
+            discovered_at_station, destination_station, line_color=arrival.line_color
         )
 
         # Get full route (with route_id) from origin to destination
-        route_result = get_path_route_and_stops(origin_station, destination_station)
+        # Pass line_color to ensure consistent route selection
+        route_result = get_path_route_and_stops(
+            origin_station, destination_station, line_color=arrival.line_color
+        )
 
         if not route_result or len(route_result[1]) < 2:
             logger.debug(
@@ -1126,6 +1166,7 @@ class PathCollector:
             route_result = get_path_route_and_stops(
                 journey.origin_station_code or "",
                 journey.terminal_station_code or "",
+                line_color=journey.line_color,
             )
             if route_result:
                 avg_route_id, route_stops = route_result

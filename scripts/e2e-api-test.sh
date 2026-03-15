@@ -206,9 +206,17 @@ ROUTES=(
   "Amtrak Empire|NY|ALB|AMTRAK|NY|"
   "Amtrak Acela|NY|BOS|AMTRAK|NY|"
   "Amtrak NEC Short|NY|PH|AMTRAK|NY|"
-  # PATH
+  # PATH - all major routes and directions
   "PATH HOB-33|PHO|P33|PATH||"
   "PATH NWK-WTC|PNK|PWC|PATH||"
+  "PATH NWK-WTC (reverse)|PWC|PNK|PATH||"
+  "PATH JSQ-33|PJS|P33|PATH||"
+  "PATH JSQ-33 (reverse)|P33|PJS|PATH||"
+  # PATH - weekday-only (HOB-WTC does not run on weekends)
+  "PATH HOB-WTC|PHO|PWC|PATH||w"
+  # PATH mid-route checks (catches route attribution bugs)
+  "PATH mid:GRV->WTC|PGR|PWC|PATH||"
+  "PATH mid:NPT->33rd|PNP|P33|PATH||"
   # LIRR - high frequency
   "LIRR Babylon|JAM|BTA|LIRR|JAM|"
   "LIRR Ronkonkoma|JAM|RON|LIRR|JAM|"
@@ -254,7 +262,7 @@ sc = _load('station_configs')
 ${seed_arg}
 ml = set(sc.get_prediction_enabled_stations())
 is_weekend = datetime.date.today().weekday() >= 5
-for src, n in [('NJT',3),('AMTRAK',3),('PATH',1),('LIRR',3),('MNR',2),('SUBWAY',2),('PATCO',1)]:
+for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',2),('PATCO',1)]:
     routes = rt.get_routes_for_data_source(src)
     flags = 's' if src == 'PATCO' else ''
     for r in random.sample(routes, min(n, len(routes))):

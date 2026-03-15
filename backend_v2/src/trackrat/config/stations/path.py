@@ -157,7 +157,9 @@ def get_path_route_stops(route_id: str, terminus_station: str) -> list[str]:
 
 
 def get_path_route_and_stops(
-    origin_station: str, destination_station: str
+    origin_station: str,
+    destination_station: str,
+    line_color: str | None = None,
 ) -> tuple[str, list[str]] | None:
     """Get route ID and ordered stops for a PATH journey.
 
@@ -165,24 +167,66 @@ def get_path_route_and_stops(
     against all known PATH routes. Returns the route ID and the subset of
     stops from origin to destination (inclusive).
 
+    When line_color is provided, uses it to disambiguate overlapping routes.
+    For example, PJS→P33 matches both JSQ-33 (861, orange) and JSQ-33H (1024,
+    orange) — but also HOB-33 (859, blue) wouldn't match orange, filtering it
+    out. For routes sharing the same color, the longest matching route is
+    preferred (JSQ-33H over JSQ-33 when PHO is in the route and travel
+    includes it).
+
     Args:
         origin_station: Station code where train departs (e.g., 'PHO')
         destination_station: Station code for destination (e.g., 'P33')
+        line_color: Optional line color for route disambiguation
 
     Returns:
         Tuple of (route_id, stops) or None if no route found
     """
+    # Normalize the provided color for comparison
+    normalized_color = None
+    if line_color:
+        normalized_color = line_color.split(",")[0].strip().lower()
+        if not normalized_color.startswith("#"):
+            normalized_color = f"#{normalized_color}"
+
+    candidates: list[tuple[str, list[str]]] = []
+
     for route_id, stops in PATH_ROUTE_STOPS.items():
         if origin_station in stops and destination_station in stops:
             origin_idx = stops.index(origin_station)
             dest_idx = stops.index(destination_station)
 
             if origin_idx < dest_idx:
-                return (route_id, stops[origin_idx : dest_idx + 1])
+                segment = stops[origin_idx : dest_idx + 1]
             else:
-                return (route_id, list(reversed(stops[dest_idx : origin_idx + 1])))
+                segment = list(reversed(stops[dest_idx : origin_idx + 1]))
 
-    return None
+            candidates.append((route_id, segment))
+
+    if not candidates:
+        return None
+
+    # If only one candidate, return it directly
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Multiple candidates — filter by color if available
+    if normalized_color and len(candidates) > 1:
+        color_filtered = [
+            c
+            for c in candidates
+            if PATH_ROUTES.get(c[0])
+            and PATH_ROUTES[c[0]][2].lower() == normalized_color
+        ]
+        if color_filtered:
+            candidates = color_filtered
+
+    # If still multiple candidates, prefer the longest route (most stops)
+    # e.g., JSQ-33H (9 stops via Hoboken) over JSQ-33 (8 stops)
+    if len(candidates) > 1:
+        candidates.sort(key=lambda c: len(PATH_ROUTE_STOPS.get(c[0], [])), reverse=True)
+
+    return candidates[0]
 
 
 def get_path_stops_by_origin_destination(
