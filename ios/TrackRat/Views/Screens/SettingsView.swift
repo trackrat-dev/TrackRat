@@ -120,6 +120,7 @@ struct SettingsView: View {
                 }
             }
             .navigationBarHidden(true)
+            .edgeSwipeBack(path: $navigationPath)
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
