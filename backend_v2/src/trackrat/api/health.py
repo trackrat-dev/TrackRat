@@ -149,8 +149,10 @@ async def liveness_probe() -> dict[str, str]:
     return {"status": "alive"}
 
 
-@router.get("/health/ready")
-async def readiness_probe(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+@router.get("/health/ready", response_model=None)
+async def readiness_probe(
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any] | JSONResponse:
     """Readiness probe that verifies database connectivity and scheduler status."""
     try:
         # Quick database check

@@ -1282,7 +1282,6 @@ private struct TrainSystemRow: View {
     let system: TrainSystem
     let isSelected: Bool
     let isLast: Bool
-    var subtitle: String? = nil
     var showControls: Bool = true
     var showProBadge: Bool = false
     let action: () -> Void
@@ -1301,11 +1300,6 @@ private struct TrainSystemRow: View {
                         .fontWeight(.medium)
                         .foregroundColor(.white)
 
-                    if let subtitle, isSelected {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                    }
                 }
 
                 if showProBadge {

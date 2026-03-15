@@ -427,7 +427,6 @@ private struct LayerToggleButton: View {
 private struct SystemToggleButton: View {
     let system: TrainSystem
     let isSelected: Bool
-    var subtitle: String? = nil
     var showProBadge: Bool = false
     let action: () -> Void
 
@@ -444,11 +443,6 @@ private struct SystemToggleButton: View {
                         .font(.subheadline)
                         .foregroundColor(.primary)
 
-                    if let subtitle, isSelected {
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundColor(.orange)
-                    }
                 }
 
                 if showProBadge {

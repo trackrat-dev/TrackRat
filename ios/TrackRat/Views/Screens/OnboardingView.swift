@@ -577,7 +577,6 @@ struct StationSelectionCard: View {
 struct SystemSelectionCard: View {
     let system: TrainSystem
     let isSelected: Bool
-    var subtitle: String? = nil
     var showProBadge: Bool = false
     let onTap: () -> Void
 
@@ -595,17 +594,6 @@ struct SystemSelectionCard: View {
                     Text(system.displayName)
                         .font(.headline)
                         .foregroundColor(.white)
-                    if let subtitle, isSelected {
-                        Text(subtitle)
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(.orange.opacity(0.2))
-                            )
-                    }
                     if system.isBeta {
                         Text("beta")
                             .font(.caption2)
