@@ -286,47 +286,47 @@ extension Stations {
         "Marble Hill-225 St",
         "215 St",
         "207 St",
-        "Dyckman St (1)",
+        "Dyckman St",
         "191 St",
-        "181 St (1)",
+        "181 St",
         "168 St",
         "157 St",
-        "145 St (1)",
+        "145 St",
         "137 St-City College",
-        "125 St (1)",
+        "125 St",
         "116 St-Columbia University",
-        "Cathedral Pkwy (110 St) (1)",
-        "103 St (1)",
-        "96 St (1/2/3)",
+        "Cathedral Pkwy (110 St)",
+        "103 St (1/A/B/C)",
+        "96 St (1/2/3/A/B/C)",
         "86 St (1/2)",
         "79 St (1/2)",
         "72 St (1/2/3)",
         "66 St-Lincoln Center",
         "59 St-Columbus Circle",
-        "50 St (1/2)",
+        "50 St (1/2/A/C/E)",
         "Times Sq-42 St",
-        "34 St-Penn Station (1/2/3)",
+        "34 St-Penn Station",
         "28 St (1/2)",
         "23 St (1/2)",
         "18 St",
         "14 St (1/2/3/F/L/M)",
         "Christopher St-Stonewall",
         "Houston St",
-        "Canal St (1/2)",
+        "Canal St",
         "Franklin St",
         "Chambers St",
-        "WTC Cortlandt",
         "Rector St (1)",
+        "Rector St (N/R/W)",
         "South Ferry",
         "Wakefield-241 St",
         "Nereid Av",
         "233 St",
         "225 St",
         "219 St",
-        "Gun Hill Rd (2/5)",
+        "Gun Hill Rd",
         "Burke Av",
         "Allerton Av",
-        "Pelham Pkwy (2/5)",
+        "Pelham Pkwy",
         "Bronx Park East",
         "E 180 St",
         "West Farms Sq-E Tremont Av",
@@ -339,12 +339,12 @@ extension Stations {
         "3 Av-149 St",
         "149 St-Grand Concourse",
         "135 St (2/3)",
-        "125 St (2/3)",
         "116 St (2/3)",
         "110 St-Malcolm X Plaza",
         "Chambers St-WTC",
         "Fulton St (2/3/4/5/A/C/J/Z)",
         "Wall St (2/3)",
+        "Wall St (4/5)",
         "Clark St",
         "Borough Hall",
         "Hoyt St",
@@ -372,7 +372,6 @@ extension Stations {
         "Van Siclen Av (2/3/4/5)",
         "New Lots Av (2/3/4/5)",
         "Harlem-148 St",
-        "145 St (3)",
         "Woodlawn (4)",
         "Mosholu Pkwy",
         "Bedford Park Blvd-Lehman College",
@@ -386,12 +385,9 @@ extension Stations {
         "167 St (4)",
         "161 St-Yankee Stadium",
         "138 St-Grand Concourse",
-        "Wall St (4/5)",
         "Bowling Green",
         "Eastchester-Dyre Av",
         "Baychester Av",
-        "Gun Hill Rd (5)",
-        "Pelham Pkwy (5)",
         "Morris Park",
         "Pelham Bay Park",
         "Buhre Av",
@@ -411,7 +407,6 @@ extension Stations {
         "Cypress Av",
         "Brook Av",
         "3 Av-138 St",
-        "125 St (4/5/6)",
         "116 St (4/6)",
         "110 St",
         "103 St (4/6)",
@@ -429,7 +424,6 @@ extension Stations {
         "Astor Pl",
         "Broadway-Lafayette St",
         "Spring St (4/6)",
-        "Canal St (4/6/J/N/Q/R/W/Z)",
         "Brooklyn Bridge-City Hall",
         "Flushing-Main St",
         "Mets-Willets Point (7)",
@@ -452,29 +446,19 @@ extension Stations {
         "42 St-Bryant Pk",
         "34 St-Hudson Yards",
         "Inwood-207 St",
-        "Dyckman St (A)",
         "190 St",
-        "181 St (A)",
         "175 St",
         "163 St-Amsterdam Av",
-        "155 St (A/C)",
-        "145 St (A/B/C/D)",
+        "155 St",
         "135 St (A/B/C)",
-        "125 St (A/B/C/D)",
         "116 St (A/B/C)",
-        "Cathedral Pkwy (110 St) (A/B/C)",
-        "103 St (A/B/C)",
-        "96 St (A/B/C)",
         "86 St (A/B/C)",
         "81 St-Museum of Natural History",
         "72 St (A/B/C)",
-        "50 St (A/C/E)",
-        "34 St-Penn Station (A/C/E)",
         "23 St (A/C/E)",
         "14 St (A/C/E/L)",
         "W 4 St-Wash Sq",
         "Spring St (A/C/E)",
-        "Canal St (A/C/E)",
         "High St",
         "Jay St-MetroTech",
         "Hoyt-Schermerhorn Sts",
@@ -522,13 +506,12 @@ extension Stations {
         "174-175 Sts",
         "170 St (B/D)",
         "167 St (B/D)",
-        "155 St (B/D)",
         "7 Av (B/D/E)",
         "47-50 Sts-Rockefeller Ctr",
         "34 St-Herald Sq",
         "23 St (F/M)",
         "Grand St (B/D)",
-        "7 Av (B/Q)",
+        "7 Av (B/Q/F/G)",
         "Prospect Park",
         "Parkside Av",
         "Church Av (B/Q)",
@@ -562,7 +545,6 @@ extension Stations {
         "Carroll St",
         "Smith-9 Sts",
         "4 Av-9 St",
-        "7 Av (F/G)",
         "15 St-Prospect Park",
         "Fort Hamilton Pkwy (F/G)",
         "Church Av (F/G)",
@@ -688,7 +670,6 @@ extension Stations {
         "8 St",
         "Prince St",
         "City Hall",
-        "Rector St (N/R/W)",
         "Whitehall St-South Ferry",
         "DeKalb Av (B/D/N/Q/R/W)",
         "Union St",
@@ -1789,36 +1770,35 @@ extension Stations {
         "Marble Hill-225 St": "S106",
         "215 St": "S107",
         "207 St": "S108",
-        "Dyckman St (1)": "S109",
+        "Dyckman St": "S109",
         "191 St": "S110",
-        "181 St (1)": "S111",
+        "181 St": "S111",
         "168 St": "S112",
         "157 St": "S113",
-        "145 St (1)": "S114",
+        "145 St": "S114",
         "137 St-City College": "S115",
-        "125 St (1)": "S116",
+        "125 St": "S116",
         "116 St-Columbia University": "S117",
-        "Cathedral Pkwy (110 St) (1)": "S118",
-        "103 St (1)": "S119",
-        "96 St (1/2/3)": "S120",
+        "Cathedral Pkwy (110 St)": "S118",
+        "103 St (1/A/B/C)": "S119",
+        "96 St (1/2/3/A/B/C)": "S120",
         "86 St (1/2)": "S121",
         "79 St (1/2)": "S122",
         "72 St (1/2/3)": "S123",
         "66 St-Lincoln Center": "S124",
         "59 St-Columbus Circle": "S125",
-        "50 St (1/2)": "S126",
+        "50 St (1/2/A/C/E)": "S126",
         "Times Sq-42 St": "S127",
-        "34 St-Penn Station (1/2/3)": "S128",
+        "34 St-Penn Station": "S128",
         "28 St (1/2)": "S129",
         "23 St (1/2)": "S130",
         "18 St": "S131",
         "14 St (1/2/3/F/L/M)": "S132",
         "Christopher St-Stonewall": "S133",
         "Houston St": "S134",
-        "Canal St (1/2)": "S135",
+        "Canal St": "S135",
         "Franklin St": "S136",
         "Chambers St": "S137",
-        "WTC Cortlandt": "S138",
         "Rector St (1)": "S139",
         "South Ferry": "S142",
         "Wakefield-241 St": "S201",
@@ -1826,10 +1806,10 @@ extension Stations {
         "233 St": "S205",
         "225 St": "S206",
         "219 St": "S207",
-        "Gun Hill Rd (2/5)": "S208",
+        "Gun Hill Rd": "S208",
         "Burke Av": "S209",
         "Allerton Av": "S210",
-        "Pelham Pkwy (2/5)": "S211",
+        "Pelham Pkwy": "S211",
         "Bronx Park East": "S212",
         "E 180 St": "S213",
         "West Farms Sq-E Tremont Av": "S214",
@@ -1842,7 +1822,6 @@ extension Stations {
         "3 Av-149 St": "S221",
         "149 St-Grand Concourse": "S222",
         "135 St (2/3)": "S224",
-        "125 St (2/3)": "S225",
         "116 St (2/3)": "S226",
         "110 St-Malcolm X Plaza": "S227",
         "Chambers St-WTC": "S228",
@@ -1875,7 +1854,6 @@ extension Stations {
         "Van Siclen Av (2/3/4/5)": "S256",
         "New Lots Av (2/3/4/5)": "S257",
         "Harlem-148 St": "S301",
-        "145 St (3)": "S302",
         "Woodlawn (4)": "S401",
         "Mosholu Pkwy": "S402",
         "Bedford Park Blvd-Lehman College": "S405",
@@ -1893,8 +1871,6 @@ extension Stations {
         "Bowling Green": "S420",
         "Eastchester-Dyre Av": "S501",
         "Baychester Av": "S502",
-        "Gun Hill Rd (5)": "S503",
-        "Pelham Pkwy (5)": "S504",
         "Morris Park": "S505",
         "Pelham Bay Park": "S601",
         "Buhre Av": "S602",
@@ -1914,7 +1890,8 @@ extension Stations {
         "Cypress Av": "S617",
         "Brook Av": "S618",
         "3 Av-138 St": "S619",
-        "125 St (4/5/6)": "S621",
+
+
         "116 St (4/6)": "S622",
         "110 St": "S623",
         "103 St (4/6)": "S624",
@@ -1932,7 +1909,6 @@ extension Stations {
         "Astor Pl": "S636",
         "Broadway-Lafayette St": "S637",
         "Spring St (4/6)": "S638",
-        "Canal St (4/6/J/N/Q/R/W/Z)": "S639",
         "Brooklyn Bridge-City Hall": "S640",
         "Flushing-Main St": "S701",
         "Mets-Willets Point (7)": "S702",
@@ -1955,29 +1931,19 @@ extension Stations {
         "42 St-Bryant Pk": "S724",
         "34 St-Hudson Yards": "S726",
         "Inwood-207 St": "SA02",
-        "Dyckman St (A)": "SA03",
         "190 St": "SA05",
-        "181 St (A)": "SA06",
         "175 St": "SA07",
         "163 St-Amsterdam Av": "SA10",
-        "155 St (A/C)": "SA11",
-        "145 St (A/B/C/D)": "SA12",
+        "155 St": "SA11",
         "135 St (A/B/C)": "SA14",
-        "125 St (A/B/C/D)": "SA15",
         "116 St (A/B/C)": "SA16",
-        "Cathedral Pkwy (110 St) (A/B/C)": "SA17",
-        "103 St (A/B/C)": "SA18",
-        "96 St (A/B/C)": "SA19",
         "86 St (A/B/C)": "SA20",
         "81 St-Museum of Natural History": "SA21",
         "72 St (A/B/C)": "SA22",
-        "50 St (A/C/E)": "SA25",
-        "34 St-Penn Station (A/C/E)": "SA28",
         "23 St (A/C/E)": "SA30",
         "14 St (A/C/E/L)": "SA31",
         "W 4 St-Wash Sq": "SA32",
         "Spring St (A/C/E)": "SA33",
-        "Canal St (A/C/E)": "SA34",
         "High St": "SA40",
         "Jay St-MetroTech": "SA41",
         "Hoyt-Schermerhorn Sts": "SA42",
@@ -2025,13 +1991,12 @@ extension Stations {
         "174-175 Sts": "SD08",
         "170 St (B/D)": "SD09",
         "167 St (B/D)": "SD10",
-        "155 St (B/D)": "SD12",
         "7 Av (B/D/E)": "SD14",
         "47-50 Sts-Rockefeller Ctr": "SD15",
         "34 St-Herald Sq": "SD17",
         "23 St (F/M)": "SD18",
         "Grand St (B/D)": "SD22",
-        "7 Av (B/Q)": "SD25",
+        "7 Av (B/Q/F/G)": "SD25",
         "Prospect Park": "SD26",
         "Parkside Av": "SD27",
         "Church Av (B/Q)": "SD28",
@@ -2065,7 +2030,6 @@ extension Stations {
         "Carroll St": "SF21",
         "Smith-9 Sts": "SF22",
         "4 Av-9 St": "SF23",
-        "7 Av (F/G)": "SF24",
         "15 St-Prospect Park": "SF25",
         "Fort Hamilton Pkwy (F/G)": "SF26",
         "Church Av (F/G)": "SF27",
@@ -2262,18 +2226,39 @@ extension Stations {
         // different internal codes per platform. The stationCodes dict uses the
         // canonical (first sorted) code; these ensure all codes resolve correctly.
         let subwayComplexEquivalents: [(alternateCode: String, canonicalCode: String)] = [
+            ("SA03", "S109"),  // Dyckman St
+            ("SA06", "S111"),  // 181 St
             ("SA09", "S112"),  // 168 St
+            ("S302", "S114"),  // 145 St
+            ("SA12", "S114"),  // 145 St
+            ("SD13", "S114"),  // 145 St
+            ("S225", "S116"),  // 125 St
+            ("S621", "S116"),  // 125 St
+            ("SA15", "S116"),  // 125 St
+            ("SA17", "S118"),  // Cathedral Pkwy (110 St)
+            ("SA18", "S119"),  // 103 St (1/A/B/C)
+            ("SA19", "S120"),  // 96 St (1/2/3/A/B/C)
             ("SA24", "S125"),  // 59 St-Columbus Circle
+            ("SA25", "S126"),  // 50 St (1/2/A/C/E)
             ("S725", "S127"),  // Times Sq-42 St
             ("S902", "S127"),  // Times Sq-42 St
             ("SA27", "S127"),  // Times Sq-42 St
             ("SR16", "S127"),  // Times Sq-42 St
+            ("SA28", "S128"),  // 34 St-Penn Station
             ("SD19", "S132"),  // 14 St (1/2/3/F/L/M)
             ("SL02", "S132"),  // 14 St (1/2/3/F/L/M)
-            ("S415", "S222"),  // 149 St-Grand Concourse
+            ("S639", "S135"),  // Canal St
+            ("SA34", "S135"),  // Canal St
+            ("SM20", "S135"),  // Canal St
+            ("SQ01", "S135"),  // Canal St
+            ("SR23", "S135"),  // Canal St
+            ("S138", "S228"),  // Chambers St-WTC
             ("SA36", "S228"),  // Chambers St-WTC
             ("SE01", "S228"),  // Chambers St-WTC
             ("SR25", "S228"),  // Chambers St-WTC
+            ("S503", "S208"),  // Gun Hill Rd
+            ("S504", "S211"),  // Pelham Pkwy
+            ("S415", "S222"),  // 149 St-Grand Concourse
             ("S418", "S229"),  // Fulton St (2/3/4/5/A/C/J/Z)
             ("SA38", "S229"),  // Fulton St (2/3/4/5/A/C/J/Z)
             ("SM22", "S229"),  // Fulton St (2/3/4/5/A/C/J/Z)
@@ -2292,16 +2277,13 @@ extension Stations {
             ("SL03", "S635"),  // 14 St-Union Sq
             ("SR20", "S635"),  // 14 St-Union Sq
             ("SD21", "S637"),  // Broadway-Lafayette St
-            ("SM20", "S639"),  // Canal St (4/6/J/N/Q/R/W/Z)
-            ("SQ01", "S639"),  // Canal St (4/6/J/N/Q/R/W/Z)
-            ("SR23", "S639"),  // Canal St (4/6/J/N/Q/R/W/Z)
             ("SM21", "S640"),  // Brooklyn Bridge-City Hall
             ("SG14", "S710"),  // Jackson Hts-Roosevelt Av
             ("SR09", "S718"),  // Queensboro Plaza
             ("SF09", "S719"),  // Court Sq
             ("SG22", "S719"),  // Court Sq
             ("SD16", "S724"),  // 42 St-Bryant Pk
-            ("SD13", "SA12"),  // 145 St (A/B/C/D)
+            ("SD12", "SA11"),  // 155 St
             ("SL01", "SA31"),  // 14 St (A/C/E/L)
             ("SD20", "SA32"),  // W 4 St-Wash Sq
             ("SR29", "SA41"),  // Jay St-MetroTech
@@ -2310,6 +2292,7 @@ extension Stations {
             ("SL22", "SA51"),  // Broadway Junction
             ("SN04", "SB16"),  // New Utrecht Av
             ("SR17", "SD17"),  // 34 St-Herald Sq
+            ("SF24", "SD25"),  // 7 Av (B/Q/F/G)
             ("SM18", "SF15"),  // Delancey St-Essex St
             ("SR33", "SF23"),  // 4 Av-9 St
             ("SL10", "SG29"),  // Metropolitan Av
@@ -2347,24 +2330,31 @@ extension Stations {
 
         // Subway station complexes: build groups from (alternate, canonical) pairs
         let subwayPairs: [(String, String)] = [
-            ("SA09", "S112"),  ("SA24", "S125"),  ("S725", "S127"),
+            ("SA03", "S109"),  ("SA06", "S111"),  ("SA09", "S112"),
+            ("S302", "S114"),  ("SA12", "S114"),  ("SD13", "S114"),
+            ("S225", "S116"),  ("S621", "S116"),  ("SA15", "S116"),
+            ("SA17", "S118"),  ("SA18", "S119"),  ("SA19", "S120"),
+            ("SA24", "S125"),  ("SA25", "S126"),  ("S725", "S127"),
             ("S902", "S127"),  ("SA27", "S127"),  ("SR16", "S127"),
-            ("SD19", "S132"),  ("SL02", "S132"),  ("S415", "S222"),
-            ("SA36", "S228"),  ("SE01", "S228"),  ("SR25", "S228"),
+            ("SA28", "S128"),  ("SD19", "S132"),  ("SL02", "S132"),
+            ("S639", "S135"),  ("SA34", "S135"),  ("SM20", "S135"),
+            ("SQ01", "S135"),  ("SR23", "S135"),
+            ("S138", "S228"),  ("SA36", "S228"),  ("SE01", "S228"),
+            ("SR25", "S228"),  ("S503", "S208"),  ("S504", "S211"),
+            ("S415", "S222"),
             ("S418", "S229"),  ("SA38", "S229"),  ("SM22", "S229"),
             ("S423", "S232"),  ("SR28", "S232"),  ("SD24", "S235"),
             ("SR31", "S235"),  ("SS04", "S239"),  ("SL26", "S254"),
             ("SD11", "S414"),  ("SB08", "S629"),  ("SR11", "S629"),
             ("SF11", "S630"),  ("S723", "S631"),  ("S901", "S631"),
             ("SL03", "S635"),  ("SR20", "S635"),  ("SD21", "S637"),
-            ("SM20", "S639"),  ("SQ01", "S639"),  ("SR23", "S639"),
             ("SM21", "S640"),  ("SG14", "S710"),  ("SR09", "S718"),
             ("SF09", "S719"),  ("SG22", "S719"),  ("SD16", "S724"),
-            ("SD13", "SA12"),  ("SL01", "SA31"),  ("SD20", "SA32"),
+            ("SD12", "SA11"),  ("SL01", "SA31"),  ("SD20", "SA32"),
             ("SR29", "SA41"),  ("SS01", "SA45"),  ("SJ27", "SA51"),
             ("SL22", "SA51"),  ("SN04", "SB16"),  ("SR17", "SD17"),
-            ("SM18", "SF15"),  ("SR33", "SF23"),  ("SL10", "SG29"),
-            ("SM08", "SL17"),
+            ("SF24", "SD25"),  ("SM18", "SF15"),  ("SR33", "SF23"),
+            ("SL10", "SG29"),  ("SM08", "SL17"),
         ]
         // Merge pairs into groups (a canonical code may appear multiple times)
         var canonicalToIndex: [String: Int] = [:]
