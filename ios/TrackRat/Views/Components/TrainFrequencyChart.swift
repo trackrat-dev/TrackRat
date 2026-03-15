@@ -74,6 +74,7 @@ struct TrainFrequencyChart: View {
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
                 .textProtected()
+                .lineLimit(1)
                 .frame(minWidth: 40, minHeight: 22)
                 .padding(.horizontal, 4)
                 .background(
