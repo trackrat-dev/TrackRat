@@ -274,10 +274,14 @@ struct SettingsSection: View {
             // Route Alerts
             VStack(spacing: 0) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        let wasEditing = isEditingRouteAlerts
-                        isEditingRouteAlerts.toggle()
-                        if wasEditing { syncRouteAlerts() }
+                    if alertService.subscriptions.isEmpty {
+                        showAddRouteAlert = true
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            let wasEditing = isEditingRouteAlerts
+                            isEditingRouteAlerts.toggle()
+                            if wasEditing { syncRouteAlerts() }
+                        }
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
@@ -294,7 +298,7 @@ struct SettingsSection: View {
 
                         Spacer()
 
-                        Text(isEditingRouteAlerts ? "Done" : "Edit")
+                        Text(alertService.subscriptions.isEmpty ? "Create" : (isEditingRouteAlerts ? "Done" : "Edit"))
                             .font(.subheadline)
                             .foregroundColor(.orange)
                     }
@@ -1288,19 +1292,15 @@ private struct TrainSystemRow: View {
 
     private var rowContent: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Image(systemName: system.icon)
-                    .font(.title2)
+                    .font(.body)
                     .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
-                    .frame(width: 24, height: 24)
+                    .frame(width: 24)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(system.displayName + (system.isBeta ? " (beta)" : ""))
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-
-                }
+                Text(system.displayName + (system.isBeta ? " (beta)" : ""))
+                    .font(.subheadline)
+                    .foregroundColor(.white)
 
                 if showProBadge {
                     Text("PRO")
@@ -1315,17 +1315,17 @@ private struct TrainSystemRow: View {
 
                 if showControls {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
+                        .font(.body)
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 10)
             .contentShape(Rectangle())
 
             if !isLast {
                 Divider()
                     .background(Color.white.opacity(0.1))
-                    .padding(.leading, 56)
             }
         }
     }
