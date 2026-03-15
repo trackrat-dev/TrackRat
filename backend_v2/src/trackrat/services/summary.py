@@ -45,6 +45,12 @@ DELAY_CATEGORY_SLIGHT_DELAY = "slight_delay"
 DELAY_CATEGORY_DELAYED = "delayed"
 DELAY_CATEGORY_CANCELLED = "cancelled"
 
+# Headway bin names (gap since previous train departed)
+HEADWAY_BIN_0_5 = "0_5_min"
+HEADWAY_BIN_5_10 = "5_10_min"
+HEADWAY_BIN_10_20 = "10_20_min"
+HEADWAY_BIN_20_PLUS = "20_plus_min"
+
 # Carrier data source to display name mapping
 CARRIER_DISPLAY_NAMES: dict[str, str] = {
     "NJT": "NJ Transit",
@@ -98,6 +104,8 @@ class SummaryMetrics:
     cancellation_count: int | None = None
     train_count: int | None = None
     trains_by_category: dict[str, list[TrainDelaySummary]] | None = None
+    # Headway bins for frequency-first systems (gap since previous departure)
+    trains_by_headway: dict[str, list[TrainDelaySummary]] | None = None
 
 
 @dataclass
@@ -742,6 +750,46 @@ class SummaryService:
             merged[category].sort(key=lambda t: t.scheduled_departure)
         return merged
 
+    @staticmethod
+    def _compute_trains_by_headway(
+        trains_by_category: dict[str, list[TrainDelaySummary]],
+    ) -> dict[str, list[TrainDelaySummary]]:
+        """Bucket non-cancelled trains by headway (gap since previous departure).
+
+        The first train in the window is excluded since it has no prior reference.
+        """
+        # Collect all non-cancelled trains, sorted by departure time
+        all_trains: list[TrainDelaySummary] = []
+        for category, trains in trains_by_category.items():
+            if category != DELAY_CATEGORY_CANCELLED:
+                all_trains.extend(trains)
+        all_trains.sort(key=lambda t: t.scheduled_departure)
+
+        bins: dict[str, list[TrainDelaySummary]] = {
+            HEADWAY_BIN_0_5: [],
+            HEADWAY_BIN_5_10: [],
+            HEADWAY_BIN_10_20: [],
+            HEADWAY_BIN_20_PLUS: [],
+        }
+
+        # Skip the first train (no prior departure to compare)
+        for i in range(1, len(all_trains)):
+            gap_minutes = (
+                all_trains[i].scheduled_departure
+                - all_trains[i - 1].scheduled_departure
+            ).total_seconds() / 60.0
+
+            if gap_minutes < 5:
+                bins[HEADWAY_BIN_0_5].append(all_trains[i])
+            elif gap_minutes < 10:
+                bins[HEADWAY_BIN_5_10].append(all_trains[i])
+            elif gap_minutes < 20:
+                bins[HEADWAY_BIN_10_20].append(all_trains[i])
+            else:
+                bins[HEADWAY_BIN_20_PLUS].append(all_trains[i])
+
+        return bins
+
     def _calculate_departure_stats(
         self,
         journeys: list[TrainJourney],
@@ -1083,6 +1131,13 @@ class SummaryService:
             ds in FREQUENCY_FIRST_SOURCES for ds in carrier_dep_stats
         )
 
+        # Compute headway bins for frequency-first routes
+        headway_bins = (
+            self._compute_trains_by_headway(merged_trains)
+            if is_frequency_route
+            else None
+        )
+
         # Generate headline and body
         if is_frequency_route:
             headline, body = self._format_frequency_route_headline_body(
@@ -1113,6 +1168,7 @@ class SummaryService:
                 cancellation_count=total_cancellations,
                 train_count=total_trains,
                 trains_by_category=merged_trains,
+                trains_by_headway=headway_bins,
             ),
         )
 

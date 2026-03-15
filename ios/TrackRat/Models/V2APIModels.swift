@@ -1069,6 +1069,7 @@ struct SummaryMetrics: Codable {
     let cancellationCount: Int?
     let trainCount: Int?
     let trainsByCategory: [String: [TrainDelaySummary]]?
+    let trainsByHeadway: [String: [TrainDelaySummary]]?
 
     enum CodingKeys: String, CodingKey {
         case onTimePercentage = "on_time_percentage"
@@ -1078,6 +1079,7 @@ struct SummaryMetrics: Codable {
         case cancellationCount = "cancellation_count"
         case trainCount = "train_count"
         case trainsByCategory = "trains_by_category"
+        case trainsByHeadway = "trains_by_headway"
     }
 }
 

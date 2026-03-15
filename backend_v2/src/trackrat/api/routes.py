@@ -1079,27 +1079,36 @@ async def get_operations_summary(
     # Convert to response model
     metrics = None
     if summary.metrics:
-        # Convert trains_by_category to API response format
-        trains_by_category = None
-        if summary.metrics.trains_by_category:
-            trains_by_category = {
-                category: [
+
+        def _convert_train_dict(
+            source: dict[str, list] | None,
+        ) -> dict[str, list[TrainDelaySummaryResponse]] | None:
+            if not source:
+                return None
+            return {
+                key: [
                     TrainDelaySummaryResponse(
-                        train_id=train.train_id,
-                        delay_minutes=train.delay_minutes,
-                        category=train.category,  # type: ignore[arg-type]
-                        scheduled_departure=train.scheduled_departure,
+                        train_id=t.train_id,
+                        delay_minutes=t.delay_minutes,
+                        category=t.category,  # type: ignore[arg-type]
+                        scheduled_departure=t.scheduled_departure,
                     )
-                    for train in trains
+                    for t in trains
                 ]
-                for category, trains in summary.metrics.trains_by_category.items()
+                for key, trains in source.items()
             }
+
         metrics = SummaryMetricsResponse(
             on_time_percentage=summary.metrics.on_time_percentage,
             average_delay_minutes=summary.metrics.average_delay_minutes,
             cancellation_count=summary.metrics.cancellation_count,
             train_count=summary.metrics.train_count,
-            trains_by_category=trains_by_category,
+            trains_by_category=_convert_train_dict(
+                summary.metrics.trains_by_category
+            ),
+            trains_by_headway=_convert_train_dict(
+                summary.metrics.trains_by_headway
+            ),
         )
 
     return OperationsSummaryResponse(

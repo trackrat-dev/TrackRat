@@ -39,6 +39,8 @@
 		A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
 		A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADE72EF8407600407794 /* TrainDistributionChart.swift */; };
 		A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADE72EF8407600407794 /* TrainDistributionChart.swift */; };
+		A12AADF02EF8407600407794 /* TrainFrequencyChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADF22EF8407600407794 /* TrainFrequencyChart.swift */; };
+		A12AADF12EF8407600407794 /* TrainFrequencyChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12AADF22EF8407600407794 /* TrainFrequencyChart.swift */; };
 		A12C31412F1DA61700CAF76D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31402F1DA61700CAF76D /* PaywallView.swift */; };
 		A12C31422F1DA61700CAF76D /* PaywallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31402F1DA61700CAF76D /* PaywallView.swift */; };
 		A12C31442F1DA62600CAF76D /* ProFeatureLockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */; };
@@ -205,6 +207,7 @@
 		A126E55B2E25BBD800958ABA /* DeepLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLinkService.swift; path = Services/DeepLinkService.swift; sourceTree = "<group>"; };
 		A126E55C2E25BBD800958ABA /* ShareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareService.swift; path = Services/ShareService.swift; sourceTree = "<group>"; };
 		A12AADE72EF8407600407794 /* TrainDistributionChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDistributionChart.swift; path = TrackRat/Views/Components/TrainDistributionChart.swift; sourceTree = "<group>"; };
+		A12AADF22EF8407600407794 /* TrainFrequencyChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainFrequencyChart.swift; path = TrackRat/Views/Components/TrainFrequencyChart.swift; sourceTree = "<group>"; };
 		A12C31402F1DA61700CAF76D /* PaywallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PaywallView.swift; path = TrackRat/Views/Paywall/PaywallView.swift; sourceTree = "<group>"; };
 		A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ProFeatureLockView.swift; path = TrackRat/Views/Paywall/ProFeatureLockView.swift; sourceTree = "<group>"; };
 		A12C31462F1DA63A00CAF76D /* TrackTrainInlineButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackTrainInlineButton.swift; path = TrackRat/Views/Components/TrackTrainInlineButton.swift; sourceTree = "<group>"; };
@@ -337,6 +340,7 @@
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
 				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
 				A12AADE72EF8407600407794 /* TrainDistributionChart.swift */,
+				A12AADF22EF8407600407794 /* TrainFrequencyChart.swift */,
 				A17A63E02EE60FD2003BD685 /* TrainStatsSummaryView.swift */,
 				A16C81ED2EEEFFEE00F34F00 /* FeedbackButton.swift */,
 				A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */,
@@ -708,6 +712,7 @@
 				728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
 				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
+				A12AADF02EF8407600407794 /* TrainFrequencyChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
 				A1F97BB42F1E8B2500BF816D /* TrainSystem.swift in Sources */,
 				A10E97FB2DE39F0F002F3214 /* Extensions.swift in Sources */,
@@ -780,6 +785,7 @@
 				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
 				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
 				A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */,
+				A12AADF12EF8407600407794 /* TrainFrequencyChart.swift in Sources */,
 				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,
 				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
 			);

@@ -17,6 +17,10 @@ from trackrat.services.summary import (
     DELAY_CATEGORY_DELAYED,
     DELAY_CATEGORY_ON_TIME,
     DELAY_CATEGORY_SLIGHT_DELAY,
+    HEADWAY_BIN_0_5,
+    HEADWAY_BIN_5_10,
+    HEADWAY_BIN_10_20,
+    HEADWAY_BIN_20_PLUS,
     ON_TIME_THRESHOLD_MINUTES,
     SLIGHT_DELAY_THRESHOLD_MINUTES,
     SUMMARY_TIME_WINDOW_MINUTES,
@@ -1494,3 +1498,195 @@ class TestFormatFrequencyTrainHeadlineBody:
         print(f"body: {body!r}")
         expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 6  # 20
         assert "every 20 minutes" in body
+
+
+class TestComputeTrainsByHeadway:
+    """Test headway bin computation for frequency-first systems."""
+
+    def _make_train(
+        self, train_id: str, minutes_offset: float, base: datetime | None = None
+    ) -> TrainDelaySummary:
+        if base is None:
+            base = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
+        return TrainDelaySummary(
+            train_id=train_id,
+            delay_minutes=0,
+            category=DELAY_CATEGORY_ON_TIME,
+            scheduled_departure=base + timedelta(minutes=minutes_offset),
+        )
+
+    def test_basic_bucketing(self):
+        """Trains spaced at known intervals land in correct bins."""
+        service = SummaryService()
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [
+                self._make_train("A", 0),   # first train — excluded
+                self._make_train("B", 3),   # 3 min gap → 0-5
+                self._make_train("C", 10),  # 7 min gap → 5-10
+                self._make_train("D", 25),  # 15 min gap → 10-20
+                self._make_train("E", 50),  # 25 min gap → 20+
+            ],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        print(f"0-5 min: {[t.train_id for t in result[HEADWAY_BIN_0_5]]}")
+        print(f"5-10 min: {[t.train_id for t in result[HEADWAY_BIN_5_10]]}")
+        print(f"10-20 min: {[t.train_id for t in result[HEADWAY_BIN_10_20]]}")
+        print(f"20+ min: {[t.train_id for t in result[HEADWAY_BIN_20_PLUS]]}")
+
+        assert [t.train_id for t in result[HEADWAY_BIN_0_5]] == ["B"]
+        assert [t.train_id for t in result[HEADWAY_BIN_5_10]] == ["C"]
+        assert [t.train_id for t in result[HEADWAY_BIN_10_20]] == ["D"]
+        assert [t.train_id for t in result[HEADWAY_BIN_20_PLUS]] == ["E"]
+
+    def test_first_train_excluded(self):
+        """First train has no prior reference and should not appear in any bin."""
+        service = SummaryService()
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [self._make_train("only", 0)],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        total = sum(len(trains) for trains in result.values())
+        print(f"Total trains in bins: {total} (expected 0)")
+        assert total == 0
+
+    def test_cancelled_trains_excluded(self):
+        """Cancelled trains should not appear in headway bins."""
+        service = SummaryService()
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [
+                self._make_train("A", 0),
+                self._make_train("B", 4),
+            ],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [
+                TrainDelaySummary(
+                    train_id="CANCEL",
+                    delay_minutes=0,
+                    category=DELAY_CATEGORY_CANCELLED,
+                    scheduled_departure=datetime(2026, 3, 15, 12, 2, 0, tzinfo=UTC),
+                ),
+            ],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        all_ids = [
+            t.train_id for trains in result.values() for t in trains
+        ]
+        print(f"All train IDs in bins: {all_ids}")
+        assert "CANCEL" not in all_ids
+        # B is 4 min after A → 0-5 bin
+        assert [t.train_id for t in result[HEADWAY_BIN_0_5]] == ["B"]
+
+    def test_cancelled_gap_widens_next_headway(self):
+        """A cancelled train between two running trains widens the gap for the second."""
+        service = SummaryService()
+        # A at 0, cancelled at 5, B at 12
+        # Since cancelled is excluded, gap A→B = 12 min → 10-20 bin
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [
+                self._make_train("A", 0),
+                self._make_train("B", 12),
+            ],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [
+                TrainDelaySummary(
+                    train_id="SKIP",
+                    delay_minutes=0,
+                    category=DELAY_CATEGORY_CANCELLED,
+                    scheduled_departure=datetime(2026, 3, 15, 12, 5, 0, tzinfo=UTC),
+                ),
+            ],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        print(f"10-20 min bin: {[t.train_id for t in result[HEADWAY_BIN_10_20]]}")
+        assert [t.train_id for t in result[HEADWAY_BIN_10_20]] == ["B"]
+
+    def test_trains_across_categories_sorted_by_departure(self):
+        """Trains from different delay categories are merged and sorted before bucketing."""
+        service = SummaryService()
+        base = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [
+                self._make_train("A", 0),   # earliest
+                self._make_train("C", 8),   # third
+            ],
+            DELAY_CATEGORY_SLIGHT_DELAY: [
+                TrainDelaySummary(
+                    train_id="B",
+                    delay_minutes=6,
+                    category=DELAY_CATEGORY_SLIGHT_DELAY,
+                    scheduled_departure=base + timedelta(minutes=3),
+                ),
+            ],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        # A(0) → B(3): 3 min gap → 0-5
+        # B(3) → C(8): 5 min gap → 5-10
+        print(f"0-5 min: {[t.train_id for t in result[HEADWAY_BIN_0_5]]}")
+        print(f"5-10 min: {[t.train_id for t in result[HEADWAY_BIN_5_10]]}")
+        assert [t.train_id for t in result[HEADWAY_BIN_0_5]] == ["B"]
+        assert [t.train_id for t in result[HEADWAY_BIN_5_10]] == ["C"]
+
+    def test_empty_input(self):
+        """Empty trains_by_category produces empty bins."""
+        service = SummaryService()
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        total = sum(len(trains) for trains in result.values())
+        print(f"Total trains: {total}")
+        assert total == 0
+        assert set(result.keys()) == {
+            HEADWAY_BIN_0_5, HEADWAY_BIN_5_10, HEADWAY_BIN_10_20, HEADWAY_BIN_20_PLUS
+        }
+
+    def test_boundary_values(self):
+        """Test exact boundary values: 5 min goes to 5-10, 10 min goes to 10-20, 20 min goes to 20+."""
+        service = SummaryService()
+        trains_by_category = {
+            DELAY_CATEGORY_ON_TIME: [
+                self._make_train("A", 0),
+                self._make_train("B", 5),   # exactly 5 → 5-10 bin
+                self._make_train("C", 15),  # exactly 10 → 10-20 bin
+                self._make_train("D", 35),  # exactly 20 → 20+ bin
+            ],
+            DELAY_CATEGORY_SLIGHT_DELAY: [],
+            DELAY_CATEGORY_DELAYED: [],
+            DELAY_CATEGORY_CANCELLED: [],
+        }
+
+        result = service._compute_trains_by_headway(trains_by_category)
+
+        print(f"5-10 min: {[t.train_id for t in result[HEADWAY_BIN_5_10]]}")
+        print(f"10-20 min: {[t.train_id for t in result[HEADWAY_BIN_10_20]]}")
+        print(f"20+ min: {[t.train_id for t in result[HEADWAY_BIN_20_PLUS]]}")
+
+        assert [t.train_id for t in result[HEADWAY_BIN_0_5]] == []
+        assert [t.train_id for t in result[HEADWAY_BIN_5_10]] == ["B"]
+        assert [t.train_id for t in result[HEADWAY_BIN_10_20]] == ["C"]
+        assert [t.train_id for t in result[HEADWAY_BIN_20_PLUS]] == ["D"]
