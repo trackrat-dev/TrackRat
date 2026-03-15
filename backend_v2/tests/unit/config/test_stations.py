@@ -770,9 +770,9 @@ class TestStationEquivalences:
         ]
         for group in groups:
             canonical_codes = {canonical_station_code(code) for code in group}
-            assert len(canonical_codes) == 1, (
-                f"Group {sorted(group)} produced multiple canonical codes: {canonical_codes}"
-            )
+            assert (
+                len(canonical_codes) == 1
+            ), f"Group {sorted(group)} produced multiple canonical codes: {canonical_codes}"
 
     def test_non_complex_subway_station_expands_to_self(self):
         """Subway stations not in any complex expand to just themselves."""
