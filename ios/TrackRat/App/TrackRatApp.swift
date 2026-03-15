@@ -732,13 +732,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    // Amtrak coverage mode: NEC Only vs All Routes (persisted via UserDefaults)
-    @Published var amtrakMode: AmtrakMode = .all {
-        didSet {
-            UserDefaults.standard.set(amtrakMode.rawValue, forKey: "amtrakMode")
-        }
-    }
-
     // Map display settings (persisted via UserDefaults)
     @Published var mapHighlightMode: SegmentHighlightMode = .delays {
         didSet {
@@ -867,26 +860,14 @@ final class AppState: ObservableObject {
     /// Load selected systems from UserDefaults (with migration from legacy AMTRAK_NEC)
     private func loadSelectedSystems() {
         if let stored = UserDefaults.standard.string(forKey: "selectedTrainSystems"), !stored.isEmpty {
-            // Migration: convert legacy "AMTRAK_NEC" to "AMTRAK" + necOnly mode
-            if stored.contains("AMTRAK_NEC") {
-                let migrated = stored
-                    .replacingOccurrences(of: "AMTRAK_NEC", with: "AMTRAK")
-                let loaded = Set<TrainSystem>.from(commaSeparated: migrated)
-                selectedSystems = loaded.isEmpty ? .defaultEnabled : loaded
-                amtrakMode = .necOnly
-                return
-            }
-
-            let loaded = Set<TrainSystem>.from(commaSeparated: stored)
+            // Migration: convert legacy "AMTRAK_NEC" to "AMTRAK"
+            let migrated = stored.contains("AMTRAK_NEC")
+                ? stored.replacingOccurrences(of: "AMTRAK_NEC", with: "AMTRAK")
+                : stored
+            let loaded = Set<TrainSystem>.from(commaSeparated: migrated)
             selectedSystems = loaded.isEmpty ? .defaultEnabled : loaded
         } else {
             selectedSystems = .defaultEnabled
-        }
-
-        // Load persisted amtrak mode
-        if let storedMode = UserDefaults.standard.string(forKey: "amtrakMode"),
-           let mode = AmtrakMode(rawValue: storedMode) {
-            amtrakMode = mode
         }
     }
 
@@ -895,31 +876,14 @@ final class AppState: ObservableObject {
         selectedSystems.contains(system)
     }
 
-    /// Toggle a system's selection state
-    /// For Amtrak: cycles Off → NEC Only → All → Off
-    /// Set allowEmpty to true during onboarding where the UI hides the Continue button when empty
+    /// Toggle a system's selection state.
+    /// Set allowEmpty to true during onboarding where the UI hides the Continue button when empty.
     func toggleSystem(_ system: TrainSystem, allowEmpty: Bool = false) {
-        if system == .amtrak {
-            if !selectedSystems.contains(.amtrak) {
-                // Off → NEC Only
-                selectedSystems.insert(.amtrak)
-                amtrakMode = .necOnly
-            } else if amtrakMode == .necOnly {
-                // NEC Only → All
-                amtrakMode = .all
-            } else {
-                // All → Off (unless it's the last system and allowEmpty is false)
-                guard allowEmpty || selectedSystems.count > 1 else { return }
-                selectedSystems.remove(.amtrak)
-                amtrakMode = .necOnly
-            }
+        if selectedSystems.contains(system) {
+            guard allowEmpty || selectedSystems.count > 1 else { return }
+            selectedSystems.remove(system)
         } else {
-            if selectedSystems.contains(system) {
-                guard allowEmpty || selectedSystems.count > 1 else { return }
-                selectedSystems.remove(system)
-            } else {
-                selectedSystems.insert(system)
-            }
+            selectedSystems.insert(system)
         }
     }
 

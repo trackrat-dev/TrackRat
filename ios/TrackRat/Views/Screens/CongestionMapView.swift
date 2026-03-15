@@ -152,10 +152,7 @@ struct CongestionMapView: View {
             await viewModel.fetchCongestionData()
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
-            viewModel.setSelectedSystems(newSystems, amtrakMode: appState.amtrakMode)
-        }
-        .onChange(of: appState.amtrakMode) { _, newMode in
-            viewModel.setSelectedSystems(appState.selectedSystems, amtrakMode: newMode)
+            viewModel.setSelectedSystems(newSystems)
         }
         .onChange(of: appState.mapHighlightMode) { _, newMode in
             viewModel.highlightMode = newMode
@@ -165,7 +162,7 @@ struct CongestionMapView: View {
         }
         .onAppear {
             // Sync AppState settings to ViewModel on appear
-            viewModel.setSelectedSystems(appState.selectedSystems, amtrakMode: appState.amtrakMode)
+            viewModel.setSelectedSystems(appState.selectedSystems)
             viewModel.highlightMode = appState.mapHighlightMode
             viewModel.showStations = appState.showMapStations
         }
@@ -269,7 +266,6 @@ struct CongestionMapView: View {
                 SystemToggleButton(
                     system: system,
                     isSelected: appState.isSystemSelected(system),
-                    subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
                     action: {
                         appState.toggleSystem(system)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -491,7 +487,6 @@ class CongestionMapViewModel: ObservableObject {
 
     // System filter
     private var selectedSystems: Set<TrainSystem> = .all
-    private var amtrakMode: AmtrakMode = .all
 
     // Live Activity observation
     private var liveActivityCancellables = Set<AnyCancellable>()
@@ -517,22 +512,21 @@ class CongestionMapViewModel: ObservableObject {
         }
         // Apply system filter to get visible stations
         routeStations = allRouteStations.filter { station in
-            Stations.isStationVisible(station.code, withSystems: selectedSystems, amtrakMode: amtrakMode)
+            Stations.isStationVisible(station.code, withSystems: selectedSystems)
         }
         print("🗺️ Loaded \(allRouteStations.count) route topology stations, \(routeStations.count) visible with current systems")
     }
 
     /// Updates the selected systems filter and reapplies all filtering
-    func setSelectedSystems(_ systems: Set<TrainSystem>, amtrakMode: AmtrakMode = .all) {
-        let changed = systems != selectedSystems || amtrakMode != self.amtrakMode
+    func setSelectedSystems(_ systems: Set<TrainSystem>) {
+        let changed = systems != selectedSystems
         selectedSystems = systems
-        self.amtrakMode = amtrakMode
         guard changed else { return }
         print("🚦 Selected systems updated: \(systems.map(\.rawValue).sorted().joined(separator: ", "))")
 
         // Refilter route stations
         routeStations = allRouteStations.filter { station in
-            Stations.isStationVisible(station.code, withSystems: selectedSystems, amtrakMode: amtrakMode)
+            Stations.isStationVisible(station.code, withSystems: selectedSystems)
         }
 
         // Reapply all filters
@@ -746,11 +740,11 @@ class CongestionMapViewModel: ObservableObject {
         // First filter by effective systems
         let systemFilteredAggregated = allAggregatedSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
         let systemFilteredIndividual = allIndividualSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
-        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: effectiveSystems, amtrakMode: amtrakMode) }
+        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: effectiveSystems) }
 
         // Update route station visibility to match effective systems
         routeStations = allRouteStations.filter { station in
-            Stations.isStationVisible(station.code, withSystems: effectiveSystems, amtrakMode: amtrakMode)
+            Stations.isStationVisible(station.code, withSystems: effectiveSystems)
         }
 
         // Then apply route filter if we have one
