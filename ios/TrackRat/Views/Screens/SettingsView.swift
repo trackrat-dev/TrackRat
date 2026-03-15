@@ -192,11 +192,11 @@ struct SettingsSection: View {
         let homeCode = RatSenseService.shared.getHomeStation()
         let workCode = RatSenseService.shared.getWorkStation()
         var parts: [String] = []
-        if let code = homeCode, let fav = favorites.first(where: { $0.id == code }) {
-            parts.append("Home: \(Stations.displayName(for: fav.name))")
+        if let code = homeCode, favorites.contains(where: { $0.id == code }) {
+            parts.append("Home: \(Stations.displayName(for: code))")
         }
-        if let code = workCode, let fav = favorites.first(where: { $0.id == code }) {
-            parts.append("Work: \(Stations.displayName(for: fav.name))")
+        if let code = workCode, favorites.contains(where: { $0.id == code }) {
+            parts.append("Work: \(Stations.displayName(for: code))")
         }
         let otherCount = favorites.count - (homeCode != nil && favorites.contains(where: { $0.id == homeCode }) ? 1 : 0) - (workCode != nil && favorites.contains(where: { $0.id == workCode }) ? 1 : 0)
         if otherCount > 0 {
@@ -758,10 +758,10 @@ struct SettingsSection: View {
                 .environmentObject(appState)
         }
         .sheet(item: $selectedSubscription) { sub in
-            if sub.trainId != nil {
+            if let trainId = sub.trainId {
                 NavigationStack {
                     TrainDetailsView(
-                        trainNumber: sub.trainId!,
+                        trainNumber: trainId,
                         dataSource: sub.dataSource,
                         isSheet: true,
                         subscription: sub,
