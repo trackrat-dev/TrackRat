@@ -147,7 +147,6 @@ struct OnboardingView: View {
                     SystemSelectionCard(
                         system: system,
                         isSelected: isSelected,
-                        showProBadge: atFreeLimit,
                         onTap: {
                             if atFreeLimit {
                                 showingPaywall = true
@@ -165,25 +164,21 @@ struct OnboardingView: View {
 
             Spacer()
 
-            // Continue button (hidden until at least one system selected)
-            Group {
-                if !appState.selectedSystems.isEmpty {
-                    Button("Continue") {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            showSystemSelection = false
-                        }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(height: 50)
-                    .frame(minWidth: 160)
-                    .background(Color.orange)
-                    .cornerRadius(TrackRatTheme.CornerRadius.md)
-                    .buttonStyle(.plain)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            // Continue button (always visible, disabled until at least one system selected)
+            Button("Continue") {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    showSystemSelection = false
                 }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }
+            .font(.headline)
+            .foregroundColor(.white)
+            .frame(height: 50)
+            .frame(minWidth: 160)
+            .background(appState.selectedSystems.isEmpty ? Color.gray : Color.orange)
+            .cornerRadius(TrackRatTheme.CornerRadius.md)
+            .buttonStyle(.plain)
+            .disabled(appState.selectedSystems.isEmpty)
             .padding(.horizontal, 20)
             .padding(.bottom, 40)
         }
