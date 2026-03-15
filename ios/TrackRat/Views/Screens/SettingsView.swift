@@ -177,14 +177,15 @@ struct SettingsSection: View {
         let sorted = TrainSystem.allCases
             .filter { appState.isSystemSelected($0) }
             .sorted { $0.displayName < $1.displayName }
-        if sorted.isEmpty { return "None selected" }
-        return sorted.map { system in
+        if sorted.isEmpty { return "No systems selected" }
+        let names = sorted.map { system in
             var name = system.displayName
             if system == .amtrak {
                 name += " (\(appState.amtrakMode.label))"
             }
             return name
-        }.joined(separator: "\n")
+        }.joined(separator: ", ")
+        return "You're currently following: \(names)"
     }
 
     var body: some View {
