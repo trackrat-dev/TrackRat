@@ -3,8 +3,6 @@ import SwiftUI
 // MARK: - Settings Navigation
 enum SettingsDestination: Hashable {
     case tripHistory
-    case favoriteStations
-    case routeAlerts
     case chat
     case adminChat
     case advancedConfiguration
@@ -106,10 +104,6 @@ struct SettingsView: View {
                     switch destination {
                     case .tripHistory:
                         TripHistoryView()
-                    case .favoriteStations:
-                        OnboardingView(isRepeating: true)
-                    case .routeAlerts:
-                        EditRouteAlertsView()
                     case .chat:
                         ChatView(targetDeviceId: nil)
                     case .adminChat:
@@ -173,12 +167,42 @@ struct SettingsSection: View {
     @Binding var paywallContext: PaywallContext
     var showDebugSections: Bool
     @State private var isEditingTrainSystems = false
+    @State private var isEditingFavorites = false
+    @State private var isEditingRouteAlerts = false
+    @State private var showStationPicker = false
+    @State private var stationPickerRole: FavoriteStationRole = .other
+    @State private var pickerStation: Station? = nil
+    @State private var showAddRouteAlert = false
+    @State private var selectedSubscription: RouteAlertSubscription?
     @ObservedObject private var alertService = AlertSubscriptionService.shared
+
+    private enum FavoriteStationRole {
+        case home, work, other
+    }
 
     private var routeAlertsSummary: String? {
         let subs = alertService.subscriptions
         guard !subs.isEmpty else { return nil }
         return "You're being alerted on: " + subs.map { $0.displayName }.sorted().joined(separator: ", ") + "."
+    }
+
+    private var favoritesSummary: String {
+        let favorites = appState.favoriteStations
+        guard !favorites.isEmpty else { return "No favorite stations set." }
+        let homeCode = RatSenseService.shared.getHomeStation()
+        let workCode = RatSenseService.shared.getWorkStation()
+        var parts: [String] = []
+        if let code = homeCode, let fav = favorites.first(where: { $0.id == code }) {
+            parts.append("Home: \(Stations.displayName(for: fav.name))")
+        }
+        if let code = workCode, let fav = favorites.first(where: { $0.id == code }) {
+            parts.append("Work: \(Stations.displayName(for: fav.name))")
+        }
+        let otherCount = favorites.count - (homeCode != nil && favorites.contains(where: { $0.id == homeCode }) ? 1 : 0) - (workCode != nil && favorites.contains(where: { $0.id == workCode }) ? 1 : 0)
+        if otherCount > 0 {
+            parts.append("+\(otherCount) other\(otherCount == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var enabledSystemsSummary: String {
@@ -256,6 +280,7 @@ struct SettingsSection: View {
                             Text(enabledSystemsSummary)
                                 .font(.subheadline)
                                 .foregroundColor(.white.opacity(0.7))
+                                .multilineTextAlignment(.leading)
                                 .lineLimit(nil)
                             Spacer()
                         }
@@ -270,11 +295,15 @@ struct SettingsSection: View {
             )
 
             // Route Alerts
-            Button {
-                navigationPath.append(SettingsDestination.routeAlerts)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        let wasEditing = isEditingRouteAlerts
+                        isEditingRouteAlerts.toggle()
+                        if wasEditing { syncRouteAlerts() }
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
                     HStack(spacing: 16) {
                         Image(systemName: "bell.badge.fill")
                             .font(.title2)
@@ -288,67 +317,221 @@ struct SettingsSection: View {
 
                         Spacer()
 
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
+                        Text(isEditingRouteAlerts ? "Done" : "Edit")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
+                    }
+                }
+                .padding()
+
+                if isEditingRouteAlerts {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+
+                    if alertService.subscriptions.isEmpty {
+                        HStack {
+                            Text("No route alerts configured.")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.5))
+                            Spacer()
+                        }
+                        .padding()
+                    } else {
+                        ForEach(alertService.subscriptions) { sub in
+                            RouteAlertRow(subscription: sub) {
+                                selectedSubscription = sub
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } onDelete: {
+                                alertService.removeSubscription(sub)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        }
+                    }
+
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+
+                    Button {
+                        showAddRouteAlert = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.body)
+                                .foregroundColor(.orange)
+                            Text("Add Route Alert")
+                                .font(.subheadline)
+                                .foregroundColor(.orange)
+                            Spacer()
+                        }
                     }
                     .padding()
-
+                } else {
                     if let summary = routeAlertsSummary {
                         Divider()
                             .background(Color.white.opacity(0.1))
 
-                        HStack(spacing: 16) {
-                            Text(summary)
-                                .font(.subheadline)
-                                .foregroundColor(.white.opacity(0.7))
-                                .lineLimit(nil)
-                            Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isEditingRouteAlerts = true
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack {
+                                Text(summary)
+                                    .font(.subheadline)
+                                    .foregroundColor(.white.opacity(0.7))
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(nil)
+                                Spacer()
+                            }
                         }
                         .padding()
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
 
             // Favorite Stations
-            Button {
-                navigationPath.append(SettingsDestination.favoriteStations)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "heart.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+            VStack(spacing: 0) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isEditingFavorites.toggle()
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 16) {
+                        Image(systemName: "heart.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Edit Favorite Stations")
+                        Text("Favorite Stations")
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
+
+                        Spacer()
+
+                        Text(isEditingFavorites ? "Done" : "Edit")
+                            .font(.subheadline)
+                            .foregroundColor(.orange)
                     }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
                 }
                 .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
+
+                if isEditingFavorites {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+
+                    // Home Station
+                    FavoriteStationRow(
+                        label: "Home",
+                        stationCode: RatSenseService.shared.getHomeStation(),
+                        isLast: false
+                    ) {
+                        stationPickerRole = .home
+                        pickerStation = nil
+                        showStationPicker = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } onClear: {
+                        if let code = RatSenseService.shared.getHomeStation() {
+                            appState.removeFavoriteStation(code: code)
+                        }
+                        RatSenseService.shared.setHomeStation(nil)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+
+                    // Work Station
+                    FavoriteStationRow(
+                        label: "Work",
+                        stationCode: RatSenseService.shared.getWorkStation(),
+                        isLast: false
+                    ) {
+                        stationPickerRole = .work
+                        pickerStation = nil
+                        showStationPicker = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } onClear: {
+                        if let code = RatSenseService.shared.getWorkStation() {
+                            appState.removeFavoriteStation(code: code)
+                        }
+                        RatSenseService.shared.setWorkStation(nil)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    }
+
+                    // Other favorites
+                    let homeCode = RatSenseService.shared.getHomeStation()
+                    let workCode = RatSenseService.shared.getWorkStation()
+                    let otherFavorites = appState.favoriteStations.filter {
+                        $0.id != homeCode && $0.id != workCode
+                    }
+                    ForEach(otherFavorites) { fav in
+                        FavoriteStationRow(
+                            label: nil,
+                            stationCode: fav.id,
+                            isLast: fav.id == otherFavorites.last?.id && appState.favoriteStations.count >= 10
+                        ) {
+                            // Tap does nothing for "other" favorites — they're just listed
+                        } onClear: {
+                            appState.removeFavoriteStation(code: fav.id)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+
+                    if appState.favoriteStations.count < 10 {
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+
+                        Button {
+                            stationPickerRole = .other
+                            pickerStation = nil
+                            showStationPicker = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.body)
+                                    .foregroundColor(.orange)
+                                Text("Add Favorite Station")
+                                    .font(.subheadline)
+                                    .foregroundColor(.orange)
+                                Spacer()
+                            }
+                        }
+                        .padding()
+                    }
+                } else {
+                    Divider()
+                        .background(Color.white.opacity(0.1))
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditingFavorites = true
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        HStack {
+                            Text(favoritesSummary)
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.7))
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(nil)
+                            Spacer()
+                        }
+                    }
+                    .padding()
+                }
             }
-            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
 
             // Developer Chat
             Button {
@@ -534,6 +717,209 @@ struct SettingsSection: View {
                 .buttonStyle(.plain)
             }
         }
+        .sheet(isPresented: $showStationPicker) {
+            StationPickerSheet(
+                selectedStation: $pickerStation,
+                disabledStation: nil,
+                selectedSystems: appState.selectedSystems,
+                amtrakMode: appState.amtrakMode
+            ) { station in
+                switch stationPickerRole {
+                case .home:
+                    // Remove old home station from favorites if it exists
+                    if let oldCode = RatSenseService.shared.getHomeStation() {
+                        appState.removeFavoriteStation(code: oldCode)
+                    }
+                    RatSenseService.shared.setHomeStation(station.code)
+                    appState.addFavoriteStation(code: station.code, name: station.name)
+                case .work:
+                    if let oldCode = RatSenseService.shared.getWorkStation() {
+                        appState.removeFavoriteStation(code: oldCode)
+                    }
+                    RatSenseService.shared.setWorkStation(station.code)
+                    appState.addFavoriteStation(code: station.code, name: station.name)
+                case .other:
+                    appState.addFavoriteStation(code: station.code, name: station.name)
+                }
+                showStationPicker = false
+            }
+        }
+        .sheet(isPresented: $showAddRouteAlert) {
+            AddRouteAlertView()
+                .environmentObject(appState)
+        }
+        .sheet(item: $selectedSubscription) { sub in
+            if sub.trainId != nil {
+                NavigationStack {
+                    TrainDetailsView(
+                        trainNumber: sub.trainId!,
+                        dataSource: sub.dataSource,
+                        isSheet: true,
+                        subscription: sub,
+                        onSave: { updated in alertService.updateSubscription(updated) }
+                    )
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            } else {
+                RouteStatusView(context: routeStatusContext(for: sub))
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func syncRouteAlerts() {
+        Task { @MainActor in
+            guard let token = AppDelegate.deviceToken else { return }
+            await alertService.syncWithBackend(apnsToken: token)
+        }
+    }
+
+    private func routeStatusContext(for sub: RouteAlertSubscription) -> RouteStatusContext {
+        if let lineId = sub.lineId, let direction = sub.direction,
+           let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            let stations = route.stationCodes
+            if direction == stations.last {
+                return RouteStatusContext(
+                    dataSource: sub.dataSource,
+                    lineId: lineId,
+                    fromStationCode: stations.first,
+                    toStationCode: stations.last
+                )
+            } else {
+                return RouteStatusContext(
+                    dataSource: sub.dataSource,
+                    lineId: lineId,
+                    fromStationCode: stations.last,
+                    toStationCode: stations.first
+                )
+            }
+        }
+        return RouteStatusContext(
+            dataSource: sub.dataSource,
+            lineId: sub.lineId,
+            fromStationCode: sub.fromStationCode,
+            toStationCode: sub.toStationCode
+        )
+    }
+}
+
+// MARK: - Favorite Station Row
+
+private struct FavoriteStationRow: View {
+    let label: String?  // "Home", "Work", or nil for other favorites
+    let stationCode: String?
+    let isLast: Bool
+    let onTap: () -> Void
+    let onClear: () -> Void
+
+    private var stationName: String? {
+        guard let code = stationCode else { return nil }
+        return Stations.stationName(forCode: code) ?? Stations.displayName(for: code)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                // Tappable label + station name area (for home/work station picking)
+                Button(action: onTap) {
+                    HStack(spacing: 12) {
+                        if let label = label {
+                            Text(label)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundColor(.white.opacity(0.5))
+                                .frame(width: 44, alignment: .leading)
+                        }
+
+                        if let name = stationName {
+                            Text(name)
+                                .font(.subheadline)
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                        } else if label != nil {
+                            Text("Not set")
+                                .font(.subheadline)
+                                .foregroundColor(.white.opacity(0.3))
+                                .italic()
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(label == nil)  // "Other" rows don't need tap-to-change
+
+                Spacer()
+
+                if stationCode != nil {
+                    Button(action: onClear) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.body)
+                            .foregroundColor(.white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+
+            if !isLast {
+                Divider()
+                    .background(Color.white.opacity(0.1))
+            }
+        }
+    }
+}
+
+// MARK: - Route Alert Row
+
+private struct RouteAlertRow: View {
+    let subscription: RouteAlertSubscription
+    let onTap: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Button(action: onTap) {
+                    HStack(spacing: 8) {
+                        Image(systemName: iconName)
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .frame(width: 16)
+
+                        Text(subscription.displayName)
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.3))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+
+            Divider()
+                .background(Color.white.opacity(0.1))
+        }
+    }
+
+    private var iconName: String {
+        if subscription.trainName != nil { return "train.side.front.car" }
+        if subscription.lineName != nil { return "tram.fill" }
+        return "arrow.right"
     }
 }
 
