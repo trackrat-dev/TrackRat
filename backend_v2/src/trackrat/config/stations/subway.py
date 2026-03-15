@@ -2084,10 +2084,17 @@ SUBWAY_STATION_COORDINATES: dict[str, tuple[float, float]] = {
 # Station complexes: groups of platform codes at the same physical station.
 # Used by STATION_EQUIVALENTS to aggregate departures across platforms.
 SUBWAY_STATION_COMPLEXES: list[set[str]] = [
+    {"S109", "SA03"},  # Dyckman St (1 + A)
+    {"S111", "SA06"},  # 181 St (1 + A)
     {"S112", "SA09"},  # 168 St / 168 St-Washington Hts
+    {"S114", "S302", "SA12", "SD13"},  # 145 St (1 + 3 + A/C + B/D)
+    {"S116", "S225", "S621", "SA15"},  # 125 St (1 + 2/3 + 4/5/6 + A/B/C/D)
+    {"S118", "SA17"},  # Cathedral Pkwy (110 St) (1 + A/B/C)
+    {"S119", "SA18"},  # 103 St West Side (1 + A/B/C)
+    {"S120", "SA19"},  # 96 St West Side (1/2/3 + A/B/C)
     {"S125", "SA24"},  # 59 St-Columbus Circle
+    {"S126", "SA25"},  # 50 St (1/2 + A/C/E)
     {"S128", "SA28"},  # 34 St-Penn Station (1/2/3 + A/C/E)
-    {"S139", "SR26"},  # Rector St (1 + N/R/W)
     {
         "S127",
         "S725",
@@ -2095,14 +2102,24 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
         "SR16",
     },  # 42 St-Port Authority Bus Terminal / Times Sq-42 St (S902/GS excluded - dedicated platform)
     {"S132", "SD19", "SL02"},  # 14 St / 6 Av
-    {"S222", "S415"},  # 149 St-Grand Concourse
-    {"S230", "S419"},  # Wall St (2/3 + 4/5)
     {
+        "S135",
+        "S639",
+        "SA34",
+        "SM20",
+        "SQ01",
+        "SR23",
+    },  # Canal St (1/2 + 4/6 + A/C/E + J/Z + Q + N/R/W)
+    {
+        "S138",
         "S228",
         "SA36",
         "SE01",
         "SR25",
-    },  # Chambers St / Cortlandt St / Park Place / World Trade Center
+    },  # Chambers St / Cortlandt St / Park Place / WTC Cortlandt / World Trade Center
+    {"S208", "S503"},  # Gun Hill Rd (2 + 5)
+    {"S211", "S504"},  # Pelham Pkwy (2 + 5)
+    {"S222", "S415"},  # 149 St-Grand Concourse
     {"S229", "S418", "SA38", "SM22"},  # Fulton St
     {"S232", "S423", "SR28"},  # Borough Hall / Court St
     {"S235", "SD24", "SR31"},  # Atlantic Av-Barclays Ctr
@@ -2114,14 +2131,12 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S631", "S723"},  # Grand Central-42 St (S901/GS excluded - dedicated platform)
     {"S635", "SL03", "SR20"},  # 14 St-Union Sq
     {"S637", "SD21"},  # Bleecker St / Broadway-Lafayette St
-    {"S639", "SM20", "SQ01", "SR23"},  # Canal St
     {"S640", "SM21"},  # Brooklyn Bridge-City Hall / Chambers St
     {"S710", "SG14"},  # 74 St-Broadway / Jackson Hts-Roosevelt Av
     {"S718", "SR09"},  # Queensboro Plaza
     {"S719", "SF09", "SG22"},  # Court Sq / Court Sq-23 St
     {"S724", "SD16"},  # 42 St-Bryant Pk / 5 Av
     {"SA11", "SD12"},  # 155 St (A/C + B/D)
-    {"SA12", "SD13"},  # 145 St
     {"SA31", "SL01"},  # 14 St / 8 Av
     {"SA32", "SD20"},  # W 4 St-Wash Sq
     {"SA41", "SR29"},  # Jay St-MetroTech
@@ -2129,6 +2144,7 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"SA51", "SJ27", "SL22"},  # Broadway Junction
     {"SB16", "SN04"},  # 62 St / New Utrecht Av
     {"SD17", "SR17"},  # 34 St-Herald Sq
+    {"SD25", "SF24"},  # 7 Av Park Slope (B/Q + F/G)
     {"SF15", "SM18"},  # Delancey St-Essex St
     {"SF23", "SR33"},  # 4 Av-9 St
     {"SG29", "SL10"},  # Lorimer St / Metropolitan Av
