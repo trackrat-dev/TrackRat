@@ -285,8 +285,6 @@ struct AlertConfigurationSection: View {
                         .tint(.orange)
                     }
 
-                    Divider().opacity(0.3)
-
                     // Daily status summary
                     Toggle(isOn: digestEnabled) {
                         Text("Daily Status Summary")
