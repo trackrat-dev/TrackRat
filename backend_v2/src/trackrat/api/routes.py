@@ -37,6 +37,7 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.api_cache import ApiCacheService
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.services.departure import DepartureService
+from trackrat.services.summary import TrainDelaySummary
 from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger()
@@ -1081,7 +1082,7 @@ async def get_operations_summary(
     if summary.metrics:
 
         def _convert_train_dict(
-            source: dict[str, list] | None,
+            source: dict[str, list[TrainDelaySummary]] | None,
         ) -> dict[str, list[TrainDelaySummaryResponse]] | None:
             if not source:
                 return None
@@ -1103,12 +1104,8 @@ async def get_operations_summary(
             average_delay_minutes=summary.metrics.average_delay_minutes,
             cancellation_count=summary.metrics.cancellation_count,
             train_count=summary.metrics.train_count,
-            trains_by_category=_convert_train_dict(
-                summary.metrics.trains_by_category
-            ),
-            trains_by_headway=_convert_train_dict(
-                summary.metrics.trains_by_headway
-            ),
+            trains_by_category=_convert_train_dict(summary.metrics.trains_by_category),
+            trains_by_headway=_convert_train_dict(summary.metrics.trains_by_headway),
         )
 
     return OperationsSummaryResponse(
