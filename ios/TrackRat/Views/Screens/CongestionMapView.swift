@@ -9,6 +9,7 @@ struct CongestionMapView: View {
     @StateObject private var viewModel = CongestionMapViewModel()
     @State private var region = MKCoordinateRegion.newarkPennDefault
     @State private var selectedSegment: CongestionSegment?
+    @State private var selectedIndividualSegment: IndividualJourneySegment?
     @State private var showingFilters = false
     @State private var timeWindow = 1
     @State private var selectedDataSource: String = "All"
@@ -32,7 +33,7 @@ struct CongestionMapView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: { individualSegment in
-                    print("Tapped individual segment: \(individualSegment.trainDisplayName) \(individualSegment.fromStation) → \(individualSegment.toStation)")
+                    selectedIndividualSegment = individualSegment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
             )
@@ -147,6 +148,17 @@ struct CongestionMapView: View {
             SegmentTrainDetailsView(segment: segment)
                 .presentationDetents([.height(600), .large])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(item: $selectedIndividualSegment) { segment in
+            TrainDetailsView(
+                trainNumber: segment.trainId,
+                fromStation: segment.fromStation,
+                journeyDate: segment.actualDeparture,
+                dataSource: segment.dataSource,
+                isSheet: true
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .task {
             await viewModel.fetchCongestionData()
@@ -967,6 +979,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
         mapView.showsCompass = true
         mapView.showsScale = true
 
+        // Add tap gesture recognizer for polyline interaction
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
+        mapView.addGestureRecognizer(tapGesture)
+
         return mapView
     }
     
@@ -1446,7 +1462,69 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 return 0.3
             }
         }
-        
+
+        // MARK: - Tap Handling
+
+        @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
+            guard let mapView = gesture.view as? MKMapView else { return }
+
+            let tapPoint = gesture.location(in: mapView)
+            let tapCoordinate = mapView.convert(tapPoint, toCoordinateFrom: mapView)
+
+            // Check individual journey polylines first (they're on top visually)
+            for (_, polyline) in individualOverlayMap {
+                if isCoordinate(tapCoordinate, nearPolyline: polyline, inMapView: mapView) {
+                    if let segment = polyline.individualSegment {
+                        onIndividualSegmentTap(segment)
+                        return
+                    }
+                }
+            }
+
+            // Then check aggregated segment polylines
+            for (_, polyline) in aggregatedOverlayMap {
+                if isCoordinate(tapCoordinate, nearPolyline: polyline, inMapView: mapView) {
+                    if let segment = polyline.segment {
+                        onSegmentTap(segment)
+                        return
+                    }
+                }
+            }
+        }
+
+        private func isCoordinate(_ coordinate: CLLocationCoordinate2D, nearPolyline polyline: MKPolyline, inMapView mapView: MKMapView) -> Bool {
+            guard polyline.pointCount >= 2 else { return false }
+
+            let points = polyline.points()
+            let tapPoint = mapView.convert(coordinate, toPointTo: mapView)
+
+            // Check each line segment in the polyline
+            for i in 0..<(polyline.pointCount - 1) {
+                let screenPoint1 = mapView.convert(points[i].coordinate, toPointTo: mapView)
+                let screenPoint2 = mapView.convert(points[i + 1].coordinate, toPointTo: mapView)
+
+                let distance = distanceFromPoint(tapPoint, toLineSegmentBetween: screenPoint1, and: screenPoint2)
+                if distance <= 30 {
+                    return true
+                }
+            }
+            return false
+        }
+
+        private func distanceFromPoint(_ point: CGPoint, toLineSegmentBetween p1: CGPoint, and p2: CGPoint) -> CGFloat {
+            let dx = p2.x - p1.x
+            let dy = p2.y - p1.y
+            let lengthSquared = dx * dx + dy * dy
+
+            if lengthSquared == 0 {
+                return hypot(point.x - p1.x, point.y - p1.y)
+            }
+
+            let t = max(0, min(1, ((point.x - p1.x) * dx + (point.y - p1.y) * dy) / lengthSquared))
+            let closestPoint = CGPoint(x: p1.x + t * dx, y: p1.y + t * dy)
+            return hypot(point.x - closestPoint.x, point.y - closestPoint.y)
+        }
+
     }
 }
 
@@ -1537,18 +1615,22 @@ struct SegmentTrainDetailsView: View {
     let segment: CongestionSegment
     @StateObject private var viewModel: SegmentTrainDetailsViewModel
     @Environment(\.dismiss) private var dismiss
-    
+    @State private var routeStatusContext: RouteStatusContext?
+
     init(segment: CongestionSegment) {
         self.segment = segment
         self._viewModel = StateObject(wrappedValue: SegmentTrainDetailsViewModel(segment: segment))
     }
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 20) {
                     // Segment Header
                     segmentHeaderSection
+
+                    // View Full Route button
+                    viewFullRouteButton
 
                     // Summary Stats
                     if let summary = viewModel.segmentDetails?.summary {
@@ -1585,6 +1667,9 @@ struct SegmentTrainDetailsView: View {
         .preferredColorScheme(.dark)
         .task {
             await viewModel.loadTrainDetails()
+        }
+        .sheet(item: $routeStatusContext) { context in
+            RouteStatusView(context: context)
         }
     }
     
@@ -1632,8 +1717,54 @@ struct SegmentTrainDetailsView: View {
         }
     }
     
+    // MARK: - View Full Route Button
+
+    private var viewFullRouteButton: some View {
+        Button {
+            let route = RouteTopology.routeContaining(
+                from: segment.fromStation,
+                to: segment.toStation,
+                dataSource: segment.dataSource
+            )
+            routeStatusContext = RouteStatusContext(
+                dataSource: segment.dataSource,
+                lineId: route?.id,
+                fromStationCode: segment.fromStation,
+                toStationCode: segment.toStation
+            )
+        } label: {
+            HStack {
+                Image(systemName: "map")
+                    .font(.body)
+                Text("View Full Route")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                Spacer()
+                if let route = RouteTopology.routeContaining(
+                    from: segment.fromStation,
+                    to: segment.toStation,
+                    dataSource: segment.dataSource
+                ) {
+                    Text(route.name)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(.orange)
+    }
+
     // MARK: - Summary Stats Section
-    
+
     private func summaryStatsSection(summary: SegmentSummary) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
