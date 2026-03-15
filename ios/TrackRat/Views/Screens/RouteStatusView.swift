@@ -202,7 +202,7 @@ struct RouteStatusView: View {
                 notifyRecovery: template.notifyRecovery,
                 digestTimeMinutes: template.digestTimeMinutes
             )
-            alertService.addSubscriptions([subAB, subBA])
+            alertService.addSubscriptions(subscriptionService.isPro ? [subAB, subBA] : [subAB])
             // Move settings into edited subscriptions for the newly-created subs
             for sub in alertService.subscriptions(for: context) {
                 var edited = RouteAlertSubscription.copySettings(from: template, to: sub)
