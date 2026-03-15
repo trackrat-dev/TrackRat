@@ -6,6 +6,7 @@ import ActivityKit
 
 struct CongestionMapView: View {
     @EnvironmentObject private var appState: AppState
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @StateObject private var viewModel = CongestionMapViewModel()
     @State private var region = MKCoordinateRegion.newarkPennDefault
     @State private var selectedSegment: CongestionSegment?
@@ -13,6 +14,7 @@ struct CongestionMapView: View {
     @State private var timeWindow = 1
     @State private var selectedDataSource: String = "All"
     @State private var showingLayers = false
+    @State private var showingPaywall = false
 
     var body: some View {
         ZStack {
@@ -148,6 +150,9 @@ struct CongestionMapView: View {
                 .presentationDetents([.height(600), .large])
                 .presentationDragIndicator(.visible)
         }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .trainSystems)
+        }
         .task {
             await viewModel.fetchCongestionData()
         }
@@ -266,12 +271,21 @@ struct CongestionMapView: View {
                 .foregroundColor(.secondary)
 
             ForEach(TrainSystem.allCases, id: \.self) { system in
+                let isSelected = appState.isSystemSelected(system)
+                let atFreeLimit = !subscriptionService.isPro
+                    && !isSelected
+                    && appState.selectedSystems.count >= SubscriptionService.freeTrainSystemLimit
                 SystemToggleButton(
                     system: system,
-                    isSelected: appState.isSystemSelected(system),
+                    isSelected: isSelected,
                     subtitle: system == .amtrak ? appState.amtrakMode.label : nil,
+                    showProBadge: atFreeLimit,
                     action: {
-                        appState.toggleSystem(system)
+                        if atFreeLimit {
+                            showingPaywall = true
+                        } else {
+                            appState.toggleSystem(system)
+                        }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 )
@@ -406,6 +420,7 @@ private struct SystemToggleButton: View {
     let system: TrainSystem
     let isSelected: Bool
     var subtitle: String? = nil
+    var showProBadge: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -426,6 +441,15 @@ private struct SystemToggleButton: View {
                             .font(.caption2)
                             .foregroundColor(.orange)
                     }
+                }
+
+                if showProBadge {
+                    Text("PRO")
+                        .font(.caption2.bold())
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Capsule().fill(.orange))
                 }
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

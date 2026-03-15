@@ -7,12 +7,15 @@ struct RouteStatusView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     /// Locally-edited copies of matching subscriptions, keyed by ID.
     @State private var editedSubscriptions: [UUID: RouteAlertSubscription] = [:]
 
     /// Draft subscription used when no matching subscription exists yet.
     @State private var draftSubscription: RouteAlertSubscription?
+
+    @State private var showingPaywall = false
 
     /// Selected history time period for the segmented picker.
     @State private var selectedHistoryPeriod: HistoryPeriod = .hour
@@ -101,6 +104,9 @@ struct RouteStatusView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView(context: .routeAlerts)
+            }
         }
     }
 
@@ -151,6 +157,12 @@ struct RouteStatusView: View {
         guard let from = context.fromStationCode, let to = context.toStationCode else { return }
 
         if newDays > 0 && !isSubscribed {
+            // Check freemium limit before auto-subscribing
+            if !subscriptionService.isPro
+                && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit {
+                showingPaywall = true
+                return
+            }
             // Auto-subscribe — create both directions from draft or fresh template
             let template = draftSubscription ?? RouteAlertSubscription(
                 dataSource: context.dataSource,
