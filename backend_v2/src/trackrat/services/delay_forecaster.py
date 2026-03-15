@@ -303,7 +303,7 @@ class DelayForecaster:
             origin_station_code,
             data_source,
             scheduled_departure.hour,
-            scheduled_departure.weekday(),
+            scheduled_departure.isoweekday(),
         )
         if hour_adjustment != 1.0:
             forecast = self._apply_adjustment(forecast, hour_adjustment)
@@ -588,7 +588,7 @@ class DelayForecaster:
                 TrainJourney.data_source == data_source,
                 TrainJourney.journey_date >= cutoff_date,
                 func.extract("hour", TrainJourney.scheduled_departure) == hour,
-                func.extract("dow", TrainJourney.scheduled_departure) == day_of_week,
+                func.extract("isodow", TrainJourney.scheduled_departure) == day_of_week,
             )
         )
 
