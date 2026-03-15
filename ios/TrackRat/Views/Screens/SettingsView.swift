@@ -183,7 +183,8 @@ struct SettingsSection: View {
     private var routeAlertsSummary: String? {
         let subs = alertService.subscriptions
         guard !subs.isEmpty else { return nil }
-        return "You're being alerted on: " + subs.map { $0.displayName }.sorted().joined(separator: ", ") + "."
+        let lines = subs.map { $0.displayName }.sorted().map { "• \($0)" }
+        return "Alerting on:\n" + lines.joined(separator: "\n")
     }
 
     private var favoritesSummary: String {
@@ -191,18 +192,21 @@ struct SettingsSection: View {
         guard !favorites.isEmpty else { return "No favorite stations set." }
         let homeCode = RatSenseService.shared.getHomeStation()
         let workCode = RatSenseService.shared.getWorkStation()
-        var parts: [String] = []
+        var lines: [String] = []
         if let code = homeCode, favorites.contains(where: { $0.id == code }) {
-            parts.append("Home: \(Stations.displayName(for: code))")
+            lines.append("Home: \(Stations.displayName(for: code))")
         }
         if let code = workCode, favorites.contains(where: { $0.id == code }) {
-            parts.append("Work: \(Stations.displayName(for: code))")
+            lines.append("Work: \(Stations.displayName(for: code))")
         }
-        let otherCount = favorites.count - (homeCode != nil && favorites.contains(where: { $0.id == homeCode }) ? 1 : 0) - (workCode != nil && favorites.contains(where: { $0.id == workCode }) ? 1 : 0)
-        if otherCount > 0 {
-            parts.append("+\(otherCount) other\(otherCount == 1 ? "" : "s")")
+        let specialCodes = Set([homeCode, workCode].compactMap { $0 })
+        let others = favorites.filter { !specialCodes.contains($0.id) }
+            .sorted { $0.displayName < $1.displayName }
+        if !others.isEmpty {
+            lines.append("Favorites:")
+            lines.append(contentsOf: others.map { "• \($0.displayName)" })
         }
-        return parts.joined(separator: ", ")
+        return lines.joined(separator: "\n")
     }
 
     private var enabledSystemsSummary: String {
@@ -210,14 +214,14 @@ struct SettingsSection: View {
             .filter { appState.isSystemSelected($0) }
             .sorted { $0.displayName < $1.displayName }
         if sorted.isEmpty { return "No systems selected" }
-        let names = sorted.map { system in
+        let lines = sorted.map { system in
             var name = system.displayName
             if system == .amtrak {
                 name += " (\(appState.amtrakMode.label))"
             }
-            return name
-        }.joined(separator: ", ")
-        return "You're currently following: \(names)."
+            return "• \(name)"
+        }
+        return "Following:\n" + lines.joined(separator: "\n")
     }
 
     var body: some View {
