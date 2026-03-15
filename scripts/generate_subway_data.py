@@ -204,6 +204,21 @@ def build_station_complexes(transfers: list[dict], stations: list[dict]) -> list
             adjacency[from_code].add(to_code)
             adjacency[to_code].add(from_code)
 
+    # Manual overrides: station pairs that should be grouped but are missing
+    # from transfers.txt (MTA omits some in-station transfers).
+    MANUAL_COMPLEX_MERGES: list[set[str]] = [
+        {"S128", "SA28"},   # 34 St-Penn Station (1/2/3 + A/C/E)
+        {"S230", "S419"},   # Wall St (2/3 + 4/5)
+        {"S139", "SR26"},   # Rector St (1 + N/R/W)
+        {"SA11", "SD12"},   # 155 St (A/C + B/D)
+    ]
+    for group in MANUAL_COMPLEX_MERGES:
+        codes = list(group)
+        for i in range(len(codes)):
+            for j in range(i + 1, len(codes)):
+                adjacency[codes[i]].add(codes[j])
+                adjacency[codes[j]].add(codes[i])
+
     # Find connected components via BFS
     visited: set[str] = set()
     complexes: list[set[str]] = []

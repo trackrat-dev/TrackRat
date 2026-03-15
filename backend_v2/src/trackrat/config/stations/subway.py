@@ -2086,6 +2086,8 @@ SUBWAY_STATION_COORDINATES: dict[str, tuple[float, float]] = {
 SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S112", "SA09"},  # 168 St / 168 St-Washington Hts
     {"S125", "SA24"},  # 59 St-Columbus Circle
+    {"S128", "SA28"},  # 34 St-Penn Station (1/2/3 + A/C/E)
+    {"S139", "SR26"},  # Rector St (1 + N/R/W)
     {
         "S127",
         "S725",
@@ -2094,6 +2096,7 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     },  # 42 St-Port Authority Bus Terminal / Times Sq-42 St (S902/GS excluded - dedicated platform)
     {"S132", "SD19", "SL02"},  # 14 St / 6 Av
     {"S222", "S415"},  # 149 St-Grand Concourse
+    {"S230", "S419"},  # Wall St (2/3 + 4/5)
     {
         "S228",
         "SA36",
@@ -2117,6 +2120,7 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S718", "SR09"},  # Queensboro Plaza
     {"S719", "SF09", "SG22"},  # Court Sq / Court Sq-23 St
     {"S724", "SD16"},  # 42 St-Bryant Pk / 5 Av
+    {"SA11", "SD12"},  # 155 St (A/C + B/D)
     {"SA12", "SD13"},  # 145 St
     {"SA31", "SL01"},  # 14 St / 8 Av
     {"SA32", "SD20"},  # W 4 St-Wash Sq

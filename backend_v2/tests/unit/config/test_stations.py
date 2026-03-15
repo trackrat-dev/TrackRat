@@ -674,6 +674,61 @@ class TestStationEquivalences:
                 len(canonical_codes) == 1
             ), f"Group {sorted(group)} produced multiple canonical codes: {canonical_codes}"
 
+    @pytest.mark.parametrize(
+        "complex_codes,description",
+        [
+            ({"S128", "SA28"}, "34 St-Penn Station (1/2/3 + A/C/E)"),
+            ({"S230", "S419"}, "Wall St (2/3 + 4/5)"),
+            ({"S139", "SR26"}, "Rector St (1 + N/R/W)"),
+            ({"SA11", "SD12"}, "155 St (A/C + B/D)"),
+        ],
+    )
+    def test_unified_subway_complexes(self, complex_codes, description):
+        """Subway stations at the same physical location expand to each other.
+
+        These were previously separate entries despite being connected
+        in-station transfer points. The GTFS transfers.txt omitted them.
+        """
+        for code in complex_codes:
+            result = set(expand_station_codes(code))
+            assert result == complex_codes, (
+                f"{description}: expand_station_codes('{code}') returned "
+                f"{sorted(result)}, expected {sorted(complex_codes)}"
+            )
+            # Queried code should be first in the list
+            result_list = expand_station_codes(code)
+            assert result_list[0] == code, (
+                f"{description}: queried code {code} should be first, "
+                f"got {result_list[0]}"
+            )
+
+    def test_unified_complexes_in_subway_station_complexes(self):
+        """All new unified complexes must be present in SUBWAY_STATION_COMPLEXES."""
+        expected_groups = [
+            {"S128", "SA28"},   # 34 St-Penn Station
+            {"S230", "S419"},   # Wall St
+            {"S139", "SR26"},   # Rector St
+            {"SA11", "SD12"},   # 155 St
+        ]
+        for expected in expected_groups:
+            found = False
+            for group in SUBWAY_STATION_COMPLEXES:
+                if expected.issubset(group):
+                    found = True
+                    break
+            assert found, (
+                f"Expected complex {sorted(expected)} not found in "
+                f"SUBWAY_STATION_COMPLEXES"
+            )
+
+    def test_unified_complexes_canonical_code_deterministic(self):
+        """canonical_station_code is the same for all members of new unified complexes."""
+        for group in [{"S128", "SA28"}, {"S230", "S419"}, {"S139", "SR26"}, {"SA11", "SD12"}]:
+            canonical_codes = {canonical_station_code(code) for code in group}
+            assert len(canonical_codes) == 1, (
+                f"Group {sorted(group)} produced multiple canonical codes: {canonical_codes}"
+            )
+
     def test_non_complex_subway_station_expands_to_self(self):
         """Subway stations not in any complex expand to just themselves."""
         # S101 = Van Cortlandt Park-242 St (standalone station on 1 line)

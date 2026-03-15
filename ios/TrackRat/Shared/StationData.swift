@@ -305,7 +305,7 @@ extension Stations {
         "59 St-Columbus Circle",
         "50 St (1/2)",
         "Times Sq-42 St",
-        "34 St-Penn Station (1/2/3)",
+        "34 St-Penn Station",
         "28 St (1/2)",
         "23 St (1/2)",
         "18 St",
@@ -316,7 +316,7 @@ extension Stations {
         "Franklin St",
         "Chambers St",
         "WTC Cortlandt",
-        "Rector St (1)",
+        "Rector St",
         "South Ferry",
         "Wakefield-241 St",
         "Nereid Av",
@@ -344,7 +344,7 @@ extension Stations {
         "110 St-Malcolm X Plaza",
         "Chambers St-WTC",
         "Fulton St (2/3/4/5/A/C/J/Z)",
-        "Wall St (2/3)",
+        "Wall St",
         "Clark St",
         "Borough Hall",
         "Hoyt St",
@@ -386,7 +386,6 @@ extension Stations {
         "167 St (4)",
         "161 St-Yankee Stadium",
         "138 St-Grand Concourse",
-        "Wall St (4/5)",
         "Bowling Green",
         "Eastchester-Dyre Av",
         "Baychester Av",
@@ -457,7 +456,7 @@ extension Stations {
         "181 St (A)",
         "175 St",
         "163 St-Amsterdam Av",
-        "155 St (A/C)",
+        "155 St",
         "145 St (A/B/C/D)",
         "135 St (A/B/C)",
         "125 St (A/B/C/D)",
@@ -469,7 +468,6 @@ extension Stations {
         "81 St-Museum of Natural History",
         "72 St (A/B/C)",
         "50 St (A/C/E)",
-        "34 St-Penn Station (A/C/E)",
         "23 St (A/C/E)",
         "14 St (A/C/E/L)",
         "W 4 St-Wash Sq",
@@ -522,7 +520,6 @@ extension Stations {
         "174-175 Sts",
         "170 St (B/D)",
         "167 St (B/D)",
-        "155 St (B/D)",
         "7 Av (B/D/E)",
         "47-50 Sts-Rockefeller Ctr",
         "34 St-Herald Sq",
@@ -688,7 +685,6 @@ extension Stations {
         "8 St",
         "Prince St",
         "City Hall",
-        "Rector St (N/R/W)",
         "Whitehall St-South Ferry",
         "DeKalb Av (B/D/N/Q/R/W)",
         "Union St",
@@ -1808,7 +1804,7 @@ extension Stations {
         "59 St-Columbus Circle": "S125",
         "50 St (1/2)": "S126",
         "Times Sq-42 St": "S127",
-        "34 St-Penn Station (1/2/3)": "S128",
+        "34 St-Penn Station": "S128",
         "28 St (1/2)": "S129",
         "23 St (1/2)": "S130",
         "18 St": "S131",
@@ -1819,7 +1815,7 @@ extension Stations {
         "Franklin St": "S136",
         "Chambers St": "S137",
         "WTC Cortlandt": "S138",
-        "Rector St (1)": "S139",
+        "Rector St": "S139",
         "South Ferry": "S142",
         "Wakefield-241 St": "S201",
         "Nereid Av": "S204",
@@ -1847,7 +1843,7 @@ extension Stations {
         "110 St-Malcolm X Plaza": "S227",
         "Chambers St-WTC": "S228",
         "Fulton St (2/3/4/5/A/C/J/Z)": "S229",
-        "Wall St (2/3)": "S230",
+        "Wall St": "S230",
         "Clark St": "S231",
         "Borough Hall": "S232",
         "Hoyt St": "S233",
@@ -1889,7 +1885,6 @@ extension Stations {
         "167 St (4)": "S413",
         "161 St-Yankee Stadium": "S414",
         "138 St-Grand Concourse": "S416",
-        "Wall St (4/5)": "S419",
         "Bowling Green": "S420",
         "Eastchester-Dyre Av": "S501",
         "Baychester Av": "S502",
@@ -1960,7 +1955,7 @@ extension Stations {
         "181 St (A)": "SA06",
         "175 St": "SA07",
         "163 St-Amsterdam Av": "SA10",
-        "155 St (A/C)": "SA11",
+        "155 St": "SA11",
         "145 St (A/B/C/D)": "SA12",
         "135 St (A/B/C)": "SA14",
         "125 St (A/B/C/D)": "SA15",
@@ -1972,7 +1967,6 @@ extension Stations {
         "81 St-Museum of Natural History": "SA21",
         "72 St (A/B/C)": "SA22",
         "50 St (A/C/E)": "SA25",
-        "34 St-Penn Station (A/C/E)": "SA28",
         "23 St (A/C/E)": "SA30",
         "14 St (A/C/E/L)": "SA31",
         "W 4 St-Wash Sq": "SA32",
@@ -2025,7 +2019,6 @@ extension Stations {
         "174-175 Sts": "SD08",
         "170 St (B/D)": "SD09",
         "167 St (B/D)": "SD10",
-        "155 St (B/D)": "SD12",
         "7 Av (B/D/E)": "SD14",
         "47-50 Sts-Rockefeller Ctr": "SD15",
         "34 St-Herald Sq": "SD17",
@@ -2191,7 +2184,6 @@ extension Stations {
         "8 St": "SR21",
         "Prince St": "SR22",
         "City Hall": "SR24",
-        "Rector St (N/R/W)": "SR26",
         "Whitehall St-South Ferry": "SR27",
         "DeKalb Av (B/D/N/Q/R/W)": "SR30",
         "Union St": "SR32",
@@ -2314,6 +2306,10 @@ extension Stations {
             ("SR33", "SF23"),  // 4 Av-9 St
             ("SL10", "SG29"),  // Metropolitan Av
             ("SM08", "SL17"),  // Myrtle-Wyckoff Avs
+            ("SA28", "S128"),  // 34 St-Penn Station
+            ("SR26", "S139"),  // Rector St
+            ("S419", "S230"),  // Wall St
+            ("SD12", "SA11"),  // 155 St
         ]
         for (alternateCode, canonicalCode) in subwayComplexEquivalents {
             if let name = result[canonicalCode] {
@@ -2365,6 +2361,8 @@ extension Stations {
             ("SL22", "SA51"),  ("SN04", "SB16"),  ("SR17", "SD17"),
             ("SM18", "SF15"),  ("SR33", "SF23"),  ("SL10", "SG29"),
             ("SM08", "SL17"),
+            ("SA28", "S128"),  ("SR26", "S139"),
+            ("S419", "S230"),  ("SD12", "SA11"),
         ]
         // Merge pairs into groups (a canonical code may appear multiple times)
         var canonicalToIndex: [String: Int] = [:]
