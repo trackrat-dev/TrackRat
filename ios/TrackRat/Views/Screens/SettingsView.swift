@@ -201,10 +201,10 @@ struct SettingsSection: View {
         }
         let specialCodes = Set([homeCode, workCode].compactMap { $0 })
         let others = favorites.filter { !specialCodes.contains($0.id) }
-            .sorted { $0.displayName < $1.displayName }
+            .sorted(by: { $0.name < $1.name })
         if !others.isEmpty {
             lines.append("Favorites:")
-            lines.append(contentsOf: others.map { "• \($0.displayName)" })
+            lines.append(contentsOf: others.map { "• \($0.name)" })
         }
         return lines.joined(separator: "\n")
     }
@@ -212,7 +212,7 @@ struct SettingsSection: View {
     private var enabledSystemsSummary: String {
         let sorted = TrainSystem.allCases
             .filter { appState.isSystemSelected($0) }
-            .sorted { $0.displayName < $1.displayName }
+            .sorted(by: { $0.displayName < $1.displayName })
         if sorted.isEmpty { return "No systems selected" }
         let lines = sorted.map { system in
             var name = system.displayName

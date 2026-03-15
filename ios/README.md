@@ -94,7 +94,7 @@ TrackRat/
 ├── Models/                      # Data layer
 │   ├── TrainV2.swift           # Pure data model with context-aware calculations
 │   ├── V2APIModels.swift       # Backend V2 API models
-│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO)
+│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway)
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
 │
@@ -123,27 +123,37 @@ TrackRat/
 │   │   ├── TrainDetailsView.swift       # Train journey details
 │   │   ├── CongestionMapView.swift      # Network congestion
 │   │   ├── HistoricalDataView.swift     # Performance analytics
-│   │   ├── SettingsView.swift           # User settings and preferences
+│   │   ├── SettingsView.swift           # User settings (inline favorites & route alerts)
 │   │   ├── MapContainerView.swift       # Primary map interface
 │   │   ├── OnboardingView.swift         # User onboarding
 │   │   ├── AdvancedConfigurationView.swift # Developer settings
 │   │   ├── RouteStatusView.swift        # Route alert performance
 │   │   ├── AddRouteAlertView.swift      # Add route alert
-│   │   ├── EditRouteAlertsView.swift    # Manage route alerts
+│   │   ├── ChatView.swift              # Developer chat
+│   │   ├── AdminChatListView.swift     # Admin chat management
 │   │   └── TripHistoryView.swift        # Trip history
 │   │
-│   └── Components/              # Reusable UI components (17+ files)
+│   └── Components/              # Reusable UI components (20 files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
+│       ├── AlertConfigurationSection.swift # Route alert configuration
+│       ├── DateSelectorSheet.swift      # Date picker sheet
+│       ├── FeedbackButton.swift         # Issue reporting
+│       ├── JourneyCongestionMapView.swift # Journey congestion map
+│       ├── JourneyFeedbackPromptView.swift # Journey feedback
 │       ├── LegacyBottomSheetView.swift  # Draggable sheets
 │       ├── LegacySheetAwareScrollView.swift # Coordinated scrolling
 │       ├── LiveActivityControls.swift   # Start/stop buttons
-│       ├── LiveActivityDebugView.swift  # Debug tools
-│       ├── TrackRatMascot.swift         # Animated character
-│       ├── FeedbackButton.swift         # Issue reporting
 │       ├── OperationsSummaryView.swift  # Operations summary
-│       ├── TrainStatsSummaryView.swift  # Train performance
-│       ├── TrainDistributionChart.swift # Delay visualization
-│       └── ...
+│       ├── StationButton.swift          # Station selection button
+│       ├── StationPickerSheet.swift     # Station picker modal
+│       ├── StationRow.swift             # Station list row
+│       ├── TrackRatLoadingView.swift    # Loading animation
+│       ├── TrackRatMascot.swift         # Animated character
+│       ├── TrackRatNavigationHeader.swift # Navigation header
+│       ├── TrackTrainInlineButton.swift # Inline track button
+│       ├── TrainDistributionChart.swift # Delay distribution
+│       ├── TrainFrequencyChart.swift    # Frequency chart (column layout)
+│       └── TrainStatsSummaryView.swift  # Train performance
 │
 ├── Views/Paywall/               # Subscription UI
 │   ├── PaywallView.swift        # Subscription purchase flow

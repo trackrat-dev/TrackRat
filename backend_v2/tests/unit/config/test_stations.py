@@ -650,8 +650,8 @@ class TestStationEquivalences:
                 result[0] == code
             ), f"Queried code {code} should be first, got {result[0]}"
 
-        # Times Sq-42 St: 4-platform complex (S902/GS excluded - dedicated platform)
-        expected_ts = {"S127", "S725", "SA27", "SR16"}
+        # Times Sq-42 St: 5-platform complex (includes S902/GS shuttle)
+        expected_ts = {"S127", "S725", "SA27", "SR16", "S902"}
         for code in expected_ts:
             result = expand_station_codes(code)
             assert set(result) == expected_ts, (
@@ -659,12 +659,14 @@ class TestStationEquivalences:
                 f"expected all of {sorted(expected_ts)}"
             )
 
-        # GS shuttle platforms are standalone (not grouped with other lines)
-        for gs_code in ("S901", "S902"):
-            result = expand_station_codes(gs_code)
-            assert result == [
-                gs_code
-            ], f"GS shuttle {gs_code} should be standalone, got {result}"
+        # Grand Central-42 St: includes S901/GS shuttle
+        expected_gc = {"S631", "S723", "S901"}
+        for code in expected_gc:
+            result = expand_station_codes(code)
+            assert set(result) == expected_gc, (
+                f"expand_station_codes('{code}') returned {result}, "
+                f"expected all of {sorted(expected_gc)}"
+            )
 
     def test_canonical_station_code_deterministic_for_subway(self):
         """canonical_station_code returns the same code for all members of a subway complex."""

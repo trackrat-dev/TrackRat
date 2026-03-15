@@ -653,11 +653,19 @@ The backend is organized into service classes for better maintainability:
 - **AlertEvaluatorService** (`services/alert_evaluator.py`): Evaluates delay/cancellation conditions for route alert push notifications
 - **AlertsAPI** (`api/alerts.py`): Device registration and alert subscription management endpoints
 
+#### Developer Chat
+- **ChatAPI** (`api/chat.py`): Full CRUD + admin endpoints for user-developer messaging
+
 #### Infrastructure
-- **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities and Route Alerts
+- **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities, Route Alerts, and Chat
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
+
+### Recent Improvements (March 2026)
+- ✅ PATH line color disambiguation: resolves misattribution for overlapping routes (e.g., JSQ-33H vs HOB-33)
+- ✅ Expanded subway station complexes: 15+ missing in-station transfers added to STATION_EQUIVALENTS
+- ✅ Unified shuttle station equivalences (S901/S902) across backend and iOS
 
 ### Recent Improvements (February 2026)
 - ✅ Recurring train alerts: subscribe to specific train numbers for daily commute monitoring

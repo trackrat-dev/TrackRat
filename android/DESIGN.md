@@ -678,16 +678,16 @@ fun PreviewFunction() {
 - ✅ Track prediction display (segmented bar + confidence)
 - ✅ Bottom sheet gesture coordination
 
-### Phase 2: Feature Parity with iOS ✅ COMPLETE
+### Phase 2: Feature Parity with iOS (Mostly Complete)
 - ✅ Map integration with Google Maps
 - ✅ Congestion visualization with tap detection
 - ✅ Route polyline visualization
 - ✅ Station favorites
 - ✅ Profile system with server switching
-- ❌ Push notifications (FCM) - not needed yet
-- ❌ Route history screen - backend endpoint exists, UI not built
-- ❌ Deep linking support - not implemented
-- ❌ Share functionality - not implemented
+- ❌ Push notifications (FCM) — not needed yet
+- ❌ Route history screen — backend endpoint exists, UI not built
+- ❌ Deep linking support — not implemented
+- ❌ Share functionality — not implemented
 
 ### Phase 3: Android-Specific Enhancements (Future)
 - ❌ Home screen widgets (Glance API)

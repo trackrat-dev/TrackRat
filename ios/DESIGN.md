@@ -15,7 +15,7 @@ This document contains detailed design specifications, screen documentation, and
 - Congestion visualization overlay
 - Coordinated scrolling between map and sheet content
 - Map layer controls (congestion, routes, stations) via layers button
-- Route topology overlay for all transit systems (NJT, Amtrak, PATH, PATCO)
+- Route topology overlay for all transit systems (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway)
 
 ### 3. **TripSelectionView** (Journey Planning Screen)
 - Shows active Live Activities at the top with journey progress
@@ -76,7 +76,7 @@ This document contains detailed design specifications, screen documentation, and
 - Color-coded congestion levels
 - Time window filtering (1-24 hours)
 - Map layer controls: Congestion (Off/Summary/Trains), Routes, Stations
-- Route topology overlay for NJT, Amtrak, PATH, PATCO lines
+- Route topology overlay for NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway lines
 - Pro-only congestion map feature with paywall prompt
 
 ### 10. **OnboardingView**
@@ -99,13 +99,18 @@ This document contains detailed design specifications, screen documentation, and
 - System-appropriate metric selection
 - Recurring train alert configuration per train number
 
-### 13. **EditRouteAlertsView** (Manage Route Alerts)
-- List and manage active route alert subscriptions
-- Swipe-to-delete with subscription sync
-- Navigation to RouteStatusView for performance details
-- Tap to navigate to train details
+### 13. **ChatView** (Developer Chat)
+- Two-party messaging between user and developer
+- Real-time message history with send/receive
+- Push notification integration for new messages
+- Unread message count badge
 
-### 14. **AdvancedConfigurationView**
+### 14. **AdminChatListView** (Admin Chat Management)
+- Lists all user conversations for admin
+- Admin registration via secret code
+- Per-conversation message history and reply
+
+### 15. **AdvancedConfigurationView**
 - Server environment selection (Production/Staging/Local)
 - Home/work station management
 - Favorite stations configuration
@@ -113,16 +118,17 @@ This document contains detailed design specifications, screen documentation, and
 - Cache clearing utilities
 - Backend health check testing
 
-### 15. **SettingsView**
+### 16. **SettingsView**
 - **Trip Statistics**: Total trips, on-time percentage, minutes saved vs scheduled
 - **Trip History Access**: Link to full TripHistoryView
-- **Route Alerts**: Manage route alert subscriptions
+- **Favorite Stations**: Inline editing (no separate view)
+- **Route Alerts**: Inline management (no separate EditRouteAlertsView)
 - **Train System Preferences**: Enable/disable transit systems
 - **Amtrak Mode**: Tri-state toggle (Off / NEC Only / All)
 - User preferences and settings
 - Quick access to advanced configuration
 
-### 16. **TripHistoryView**
+### 17. **TripHistoryView**
 - Complete history of recorded trips from Live Activities
 - Trip details: origin, destination, train, duration, delay
 - Filtering by date range or data source
@@ -253,7 +259,6 @@ This document contains detailed design specifications, screen documentation, and
   - `.settings` - Settings
   - `.congestionMap` - Network congestion view
   - `.favoriteStations` - Favorite stations (managed inline in SettingsView)
-  - `.editRouteAlerts` - Manage route alert subscriptions
   - `.addRouteAlert` - Add new route alert
   - `.routeStatus(route)` - Route alert performance dashboard
 
@@ -410,6 +415,7 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 12. **JourneyFeedbackService** - Triggers feedback prompts during active journeys
 13. **SubscriptionService** - Pro subscription management with StoreKit 2
 14. **AlertSubscriptionService** - Route alert subscription management and APNS registration
+15. **ChatService** - Developer chat messaging and admin functionality
 
 ### LiveActivityService
 - **Singleton Pattern**: Shared instance for app-wide access
@@ -601,21 +607,25 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 
 ### UI Component Library
 - **ActiveTripsSection**: Horizontal scroll of active Live Activities
-- **LiveActivityControls**: Start/stop buttons with status indicators
-- **LiveActivityDebugView**: Developer tools for testing Live Activity states
+- **AlertConfigurationSection**: Route alert configuration controls
+- **DateSelectorSheet**: Date picker sheet for schedule browsing
+- **FeedbackButton**: User issue reporting with submission sheet
+- **JourneyCongestionMapView**: Journey-specific congestion visualization
+- **JourneyFeedbackPromptView**: Mid-journey feedback prompt
 - **LegacyBottomSheetView**: Reusable draggable bottom sheet
 - **LegacySheetAwareScrollView**: Smart scrolling coordinated with sheets
-- **TrackRatLoadingView**: Custom loading animation with mascot
-- **VideoPlayerView**: Native video playback component
-- **OnboardingVideoView**: Intro video with completion handling
-- **StationButton**: Station selection button component
-- **StationRow**: Station list row component
-- **JourneyCongestionMapView**: Journey-specific congestion visualization
-- **TrackRatMascot**: Animated mascot character
-- **FeedbackButton**: User issue reporting with submission sheet
+- **LiveActivityControls**: Start/stop buttons with status indicators
 - **OperationsSummaryView**: Network/route/train operations summary
-- **TrainStatsSummaryView**: Train performance analytics display
+- **StationButton**: Station selection button component
+- **StationPickerSheet**: Modal station picker for settings
+- **StationRow**: Station list row component
+- **TrackRatLoadingView**: Custom loading animation with mascot
+- **TrackRatMascot**: Animated mascot character
+- **TrackRatNavigationHeader**: Custom navigation header
+- **TrackTrainInlineButton**: Inline train tracking button
 - **TrainDistributionChart**: Visual delay distribution chart
+- **TrainFrequencyChart**: Frequency chart (column layout) for subway/PATH/PATCO
+- **TrainStatsSummaryView**: Train performance analytics display
 
 ## Recent Enhancements
 

@@ -76,92 +76,12 @@
 
 ### ❌ Not Yet Implemented
 
-#### Critical Missing Features
-1. **Live Train Tracking**
-   - Track button functionality in detail view
-   - Custom notification layout with journey progress
-   - Background data refresh mechanism
-
-2. **Network Congestion Visualization**
-   - Congestion map UI component
-   - Color-coded delay indicators
-   - Real-time updates from `/api/v2/routes/congestion`
-
-3. **Historical Route Analytics**
-   - Route performance charts
-   - Delay breakdown visualization
-   - Track usage statistics
-
-4. **Advanced Features**
-   - Home screen widget (using Glance API)
-   - Deep linking for train sharing
-   - Offline mode with local caching
-   - Search filters and sorting options
-
-## Recommended Future Improvements
-
-### High Priority (Essential for MVP)
-
-1. **Implement Ongoing Notifications**
-   ```kotlin
-   // Create ForegroundService for live tracking
-   // Use NotificationCompat for rich notifications
-   // Update every 30 seconds when active
-   ```
-
-2. **Complete Progress Visualization**
-   - Add journey progress bar to train list items
-   - Implement stop-by-stop progress in detail screen
-   - Show real-time position updates
-
-3. **Fix StatusV2 Display Logic**
-   - Use `statusV2?.enhancedStatus ?: status` pattern
-   - Implement proper status color coding
-   - Add location context from StatusV2
-
-4. **Add Owl Prediction Confidence Display**
-   - High confidence (≥80%): Bold with checkmark
-   - Medium confidence (50-79%): Normal text
-   - Low confidence (<50%): Gray with question mark
-
-### Medium Priority (Enhanced UX)
-
-1. **Add Route History Screen**
-   - Historical performance metrics
-   - Delay patterns visualization
-   - Peak/off-peak analysis
-
-2. **Implement Congestion Map**
-   - Real-time network status
-   - Color-coded segments
-   - Tap for details functionality
-
-3. **Add Trip Planning Features**
-   - Save favorite routes
-   - Schedule reminders
-   - Multi-stop journey planning
-
-4. **Performance Optimizations**
-   - Implement proper pagination for train lists
-   - Add memory caching for API responses
-   - Optimize Compose recompositions
-
-### Low Priority (Nice to Have)
-
-1. **Widget Implementation**
-   - Next departure widget
-   - Active journey widget
-   - Quick access shortcuts
-
-2. **Additional Transit Systems**
-   - LIRR support (backend ready)
-   - Metro-North support (backend ready)
-   - SEPTA integration
-
-3. **Accessibility Improvements**
-   - Screen reader optimization
-   - High contrast mode
-   - Font size adjustments
+1. **Push Notifications** (FCM) - not needed yet
+2. **Route History Screen** - backend endpoint exists, UI not built
+3. **Deep Linking** - not implemented
+4. **Share Functionality** - not implemented
+5. **Home Screen Widgets** (Glance API)
+6. **Offline Mode** - no local caching
 
 ## Getting Started - Development Setup
 
