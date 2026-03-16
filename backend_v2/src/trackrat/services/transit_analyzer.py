@@ -121,12 +121,14 @@ class TransitAnalyzer:
             current_stop = stops[i]
             next_stop = stops[i + 1]
 
-            # We need actual times to calculate actual transit time
-            if not (current_stop.actual_departure and next_stop.actual_arrival):
-                continue
-
-            departure_time = current_stop.actual_departure
+            # We need actual times to calculate actual transit time.
+            # For MTA (subway/LIRR/MNR), GTFS-RT feeds often omit departure
+            # times at intermediate stops. Fall back to actual_arrival as a
+            # proxy — dwell time is typically negligible for rapid transit.
+            departure_time = current_stop.actual_departure or current_stop.actual_arrival
             arrival_time = next_stop.actual_arrival
+            if not (departure_time and arrival_time):
+                continue
 
             # Check if segment already exists (to avoid duplicates)
             if check_duplicates:
@@ -449,12 +451,13 @@ class TransitAnalyzer:
             current_stop = stops[i]
             next_stop = stops[i + 1]
 
-            # We need actual times to calculate actual transit time
-            if not (current_stop.actual_departure and next_stop.actual_arrival):
-                continue
-
-            departure_time = current_stop.actual_departure
+            # We need actual times to calculate actual transit time.
+            # Fall back to actual_arrival when actual_departure is NULL
+            # (common for MTA intermediate stops in GTFS-RT feeds).
+            departure_time = current_stop.actual_departure or current_stop.actual_arrival
             arrival_time = next_stop.actual_arrival
+            if not (departure_time and arrival_time):
+                continue
 
             # Calculate scheduled transit time
             scheduled_minutes = None
