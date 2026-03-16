@@ -124,7 +124,7 @@ struct TrainDetailsView: View {
                         Button {
                             appState.pendingRouteStatus = RouteStatusContext(
                                 dataSource: train.dataSource,
-                                lineId: nil,
+                                lineId: train.line.code,
                                 fromStationCode: fromCode,
                                 toStationCode: toCode
                             )
