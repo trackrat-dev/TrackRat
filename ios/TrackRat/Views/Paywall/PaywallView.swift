@@ -94,15 +94,6 @@ struct PaywallView: View {
                     )
                     .padding(.horizontal)
 
-                    // Context-specific messaging (for train system / route alert limits)
-                    if let subtext = context.subtext {
-                        Text(subtext)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundColor(.orange)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    }
-
                     // Pricing options
                     if subscriptionService.isLoading && subscriptionService.availableProducts.isEmpty {
                         ProgressView()
