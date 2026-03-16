@@ -125,9 +125,23 @@ struct Stations {
     /// Special overrides for stations that need manual mapping beyond what RouteTopology provides.
     /// Most stations are automatically derived from RouteTopology - only add overrides here for:
     /// - Stations with adjacent systems (e.g., NP has PATH adjacency)
-    /// - Stations that need different mapping than their route membership implies
+    /// - Stations not on any RouteTopology route but belonging to a non-Amtrak system
+    /// Note: Stations not in RouteTopology or overrides default to AMTRAK (see systemStringsForStation).
     private static let stationSystemOverrides: [String: Set<String>] = [
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
+        // NJT stations not in RouteTopology
+        "TS": ["NJT"],   // Secaucus Lower Lvl
+        "GA": ["NJT"],   // Great Notch
+        "MO": ["NJT"],   // Montclair-Boonton Line
+        // LIRR stations not in RouteTopology
+        "HPA": ["LIRR"],  // Hunterspoint Avenue
+        "LIC": ["LIRR"],  // Long Island City
+        "NHP": ["LIRR"],  // New Hyde Park
+        "BRT": ["LIRR"],  // Belmont Park
+        // Subway stations not in RouteTopology
+        "SA63": ["SUBWAY"],  // 104 St (A)
+        "SA64": ["SUBWAY"],  // 111 St (A)
+        "SA65": ["SUBWAY"],  // Ozone Park-Lefferts Blvd
     ]
 
     /// Cached mapping of station codes to their systems, derived from RouteTopology.
@@ -143,7 +157,9 @@ struct Stations {
     }()
 
     /// Returns the raw system strings that serve a given station.
-    /// Priority: 1) Explicit overrides, 2) Derived from RouteTopology, 3) Default to NJT
+    /// Priority: 1) Explicit overrides, 2) Derived from RouteTopology, 3) Default to AMTRAK
+    /// The AMTRAK default is correct because ~98% of stations not in RouteTopology are
+    /// Amtrak long-distance stops. Non-Amtrak exceptions are in stationSystemOverrides.
     static func systemStringsForStation(_ code: String) -> Set<String> {
         // Check explicit overrides first (for special cases like PATH adjacency)
         if let override = stationSystemOverrides[code] {
@@ -153,8 +169,8 @@ struct Stations {
         if let derived = derivedStationSystems[code] {
             return derived
         }
-        // Station not in any route — don't claim it for any system
-        return []
+        // Stations not in any route are overwhelmingly Amtrak long-distance stops
+        return ["AMTRAK"]
     }
 
     // MARK: - Station Code Equivalence

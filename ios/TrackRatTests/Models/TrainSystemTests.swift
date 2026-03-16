@@ -217,19 +217,45 @@ class TrainSystemTests: XCTestCase {
         XCTAssertTrue(systems.contains(.lirr), "Jamaica should include LIRR, got: \(systems)")
     }
 
-    func testSystemsForStation_unmappedReturnsEmpty() {
-        // Altoona (ALT) is an Amtrak station not in RouteTopology — should return empty, not NJT
+    func testSystemsForStation_unmappedDefaultsToAmtrak() {
+        // Altoona (ALT) is an Amtrak station not in RouteTopology — should default to AMTRAK, not NJT
         let systems = Stations.systemsForStation("ALT")
-        XCTAssertTrue(systems.isEmpty,
-                     "Unmapped station should have no systems, got: \(systems)")
+        XCTAssertTrue(systems.contains(.amtrak),
+                     "Unmapped station should default to AMTRAK, got: \(systems)")
         XCTAssertFalse(systems.contains(.njt),
-                      "Unmapped station should NOT default to NJT")
+                      "Unmapped station should NOT be tagged as NJT")
+        XCTAssertEqual(systems.count, 1,
+                      "Unmapped station should only have AMTRAK, got: \(systems)")
     }
 
-    func testIsStationVisible_unmappedStationNotVisible() {
-        // An unmapped station should not be visible for any system selection
-        let allSystems = Set(TrainSystem.allCases)
-        XCTAssertFalse(Stations.isStationVisible("ALT", withSystems: allSystems),
-                      "Unmapped station should not be visible even with all systems selected")
+    func testSystemsForStation_unmappedNJTOverride() {
+        // Secaucus Lower Lvl (TS) is not in RouteTopology but is explicitly overridden as NJT
+        let systems = Stations.systemsForStation("TS")
+        XCTAssertTrue(systems.contains(.njt),
+                     "Secaucus Lower Lvl should be NJT, got: \(systems)")
+        XCTAssertFalse(systems.contains(.amtrak),
+                      "Secaucus Lower Lvl should not be AMTRAK")
+    }
+
+    func testSystemsForStation_unmappedLIRROverride() {
+        // Hunterspoint Avenue (HPA) is not in RouteTopology but is explicitly overridden as LIRR
+        let systems = Stations.systemsForStation("HPA")
+        XCTAssertTrue(systems.contains(.lirr),
+                     "Hunterspoint Avenue should be LIRR, got: \(systems)")
+    }
+
+    func testSystemsForStation_unmappedSubwayOverride() {
+        // 104 St (A) (SA63) is not in RouteTopology but is explicitly overridden as SUBWAY
+        let systems = Stations.systemsForStation("SA63")
+        XCTAssertTrue(systems.contains(.subway),
+                     "104 St (A) should be SUBWAY, got: \(systems)")
+    }
+
+    func testIsStationVisible_unmappedAmtrakVisibleWhenAmtrakSelected() {
+        // Unmapped stations default to AMTRAK and should be visible when Amtrak is selected
+        XCTAssertTrue(Stations.isStationVisible("ALT", withSystems: [.amtrak]),
+                     "Unmapped Amtrak station should be visible when Amtrak selected")
+        XCTAssertFalse(Stations.isStationVisible("ALT", withSystems: [.njt]),
+                      "Unmapped Amtrak station should NOT be visible when only NJT selected")
     }
 }
