@@ -4,6 +4,7 @@ Route API endpoints for TrackRat V2.
 Provides route-based historical analysis independent of specific trains.
 """
 
+import json as json_mod
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -276,7 +277,9 @@ async def _calculate_route_stats_sql(
         LIMIT 5000
     """
 
-    # Single SQL query with CTEs for all aggregation
+    # Single SQL query with CTEs for all aggregation.
+    # Stats and track usage are combined into one query so the expensive
+    # route_journeys CTE only executes once (previously ran twice).
     sql = text(f"""
         WITH route_journeys AS (
             {route_journeys_cte}
@@ -345,8 +348,21 @@ async def _calculate_route_stats_sql(
             FROM route_journeys rj
             LEFT JOIN destination_stops ds ON ds.journey_id = rj.journey_id
             LEFT JOIN origin_stops os ON os.journey_id = rj.journey_id
+        ),
+        track_counts AS (
+            SELECT js.track, COUNT(*) AS cnt
+            FROM journey_stops js
+            INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
+            WHERE js.station_code = ANY(:from_codes)
+              AND js.track IS NOT NULL
+            GROUP BY js.track
         )
-        SELECT * FROM stats
+        SELECT s.*,
+               COALESCE(
+                   (SELECT json_object_agg(tc.track, tc.cnt) FROM track_counts tc),
+                   '{{}}'::json
+               ) AS track_json
+        FROM stats s
     """)
 
     # Build params — use lists for ANY() array comparison
@@ -392,28 +408,17 @@ async def _calculate_route_stats_sql(
     else:
         delay_breakdown = None
 
-    # Track usage query (separate for clarity)
-    track_sql = text(f"""
-        WITH route_journeys AS (
-            {route_journeys_cte}
-        )
-        SELECT js.track, COUNT(*) AS cnt
-        FROM journey_stops js
-        INNER JOIN route_journeys rj ON rj.journey_id = js.journey_id
-        WHERE js.station_code = ANY(:from_codes)
-          AND js.track IS NOT NULL
-        GROUP BY js.track
-    """)
-
-    track_result = await db.execute(track_sql, params)
-    track_rows = track_result.mappings().all()
-
+    # Extract track usage from the JSON aggregate in the combined query
+    track_raw = row["track_json"]
+    track_counts_dict: dict[str, int] = (
+        json_mod.loads(track_raw) if isinstance(track_raw, str) else (track_raw or {})
+    )
     track_usage: dict[str, int] = {}
-    total_track_assignments = sum(r["cnt"] for r in track_rows)
+    total_track_assignments = sum(track_counts_dict.values())
     if total_track_assignments > 0:
         track_usage = {
-            r["track"]: round(r["cnt"] / total_track_assignments * 100)
-            for r in track_rows
+            track: round(cnt / total_track_assignments * 100)
+            for track, cnt in track_counts_dict.items()
         }
 
     return {

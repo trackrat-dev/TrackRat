@@ -355,9 +355,19 @@ class CongestionAnalyzer:
 
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
+        # Build data_source filter dynamically so PostgreSQL can use the
+        # composite index (journey_date, data_source) when a source is specified.
+        # The old CAST(:data_source AS TEXT) IS NULL OR pattern prevented index usage.
+        ds_filter = (
+            "AND tj_pre.data_source = :data_source" if data_source else ""
+        )
+        ds_filter_stt = (
+            "AND stt.data_source = :data_source" if data_source else ""
+        )
+
         # SQL query that calculates segment times and aggregates in database
         # This replaces loading thousands of objects into Python memory
-        query = text("""
+        query = text(f"""
         WITH stop_pairs AS (
             -- Pair each stop with its next stop using LEAD window function.
             -- Pre-filter by journey_date to avoid scanning the entire history.
@@ -376,7 +386,7 @@ class CongestionAnalyzer:
             JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
             WHERE js.station_code IS NOT NULL
               AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-              AND (CAST(:data_source AS TEXT) IS NULL OR tj_pre.data_source = CAST(:data_source AS TEXT))
+              {ds_filter}
             WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
         ),
         segment_data AS (
@@ -485,7 +495,7 @@ class CongestionAnalyzer:
                       (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) IN (0, 6) AND stt.day_of_week IN (5, 6))
                       OR (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
                   )
-                  AND (CAST(:data_source AS TEXT) IS NULL OR stt.data_source = CAST(:data_source AS TEXT))
+                  {ds_filter_stt}
                 GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source, stt.departure_time::date
             ) daily_stats
             GROUP BY from_station, to_station, data_source
@@ -522,15 +532,15 @@ class CongestionAnalyzer:
         """)
 
         # Execute query with performance logging
+        params: dict[str, Any] = {
+            "cutoff_time": cutoff_time,
+            "time_window_hours": time_window_hours,
+        }
+        if data_source:
+            params["data_source"] = data_source
+
         query_start = now_et()
-        result = await db.execute(
-            query,
-            {
-                "cutoff_time": cutoff_time,
-                "data_source": data_source,
-                "time_window_hours": time_window_hours,
-            },
-        )
+        result = await db.execute(query, params)
         rows = result.fetchall()
         query_duration_ms = (now_et() - query_start).total_seconds() * 1000
 
@@ -657,10 +667,15 @@ class CongestionAnalyzer:
 
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
+        # Build data_source filter dynamically for index usage
+        ds_filter = (
+            "AND tj_pre.data_source = :data_source" if data_source else ""
+        )
+
         # SQL query to get individual segments with per-route limiting
         if max_per_segment > 0:
             # With per-route limiting using ROW_NUMBER()
-            query = text("""
+            query = text(f"""
             WITH stop_pairs AS (
                 -- Pre-filter by journey_date to avoid scanning entire history
                 SELECT
@@ -675,7 +690,7 @@ class CongestionAnalyzer:
                 JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
                 WHERE js.station_code IS NOT NULL
                   AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-                  AND (CAST(:data_source AS TEXT) IS NULL OR tj_pre.data_source = CAST(:data_source AS TEXT))
+                  {ds_filter}
                 WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
@@ -760,7 +775,7 @@ class CongestionAnalyzer:
             """)
         else:
             # No per-route limiting - return ALL individual segments
-            query = text("""
+            query = text(f"""
             WITH stop_pairs AS (
                 -- Pre-filter by journey_date to avoid scanning entire history
                 SELECT
@@ -775,7 +790,7 @@ class CongestionAnalyzer:
                 JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
                 WHERE js.station_code IS NOT NULL
                   AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-                  AND (CAST(:data_source AS TEXT) IS NULL OR tj_pre.data_source = CAST(:data_source AS TEXT))
+                  {ds_filter}
                 WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
@@ -853,16 +868,17 @@ class CongestionAnalyzer:
         # Execute query with performance logging
         # Global limit prevents unbounded response sizes (e.g. SUBWAY with 700+ station pairs)
         global_limit = 5000
-        params: dict[str, Any] = {
+        seg_params: dict[str, Any] = {
             "cutoff_time": cutoff_time,
-            "data_source": data_source,
             "global_limit": global_limit,
         }
+        if data_source:
+            seg_params["data_source"] = data_source
         if max_per_segment > 0:
-            params["max_per_segment"] = max_per_segment
+            seg_params["max_per_segment"] = max_per_segment
 
         query_start = now_et()
-        result = await db.execute(query, params)
+        result = await db.execute(query, seg_params)
         rows = result.fetchall()
         query_duration_ms = (now_et() - query_start).total_seconds() * 1000
 
