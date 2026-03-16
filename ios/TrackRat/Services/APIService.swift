@@ -781,68 +781,6 @@ final class APIService: ObservableObject {
         }
     }
     
-    func fetchSegmentTrainDetails(
-        fromStation: String,
-        toStation: String,
-        dataSource: String? = nil,
-        startTime: Date? = nil,
-        endTime: Date? = nil,
-        limit: Int = 50,
-        status: String? = nil
-    ) async throws -> SegmentTrainDetailsResponse {
-        var components = URLComponents(string: "\(baseURL)/v2/routes/segments/\(fromStation)/\(toStation)/trains")!
-        var queryItems: [URLQueryItem] = []
-        
-        if let dataSource = dataSource {
-            queryItems.append(URLQueryItem(name: "data_source", value: dataSource))
-        }
-        
-        if let startTime = startTime {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            queryItems.append(URLQueryItem(name: "start_time", value: formatter.string(from: startTime)))
-        }
-        
-        if let endTime = endTime {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            queryItems.append(URLQueryItem(name: "end_time", value: formatter.string(from: endTime)))
-        }
-        
-        queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
-        
-        if let status = status {
-            queryItems.append(URLQueryItem(name: "status", value: status))
-        }
-        
-        components.queryItems = queryItems.isEmpty ? nil : queryItems
-        
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-        
-        let (data, response) = try await session.data(from: url)
-        
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode == 404 {
-                throw APIError.noData
-            } else if httpResponse.statusCode != 200 {
-                throw APIError.invalidParameters
-            }
-        }
-        
-        do {
-            let response = try decoder.decode(SegmentTrainDetailsResponse.self, from: data)
-            return response
-        } catch {
-            print("🔴 DECODING ERROR (fetchSegmentTrainDetails): \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
-            }
-            throw error
-        }
-    }
-
     // MARK: - Operations Summary
 
     /// Fetch operations summary for network, route, or train scope

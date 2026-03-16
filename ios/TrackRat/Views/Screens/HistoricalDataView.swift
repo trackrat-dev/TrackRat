@@ -621,7 +621,17 @@ struct CongestionDataView: View {
                                 userOrigin: viewModel.userOrigin,
                                 userDestination: viewModel.userDestination,
                                 onSegmentTap: { segment in
-                                    viewModel.selectedSegment = segment
+                                    let route = RouteTopology.routeContaining(
+                                        from: segment.fromStation,
+                                        to: segment.toStation,
+                                        dataSource: segment.dataSource
+                                    )
+                                    viewModel.routeStatusContext = RouteStatusContext(
+                                        dataSource: segment.dataSource,
+                                        lineId: route?.id,
+                                        fromStationCode: segment.fromStation,
+                                        toStationCode: segment.toStation
+                                    )
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 }
                             )
@@ -643,7 +653,17 @@ struct CongestionDataView: View {
                                 
                                 ForEach(segments, id: \.id) { segment in
                                     Button {
-                                        viewModel.selectedSegment = segment
+                                        let route = RouteTopology.routeContaining(
+                                            from: segment.fromStation,
+                                            to: segment.toStation,
+                                            dataSource: segment.dataSource
+                                        )
+                                        viewModel.routeStatusContext = RouteStatusContext(
+                                            dataSource: segment.dataSource,
+                                            lineId: route?.id,
+                                            fromStationCode: segment.fromStation,
+                                            toStationCode: segment.toStation
+                                        )
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     } label: {
                                         CongestionSegmentCard(segment: segment)
@@ -724,10 +744,8 @@ struct CongestionDataView: View {
             }
             .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .sheet(item: $viewModel.selectedSegment) { segment in
-                SegmentTrainDetailsView(segment: segment)
-                    .presentationDetents([.height(600), .large])
-                    .presentationDragIndicator(.visible)
+            .sheet(item: $viewModel.routeStatusContext) { context in
+                RouteStatusView(context: context)
             }
         }
         .task {
@@ -824,7 +842,7 @@ class CongestionDataViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var lastUpdated: Date?
-    @Published var selectedSegment: CongestionSegment?
+    @Published var routeStatusContext: RouteStatusContext?
     
     private let train: TrainV2
     let userOrigin: String?
