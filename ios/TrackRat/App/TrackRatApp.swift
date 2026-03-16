@@ -611,34 +611,84 @@ struct RouteStatusContext: Identifiable, Equatable {
     }
 
     /// GTFS route IDs for filtering service alerts by relevance.
-    /// Maps internal lineId to the GTFS route_ids used in MTA alert feeds.
+    /// Maps lineId to the GTFS route_ids used in MTA alert feeds.
+    /// Handles both RouteTopology IDs ("subway-m") and raw backend line codes ("M", "LIRR-BB").
     var gtfsRouteIds: Set<String> {
-        guard let lineId = lineId else { return [] }
-
-        if dataSource == "SUBWAY" {
-            // "subway-1" → "1", "subway-6x" → "6X", "subway-a-rockaway" → "A"
-            let suffix = String(lineId.dropFirst("subway-".count))
-            let routeId = suffix.split(separator: "-").first.map(String.init) ?? suffix
-            return [routeId.uppercased()]
+        // Try resolving from lineId first, then fall back to station pair inference
+        if let lineId = lineId {
+            if let ids = Self.resolveGtfsRouteIds(lineId: lineId, dataSource: dataSource) {
+                return ids
+            }
         }
 
-        // LIRR/MNR: line_code → GTFS route_id (mirrors backend LIRR_ROUTES/MNR_ROUTES)
-        let lirrMapping: [String: String] = [
+        // Fallback: infer line from station pair via RouteTopology.
+        // Expand via station equivalents to handle cross-platform transfers
+        // (e.g., "SG29" → "SL10" for Metropolitan Av G↔L complex).
+        // Only accept routes where BOTH stations appear (avoid partial-match fallback).
+        if let from = fromStationCode, let to = toStationCode {
+            let fromCodes = Stations.stationEquivalents[from] ?? [from]
+            let toCodes = Stations.stationEquivalents[to] ?? [to]
+            for f in fromCodes {
+                for t in toCodes {
+                    if let route = RouteTopology.routeContaining(from: f, to: t, dataSource: dataSource),
+                       route.stationCodes.contains(f) && route.stationCodes.contains(t),
+                       let ids = Self.resolveGtfsRouteIds(lineId: route.id, dataSource: dataSource) {
+                        return ids
+                    }
+                }
+            }
+        }
+
+        return []
+    }
+
+    /// Resolves a lineId to GTFS route IDs for MTA service alert matching.
+    /// Accepts RouteTopology IDs ("subway-m", "lirr-babylon") or backend line codes ("M", "LIRR-BB").
+    private static func resolveGtfsRouteIds(lineId: String, dataSource: String) -> Set<String>? {
+        if dataSource == "SUBWAY" {
+            if lineId.hasPrefix("subway-") {
+                // RouteTopology format: "subway-1" → "1", "subway-6x" → "6X", "subway-a-rockaway" → "A"
+                let suffix = String(lineId.dropFirst("subway-".count))
+                let routeId = suffix.split(separator: "-").first.map(String.init) ?? suffix
+                return [routeId.uppercased()]
+            }
+            // Raw backend line.code: "M", "L", "1", "6X" — already a GTFS route ID
+            return [lineId.uppercased()]
+        }
+
+        // LIRR: RouteTopology ID → GTFS route_id
+        let lirrTopologyMapping: [String: String] = [
             "lirr-babylon": "1", "lirr-hempstead": "2", "lirr-oyster-bay": "3",
             "lirr-ronkonkoma": "4", "lirr-montauk": "5", "lirr-long-beach": "6",
             "lirr-far-rockaway": "7", "lirr-west-hempstead": "8",
             "lirr-port-washington": "9", "lirr-port-jefferson": "10",
             "lirr-belmont-park": "11", "lirr-greenport": "13",
         ]
-        let mnrMapping: [String: String] = [
+        // LIRR: Backend line.code → GTFS route_id (e.g., "LIRR-BB" → "1")
+        let lirrCodeMapping: [String: String] = [
+            "LIRR-BB": "1", "LIRR-HB": "2", "LIRR-OB": "3",
+            "LIRR-RK": "4", "LIRR-MK": "5", "LIRR-LB": "6",
+            "LIRR-FR": "7", "LIRR-WH": "8", "LIRR-PW": "9",
+            "LIRR-PJ": "10", "LIRR-BP": "11", "LIRR-GP": "13",
+        ]
+
+        // MNR: RouteTopology ID → GTFS route_id
+        let mnrTopologyMapping: [String: String] = [
             "mnr-hudson": "1", "mnr-harlem": "2", "mnr-new-haven": "3",
             "mnr-new-canaan": "4", "mnr-danbury": "5", "mnr-waterbury": "6",
         ]
+        // MNR: Backend line.code → GTFS route_id (e.g., "MNR-HUD" → "1")
+        let mnrCodeMapping: [String: String] = [
+            "MNR-HUD": "1", "MNR-HAR": "2", "MNR-NH": "3",
+            "MNR-NC": "4", "MNR-DAN": "5", "MNR-WAT": "6",
+        ]
 
-        if let gtfsId = lirrMapping[lineId] ?? mnrMapping[lineId] {
+        if let gtfsId = lirrTopologyMapping[lineId] ?? lirrCodeMapping[lineId]
+            ?? mnrTopologyMapping[lineId] ?? mnrCodeMapping[lineId] {
             return [gtfsId]
         }
-        return []
+
+        return nil
     }
 
     /// First station code (for API calls)
