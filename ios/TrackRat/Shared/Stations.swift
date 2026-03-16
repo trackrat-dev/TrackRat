@@ -137,6 +137,11 @@ struct Stations {
         "LIC": ["LIRR"],  // Long Island City
         "NHP": ["LIRR"],  // New Hyde Park
         "BRT": ["LIRR"],  // Belmont Park
+        // Amtrak codes for shared Amtrak/MNR stations (used in stationEquivalents)
+        "NRO": ["AMTRAK", "MNR"],  // New Rochelle (equiv: MNRC)
+        "YNY": ["AMTRAK", "MNR"],  // Yonkers (equiv: MYON)
+        "CRT": ["AMTRAK", "MNR"],  // Croton-Harmon (equiv: MCRH)
+        "POU": ["AMTRAK", "MNR"],  // Poughkeepsie (equiv: MPOK)
         // Subway stations not in RouteTopology
         "SA63": ["SUBWAY"],  // 104 St (A)
         "SA64": ["SUBWAY"],  // 111 St (A)

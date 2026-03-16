@@ -478,6 +478,24 @@ class StationsTests: XCTestCase {
                      "Unknown station code should return empty set, got: \(systems)")
     }
 
+    func testStationEquivalentsCodesAreMapped() {
+        // Every code in stationEquivalents must have a system mapping.
+        // These codes can come from API responses (e.g., Amtrak codes for MNR stations).
+        var unmapped: [String] = []
+        for (code, group) in Stations.stationEquivalents {
+            if Stations.systemStringsForStation(code).isEmpty {
+                unmapped.append(code)
+            }
+            for member in group {
+                if Stations.systemStringsForStation(member).isEmpty {
+                    unmapped.append(member)
+                }
+            }
+        }
+        XCTAssertTrue(unmapped.isEmpty,
+                     "stationEquivalents codes missing system mapping: \(Set(unmapped).sorted())")
+    }
+
     func testMetropolitanAvComplex() {
         // Metropolitan Av (G) / Lorimer St (L): SG29, SL10
         let expected: Set<String> = ["SG29", "SL10"]
