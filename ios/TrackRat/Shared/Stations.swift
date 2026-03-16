@@ -242,6 +242,23 @@ extension MKCoordinateRegion {
         center: CLLocationCoordinate2D(latitude: 40.7348, longitude: -74.1644), // Newark Penn Station
         span: MKCoordinateSpan(latitudeDelta: 1.5, longitudeDelta: 1.5)
     )
+
+    /// Returns a new region adjusted so the intended area is visible in the top half
+    /// of the screen, accounting for a bottom sheet covering ~50% of the display.
+    /// Shifts center northward by half the latitude span and doubles the latitude span
+    /// so the original extent fits in the visible top portion.
+    func adjustedForBottomSheet() -> MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: center.latitude + span.latitudeDelta / 2,
+                longitude: center.longitude
+            ),
+            span: MKCoordinateSpan(
+                latitudeDelta: span.latitudeDelta * 2,
+                longitudeDelta: span.longitudeDelta
+            )
+        )
+    }
 }
 
 // MARK: - Per-System Default Map Regions
@@ -259,11 +276,11 @@ extension TrainSystem {
                 span: MKCoordinateSpan(latitudeDelta: 2.5, longitudeDelta: 2.0)
             )
         case .amtrak:
-            // NEC corridor focus: Boston to Washington DC
+            // NEC corridor focus: Boston to Washington DC, with some buffer beyond
             // Centered near Trenton/Princeton area
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 40.20, longitude: -74.50),
-                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 4.0)
+                span: MKCoordinateSpan(latitudeDelta: 10.0, longitudeDelta: 8.0)
             )
         case .path:
             // Compact Newark-to-Manhattan corridor

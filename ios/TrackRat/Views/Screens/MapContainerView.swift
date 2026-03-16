@@ -311,7 +311,7 @@ struct MapContainerView: View {
 
             // If user has no home/work stations, use selected systems region instead of NY↔NP fallback
             if RatSenseService.shared.getHomeStation() == nil && RatSenseService.shared.getWorkStation() == nil {
-                mapRegionVM.mapRegion = appState.selectedSystems.combinedMapRegion
+                mapRegionVM.mapRegion = appState.selectedSystems.combinedMapRegion.adjustedForBottomSheet()
                 print("🗺️ MapContainer: No home/work stations — using selected systems region")
             }
 
@@ -634,7 +634,7 @@ struct MapContainerView: View {
                 )
             } else {
                 // No home/work stations — use selected systems region
-                region = appState.selectedSystems.combinedMapRegion
+                region = appState.selectedSystems.combinedMapRegion.adjustedForBottomSheet()
             }
 
             withAnimation(.easeInOut(duration: 0.25)) {
