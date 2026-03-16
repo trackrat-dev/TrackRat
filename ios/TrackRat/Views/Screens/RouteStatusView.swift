@@ -245,9 +245,11 @@ struct RouteStatusView: View {
         guard let to = context.effectiveToStation,
               let from = context.effectiveFromStation else { return }
         let destination = Stations.displayName(for: to)
-        // Use pendingNavigation so the main NavigationStack handles it after sheet dismisses
+        // Use pendingNavigation so the main NavigationStack handles it after sheets dismiss.
+        // Setting pendingNavigation triggers TripSelectionView to dismiss its settings sheet,
+        // while dismiss() closes this RouteStatusView sheet. The delay allows both to animate out.
         dismiss()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             appState.pendingNavigation = .trainList(
                 destination: destination,
                 departureStationCode: from
