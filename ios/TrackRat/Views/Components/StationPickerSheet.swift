@@ -64,18 +64,10 @@ struct StationPickerSheet: View {
         let stations = visibleStations
         var groups: [(system: String, stations: [Station])] = []
 
-        // Pinned section first
-        let pinnedCodes = ["NY", "GCT", "PWC", "HB", "S127", "JAM"]
-        let pinned = pinnedCodes.compactMap { code in stations.first { $0.code == code } }
-        if !pinned.isEmpty {
-            groups.append((system: "Popular", stations: pinned))
-        }
-
-        // Group remaining by system
-        let pinnedSet = Set(pinnedCodes)
+        // Group by system
         for (raw, label) in systemOrder {
             let systemStations = stations
-                .filter { !pinnedSet.contains($0.code) && Stations.systemStringsForStation($0.code).contains(raw) }
+                .filter { Stations.systemStringsForStation($0.code).contains(raw) }
                 .sorted { $0.name < $1.name }
             if !systemStations.isEmpty {
                 groups.append((system: label, stations: systemStations))
