@@ -126,7 +126,6 @@ struct Stations {
     /// Most stations are automatically derived from RouteTopology - only add overrides here for:
     /// - Stations with adjacent systems (e.g., NP has PATH adjacency)
     /// - Stations not on any RouteTopology route but belonging to a non-Amtrak system
-    /// Note: Stations not in RouteTopology or overrides default to AMTRAK (see systemStringsForStation).
     private static let stationSystemOverrides: [String: Set<String>] = [
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
         // NJT stations not in RouteTopology
@@ -157,9 +156,9 @@ struct Stations {
     }()
 
     /// Returns the raw system strings that serve a given station.
-    /// Priority: 1) Explicit overrides, 2) Derived from RouteTopology, 3) Default to AMTRAK
-    /// The AMTRAK default is correct because ~98% of stations not in RouteTopology are
-    /// Amtrak long-distance stops. Non-Amtrak exceptions are in stationSystemOverrides.
+    /// Priority: 1) Explicit overrides, 2) Derived from RouteTopology, 3) Amtrak-only set
+    /// Every station code must be explicitly accounted for. Unknown codes return empty
+    /// so they surface as bugs rather than silently defaulting.
     static func systemStringsForStation(_ code: String) -> Set<String> {
         // Check explicit overrides first (for special cases like PATH adjacency)
         if let override = stationSystemOverrides[code] {
@@ -169,9 +168,52 @@ struct Stations {
         if let derived = derivedStationSystems[code] {
             return derived
         }
-        // Stations not in any route are overwhelmingly Amtrak long-distance stops
-        return ["AMTRAK"]
+        // Amtrak long-distance stations not in RouteTopology
+        if amtrakOnlyStations.contains(code) {
+            return ["AMTRAK"]
+        }
+        // Unknown station code — this is a bug. Add the code to the appropriate mapping.
+        return []
     }
+
+    /// Amtrak-only stations not present in any RouteTopology route.
+    /// Explicitly listed so that unknown station codes surface as bugs rather than silently defaulting.
+    private static let amtrakOnlyStations: Set<String> = [
+        "ABE", "ACD", "ADM", "AKY", "ALC", "ALD", "ALI", "ALN", "ALP", "ALT", "ALY", "AMS", "ANA", "ARB",
+        "ARC", "ARD", "ARK", "ARN", "AST", "ATN", "BAM", "BAR", "BAS", "BBK", "BCV", "BDT", "BEL", "BEN",
+        "BER", "BFD", "BFX", "BHM", "BIX", "BKY", "BLF", "BMT", "BNC", "BNF", "BNG", "BNL", "BON", "BRA",
+        "BRH", "BRK", "BRL", "BRO", "BTL", "BTN", "BUR", "BWE", "BYN", "CAM", "CBN", "CBR", "CBS", "CDL",
+        "CEN", "CHM", "CHW", "CIC", "CIN", "CLA", "CLB", "CLF", "CLM", "CLN", "CLP", "CML", "CMO", "CNV",
+        "COI", "COV", "COX", "CPN", "CRF", "CRN", "CRV", "CSN", "CTL", "CUM", "CUT", "CVS", "CWH", "CWT",
+        "CYN", "DAN", "DAV", "DBP", "DDG", "DEM", "DER", "DET", "DFB", "DHM", "DLK", "DNK", "DOA", "DOV",
+        "DQN", "DRD", "DRT", "DUN", "DVL", "DWT", "DYE", "EDG", "EDM", "EFG", "EKH", "ELK", "ELT", "ELY",
+        "EPH", "ERI", "ESM", "ESX", "EVR", "EXR", "FAR", "FAY", "FBG", "FED", "FFV", "FLN", "FMD", "FMG",
+        "FMT", "FNO", "FRA", "FRE", "FTC", "FTN", "GAC", "GBB", "GBO", "GCK", "GDL", "GFD", "GFK", "GGW",
+        "GJT", "GLE", "GLM", "GLN", "GLP", "GLY", "GMS", "GNB", "GNS", "GRA", "GRI", "GRO", "GRR", "GSC",
+        "GTA", "GUA", "GUF", "GUI", "GVB", "GWD", "HAE", "HAS", "HAY", "HAZ", "HBG", "HEM", "HER", "HFD",
+        "HFY", "HGD", "HHL", "HIN", "HLD", "HLK", "HMD", "HMI", "HMW", "HNF", "HOL", "HOM", "HOP", "HSU",
+        "HUD", "HUN", "HUT", "HVL", "IDP", "IND", "IRV", "JAN", "JEF", "JOL", "JSP", "JST", "JXN", "KAL",
+        "KAN", "KEE", "KEL", "KFS", "KIL", "KKI", "KNC", "KNG", "KWD", "LAB", "LAF", "LAG", "LAJ", "LAK",
+        "LAP", "LAU", "LBO", "LCH", "LCN", "LDB", "LEE", "LEW", "LFT", "LIB", "LMR", "LMY", "LNK", "LNS",
+        "LOD", "LOR", "LPE", "LPS", "LRC", "LSE", "LSV", "LVS", "LVW", "LWA", "LYH", "MAC", "MAL", "MAT",
+        "MAY", "MBY", "MCB", "MCD", "MCG", "MCK", "MDN", "MDS", "MDT", "MEI", "MHD", "MHL", "MID", "MIDPA",
+        "MIN", "MJY", "MKA", "MKS", "MNG", "MOE", "MOT", "MPK", "MPR", "MRB", "MRC", "MRV", "MSA", "MSS",
+        "MTP", "MTR", "MTZ", "MVN", "MVW", "MYS", "MYU", "NBN", "NBU", "NCR", "NDL", "NFK", "NFL", "NFS",
+        "NHL", "NHT", "NIB", "NLS", "NOR", "NPN", "NPV", "NRG", "NRK", "OAC", "OCA", "OKC", "OKE", "OKJ",
+        "OKL", "OLW", "ONA", "ORB", "ORC", "OSC", "OTM", "OTN", "OXN", "PAG", "PAK", "PBF", "PCT", "PHA",
+        "PHN", "PIA", "PIC", "PIT", "PLB", "PLO", "PNT", "POG", "POH", "PON", "POR", "POS", "PRB", "PRC",
+        "PRO", "PRV", "PSC", "PSN", "PTC", "PTH", "PUR", "PVL", "PXN", "QAN", "QCY", "RAT", "RDD", "RDW",
+        "REN", "RHI", "RIC", "RIV", "RKV", "RLN", "RNK", "ROM", "ROY", "RPH", "RSP", "RSV", "RTE", "RTL",
+        "RUD", "RUG", "RVM", "SAB", "SAF", "SAO", "SAR", "SBG", "SBY", "SCA", "SCC", "SCD", "SCH", "SDL",
+        "SDY", "SEB", "SED", "SFA", "SFC", "SHR", "SIM", "SJM", "SKN", "SKT", "SKY", "SLQ", "SMC", "SMN",
+        "SMT", "SNB", "SNC", "SND", "SNP", "SNS", "SOB", "SOL", "SOP", "SPG", "SPI", "SPL", "SPM", "SPT",
+        "SSM", "STA", "STN", "STP", "STS", "STW", "SUI", "SVT", "SWB", "TAY", "TCA", "TCL", "THN", "THU",
+        "TOH", "TOP", "TPL", "TRI", "TRM", "TUK", "TWO", "TXA", "TYR", "UCA", "VAC", "VAL", "VAN", "VEC",
+        "VNC", "VRN", "VRV", "WAB", "WAH", "WAR", "WBG", "WBL", "WDB", "WDL", "WDO", "WEL", "WEM", "WEN",
+        "WFD", "WGL", "WHL", "WIC", "WIH", "WIN", "WIP", "WLD", "WLO", "WMH", "WMN", "WND", "WNL", "WNM",
+        "WNN", "WNR", "WOB", "WOR", "WPR", "WPS", "WPT", "WRJ", "WSB", "WSP", "WSS", "WTI", "WTN", "WTS",
+        "WWD", "YAZ", "YEM", "YUM",
+    ]
 
     // MARK: - Station Code Equivalence
 
