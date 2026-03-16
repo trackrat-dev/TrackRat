@@ -40,16 +40,6 @@ enum PaywallContext {
     case routeAlerts
     case generic
 
-    var subtext: String? {
-        switch self {
-        case .trainSystems:
-            return "Start a 1-week free trial to follow multiple train systems at a time"
-        case .routeAlerts:
-            return "Free users get one route alert. Upgrade to Pro for unlimited alerts across all your routes \u{2014} start with a free 1-week trial."
-        case .developerChat, .generic:
-            return nil
-        }
-    }
 }
 
 // MARK: - Subscription Service
