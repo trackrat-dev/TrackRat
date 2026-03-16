@@ -98,9 +98,10 @@ struct TrainListView: View {
                 // Route alerts button
                 if let destinationCode = Stations.getStationCode(destination) {
                     Button {
+                        let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
                         appState.pendingRouteStatus = RouteStatusContext(
-                            dataSource: viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT",
-                            lineId: viewModel.trains.first?.line.code,
+                            dataSource: ds,
+                            lineId: RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id,
                             fromStationCode: departureStationCode,
                             toStationCode: destinationCode
                         )
