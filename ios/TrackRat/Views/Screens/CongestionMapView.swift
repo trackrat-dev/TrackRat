@@ -8,7 +8,7 @@ struct CongestionMapView: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @StateObject private var viewModel = CongestionMapViewModel()
-    @State private var region = MKCoordinateRegion.newarkPennDefault
+    @State private var region = MKCoordinateRegion.newarkPennDefault // Updated to selected systems on appear
     @State private var selectedSegment: CongestionSegment?
     @State private var selectedIndividualSegment: IndividualJourneySegment?
     @State private var showingFilters = false
@@ -170,6 +170,10 @@ struct CongestionMapView: View {
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
             viewModel.setSelectedSystems(newSystems)
+            // Re-center map to show the newly selected systems
+            withAnimation(.easeInOut(duration: 0.3)) {
+                region = newSystems.combinedMapRegion
+            }
         }
         .onChange(of: appState.mapHighlightMode) { _, newMode in
             viewModel.highlightMode = newMode
@@ -182,6 +186,8 @@ struct CongestionMapView: View {
             viewModel.setSelectedSystems(appState.selectedSystems)
             viewModel.highlightMode = appState.mapHighlightMode
             viewModel.showStations = appState.showMapStations
+            // Set initial region based on selected systems
+            region = appState.selectedSystems.combinedMapRegion
         }
     }
 
