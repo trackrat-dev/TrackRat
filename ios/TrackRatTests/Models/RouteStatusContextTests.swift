@@ -65,6 +65,17 @@ class RouteStatusContextTests: XCTestCase {
         XCTAssertTrue(ids.contains("M"), "SM01 to SM14 are on the M line, should resolve to 'M'")
     }
 
+    func testGtfsRouteIds_subwayNilLineId_crossPlatformTransfer() {
+        // "Metropolitan Av" = SG29 (G line stop), "14 St-Union Sq" = S635 (4/5/6 stop)
+        // Neither SG29 nor S635 is on the L line directly, but their equivalents are:
+        // SG29 ↔ SL10 (L line Metropolitan Av), S635 ↔ SL03 (L line 14 St-Union Sq)
+        // The fallback should expand via station equivalents and find the L line.
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "SG29", toStationCode: "S635")
+        let ids = context.gtfsRouteIds
+        XCTAssertFalse(ids.isEmpty, "Should infer line from station equivalents when primary codes don't match a single route")
+        XCTAssertTrue(ids.contains("L"), "Metropolitan Av (SG29→SL10) to 14 St-Union Sq (S635→SL03) should resolve to the L line")
+    }
+
     func testGtfsRouteIds_subwayNilLineId_unknownStations_returnsEmpty() {
         let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "FAKE1", toStationCode: "FAKE2")
         XCTAssertTrue(context.gtfsRouteIds.isEmpty, "Unknown stations should return empty set, not all alerts")
