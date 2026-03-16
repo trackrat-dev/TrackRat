@@ -133,7 +133,7 @@ struct TripSelectionView: View {
                 // Home station setup nudge — shown every launch until user sets a home station
                 if !isSearching && ratSenseService.getHomeStation() == nil {
                     Button {
-                        appState.navigationPath.append(NavigationDestination.favoriteStations)
+                        appState.pendingNavigation = .favoriteStations
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "house.fill")
