@@ -132,6 +132,7 @@ struct Stations {
         "TS": ["NJT"],   // Secaucus Lower Lvl
         "GA": ["NJT"],   // Great Notch
         "MO": ["NJT"],   // Montclair-Boonton Line
+        "SC": ["NJT"],   // Secaucus Concourse
         // LIRR stations not in RouteTopology
         "HPA": ["LIRR"],  // Hunterspoint Avenue
         "LIC": ["LIRR"],  // Long Island City
@@ -142,6 +143,7 @@ struct Stations {
         "YNY": ["AMTRAK", "MNR"],  // Yonkers (equiv: MYON)
         "CRT": ["AMTRAK", "MNR"],  // Croton-Harmon (equiv: MCRH)
         "POU": ["AMTRAK", "MNR"],  // Poughkeepsie (equiv: MPOK)
+        "STS": ["AMTRAK", "MNR"],  // New Haven-State St (equiv: MNSS)
         // Subway stations not in RouteTopology
         "SA63": ["SUBWAY"],  // 104 St (A)
         "SA64": ["SUBWAY"],  // 111 St (A)
@@ -212,7 +214,7 @@ struct Stations {
         "RUD", "RUG", "RVM", "SAB", "SAF", "SAO", "SAR", "SBG", "SBY", "SCA", "SCC", "SCD", "SCH", "SDL",
         "SDY", "SEB", "SED", "SFA", "SFC", "SHR", "SIM", "SJM", "SKN", "SKT", "SKY", "SLQ", "SMC", "SMN",
         "SMT", "SNB", "SNC", "SND", "SNP", "SNS", "SOB", "SOL", "SOP", "SPG", "SPI", "SPL", "SPM", "SPT",
-        "SSM", "STA", "STN", "STP", "STS", "STW", "SUI", "SVT", "SWB", "TAY", "TCA", "TCL", "THN", "THU",
+        "SSM", "STA", "STN", "STP", "STW", "SUI", "SVT", "SWB", "TAY", "TCA", "TCL", "THN", "THU",
         "TOH", "TOP", "TPL", "TRI", "TRM", "TUK", "TWO", "TXA", "TYR", "UCA", "VAC", "VAL", "VAN", "VEC",
         "VNC", "VRN", "VRV", "WAB", "WAH", "WAR", "WBG", "WBL", "WDB", "WDL", "WDO", "WEL", "WEM", "WEN",
         "WFD", "WGL", "WHL", "WIC", "WIH", "WIN", "WIP", "WLD", "WLO", "WMH", "WMN", "WND", "WNL", "WNM",
