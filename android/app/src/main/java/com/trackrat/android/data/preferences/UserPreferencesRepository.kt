@@ -53,7 +53,7 @@ class UserPreferencesRepository @Inject constructor(
      * Data class representing user preferences
      */
     data class UserPreferences(
-        val lastFromStation: String = Constants.StationCodes.NEW_YORK_PENN,
+        val lastFromStation: String? = null,
         val lastToStation: String? = null,
         val autoRefreshEnabled: Boolean = true,
         val hapticFeedbackEnabled: Boolean = true,
@@ -88,8 +88,7 @@ class UserPreferencesRepository @Inject constructor(
         }
         .map { preferences ->
             UserPreferences(
-                lastFromStation = preferences[PreferencesKeys.LAST_FROM_STATION]
-                    ?: Constants.StationCodes.NEW_YORK_PENN,
+                lastFromStation = preferences[PreferencesKeys.LAST_FROM_STATION],
                 lastToStation = preferences[PreferencesKeys.LAST_TO_STATION],
                 autoRefreshEnabled = preferences[PreferencesKeys.AUTO_REFRESH_ENABLED] ?: true,
                 hapticFeedbackEnabled = preferences[PreferencesKeys.HAPTIC_FEEDBACK_ENABLED] ?: true,

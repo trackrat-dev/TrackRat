@@ -48,7 +48,7 @@ class UserPreferencesRepositoryTest {
         val preferences = repository.userPreferencesFlow.first()
         
         // Then: Default values are returned
-        assertEquals(Constants.StationCodes.NEW_YORK_PENN, preferences.lastFromStation)
+        assertNull(preferences.lastFromStation)
         assertNull(preferences.lastToStation)
         assertTrue(preferences.autoRefreshEnabled)
         assertTrue(preferences.hapticFeedbackEnabled)
@@ -184,7 +184,7 @@ class UserPreferencesRepositoryTest {
         
         // Then: All preferences return to defaults
         val preferences = repository.userPreferencesFlow.first()
-        assertEquals(Constants.StationCodes.NEW_YORK_PENN, preferences.lastFromStation)
+        assertNull(preferences.lastFromStation)
         assertNull(preferences.lastToStation)
         assertTrue(preferences.autoRefreshEnabled)
         assertTrue(preferences.hapticFeedbackEnabled)

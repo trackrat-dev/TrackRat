@@ -807,10 +807,6 @@ final class AppState: ObservableObject {
         loadFavoriteStations()
         loadSelectedSystems()
         loadMapSettings()
-
-        // Migrate existing data
-        storageService.migrateRecentDestinations()
-        loadRecentTrips() // Reload after migration
     }
     
     
