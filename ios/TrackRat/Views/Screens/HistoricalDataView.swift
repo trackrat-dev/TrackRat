@@ -621,6 +621,7 @@ struct CongestionDataView: View {
                                 userOrigin: viewModel.userOrigin,
                                 userDestination: viewModel.userDestination,
                                 onSegmentTap: { segment in
+                                    guard appState.enableSegmentTap else { return }
                                     let route = RouteTopology.routeContaining(
                                         from: segment.fromStation,
                                         to: segment.toStation,

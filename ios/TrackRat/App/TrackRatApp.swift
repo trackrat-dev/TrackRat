@@ -802,6 +802,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    // Beta feature: Enable tapping route segments to view details
+    @Published var enableSegmentTap: Bool = false {
+        didSet {
+            UserDefaults.standard.set(enableSegmentTap, forKey: "enableSegmentTap")
+        }
+    }
+
     init() {
         loadRecentTrips()
         loadFavoriteStations()
@@ -966,6 +973,7 @@ final class AppState: ObservableObject {
 
         // Load beta features
         showDepartureOdds = UserDefaults.standard.bool(forKey: "showDepartureOdds")
+        enableSegmentTap = UserDefaults.standard.bool(forKey: "enableSegmentTap")
     }
 
 }

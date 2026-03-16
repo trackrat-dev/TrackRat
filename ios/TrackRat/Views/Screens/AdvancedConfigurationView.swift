@@ -177,6 +177,33 @@ struct AdvancedConfigurationView: View {
                             .stroke(.white.opacity(0.1), lineWidth: 1)
                     )
             )
+
+            // Segment Tap toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tap Route Segments (beta)")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Text("Tap map segments to view route details")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $appState.enableSegmentTap)
+                    .labelsHidden()
+                    .tint(.orange)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(.white.opacity(0.1), lineWidth: 1)
+                    )
+            )
         }
         .padding()
         .background(
