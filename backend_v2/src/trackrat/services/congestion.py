@@ -358,12 +358,8 @@ class CongestionAnalyzer:
         # Build data_source filter dynamically so PostgreSQL can use the
         # composite index (journey_date, data_source) when a source is specified.
         # The old CAST(:data_source AS TEXT) IS NULL OR pattern prevented index usage.
-        ds_filter = (
-            "AND tj_pre.data_source = :data_source" if data_source else ""
-        )
-        ds_filter_stt = (
-            "AND stt.data_source = :data_source" if data_source else ""
-        )
+        ds_filter = "AND tj_pre.data_source = :data_source" if data_source else ""
+        ds_filter_stt = "AND stt.data_source = :data_source" if data_source else ""
 
         # SQL query that calculates segment times and aggregates in database
         # This replaces loading thousands of objects into Python memory
@@ -668,9 +664,7 @@ class CongestionAnalyzer:
         cutoff_time = now_et() - timedelta(hours=time_window_hours)
 
         # Build data_source filter dynamically for index usage
-        ds_filter = (
-            "AND tj_pre.data_source = :data_source" if data_source else ""
-        )
+        ds_filter = "AND tj_pre.data_source = :data_source" if data_source else ""
 
         # SQL query to get individual segments with per-route limiting
         if max_per_segment > 0:

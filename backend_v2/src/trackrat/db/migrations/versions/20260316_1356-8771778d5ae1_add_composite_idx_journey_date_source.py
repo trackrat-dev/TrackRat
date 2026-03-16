@@ -10,6 +10,7 @@ Revises: b8c9d0e1f2a3
 Create Date: 2026-03-16T13:56:00Z
 
 """
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
