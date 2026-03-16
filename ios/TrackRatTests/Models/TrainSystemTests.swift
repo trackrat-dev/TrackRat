@@ -216,4 +216,20 @@ class TrainSystemTests: XCTestCase {
         let systems = Stations.systemsForStation("JM")
         XCTAssertTrue(systems.contains(.lirr), "Jamaica should include LIRR, got: \(systems)")
     }
+
+    func testSystemsForStation_unmappedReturnsEmpty() {
+        // Altoona (ALT) is an Amtrak station not in RouteTopology — should return empty, not NJT
+        let systems = Stations.systemsForStation("ALT")
+        XCTAssertTrue(systems.isEmpty,
+                     "Unmapped station should have no systems, got: \(systems)")
+        XCTAssertFalse(systems.contains(.njt),
+                      "Unmapped station should NOT default to NJT")
+    }
+
+    func testIsStationVisible_unmappedStationNotVisible() {
+        // An unmapped station should not be visible for any system selection
+        let allSystems = Set(TrainSystem.allCases)
+        XCTAssertFalse(Stations.isStationVisible("ALT", withSystems: allSystems),
+                      "Unmapped station should not be visible even with all systems selected")
+    }
 }

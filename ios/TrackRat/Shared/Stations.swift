@@ -153,8 +153,8 @@ struct Stations {
         if let derived = derivedStationSystems[code] {
             return derived
         }
-        // Default for stations not in any route (shouldn't happen, but safe fallback)
-        return ["NJT"]
+        // Station not in any route — don't claim it for any system
+        return []
     }
 
     // MARK: - Station Code Equivalence
