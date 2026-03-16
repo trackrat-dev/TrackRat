@@ -315,6 +315,14 @@ struct TripSelectionView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .onChange(of: appState.pendingNavigation) { _, pending in
+            // Dismiss settings sheets when pending navigation is set (e.g. "View All Departures")
+            // so the destination view isn't hidden behind them
+            if pending != nil {
+                showingSettings = false
+                showSettingsForTrainSystems = false
+            }
+        }
         .onDisappear {
             // Cancel any pending validation tasks
             for task in validationTasks.values {
