@@ -6,17 +6,6 @@ struct AddRouteAlertView: View {
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
-    enum AlertMode: String, CaseIterable {
-        case line = "Line"
-        case stations = "Stations"
-        case train = "Train"
-    }
-
-    /// Data sources with stable daily train IDs suitable for recurring alerts.
-    static let stableTrainIdSystems: Set<TrainSystem> = [.njt, .amtrak, .lirr, .mnr]
-
-    @State private var mode: AlertMode = .stations
-
     // Station-pair state
     @State private var showFromPicker = false
     @State private var showToPicker = false
@@ -24,19 +13,7 @@ struct AddRouteAlertView: View {
     @State private var toStation: Station? = nil
     @State private var confirmationMessage: String? = nil
 
-    // Line mode state
-    @State private var lineSystem: TrainSystem? = nil
-
-    // Train mode state
-    @State private var trainSystem: TrainSystem? = nil
-    @State private var trainStation: Station? = nil
-    @State private var showTrainStationPicker = false
-    @State private var departures: [TrainV2] = []
-    @State private var isLoadingDepartures = false
-
     // Customization sheet state
-    @State private var draftSubscription: RouteAlertSubscription? = nil
-    @State private var draftRoute: RouteLine? = nil
     @State private var directionalSheetData: DirectionalSheetData? = nil
 
     /// User's selected systems that support real-time alerts.
@@ -44,73 +21,19 @@ struct AddRouteAlertView: View {
         appState.selectedSystems.filter { $0.supportsAlerts }
     }
 
-    /// Systems available for line mode: alert-capable systems sorted for display.
-    private var availableLineSystems: [TrainSystem] {
-        alertCapableSystems.sorted { $0.displayName < $1.displayName }
-    }
-
-    /// Routes filtered to the selected line system, excluding fully-subscribed lines.
-    /// A route is fully subscribed when both directions have subscriptions.
-    private var filteredRoutes: [RouteLine] {
-        guard let system = lineSystem else { return [] }
-        let ds = system.rawValue
-        return RouteTopology.allRoutes.filter { route in
-            guard route.dataSource == ds else { return false }
-            let lineSubs = alertService.subscriptions.filter { $0.lineId == route.id && $0.dataSource == route.dataSource }
-            let subscribedDirections = Set(lineSubs.compactMap(\.direction))
-            let bothTermini = Set([route.stationCodes.first, route.stationCodes.last].compactMap { $0 })
-            return !bothTermini.isSubset(of: subscribedDirections)
-        }
-        .sorted { $0.name < $1.name }
-    }
-
-    /// Systems available for train mode: intersection of stable-ID systems and user's selection.
-    private var availableTrainSystems: [TrainSystem] {
-        Self.stableTrainIdSystems
-            .intersection(appState.selectedSystems)
-            .sorted { $0.displayName < $1.displayName }
-    }
-
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Mode", selection: $mode) {
-                    ForEach(AlertMode.allCases, id: \.self) { m in
-                        Text(m.rawValue).tag(m)
+            stationPairPicker
+                .navigationTitle("Add Route Alert")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Done") { dismiss() }
+                            .foregroundColor(.orange)
                     }
                 }
-                .pickerStyle(.segmented)
-                .padding()
-
-                switch mode {
-                case .line:
-                    lineList
-                case .stations:
-                    stationPairPicker
-                case .train:
-                    trainPicker
-                }
-            }
-            .navigationTitle("Add Route Alert")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(.orange)
-                }
-            }
         }
         .preferredColorScheme(.dark)
-        .onAppear {
-            if availableLineSystems.count == 1 {
-                lineSystem = availableLineSystems.first
-            }
-        }
-        .sheet(item: $draftSubscription) { draft in
-            AlertConfigurationSheetWrapper(subscription: draft) { customized in
-                saveTrainSubscription(customized)
-            }
-        }
         .sheet(item: $directionalSheetData) { data in
             DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
                 saveDirectionalSubscriptions(subs)
@@ -125,139 +48,18 @@ struct AddRouteAlertView: View {
             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
     }
 
-    private func saveTrainSubscription(_ sub: RouteAlertSubscription) {
-        guard !atAlertLimit else { dismiss(); return }
-        alertService.addSubscriptions([sub])
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        draftSubscription = nil
-        dismiss()
-    }
-
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
         guard !atAlertLimit else { return }
         alertService.addSubscriptions(subs)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         directionalSheetData = nil
-        draftRoute = nil
         withAnimation {
             fromStation = nil
             toStation = nil
         }
     }
 
-    // MARK: - Line Mode
-
-    private var lineSystemPickerRow: some View {
-        HStack {
-            Text("System")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.6))
-            Spacer()
-            Menu {
-                ForEach(availableLineSystems) { system in
-                    Button(system.displayName) {
-                        if lineSystem != system {
-                            lineSystem = system
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(lineSystem?.displayName ?? "Select")
-                        .foregroundColor(lineSystem != nil ? .white : .white.opacity(0.4))
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.3))
-                }
-            }
-        }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        .padding(.horizontal)
-        .padding(.top, 4)
-    }
-
-    private var lineList: some View {
-        VStack(spacing: 0) {
-            if availableLineSystems.isEmpty {
-                noEligibleSystemsView(detail: "Your selected systems are schedule-only and cannot detect delays.")
-            } else {
-                lineSystemPickerRow
-
-                if lineSystem == nil {
-                    Spacer()
-                } else if filteredRoutes.isEmpty {
-                    VStack(spacing: 12) {
-                        Spacer()
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: 40))
-                            .foregroundColor(.orange)
-                        Text("All available routes subscribed")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Spacer()
-                    }
-                } else {
-                    List {
-                        ForEach(filteredRoutes) { route in
-                            Button {
-                                let ds = route.dataSource
-                                guard let first = route.stationCodes.first,
-                                      let last = route.stationCodes.last else { return }
-
-                                let existingSubs = alertService.subscriptions.filter {
-                                    $0.lineId == route.id && $0.dataSource == ds
-                                }
-                                let subscribedDirs = Set(existingSubs.compactMap(\.direction))
-
-                                let subToLast = RouteAlertSubscription(
-                                    dataSource: ds, lineId: route.id, lineName: route.name, direction: last
-                                )
-                                let subToFirst = RouteAlertSubscription(
-                                    dataSource: ds, lineId: route.id, lineName: route.name, direction: first
-                                )
-
-                                draftRoute = route
-                                directionalSheetData = DirectionalSheetData(directions: [
-                                    DirectionDraft(
-                                        label: "To \(Stations.displayName(for: last))",
-                                        subscription: subToLast,
-                                        alreadySubscribed: subscribedDirs.contains(last)
-                                    ),
-                                    DirectionDraft(
-                                        label: "To \(Stations.displayName(for: first))",
-                                        subscription: subToFirst,
-                                        alreadySubscribed: subscribedDirs.contains(first)
-                                    ),
-                                ])
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(route.name)
-                                            .font(.headline)
-                                            .foregroundColor(.white)
-                                        if let subtitle = route.terminalSubtitle {
-                                            Text(subtitle)
-                                                .font(.caption)
-                                                .foregroundColor(.white.opacity(0.7))
-                                        }
-                                    }
-                                    Spacer()
-                                    Image(systemName: "plus.circle")
-                                        .foregroundColor(.orange)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    .scrollContentBackground(.hidden)
-                }
-            }
-        }
-    }
-
-    // MARK: - Station-Pair Mode
+    // MARK: - Station-Pair Picker
 
     private var stationPairPicker: some View {
         VStack(spacing: 16) {
@@ -331,7 +133,6 @@ struct AddRouteAlertView: View {
                         let subBA = RouteAlertSubscription(
                             dataSource: dataSource, fromStationCode: toCode, toStationCode: fromCode
                         )
-                        draftRoute = nil
                         directionalSheetData = DirectionalSheetData(directions: [
                             DirectionDraft(
                                 label: "To \(Stations.displayName(for: toCode))",
@@ -396,51 +197,6 @@ struct AddRouteAlertView: View {
         }
     }
 
-    // MARK: - Train Mode
-
-    private var trainPicker: some View {
-        VStack(spacing: 16) {
-            if availableTrainSystems.isEmpty {
-                noEligibleSystemsView(detail: "Train alerts require NJ Transit, Amtrak, LIRR, or Metro-North.")
-            } else {
-                // System picker
-                systemPickerRow
-
-                // Station picker (shown after system selected)
-                if trainSystem != nil {
-                    stationPickerRow
-                }
-
-                // Departures list or loading indicator
-                if isLoadingDepartures {
-                    Spacer()
-                    ProgressView("Loading departures...")
-                        .foregroundColor(.white)
-                    Spacer()
-                } else if trainStation != nil {
-                    departuresList
-                } else {
-                    Spacer()
-                }
-            }
-        }
-        .padding()
-        .sheet(isPresented: $showTrainStationPicker) {
-            if let system = trainSystem {
-                StationPickerSheet(
-                    selectedStation: $trainStation,
-                    disabledStation: nil,
-                    selectedSystems: [system],
-                    onStationSelected: { station in
-                        trainStation = station
-                        showTrainStationPicker = false
-                        loadDepartures()
-                    }
-                )
-            }
-        }
-    }
-
     private func noEligibleSystemsView(detail: String) -> some View {
         VStack(spacing: 12) {
             Spacer()
@@ -459,152 +215,6 @@ struct AddRouteAlertView: View {
                 .padding(.horizontal, 32)
             Spacer()
         }
-    }
-
-    private var systemPickerRow: some View {
-        HStack {
-            Text("System")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.6))
-            Spacer()
-            Menu {
-                ForEach(availableTrainSystems) { system in
-                    Button(system.displayName) {
-                        if trainSystem != system {
-                            trainSystem = system
-                            trainStation = nil
-                            departures = []
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(trainSystem?.displayName ?? "Select")
-                        .foregroundColor(trainSystem != nil ? .white : .white.opacity(0.4))
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2)
-                        .foregroundColor(.white.opacity(0.3))
-                }
-            }
-        }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-    }
-
-    private var stationPickerRow: some View {
-        Button {
-            showTrainStationPicker = true
-        } label: {
-            HStack {
-                Text("Station")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.6))
-                Spacer()
-                Text(trainStation.map { $0.name } ?? "Select station")
-                    .foregroundColor(trainStation != nil ? .white : .white.opacity(0.4))
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.3))
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var departuresList: some View {
-        Group {
-            if departures.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Text("No upcoming departures")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.5))
-                    Spacer()
-                }
-            } else {
-                List {
-                    ForEach(departures) { train in
-                        Button {
-                            let trainName = formatTrainName(train)
-                            draftSubscription = RouteAlertSubscription(
-                                dataSource: train.dataSource,
-                                trainId: train.trainId,
-                                trainName: trainName
-                            )
-                            draftRoute = nil
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Train \(train.trainId)")
-                                        .font(.headline)
-                                        .foregroundColor(.white)
-                                    HStack(spacing: 4) {
-                                        if let time = train.departure.scheduledTime {
-                                            Text(time, style: .time)
-                                                .font(.subheadline)
-                                                .foregroundColor(.white.opacity(0.8))
-                                        }
-                                        Text("→ \(train.destination)")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white.opacity(0.6))
-                                    }
-                                }
-                                Spacer()
-                                Image(systemName: "plus.circle")
-                                    .foregroundColor(.orange)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func loadDepartures() {
-        guard let system = trainSystem, let station = trainStation else { return }
-        isLoadingDepartures = true
-        departures = []
-
-        Task {
-            do {
-                let results = try await APIService.shared.searchTrains(
-                    fromStationCode: station.code,
-                    dataSources: [system]
-                )
-                // Filter out trains whose terminal stop is the selected station
-                let filtered = results.filter { train in
-                    guard let destCode = Stations.getStationCode(train.destination) else { return true }
-                    return !Stations.areEquivalentStations(destCode, station.code)
-                }
-                await MainActor.run {
-                    departures = filtered
-                    isLoadingDepartures = false
-                }
-            } catch {
-                await MainActor.run {
-                    departures = []
-                    isLoadingDepartures = false
-                }
-            }
-        }
-    }
-
-    private func formatTrainName(_ train: TrainV2) -> String {
-        var parts = [train.dataSource, train.trainId]
-        if let time = train.departure.scheduledTime {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "h:mma"
-            formatter.timeZone = TimeZone(identifier: "America/New_York")
-            parts.append(formatter.string(from: time).lowercased())
-        }
-        parts.append("→ \(train.destination)")
-        return parts.joined(separator: " ")
     }
 
     private func showConfirmation(_ message: String) {
