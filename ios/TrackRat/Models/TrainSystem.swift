@@ -131,8 +131,8 @@ extension Set where Element == TrainSystem {
 // MARK: - Stations Extensions (TrainSystem-aware wrappers)
 
 extension Stations {
-    /// Returns the train systems that serve a given station
-    /// Defaults to NJT + Amtrak if not explicitly mapped (most NJT commuter stations)
+    /// Returns the train systems that serve a given station.
+    /// Returns empty set for unknown codes (all known codes are explicitly mapped).
     static func systemsForStation(_ code: String) -> Set<TrainSystem> {
         let rawSystems = systemStringsForStation(code)
         return Set(rawSystems.compactMap { TrainSystem(rawValue: $0) })

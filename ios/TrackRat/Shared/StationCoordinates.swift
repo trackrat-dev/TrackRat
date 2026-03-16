@@ -104,7 +104,6 @@ extension Stations {
         "LW": CLLocationCoordinate2D(latitude: 39.833809, longitude: -75.000314),   // Lindenwold (NJT)
         "CY": CLLocationCoordinate2D(latitude: 39.928447, longitude: -75.041661),   // Cherry Hill
         "PN": CLLocationCoordinate2D(latitude: 39.977769, longitude: -75.061796),   // Pennsauken
-        "NF": CLLocationCoordinate2D(latitude: 39.9984, longitude: -75.1560),   // North Philadelphia
         "PR": CLLocationCoordinate2D(latitude: 40.342088, longitude: -74.65887),   // Princeton (shuttle station)
 
         // Additional NJ Transit stations from STATION_CODES.txt
@@ -117,6 +116,7 @@ extension Stations {
         "PP": CLLocationCoordinate2D(latitude: 40.092718, longitude: -74.048191),   // Point Pleasant Beach 40.092888539579086, -74.04812800404557
         "BH": CLLocationCoordinate2D(latitude: 40.077178, longitude: -74.046183),   // Bay Head 40.077131308867386, -74.04618948520402
         "TS": CLLocationCoordinate2D(latitude: 40.761188, longitude: -74.075821),   // Secaucus Lower Lvl (same location)
+        "SC": CLLocationCoordinate2D(latitude: 40.761188, longitude: -74.075821),   // Secaucus Concourse (same location)
         "BW": CLLocationCoordinate2D(latitude: 40.559904, longitude: -74.551741),   // Bridgewater 40.56100944598027, -74.55175688984208
         "SM": CLLocationCoordinate2D(latitude: 40.566075, longitude: -74.61397),   // Somerville 40.56608372758163, -74.61386593713499
         "XC": CLLocationCoordinate2D(latitude: 40.655523, longitude: -74.303226),   // Cranford
@@ -136,9 +136,7 @@ extension Stations {
         "CW": CLLocationCoordinate2D(latitude: 41.437073, longitude: -74.101871),   // Salisbury Mills-Cornwall 41.436533265171164, -74.10160172915069
         "OS": CLLocationCoordinate2D(latitude: 41.471784, longitude: -74.529212),   // Otisville
         "PO": CLLocationCoordinate2D(latitude: 41.374899, longitude: -74.694622),   // Port Jervis
-        "MD": CLLocationCoordinate2D(latitude: 41.45748, longitude: -74.370408),   // Middletown NY 41.4574804003699, -74.37040800377328
-       
-        
+
         // Bergen County Line (Main Line) - New GPS coordinates
         "KG": CLLocationCoordinate2D(latitude: 40.8123, longitude: -74.1246),   // Kingsland
         "LN": CLLocationCoordinate2D(latitude: 40.814165, longitude: -74.122696),   // Lyndhurst
@@ -147,9 +145,7 @@ extension Stations {
         "IF": CLLocationCoordinate2D(latitude: 40.867998, longitude: -74.153206),   // Clifton 40.86791209797451, -74.15326859173946
         "RN": CLLocationCoordinate2D(latitude: 40.914887, longitude: -74.16733),   // Paterson
         "HW": CLLocationCoordinate2D(latitude: 40.942539, longitude: -74.152411),   // Hawthorne 40.94252894598973, -74.15239913775797
-        "GR": CLLocationCoordinate2D(latitude: 40.9633, longitude: -74.1269),   // Glen Rock
-        "AL": CLLocationCoordinate2D(latitude: 41.0312, longitude: -74.1306),   // Allendale
-        
+
         // Bergen County Line (Ridgewood Branch)
         "RF": CLLocationCoordinate2D(latitude: 40.828248, longitude: -74.100563),   // Rutherford
         "WM": CLLocationCoordinate2D(latitude: 40.854979, longitude: -74.096951),   // Wesmont

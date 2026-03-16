@@ -408,6 +408,94 @@ class StationsTests: XCTestCase {
                       "Times Sq-42 St should have all 5 platform codes, got: \(group)")
     }
 
+    // MARK: - Station System Mapping Tests
+
+    func testEveryStationCodeHasExplicitSystemMapping() {
+        // Ensures no station code falls through to empty (unmapped).
+        // If this test fails, a new station code was added to stationCodes
+        // without being added to RouteTopology, stationSystemOverrides, or amtrakOnlyStations.
+        var unmappedCodes: [String] = []
+        let allCodes = Set(Stations.stationCodes.values)
+
+        for code in allCodes {
+            let systems = Stations.systemStringsForStation(code)
+            if systems.isEmpty {
+                unmappedCodes.append(code)
+            }
+        }
+
+        XCTAssertTrue(unmappedCodes.isEmpty,
+                     "Found \(unmappedCodes.count) station codes with no system mapping. " +
+                     "Add them to RouteTopology, stationSystemOverrides, or amtrakOnlyStations: " +
+                     "\(unmappedCodes.sorted().joined(separator: ", "))")
+    }
+
+    func testSystemMappingReturnsValidSystems() {
+        let validSystems: Set<String> = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+        let allCodes = Set(Stations.stationCodes.values)
+
+        for code in allCodes {
+            let systems = Stations.systemStringsForStation(code)
+            for system in systems {
+                XCTAssertTrue(validSystems.contains(system),
+                             "Station \(code) has invalid system '\(system)'. Valid: \(validSystems)")
+            }
+        }
+    }
+
+    func testMultiSystemStations() {
+        // Newark Penn should serve NJT, AMTRAK, and PATH
+        let npSystems = Stations.systemStringsForStation("NP")
+        XCTAssertTrue(npSystems.contains("NJT"), "Newark Penn should serve NJT")
+        XCTAssertTrue(npSystems.contains("AMTRAK"), "Newark Penn should serve AMTRAK")
+        XCTAssertTrue(npSystems.contains("PATH"), "Newark Penn should serve PATH")
+
+        // NY Penn should serve NJT and AMTRAK (via RouteTopology)
+        let nySystems = Stations.systemStringsForStation("NY")
+        XCTAssertTrue(nySystems.contains("NJT"), "NY Penn should serve NJT")
+        XCTAssertTrue(nySystems.contains("AMTRAK"), "NY Penn should serve AMTRAK")
+
+        // Grand Central should serve LIRR and MNR
+        let gctSystems = Stations.systemStringsForStation("GCT")
+        XCTAssertTrue(gctSystems.contains("LIRR"), "Grand Central should serve LIRR")
+        XCTAssertTrue(gctSystems.contains("MNR"), "Grand Central should serve MNR")
+    }
+
+    func testAmtrakOnlyStationsMapped() {
+        // Spot-check some Amtrak-only stations
+        let amtrakOnly = ["CHI", "LAX", "DET", "MKE", "DEN", "SEA"]
+        for code in amtrakOnly {
+            let systems = Stations.systemStringsForStation(code)
+            XCTAssertEqual(systems, ["AMTRAK"],
+                          "Station \(code) should be AMTRAK-only, got: \(systems)")
+        }
+    }
+
+    func testUnknownCodeReturnsEmpty() {
+        // An unknown code should return empty, not default to AMTRAK
+        let systems = Stations.systemStringsForStation("ZZZZZ")
+        XCTAssertTrue(systems.isEmpty,
+                     "Unknown station code should return empty set, got: \(systems)")
+    }
+
+    func testStationEquivalentsCodesAreMapped() {
+        // Every code in stationEquivalents must have a system mapping.
+        // These codes can come from API responses (e.g., Amtrak codes for MNR stations).
+        var unmapped: [String] = []
+        for (code, group) in Stations.stationEquivalents {
+            if Stations.systemStringsForStation(code).isEmpty {
+                unmapped.append(code)
+            }
+            for member in group {
+                if Stations.systemStringsForStation(member).isEmpty {
+                    unmapped.append(member)
+                }
+            }
+        }
+        XCTAssertTrue(unmapped.isEmpty,
+                     "stationEquivalents codes missing system mapping: \(Set(unmapped).sorted())")
+    }
+
     func testMetropolitanAvComplex() {
         // Metropolitan Av (G) / Lorimer St (L): SG29, SL10
         let expected: Set<String> = ["SG29", "SL10"]

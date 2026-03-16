@@ -4,7 +4,7 @@ extension Stations {
     static let all: [String] = [
         // Major Hub Stations
         "New York Penn Station", "Newark Penn Station", "Hoboken",
-        "Secaucus Upper Lvl", "Secaucus Lower Lvl",
+        "Secaucus Upper Lvl", "Secaucus Lower Lvl", "Secaucus Concourse",
         "Trenton", "Philadelphia",
         
         // Northeast Corridor Line
@@ -715,6 +715,7 @@ extension Stations {
         "Newark Penn Station": "NP",
         "Secaucus Upper Lvl": "SE",
         "Secaucus Lower Lvl": "TS",
+        "Secaucus Concourse": "SC",
         "Woodbridge NJ": "WB",
         "Metropark": "MP",
         "New Brunswick": "NB",
@@ -2215,6 +2216,7 @@ extension Stations {
             ("STM", "MSTM"),   // Stamford
             ("BRP", "MBGP"),   // Bridgeport
             ("NHV", "MNHV"),   // New Haven
+            ("STS", "MNSS"),   // New Haven-State St
         ]
         for (amtrakCode, mnrCode) in amtrakEquivalents {
             if let name = result[mnrCode] {
@@ -2326,6 +2328,7 @@ extension Stations {
             ["STM", "MSTM"],   // Stamford
             ["BRP", "MBGP"],   // Bridgeport
             ["NHV", "MNHV"],   // New Haven
+            ["STS", "MNSS"],   // New Haven-State St
         ]
 
         // Subway station complexes: build groups from (alternate, canonical) pairs
