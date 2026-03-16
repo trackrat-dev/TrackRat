@@ -317,6 +317,12 @@ struct MapContainerView: View {
             print("🗺️ MapContainer: selectedDetent = \(selectedDetent)")
             print("🗺️ MapContainer: Map already initialized by view model - Center: \(mapRegionVM.mapRegion.center.latitude), \(mapRegionVM.mapRegion.center.longitude), Span: \(mapRegionVM.mapRegion.span.latitudeDelta)°")
 
+            // If user has no home/work stations, use selected systems region instead of NY↔NP fallback
+            if RatSenseService.shared.getHomeStation() == nil && RatSenseService.shared.getWorkStation() == nil {
+                mapRegionVM.mapRegion = appState.selectedSystems.combinedMapRegion
+                print("🗺️ MapContainer: No home/work stations — using selected systems region")
+            }
+
             // Check for active Live Activity first
             checkForActiveLiveActivity()
 
@@ -610,33 +616,40 @@ struct MapContainerView: View {
     
     private func resetToDefaultMapView() {
         print("🗺️ Reset: Resetting to default map view")
-        
+
         // Clear state immediately (non-blocking)
         appState.selectedRoute = nil
         appState.mapDisplayMode = .overallCongestion
-        
+
         // Do map operations asynchronously to avoid blocking navigation
         Task { @MainActor in
-            // Recalculate default region based on current home/work stations
-            let homeCode = RatSenseService.shared.getHomeStation() ?? MapRegionViewModel.defaultFromStation
-            let workCode = RatSenseService.shared.getWorkStation() ?? MapRegionViewModel.defaultToStation
-            
-            let fromCoord = Stations.getCoordinates(for: homeCode) ?? 
-                           Stations.getCoordinates(for: MapRegionViewModel.defaultFromStation)!
-            let toCoord = Stations.getCoordinates(for: workCode) ?? 
-                         Stations.getCoordinates(for: MapRegionViewModel.defaultToStation)!
-            
-            let region = Self.calculateRegionForRoute(
-                from: fromCoord,
-                to: toCoord,
-                sheetDetent: .fraction(0.50)
-            )
-            
+            let region: MKCoordinateRegion
+            let homeCode = RatSenseService.shared.getHomeStation()
+            let workCode = RatSenseService.shared.getWorkStation()
+
+            if homeCode != nil || workCode != nil {
+                // User has home/work stations — calculate region between them
+                let fromCode = homeCode ?? MapRegionViewModel.defaultFromStation
+                let toCode = workCode ?? MapRegionViewModel.defaultToStation
+                let fromCoord = Stations.getCoordinates(for: fromCode) ??
+                               Stations.getCoordinates(for: MapRegionViewModel.defaultFromStation)!
+                let toCoord = Stations.getCoordinates(for: toCode) ??
+                             Stations.getCoordinates(for: MapRegionViewModel.defaultToStation)!
+                region = Self.calculateRegionForRoute(
+                    from: fromCoord,
+                    to: toCoord,
+                    sheetDetent: .fraction(0.50)
+                )
+            } else {
+                // No home/work stations — use selected systems region
+                region = appState.selectedSystems.combinedMapRegion
+            }
+
             withAnimation(.easeInOut(duration: 0.25)) {
                 mapRegionVM.mapRegion = region
-                print("🗺️ Reset: ✅ Map region reset to home/work default")
+                print("🗺️ Reset: ✅ Map region reset to default")
             }
-            
+
             // Clear route filter in background to avoid blocking
             mapViewModel.setRouteFilter(nil)
         }
