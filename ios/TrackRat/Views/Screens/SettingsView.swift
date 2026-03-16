@@ -850,20 +850,22 @@ private struct FavoriteStationRow: View {
         return Stations.stationName(forCode: code) ?? Stations.displayName(for: code)
     }
 
-    private var iconName: String {
+    private var iconName: String? {
         switch label {
         case "Home": return "house.fill"
         case "Work": return "building.2.fill"
-        default: return "heart.fill"
+        default: return nil
         }
     }
 
     private var rowContent: some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName)
-                .font(.body)
-                .foregroundColor(.orange)
-                .frame(width: 24)
+            if let iconName {
+                Image(systemName: iconName)
+                    .font(.body)
+                    .foregroundColor(.orange)
+                    .frame(width: 24)
+            }
 
             if let name = stationName {
                 Text(name)
@@ -924,11 +926,6 @@ private struct RouteAlertRow: View {
 
     private var rowContent: some View {
         HStack(spacing: 8) {
-            Image(systemName: iconName)
-                .font(.caption)
-                .foregroundColor(.orange)
-                .frame(width: 16)
-
             Text(subscription.displayName)
                 .font(.subheadline)
                 .foregroundColor(.white)
@@ -968,11 +965,6 @@ private struct RouteAlertRow: View {
         }
     }
 
-    private var iconName: String {
-        if subscription.trainName != nil { return "train.side.front.car" }
-        if subscription.lineName != nil { return "tram.fill" }
-        return "arrow.right"
-    }
 }
 
 // MARK: - Subscription Status Section
@@ -1293,11 +1285,6 @@ private struct TrainSystemRow: View {
     private var rowContent: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: system.icon)
-                    .font(.body)
-                    .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
-                    .frame(width: 24)
-
                 Text(system.displayName + (system.isBeta ? " (beta)" : ""))
                     .font(.subheadline)
                     .foregroundColor(.white)
