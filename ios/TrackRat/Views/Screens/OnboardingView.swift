@@ -18,6 +18,7 @@ struct OnboardingView: View {
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
     @State private var showingPaywall = false
+    @State private var pendingAutoAdvance: DispatchWorkItem?
 
     private enum StationType {
         case home, work
@@ -129,33 +130,45 @@ struct OnboardingView: View {
             Spacer()
 
             // Header
-            Text("Which transit systems\ndo you use?")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .minimumScaleFactor(0.7)
+            VStack(spacing: 8) {
+                Text("Which transit system\ndo you use?")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .minimumScaleFactor(0.7)
+
+                Text("You can add more later in Settings")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.5))
+            }
 
             // System selection cards
             VStack(spacing: 12) {
                 ForEach(TrainSystem.allCases.sorted { $0.displayName < $1.displayName }, id: \.self) { system in
                     let isSelected = appState.isSystemSelected(system)
-                    let atFreeLimit = !subscriptionService.isPro
-                        && !isSelected
-                        && appState.selectedSystems.count >= SubscriptionService.freeTrainSystemLimit
                     SystemSelectionCard(
                         system: system,
                         isSelected: isSelected,
                         onTap: {
-                            if atFreeLimit {
-                                showingPaywall = true
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    appState.toggleSystem(system, allowEmpty: true)
-                                }
+                            // Cancel any pending auto-advance (user tapped a different card)
+                            pendingAutoAdvance?.cancel()
+
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                appState.selectSystem(system)
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+                            // Auto-advance after a short delay
+                            let workItem = DispatchWorkItem {
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    showSystemSelection = false
+                                }
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            }
+                            pendingAutoAdvance = workItem
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
                         }
                     )
                 }
@@ -163,24 +176,6 @@ struct OnboardingView: View {
             .padding(.horizontal, 20)
 
             Spacer()
-
-            // Continue button (always visible, disabled until at least one system selected)
-            Button("Continue") {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    showSystemSelection = false
-                }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            }
-            .font(.headline)
-            .foregroundColor(.white)
-            .frame(height: 50)
-            .frame(minWidth: 160)
-            .background(appState.selectedSystems.isEmpty ? Color.gray : Color.orange)
-            .cornerRadius(TrackRatTheme.CornerRadius.md)
-            .buttonStyle(.plain)
-            .disabled(appState.selectedSystems.isEmpty)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
         }
     }
 

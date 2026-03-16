@@ -887,6 +887,12 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Select exactly one system, replacing any previous selection.
+    /// Used during onboarding for single-select flow.
+    func selectSystem(_ system: TrainSystem) {
+        selectedSystems = [system]
+    }
+
     /// Select all systems
     func selectAllSystems() {
         selectedSystems = Set(TrainSystem.allCases)
