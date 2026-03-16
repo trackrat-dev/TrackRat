@@ -7,6 +7,7 @@ struct DestinationPickerView: View {
     @FocusState private var searchFieldFocused: Bool
     @State private var navigationBarVisible = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var showSettingsForTrainSystems = false
 
     private var searchResults: (stations: [String], otherSystemStations: [String]) {
         let grouped = Stations.searchGrouped(searchText, selectedSystems: appState.selectedSystems)
@@ -130,7 +131,7 @@ struct DestinationPickerView: View {
 
                                 // Stations from non-active transit systems
                                 if !searchResults.otherSystemStations.isEmpty {
-                                    Text("Other systems")
+                                    Text("Other systems — edit your train systems to use")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.5))
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -139,7 +140,7 @@ struct DestinationPickerView: View {
 
                                     ForEach(searchResults.otherSystemStations, id: \.self) { station in
                                         Button {
-                                            selectDestination(station)
+                                            showSettingsForTrainSystems = true
                                         } label: {
                                             otherSystemDestinationRow(station: station)
                                         }
@@ -176,6 +177,11 @@ struct DestinationPickerView: View {
         .onAppear {
             // Load favorite stations when view appears
             appState.loadFavoriteStations()
+        }
+        .sheet(isPresented: $showSettingsForTrainSystems) {
+            SettingsView(editTrainSystems: true)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
     

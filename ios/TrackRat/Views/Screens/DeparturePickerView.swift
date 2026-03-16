@@ -83,6 +83,7 @@ struct DeparturePickerView: View {
     @State private var trainSearchError: String?
     @State private var isSearchingTrain = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var showSettingsForTrainSystems = false
 
     private var searchResults: (stations: [String], otherSystemStations: [String], trainNumber: String?) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
@@ -194,12 +195,17 @@ struct DeparturePickerView: View {
                 print("🐀🐀🐀 DeparturePickerView appeared - updating Rat Sense")
                 // Update Rat Sense suggestion when view appears
                 ratSenseService.updateSuggestion()
-                
+
                 // Uncomment to test Rat Sense with sample data
                 // ratSenseService.addTestData()
-                
+
                 // Uncomment to clear all Rat Sense data
                 // ratSenseService.clearAllData()
+            }
+            .sheet(isPresented: $showSettingsForTrainSystems) {
+                SettingsView(editTrainSystems: true)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
     }
     
@@ -333,7 +339,7 @@ struct DeparturePickerView: View {
 
             // Stations from non-active transit systems
             if !searchResults.otherSystemStations.isEmpty {
-                Text("Other systems")
+                Text("Other systems — edit your train systems to use")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -441,13 +447,11 @@ struct DeparturePickerView: View {
             )
             .padding(.horizontal, 24)
             .onTapGesture {
-                if let code = Stations.getStationCode(station) {
-                    selectDeparture(name: station, code: code)
-                }
+                showSettingsForTrainSystems = true
             }
         }
     }
-    
+
     @ViewBuilder
     private var popularStationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {

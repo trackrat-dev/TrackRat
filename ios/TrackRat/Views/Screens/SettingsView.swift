@@ -14,6 +14,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
+    var editTrainSystems: Bool = false
+
     @State private var showingPaywall = false
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
@@ -92,7 +94,8 @@ struct SettingsView: View {
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
                         paywallContext: $paywallContext,
-                        showDebugSections: showDebugSections
+                        showDebugSections: showDebugSections,
+                        initialEditTrainSystems: editTrainSystems
                     )
                 }
                 .padding()
@@ -166,6 +169,7 @@ struct SettingsSection: View {
     @Binding var showingPaywall: Bool
     @Binding var paywallContext: PaywallContext
     var showDebugSections: Bool
+    var initialEditTrainSystems: Bool = false
     @State private var isEditingTrainSystems = false
     @State private var isEditingFavorites = false
     @State private var isEditingRouteAlerts = false
@@ -741,6 +745,11 @@ struct SettingsSection: View {
                     )
                 }
                 .buttonStyle(.plain)
+            }
+        }
+        .onAppear {
+            if initialEditTrainSystems {
+                isEditingTrainSystems = true
             }
         }
         .sheet(isPresented: $showStationPicker) {

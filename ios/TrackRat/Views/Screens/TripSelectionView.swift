@@ -13,6 +13,7 @@ struct TripSelectionView: View {
     @State private var searchText = ""
     @State private var isSearching = false
     @State private var showingSettings = false
+    @State private var showSettingsForTrainSystems = false
     @FocusState private var searchFieldFocused: Bool
     @StateObject private var liveActivityService = LiveActivityService.shared
     @StateObject private var ratSenseService = RatSenseService.shared
@@ -247,7 +248,7 @@ struct TripSelectionView: View {
 
                             // Stations from non-active transit systems
                             if !searchResults.otherSystemStations.isEmpty {
-                                Text("Other systems")
+                                Text("Other systems — edit your train systems to use")
                                     .font(.caption)
                                     .foregroundColor(.white.opacity(0.5))
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -256,9 +257,7 @@ struct TripSelectionView: View {
 
                                 ForEach(searchResults.otherSystemStations.prefix(5), id: \.self) { station in
                                     Button {
-                                        if let code = Stations.getStationCode(station) {
-                                            selectOriginStation(name: station, code: code)
-                                        }
+                                        showSettingsForTrainSystems = true
                                     } label: {
                                         otherSystemStationRow(station: station)
                                     }
@@ -308,6 +307,11 @@ struct TripSelectionView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showSettingsForTrainSystems) {
+            SettingsView(editTrainSystems: true)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
