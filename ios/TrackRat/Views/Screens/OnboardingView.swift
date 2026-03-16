@@ -572,13 +572,7 @@ struct SystemSelectionCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 16) {
-                // System icon
-                Image(systemName: system.icon)
-                    .font(.title2)
-                    .foregroundColor(isSelected ? .orange : .white.opacity(0.5))
-                    .frame(width: 32)
-
+            HStack(spacing: 12) {
                 // System info
                 HStack(spacing: 6) {
                     Text(system.displayName)
