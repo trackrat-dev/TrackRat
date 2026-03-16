@@ -248,24 +248,16 @@ struct SettingsSection: View {
                         Divider()
                             .background(Color.white.opacity(0.1))
 
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isEditingTrainSystems = true
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            VStack(spacing: 0) {
-                                ForEach(selectedSystems, id: \.self) { system in
-                                    TrainSystemRow(
-                                        system: system,
-                                        isSelected: true,
-                                        isLast: system == selectedSystems.last,
-                                        showControls: false
-                                    ) {}
-                                }
+                        VStack(spacing: 0) {
+                            ForEach(selectedSystems, id: \.self) { system in
+                                TrainSystemRow(
+                                    system: system,
+                                    isSelected: true,
+                                    isLast: system == selectedSystems.last,
+                                    showControls: false
+                                ) {}
                             }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -362,19 +354,16 @@ struct SettingsSection: View {
                         Divider()
                             .background(Color.white.opacity(0.1))
 
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isEditingRouteAlerts = true
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            VStack(spacing: 0) {
-                                ForEach(alertService.subscriptions) { sub in
+                        VStack(spacing: 0) {
+                            ForEach(alertService.subscriptions) { sub in
+                                Button {
+                                    selectedSubscription = sub
+                                } label: {
                                     RouteAlertRow(subscription: sub, showControls: false)
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -503,58 +492,50 @@ struct SettingsSection: View {
                     Divider()
                         .background(Color.white.opacity(0.1))
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isEditingFavorites = true
+                    VStack(spacing: 0) {
+                        let homeCode = RatSenseService.shared.getHomeStation()
+                        let workCode = RatSenseService.shared.getWorkStation()
+                        let otherFavorites = appState.favoriteStations.filter {
+                            $0.id != homeCode && $0.id != workCode
                         }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        VStack(spacing: 0) {
-                            let homeCode = RatSenseService.shared.getHomeStation()
-                            let workCode = RatSenseService.shared.getWorkStation()
-                            let otherFavorites = appState.favoriteStations.filter {
-                                $0.id != homeCode && $0.id != workCode
-                            }
 
-                            if homeCode != nil {
-                                FavoriteStationRow(
-                                    label: "Home",
-                                    stationCode: homeCode,
-                                    isLast: workCode == nil && otherFavorites.isEmpty,
-                                    showControls: false
-                                )
-                            }
+                        if homeCode != nil {
+                            FavoriteStationRow(
+                                label: "Home",
+                                stationCode: homeCode,
+                                isLast: workCode == nil && otherFavorites.isEmpty,
+                                showControls: false
+                            )
+                        }
 
-                            if workCode != nil {
-                                FavoriteStationRow(
-                                    label: "Work",
-                                    stationCode: workCode,
-                                    isLast: otherFavorites.isEmpty,
-                                    showControls: false
-                                )
-                            }
+                        if workCode != nil {
+                            FavoriteStationRow(
+                                label: "Work",
+                                stationCode: workCode,
+                                isLast: otherFavorites.isEmpty,
+                                showControls: false
+                            )
+                        }
 
-                            ForEach(otherFavorites) { fav in
-                                FavoriteStationRow(
-                                    label: nil,
-                                    stationCode: fav.id,
-                                    isLast: fav.id == otherFavorites.last?.id,
-                                    showControls: false
-                                )
-                            }
+                        ForEach(otherFavorites) { fav in
+                            FavoriteStationRow(
+                                label: nil,
+                                stationCode: fav.id,
+                                isLast: fav.id == otherFavorites.last?.id,
+                                showControls: false
+                            )
+                        }
 
-                            if appState.favoriteStations.isEmpty {
-                                HStack {
-                                    Text("No favorite stations set.")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white.opacity(0.5))
-                                    Spacer()
-                                }
-                                .padding()
+                        if appState.favoriteStations.isEmpty {
+                            HStack {
+                                Text("No favorite stations set.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.white.opacity(0.5))
+                                Spacer()
                             }
+                            .padding()
                         }
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
