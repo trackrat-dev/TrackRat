@@ -310,9 +310,8 @@ struct RouteStatusView: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Label("Service Alerts (\(viewModel.serviceAlerts.count))", systemImage: "exclamationmark.triangle.fill")
+                    Text("Service Alerts")
                         .font(.headline)
-                        .foregroundColor(.orange)
                     Spacer()
                     Picker("", selection: $selectedAlertFilter) {
                         ForEach(ServiceAlertFilter.allCases, id: \.self) { filter in
