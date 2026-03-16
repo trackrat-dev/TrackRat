@@ -42,7 +42,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **Delay Forecasts**: AI-powered delay predictions
 - **1-Week Free Trial**: Apple introductory offer for new subscribers
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
-- **Monthly-Only Subscription**: $2.99/month pricing after trial
+- **Monthly-Only Subscription**: $4.99/month pricing after trial
 
 ### Train System Filtering
 - **Per-System Toggles**: Users can enable/disable each transit system in Settings
