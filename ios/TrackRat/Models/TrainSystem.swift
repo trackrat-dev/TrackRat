@@ -1,4 +1,5 @@
 import Foundation
+import MapKit
 
 /// Represents the different train systems supported by TrackRat
 enum TrainSystem: String, CaseIterable, Codable, Identifiable {
@@ -171,5 +172,85 @@ extension Stations {
     /// Returns the primary train system for a station (for badge display).
     static func primarySystem(forStationCode code: String) -> TrainSystem? {
         systemsForStation(code).min(by: { $0.displayName < $1.displayName })
+    }
+}
+
+// MARK: - Per-System Default Map Regions
+
+extension TrainSystem {
+    /// Default map region showing the full extent of this system's network.
+    /// Used when the user has not set home/work stations.
+    var defaultMapRegion: MKCoordinateRegion {
+        switch self {
+        case .njt:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.73, longitude: -74.17),
+                span: MKCoordinateSpan(latitudeDelta: 2.5, longitudeDelta: 2.0)
+            )
+        case .amtrak:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.20, longitude: -74.50),
+                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 4.0)
+            )
+        case .path:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.730, longitude: -74.035),
+                span: MKCoordinateSpan(latitudeDelta: 0.08, longitudeDelta: 0.22)
+            )
+        case .patco:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 39.92, longitude: -75.08),
+                span: MKCoordinateSpan(latitudeDelta: 0.18, longitudeDelta: 0.25)
+            )
+        case .lirr:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.75, longitude: -73.40),
+                span: MKCoordinateSpan(latitudeDelta: 0.65, longitudeDelta: 2.20)
+            )
+        case .mnr:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 41.15, longitude: -73.70),
+                span: MKCoordinateSpan(latitudeDelta: 1.20, longitudeDelta: 1.30)
+            )
+        case .subway:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.730, longitude: -73.950),
+                span: MKCoordinateSpan(latitudeDelta: 0.45, longitudeDelta: 0.55)
+            )
+        }
+    }
+}
+
+extension Set where Element == TrainSystem {
+    /// Combined map region that shows all selected systems.
+    /// Computes a bounding box across all selected systems' default regions.
+    var combinedMapRegion: MKCoordinateRegion {
+        guard !isEmpty else { return .newarkPennDefault }
+        if count == 1 { return first!.defaultMapRegion }
+
+        var minLat = Double.greatestFiniteMagnitude
+        var maxLat = -Double.greatestFiniteMagnitude
+        var minLon = Double.greatestFiniteMagnitude
+        var maxLon = -Double.greatestFiniteMagnitude
+
+        for system in self {
+            let region = system.defaultMapRegion
+            let halfLat = region.span.latitudeDelta / 2
+            let halfLon = region.span.longitudeDelta / 2
+            minLat = Swift.min(minLat, region.center.latitude - halfLat)
+            maxLat = Swift.max(maxLat, region.center.latitude + halfLat)
+            minLon = Swift.min(minLon, region.center.longitude - halfLon)
+            maxLon = Swift.max(maxLon, region.center.longitude + halfLon)
+        }
+
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        let spanLat = (maxLat - minLat) * 1.1
+        let spanLon = (maxLon - minLon) * 1.1
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: centerLat, longitude: centerLon),
+            span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
+        )
     }
 }
