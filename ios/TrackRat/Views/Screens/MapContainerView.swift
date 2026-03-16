@@ -56,7 +56,7 @@ struct MapContainerView: View {
     @State private var sheetExpansionTask: Task<Void, Never>?  // Track pending expansion for cancellation
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @StateObject private var mapRegionVM = MapRegionViewModel()
-    @State private var selectedSegment: CongestionSegment?
+    @State private var routeStatusContext: RouteStatusContext?
     @State private var selectedIndividualSegment: IndividualJourneySegment?
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @ObservedObject private var ratSenseService = RatSenseService.shared
@@ -138,7 +138,17 @@ struct MapContainerView: View {
                 selectedSystems: appState.selectedSystems,
                 highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
-                    selectedSegment = segment
+                    let route = RouteTopology.routeContaining(
+                        from: segment.fromStation,
+                        to: segment.toStation,
+                        dataSource: segment.dataSource
+                    )
+                    routeStatusContext = RouteStatusContext(
+                        dataSource: segment.dataSource,
+                        lineId: route?.id,
+                        fromStationCode: segment.fromStation,
+                        toStationCode: segment.toStation
+                    )
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: { individualSegment in
@@ -225,10 +235,8 @@ struct MapContainerView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
             }
-            .sheet(item: $selectedSegment) { segment in
-                SegmentTrainDetailsView(segment: segment)
-                    .presentationDetents([.height(600), .large])
-                    .presentationDragIndicator(.visible)
+            .sheet(item: $routeStatusContext) { context in
+                RouteStatusView(context: context)
             }
             .sheet(item: $selectedIndividualSegment) { segment in
                 TrainDetailsView(

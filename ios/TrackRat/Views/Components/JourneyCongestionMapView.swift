@@ -5,7 +5,7 @@ import UIKit
 struct JourneyCongestionMapView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: JourneyCongestionViewModel
-    @State private var selectedSegment: CongestionSegment?
+    @State private var routeStatusContext: RouteStatusContext?
 
     let train: TrainV2
     let userOrigin: String?
@@ -48,7 +48,17 @@ struct JourneyCongestionMapView: View {
                             if let onSegmentTap = onSegmentTap {
                                 onSegmentTap(segment)
                             } else {
-                                selectedSegment = segment
+                                let route = RouteTopology.routeContaining(
+                                    from: segment.fromStation,
+                                    to: segment.toStation,
+                                    dataSource: segment.dataSource
+                                )
+                                routeStatusContext = RouteStatusContext(
+                                    dataSource: segment.dataSource,
+                                    lineId: route?.id,
+                                    fromStationCode: segment.fromStation,
+                                    toStationCode: segment.toStation
+                                )
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
                         }
@@ -84,8 +94,8 @@ struct JourneyCongestionMapView: View {
                     .padding(.top, 8)
             }
         }
-        .sheet(item: $selectedSegment) { segment in
-            SegmentTrainDetailsView(segment: segment)
+        .sheet(item: $routeStatusContext) { context in
+            RouteStatusView(context: context)
         }
         .task {
             await viewModel.loadCongestionData()
@@ -724,7 +734,7 @@ struct EmbeddedCongestionMapView: View {
     let userDestination: String?
 
     @StateObject private var viewModel: EmbeddedCongestionViewModel
-    @State private var selectedSegment: CongestionSegment?
+    @State private var routeStatusContext: RouteStatusContext?
 
     init(train: TrainV2, userOrigin: String?, userDestination: String?) {
         self.train = train
@@ -772,7 +782,17 @@ struct EmbeddedCongestionMapView: View {
                     trainPositions: viewModel.trainPositions,
                     highlightMode: appState.mapHighlightMode,
                     onSegmentTap: { segment in
-                        selectedSegment = segment
+                        let route = RouteTopology.routeContaining(
+                            from: segment.fromStation,
+                            to: segment.toStation,
+                            dataSource: segment.dataSource
+                        )
+                        routeStatusContext = RouteStatusContext(
+                            dataSource: segment.dataSource,
+                            lineId: route?.id,
+                            fromStationCode: segment.fromStation,
+                            toStationCode: segment.toStation
+                        )
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 )
@@ -784,11 +804,8 @@ struct EmbeddedCongestionMapView: View {
                 )
             }
         }
-        .sheet(item: $selectedSegment) { segment in
-            SwipeableSegmentTrainDetailsView(
-                segments: viewModel.journeySegments,
-                initialSegment: segment
-            )
+        .sheet(item: $routeStatusContext) { context in
+            RouteStatusView(context: context)
         }
         .task {
             await viewModel.loadCongestionData()
@@ -1060,400 +1077,6 @@ class EmbeddedCongestionViewModel: ObservableObject {
         mapRegion = MKCoordinateRegion(center: center, span: span)
     }
 }
-
-// MARK: - Swipeable Segment Train Details View
-
-struct SwipeableSegmentTrainDetailsView: View {
-    let segments: [CongestionSegment]
-    let initialSegment: CongestionSegment
-    
-    @State private var currentSegmentIndex = 0
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationStack {
-            TabView(selection: $currentSegmentIndex) {
-                ForEach(segments.indices, id: \.self) { index in
-                    SegmentTrainDetailsContentView(segment: segments[index])
-                        .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(.ultraThinMaterial)
-            .navigationTitle("Segment Details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Text("Segment \(currentSegmentIndex + 1) of \(segments.count)")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
-                }
-
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .foregroundColor(.white)
-                }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .onAppear {
-            // Set initial segment index
-            if let initialIndex = segments.firstIndex(where: { $0.id == initialSegment.id }) {
-                currentSegmentIndex = initialIndex
-            }
-        }
-    }
-}
-
-// MARK: - Segment Train Details Content View (without NavigationView)
-
-struct SegmentTrainDetailsContentView: View {
-    let segment: CongestionSegment
-    @StateObject private var viewModel: SegmentTrainDetailsViewModel
-    
-    init(segment: CongestionSegment) {
-        self.segment = segment
-        self._viewModel = StateObject(wrappedValue: SegmentTrainDetailsViewModel(segment: segment))
-    }
-    
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 20) {
-                // Segment Header
-                segmentHeaderSection
-                
-                // Summary Stats
-                if let summary = viewModel.segmentDetails?.summary {
-                    summaryStatsSection(summary: summary)
-                }
-                
-                // Train List
-                if viewModel.isLoading {
-                    loadingSection
-                } else if let trains = viewModel.segmentDetails?.trains, !trains.isEmpty {
-                    trainsSection(trains: trains)
-                } else if let error = viewModel.error {
-                    errorSection(error: error)
-                } else {
-                    noDataSection
-                }
-            }
-            .padding()
-        }
-        .refreshable {
-            await viewModel.loadTrainDetails()
-        }
-        .task {
-            await viewModel.loadTrainDetails()
-        }
-    }
-    
-    // MARK: - Header Section
-    
-    private var segmentHeaderSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Route Information
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(segment.fromStationDisplayName) → \(segment.toStationDisplayName)")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                Label(segment.dataSource, systemImage: "train.side.front.car")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Current Congestion Status
-            HStack {
-                Circle()
-                    .fill(segment.displayColor)
-                    .frame(width: 16, height: 16)
-                
-                Text(segment.displayCongestionLevel)
-                    .font(.headline)
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(segment.congestionFactorDisplay)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    Text(segment.cancellationDisplayText)
-                        .font(.caption)
-                        .foregroundColor(segment.cancellationRate > 10 ? .red : .secondary)
-                }
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-        }
-    }
-    
-    // MARK: - Summary Stats Section
-    
-    private func summaryStatsSection(summary: SegmentSummary) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Summary Statistics")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                
-                Spacer()
-            }
-            
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 16) {
-                
-                SegmentStatCard(
-                    title: "Avg Departure Delay",
-                    value: summary.averageDepartureDelay > 0 ? "+\(Int(summary.averageDepartureDelay))m" : "On time",
-                    color: summary.averageDepartureDelay <= 2 ? .green : summary.averageDepartureDelay <= 6 ? .yellow : .orange,
-                    icon: "arrow.up.circle.fill"
-                )
-
-                SegmentStatCard(
-                    title: "Avg Arrival Delay",
-                    value: summary.averageArrivalDelay > 0 ? "+\(Int(summary.averageArrivalDelay))m" : "On time",
-                    color: summary.averageArrivalDelay <= 2 ? .green : summary.averageArrivalDelay <= 6 ? .yellow : .orange,
-                    icon: "arrow.down.circle.fill"
-                )
-                
-                SegmentStatCard(
-                    title: "Cancellation Rate",
-                    value: "\(Int(segment.cancellationRate))%",
-                    color: segment.cancellationRate < 5 ? .green : 
-                           segment.cancellationRate < 15 ? .orange : .red,
-                    icon: "xmark.circle.fill"
-                )
-            }
-        }
-    }
-    
-    // MARK: - Trains Section
-    
-    private func trainsSection(trains: [SegmentTrainDetail]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Recent Trains")
-                .font(.headline)
-                .fontWeight(.semibold)
-            
-            LazyVStack(spacing: 12) {
-                ForEach(trains) { train in
-                    SegmentTrainDetailCard(train: train)
-                }
-            }
-        }
-    }
-    
-    // MARK: - Loading & Error States
-    
-    private var loadingSection: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                .scaleEffect(1.2)
-            
-            Text("Loading train details...")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(height: 100)
-    }
-    
-    private func errorSection(error: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.largeTitle)
-                .foregroundColor(.orange)
-            
-            Text("Unable to load train details")
-                .font(.headline)
-            
-            Text(error)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-    }
-    
-    private var noDataSection: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "train.side.front.car")
-                .font(.largeTitle)
-                .foregroundColor(.gray)
-            
-            Text("No train data available")
-                .font(.headline)
-            
-            Text("Try adjusting the time window or check back later")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}
-
-// MARK: - Shared Supporting Views for Segment Details
-
-struct SegmentStatCard: View {
-    let title: String
-    let value: String
-    let color: Color
-    let icon: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(color)
-                
-                Spacer()
-            }
-            
-            Text(value)
-                .font(.title3)
-                .fontWeight(.bold)
-                .foregroundColor(color)
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.leading)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}
-
-struct SegmentTrainDetailCard: View {
-    let train: SegmentTrainDetail
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header with train ID and line
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    // Trains with synthetic IDs display line (route) instead of train ID
-                    Text(TrainSystem.syntheticTrainIdSources.contains(train.dataSource) ? train.line : "Train \(train.trainId)")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-
-                    // Only show line as subtitle when header shows train ID (not line)
-                    if !TrainSystem.syntheticTrainIdSources.contains(train.dataSource) {
-                        Text(train.line)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 2) {
-                    if !train.delayCategoryDisplay.isEmpty {
-                        Text(train.delayCategoryDisplay)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(train.delayCategoryColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule()
-                                    .fill(train.delayCategoryColor.opacity(0.2))
-                            )
-                    }
-                    
-                    Text(train.transitTimeDisplay)
-                }
-            }
-            
-            // Time details
-            VStack(spacing: 8) {
-                SegmentTimeDetailRow(
-                    label: "Departure",
-                    scheduled: train.scheduledDeparture,
-                    actual: train.actualDeparture,
-                    delay: train.departureDelayDisplay,
-                    delayColor: train.departureDelayMinutes > 0 ? .orange : .green
-                )
-                
-                SegmentTimeDetailRow(
-                    label: "Arrival",
-                    scheduled: train.scheduledArrival,
-                    actual: train.actualArrival,
-                    delay: train.arrivalDelayDisplay,
-                    delayColor: train.arrivalDelayMinutes > 0 ? .orange : .green
-                )
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-    }
-}
-
-struct SegmentTimeDetailRow: View {
-    let label: String
-    let scheduled: Date
-    let actual: Date
-    let delay: String
-    let delayColor: Color
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .textProtected()
-                .frame(width: 70, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(scheduled.formatted(date: .omitted, time: .shortened))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .strikethrough(scheduled != actual)
-                
-                if scheduled != actual {
-                    Text(actual.formatted(date: .omitted, time: .shortened))
-                        .font(.caption)
-                        .fontWeight(.medium)
-                }
-            }
-            
-            Spacer()
-            
-            Text(delay)
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(delayColor)
-        }
-    }
-}
-
 
 #Preview {
     JourneyCongestionMapView(
