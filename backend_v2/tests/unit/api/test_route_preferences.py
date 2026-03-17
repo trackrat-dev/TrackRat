@@ -27,7 +27,9 @@ class TestGetRoutePreference:
             "/api/v2/routes/preferences",
             params={"device_id": "pref-get-1", "from": "NY", "to": "TR"},
         )
-        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 404
+        ), f"Expected 404, got {resp.status_code}: {resp.text}"
 
     def test_returns_saved_preference(self, e2e_client: TestClient):
         """Should return the previously saved preference."""
@@ -49,7 +51,9 @@ class TestGetRoutePreference:
             "/api/v2/routes/preferences",
             params={"device_id": "pref-get-2", "from": "NY", "to": "TR"},
         )
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
         assert data["from_station_code"] == "NY"
         assert data["to_station_code"] == "TR"
@@ -72,7 +76,9 @@ class TestUpsertRoutePreference:
                 "enabled_systems": {"SUBWAY": ["1", "A", "C", "E"]},
             },
         )
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200, got {resp.status_code}: {resp.text}"
         data = resp.json()
         assert data["from_station_code"] == "R268"
         assert data["to_station_code"] == "R236"
@@ -103,7 +109,9 @@ class TestUpsertRoutePreference:
                 "enabled_systems": {"NJT": ["NE"]},
             },
         )
-        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 200
+        ), f"Expected 200, got {resp.status_code}: {resp.text}"
         assert resp.json()["enabled_systems"] == {"NJT": ["NE"]}
 
         # Verify via GET
@@ -125,7 +133,9 @@ class TestUpsertRoutePreference:
                 "enabled_systems": {"NJT": []},
             },
         )
-        assert resp.status_code == 404, f"Expected 404, got {resp.status_code}: {resp.text}"
+        assert (
+            resp.status_code == 404
+        ), f"Expected 404, got {resp.status_code}: {resp.text}"
 
     def test_multiple_routes_per_device(self, e2e_client: TestClient):
         """A device can have different preferences for different routes."""

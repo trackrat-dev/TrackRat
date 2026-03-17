@@ -1051,6 +1051,7 @@ async def _generate_digest_summary(
 # Service alert (planned work) evaluation
 # ---------------------------------------------------------------------------
 
+
 async def evaluate_service_alerts(
     db: AsyncSession, apns_service: SimpleAPNSService
 ) -> int:

@@ -5,9 +5,8 @@ Revises: 8771778d5ae1
 Create Date: 2026-03-17 12:00:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from alembic import op
 
 revision = "f9a8b7c6d5e4"
 down_revision = "8771778d5ae1"
@@ -24,7 +23,7 @@ def upgrade() -> None:
         sa.Column("to_station_code", sa.String(10), nullable=False),
         sa.Column(
             "enabled_systems",
-            JSONB(),
+            sa.JSON(),
             nullable=False,
             server_default="{}",
         ),

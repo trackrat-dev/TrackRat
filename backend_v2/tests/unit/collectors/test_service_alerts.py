@@ -392,7 +392,9 @@ class TestParseNjtLineScope:
         ]
         for scope, expected in known_scopes:
             result = parse_njt_line_scope(scope)
-            assert result == expected, f"Failed for {scope}: got {result}, expected {expected}"
+            assert (
+                result == expected
+            ), f"Failed for {scope}: got {result}, expected {expected}"
 
     def test_deduplicates_codes(self):
         """Duplicate codes are not repeated."""
@@ -407,7 +409,9 @@ class TestParseNjtStationScope:
 
     def test_single_station(self):
         """Single station is extracted."""
-        assert parse_njt_station_scope("*Newark Penn Station") == ["Newark Penn Station"]
+        assert parse_njt_station_scope("*Newark Penn Station") == [
+            "Newark Penn Station"
+        ]
 
     def test_multiple_stations(self):
         """Comma-separated stations are extracted."""
@@ -563,9 +567,7 @@ class TestParseNjtMessage:
 
     def test_station_scope_in_description(self):
         """Station scope names appear in description."""
-        msg = self._make_system_message(
-            station_scope="*Brick Church,*Chatham,*Summit"
-        )
+        msg = self._make_system_message(station_scope="*Brick Church,*Chatham,*Summit")
         result = parse_njt_message(msg)
 
         assert result is not None

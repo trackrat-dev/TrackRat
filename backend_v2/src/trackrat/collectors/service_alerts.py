@@ -13,7 +13,7 @@ Upserts into the service_alerts table. Supports alert types:
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.collectors.njt.client import NJTransitClient, NJTransitAPIError
+from trackrat.collectors.njt.client import NJTransitAPIError, NJTransitClient
 from trackrat.config.stations import (
     LIRR_ALERTS_FEED_URL,
     MNR_ALERTS_FEED_URL,
@@ -289,7 +289,7 @@ def parse_njt_message(msg: dict[str, Any]) -> ParsedAlert | None:
         try:
             # Format: "12/21/2023 4:13:00 PM"
             dt = datetime.strptime(pub_utc, "%m/%d/%Y %I:%M:%S %p")
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
             epoch = int(dt.timestamp())
             active_periods.append({"start": epoch, "end": None})
         except ValueError:
