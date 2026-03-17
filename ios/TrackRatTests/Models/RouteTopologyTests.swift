@@ -98,13 +98,13 @@ class RouteTopologyTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(routes.count, 2, "Should find at least 2 routes for shared trunk stations")
     }
 
-    func testRoutesContainingFindsACESharedTrunk() {
+    func testRoutesContainingFindsABCSharedTrunk() {
         // SA24 and SA22 are on the shared A/B/C trunk (8th Avenue)
         let routes = RouteTopology.routesContaining(from: "SA24", to: "SA22", dataSource: "SUBWAY")
         let ids = Set(routes.map { $0.id })
         XCTAssertTrue(ids.contains("subway-a"), "SA24→SA22 should match the A train")
         XCTAssertTrue(ids.contains("subway-c"), "SA24→SA22 should match the C train")
-        XCTAssertGreaterThanOrEqual(routes.count, 2, "Should find at least 2 routes for A/C shared trunk")
+        XCTAssertGreaterThanOrEqual(routes.count, 2, "Should find at least 2 routes for A/B/C shared trunk")
     }
 
     func testRoutesContainingReturnsEmptyForUnknownStations() {
