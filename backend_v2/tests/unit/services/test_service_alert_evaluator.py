@@ -18,7 +18,6 @@ from trackrat.models.database import (
     ServiceAlert,
 )
 from trackrat.services.alert_evaluator import (
-    PLANNED_WORK_LOOKAHEAD_HOURS,
     _build_service_alert_message,
     _find_matching_alerts,
     _get_gtfs_route_ids_for_subscription,
@@ -74,8 +73,8 @@ def _make_service_alert(
     """Create a ServiceAlert record for testing."""
     now_epoch = int(time.time())
     if active_start is None:
-        # Default: starting in 12 hours (within 48h lookahead)
-        active_start = now_epoch + 43200
+        # Default: currently active (started 1 hour ago)
+        active_start = now_epoch - 3600
     if active_end is None:
         active_end = active_start + 86400  # 24h duration
 
@@ -208,7 +207,7 @@ class TestFindMatchingAlerts:
         """Create a ServiceAlert object (not persisted to DB)."""
         now_epoch = int(time.time())
         if active_start is None:
-            active_start = now_epoch + 3600  # 1h from now
+            active_start = now_epoch - 3600  # started 1h ago
         if active_end is None:
             active_end = active_start + 86400
 
@@ -226,27 +225,21 @@ class TestFindMatchingAlerts:
         """Alert matching routes in subscription is returned."""
         now_epoch = int(time.time())
         alert = self._make_alert(route_ids=["G", "F"])
-        result = _find_matching_alerts(
-            [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
-        )
+        result = _find_matching_alerts([alert], "SUBWAY", {"G"}, now_epoch)
         assert len(result) == 1
 
     def test_no_match_different_routes(self):
         """Alert not matching any subscription routes is excluded."""
         now_epoch = int(time.time())
         alert = self._make_alert(route_ids=["4", "5"])
-        result = _find_matching_alerts(
-            [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
-        )
+        result = _find_matching_alerts([alert], "SUBWAY", {"G"}, now_epoch)
         assert len(result) == 0
 
     def test_no_match_different_data_source(self):
         """Alert from different data source is excluded."""
         now_epoch = int(time.time())
         alert = self._make_alert(data_source="LIRR", route_ids=["1"])
-        result = _find_matching_alerts(
-            [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
-        )
+        result = _find_matching_alerts([alert], "SUBWAY", {"G"}, now_epoch)
         assert len(result) == 0
 
     def test_matches_currently_active_alert(self):
@@ -256,9 +249,7 @@ class TestFindMatchingAlerts:
             active_start=now_epoch - 3600,  # started 1h ago
             active_end=now_epoch + 3600,  # ends in 1h
         )
-        result = _find_matching_alerts(
-            [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
-        )
+        result = _find_matching_alerts([alert], "SUBWAY", {"G"}, now_epoch)
         assert len(result) == 1
 
     def test_excludes_past_alert(self):
@@ -268,33 +259,15 @@ class TestFindMatchingAlerts:
             active_start=now_epoch - 86400,  # started 24h ago
             active_end=now_epoch - 3600,  # ended 1h ago
         )
-        result = _find_matching_alerts(
-            [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
-        )
+        result = _find_matching_alerts([alert], "SUBWAY", {"G"}, now_epoch)
         assert len(result) == 0
 
-    def test_excludes_far_future_alert(self):
-        """Alert starting beyond the lookahead window is excluded."""
-        now_epoch = int(time.time())
-        far_future = now_epoch + (PLANNED_WORK_LOOKAHEAD_HOURS * 3600) + 7200
-        alert = self._make_alert(active_start=far_future)
-        result = _find_matching_alerts(
-            [alert],
-            "SUBWAY",
-            {"G"},
-            now_epoch,
-            now_epoch + (PLANNED_WORK_LOOKAHEAD_HOURS * 3600),
-        )
-        assert len(result) == 0
-
-    def test_matches_upcoming_within_lookahead(self):
-        """Alert starting within lookahead window is returned."""
+    def test_excludes_future_not_yet_active_alert(self):
+        """Alert starting in the future (not yet active) is excluded."""
         now_epoch = int(time.time())
         alert = self._make_alert(active_start=now_epoch + 7200)  # 2h from now
-        result = _find_matching_alerts(
-            [alert], "SUBWAY", {"G"}, now_epoch, now_epoch + 172800
-        )
-        assert len(result) == 1
+        result = _find_matching_alerts([alert], "SUBWAY", {"G"}, now_epoch)
+        assert len(result) == 0
 
 
 class TestLineCodesToGtfsIds:
