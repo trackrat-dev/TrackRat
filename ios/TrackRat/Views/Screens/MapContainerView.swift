@@ -138,6 +138,7 @@ struct MapContainerView: View {
                 selectedSystems: appState.selectedSystems,
                 highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
+                    guard appState.enableSegmentTap else { return }
                     let route = RouteTopology.routeContaining(
                         from: segment.fromStation,
                         to: segment.toStation,
@@ -152,6 +153,7 @@ struct MapContainerView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: { individualSegment in
+                    guard appState.enableSegmentTap else { return }
                     selectedIndividualSegment = individualSegment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
