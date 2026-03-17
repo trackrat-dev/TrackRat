@@ -192,8 +192,9 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
         let (data, response) = try await session.data(from: url)
-        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 404 {
-            throw APIError.notFound
+        if let httpResp = response as? HTTPURLResponse {
+            if httpResp.statusCode == 404 { throw APIError.notFound }
+            if httpResp.statusCode >= 400 { throw APIError.serverError }
         }
         return try decoder.decode(RoutePreferenceResponse.self, from: data)
     }
@@ -214,7 +215,10 @@ final class APIService: ObservableObject {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, _) = try await session.data(for: request)
+        let (_, response) = try await session.data(for: request)
+        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode >= 400 {
+            throw APIError.serverError
+        }
     }
 
     // MARK: - Train Details
