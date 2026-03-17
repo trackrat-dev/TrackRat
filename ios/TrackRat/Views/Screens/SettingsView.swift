@@ -67,11 +67,15 @@ struct SettingsView: View {
 
                 // Close button
                 Button {
-                    dismiss()
+                    if appState.selectedSystems.isEmpty {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    } else {
+                        dismiss()
+                    }
                 } label: {
                     Image(systemName: "xmark")
                         .font(TrackRatTheme.IconSize.small)
-                        .foregroundColor(.white)
+                        .foregroundColor(appState.selectedSystems.isEmpty ? .gray : .white)
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 }
@@ -145,6 +149,7 @@ struct SettingsView: View {
                 Text(error)
             }
         }
+        .interactiveDismissDisabled(appState.selectedSystems.isEmpty)
     }
 
     /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
@@ -189,6 +194,11 @@ struct SettingsSection: View {
             // Train Systems
             VStack(spacing: 0) {
                 Button {
+                    // Block closing edit mode when no systems selected
+                    if isEditingTrainSystems && appState.selectedSystems.isEmpty {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        return
+                    }
                     withAnimation(.easeInOut(duration: 0.2)) {
                         isEditingTrainSystems.toggle()
                     }
@@ -209,7 +219,7 @@ struct SettingsSection: View {
 
                         Text(isEditingTrainSystems ? "Done" : "Edit")
                             .font(.subheadline)
-                            .foregroundColor(.orange)
+                            .foregroundColor(isEditingTrainSystems && appState.selectedSystems.isEmpty ? .gray : .orange)
                     }
                 }
                 .padding()
@@ -217,6 +227,14 @@ struct SettingsSection: View {
                 if isEditingTrainSystems {
                     Divider()
                         .background(Color.white.opacity(0.1))
+
+                    if appState.selectedSystems.isEmpty {
+                        Text("Select at least one train system")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal)
+                            .padding(.vertical, 8)
+                    }
 
                     let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
                     ForEach(sortedSystems, id: \.self) { system in
@@ -234,7 +252,7 @@ struct SettingsSection: View {
                                 paywallContext = .trainSystems
                                 showingPaywall = true
                             } else {
-                                appState.toggleSystem(system)
+                                appState.toggleSystem(system, allowEmpty: true)
                             }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
@@ -729,7 +747,7 @@ struct SettingsSection: View {
             }
         }
         .onAppear {
-            if initialEditTrainSystems {
+            if initialEditTrainSystems || appState.selectedSystems.isEmpty {
                 isEditingTrainSystems = true
             }
         }
