@@ -168,7 +168,7 @@ struct OnboardingView: View {
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             }
                             pendingAutoAdvance = workItem
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
                         }
                     )
                 }
