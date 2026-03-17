@@ -190,7 +190,7 @@ extension TrainSystem {
         case .amtrak:
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 40.20, longitude: -74.50),
-                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 4.0)
+                span: MKCoordinateSpan(latitudeDelta: 10.0, longitudeDelta: 8.0)
             )
         case .path:
             return MKCoordinateRegion(
