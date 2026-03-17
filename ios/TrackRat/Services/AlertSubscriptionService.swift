@@ -83,23 +83,11 @@ final class AlertSubscriptionService: ObservableObject {
 
     // MARK: - Backend Sync
 
-    private let chatTokenKey = "AlertSubscription.chatToken"
-
-    /// The chat bearer token returned by the server during device registration.
-    var chatToken: String? {
-        UserDefaults.standard.string(forKey: chatTokenKey)
-    }
-
     func syncWithBackend(apnsToken: String) async {
         do {
-            // Request a new chat token if we don't have one (e.g. after app reinstall)
-            let needsToken = chatToken == nil
-            let response = try await APIService.shared.registerDevice(
-                deviceId: deviceId, apnsToken: apnsToken, forceChatToken: needsToken
+            _ = try await APIService.shared.registerDevice(
+                deviceId: deviceId, apnsToken: apnsToken
             )
-            if let token = response.chat_token {
-                UserDefaults.standard.set(token, forKey: chatTokenKey)
-            }
             try await APIService.shared.syncAlertSubscriptions(deviceId: deviceId, subscriptions: subscriptions)
         } catch {
             print("Alert subscription sync failed: \(error)")

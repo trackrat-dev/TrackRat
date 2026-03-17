@@ -3,8 +3,6 @@ import SwiftUI
 // MARK: - Settings Navigation
 enum SettingsDestination: Hashable {
     case tripHistory
-    case chat
-    case adminChat
     case advancedConfiguration
 }
 
@@ -19,10 +17,6 @@ struct SettingsView: View {
     @State private var showingPaywall = false
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
-    @State private var showingAdminRegistration = false
-    @State private var adminRegistrationCode = ""
-    @State private var adminRegistrationError: String?
-    @ObservedObject private var chatService = ChatService.shared
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -40,11 +34,6 @@ struct SettingsView: View {
                     Text("Settings")
                         .font(TrackRatTheme.Typography.title3)
                         .foregroundColor(.white)
-                        .onTapGesture(count: 5) {
-                            if !chatService.isAdmin {
-                                showingAdminRegistration = true
-                            }
-                        }
 
                     if subscriptionService.isPro {
                         HStack(spacing: 4) {
@@ -94,7 +83,6 @@ struct SettingsView: View {
                     // Settings section
                     SettingsSection(
                         subscriptionService: subscriptionService,
-                        chatService: chatService,
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
                         paywallContext: $paywallContext,
@@ -111,10 +99,6 @@ struct SettingsView: View {
                     switch destination {
                     case .tripHistory:
                         TripHistoryView()
-                    case .chat:
-                        ChatView(targetDeviceId: nil)
-                    case .adminChat:
-                        AdminChatListView()
                     case .advancedConfiguration:
                         AdvancedConfigurationView()
                     }
@@ -125,29 +109,6 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
-        }
-        .alert("Admin Registration", isPresented: $showingAdminRegistration) {
-            TextField("Registration Code", text: $adminRegistrationCode)
-                .textInputAutocapitalization(.never)
-            Button("Register") {
-                Task {
-                    do {
-                        try await chatService.registerAsAdmin(code: adminRegistrationCode)
-                        adminRegistrationCode = ""
-                    } catch APIError.serverError {
-                        adminRegistrationError = "Admin registration not available on this server"
-                    } catch {
-                        adminRegistrationError = "Invalid code"
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                adminRegistrationCode = ""
-            }
-        } message: {
-            if let error = adminRegistrationError {
-                Text(error)
-            }
         }
         .interactiveDismissDisabled(appState.selectedSystems.isEmpty)
     }
@@ -169,7 +130,6 @@ struct SettingsSection: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.openURL) private var openURL
     @ObservedObject var subscriptionService: SubscriptionService
-    @ObservedObject var chatService: ChatService
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
     @Binding var paywallContext: PaywallContext
@@ -562,65 +522,6 @@ struct SettingsSection: View {
                     .fill(.ultraThinMaterial)
             )
 
-            // Developer Chat
-            Button {
-                if subscriptionService.hasAccess(to: .developerChat) {
-                    navigationPath.append(SettingsDestination.chat)
-                } else {
-                    paywallContext = .developerChat
-                    showingPaywall = true
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    Text("Developer Chat")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.leading)
-
-                    Spacer()
-
-                    if !subscriptionService.hasAccess(to: .developerChat) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "lock.fill")
-                                .font(.caption2)
-                            Text("PRO")
-                                .font(.caption2.bold())
-                        }
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(.orange.opacity(0.2)))
-                    } else {
-                        if chatService.unreadCount > 0 {
-                            Text("\(chatService.unreadCount)")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(.orange))
-                        }
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
-                    }
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                )
-            }
-            .buttonStyle(.plain)
-
             // YouTube & Instagram
             HStack(spacing: 12) {
                 Button {
@@ -665,40 +566,6 @@ struct SettingsSection: View {
                             .font(.headline)
                             .fontWeight(.medium)
                             .foregroundColor(.white)
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.ultraThinMaterial)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Admin Inbox (visible only to admin)
-            if chatService.isAdmin {
-                Button {
-                    navigationPath.append(SettingsDestination.adminChat)
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    HStack(spacing: 16) {
-                        Image(systemName: "tray.full.fill")
-                            .font(.title2)
-                            .foregroundColor(.orange)
-                            .frame(width: 24, height: 24)
-
-                        Text("Developer Inbox")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.5))
                     }
                     .padding()
                     .frame(maxWidth: .infinity)

@@ -206,14 +206,6 @@ script and provide a narrative summary that highlights:
 - Digest mode: `digest_time_minutes` batches notifications to a scheduled time
 - Stored on `RouteAlertSubscription` model with new columns added via migration
 
-**Developer Chat:**
-- Two-party messaging between users and the developer (admin)
-- Backend: `backend_v2/src/trackrat/api/chat.py` — full CRUD + admin endpoints
-- iOS: `ChatService.swift`, `ChatView.swift`, `AdminChatListView.swift`
-- Database: `chat_messages` and `admin_devices` tables
-- Admin registration via secret code (`CHAT_ADMIN_REGISTRATION_CODE` env var)
-- Push notifications for new messages via APNS
-
 **Key Design Principles:**
 - Single Journey Record: One database row per train per day
 - Horizontal Scaling: Database-coordinated scheduler with row-level locking
@@ -455,15 +447,6 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /api/v2/devices/register           # Register APNS device token
 /api/v2/alerts/subscriptions       # Sync route alert subscriptions (PUT)
 /api/v2/alerts/service             # MTA service alerts (planned work, delays)
-
-# Developer Chat
-/api/v2/chat/messages              # GET message history, POST send message
-/api/v2/chat/unread-count          # GET unread message count
-/api/v2/chat/messages/read         # POST mark messages as read
-/api/v2/chat/admin/register        # POST register admin device
-/api/v2/chat/admin/conversations   # GET all conversations (admin)
-/api/v2/chat/admin/conversations/{device_id}/messages  # GET/POST conversation messages (admin)
-/api/v2/chat/admin/conversations/{device_id}/read      # POST mark read (admin)
 
 # Admin
 /admin/stats                       # Server usage statistics page (HTML)

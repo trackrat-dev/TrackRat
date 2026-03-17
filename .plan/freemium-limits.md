@@ -12,7 +12,6 @@ Gate free users to **1 train system** and **1 route alert (1 direction)**. Pro u
 |---------|------|-----|
 | Train systems | 1 | Unlimited |
 | Route alerts | 1 subscription, 1 direction | Unlimited |
-| Developer chat | No | Yes |
 | Departures, Live Activities, predictions, congestion | Full access | Full access |
 
 ---

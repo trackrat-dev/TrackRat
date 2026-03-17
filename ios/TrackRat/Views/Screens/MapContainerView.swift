@@ -230,13 +230,6 @@ struct MapContainerView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
-            .sheet(item: $appState.pendingChatNavigation) { context in
-                NavigationStack {
-                    ChatView(targetDeviceId: context.adminTargetDeviceId)
-                }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-            }
             .sheet(item: $routeStatusContext) { context in
                 RouteStatusView(context: context)
             }

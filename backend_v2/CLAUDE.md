@@ -653,11 +653,8 @@ The backend is organized into service classes for better maintainability:
 - **AlertEvaluatorService** (`services/alert_evaluator.py`): Evaluates delay/cancellation conditions for route alert push notifications
 - **AlertsAPI** (`api/alerts.py`): Device registration and alert subscription management endpoints
 
-#### Developer Chat
-- **ChatAPI** (`api/chat.py`): Full CRUD + admin endpoints for user-developer messaging
-
 #### Infrastructure
-- **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities, Route Alerts, and Chat
+- **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities and Route Alerts
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues

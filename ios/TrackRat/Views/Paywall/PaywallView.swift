@@ -62,7 +62,7 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("The app is free to use with one train system and one route alert. Subscribing unlocks all seven systems and unlimited alerts \u{2014} and helps me keep the servers running.\n\nPro members also get access to the in-app chat to request features, flag issues, or brainstorm ways to make commutes better.")
+                        Text("The app is free to use with one train system and one route alert. Subscribing unlocks all seven systems and unlimited alerts \u{2014} and helps me keep the servers running.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
@@ -444,5 +444,5 @@ private struct PurchaseSuccessOverlay: View {
 }
 
 #Preview {
-    PaywallView(context: .developerChat)
+    PaywallView(context: .generic)
 }

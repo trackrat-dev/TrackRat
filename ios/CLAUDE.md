@@ -2,7 +2,7 @@
 
 ## Overview
 
-SwiftUI app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway trains. Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, developer chat, and Pro subscription.
+SwiftUI app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway trains. Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, and Pro subscription.
 
 - **iOS 18.0+** deployment target
 - **Xcode 15.0+** required
@@ -56,7 +56,6 @@ TrackRatTests/               # Unit tests
 | JourneyFeedbackService | Journey feedback |
 | TripRecordingService | Trip recording |
 | StaticTrackDistributionService | Static track distribution data |
-| ChatService | Developer chat messaging |
 | ThemeManager | Theme management |
 
 ## API Endpoints
@@ -72,8 +71,6 @@ Key endpoints:
 - `POST /v2/live-activities/register` - Register Live Activity
 - `POST /v2/devices/register` - Register APNS device for route alerts
 - `PUT /v2/alerts/subscriptions` - Sync route alert subscriptions
-- `GET /v2/chat/messages` - Chat message history
-- `POST /v2/chat/messages` - Send chat message
 
 ## Development Commands
 

@@ -47,8 +47,6 @@ services:
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-prod}
       APNS_AUTH_KEY_PATH: ${APNS_AUTH_KEY_PATH:-}
-      # Developer Chat
-      TRACKRAT_CHAT_ADMIN_REGISTRATION_CODE: ${TRACKRAT_CHAT_ADMIN_REGISTRATION_CODE:-}
     volumes:
       - ${DATA_DIR:-./}/compose/apns_auth_key.p8:/app/certs/apns_auth_key.p8:ro
     ports:

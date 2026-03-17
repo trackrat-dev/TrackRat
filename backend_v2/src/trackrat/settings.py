@@ -117,12 +117,6 @@ class Settings(BaseSettings):
         default=True,
         description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
     )
-    # Developer Chat
-    chat_admin_registration_code: str = Field(
-        default="",
-        description="Secret code for registering admin devices for developer chat",
-    )
-
     # Monitoring
     enable_metrics: bool = Field(default=True, description="Enable Prometheus metrics")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
