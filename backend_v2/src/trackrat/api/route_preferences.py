@@ -7,6 +7,7 @@ so the Route Status view remembers which transit systems are enabled.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -83,27 +84,21 @@ async def upsert_route_preference(
     if not existing_device.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Device not registered")
 
-    # Upsert
-    result = await db.execute(
-        select(RoutePreference).where(
-            RoutePreference.device_id == request.device_id,
-            RoutePreference.from_station_code == request.from_station_code,
-            RoutePreference.to_station_code == request.to_station_code,
-        )
-    )
-    pref = result.scalar_one_or_none()
-
-    if pref:
-        pref.enabled_systems = request.enabled_systems
-    else:
-        pref = RoutePreference(
+    # Atomic upsert via ON CONFLICT DO UPDATE
+    stmt = (
+        pg_insert(RoutePreference)
+        .values(
             device_id=request.device_id,
             from_station_code=request.from_station_code,
             to_station_code=request.to_station_code,
             enabled_systems=request.enabled_systems,
         )
-        db.add(pref)
-
+        .on_conflict_do_update(
+            constraint="uq_route_pref_device_stations",
+            set_={"enabled_systems": request.enabled_systems},
+        )
+    )
+    await db.execute(stmt)
     await db.commit()
 
     logger.info(
