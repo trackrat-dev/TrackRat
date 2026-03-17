@@ -286,11 +286,6 @@ final class StorageService {
             stations.append(FavoriteStation(code: workCode, name: workName))
         }
         
-        // If no stations at all (no stored favorites and no home/work), return NYC as default
-        if stations.isEmpty {
-            stations = [FavoriteStation(code: "NY", name: "New York Penn Station")]
-        }
-        
         return stations.sorted { $0.lastUsed > $1.lastUsed }
     }
     
@@ -341,30 +336,6 @@ final class StorageService {
         userDefaults.set(environment.rawValue, forKey: serverEnvironmentKey)
     }
     
-    // MARK: - Migration
-    func migrateRecentDestinations() {
-        // Get existing destinations from UserDefaults directly (since we removed the method)
-        let existingDestinations = userDefaults.stringArray(forKey: "trackrat.recentDestinations") ?? []
-
-        if !existingDestinations.isEmpty && loadRecentTrips().isEmpty {
-            // Create trip pairs with NY Penn as default departure
-            for destination in existingDestinations {
-                if let destCode = Stations.getStationCode(destination) {
-                    saveTrip(
-                        departureCode: "NY",
-                        departureName: Stations.displayName(for: "New York Penn Station"),
-                        destinationCode: destCode,
-                        destinationName: destination
-                    )
-                }
-            }
-
-            // Clean up old keys after migration
-            userDefaults.removeObject(forKey: "trackrat.recentDestinations")
-            userDefaults.removeObject(forKey: "trackrat.recentDepartures")
-        }
-    }
-
     // MARK: - Completed Trips (Trip History)
 
     func saveCompletedTrip(_ trip: CompletedTrip) {
