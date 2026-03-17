@@ -1,14 +1,19 @@
 """
-MTA service alerts collector.
+Service alerts collector.
 
-Fetches GTFS-RT service alert feeds for subway, LIRR, and Metro-North,
-and upserts them into the service_alerts table. Supports three alert types:
+Fetches service alerts from multiple sources:
+- MTA (SUBWAY, LIRR, MNR): GTFS-RT service alert feeds
+- NJT: NJ Transit getStationMSG API
+
+Upserts into the service_alerts table. Supports alert types:
 - planned_work: scheduled track work, reroutes, suspensions
 - alert: real-time delays, incidents
 - elevator: elevator/escalator outages
 """
 
+import hashlib
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -17,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trackrat.collectors.njt.client import NJTransitClient, NJTransitAPIError
 from trackrat.config.stations import (
     LIRR_ALERTS_FEED_URL,
     MNR_ALERTS_FEED_URL,
@@ -32,6 +38,30 @@ MTA_ALERT_FEEDS: dict[str, str] = {
     "SUBWAY": SUBWAY_ALERTS_FEED_URL,
     "LIRR": LIRR_ALERTS_FEED_URL,
     "MNR": MNR_ALERTS_FEED_URL,
+}
+
+# NJT MSG_LINE_SCOPE name -> internal line code(s)
+# The API returns names like "*Northeast Corridor Line" in MSG_LINE_SCOPE.
+# Multiple lines are space-delimited with * prefix: "*Main Line *Bergen County Line"
+NJT_LINE_SCOPE_TO_CODES: dict[str, list[str]] = {
+    "Northeast Corridor Line": ["NE"],
+    "Northeast Corrior Line": ["NE"],  # Known typo in NJT API
+    "Northeast Corridor": ["NE"],
+    "North Jersey Coast Line": ["NC"],
+    "ME Line": ["ME", "GL"],  # Morris & Essex covers Morristown + Gladstone
+    "Morris & Essex Line": ["ME", "GL"],
+    "Morris and Essex Line": ["ME", "GL"],
+    "Morristown Line": ["ME"],
+    "Gladstone Branch": ["GL"],
+    "Raritan Valley Line": ["RV"],
+    "Montclair-Boonton Line": ["MO"],
+    "Main Line": ["MA"],
+    "Bergen County Line": ["BE"],
+    "Port Jervis Line": ["PJ"],
+    "Pascack Valley Line": ["PV"],
+    "Atlantic City Line": ["AC"],
+    "Atlantic City Rail Line": ["AC"],
+    "Princeton Branch": ["PR"],
 }
 
 
@@ -159,6 +189,144 @@ async def fetch_and_parse_alerts(
     return alerts
 
 
+def parse_njt_line_scope(line_scope: str) -> list[str]:
+    """Parse NJT MSG_LINE_SCOPE into internal line codes.
+
+    The API uses '*'-prefixed names, space-delimited for multiple lines:
+    - Single: "*North Jersey Coast Line"
+    - Multiple: "*Main Line *Bergen County Line"
+    - None: " " (single space)
+
+    Returns:
+        List of internal line codes (e.g., ["NE", "NC"]).
+    """
+    if not line_scope or line_scope.strip() == "":
+        return []
+
+    # Split on '*' to get individual line names
+    codes: list[str] = []
+    for part in line_scope.split("*"):
+        name = part.strip()
+        if not name:
+            continue
+        mapped = NJT_LINE_SCOPE_TO_CODES.get(name)
+        if mapped:
+            for code in mapped:
+                if code not in codes:
+                    codes.append(code)
+        else:
+            logger.warning("NJT unknown line scope: %s", name)
+    return codes
+
+
+def parse_njt_station_scope(station_scope: str) -> list[str]:
+    """Parse NJT MSG_STATION_SCOPE into station display names.
+
+    The API returns comma-separated station names with '*' prefixes,
+    e.g. "*Newark Penn Station,*Metropark". A single space " " means
+    no station scope.
+
+    Returns:
+        List of station display names (e.g., ["Newark Penn Station", "Metropark"]).
+    """
+    if not station_scope or station_scope.strip() == "":
+        return []
+
+    names: list[str] = []
+    for part in station_scope.split(","):
+        name = part.strip().lstrip("*").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def parse_njt_message(msg: dict[str, Any]) -> ParsedAlert | None:
+    """Parse a single NJT getStationMSG response into a ParsedAlert.
+
+    Args:
+        msg: A single message dict from the getStationMSG API.
+
+    Returns:
+        ParsedAlert or None if the message has no useful text.
+    """
+    text = (msg.get("MSG_TEXT") or "").strip()
+    if not text:
+        return None
+
+    # Build a stable alert_id from MSG_ID if present, otherwise hash the text
+    msg_id = (msg.get("MSG_ID") or "").strip()
+    if msg_id:
+        alert_id = f"njt-rss-{msg_id}"
+    else:
+        # For non-RSS messages without MSG_ID, use a hash of the text
+        text_hash = hashlib.md5(text.encode()).hexdigest()[:12]
+        alert_id = f"njt-msg-{text_hash}"
+
+    # Classify: RSS source = real-time delay alerts, others = general advisories
+    source = (msg.get("MSG_SOURCE") or "").strip()
+    if source == "RSS_NJTRailAlerts":
+        alert_type = "alert"
+    else:
+        alert_type = "planned_work"
+
+    # Extract affected route IDs from line scope
+    line_scope = msg.get("MSG_LINE_SCOPE") or ""
+    affected_route_ids = parse_njt_line_scope(line_scope)
+
+    # If no line scope, try to include station names in description for context
+    station_scope = msg.get("MSG_STATION_SCOPE") or ""
+    station_names = parse_njt_station_scope(station_scope)
+
+    # Build description with station context if available
+    description = None
+    if station_names:
+        description = f"Stations: {', '.join(station_names)}"
+
+    # Parse publication time as active period
+    active_periods: list[dict[str, int | None]] = []
+    pub_utc = (msg.get("MSG_PUBDATE_UTC") or "").strip()
+    if pub_utc:
+        try:
+            # Format: "12/21/2023 4:13:00 PM"
+            dt = datetime.strptime(pub_utc, "%m/%d/%Y %I:%M:%S %p")
+            dt = dt.replace(tzinfo=timezone.utc)
+            epoch = int(dt.timestamp())
+            active_periods.append({"start": epoch, "end": None})
+        except ValueError:
+            logger.debug("NJT msg unparseable date: %s", pub_utc)
+
+    return ParsedAlert(
+        alert_id=alert_id,
+        alert_type=alert_type,
+        affected_route_ids=affected_route_ids,
+        header_text=text,
+        description_text=description,
+        active_periods=active_periods,
+    )
+
+
+async def fetch_and_parse_njt_alerts() -> list[ParsedAlert]:
+    """Fetch NJT service messages and parse into ParsedAlert objects.
+
+    Calls getStationMSG with no filters to get all active messages.
+    """
+    async with NJTransitClient() as client:
+        messages = await client.get_station_messages()
+
+    alerts: list[ParsedAlert] = []
+    for msg in messages:
+        parsed = parse_njt_message(msg)
+        if parsed:
+            alerts.append(parsed)
+
+    logger.info(
+        "Parsed %d NJT service alerts from %d messages",
+        len(alerts),
+        len(messages),
+    )
+    return alerts
+
+
 async def upsert_service_alerts(
     session: AsyncSession, alerts: list[ParsedAlert], data_source: str
 ) -> dict[str, int]:
@@ -236,14 +404,15 @@ async def upsert_service_alerts(
 
 
 async def collect_service_alerts() -> dict[str, Any]:
-    """Collect service alerts from all MTA feeds.
+    """Collect service alerts from all feeds (MTA + NJT).
 
     This is the main entry point called by the scheduler.
-    Fetches all three feeds, upserts alerts, and returns stats.
+    Fetches all feeds, upserts alerts, and returns stats.
     """
     all_stats: dict[str, Any] = {}
 
     async with get_session() as session:
+        # MTA feeds (GTFS-RT)
         for data_source, feed_url in MTA_ALERT_FEEDS.items():
             try:
                 alerts = await fetch_and_parse_alerts(feed_url, data_source)
@@ -271,6 +440,27 @@ async def collect_service_alerts() -> dict[str, Any]:
                     exc_info=True,
                 )
                 all_stats[data_source] = {"error": str(e)}
+
+        # NJT feed (getStationMSG API)
+        try:
+            njt_alerts = await fetch_and_parse_njt_alerts()
+            async with session.begin_nested():
+                stats = await upsert_service_alerts(session, njt_alerts, "NJT")
+            all_stats["NJT"] = {
+                "total_parsed": len(njt_alerts),
+                **stats,
+            }
+            logger.info("Service alerts collected for NJT: %s", stats)
+        except NJTransitAPIError as e:
+            logger.warning("Failed to fetch NJT service alerts: %s", e)
+            all_stats["NJT"] = {"error": str(e)}
+        except Exception as e:
+            logger.error(
+                "Error collecting NJT service alerts: %s",
+                e,
+                exc_info=True,
+            )
+            all_stats["NJT"] = {"error": str(e)}
 
         await session.commit()
 

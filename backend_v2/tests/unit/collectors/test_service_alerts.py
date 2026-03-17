@@ -1,5 +1,5 @@
 """
-Tests for MTA service alerts collector.
+Tests for service alerts collector (MTA + NJT).
 
 Tests parsing logic, alert type classification, and database upsert.
 Uses real PostgreSQL via db_session fixture.
@@ -16,6 +16,9 @@ from trackrat.collectors.service_alerts import (
     classify_alert_type,
     extract_english_text,
     parse_alert_entity,
+    parse_njt_line_scope,
+    parse_njt_message,
+    parse_njt_station_scope,
     upsert_service_alerts,
 )
 from trackrat.models.database import ServiceAlert
@@ -341,3 +344,333 @@ class TestUpsertServiceAlerts:
         )
         lirr_row = result.scalar_one()
         assert lirr_row.alert_id == "lmm:planned_work:41"
+
+
+class TestParseNjtLineScope:
+    """Tests for parse_njt_line_scope() NJT line name -> code mapping."""
+
+    def test_single_line(self):
+        """Single line scope maps to correct code."""
+        assert parse_njt_line_scope("*North Jersey Coast Line") == ["NC"]
+
+    def test_me_line_maps_to_morristown_and_gladstone(self):
+        """ME Line maps to both ME and GL codes."""
+        assert parse_njt_line_scope("*ME Line") == ["ME", "GL"]
+
+    def test_multiple_lines_space_separated(self):
+        """Multiple lines are space-delimited with * prefix."""
+        result = parse_njt_line_scope("*Main Line *Bergen County Line")
+        assert result == ["MA", "BE"]
+
+    def test_empty_scope(self):
+        """Single space means no line scope."""
+        assert parse_njt_line_scope(" ") == []
+
+    def test_empty_string(self):
+        """Empty string returns empty list."""
+        assert parse_njt_line_scope("") == []
+
+    def test_none(self):
+        """None returns empty list."""
+        assert parse_njt_line_scope(None) == []  # type: ignore[arg-type]
+
+    def test_all_known_lines(self):
+        """All NJT lines that appear in the API are mapped."""
+        known_scopes = [
+            ("*Northeast Corridor Line", ["NE"]),
+            ("*North Jersey Coast Line", ["NC"]),
+            ("*ME Line", ["ME", "GL"]),
+            ("*Raritan Valley Line", ["RV"]),
+            ("*Montclair-Boonton Line", ["MO"]),
+            ("*Main Line", ["MA"]),
+            ("*Bergen County Line", ["BE"]),
+            ("*Port Jervis Line", ["PJ"]),
+            ("*Pascack Valley Line", ["PV"]),
+            ("*Atlantic City Line", ["AC"]),
+            ("*Princeton Branch", ["PR"]),
+            ("*Gladstone Branch", ["GL"]),
+        ]
+        for scope, expected in known_scopes:
+            result = parse_njt_line_scope(scope)
+            assert result == expected, f"Failed for {scope}: got {result}, expected {expected}"
+
+    def test_deduplicates_codes(self):
+        """Duplicate codes are not repeated."""
+        # If API ever returns "*ME Line *Morris & Essex Line", ME shouldn't appear twice
+        result = parse_njt_line_scope("*ME Line *Morris & Essex Line")
+        assert result.count("ME") == 1
+        assert result.count("GL") == 1
+
+
+class TestParseNjtStationScope:
+    """Tests for parse_njt_station_scope() station name extraction."""
+
+    def test_single_station(self):
+        """Single station is extracted."""
+        assert parse_njt_station_scope("*Newark Penn Station") == ["Newark Penn Station"]
+
+    def test_multiple_stations(self):
+        """Comma-separated stations are extracted."""
+        result = parse_njt_station_scope(
+            "*Newark Penn Station,*Metropark,*Newark Airport"
+        )
+        assert result == ["Newark Penn Station", "Metropark", "Newark Airport"]
+
+    def test_empty_scope(self):
+        """Single space means no station scope."""
+        assert parse_njt_station_scope(" ") == []
+
+    def test_deduplicates(self):
+        """Duplicate station names are not repeated."""
+        result = parse_njt_station_scope("*Newark Penn Station,*Newark Penn Station")
+        assert result == ["Newark Penn Station"]
+
+
+class TestParseNjtMessage:
+    """Tests for parse_njt_message() — full NJT message parsing."""
+
+    def _make_rss_message(
+        self,
+        msg_id: str = "2072532",
+        text: str = "NEC train #3837 is up to 15 min. late.",
+        line_scope: str = "*Northeast Corridor Line",
+        station_scope: str = " ",
+        pub_utc: str = "3/17/2026 12:58:38 AM",
+    ) -> dict:
+        """Build an RSS-sourced NJT message dict (real-time delay alert)."""
+        return {
+            "MSG_TYPE": "banner",
+            "MSG_TEXT": text,
+            "MSG_PUBDATE": "3/16/2026 8:58:38 PM",
+            "MSG_ID": msg_id,
+            "MSG_AGENCY": "NJT",
+            "MSG_SOURCE": "RSS_NJTRailAlerts",
+            "MSG_STATION_SCOPE": station_scope,
+            "MSG_LINE_SCOPE": line_scope,
+            "MSG_PUBDATE_UTC": pub_utc,
+        }
+
+    def _make_system_message(
+        self,
+        text: str = "Service suspended between A and B.",
+        station_scope: str = "*Newark Penn Station",
+        line_scope: str = " ",
+        pub_utc: str = "3/17/2026 1:00:00 AM",
+    ) -> dict:
+        """Build a non-RSS NJT message dict (system/manual advisory)."""
+        return {
+            "MSG_TYPE": "banner",
+            "MSG_TEXT": text,
+            "MSG_PUBDATE": "3/16/2026 9:00:00 PM",
+            "MSG_ID": "",
+            "MSG_AGENCY": "NJT",
+            "MSG_SOURCE": "",
+            "MSG_STATION_SCOPE": station_scope,
+            "MSG_LINE_SCOPE": line_scope,
+            "MSG_PUBDATE_UTC": pub_utc,
+        }
+
+    def test_rss_alert_parses_correctly(self):
+        """RSS-sourced messages become 'alert' type with line codes."""
+        msg = self._make_rss_message()
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.alert_id == "njt-rss-2072532"
+        assert result.alert_type == "alert"
+        assert result.affected_route_ids == ["NE"]
+        assert "train #3837" in result.header_text
+        assert result.description_text is None  # No station scope
+
+    def test_system_message_parses_correctly(self):
+        """Non-RSS messages become 'planned_work' with station description."""
+        msg = self._make_system_message()
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.alert_id.startswith("njt-msg-")
+        assert result.alert_type == "planned_work"
+        assert result.affected_route_ids == []  # No line scope
+        assert result.description_text == "Stations: Newark Penn Station"
+
+    def test_multi_line_scope(self):
+        """Messages with multiple lines map to all codes."""
+        msg = self._make_rss_message(
+            msg_id="999",
+            line_scope="*Main Line *Bergen County Line",
+        )
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.affected_route_ids == ["MA", "BE"]
+
+    def test_empty_text_skipped(self):
+        """Messages with empty text are skipped."""
+        msg = self._make_rss_message(text="")
+        assert parse_njt_message(msg) is None
+
+    def test_whitespace_text_skipped(self):
+        """Messages with whitespace-only text are skipped."""
+        msg = self._make_rss_message(text="   ")
+        assert parse_njt_message(msg) is None
+
+    def test_pub_date_utc_parsed(self):
+        """Publication date is parsed into active_periods epoch."""
+        msg = self._make_rss_message(pub_utc="12/21/2023 4:13:00 PM")
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert len(result.active_periods) == 1
+        assert result.active_periods[0]["start"] == 1703175180
+        assert result.active_periods[0]["end"] is None
+
+    def test_invalid_date_handled(self):
+        """Invalid date format doesn't crash, just skips active period."""
+        msg = self._make_rss_message(pub_utc="not-a-date")
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.active_periods == []
+
+    def test_missing_msg_id_uses_hash(self):
+        """Messages without MSG_ID get a hash-based alert_id."""
+        msg = self._make_system_message(text="Test advisory message")
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.alert_id.startswith("njt-msg-")
+        assert len(result.alert_id) == len("njt-msg-") + 12  # 12-char hex hash
+
+    def test_same_text_same_hash(self):
+        """Same message text produces the same alert_id (idempotent)."""
+        msg1 = self._make_system_message(text="Identical message")
+        msg2 = self._make_system_message(text="Identical message")
+        r1 = parse_njt_message(msg1)
+        r2 = parse_njt_message(msg2)
+
+        assert r1 is not None and r2 is not None
+        assert r1.alert_id == r2.alert_id
+
+    def test_different_text_different_hash(self):
+        """Different message text produces different alert_ids."""
+        msg1 = self._make_system_message(text="Message A")
+        msg2 = self._make_system_message(text="Message B")
+        r1 = parse_njt_message(msg1)
+        r2 = parse_njt_message(msg2)
+
+        assert r1 is not None and r2 is not None
+        assert r1.alert_id != r2.alert_id
+
+    def test_station_scope_in_description(self):
+        """Station scope names appear in description."""
+        msg = self._make_system_message(
+            station_scope="*Brick Church,*Chatham,*Summit"
+        )
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.description_text == "Stations: Brick Church, Chatham, Summit"
+
+    def test_real_me_line_alert(self):
+        """Parse a real ME Line alert from production API."""
+        msg = {
+            "MSG_TYPE": "banner",
+            "MSG_TEXT": "Morris and Essex and Gladstone Branch rail service "
+            "is suspended in both directions between South Orange "
+            "and Millburn due to fire department activity near Maplewood.",
+            "MSG_PUBDATE": "3/16/2026 8:58:38 PM",
+            "MSG_ID": "2072532",
+            "MSG_AGENCY": "NJT",
+            "MSG_SOURCE": "RSS_NJTRailAlerts",
+            "MSG_STATION_SCOPE": " ",
+            "MSG_LINE_SCOPE": "*ME Line",
+            "MSG_PUBDATE_UTC": "3/17/2026 12:58:38 AM",
+        }
+        result = parse_njt_message(msg)
+
+        assert result is not None
+        assert result.alert_id == "njt-rss-2072532"
+        assert result.alert_type == "alert"
+        assert result.affected_route_ids == ["ME", "GL"]
+        assert "suspended" in result.header_text
+        assert "Maplewood" in result.header_text
+
+
+@pytest.mark.asyncio
+class TestNjtUpsertServiceAlerts:
+    """Tests for upserting NJT alerts into the database."""
+
+    async def test_njt_alerts_upsert(self, db_session: AsyncSession):
+        """NJT alerts are inserted with data_source='NJT'."""
+        alerts = [
+            ParsedAlert(
+                alert_id="njt-rss-100",
+                alert_type="alert",
+                affected_route_ids=["NE"],
+                header_text="NEC delay alert",
+                description_text=None,
+                active_periods=[{"start": 1710100000, "end": None}],
+            ),
+            ParsedAlert(
+                alert_id="njt-msg-abc123",
+                alert_type="planned_work",
+                affected_route_ids=[],
+                header_text="System advisory",
+                description_text="Stations: Newark Penn Station",
+                active_periods=[{"start": 1710100000, "end": None}],
+            ),
+        ]
+        stats = await upsert_service_alerts(db_session, alerts, "NJT")
+        await db_session.flush()
+
+        assert stats["inserted"] == 2
+
+        result = await db_session.execute(
+            select(ServiceAlert).where(ServiceAlert.data_source == "NJT")
+        )
+        rows = result.scalars().all()
+        assert len(rows) == 2
+        assert all(r.is_active for r in rows)
+
+        # Verify alert types
+        by_id = {r.alert_id: r for r in rows}
+        assert by_id["njt-rss-100"].alert_type == "alert"
+        assert by_id["njt-msg-abc123"].alert_type == "planned_work"
+
+    async def test_njt_isolation_from_mta(self, db_session: AsyncSession):
+        """NJT alerts don't interfere with MTA alerts."""
+        njt_alert = ParsedAlert(
+            alert_id="njt-rss-200",
+            alert_type="alert",
+            affected_route_ids=["NC"],
+            header_text="NJCL delay",
+            description_text=None,
+            active_periods=[],
+        )
+        mta_alert = ParsedAlert(
+            alert_id="lmm:alert:300",
+            alert_type="alert",
+            affected_route_ids=["G"],
+            header_text="G train delays",
+            description_text=None,
+            active_periods=[],
+        )
+
+        await upsert_service_alerts(db_session, [njt_alert], "NJT")
+        await upsert_service_alerts(db_session, [mta_alert], "SUBWAY")
+        await db_session.flush()
+
+        # Deactivate all NJT alerts
+        stats = await upsert_service_alerts(db_session, [], "NJT")
+        await db_session.flush()
+
+        assert stats["deactivated"] == 1
+
+        # SUBWAY alert untouched
+        result = await db_session.execute(
+            select(ServiceAlert).where(
+                ServiceAlert.data_source == "SUBWAY",
+                ServiceAlert.is_active.is_(True),
+            )
+        )
+        assert result.scalar_one().alert_id == "lmm:alert:300"
