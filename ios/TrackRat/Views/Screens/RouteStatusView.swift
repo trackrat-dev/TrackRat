@@ -464,6 +464,7 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private var historySections: some View {
+        if !viewModel.historyBySystem.isEmpty {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Route Performance")
@@ -531,6 +532,7 @@ struct RouteStatusView: View {
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
     }
 
     @ViewBuilder
@@ -929,6 +931,9 @@ final class RouteStatusViewModel: ObservableObject {
     /// Whether filter discovery is complete
     @Published var filterLoaded = false
 
+    /// Debounced save task — cancelled and re-scheduled on each toggle
+    private var saveTask: Task<Void, Never>?
+
     /// Whether there's anything to filter (multiple systems or multiple lines)
     var showRouteSettings: Bool {
         guard filterLoaded else { return false }
@@ -966,7 +971,12 @@ final class RouteStatusViewModel: ObservableObject {
     func loadData() async {
         // Discover available systems first, then load data in parallel
         await discoverSystems()
+        await reloadFilteredData()
+    }
 
+    /// Reload all data sections using current filter state.
+    /// Called on initial load and after filter changes.
+    private func reloadFilteredData() async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadCongestionMap() }
             group.addTask { await self.loadAllHistory() }
@@ -1072,7 +1082,7 @@ final class RouteStatusViewModel: ObservableObject {
         }
     }
 
-    /// Toggle a line on/off and save to backend
+    /// Toggle a line on/off, debounce save, and reload data
     func toggleLine(_ lineId: String) {
         // If currently "all enabled" (empty set), populate with all discovered lines first
         if enabledLineIds.isEmpty {
@@ -1094,10 +1104,10 @@ final class RouteStatusViewModel: ObservableObject {
             enabledLineIds = []
         }
 
-        Task { await savePreference() }
+        debounceSaveAndReload()
     }
 
-    /// Toggle all lines for a system on/off and save to backend
+    /// Toggle all lines for a system on/off, debounce save, and reload data
     func toggleSystem(_ system: TrainSystem) {
         guard let systemInfo = discoveredSystems.first(where: { $0.system == system }) else { return }
         let systemLineIds = Set(systemInfo.lines.map(\.id))
@@ -1124,7 +1134,18 @@ final class RouteStatusViewModel: ObservableObject {
             enabledLineIds = []
         }
 
-        Task { await savePreference() }
+        debounceSaveAndReload()
+    }
+
+    /// Debounce: cancel any pending save, wait 500ms, then save + reload data
+    private func debounceSaveAndReload() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            await savePreference()
+            await reloadFilteredData()
+        }
     }
 
     private func savePreference() async {
@@ -1201,28 +1222,6 @@ final class RouteStatusViewModel: ObservableObject {
             }
         }
 
-        if allSegments.isEmpty && systemsToFetch.count == 1 {
-            // Try primary system as fallback
-            do {
-                let response = try await APIService.shared.fetchCongestionData(
-                    timeWindowHours: 1,
-                    maxPerSegment: 100,
-                    dataSource: context.dataSource
-                )
-                if routeStationCodes.isEmpty {
-                    allSegments = response.aggregatedSegments
-                } else {
-                    allSegments = response.aggregatedSegments.filter { segment in
-                        routeStationCodes.contains(segment.fromStation.uppercased()) &&
-                        routeStationCodes.contains(segment.toStation.uppercased())
-                    }
-                }
-            } catch {
-                mapError = error.localizedDescription
-                return
-            }
-        }
-
         filteredSegments = allSegments
         buildStationsFromSegments()
         setMapRegion()
@@ -1278,23 +1277,29 @@ final class RouteStatusViewModel: ObservableObject {
             ? Set([context.dataSource])
             : enabledSystems
 
+        let relevantRouteIds = context.gtfsRouteIds
         var allAlerts: [V2ServiceAlert] = []
 
-        for system in systemsToFetch {
-            guard Self.serviceAlertSystems.contains(system) else { continue }
-            do {
-                let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: system)
-                let relevantRouteIds = context.gtfsRouteIds
-                if relevantRouteIds.isEmpty {
-                    allAlerts.append(contentsOf: alerts)
-                } else {
-                    let filtered = alerts.filter { alert in
-                        !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
+        await withTaskGroup(of: [V2ServiceAlert].self) { group in
+            for system in systemsToFetch {
+                guard Self.serviceAlertSystems.contains(system) else { continue }
+                group.addTask {
+                    do {
+                        let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: system)
+                        if relevantRouteIds.isEmpty {
+                            return alerts
+                        } else {
+                            return alerts.filter { alert in
+                                !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
+                            }
+                        }
+                    } catch {
+                        return []
                     }
-                    allAlerts.append(contentsOf: filtered)
                 }
-            } catch {
-                print("⚠️ Failed to load service alerts for \(system): \(error.localizedDescription)")
+            }
+            for await alerts in group {
+                allAlerts.append(contentsOf: alerts)
             }
         }
 
