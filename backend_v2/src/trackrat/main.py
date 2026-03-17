@@ -20,7 +20,6 @@ from structlog import get_logger
 from trackrat.api import (
     admin,
     alerts,
-    chat,
     feedback,
     health,
     live_activities,
@@ -86,7 +85,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         apns_base_url=apns_service.base_url,
     )
 
-    # Store APNS service on app state for use by chat router
+    # Store APNS service on app state for use by other routers
     app.state.apns_service = apns_service
 
     # Start scheduler with APNS service
@@ -219,7 +218,6 @@ async def request_stats_middleware(
 # Include routers
 app.include_router(admin.router, include_in_schema=False)
 app.include_router(alerts.router, include_in_schema=False)
-app.include_router(chat.router, include_in_schema=False)
 app.include_router(feedback.router, include_in_schema=False)
 app.include_router(health.router, include_in_schema=False)
 app.include_router(live_activities.router, include_in_schema=False)

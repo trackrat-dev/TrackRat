@@ -1178,7 +1178,6 @@ enum APIError: LocalizedError {
     case invalidParameters
     case encodingError
     case serverError
-    case chatNotRegistered
 
     var errorDescription: String? {
         switch self {
@@ -1188,7 +1187,6 @@ enum APIError: LocalizedError {
         case .invalidParameters: return "Invalid parameters provided"
         case .encodingError: return "Failed to encode request body"
         case .serverError: return "Server error"
-        case .chatNotRegistered: return "Enable notifications to use chat"
         }
     }
 }
@@ -1271,10 +1269,9 @@ extension PlatformPrediction {
 extension APIService {
     struct DeviceRegisterResponse: Decodable {
         let status: String
-        let chat_token: String?
     }
 
-    func registerDevice(deviceId: String, apnsToken: String, forceChatToken: Bool = false) async throws -> DeviceRegisterResponse {
+    func registerDevice(deviceId: String, apnsToken: String) async throws -> DeviceRegisterResponse {
         let endpoint = "/v2/devices/register"
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError.invalidURL
@@ -1283,10 +1280,9 @@ extension APIService {
         struct RegisterRequest: Encodable {
             let device_id: String
             let apns_token: String
-            let force_chat_token: Bool
         }
 
-        let body = RegisterRequest(device_id: deviceId, apns_token: apnsToken, force_chat_token: forceChatToken)
+        let body = RegisterRequest(device_id: deviceId, apns_token: apnsToken)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -1370,187 +1366,4 @@ extension APIService {
         }
     }
 
-    // MARK: - Developer Chat
-
-    struct ChatMessageResponse: Decodable {
-        let id: Int
-        let sender_role: String
-        let message: String
-        let read_at: String?
-        let created_at: String
-    }
-
-    struct ChatMessagesResponse: Decodable {
-        let messages: [ChatMessageResponse]
-        let has_more: Bool
-    }
-
-    struct SendChatMessageResponse: Decodable {
-        let id: Int
-        let created_at: String
-    }
-
-    struct ChatUnreadCountResponse: Decodable {
-        let unread_count: Int
-    }
-
-    struct MarkReadResponse: Decodable {
-        let marked_count: Int
-    }
-
-    struct ChatConversationResponse: Decodable {
-        let device_id: String
-        let last_message: String
-        let last_message_at: String
-        let last_sender_role: String
-        let unread_count: Int
-    }
-
-    struct ChatConversationsResponse: Decodable {
-        let conversations: [ChatConversationResponse]
-    }
-
-    struct AdminRegisterResponse: Decodable {
-        let status: String
-    }
-
-    private func checkChatResponse(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse, http.statusCode != 200 else { return }
-        switch http.statusCode {
-        case 401: throw APIError.chatNotRegistered
-        case 404: throw APIError.chatNotRegistered
-        case 429: throw APIError.invalidParameters
-        default: throw APIError.serverError
-        }
-    }
-
-    func getChatMessages(deviceId: String, before: Int? = nil, limit: Int = 50) async throws -> ChatMessagesResponse {
-        guard var components = URLComponents(string: "\(baseURL)/v2/chat/messages") else {
-            throw APIError.invalidURL
-        }
-        var items = [URLQueryItem(name: "limit", value: String(limit))]
-        if let before { items.append(URLQueryItem(name: "before", value: String(before))) }
-        components.queryItems = items
-        guard let url = components.url else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
-        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
-        if let token = AlertSubscriptionService.shared.chatToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        let (data, response) = try await session.data(for: request)
-        try checkChatResponse(response)
-        return try JSONDecoder().decode(ChatMessagesResponse.self, from: data)
-    }
-
-    func sendChatMessage(deviceId: String, message: String) async throws -> SendChatMessageResponse {
-        guard let url = URL(string: "\(baseURL)/v2/chat/messages") else { throw APIError.invalidURL }
-        struct Req: Encodable { let device_id: String; let message: String }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = AlertSubscriptionService.shared.chatToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, message: message))
-        let (data, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw APIError.invalidParameters
-        }
-        return try JSONDecoder().decode(SendChatMessageResponse.self, from: data)
-    }
-
-    func getChatUnreadCount(deviceId: String) async throws -> Int {
-        guard let url = URL(string: "\(baseURL)/v2/chat/unread-count") else {
-            throw APIError.invalidURL
-        }
-        var request = URLRequest(url: url)
-        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
-        if let token = AlertSubscriptionService.shared.chatToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        let (data, response) = try await session.data(for: request)
-        try checkChatResponse(response)
-        let resp = try JSONDecoder().decode(ChatUnreadCountResponse.self, from: data)
-        return resp.unread_count
-    }
-
-    func markChatMessagesRead(deviceId: String, upToId: Int) async throws {
-        guard let url = URL(string: "\(baseURL)/v2/chat/messages/read") else { throw APIError.invalidURL }
-        struct Req: Encodable { let device_id: String; let up_to_id: Int }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = AlertSubscriptionService.shared.chatToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, up_to_id: upToId))
-        let (_, response) = try await session.data(for: request)
-        try checkChatResponse(response)
-    }
-
-    func registerChatAdmin(deviceId: String, registrationCode: String) async throws {
-        guard let url = URL(string: "\(baseURL)/v2/chat/admin/register") else { throw APIError.invalidURL }
-        struct Req: Encodable { let device_id: String; let registration_code: String }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, registration_code: registrationCode))
-        let (_, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw http.statusCode == 503 ? APIError.serverError : APIError.invalidParameters
-        }
-    }
-
-    func getChatConversations(deviceId: String) async throws -> [ChatConversationResponse] {
-        guard let url = URL(string: "\(baseURL)/v2/chat/admin/conversations") else {
-            throw APIError.invalidURL
-        }
-        var request = URLRequest(url: url)
-        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
-        let (data, _) = try await session.data(for: request)
-        return try JSONDecoder().decode(ChatConversationsResponse.self, from: data).conversations
-    }
-
-    func getAdminChatMessages(deviceId: String, targetDeviceId: String, before: Int? = nil, limit: Int = 50) async throws -> ChatMessagesResponse {
-        guard var components = URLComponents(string: "\(baseURL)/v2/chat/admin/conversations/\(targetDeviceId)/messages") else {
-            throw APIError.invalidURL
-        }
-        var items = [URLQueryItem(name: "limit", value: String(limit))]
-        if let before { items.append(URLQueryItem(name: "before", value: String(before))) }
-        components.queryItems = items
-        guard let url = components.url else { throw APIError.invalidURL }
-        var request = URLRequest(url: url)
-        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
-        let (data, _) = try await session.data(for: request)
-        return try JSONDecoder().decode(ChatMessagesResponse.self, from: data)
-    }
-
-    func sendAdminChatMessage(deviceId: String, targetDeviceId: String, message: String) async throws -> SendChatMessageResponse {
-        guard let url = URL(string: "\(baseURL)/v2/chat/admin/conversations/\(targetDeviceId)/messages") else {
-            throw APIError.invalidURL
-        }
-        struct Req: Encodable { let device_id: String; let message: String }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Req(device_id: deviceId, message: message))
-        let (data, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw APIError.invalidParameters
-        }
-        return try JSONDecoder().decode(SendChatMessageResponse.self, from: data)
-    }
-
-    func markAdminChatMessagesRead(deviceId: String, targetDeviceId: String) async throws {
-        guard let url = URL(string: "\(baseURL)/v2/chat/admin/conversations/\(targetDeviceId)/read") else {
-            throw APIError.invalidURL
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
-        let (_, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-            throw APIError.invalidParameters
-        }
-    }
 }

@@ -99,18 +99,7 @@ This document contains detailed design specifications, screen documentation, and
 - System-appropriate metric selection
 - Recurring train alert configuration per train number
 
-### 13. **ChatView** (Developer Chat)
-- Two-party messaging between user and developer
-- Real-time message history with send/receive
-- Push notification integration for new messages
-- Unread message count badge
-
-### 14. **AdminChatListView** (Admin Chat Management)
-- Lists all user conversations for admin
-- Admin registration via secret code
-- Per-conversation message history and reply
-
-### 15. **AdvancedConfigurationView**
+### 13. **AdvancedConfigurationView**
 - Server environment selection (Production/Staging/Local)
 - Home/work station management
 - Favorite stations configuration
@@ -415,7 +404,6 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 12. **JourneyFeedbackService** - Triggers feedback prompts during active journeys
 13. **SubscriptionService** - Pro subscription management with StoreKit 2
 14. **AlertSubscriptionService** - Route alert subscription management and APNS registration
-15. **ChatService** - Developer chat messaging and admin functionality
 
 ### LiveActivityService
 - **Singleton Pattern**: Shared instance for app-wide access

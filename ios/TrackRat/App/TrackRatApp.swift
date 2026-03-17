@@ -39,13 +39,6 @@ struct TrackRatApp: App {
                     AppDelegate.pendingColdLaunchRouteStatus = nil
                     appState.pendingRouteStatus = pending
                 }
-                // Pick up any chat navigation from a cold-launch notification tap
-                if let pendingChat = AppDelegate.pendingColdLaunchChatNavigation {
-                    AppDelegate.pendingColdLaunchChatNavigation = nil
-                    appState.pendingChatNavigation = pendingChat
-                }
-                // Start polling for chat unread count
-                ChatService.shared.startUnreadPolling()
             }
             .onOpenURL { url in
                 print("🔗 App received URL: \(url)")
@@ -91,9 +84,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     /// Pending route status from notification tap during cold launch (before appState is set)
     @MainActor static var pendingColdLaunchRouteStatus: RouteStatusContext?
-
-    /// Pending chat navigation from notification tap during cold launch (before appState is set)
-    @MainActor static var pendingColdLaunchChatNavigation: ChatNavigationContext?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         // Set up notification delegate
@@ -181,18 +171,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                     appState.pendingRouteStatus = context
                 } else {
                     AppDelegate.pendingColdLaunchRouteStatus = context
-                }
-            }
-        } else if let type = userInfo["type"] as? String, type == "chat_message" {
-            // Chat push notification — navigate to chat and refresh unread count
-            let fromDeviceId = userInfo["from_device_id"] as? String
-            let chatContext = ChatNavigationContext(targetDeviceId: fromDeviceId ?? "")
-            Task { @MainActor in
-                await ChatService.shared.refreshUnreadCount()
-                if let appState = AppDelegate.appState {
-                    appState.pendingChatNavigation = chatContext
-                } else {
-                    AppDelegate.pendingColdLaunchChatNavigation = chatContext
                 }
             }
         }
@@ -731,19 +709,6 @@ struct RouteStatusContext: Identifiable, Equatable {
     }
 }
 
-// MARK: - Chat Navigation Context
-/// Wraps chat notification data for `.sheet(item:)` presentation
-struct ChatNavigationContext: Identifiable {
-    let id = UUID()
-    /// Empty string = user's own chat; non-empty = admin viewing a specific device's conversation
-    let targetDeviceId: String
-
-    /// Returns nil for user chat, or the device ID for admin mode
-    var adminTargetDeviceId: String? {
-        targetDeviceId.isEmpty ? nil : targetDeviceId
-    }
-}
-
 // MARK: - Map Display Mode
 enum MapDisplayMode: Equatable {
     case overallCongestion
@@ -776,9 +741,6 @@ final class AppState: ObservableObject {
 
     // Route status sheet - set by notification tap or route alert row tap
     @Published var pendingRouteStatus: RouteStatusContext? = nil
-
-    // Chat sheet - set by chat notification tap
-    @Published var pendingChatNavigation: ChatNavigationContext? = nil
 
     private let apiService = APIService()
     private let storageService = StorageService()

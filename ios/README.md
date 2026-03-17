@@ -129,8 +129,6 @@ TrackRat/
 │   │   ├── AdvancedConfigurationView.swift # Developer settings
 │   │   ├── RouteStatusView.swift        # Route alert performance
 │   │   ├── AddRouteAlertView.swift      # Add route alert
-│   │   ├── ChatView.swift              # Developer chat
-│   │   ├── AdminChatListView.swift     # Admin chat management
 │   │   └── TripHistoryView.swift        # Trip history
 │   │
 │   └── Components/              # Reusable UI components (20 files)

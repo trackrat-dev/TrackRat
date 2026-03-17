@@ -17,7 +17,6 @@ enum SubscriptionStatus: Equatable {
 // MARK: - Premium Feature
 
 enum PremiumFeature: String, CaseIterable {
-    case developerChat = "Chat with Developer"
     case multipleTrainSystems = "Multiple Train Systems"
     case unlimitedAlerts = "Unlimited Route Alerts"
 
@@ -25,7 +24,6 @@ enum PremiumFeature: String, CaseIterable {
 
     var iconName: String {
         switch self {
-        case .developerChat: return "bubble.left.and.bubble.right.fill"
         case .multipleTrainSystems: return "tram.fill"
         case .unlimitedAlerts: return "bell.badge.fill"
         }
@@ -35,7 +33,6 @@ enum PremiumFeature: String, CaseIterable {
 // MARK: - Paywall Context
 
 enum PaywallContext {
-    case developerChat
     case trainSystems
     case routeAlerts
     case generic

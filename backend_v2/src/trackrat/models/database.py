@@ -309,7 +309,6 @@ class DeviceToken(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     device_id = Column(String(64), unique=True, nullable=False)
     apns_token = Column(String, nullable=False)
-    chat_token_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -814,45 +813,3 @@ class GTFSCalendarDate(Base):
         ),
         Index("idx_gtfs_calendar_date_lookup", "data_source", "date"),
     )
-
-
-# =============================================================================
-# Developer Chat Tables
-# =============================================================================
-
-
-class ChatMessage(Base):
-    """Messages between users and the developer (admin)."""
-
-    __tablename__ = "chat_messages"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(
-        String(64),
-        ForeignKey("device_tokens.device_id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    sender_role = Column(String(5), nullable=False)  # "user" or "admin"
-    message = Column(String(255), nullable=False)
-    read_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    __table_args__ = (
-        CheckConstraint(
-            "sender_role IN ('user', 'admin')",
-            name="ck_chat_sender_role",
-        ),
-        Index("idx_chat_device_id", "device_id"),
-        Index("idx_chat_created_at", "device_id", "created_at"),
-        Index("idx_chat_unread", "device_id", "sender_role", "read_at"),
-    )
-
-
-class AdminDevice(Base):
-    """Devices registered as admin for developer chat."""
-
-    __tablename__ = "admin_devices"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    device_id = Column(String(64), unique=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())

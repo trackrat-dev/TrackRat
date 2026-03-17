@@ -74,7 +74,7 @@ struct UpgradePromptCard: View {
 
 #Preview("UpgradePromptCard") {
     UpgradePromptCard(
-        subtext: "Support continued development and unlock developer chat.",
+        subtext: "Support continued development and unlock premium features.",
         showingPaywall: .constant(false)
     )
     .padding()

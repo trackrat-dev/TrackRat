@@ -6,9 +6,6 @@ alert subscriptions for delay/cancellation events, and query
 active MTA service alerts (planned work, delays).
 """
 
-import hashlib
-import secrets
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
 from sqlalchemy import ColumnElement, delete, select
@@ -34,12 +31,10 @@ class DeviceRegisterRequest(BaseModel):
 
     device_id: str
     apns_token: str
-    force_chat_token: bool = False
 
 
 class DeviceRegisterResponse(BaseModel):
     status: str = "registered"
-    chat_token: str | None = None
 
 
 class SubscriptionItem(BaseModel):
@@ -125,40 +120,25 @@ class GetSubscriptionsResponse(BaseModel):
 async def register_device(
     request: DeviceRegisterRequest, db: AsyncSession = Depends(get_db)
 ) -> DeviceRegisterResponse:
-    """Register or update a device's APNS token.
-
-    Returns a chat_token on first registration or when none exists.
-    Subsequent calls with an existing token return chat_token=None
-    (the client should keep the token it already has).
-
-    Set force_chat_token=true to rotate and receive a new chat token
-    (e.g. after app reinstall when the client lost its stored token).
-    """
+    """Register or update a device's APNS token."""
     existing = await db.execute(
         select(DeviceToken).where(DeviceToken.device_id == request.device_id)
     )
     device = existing.scalar_one_or_none()
 
-    chat_token: str | None = None
     if device:
         device.apns_token = request.apns_token
-        if not device.chat_token_hash or request.force_chat_token:
-            # Issue a new token: first time for legacy device, or client lost its token
-            chat_token = secrets.token_urlsafe(32)
-            device.chat_token_hash = hashlib.sha256(chat_token.encode()).hexdigest()
     else:
-        chat_token = secrets.token_urlsafe(32)
         device = DeviceToken(
             device_id=request.device_id,
             apns_token=request.apns_token,
-            chat_token_hash=hashlib.sha256(chat_token.encode()).hexdigest(),
         )
         db.add(device)
 
     await db.commit()
 
     logger.info("device_registered", device_id=request.device_id[:8] + "...")
-    return DeviceRegisterResponse(chat_token=chat_token)
+    return DeviceRegisterResponse()
 
 
 @router.put("/alerts/subscriptions", response_model=SyncSubscriptionsResponse)
