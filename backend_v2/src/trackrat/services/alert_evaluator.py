@@ -1051,25 +1051,19 @@ async def _generate_digest_summary(
 # Service alert (planned work) evaluation
 # ---------------------------------------------------------------------------
 
-# Notify about planned work starting within this window
-PLANNED_WORK_LOOKAHEAD_HOURS = 48
-
-
 async def evaluate_service_alerts(
     db: AsyncSession, apns_service: SimpleAPNSService
 ) -> int:
     """Evaluate planned work alerts for subscriptions with include_planned_work=True.
 
     Checks active service alerts against user subscriptions and sends
-    push notifications for new planned work affecting subscribed routes.
+    push notifications for planned work that is currently active on
+    subscribed routes.
 
     Returns the number of alerts sent.
     """
     now = now_et()
     now_epoch = int(now.timestamp())
-    lookahead_epoch = int(
-        (now + timedelta(hours=PLANNED_WORK_LOOKAHEAD_HOURS)).timestamp()
-    )
 
     # Load devices with subscriptions that opt into planned work
     result = await db.execute(
@@ -1114,7 +1108,6 @@ async def evaluate_service_alerts(
                 sub.data_source,
                 gtfs_route_ids,
                 now_epoch,
-                lookahead_epoch,
             )
 
             if not matching_alerts:
@@ -1180,15 +1173,13 @@ def _find_matching_alerts(
     data_source: str,
     gtfs_route_ids: set[str],
     now_epoch: int,
-    lookahead_epoch: int,
 ) -> list[ServiceAlert]:
-    """Find service alerts that match a subscription and have upcoming active periods.
+    """Find service alerts that match a subscription and are currently active.
 
     Returns alerts that:
     1. Are for the same data source
     2. Affect at least one of the subscription's routes
-    3. Have at least one active period starting within the lookahead window,
-       or are currently active
+    3. Have at least one active period that is currently active (started and not yet ended)
     """
     matching: list[ServiceAlert] = []
 
@@ -1201,8 +1192,8 @@ def _find_matching_alerts(
         if not alert_routes & gtfs_route_ids:
             continue
 
-        # Check if any active period is current or upcoming
-        has_relevant_period = False
+        # Check if any active period is currently active
+        is_currently_active = False
         for period in alert.active_periods or []:
             start = period.get("start")
             end = period.get("end")
@@ -1212,15 +1203,10 @@ def _find_matching_alerts(
 
             # Currently active (started and not yet ended)
             if start <= now_epoch and (end is None or end > now_epoch):
-                has_relevant_period = True
+                is_currently_active = True
                 break
 
-            # Starting within lookahead window
-            if now_epoch < start <= lookahead_epoch:
-                has_relevant_period = True
-                break
-
-        if has_relevant_period:
+        if is_currently_active:
             matching.append(alert)
 
     return matching
