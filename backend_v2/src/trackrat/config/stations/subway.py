@@ -2111,13 +2111,9 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
         "SQ01",
         "SR23",
     },  # Canal St (1/2 + 4/6 + A/C/E + J/Z + Q + N/R/W)
-    {
-        "S138",
-        "S228",
-        "SA36",
-        "SE01",
-        "SR25",
-    },  # Chambers St / Cortlandt St / Park Place / WTC Cortlandt / World Trade Center
+    # NOTE: Chambers St / WTC Cortlandt / Park Place complex is defined in
+    # common.py STATION_EQUIVALENCE_GROUPS as {"PWC", "S138", "S228", "SA36", "SE01", "SR25"}
+    # to include PATH cross-system equivalence. Do not duplicate here.
     {"S208", "S503"},  # Gun Hill Rd (2 + 5)
     {"S211", "S504"},  # Pelham Pkwy (2 + 5)
     {"S222", "S415"},  # 149 St-Grand Concourse

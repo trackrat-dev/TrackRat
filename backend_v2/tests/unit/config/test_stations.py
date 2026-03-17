@@ -693,7 +693,7 @@ class TestStationEquivalences:
                 "Canal St (1/2 + 4/6 + A/C/E + J/Z + Q + N/R/W)",
             ),
             (
-                {"S138", "S228", "SA36", "SE01", "SR25"},
+                {"PWC", "S138", "S228", "SA36", "SE01", "SR25"},
                 "WTC Cortlandt / Chambers / Cortlandt / Park Pl",
             ),
             ({"S208", "S503"}, "Gun Hill Rd (2 + 5)"),
@@ -734,7 +734,7 @@ class TestStationEquivalences:
             {"S126", "SA25"},  # 50 St
             {"S128", "SA28"},  # 34 St-Penn Station
             {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},  # Canal St
-            {"S138", "S228", "SA36", "SE01", "SR25"},  # WTC / Chambers
+            {"PWC", "S138", "S228", "SA36", "SE01", "SR25"},  # WTC / Chambers
             {"S208", "S503"},  # Gun Hill Rd
             {"S211", "S504"},  # Pelham Pkwy
             {"SA11", "SD12"},  # 155 St
