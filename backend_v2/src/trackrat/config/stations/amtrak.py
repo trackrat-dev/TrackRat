@@ -287,7 +287,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "PRV": "Perryville",
     "RHI": "Rhinecliff",
     "RKV": "Rockville",
-    "STS": "New Haven",
+    "STS": "New Haven-State St",
     "TYR": "Tyrone",
     "WBL": "West Baltimore",
     "WND": "Windsor",

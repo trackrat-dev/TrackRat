@@ -528,6 +528,7 @@ class TestStationEquivalences:
         ("STM", "MSTM", "Stamford"),
         ("BRP", "MBGP", "Bridgeport"),
         ("NHV", "MNHV", "New Haven"),
+        ("STS", "MNSS", "New Haven-State St"),
     ]
 
     def test_expand_station_codes_with_equivalent(self):
@@ -734,7 +735,6 @@ class TestStationEquivalences:
             {"S126", "SA25"},  # 50 St
             {"S128", "SA28"},  # 34 St-Penn Station
             {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},  # Canal St
-            {"PWC", "S138", "S228", "SA36", "SE01", "SR25"},  # WTC / Chambers
             {"S208", "S503"},  # Gun Hill Rd
             {"S211", "S504"},  # Pelham Pkwy
             {"SA11", "SD12"},  # 155 St
@@ -750,6 +750,19 @@ class TestStationEquivalences:
                 f"Expected complex {sorted(expected)} not found in "
                 f"SUBWAY_STATION_COMPLEXES"
             )
+
+    def test_cross_system_wtc_complex_in_equivalence_groups(self):
+        """WTC/Oculus cross-system complex (PATH + Subway) is in STATION_EQUIVALENCE_GROUPS."""
+        wtc_expected = {"PWC", "S138", "S228", "SA36", "SE01", "SR25"}
+        found = False
+        for group in STATION_EQUIVALENCE_GROUPS:
+            if wtc_expected.issubset(group):
+                found = True
+                break
+        assert found, (
+            f"Expected WTC cross-system complex {sorted(wtc_expected)} not found in "
+            f"STATION_EQUIVALENCE_GROUPS"
+        )
 
     def test_unified_complexes_canonical_code_deterministic(self):
         """canonical_station_code is the same for all members of unified complexes."""
