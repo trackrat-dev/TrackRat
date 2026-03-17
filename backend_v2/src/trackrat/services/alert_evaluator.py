@@ -956,7 +956,7 @@ async def evaluate_morning_digests(
             if not summary or not device.apns_token:
                 continue
 
-            title = f"Morning Update: {route_name}"
+            title = route_name
             custom_data = {
                 "route_alert": {
                     "data_source": sub.data_source,
@@ -968,8 +968,9 @@ async def evaluate_morning_digests(
                     "alert_type": "digest",
                 }
             }
+            body = f"Daily digest: {summary}"
             sent = await apns_service.send_alert_notification(
-                device.apns_token, title, summary, custom_data=custom_data
+                device.apns_token, title, body, custom_data=custom_data
             )
 
             if sent:
