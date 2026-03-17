@@ -327,7 +327,7 @@ struct DeparturePickerView: View {
         if isSearching {
             searchResultsSection
         } else {
-            popularStationsSection
+            stationsSection
         }
     }
     
@@ -453,9 +453,9 @@ struct DeparturePickerView: View {
     }
 
     @ViewBuilder
-    private var popularStationsSection: some View {
+    private var stationsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Popular Stations")
+            Text("Stations")
                 .trackRatSectionHeader()
                 .padding(.horizontal)
             

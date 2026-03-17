@@ -68,9 +68,4 @@ extension Stations {
         ("Flushing-Main St", "S701"),
         ("59 St-Columbus Circle (1/2)", "S125")
     ]
-    
-    // Popular destination stations - kept in sync with departure stations
-    static var popularDestinations: [(name: String, code: String)] {
-        return departureStations
-    }
 }
