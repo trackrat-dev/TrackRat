@@ -25,6 +25,7 @@ from trackrat.api import (
     health,
     live_activities,
     predictions,
+    route_preferences,
     routes,
     trains,
     validation,
@@ -224,6 +225,7 @@ app.include_router(feedback.router, include_in_schema=False)
 app.include_router(health.router, include_in_schema=False)
 app.include_router(live_activities.router, include_in_schema=False)
 app.include_router(predictions.router)
+app.include_router(route_preferences.router, include_in_schema=False)
 app.include_router(routes.router)
 app.include_router(trains.router)
 app.include_router(validation.router, include_in_schema=False)
