@@ -812,6 +812,15 @@ struct RouteTopology {
         return codes
     }
 
+    /// Finds all route lines that contain both station codes for a given data source.
+    /// Returns routes where both stations appear (any direction).
+    static func routesContaining(from: String, to: String, dataSource: String) -> [RouteLine] {
+        let candidates = allRoutes.filter { $0.dataSource == dataSource }
+        return candidates.filter { route in
+            route.stationCodes.contains(from) && route.stationCodes.contains(to)
+        }
+    }
+
     /// Finds the route line that contains both station codes for a given data source.
     /// Returns the first matching route, preferring routes where both stations appear
     /// in the correct order (from before to).

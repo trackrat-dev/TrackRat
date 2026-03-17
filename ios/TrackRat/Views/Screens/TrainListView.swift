@@ -99,9 +99,12 @@ struct TrainListView: View {
                 if let destinationCode = Stations.getStationCode(destination) {
                     Button {
                         let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
+                        // For subway, don't set lineId — station pairs are served by multiple lines
+                        // and gtfsRouteIds will infer all relevant lines from the station pair.
+                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
                         appState.pendingRouteStatus = RouteStatusContext(
                             dataSource: ds,
-                            lineId: RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id,
+                            lineId: lineId,
                             fromStationCode: departureStationCode,
                             toStationCode: destinationCode
                         )

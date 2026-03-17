@@ -81,6 +81,27 @@ class RouteStatusContextTests: XCTestCase {
         XCTAssertTrue(context.gtfsRouteIds.isEmpty, "Unknown stations should return empty set, not all alerts")
     }
 
+    // MARK: - Subway: Multi-line station pair returns all lines
+
+    func testGtfsRouteIds_subwayNilLineId_multiLineSharedTrunk() {
+        // S137 and S136 are on the shared 1/2/3 trunk (7th Avenue).
+        // With no lineId, gtfsRouteIds should return all lines serving this segment.
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "S137", toStationCode: "S136")
+        let ids = context.gtfsRouteIds
+        XCTAssertTrue(ids.contains("1"), "S137→S136 shared trunk should include the 1 train")
+        XCTAssertTrue(ids.contains("2"), "S137→S136 shared trunk should include the 2 train")
+        XCTAssertGreaterThanOrEqual(ids.count, 2, "Should return at least 2 GTFS route IDs for multi-line stations")
+    }
+
+    func testGtfsRouteIds_subwayNilLineId_8thAveTrunk() {
+        // SA24 and SA22 are on the shared A/B/C trunk (8th Avenue).
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "SA24", toStationCode: "SA22")
+        let ids = context.gtfsRouteIds
+        XCTAssertTrue(ids.contains("A"), "SA24→SA22 shared trunk should include the A train")
+        XCTAssertTrue(ids.contains("C"), "SA24→SA22 shared trunk should include the C train")
+        XCTAssertGreaterThanOrEqual(ids.count, 2, "Should return at least 2 GTFS route IDs for A/C trunk")
+    }
+
     // MARK: - LIRR: RouteTopology format
 
     func testGtfsRouteIds_lirrTopologyFormat() {

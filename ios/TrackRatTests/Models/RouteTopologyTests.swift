@@ -87,6 +87,44 @@ class RouteTopologyTests: XCTestCase {
         }
     }
 
+    // MARK: - routesContaining (plural)
+
+    func testRoutesContainingFindsMultipleSubwayRoutes() {
+        // S137 and S136 are on the shared 1/2/3 trunk (7th Avenue)
+        let routes = RouteTopology.routesContaining(from: "S137", to: "S136", dataSource: "SUBWAY")
+        let ids = Set(routes.map { $0.id })
+        XCTAssertTrue(ids.contains("subway-1"), "S137→S136 should match the 1 train")
+        XCTAssertTrue(ids.contains("subway-2"), "S137→S136 should match the 2 train")
+        XCTAssertGreaterThanOrEqual(routes.count, 2, "Should find at least 2 routes for shared trunk stations")
+    }
+
+    func testRoutesContainingFindsABCSharedTrunk() {
+        // SA24 and SA22 are on the shared A/B/C trunk (8th Avenue)
+        let routes = RouteTopology.routesContaining(from: "SA24", to: "SA22", dataSource: "SUBWAY")
+        let ids = Set(routes.map { $0.id })
+        XCTAssertTrue(ids.contains("subway-a"), "SA24→SA22 should match the A train")
+        XCTAssertTrue(ids.contains("subway-c"), "SA24→SA22 should match the C train")
+        XCTAssertGreaterThanOrEqual(routes.count, 2, "Should find at least 2 routes for A/B/C shared trunk")
+    }
+
+    func testRoutesContainingReturnsEmptyForUnknownStations() {
+        let routes = RouteTopology.routesContaining(from: "FAKE1", to: "FAKE2", dataSource: "SUBWAY")
+        XCTAssertTrue(routes.isEmpty, "Should return empty array for unknown stations")
+    }
+
+    func testRoutesContainingFiltersByDataSource() {
+        // S137 is a subway station, should not match NJT
+        let routes = RouteTopology.routesContaining(from: "S137", to: "S136", dataSource: "NJT")
+        XCTAssertTrue(routes.isEmpty, "Subway station codes should not match NJT data source")
+    }
+
+    func testRoutesContainingReturnsSingleRouteForUniqueSegment() {
+        // NJT NEC is typically the only NJT route with NY and TR
+        let routes = RouteTopology.routesContaining(from: "NY", to: "TR", dataSource: "NJT")
+        XCTAssertEqual(routes.count, 1, "NY→TR on NJT should match exactly one route")
+        XCTAssertEqual(routes.first?.id, "njt-nec")
+    }
+
     // MARK: - allStationCodes
 
     func testAllStationCodesNotEmpty() {

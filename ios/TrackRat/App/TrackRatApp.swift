@@ -621,22 +621,24 @@ struct RouteStatusContext: Identifiable, Equatable {
             }
         }
 
-        // Fallback: infer line from station pair via RouteTopology.
+        // Fallback: infer lines from station pair via RouteTopology.
         // Expand via station equivalents to handle cross-platform transfers
         // (e.g., "SG29" → "SL10" for Metropolitan Av G↔L complex).
-        // Only accept routes where BOTH stations appear (avoid partial-match fallback).
+        // Collects ALL matching routes so multi-line stations return all relevant GTFS IDs.
         if let from = fromStationCode, let to = toStationCode {
             let fromCodes = Stations.stationEquivalents[from] ?? [from]
             let toCodes = Stations.stationEquivalents[to] ?? [to]
+            var allIds = Set<String>()
             for f in fromCodes {
                 for t in toCodes {
-                    if let route = RouteTopology.routeContaining(from: f, to: t, dataSource: dataSource),
-                       route.stationCodes.contains(f) && route.stationCodes.contains(t),
-                       let ids = Self.resolveGtfsRouteIds(lineId: route.id, dataSource: dataSource) {
-                        return ids
+                    for route in RouteTopology.routesContaining(from: f, to: t, dataSource: dataSource) {
+                        if let ids = Self.resolveGtfsRouteIds(lineId: route.id, dataSource: dataSource) {
+                            allIds.formUnion(ids)
+                        }
                     }
                 }
             }
+            if !allIds.isEmpty { return allIds }
         }
 
         return []
