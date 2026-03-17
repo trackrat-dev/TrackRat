@@ -338,14 +338,14 @@ class SchedulerService:
             misfire_grace_time=300,
         )
 
-        # Schedule MTA service alerts collection (every 15 minutes)
+        # Schedule service alerts collection (every 15 minutes) - MTA + NJT
         self.scheduler.add_job(
             self.run_service_alerts_collection,
             trigger=IntervalTrigger(
                 minutes=15, start_date=now + timedelta(minutes=4), jitter=60
             ),
             id="service_alerts_collection",
-            name="MTA Service Alerts Collection",
+            name="Service Alerts Collection (MTA + NJT)",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=900,  # 15 minute grace period
@@ -3153,7 +3153,7 @@ class SchedulerService:
                 logger.debug("morning_digest_evaluation_skipped_still_fresh")
 
     async def run_service_alerts_collection(self) -> None:
-        """Collect MTA service alerts from GTFS-RT feeds."""
+        """Collect service alerts from MTA GTFS-RT feeds and NJT API."""
 
         async def do_service_alerts_work() -> None:
             result = await collect_service_alerts()

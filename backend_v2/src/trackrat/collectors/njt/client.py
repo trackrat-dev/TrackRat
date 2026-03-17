@@ -318,6 +318,45 @@ class NJTransitClient:
             )
             raise NJTransitAPIError(f"Invalid train data format: {str(e)}") from e
 
+    @track_api_call(api_name="njtransit", endpoint="station_messages")
+    async def get_station_messages(
+        self, station: str = "", line: str = ""
+    ) -> list[dict[str, Any]]:
+        """Get station/line service messages via getStationMSG.
+
+        Args:
+            station: Station code (e.g., "NP") or empty for all.
+            line: Line code (e.g., "NE") or empty for all.
+
+        Returns:
+            List of message dicts with MSG_TYPE, MSG_TEXT, MSG_PUBDATE_UTC, etc.
+            Empty list if no messages or API returns None/null.
+        """
+        logger.info(
+            "API QUERY: getting station messages using getStationMSG",
+            station=station or "ALL",
+            line=line or "ALL",
+        )
+
+        response = await self._make_request(
+            "TrainData/getStationMSG", {"station": station, "line": line}
+        )
+
+        # API returns None for bad token, [] for no messages
+        if response is None:
+            logger.warning("station_messages_null_response")
+            return []
+
+        if not isinstance(response, list):
+            logger.warning(
+                "station_messages_unexpected_type",
+                response_type=type(response).__name__,
+            )
+            return []
+
+        logger.info("station_messages_retrieved", count=len(response))
+        return response
+
     @track_api_call(api_name="njtransit", endpoint="station_schedule")
     async def get_station_schedule(
         self, station_code: str | None = None, njt_only: bool = False
