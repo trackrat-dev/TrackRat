@@ -180,6 +180,41 @@ class RouteStatusContextTests: XCTestCase {
         XCTAssertTrue(context.gtfsRouteIds.isEmpty, "Unknown LIRR line should return empty set")
     }
 
+    // MARK: - stationCodes: cross-platform transfers
+
+    func testStationCodes_crossPlatformTransfer_resolvesViaEquivalents() {
+        // SG29 (G platform) → S635 (4/5/6 platform) should expand via equivalents
+        // to find L line intermediate stations (SL10→SL03)
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "SG29", toStationCode: "S635")
+        let codes = context.stationCodes
+        XCTAssertGreaterThan(codes.count, 2, "Should expand cross-platform route via equivalents, got only \(codes.count) stations: \(codes)")
+        // Should contain L line stations between Metropolitan Av and 14 St-Union Sq
+        XCTAssertTrue(codes.contains("SL10") || codes.contains("SL03"),
+                       "Expanded codes should include L line station codes, got: \(codes)")
+    }
+
+    func testStationCodes_sameLine_expandsDirectly() {
+        // SM01 and SM14 are both on the M line, should expand directly without needing equivalents
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "SM01", toStationCode: "SM14")
+        let codes = context.stationCodes
+        XCTAssertGreaterThan(codes.count, 2, "Same-line stations should expand to intermediate stations")
+    }
+
+    func testStationCodes_withLineId_returnsFullRoute() {
+        // When lineId matches a RouteTopology route, return all station codes for that route
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: "subway-l", fromStationCode: nil, toStationCode: nil)
+        let codes = context.stationCodes
+        XCTAssertGreaterThan(codes.count, 10, "L line should have many stations")
+        XCTAssertTrue(codes.contains("SL10"), "L line should contain Metropolitan Av (SL10)")
+        XCTAssertTrue(codes.contains("SL03"), "L line should contain 14 St-Union Sq (SL03)")
+    }
+
+    func testStationCodes_unknownStations_returnsRawPair() {
+        let context = RouteStatusContext(dataSource: "SUBWAY", lineId: nil, fromStationCode: "FAKE1", toStationCode: "FAKE2")
+        let codes = context.stationCodes
+        XCTAssertEqual(codes, ["FAKE1", "FAKE2"], "Unknown stations should return raw pair as fallback")
+    }
+
     // MARK: - resolveGtfsRouteIds consistency
 
     func testGtfsRouteIds_allLirrBranches_topologyAndCodeAgree() {

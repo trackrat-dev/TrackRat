@@ -56,13 +56,25 @@ class RouteTopologyTests: XCTestCase {
         XCTAssertEqual(route?.dataSource, "PATH")
     }
 
-    func testRouteContainingFallsBackToPartialMatch() {
-        // Test that a station on only one end still returns a route (last resort)
+    func testRouteContainingReturnsNilForPartialMatch() {
+        // When only one station matches, return nil rather than a misleading partial match
         let route = RouteTopology.routeContaining(from: "NY", to: "NONEXISTENT", dataSource: "NJT")
-        XCTAssertNotNil(route, "Should fall back to route containing at least one station")
-        guard let route = route else { return }
-        XCTAssertEqual(route.dataSource, "NJT")
-        XCTAssertTrue(route.stationCodes.contains("NY"), "Fallback route should contain the known station")
+        XCTAssertNil(route, "Should return nil when only one station matches (no last-resort fallback)")
+    }
+
+    func testRouteContainingResolvesCrossPlatformViaEquivalents() {
+        // SG29 (Metropolitan Av, G line) and S635 (14 St-Union Sq, 4/5/6)
+        // Neither is on the L line, but their equivalents are: SG29↔SL10, S635↔SL03
+        let route = RouteTopology.routeContaining(from: "SG29", to: "S635", dataSource: "SUBWAY")
+        XCTAssertNotNil(route, "Should find L line via station equivalents for SG29→S635")
+        XCTAssertEqual(route?.id, "subway-l", "Cross-platform transfer SG29→S635 should resolve to the L line")
+    }
+
+    func testRouteContainingResolvesCrossPlatformReverse() {
+        // Same as above but reversed direction
+        let route = RouteTopology.routeContaining(from: "S635", to: "SG29", dataSource: "SUBWAY")
+        XCTAssertNotNil(route, "Should find L line via equivalents in reverse direction")
+        XCTAssertEqual(route?.id, "subway-l", "Reverse cross-platform transfer should also resolve to L line")
     }
 
     // MARK: - allRoutes Validation
