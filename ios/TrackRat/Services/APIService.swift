@@ -177,6 +177,46 @@ final class APIService: ObservableObject {
         }
     }
 
+    // MARK: - Route Preferences
+
+    func fetchRoutePreference(deviceId: String, from: String, to: String) async throws -> RoutePreferenceResponse {
+        guard var components = URLComponents(string: "\(baseURL)/v2/routes/preferences") else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [
+            URLQueryItem(name: "device_id", value: deviceId),
+            URLQueryItem(name: "from", value: from),
+            URLQueryItem(name: "to", value: to),
+        ]
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+        let (data, response) = try await session.data(from: url)
+        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 404 {
+            throw APIError.notFound
+        }
+        return try decoder.decode(RoutePreferenceResponse.self, from: data)
+    }
+
+    func saveRoutePreference(deviceId: String, from: String, to: String, enabledSystems: [String: [String]]) async throws {
+        guard let url = URL(string: "\(baseURL)/v2/routes/preferences") else {
+            throw APIError.invalidURL
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "device_id": deviceId,
+            "from_station_code": from,
+            "to_station_code": to,
+            "enabled_systems": enabledSystems,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (_, _) = try await session.data(for: request)
+    }
+
     // MARK: - Train Details
 
     func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil, dataSource: String? = nil) async throws -> TrainV2 {
@@ -1179,6 +1219,7 @@ enum APIError: LocalizedError {
     case encodingError
     case serverError
     case chatNotRegistered
+    case notFound
 
     var errorDescription: String? {
         switch self {
@@ -1189,7 +1230,22 @@ enum APIError: LocalizedError {
         case .encodingError: return "Failed to encode request body"
         case .serverError: return "Server error"
         case .chatNotRegistered: return "Enable notifications to use chat"
+        case .notFound: return "Resource not found"
         }
+    }
+}
+
+// MARK: - Route Preference Models
+
+struct RoutePreferenceResponse: Codable {
+    let fromStationCode: String
+    let toStationCode: String
+    let enabledSystems: [String: [String]]
+
+    enum CodingKeys: String, CodingKey {
+        case fromStationCode = "from_station_code"
+        case toStationCode = "to_station_code"
+        case enabledSystems = "enabled_systems"
     }
 }
 
