@@ -813,3 +813,34 @@ class GTFSCalendarDate(Base):
         ),
         Index("idx_gtfs_calendar_date_lookup", "data_source", "date"),
     )
+
+
+class RoutePreference(Base):
+    """Per-device filter preference for a station pair (which systems/lines to show)."""
+
+    __tablename__ = "route_preferences"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    device_id = Column(
+        String(64),
+        ForeignKey("device_tokens.device_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_station_code = Column(String(10), nullable=False)
+    to_station_code = Column(String(10), nullable=False)
+    # {"NJT": ["NE", "NEC"], "AMTRAK": ["AM"]} — system absent = disabled
+    enabled_systems = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "device_id",
+            "from_station_code",
+            "to_station_code",
+            name="uq_route_pref_device_stations",
+        ),
+        Index("idx_route_pref_device", "device_id"),
+    )

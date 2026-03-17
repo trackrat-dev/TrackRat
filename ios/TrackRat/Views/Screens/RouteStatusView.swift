@@ -51,6 +51,7 @@ struct RouteStatusView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     mapSection
+                    routeSettingsSection
                     operationsSummarySection
                     historySections
                     alertSubscriptionSection
@@ -257,6 +258,85 @@ struct RouteStatusView: View {
         }
     }
 
+    // MARK: - Route Settings Section
+
+    @ViewBuilder
+    private var routeSettingsSection: some View {
+        if viewModel.showRouteSettings {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Route Settings")
+                    .font(.headline)
+
+                ForEach(viewModel.discoveredSystems) { systemInfo in
+                    VStack(alignment: .leading, spacing: 8) {
+                        // System header — tappable to toggle all lines
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                viewModel.toggleSystem(systemInfo.system)
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: systemInfo.system.icon)
+                                    .font(.caption)
+                                Text(systemInfo.system.displayName)
+                                    .font(.subheadline.bold())
+                                Spacer()
+                            }
+                            .foregroundColor(viewModel.isSystemEnabled(systemInfo.system) ? .white : .white.opacity(0.4))
+                        }
+                        .buttonStyle(.plain)
+
+                        // Line bubbles
+                        if !systemInfo.lines.isEmpty {
+                            lineFilterGrid(lines: systemInfo.lines)
+                        }
+                    }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
+    }
+
+    private func lineFilterGrid(lines: [RouteLineInfo]) -> some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: min(lines.count, 7))
+        return LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(lines) { line in
+                let isOn = viewModel.isLineEnabled(line.id)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        viewModel.toggleLine(line.id)
+                    }
+                } label: {
+                    Text(line.lineCode)
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isOn ? Color(hex: line.lineColor) : Color.white.opacity(0.08))
+                        )
+                        .foregroundColor(isOn ? lineTextColor(for: line.lineColor) : .white.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Determine text color for a line bubble based on background color brightness
+    private func lineTextColor(for hexColor: String) -> Color {
+        let hex = hexColor.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard hex.count >= 6,
+              let r = UInt8(hex.prefix(2), radix: 16),
+              let g = UInt8(hex.dropFirst(2).prefix(2), radix: 16),
+              let b = UInt8(hex.dropFirst(4).prefix(2), radix: 16) else {
+            return .white
+        }
+        let brightness = (Double(r) * 299 + Double(g) * 587 + Double(b) * 114) / 1000
+        return brightness > 150 ? .black : .white
+    }
+
     // MARK: - Map Section
 
     @ViewBuilder
@@ -354,7 +434,7 @@ struct RouteStatusView: View {
                     Button {
                         selectedTrain = train
                     } label: {
-                        UpcomingTrainRow(train: train, dataSource: context.dataSource)
+                        UpcomingTrainRow(train: train, dataSource: train.dataSource)
                     }
                     .buttonStyle(.plain)
                 }
@@ -380,10 +460,11 @@ struct RouteStatusView: View {
         }
     }
 
-    // MARK: - History Sections (Unified with Segmented Picker)
+    // MARK: - History Sections (Stacked Per-System with Segmented Picker)
 
     @ViewBuilder
     private var historySections: some View {
+        if !viewModel.historyBySystem.isEmpty {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Route Performance")
@@ -398,32 +479,60 @@ struct RouteStatusView: View {
                 .frame(width: 200)
             }
 
-            switch selectedHistoryPeriod {
-            case .hour:
-                historyPeriodContent(
-                    data: viewModel.pastHourData,
-                    isLoading: viewModel.isLoadingPastHour,
-                    error: viewModel.pastHourError,
-                    hours: 1
-                )
-            case .day:
-                historyPeriodContent(
-                    data: viewModel.past24HoursData,
-                    isLoading: viewModel.isLoadingPast24Hours,
-                    error: viewModel.past24HoursError,
-                    hours: 24
-                )
-            case .week:
-                historyPeriodContent(
-                    data: viewModel.past7DaysData,
-                    isLoading: viewModel.isLoadingPast7Days,
-                    error: viewModel.past7DaysError,
-                    hours: 168
-                )
+            // Stacked display: one block per enabled system
+            let systems = viewModel.historyBySystem.keys.sorted()
+            ForEach(systems, id: \.self) { system in
+                if let state = viewModel.historyBySystem[system] {
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Show system label only when multiple systems present
+                        if systems.count > 1, let trainSystem = TrainSystem(rawValue: system) {
+                            HStack(spacing: 4) {
+                                Image(systemName: trainSystem.icon)
+                                    .font(.caption2)
+                                Text(trainSystem.displayName)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                            }
+                            .foregroundColor(.secondary)
+                        }
+
+                        switch selectedHistoryPeriod {
+                        case .hour:
+                            historyPeriodContent(
+                                data: state.pastHour,
+                                isLoading: state.isLoadingPastHour,
+                                error: state.pastHourError,
+                                hours: 1,
+                                dataSource: system
+                            )
+                        case .day:
+                            historyPeriodContent(
+                                data: state.past24Hours,
+                                isLoading: state.isLoadingPast24Hours,
+                                error: state.past24HoursError,
+                                hours: 24,
+                                dataSource: system
+                            )
+                        case .week:
+                            historyPeriodContent(
+                                data: state.past7Days,
+                                isLoading: state.isLoadingPast7Days,
+                                error: state.past7DaysError,
+                                hours: 168,
+                                dataSource: system
+                            )
+                        }
+                    }
+
+                    if system != systems.last {
+                        Divider()
+                    }
+                }
             }
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
     }
 
     @ViewBuilder
@@ -431,14 +540,15 @@ struct RouteStatusView: View {
         data: RouteHistoricalData?,
         isLoading: Bool,
         error: String?,
-        hours: Double
+        hours: Double,
+        dataSource: String? = nil
     ) -> some View {
         if isLoading {
             ProgressView()
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding()
         } else if let history = data, history.route.totalTrains > 0 {
-            historyContent(history, hours: hours)
+            historyContent(history, hours: hours, dataSource: dataSource)
         } else if let error = error {
             Text("Could not load history: \(error)")
                 .font(.caption)
@@ -453,7 +563,7 @@ struct RouteStatusView: View {
     }
 
     @ViewBuilder
-    private func historyContent(_ history: RouteHistoricalData, hours: Double) -> some View {
+    private func historyContent(_ history: RouteHistoricalData, hours: Double, dataSource: String? = nil) -> some View {
         let total = history.route.totalTrains
         let freqColor = frequencyColor(totalTrains: total, baseline: history.route.baselineTrainCount)
 
@@ -461,7 +571,9 @@ struct RouteStatusView: View {
         let onTimeValue = stats.onTimePercentage.map { "\(Int($0))%" } ?? "N/A"
         let onTimeColor = onTimePercentageColor(stats.onTimePercentage)
 
-        if preferredMode == .health {
+        let mode = dataSource.flatMap { TrainSystem(rawValue: $0)?.preferredHighlightMode } ?? preferredMode
+
+        if mode == .health {
             // Frequency-focused stats for rapid transit (PATH, Subway, PATCO)
             HStack(spacing: 12) {
                 statCard(
@@ -792,27 +904,279 @@ final class RouteStatusViewModel: ObservableObject {
     /// Data sources that have service alert data
     private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
 
-    // History state - per-section loading and error
-    @Published var pastHourData: RouteHistoricalData?
-    @Published var past24HoursData: RouteHistoricalData?
-    @Published var past7DaysData: RouteHistoricalData?
-    @Published var isLoadingPastHour = false
-    @Published var isLoadingPast24Hours = false
-    @Published var isLoadingPast7Days = false
-    @Published var pastHourError: String?
-    @Published var past24HoursError: String?
-    @Published var past7DaysError: String?
+    // History state — keyed by system for stacked display
+    @Published var historyBySystem: [String: HistoryState] = [:]
+
+    /// Per-system history loading/data/error state
+    struct HistoryState {
+        var pastHour: RouteHistoricalData?
+        var past24Hours: RouteHistoricalData?
+        var past7Days: RouteHistoricalData?
+        var isLoadingPastHour = false
+        var isLoadingPast24Hours = false
+        var isLoadingPast7Days = false
+        var pastHourError: String?
+        var past24HoursError: String?
+        var past7DaysError: String?
+    }
+
+    // MARK: - Route Filter State
+
+    /// Discovered systems and their lines for this station pair
+    @Published var discoveredSystems: [RouteSystemInfo] = []
+
+    /// Currently enabled line IDs (format: "SYSTEM:LINE_CODE"). Empty = all enabled (default).
+    @Published var enabledLineIds: Set<String> = []
+
+    /// Whether filter discovery is complete
+    @Published var filterLoaded = false
+
+    /// Debounced save task — cancelled and re-scheduled on each toggle
+    private var saveTask: Task<Void, Never>?
+
+    /// Whether there's anything to filter (multiple systems or multiple lines)
+    var showRouteSettings: Bool {
+        guard filterLoaded else { return false }
+        if discoveredSystems.count > 1 { return true }
+        if discoveredSystems.count == 1, discoveredSystems[0].lines.count > 1 { return true }
+        return false
+    }
+
+    /// Systems that are currently enabled (have at least one line enabled)
+    var enabledSystems: Set<String> {
+        if enabledLineIds.isEmpty { return Set(discoveredSystems.map(\.system.rawValue)) }
+        var systems = Set<String>()
+        for id in enabledLineIds {
+            if let system = id.split(separator: ":").first {
+                systems.insert(String(system))
+            }
+        }
+        return systems
+    }
+
+    /// Check if a specific line is enabled
+    func isLineEnabled(_ lineId: String) -> Bool {
+        enabledLineIds.isEmpty || enabledLineIds.contains(lineId)
+    }
+
+    /// Check if a system has any line enabled
+    func isSystemEnabled(_ system: TrainSystem) -> Bool {
+        enabledSystems.contains(system.rawValue)
+    }
 
     init(context: RouteStatusContext) {
         self.context = context
     }
 
     func loadData() async {
+        // Discover available systems first, then load data in parallel
+        await discoverSystems()
+        await reloadFilteredData()
+    }
+
+    /// Reload all data sections using current filter state.
+    /// Called on initial load and after filter changes.
+    private func reloadFilteredData() async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadCongestionMap() }
             group.addTask { await self.loadAllHistory() }
             group.addTask { await self.loadServiceAlerts() }
             group.addTask { await self.loadUpcomingTrains() }
+        }
+    }
+
+    // MARK: - System Discovery
+
+    private func discoverSystems() async {
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else {
+            filterLoaded = true
+            return
+        }
+
+        // Find systems that serve both stations
+        let fromSystems = Stations.systemsForStation(from)
+        let toSystems = Stations.systemsForStation(to)
+        let commonSystems = fromSystems.intersection(toSystems).sorted { $0.displayName < $1.displayName }
+
+        guard !commonSystems.isEmpty else {
+            filterLoaded = true
+            return
+        }
+
+        // Discover available lines by fetching departures across all systems
+        do {
+            let trains = try await APIService.shared.searchTrains(
+                fromStationCode: from,
+                toStationCode: to,
+                dataSources: Set(commonSystems)
+            )
+
+            // Group lines by system
+            var linesBySystem: [String: [RouteLineInfo]] = [:]
+            var seenLines = Set<String>()
+
+            for train in trains {
+                let lineId = "\(train.dataSource):\(train.line.code)"
+                guard !seenLines.contains(lineId) else { continue }
+                seenLines.insert(lineId)
+
+                let info = RouteLineInfo(
+                    dataSource: train.dataSource,
+                    lineCode: train.line.code,
+                    lineName: train.line.name,
+                    lineColor: train.line.color
+                )
+                linesBySystem[train.dataSource, default: []].append(info)
+            }
+
+            // Build system info, including systems with no trains found (they exist in topology)
+            var systems: [RouteSystemInfo] = []
+            for system in commonSystems {
+                let lines = linesBySystem[system.rawValue] ?? []
+                if !lines.isEmpty {
+                    systems.append(RouteSystemInfo(system: system, lines: lines.sorted { $0.lineCode < $1.lineCode }))
+                }
+            }
+
+            discoveredSystems = systems
+        } catch {
+            // Fall back to just using the context's data source
+            if let system = TrainSystem(rawValue: context.dataSource) {
+                discoveredSystems = [RouteSystemInfo(system: system, lines: [])]
+            }
+        }
+
+        // Load saved preference from backend
+        await loadSavedPreference(from: from, to: to)
+
+        filterLoaded = true
+    }
+
+    private func loadSavedPreference(from: String, to: String) async {
+        let deviceId = AlertSubscriptionService.shared.deviceId
+        do {
+            let pref = try await APIService.shared.fetchRoutePreference(
+                deviceId: deviceId, from: from, to: to
+            )
+            // Convert saved preference to enabledLineIds
+            var lineIds = Set<String>()
+            for (system, lines) in pref.enabledSystems {
+                if lines.isEmpty {
+                    // Empty array means all lines for this system
+                    for discoveredSystem in discoveredSystems where discoveredSystem.system.rawValue == system {
+                        for line in discoveredSystem.lines {
+                            lineIds.insert(line.id)
+                        }
+                    }
+                } else {
+                    for lineCode in lines {
+                        lineIds.insert("\(system):\(lineCode)")
+                    }
+                }
+            }
+            enabledLineIds = lineIds
+        } catch {
+            // No saved preference — default to all enabled (empty set)
+            enabledLineIds = []
+        }
+    }
+
+    /// Toggle a line on/off, debounce save, and reload data
+    func toggleLine(_ lineId: String) {
+        // If currently "all enabled" (empty set), populate with all discovered lines first
+        if enabledLineIds.isEmpty {
+            enabledLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
+        }
+
+        if enabledLineIds.contains(lineId) {
+            // Don't allow deselecting the last line
+            if enabledLineIds.count > 1 {
+                enabledLineIds.remove(lineId)
+            }
+        } else {
+            enabledLineIds.insert(lineId)
+        }
+
+        // Check if all lines are now enabled — collapse back to empty set
+        let allLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
+        if enabledLineIds == allLineIds {
+            enabledLineIds = []
+        }
+
+        debounceSaveAndReload()
+    }
+
+    /// Toggle all lines for a system on/off, debounce save, and reload data
+    func toggleSystem(_ system: TrainSystem) {
+        guard let systemInfo = discoveredSystems.first(where: { $0.system == system }) else { return }
+        let systemLineIds = Set(systemInfo.lines.map(\.id))
+
+        // If currently "all enabled" (empty set), populate with all discovered lines first
+        if enabledLineIds.isEmpty {
+            enabledLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
+        }
+
+        let allSystemLinesEnabled = systemLineIds.isSubset(of: enabledLineIds)
+        if allSystemLinesEnabled {
+            // Don't allow deselecting if it would leave nothing
+            let remaining = enabledLineIds.subtracting(systemLineIds)
+            if !remaining.isEmpty {
+                enabledLineIds = remaining
+            }
+        } else {
+            enabledLineIds.formUnion(systemLineIds)
+        }
+
+        // Check if all lines are now enabled — collapse back to empty set
+        let allLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
+        if enabledLineIds == allLineIds {
+            enabledLineIds = []
+        }
+
+        debounceSaveAndReload()
+    }
+
+    /// Debounce: cancel any pending save, wait 500ms, then save + reload data
+    private func debounceSaveAndReload() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+            guard !Task.isCancelled else { return }
+            await savePreference()
+            await reloadFilteredData()
+        }
+    }
+
+    private func savePreference() async {
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else { return }
+
+        let deviceId = AlertSubscriptionService.shared.deviceId
+
+        // Convert enabledLineIds to the API format: {system: [lineCodes]}
+        var systems: [String: [String]] = [:]
+        if enabledLineIds.isEmpty {
+            // All enabled — save all discovered systems with empty arrays (= all lines)
+            for system in discoveredSystems {
+                systems[system.system.rawValue] = []
+            }
+        } else {
+            for lineId in enabledLineIds {
+                let parts = lineId.split(separator: ":")
+                guard parts.count == 2 else { continue }
+                let system = String(parts[0])
+                let lineCode = String(parts[1])
+                systems[system, default: []].append(lineCode)
+            }
+        }
+
+        do {
+            try await APIService.shared.saveRoutePreference(
+                deviceId: deviceId, from: from, to: to, enabledSystems: systems
+            )
+        } catch {
+            print("⚠️ Failed to save route preference: \(error.localizedDescription)")
         }
     }
 
@@ -822,28 +1186,45 @@ final class RouteStatusViewModel: ObservableObject {
         isLoadingMap = true
         defer { isLoadingMap = false }
 
-        do {
-            let response = try await APIService.shared.fetchCongestionData(
-                timeWindowHours: 1,
-                maxPerSegment: 100,
-                dataSource: context.dataSource
-            )
-            let routeStationCodes = Set(context.stationCodes.map { $0.uppercased() })
+        let routeStationCodes = Set(context.stationCodes.map { $0.uppercased() })
 
-            if routeStationCodes.isEmpty {
-                filteredSegments = response.aggregatedSegments
-            } else {
-                filteredSegments = response.aggregatedSegments.filter { segment in
-                    routeStationCodes.contains(segment.fromStation.uppercased()) &&
-                    routeStationCodes.contains(segment.toStation.uppercased())
+        // Fetch congestion data for each enabled system
+        var allSegments: [CongestionSegment] = []
+
+        let systemsToFetch = enabledSystems.isEmpty
+            ? Set([context.dataSource])
+            : enabledSystems
+
+        await withTaskGroup(of: [CongestionSegment].self) { group in
+            for system in systemsToFetch {
+                group.addTask {
+                    do {
+                        let response = try await APIService.shared.fetchCongestionData(
+                            timeWindowHours: 1,
+                            maxPerSegment: 100,
+                            dataSource: system
+                        )
+                        if routeStationCodes.isEmpty {
+                            return response.aggregatedSegments
+                        } else {
+                            return response.aggregatedSegments.filter { segment in
+                                routeStationCodes.contains(segment.fromStation.uppercased()) &&
+                                routeStationCodes.contains(segment.toStation.uppercased())
+                            }
+                        }
+                    } catch {
+                        return []
+                    }
                 }
             }
-
-            buildStationsFromSegments()
-            setMapRegion()
-        } catch {
-            mapError = error.localizedDescription
+            for await segments in group {
+                allSegments.append(contentsOf: segments)
+            }
         }
+
+        filteredSegments = allSegments
+        buildStationsFromSegments()
+        setMapRegion()
     }
 
     private func buildStationsFromSegments() {
@@ -891,23 +1272,38 @@ final class RouteStatusViewModel: ObservableObject {
     // MARK: - Service Alerts
 
     private func loadServiceAlerts() async {
-        guard Self.serviceAlertSystems.contains(context.dataSource) else { return }
-        do {
-            let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: context.dataSource)
-            let relevantRouteIds = context.gtfsRouteIds
-            if relevantRouteIds.isEmpty {
-                // No line context — show all alerts for this data source
-                serviceAlerts = alerts
-            } else {
-                // Filter to alerts affecting this route's line(s)
-                serviceAlerts = alerts.filter { alert in
-                    !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
+        // Fetch service alerts for all enabled systems that support them
+        let systemsToFetch = enabledSystems.isEmpty
+            ? Set([context.dataSource])
+            : enabledSystems
+
+        let relevantRouteIds = context.gtfsRouteIds
+        var allAlerts: [V2ServiceAlert] = []
+
+        await withTaskGroup(of: [V2ServiceAlert].self) { group in
+            for system in systemsToFetch {
+                guard Self.serviceAlertSystems.contains(system) else { continue }
+                group.addTask {
+                    do {
+                        let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: system)
+                        if relevantRouteIds.isEmpty {
+                            return alerts
+                        } else {
+                            return alerts.filter { alert in
+                                !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
+                            }
+                        }
+                    } catch {
+                        return []
+                    }
                 }
             }
-        } catch {
-            // Silent failure — section just won't appear
-            print("⚠️ Failed to load service alerts: \(error.localizedDescription)")
+            for await alerts in group {
+                allAlerts.append(contentsOf: alerts)
+            }
         }
+
+        serviceAlerts = allAlerts
     }
 
     // MARK: - Upcoming Trains
@@ -916,91 +1312,128 @@ final class RouteStatusViewModel: ObservableObject {
         guard let from = context.effectiveFromStation,
               let to = context.effectiveToStation else { return }
         do {
-            let dataSource = TrainSystem(rawValue: context.dataSource)
+            // Fetch from all enabled systems
+            let systemsToFetch: Set<TrainSystem>
+            if enabledSystems.isEmpty {
+                systemsToFetch = TrainSystem(rawValue: context.dataSource).map { Set([$0]) } ?? []
+            } else {
+                systemsToFetch = Set(enabledSystems.compactMap { TrainSystem(rawValue: $0) })
+            }
+
             let trains = try await APIService.shared.searchTrains(
                 fromStationCode: from,
                 toStationCode: to,
-                dataSources: dataSource.map { Set([$0]) }
+                dataSources: systemsToFetch
             )
-            upcomingTrains = Array(trains.prefix(5))
+
+            // Filter by enabled lines
+            let filtered: [TrainV2]
+            if enabledLineIds.isEmpty {
+                filtered = trains
+            } else {
+                filtered = trains.filter { train in
+                    enabledLineIds.contains("\(train.dataSource):\(train.line.code)")
+                }
+            }
+
+            upcomingTrains = Array(filtered.prefix(5))
         } catch {
             print("⚠️ Failed to load upcoming trains: \(error.localizedDescription)")
         }
     }
 
-    // MARK: - History
+    // MARK: - History (Per-System for Stacked Display)
 
     private func loadAllHistory() async {
         guard let from = context.effectiveFromStation,
-              let to = context.effectiveToStation else {
-            pastHourError = "No station pair available"
-            past24HoursError = "No station pair available"
-            past7DaysError = "No station pair available"
-            return
+              let to = context.effectiveToStation else { return }
+
+        let systemsToFetch = enabledSystems.isEmpty
+            ? [context.dataSource]
+            : Array(enabledSystems).sorted()
+
+        // Initialize history state for each system
+        for system in systemsToFetch {
+            historyBySystem[system] = HistoryState(
+                isLoadingPastHour: true,
+                isLoadingPast24Hours: true,
+                isLoadingPast7Days: true
+            )
         }
 
-        isLoadingPastHour = true
-        isLoadingPast24Hours = true
-        isLoadingPast7Days = true
-
-        // Fetch all three time periods in parallel
+        // Fetch all periods for all systems in parallel
         await withTaskGroup(of: Void.self) { group in
-            group.addTask {
-                do {
-                    let data = try await APIService.shared.fetchRouteHistoricalData(
-                        from: from, to: to,
-                        dataSource: self.context.dataSource,
-                        hours: 1
-                    )
-                    await MainActor.run {
-                        self.pastHourData = data
-                        self.isLoadingPastHour = false
-                    }
-                } catch {
-                    await MainActor.run {
-                        self.pastHourError = error.localizedDescription
-                        self.isLoadingPastHour = false
-                    }
-                }
-            }
-            group.addTask {
-                do {
-                    let data = try await APIService.shared.fetchRouteHistoricalData(
-                        from: from, to: to,
-                        dataSource: self.context.dataSource,
-                        hours: 24
-                    )
-                    await MainActor.run {
-                        self.past24HoursData = data
-                        self.isLoadingPast24Hours = false
-                    }
-                } catch {
-                    await MainActor.run {
-                        self.past24HoursError = error.localizedDescription
-                        self.isLoadingPast24Hours = false
+            for system in systemsToFetch {
+                // Past hour
+                group.addTask {
+                    do {
+                        let data = try await APIService.shared.fetchRouteHistoricalData(
+                            from: from, to: to, dataSource: system, hours: 1
+                        )
+                        await MainActor.run {
+                            self.historyBySystem[system]?.pastHour = data
+                            self.historyBySystem[system]?.isLoadingPastHour = false
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.historyBySystem[system]?.pastHourError = error.localizedDescription
+                            self.historyBySystem[system]?.isLoadingPastHour = false
+                        }
                     }
                 }
-            }
-            group.addTask {
-                do {
-                    let data = try await APIService.shared.fetchRouteHistoricalData(
-                        from: from, to: to,
-                        dataSource: self.context.dataSource,
-                        days: 7
-                    )
-                    await MainActor.run {
-                        self.past7DaysData = data
-                        self.isLoadingPast7Days = false
+                // Past 24 hours
+                group.addTask {
+                    do {
+                        let data = try await APIService.shared.fetchRouteHistoricalData(
+                            from: from, to: to, dataSource: system, hours: 24
+                        )
+                        await MainActor.run {
+                            self.historyBySystem[system]?.past24Hours = data
+                            self.historyBySystem[system]?.isLoadingPast24Hours = false
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.historyBySystem[system]?.past24HoursError = error.localizedDescription
+                            self.historyBySystem[system]?.isLoadingPast24Hours = false
+                        }
                     }
-                } catch {
-                    await MainActor.run {
-                        self.past7DaysError = error.localizedDescription
-                        self.isLoadingPast7Days = false
+                }
+                // Past 7 days
+                group.addTask {
+                    do {
+                        let data = try await APIService.shared.fetchRouteHistoricalData(
+                            from: from, to: to, dataSource: system, days: 7
+                        )
+                        await MainActor.run {
+                            self.historyBySystem[system]?.past7Days = data
+                            self.historyBySystem[system]?.isLoadingPast7Days = false
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.historyBySystem[system]?.past7DaysError = error.localizedDescription
+                            self.historyBySystem[system]?.isLoadingPast7Days = false
+                        }
                     }
                 }
             }
         }
     }
+}
+
+// MARK: - Route Filter Models
+
+struct RouteLineInfo: Hashable, Identifiable {
+    let dataSource: String
+    let lineCode: String
+    let lineName: String
+    let lineColor: String
+    var id: String { "\(dataSource):\(lineCode)" }
+}
+
+struct RouteSystemInfo: Identifiable {
+    let system: TrainSystem
+    let lines: [RouteLineInfo]
+    var id: String { system.rawValue }
 }
 
 // MARK: - Preview
