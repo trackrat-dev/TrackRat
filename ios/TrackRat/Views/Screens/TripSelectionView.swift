@@ -228,13 +228,45 @@ struct TripSelectionView: View {
                     
                     // Search results
                     if isSearching {
+                        let favoriteCodes = Set(appState.favoriteStations.map(\.id))
+                        let favoriteMatches = searchResults.stations.filter { station in
+                            guard let code = Stations.getStationCode(station) else { return false }
+                            return favoriteCodes.contains(code)
+                        }
+                        let otherMatches = searchResults.stations.filter { station in
+                            guard let code = Stations.getStationCode(station) else { return true }
+                            return !favoriteCodes.contains(code)
+                        }
+
                         VStack(spacing: 8) {
                             // Train number results (support for multiple trains)
                             ForEach(searchResults.trainNumbers, id: \.self) { trainNumber in
                                 trainSearchCard(for: trainNumber)
                             }
 
-                            ForEach(searchResults.stations.prefix(5), id: \.self) { station in
+                            // Favorite station matches first
+                            if !favoriteMatches.isEmpty {
+                                Text("Favorites")
+                                    .font(.caption)
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 20)
+
+                                ForEach(favoriteMatches, id: \.self) { station in
+                                    Button {
+                                        if let code = Stations.getStationCode(station) {
+                                            selectOriginStation(name: station, code: code)
+                                        }
+                                    } label: {
+                                        stationSearchRow(station: station)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal)
+                                }
+                            }
+
+                            // Remaining station matches
+                            ForEach(otherMatches.prefix(5), id: \.self) { station in
                                 Button {
                                     if let code = Stations.getStationCode(station) {
                                         selectOriginStation(name: station, code: code)
