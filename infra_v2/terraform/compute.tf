@@ -117,6 +117,10 @@ resource "google_compute_instance_template" "trackrat" {
       mkdir -p "$MOUNT_PATH"
       mountpoint -q "$MOUNT_PATH" || mount -o discard,defaults "$DISK_DEVICE" "$MOUNT_PATH"
       mkdir -p "$MOUNT_PATH"/{pgdata,logs}
+
+      # Auto-resize filesystem if disk was enlarged (e.g., via Terraform)
+      resize2fs "$DISK_DEVICE" 2>/dev/null || true
+
       echo "Disk mounted at $MOUNT_PATH"
 
       # ===========================================
