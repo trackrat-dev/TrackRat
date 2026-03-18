@@ -100,24 +100,6 @@ struct TrainDetailsView: View {
             // Action buttons row
             if let train = viewModel.train {
                 HStack(spacing: 12) {
-                    // Watch button (Live Activity)
-                    if let originCode = appState.departureStationCode,
-                       !originCode.isEmpty {
-                        TrackTrainInlineButton(
-                            train: train,
-                            originCode: originCode,
-                            destinationCode: appState.destinationStationCode ?? "",
-                            destinationName: appState.selectedDestination,
-                            textColor: .white.opacity(0.8),
-                            activeLabel: "Unwatch",
-                            inactiveLabel: "Watch",
-                            font: .subheadline
-                        )
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
-                    }
-
                     // Alerts button
                     if let fromCode = appState.departureStationCode,
                        let toCode = appState.destinationStationCode {
@@ -141,6 +123,24 @@ struct TrainDetailsView: View {
                             .background(Capsule().fill(Color.white.opacity(0.12)))
                         }
                         .buttonStyle(.plain)
+                    }
+
+                    // Watch button (Live Activity)
+                    if let originCode = appState.departureStationCode,
+                       !originCode.isEmpty {
+                        TrackTrainInlineButton(
+                            train: train,
+                            originCode: originCode,
+                            destinationCode: appState.destinationStationCode ?? "",
+                            destinationName: appState.selectedDestination,
+                            textColor: .white.opacity(0.8),
+                            activeLabel: "Unwatch",
+                            inactiveLabel: "Watch",
+                            font: .subheadline
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
                     }
 
                 }
