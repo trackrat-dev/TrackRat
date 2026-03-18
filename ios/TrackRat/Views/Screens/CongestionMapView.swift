@@ -303,7 +303,6 @@ struct CongestionMapView: View {
                 SystemToggleButton(
                     system: system,
                     isSelected: isSelected,
-                    showProBadge: atFreeLimit,
                     action: {
                         if atFreeLimit {
                             showingPaywall = true
@@ -443,7 +442,6 @@ private struct LayerToggleButton: View {
 private struct SystemToggleButton: View {
     let system: TrainSystem
     let isSelected: Bool
-    var showProBadge: Bool = false
     let action: () -> Void
 
     var body: some View {
@@ -459,15 +457,6 @@ private struct SystemToggleButton: View {
                         .font(.subheadline)
                         .foregroundColor(.primary)
 
-                }
-
-                if showProBadge {
-                    Text("PRO")
-                        .font(.caption2.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(.orange))
                 }
 
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")

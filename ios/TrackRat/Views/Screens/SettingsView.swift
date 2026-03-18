@@ -205,8 +205,7 @@ struct SettingsSection: View {
                         TrainSystemRow(
                             system: system,
                             isSelected: isSelected,
-                            isLast: system == sortedSystems.last,
-                            showProBadge: atFreeLimit
+                            isLast: system == sortedSystems.last
                         ) {
                             if atFreeLimit {
                                 paywallContext = .trainSystems
@@ -1154,7 +1153,6 @@ private struct TrainSystemRow: View {
     let isSelected: Bool
     let isLast: Bool
     var showControls: Bool = true
-    var showProBadge: Bool = false
     let action: () -> Void
 
     private var rowContent: some View {
@@ -1163,15 +1161,6 @@ private struct TrainSystemRow: View {
                 Text(system.displayName + (system.isBeta ? " (beta)" : ""))
                     .font(.subheadline)
                     .foregroundColor(.white)
-
-                if showProBadge {
-                    Text("PRO")
-                        .font(.caption2.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(.orange))
-                }
 
                 Spacer()
 

@@ -577,7 +577,6 @@ struct StationSelectionCard: View {
 struct SystemSelectionCard: View {
     let system: TrainSystem
     let isSelected: Bool
-    var showProBadge: Bool = false
     var showCheckmark: Bool = true
     let onTap: () -> Void
 
@@ -599,14 +598,6 @@ struct SystemSelectionCard: View {
                             .background(
                                 Capsule().fill(.orange.opacity(0.2))
                             )
-                    }
-                    if showProBadge {
-                        Text("PRO")
-                            .font(.caption2.bold())
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Capsule().fill(.orange))
                     }
                 }
 
