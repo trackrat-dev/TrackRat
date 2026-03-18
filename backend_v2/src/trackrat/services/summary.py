@@ -591,7 +591,11 @@ class SummaryService:
                     last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
                     if last_stop.actual_arrival and last_stop.scheduled_arrival:
                         # Exclude scheduled_fallback arrivals — they always show
-                        # 0 delay (actual == scheduled) and inflate on-time stats
+                        # 0 delay (actual == scheduled) and inflate on-time stats.
+                        # NOTE: Historical stops (before ~March 2026) may have
+                        # NULL arrival_source (partial backfill). Those stops
+                        # still contribute to OTP here since we only exclude
+                        # "scheduled_fallback", not NULL.
                         if last_stop.arrival_source == "scheduled_fallback":
                             pass
                         else:

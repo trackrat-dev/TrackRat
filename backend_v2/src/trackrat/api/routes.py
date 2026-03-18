@@ -327,6 +327,10 @@ async def _calculate_route_stats_sql(
             WHERE js.station_code = ANY(:to_codes)
               AND js.actual_arrival IS NOT NULL
               AND js.scheduled_arrival IS NOT NULL
+              -- NOTE: Historical stops (before ~March 2026) may have NULL
+              -- arrival_source due to a removed backfill migration
+              -- (f7a8b9c0d1e2). Those stops are excluded from OTP stats.
+              -- New data is populated correctly going forward.
               AND (js.arrival_source = 'api_observed'
                    OR (tj.is_completed = true AND js.arrival_source IS NOT NULL))
             ORDER BY js.journey_id, js.stop_sequence ASC
