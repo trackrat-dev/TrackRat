@@ -54,7 +54,7 @@ struct Stations {
         case "trenton":
             return "TR"
         case "princeton":
-            return "PJ"  // Princeton Junction is more common than Princeton
+            return "PR"  // Princeton (Dinky); Princeton Junction is "PJ"
         case "philadelphia":
             return "PH"
         case "washington":
