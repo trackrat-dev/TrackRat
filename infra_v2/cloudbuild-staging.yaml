@@ -111,11 +111,13 @@ steps:
           fi
 
           # Create new staging disk from production snapshot
+          # Size must be >= source snapshot; 20GB gives headroom for WAL and growth
           echo "Creating new staging disk from production snapshot..."
           if ! gcloud compute disks create ${_STAGING_DISK} \
             --source-snapshot=staging-clone-${BUILD_ID} \
             --zone=${_ZONE} \
             --type=pd-ssd \
+            --size=20GB \
             --labels=app=trackrat,environment=staging; then
             echo "ERROR: Failed to create staging disk. Cleaning up snapshot..."
             gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet || true

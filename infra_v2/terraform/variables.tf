@@ -42,7 +42,7 @@ variable "machine_type" {
 variable "disk_size_gb" {
   description = "Persistent disk size in GB"
   type        = number
-  default     = 10
+  default     = 20
 }
 
 variable "snapshot_retention_days" {
