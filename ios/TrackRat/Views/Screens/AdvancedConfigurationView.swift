@@ -11,7 +11,6 @@ struct AdvancedConfigurationView: View {
 
     // MARK: - Debug/TestFlight state
     @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @ObservedObject private var journeyFeedbackService = JourneyFeedbackService.shared
     @State private var selectedEnvironment: ServerEnvironment = StorageService().loadServerEnvironment()
     @State private var healthCheckResult: HealthCheckResult?
     @State private var isTestingConnection = false
@@ -25,13 +24,10 @@ struct AdvancedConfigurationView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    createBetaFeaturesSection()
                     createServerEnvironmentSection()
                     createHealthCheckSection()
-                    createMapSettingsSection()
                     createSubscriptionDebugSection()
-                    createDebugToolsSection()
-                    createDataManagementSection()
+                    createBetaFeaturesSection()
                 }
                 .padding()
                 .padding(.bottom, 40)
@@ -69,63 +65,6 @@ struct AdvancedConfigurationView: View {
     private func createBetaFeaturesSection() -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Beta Features")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-
-            NavigationLink(value: SettingsDestination.tripHistory) {
-                HStack(spacing: 16) {
-                    Image(systemName: "chart.bar.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("My Trips")
-                            .font(.headline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.leading)
-
-                        Text("View your trip history and statistics")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.5))
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.white.opacity(0.05))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(.white.opacity(0.1), lineWidth: 1)
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                )
-        )
-    }
-
-    // MARK: - Map Settings Section
-    @ViewBuilder
-    private func createMapSettingsSection() -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Map Settings")
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
@@ -204,6 +143,72 @@ struct AdvancedConfigurationView: View {
                             .stroke(.white.opacity(0.1), lineWidth: 1)
                     )
             )
+
+            NavigationLink(value: SettingsDestination.tripHistory) {
+                HStack(spacing: 16) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("My Trips")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+
+                        Text("View your trip history and statistics")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.white.opacity(0.05))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.white.opacity(0.1), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
+
+            // Clear Trip History
+            Button {
+                showClearHistoryConfirmation = true
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Clear Trip History")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        Text("Removes all recorded trips and statistics")
+                            .font(.caption)
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                    Spacer()
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.red.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.red.opacity(0.3), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(.plain)
         }
         .padding()
         .background(
@@ -453,100 +458,6 @@ struct AdvancedConfigurationView: View {
         )
     }
 
-    @ViewBuilder
-    private func createDebugToolsSection() -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Debug Tools")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-
-            Text("Development tools for testing feedback prompts.")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
-
-            VStack(spacing: 12) {
-                // Show Feedback Prompt
-                Button {
-                    showFeedbackPrompt()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Show Feedback Prompt")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            Text("Displays the \"Enjoying TrackRat?\" prompt")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        Spacer()
-                        Image(systemName: "bubble.left.and.bubble.right")
-                            .foregroundColor(.orange)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.white.opacity(0.1), lineWidth: 1)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
-
-                // Reset Feedback Cooldowns
-                Button {
-                    resetFeedbackCooldowns()
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Reset Feedback Cooldowns")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            Text("Allows prompt to appear on next departure")
-                                .font(.caption)
-                                .foregroundColor(.white.opacity(0.6))
-                        }
-                        Spacer()
-                        Image(systemName: "clock.arrow.circlepath")
-                            .foregroundColor(.orange)
-                    }
-                    .padding()
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(.white.opacity(0.1), lineWidth: 1)
-                            )
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                )
-        )
-    }
-
-    private func showFeedbackPrompt() {
-        journeyFeedbackService.forceShowPrompt()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
-
-    private func resetFeedbackCooldowns() {
-        journeyFeedbackService.resetCooldowns()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        showSuccessMessage("Cooldowns reset")
-    }
-
     private func saveConfiguration() {
         storageService.saveServerEnvironment(selectedEnvironment)
         APIService.shared.updateServerEnvironment(selectedEnvironment)
@@ -573,59 +484,6 @@ struct AdvancedConfigurationView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Data Management Section (all builds)
-    @ViewBuilder
-    private func createDataManagementSection() -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Data Management")
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-
-            Text("Manage your stored data.")
-                .font(.caption)
-                .foregroundColor(.white.opacity(0.7))
-
-            // Clear Trip History
-            Button {
-                showClearHistoryConfirmation = true
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Clear Trip History")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("Removes all recorded trips and statistics")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                    Spacer()
-                    Image(systemName: "trash")
-                        .foregroundColor(.red)
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.red.opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(.red.opacity(0.3), lineWidth: 1)
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(.white.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
-                )
-        )
     }
 
     private func clearTripHistory() {
