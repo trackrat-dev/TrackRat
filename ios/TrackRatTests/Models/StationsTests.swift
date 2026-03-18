@@ -496,6 +496,43 @@ class StationsTests: XCTestCase {
                      "stationEquivalents codes missing system mapping: \(Set(unmapped).sorted())")
     }
 
+    func testPrincetonJunctionServesNJTAndAmtrak() {
+        // Princeton Junction (PJ) is served by both NJT and Amtrak
+        let pjSystems = Stations.systemStringsForStation("PJ")
+        XCTAssertTrue(pjSystems.contains("NJT"),
+                     "Princeton Junction should serve NJT, got: \(pjSystems)")
+        XCTAssertTrue(pjSystems.contains("AMTRAK"),
+                     "Princeton Junction should serve AMTRAK, got: \(pjSystems)")
+    }
+
+    func testMetroparkAndNewBrunswickServeNJTAndAmtrak() {
+        // Metropark (MP) and New Brunswick (NB) are served by both NJT and Amtrak
+        let mpSystems = Stations.systemStringsForStation("MP")
+        XCTAssertTrue(mpSystems.contains("NJT"),
+                     "Metropark should serve NJT, got: \(mpSystems)")
+        XCTAssertTrue(mpSystems.contains("AMTRAK"),
+                     "Metropark should serve AMTRAK, got: \(mpSystems)")
+
+        let nbSystems = Stations.systemStringsForStation("NB")
+        XCTAssertTrue(nbSystems.contains("NJT"),
+                     "New Brunswick should serve NJT, got: \(nbSystems)")
+        XCTAssertTrue(nbSystems.contains("AMTRAK"),
+                     "New Brunswick should serve AMTRAK, got: \(nbSystems)")
+    }
+
+    func testPrincetonJunctionToNYPennCommonSystems() {
+        // Princeton Junction → NY Penn should have both NJT and AMTRAK as common systems
+        let pjSystems = Stations.systemsForStation("PJ")
+        let nySystems = Stations.systemsForStation("NY")
+        let common = pjSystems.intersection(nySystems)
+        XCTAssertTrue(common.contains(.njt),
+                     "PJ→NY common systems should include NJT, got: \(common)")
+        XCTAssertTrue(common.contains(.amtrak),
+                     "PJ→NY common systems should include AMTRAK, got: \(common)")
+        XCTAssertGreaterThan(common.count, 1,
+                            "PJ→NY should have multiple common systems for Line Selection to appear, got: \(common)")
+    }
+
     func testMetropolitanAvComplex() {
         // Metropolitan Av (G) / Lorimer St (L): SG29, SL10
         let expected: Set<String> = ["SG29", "SL10"]

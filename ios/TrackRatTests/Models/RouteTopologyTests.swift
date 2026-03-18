@@ -137,6 +137,78 @@ class RouteTopologyTests: XCTestCase {
         XCTAssertEqual(routes.first?.id, "njt-nec")
     }
 
+    // MARK: - Amtrak NEC includes NJT shared stations
+
+    func testAmtrakNECIncludesPrincetonJunction() {
+        let route = RouteTopology.routeContaining(from: "PJ", to: "NY", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain Princeton Junction (PJ)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "PJ→NY on AMTRAK should match the Northeast Corridor")
+    }
+
+    func testAmtrakNECIncludesMetropark() {
+        let route = RouteTopology.routeContaining(from: "MP", to: "NY", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain Metropark (MP)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "MP→NY on AMTRAK should match the Northeast Corridor")
+    }
+
+    func testAmtrakNECIncludesNewBrunswick() {
+        let route = RouteTopology.routeContaining(from: "NB", to: "NY", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain New Brunswick (NB)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "NB→NY on AMTRAK should match the Northeast Corridor")
+    }
+
+    func testAmtrakKeystoneIncludesNJTSharedStations() {
+        // Metropark, New Brunswick, Princeton Junction are between NP and TR on Keystone too
+        let route = RouteTopology.routeContaining(from: "PJ", to: "PH", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak Keystone should contain Princeton Junction (PJ)")
+    }
+
+    func testPrincetonJunctionToNYRouteOnBothSystems() {
+        // PJ→NY should be findable on both NJT and AMTRAK
+        let njtRoute = RouteTopology.routeContaining(from: "PJ", to: "NY", dataSource: "NJT")
+        let amtrakRoute = RouteTopology.routeContaining(from: "PJ", to: "NY", dataSource: "AMTRAK")
+        XCTAssertNotNil(njtRoute, "PJ→NY should exist on NJT")
+        XCTAssertNotNil(amtrakRoute, "PJ→NY should exist on AMTRAK")
+        XCTAssertNotEqual(njtRoute?.id, amtrakRoute?.id,
+                         "NJT and AMTRAK routes should be different routes")
+    }
+
+    func testAmtrakNECIncludesCornwellsHeights() {
+        let route = RouteTopology.routeContaining(from: "CWH", to: "PH", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain Cornwells Heights (CWH)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "CWH→PH on AMTRAK should match the Northeast Corridor")
+    }
+
+    func testAmtrakNECIncludesNorthPhiladelphia() {
+        let route = RouteTopology.routeContaining(from: "PHN", to: "PH", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain North Philadelphia (PHN)")
+    }
+
+    func testAmtrakNECIncludesNewRochelle() {
+        let route = RouteTopology.routeContaining(from: "NRO", to: "NY", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain New Rochelle (NRO)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "NRO→NY on AMTRAK should match the Northeast Corridor")
+    }
+
+    // MARK: - Amtrak Empire Service includes Hudson Valley stations
+
+    func testAmtrakEmpireServiceIncludesHudsonValley() {
+        let hudsonValley = ["YNY", "CRT", "POU", "RHI", "HUD", "SDY"]
+        for code in hudsonValley {
+            let route = RouteTopology.routeContaining(from: code, to: "ALB", dataSource: "AMTRAK")
+            XCTAssertNotNil(route,
+                           "Amtrak Empire Service should contain \(code)")
+            XCTAssertEqual(route?.id, "amtrak-empire-service",
+                          "\(code)→ALB on AMTRAK should match Empire Service")
+        }
+    }
+
+    func testAmtrakEmpireServiceNYToPoughkeepsie() {
+        let route = RouteTopology.routeContaining(from: "NY", to: "POU", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "NY→POU should resolve to Amtrak Empire Service")
+        XCTAssertEqual(route?.id, "amtrak-empire-service")
+    }
+
     // MARK: - allStationCodes
 
     func testAllStationCodesNotEmpty() {
