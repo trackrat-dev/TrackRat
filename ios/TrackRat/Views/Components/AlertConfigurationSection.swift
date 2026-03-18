@@ -285,7 +285,7 @@ enum AlertSensitivity: String, CaseIterable {
 
 /// Quick time window presets for common commute patterns.
 enum TimePreset: String, CaseIterable {
-    case anyTime = "Any Time"
+    case anyTime = "Anytime"
     case custom = "Custom"
 }
 
@@ -345,17 +345,6 @@ struct AlertConfigurationSection: View {
                 }
 
                 if hasDaysSelected {
-                    // Time window presets
-                    Text("At...")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.6))
-                    timePresetRow
-
-                    if activeTimePreset == .custom || showCustomTime {
-                        customTimeWindow
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-
                     Divider().opacity(0.3)
 
                     // Alert types
@@ -371,22 +360,37 @@ struct AlertConfigurationSection: View {
                     // Recovery (only when at least one alert type is active)
                     if subscription.notifyCancellation || subscription.notifyDelay {
                         Toggle(isOn: $subscription.notifyRecovery) {
-                            Text("Notify on recovery")
+                            Text("Notify on Recovery")
                         }
                         .tint(.orange)
                     }
 
-                    // Planned work (MTA + NJT systems)
+                    // Service alerts (MTA + NJT systems)
                     if showPlannedWork {
                         Toggle(isOn: $subscription.includePlannedWork) {
-                            Text("Planned work")
+                            Text("Service Alerts")
                         }
                         .tint(.orange)
                     }
+
+                    Divider().opacity(0.3)
+
+                    // Time window presets
+                    Text("At...")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.6))
+                    timePresetRow
+
+                    if activeTimePreset == .custom || showCustomTime {
+                        customTimeWindow
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
+                    Divider().opacity(0.3)
 
                     // Daily status summary
                     Toggle(isOn: digestEnabled) {
-                        Text("Daily Status Summary")
+                        Text("Send a Daily Status Summary")
                     }
                     .tint(.orange)
 
