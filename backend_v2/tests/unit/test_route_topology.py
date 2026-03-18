@@ -718,3 +718,130 @@ class TestNjtLineCodeConsistency:
                 if station not in all_names:
                     missing.append((route.id, station))
         assert missing == [], f"NJT stations missing names: {missing}"
+
+
+class TestAmtrakNECIntermediateStations:
+    """Test that Amtrak NEC/Keystone routes include shared NJT intermediate stations.
+
+    Amtrak NEC and Keystone trains stop at Metropark, New Brunswick, and
+    Princeton Junction between Newark Penn and Trenton. These stations must
+    be in the Amtrak route topologies for segment expansion to work correctly.
+    """
+
+    def test_amtrak_nec_contains_metropark(self):
+        """Metropark (MP) should be in Amtrak NEC between NP and TR."""
+        assert "MP" in AMTRAK_NEC.stations, "Amtrak NEC should include Metropark (MP)"
+        stations = list(AMTRAK_NEC.stations)
+        assert stations.index("NP") < stations.index("MP") < stations.index("TR"), (
+            "MP should be between NP and TR in station order"
+        )
+
+    def test_amtrak_nec_contains_new_brunswick(self):
+        """New Brunswick (NB) should be in Amtrak NEC between NP and TR."""
+        assert "NB" in AMTRAK_NEC.stations, "Amtrak NEC should include New Brunswick (NB)"
+
+    def test_amtrak_nec_contains_princeton_junction(self):
+        """Princeton Junction (PJ) should be in Amtrak NEC between NP and TR."""
+        assert "PJ" in AMTRAK_NEC.stations, "Amtrak NEC should include Princeton Junction (PJ)"
+
+    def test_amtrak_nec_contains_cornwells_heights(self):
+        """Cornwells Heights (CWH) should be in Amtrak NEC between TR and PH."""
+        assert "CWH" in AMTRAK_NEC.stations, "Amtrak NEC should include Cornwells Heights (CWH)"
+        stations = list(AMTRAK_NEC.stations)
+        assert stations.index("TR") < stations.index("CWH") < stations.index("PH"), (
+            "CWH should be between TR and PH in station order"
+        )
+
+    def test_amtrak_nec_contains_north_philadelphia(self):
+        """North Philadelphia (PHN) should be in Amtrak NEC between TR and PH."""
+        assert "PHN" in AMTRAK_NEC.stations, "Amtrak NEC should include North Philadelphia (PHN)"
+
+    def test_amtrak_nec_contains_new_rochelle(self):
+        """New Rochelle (NRO) should be in Amtrak NEC between STM and NY."""
+        assert "NRO" in AMTRAK_NEC.stations, "Amtrak NEC should include New Rochelle (NRO)"
+        stations = list(AMTRAK_NEC.stations)
+        assert stations.index("STM") < stations.index("NRO") < stations.index("NY"), (
+            "NRO should be between STM and NY in station order"
+        )
+
+    def test_amtrak_nec_segment_ny_to_pj_resolves(self):
+        """Segment NY→PJ should resolve to Amtrak NEC route."""
+        route = find_route_for_segment("AMTRAK", "NY", "PJ")
+        assert route is not None, "NY→PJ should resolve to an Amtrak route"
+        assert route.id == "amtrak-nec", f"NY→PJ should resolve to amtrak-nec, got {route.id}"
+
+    def test_amtrak_nec_segment_mp_to_tr_expands(self):
+        """Segment MP→TR should expand to canonical segments via Amtrak NEC."""
+        segments = get_canonical_segments("AMTRAK", "MP", "TR")
+        assert len(segments) > 1, (
+            f"MP→TR should expand to multiple segments, got: {segments}"
+        )
+        assert segments[0][0] == "MP"
+        assert segments[-1][1] == "TR"
+
+    def test_amtrak_keystone_contains_shared_stations(self):
+        """Keystone should include MP, NB, PJ, CWH, PHN."""
+        from trackrat.config.route_topology import AMTRAK_KEYSTONE
+
+        for code in ("MP", "NB", "PJ", "CWH", "PHN"):
+            assert code in AMTRAK_KEYSTONE.stations, (
+                f"Amtrak Keystone should include {code}"
+            )
+
+
+class TestAmtrakEmpireServiceStations:
+    """Test that Amtrak Empire Service includes Hudson Valley stations."""
+
+    def test_empire_service_contains_hudson_valley_stations(self):
+        """Empire Service should include intermediate Hudson Valley stops."""
+        from trackrat.config.route_topology import AMTRAK_EMPIRE_SERVICE
+
+        hudson_valley = ["YNY", "CRT", "POU", "RHI", "HUD", "SDY"]
+        for code in hudson_valley:
+            assert code in AMTRAK_EMPIRE_SERVICE.stations, (
+                f"Empire Service should include {code}"
+            )
+
+    def test_empire_service_station_order(self):
+        """Hudson Valley stations should be in correct geographic order."""
+        from trackrat.config.route_topology import AMTRAK_EMPIRE_SERVICE
+
+        stations = list(AMTRAK_EMPIRE_SERVICE.stations)
+        expected_order = ["NY", "YNY", "CRT", "POU", "RHI", "HUD", "SDY", "ALB"]
+        for i in range(len(expected_order) - 1):
+            a, b = expected_order[i], expected_order[i + 1]
+            assert stations.index(a) < stations.index(b), (
+                f"{a} should come before {b} in Empire Service stations"
+            )
+
+    def test_empire_service_segment_ny_to_pou_resolves(self):
+        """Segment NY→POU should resolve to Amtrak Empire Service."""
+        route = find_route_for_segment("AMTRAK", "NY", "POU")
+        assert route is not None, "NY→POU should resolve to an Amtrak route"
+        assert route.id == "amtrak-empire-service", (
+            f"NY→POU should resolve to amtrak-empire-service, got {route.id}"
+        )
+
+    def test_empire_service_segment_ny_to_crt_expands(self):
+        """Segment NY→CRT should expand through YNY."""
+        segments = get_canonical_segments("AMTRAK", "NY", "CRT")
+        assert len(segments) == 2, f"NY→CRT should expand to 2 segments, got: {segments}"
+        assert segments == [("NY", "YNY"), ("YNY", "CRT")]
+
+
+class TestAmtrakStationNamesConsistency:
+    """Test that all Amtrak topology stations have names in the station config."""
+
+    def test_all_amtrak_stations_have_names(self):
+        """Every station code in Amtrak routes should have a name."""
+        from trackrat.config.stations.amtrak import AMTRAK_STATION_NAMES
+        from trackrat.config.stations.common import STATION_NAMES
+
+        all_names = {**STATION_NAMES, **AMTRAK_STATION_NAMES}
+        amtrak_routes = get_routes_for_data_source("AMTRAK")
+        missing = []
+        for route in amtrak_routes:
+            for station in route.stations:
+                if station not in all_names:
+                    missing.append((route.id, station))
+        assert missing == [], f"Amtrak stations missing names: {missing}"

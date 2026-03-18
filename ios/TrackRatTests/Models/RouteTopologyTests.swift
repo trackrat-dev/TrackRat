@@ -173,6 +173,42 @@ class RouteTopologyTests: XCTestCase {
                          "NJT and AMTRAK routes should be different routes")
     }
 
+    func testAmtrakNECIncludesCornwellsHeights() {
+        let route = RouteTopology.routeContaining(from: "CWH", to: "PH", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain Cornwells Heights (CWH)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "CWH→PH on AMTRAK should match the Northeast Corridor")
+    }
+
+    func testAmtrakNECIncludesNorthPhiladelphia() {
+        let route = RouteTopology.routeContaining(from: "PHN", to: "PH", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain North Philadelphia (PHN)")
+    }
+
+    func testAmtrakNECIncludesNewRochelle() {
+        let route = RouteTopology.routeContaining(from: "NRO", to: "NY", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "Amtrak NEC should contain New Rochelle (NRO)")
+        XCTAssertEqual(route?.id, "amtrak-nec", "NRO→NY on AMTRAK should match the Northeast Corridor")
+    }
+
+    // MARK: - Amtrak Empire Service includes Hudson Valley stations
+
+    func testAmtrakEmpireServiceIncludesHudsonValley() {
+        let hudsonValley = ["YNY", "CRT", "POU", "RHI", "HUD", "SDY"]
+        for code in hudsonValley {
+            let route = RouteTopology.routeContaining(from: code, to: "ALB", dataSource: "AMTRAK")
+            XCTAssertNotNil(route,
+                           "Amtrak Empire Service should contain \(code)")
+            XCTAssertEqual(route?.id, "amtrak-empire-service",
+                          "\(code)→ALB on AMTRAK should match Empire Service")
+        }
+    }
+
+    func testAmtrakEmpireServiceNYToPoughkeepsie() {
+        let route = RouteTopology.routeContaining(from: "NY", to: "POU", dataSource: "AMTRAK")
+        XCTAssertNotNil(route, "NY→POU should resolve to Amtrak Empire Service")
+        XCTAssertEqual(route?.id, "amtrak-empire-service")
+    }
+
     // MARK: - allStationCodes
 
     func testAllStationCodesNotEmpty() {

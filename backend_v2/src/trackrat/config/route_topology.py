@@ -459,9 +459,15 @@ AMTRAK_NEC = Route(
         "NHV",
         "BRP",
         "STM",
+        "NRO",
         "NY",
         "NP",
+        "MP",
+        "NB",
+        "PJ",
         "TR",
+        "CWH",
+        "PHN",
         "PH",
         "WI",
         "BL",
@@ -478,7 +484,12 @@ AMTRAK_KEYSTONE = Route(
     stations=(
         "NY",
         "NP",
+        "MP",
+        "NB",
+        "PJ",
         "TR",
+        "CWH",
+        "PHN",
         "PH",
         "PAO",
         "EXT",
@@ -671,7 +682,7 @@ AMTRAK_EMPIRE_SERVICE = Route(
     name="Empire Service",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("NY", "ALB", "SYR", "ROC", "BUF"),
+    stations=("NY", "YNY", "CRT", "POU", "RHI", "HUD", "SDY", "ALB", "SYR", "ROC", "BUF"),
 )
 
 # =============================================================================
