@@ -245,12 +245,12 @@ extension MKCoordinateRegion {
 
     /// Returns a new region adjusted so the intended area is visible in the top half
     /// of the screen, accounting for a bottom sheet covering ~50% of the display.
-    /// Shifts center northward by half the latitude span and doubles the latitude span
-    /// so the original extent fits in the visible top portion.
+    /// Shifts center southward by half the latitude span and doubles the latitude span
+    /// so the original extent occupies the visible top portion above the sheet.
     func adjustedForBottomSheet() -> MKCoordinateRegion {
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(
-                latitude: center.latitude + span.latitudeDelta / 2,
+                latitude: center.latitude - span.latitudeDelta / 2,
                 longitude: center.longitude
             ),
             span: MKCoordinateSpan(
