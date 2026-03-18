@@ -635,8 +635,8 @@ struct RouteStatusContext: Identifiable, Equatable {
         return []
     }
 
-    /// Resolves a lineId to GTFS route IDs for MTA service alert matching.
-    /// Accepts RouteTopology IDs ("subway-m", "lirr-babylon") or backend line codes ("M", "LIRR-BB").
+    /// Resolves a lineId to route IDs for service alert matching.
+    /// Accepts RouteTopology IDs ("subway-m", "lirr-babylon") or backend line codes ("M", "LIRR-BB", "NE").
     private static func resolveGtfsRouteIds(lineId: String, dataSource: String) -> Set<String>? {
         if dataSource == "SUBWAY" {
             if lineId.hasPrefix("subway-") {
@@ -647,6 +647,11 @@ struct RouteStatusContext: Identifiable, Equatable {
             }
             // Raw backend line.code: "M", "L", "1", "6X" — already a GTFS route ID
             return [lineId.uppercased()]
+        }
+
+        // NJT/Amtrak: line codes are used as affected_route_ids directly (e.g., "NE", "NC")
+        if dataSource == "NJT" || dataSource == "AMTRAK" {
+            return [lineId]
         }
 
         // LIRR: RouteTopology ID → GTFS route_id

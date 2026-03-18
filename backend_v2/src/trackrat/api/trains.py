@@ -139,6 +139,36 @@ async def get_departures(
                 await cache_service.invalidate_cache_entry(
                     db, "/api/v2/trains/departures", cache_params
                 )
+        elif source_list:
+            # System-specific cache miss — try superset cache (data_sources=None)
+            # and filter in-memory, since the all-systems cache is a superset
+            superset_params = {**cache_params, "data_sources": None}
+            superset_response = await cache_service.get_cached_response(
+                db, "/api/v2/trains/departures", superset_params
+            )
+            if superset_response:
+                source_set = set(source_list)
+                superset_response["departures"] = [
+                    d
+                    for d in superset_response.get("departures", [])
+                    if d.get("data_source") in source_set
+                ]
+                superset_response["metadata"]["count"] = len(
+                    superset_response["departures"]
+                )
+                try:
+                    return DeparturesResponse(**superset_response)
+                except (TypeError, ValueError):
+                    pass  # Fall through to fresh computation
+            else:
+                logger.info(
+                    "cache_miss",
+                    endpoint="/api/v2/trains/departures",
+                    from_station=from_station,
+                    to_station=to_station,
+                    hide_departed=hide_departed,
+                    data_sources=source_list,
+                )
         else:
             # Cache miss - log for observability
             logger.info(
