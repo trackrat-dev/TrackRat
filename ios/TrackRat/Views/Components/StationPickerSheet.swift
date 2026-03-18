@@ -16,6 +16,7 @@ struct StationPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
 
     /// All visible stations filtered by selected systems.
     private var visibleStations: [Station] {
@@ -121,6 +122,7 @@ struct StationPickerSheet: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(.white.opacity(0.5))
                     TextField("Search stations...", text: $searchText)
+                        .focused($isSearchFocused)
                         .foregroundColor(.white)
                         .autocorrectionDisabled(true)
                         .textInputAutocapitalization(.never)
@@ -177,5 +179,6 @@ struct StationPickerSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear { isSearchFocused = true }
     }
 }
