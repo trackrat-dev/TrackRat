@@ -18,7 +18,6 @@ struct OnboardingView: View {
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
     @State private var showingPaywall = false
-    @State private var pendingAutoAdvance: DispatchWorkItem?
     @State private var showConfetti = false
     @State private var welcomeTextScale: CGFloat = 0.8
 

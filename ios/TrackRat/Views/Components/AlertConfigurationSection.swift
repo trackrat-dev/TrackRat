@@ -367,7 +367,7 @@ struct AlertConfigurationSection: View {
                         .tint(.orange)
                     }
 
-                    // Planned work (MTA systems only)
+                    // Planned work (MTA + NJT systems)
                     if showPlannedWork {
                         Toggle(isOn: $subscription.includePlannedWork) {
                             Text("Planned work")
