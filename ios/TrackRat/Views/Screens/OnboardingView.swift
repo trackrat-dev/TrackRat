@@ -18,6 +18,9 @@ struct OnboardingView: View {
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
     @State private var showingPaywall = false
+    @State private var pendingAutoAdvance: DispatchWorkItem?
+    @State private var showConfetti = false
+    @State private var welcomeTextScale: CGFloat = 0.8
 
     private enum StationType {
         case home, work
@@ -47,37 +50,55 @@ struct OnboardingView: View {
                 systemSelectionView()
             } else {
                 // Show station selection after system selection
-                VStack(spacing: 0) {
-                    // Custom header when editing favorites (pushed onto NavigationStack)
-                    if isRepeating {
-                        TrackRatNavigationHeader(
-                            title: "Edit Favorites",
-                            showBackButton: true,
-                            onBackAction: { dismiss() }
-                        )
-                    }
-
-                    // Station selection content
-                    welcomeAndSetupView()
-
-                    // Continue/Skip button
-                    VStack(spacing: 20) {
-                        Button((homeStation != nil || workStation != nil) ? "Continue" : "Skip") {
-                            if !isCompletingOnboarding {
-                                completeOnboarding()
-                            }
+                ZStack {
+                    VStack(spacing: 0) {
+                        // Custom header when editing favorites (pushed onto NavigationStack)
+                        if isRepeating {
+                            TrackRatNavigationHeader(
+                                title: "Edit Favorites",
+                                showBackButton: true,
+                                onBackAction: { dismiss() }
+                            )
                         }
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(height: 50)
-                        .frame(minWidth: 160)
-                        .background(Color.orange)
-                        .cornerRadius(TrackRatTheme.CornerRadius.md)
-                        .buttonStyle(.plain)
-                        .disabled(isCompletingOnboarding)
+
+                        // Station selection content
+                        welcomeAndSetupView()
+
+                        // Continue/Skip button
+                        VStack(spacing: 20) {
+                            Button((homeStation != nil || workStation != nil) ? "Continue" : "Skip") {
+                                if !isCompletingOnboarding {
+                                    completeOnboarding()
+                                }
+                            }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(height: 50)
+                            .frame(minWidth: 160)
+                            .background(Color.orange)
+                            .cornerRadius(TrackRatTheme.CornerRadius.md)
+                            .buttonStyle(.plain)
+                            .disabled(isCompletingOnboarding)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 40)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
+
+                    // Celebration confetti overlay (first-time onboarding only)
+                    if !isRepeating {
+                        ConfettiView(isActive: showConfetti)
+                            .ignoresSafeArea()
+                    }
+                }
+                .onAppear {
+                    // Trigger confetti and welcome animation on first onboarding
+                    if !isRepeating && !showConfetti {
+                        showConfetti = true
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
+                            welcomeTextScale = 1.0
+                        }
+                    }
                 }
             }
         }
@@ -179,6 +200,7 @@ struct OnboardingView: View {
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
+                    .scaleEffect(isRepeating ? 1.0 : welcomeTextScale)
                 
                 Text("Help us recommend routes by\nselecting your stations")
                     .font(.body)
