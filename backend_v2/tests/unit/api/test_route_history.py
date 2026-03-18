@@ -31,13 +31,15 @@ async def _create_journey(
     stops: list[dict],
     is_cancelled: bool = False,
     data_source: str = "NJT",
+    line_code: str = "NE",
+    line_name: str = "Northeast Corridor",
 ) -> TrainJourney:
     """Create a real TrainJourney with JourneyStop records in the database."""
     journey = TrainJourney(
         train_id=train_id,
         journey_date=BASE_DATE,
-        line_code="NE",
-        line_name="Northeast Corridor",
+        line_code=line_code,
+        line_name=line_name,
         destination="Trenton",
         origin_station_code=stops[0]["station_code"],
         terminal_station_code=stops[-1]["station_code"],
@@ -78,6 +80,7 @@ async def _run_stats(
     from_codes: list[str] | None = None,
     to_codes: list[str] | None = None,
     train_id_filter: str | None = None,
+    line_codes: list[str] | None = None,
 ) -> dict:
     """Helper to call _calculate_route_stats_sql with common defaults."""
     return await _calculate_route_stats_sql(
@@ -90,6 +93,7 @@ async def _run_stats(
         cutoff_time=None,
         now=BASE_TIME + timedelta(hours=2),
         train_id_filter=train_id_filter,
+        line_codes=line_codes,
     )
 
 
@@ -1229,3 +1233,241 @@ class TestCutoffTimeFiltersByArrival:
         # No cutoff = all journeys included (the _run_stats default)
         result = await _run_stats(db_session)
         assert result["total_journeys"] == 3
+
+
+def _make_stops(
+    delay_minutes: float = 0,
+    from_code: str = "NY",
+    to_code: str = "TR",
+) -> list[dict]:
+    """Helper to create a simple 2-stop journey with optional delay."""
+    return [
+        {
+            "station_code": from_code,
+            "stop_sequence": 0,
+            "scheduled_departure": BASE_TIME,
+            "actual_departure": BASE_TIME,
+        },
+        {
+            "station_code": to_code,
+            "stop_sequence": 1,
+            "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+            "actual_arrival": BASE_TIME
+            + timedelta(hours=1, minutes=delay_minutes),
+            "arrival_source": "api_observed",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+class TestLineCodesFilter:
+    """Verify that the line_codes parameter correctly filters route stats.
+
+    This tests the fix for the bug where Route Performance showed aggregate
+    stats for ALL subway lines even when only some lines were enabled in
+    Route Settings.
+    """
+
+    async def test_line_codes_filter_includes_matching_line(
+        self, db_session: AsyncSession
+    ):
+        """Journeys with a matching line_code are included."""
+        await _create_journey(
+            db_session,
+            train_id="A_train_1",
+            stops=_make_stops(),
+            data_source="SUBWAY",
+            line_code="A",
+            line_name="A Train",
+        )
+        await db_session.commit()
+
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=["A"],
+        )
+        assert result["total_journeys"] == 1, (
+            f"Expected 1 journey for line A, got {result['total_journeys']}"
+        )
+
+    async def test_line_codes_filter_excludes_non_matching_line(
+        self, db_session: AsyncSession
+    ):
+        """Journeys with a non-matching line_code are excluded."""
+        await _create_journey(
+            db_session,
+            train_id="A_train_2",
+            stops=_make_stops(),
+            data_source="SUBWAY",
+            line_code="A",
+            line_name="A Train",
+        )
+        await db_session.commit()
+
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=["1"],
+        )
+        assert result["total_journeys"] == 0, (
+            f"Expected 0 journeys when filtering for line 1 but only line A exists, "
+            f"got {result['total_journeys']}"
+        )
+
+    async def test_line_codes_filter_multiple_lines(
+        self, db_session: AsyncSession
+    ):
+        """Multiple line codes filter includes all matching, excludes non-matching."""
+        # Create journeys on 3 different lines
+        for line_code, line_name in [("A", "A Train"), ("1", "1 Train"), ("7", "7 Train")]:
+            await _create_journey(
+                db_session,
+                train_id=f"{line_code}_train",
+                stops=_make_stops(),
+                data_source="SUBWAY",
+                line_code=line_code,
+                line_name=line_name,
+            )
+        await db_session.commit()
+
+        # Filter for A and 1 only — should exclude 7
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=["A", "1"],
+        )
+        assert result["total_journeys"] == 2, (
+            f"Expected 2 journeys for lines A and 1, got {result['total_journeys']}. "
+            "Line 7 should be excluded."
+        )
+
+    async def test_line_codes_none_returns_all(
+        self, db_session: AsyncSession
+    ):
+        """When line_codes is None, all lines are included (backwards compatible)."""
+        for line_code, line_name in [("A", "A Train"), ("1", "1 Train")]:
+            await _create_journey(
+                db_session,
+                train_id=f"{line_code}_train_all",
+                stops=_make_stops(),
+                data_source="SUBWAY",
+                line_code=line_code,
+                line_name=line_name,
+            )
+        await db_session.commit()
+
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=None,
+        )
+        assert result["total_journeys"] == 2, (
+            f"Expected 2 journeys with no line filter (all lines), "
+            f"got {result['total_journeys']}"
+        )
+
+    async def test_line_codes_filter_affects_stats_accuracy(
+        self, db_session: AsyncSession
+    ):
+        """Stats are computed only from filtered lines, not polluted by others.
+
+        Creates a delayed line A train (10 min late) and an on-time line 1 train.
+        Filtering for line A only should show ~100% late, not ~50%.
+        """
+        # Line A: 10 min delayed
+        await _create_journey(
+            db_session,
+            train_id="A_delayed",
+            stops=_make_stops(delay_minutes=10),
+            data_source="SUBWAY",
+            line_code="A",
+            line_name="A Train",
+        )
+        # Line 1: on time
+        await _create_journey(
+            db_session,
+            train_id="1_ontime",
+            stops=_make_stops(delay_minutes=0),
+            data_source="SUBWAY",
+            line_code="1",
+            line_name="1 Train",
+        )
+        await db_session.commit()
+
+        # Unfiltered: 50% on-time (1 of 2 trains on time)
+        all_result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=None,
+        )
+        assert all_result["total_journeys"] == 2
+        assert all_result["on_time_percentage"] == pytest.approx(50.0, abs=1), (
+            f"Expected ~50% on-time with both lines, got {all_result['on_time_percentage']}"
+        )
+
+        # Filtered to line A only: 0% on-time (the A train is 10min late)
+        a_result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=["A"],
+        )
+        assert a_result["total_journeys"] == 1
+        assert a_result["on_time_percentage"] == pytest.approx(0.0, abs=1), (
+            f"Expected 0% on-time for line A (10min delayed), "
+            f"got {a_result['on_time_percentage']}"
+        )
+
+        # Filtered to line 1 only: 100% on-time
+        one_result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="SUBWAY",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["TR"],
+            cutoff_time=None,
+            now=BASE_TIME + timedelta(hours=2),
+            line_codes=["1"],
+        )
+        assert one_result["total_journeys"] == 1
+        assert one_result["on_time_percentage"] == pytest.approx(100.0, abs=1), (
+            f"Expected 100% on-time for line 1 (on time), "
+            f"got {one_result['on_time_percentage']}"
+        )
