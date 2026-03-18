@@ -18,7 +18,6 @@ struct OnboardingView: View {
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
     @State private var showingPaywall = false
-    @State private var pendingAutoAdvance: DispatchWorkItem?
 
     private enum StationType {
         case home, work
@@ -131,44 +130,29 @@ struct OnboardingView: View {
 
             // Header
             VStack(spacing: 8) {
-                Text("Which transit system\ndo you use?")
+                Text("Which transit system\ndo you use the most?")
                     .font(.largeTitle)
                     .fontWeight(.bold)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .minimumScaleFactor(0.7)
-
-                Text("You can add more later in Settings")
-                    .font(.subheadline)
-                    .foregroundColor(.white.opacity(0.5))
             }
 
             // System selection cards
             VStack(spacing: 12) {
                 ForEach(TrainSystem.allCases.sorted { $0.displayName < $1.displayName }, id: \.self) { system in
-                    let isSelected = appState.isSystemSelected(system)
                     SystemSelectionCard(
                         system: system,
-                        isSelected: isSelected,
+                        isSelected: false,
+                        showCheckmark: false,
                         onTap: {
-                            // Cancel any pending auto-advance (user tapped a different card)
-                            pendingAutoAdvance?.cancel()
+                            appState.selectSystem(system)
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                appState.selectSystem(system)
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                showSystemSelection = false
                             }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-                            // Auto-advance after a short delay
-                            let workItem = DispatchWorkItem {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    showSystemSelection = false
-                                }
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            }
-                            pendingAutoAdvance = workItem
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: workItem)
                         }
                     )
                 }
@@ -176,6 +160,11 @@ struct OnboardingView: View {
             .padding(.horizontal, 20)
 
             Spacer()
+
+            Text("Update this and add more later in Settings")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.5))
+                .padding(.bottom, 40)
         }
     }
 
@@ -568,6 +557,7 @@ struct SystemSelectionCard: View {
     let system: TrainSystem
     let isSelected: Bool
     var showProBadge: Bool = false
+    var showCheckmark: Bool = true
     let onTap: () -> Void
 
     var body: some View {
@@ -601,10 +591,16 @@ struct SystemSelectionCard: View {
 
                 Spacer()
 
-                // Selection indicator
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title2)
-                    .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+                if showCheckmark {
+                    // Selection indicator
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title2)
+                        .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
             }
             .padding()
             .background(Material.ultraThin)
