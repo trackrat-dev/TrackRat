@@ -402,9 +402,12 @@ class DepartureService:
                 #    Cutoff = max(now + 20min, last_observed_departure + 2min).
                 #    This prevents duplicates while showing schedules until realtime
                 #    data reliably covers them.
-                path_cutoff_time = await self._get_path_cutoff_time(
-                    db, from_station, current_time, target_date
-                )
+                if "PATH" in allowed_sources:
+                    path_cutoff_time = await self._get_path_cutoff_time(
+                        db, from_station, current_time, target_date
+                    )
+                else:
+                    path_cutoff_time = current_time
                 gtfs_future = [
                     dep
                     for dep in gtfs_response.departures

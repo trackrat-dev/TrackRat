@@ -358,7 +358,7 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private var serviceAlertsSection: some View {
-        if !viewModel.serviceAlerts.isEmpty {
+        if viewModel.hasServiceAlertSystems {
             let activeAlerts = viewModel.serviceAlerts
                 .filter { $0.isActiveNow }
                 .sorted { $0.earliestStartEpoch < $1.earliestStartEpoch }
@@ -897,6 +897,12 @@ final class RouteStatusViewModel: ObservableObject {
     /// Data sources that have service alert data
     private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
 
+    /// Whether this route involves any systems that support service alerts
+    var hasServiceAlertSystems: Bool {
+        let systems = enabledSystems.isEmpty ? Set([context.dataSource]) : enabledSystems
+        return !systems.isDisjoint(with: Self.serviceAlertSystems)
+    }
+
     // History state — keyed by system for stacked display
     @Published var historyBySystem: [String: HistoryState] = [:]
 
@@ -955,6 +961,9 @@ final class RouteStatusViewModel: ObservableObject {
             if system == "SUBWAY" {
                 // Subway line codes are GTFS route IDs (e.g., "A", "1", "M", "6X")
                 ids.insert(lineCode.uppercased())
+            } else if system == "NJT" || system == "AMTRAK" {
+                // NJT/Amtrak line codes match affected_route_ids directly (e.g., "NE", "NC")
+                ids.insert(lineCode)
             } else if let gtfsId = Self.lirrCodeToGtfs[lineCode] ?? Self.mnrCodeToGtfs[lineCode] {
                 ids.insert(gtfsId)
             }
