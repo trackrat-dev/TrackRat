@@ -334,6 +334,9 @@ struct AlertConfigurationSection: View {
                 .font(.headline)
 
                 // Day selection (top — controls subscribe/unsubscribe)
+                Text("Send me notifications...")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.6))
                 dayPresetRow
 
                 if isCustomDays || showCustomDays {
@@ -343,6 +346,9 @@ struct AlertConfigurationSection: View {
 
                 if hasDaysSelected {
                     // Time window presets
+                    Text("At...")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.6))
                     timePresetRow
 
                     if activeTimePreset == .custom || showCustomTime {
@@ -353,6 +359,9 @@ struct AlertConfigurationSection: View {
                     Divider().opacity(0.3)
 
                     // Alert types
+                    Text("When there are...")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.6))
                     sensitivityRow(label: "Cancellations", sensitivity: cancellationSensitivity)
                     sensitivityRow(
                         label: isFrequencyBased ? "Fewer Trains" : "Delays",
