@@ -453,6 +453,418 @@ class TestDepartureFiltering:
         assert result.departures[0].is_expired is False
 
 
+class TestHideDepartedTimeFallback:
+    """Tests for time-based fallback in hide_departed filter.
+
+    When has_departed_station is False but scheduled_departure is well past,
+    the train should still be excluded. This catches cases where the departure
+    flag wasn't updated due to collector timing gaps or JIT refresh skipping
+    the second pass.
+    """
+
+    def _create_journey_with_past_departure(
+        self,
+        train_id: str,
+        hours_ago: float,
+        has_departed_station: bool = False,
+        is_cancelled: bool = False,
+    ) -> TrainJourney:
+        """Create a mock journey with departure N hours in the past."""
+        now = now_et()
+        dep_time = now - timedelta(hours=hours_ago)
+
+        journey = Mock(spec=TrainJourney)
+        journey.id = hash(train_id)
+        journey.train_id = train_id
+        journey.journey_date = now.date()
+        journey.line_code = "NE"
+        journey.line_name = "Northeast Corridor"
+        journey.line_color = "#000000"
+        journey.destination = "New York"
+        journey.origin_station_code = "HA"
+        journey.terminal_station_code = "NY"
+        journey.scheduled_departure = dep_time
+        journey.data_source = "NJT"
+        journey.observation_type = "OBSERVED"
+        journey.is_expired = False
+        journey.is_completed = False
+        journey.is_cancelled = is_cancelled
+        journey.cancellation_reason = None
+        journey.last_updated_at = now - timedelta(minutes=max(1, hours_ago * 60 - 30))
+        journey.first_seen_at = now - timedelta(minutes=max(2, hours_ago * 60 + 60))
+        journey.update_count = 5
+        journey.stops_count = 5
+
+        from_stop = Mock(spec=JourneyStop)
+        from_stop.station_code = "HA"
+        from_stop.station_name = "Hamilton"
+        from_stop.stop_sequence = 0
+        from_stop.scheduled_departure = dep_time
+        from_stop.scheduled_arrival = dep_time
+        from_stop.updated_departure = None
+        from_stop.updated_arrival = None
+        from_stop.actual_departure = None
+        from_stop.actual_arrival = None
+        from_stop.track = "1"
+        from_stop.has_departed_station = has_departed_station
+
+        to_stop = Mock(spec=JourneyStop)
+        to_stop.station_code = "NY"
+        to_stop.station_name = "New York Penn Station"
+        to_stop.stop_sequence = 4
+        to_stop.scheduled_departure = dep_time + timedelta(hours=1, minutes=30)
+        to_stop.scheduled_arrival = dep_time + timedelta(hours=1, minutes=30)
+        to_stop.updated_departure = None
+        to_stop.updated_arrival = None
+        to_stop.actual_departure = None
+        to_stop.actual_arrival = None
+        to_stop.track = None
+        to_stop.has_departed_station = False
+
+        journey.stops = [from_stop, to_stop]
+        return journey
+
+    def _mock_train_position(self) -> TrainPosition:
+        return TrainPosition(
+            last_departed_station_code=None,
+            at_station_code=None,
+            next_station_code="HA",
+            between_stations=False,
+        )
+
+    async def _run_departures(self, mock_session, service, **kwargs):
+        """Helper to run get_departures with standard mocks."""
+        with patch.object(
+            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et() + timedelta(hours=2)
+                with patch.object(
+                    service,
+                    "_calculate_train_position",
+                    return_value=self._mock_train_position(),
+                ):
+                    with patch(
+                        "trackrat.services.gtfs.GTFSService"
+                    ) as mock_gtfs_class:
+                        mock_gtfs = AsyncMock()
+                        mock_gtfs.get_scheduled_departures = AsyncMock(
+                            return_value=Mock(departures=[])
+                        )
+                        mock_gtfs_class.return_value = mock_gtfs
+
+                        return await service.get_departures(
+                            db=mock_session,
+                            from_station="HA",
+                            to_station="NY",
+                            **kwargs,
+                        )
+
+    @pytest.mark.asyncio
+    async def test_past_train_with_stale_flag_excluded_by_time_fallback(self):
+        """Train from hours ago with has_departed_station=False should be excluded.
+
+        This is the core bug scenario: a train departed Hamilton hours ago but
+        has_departed_station was never updated (e.g., JIT refresh skipped the
+        second pass because hide_departed=True). The time-based fallback should
+        catch this and exclude the train.
+        """
+        # Train 3840 departed 4 hours ago, but has_departed_station still False
+        stale_train = self._create_journey_with_past_departure(
+            "3840", hours_ago=4.0, has_departed_station=False
+        )
+        # Train 3880 departing in 30 minutes — should be kept
+        upcoming_train = self._create_journey_with_past_departure(
+            "3880", hours_ago=-0.5, has_departed_station=False
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # Simulate: SQL returns both because has_departed_station is False on both,
+        # but the time-based fallback should filter the stale one
+        mock_scalars.unique.return_value.all.return_value = [upcoming_train]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        train_ids = {d.train_id for d in result.departures}
+        assert "3840" not in train_ids, (
+            "Train from 4 hours ago with stale has_departed_station=False "
+            "should be excluded by time-based fallback"
+        )
+
+    @pytest.mark.asyncio
+    async def test_recently_departed_within_grace_period_kept(self):
+        """Train that departed 3 minutes ago should still be shown (within 5-min grace).
+
+        The 5-minute grace period allows for minor timing differences between
+        scheduled departure and actual departure. A train scheduled to leave
+        3 minutes ago might still be at the platform.
+        """
+        # Train departed 3 minutes ago — within 5-min grace period
+        recent_train = self._create_journey_with_past_departure(
+            "3850", hours_ago=3 / 60, has_departed_station=False  # 3 minutes
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = [recent_train]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        train_ids = {d.train_id for d in result.departures}
+        assert "3850" in train_ids, (
+            "Train within 5-min grace period should still appear as upcoming"
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancelled_train_not_affected_by_time_fallback(self):
+        """Cancelled trains should bypass the time-based fallback entirely.
+
+        Even if a cancelled train's scheduled departure was hours ago, it should
+        still appear (up to the 2-hour base filter window) so users see the
+        cancellation notice.
+        """
+        # Cancelled train from 1 hour ago — should still be visible
+        cancelled_train = self._create_journey_with_past_departure(
+            "3860", hours_ago=1.0, has_departed_station=False, is_cancelled=True
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = [cancelled_train]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        train_ids = {d.train_id for d in result.departures}
+        assert "3860" in train_ids, (
+            "Cancelled train from 1 hour ago should still appear"
+        )
+
+    @pytest.mark.asyncio
+    async def test_without_hide_departed_shows_all_trains(self):
+        """Without hide_departed, past trains should still appear regardless of time.
+
+        The time-based fallback only applies when hide_departed=True.
+        """
+        # Train from 4 hours ago with has_departed_station=False
+        old_train = self._create_journey_with_past_departure(
+            "3840", hours_ago=4.0, has_departed_station=False
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = [old_train]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=False
+        )
+
+        train_ids = {d.train_id for d in result.departures}
+        assert "3840" in train_ids, (
+            "Without hide_departed, all trains should appear regardless of time"
+        )
+
+
+    @pytest.mark.asyncio
+    async def test_boundary_at_exactly_five_minutes_ago(self):
+        """Train scheduled exactly 5 minutes ago should be EXCLUDED.
+
+        The filter is `scheduled_departure > past_cutoff` where
+        past_cutoff = now - 5 min. A train at exactly the cutoff does NOT
+        satisfy `>`, so it should be filtered out. This prevents off-by-one
+        regressions in the time-based fallback.
+        """
+        # Train scheduled exactly 5 minutes ago
+        boundary_train = self._create_journey_with_past_departure(
+            "3870", hours_ago=5 / 60, has_departed_station=False  # exactly 5 min
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # SQL: scheduled_departure > (now - 5min) is False when equal, so excluded
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        assert len(result.departures) == 0, (
+            "Train at exactly 5-min cutoff boundary should be excluded"
+        )
+
+    @pytest.mark.asyncio
+    async def test_train_just_past_cutoff_excluded(self):
+        """Train scheduled 6 minutes ago (past the 5-min grace) should be excluded."""
+        old_train = self._create_journey_with_past_departure(
+            "3871", hours_ago=6 / 60, has_departed_station=False  # 6 minutes
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        assert len(result.departures) == 0, (
+            "Train 6 minutes past departure should be excluded by time fallback"
+        )
+
+    @pytest.mark.asyncio
+    async def test_has_departed_true_filtered_by_primary_mechanism(self):
+        """Train with has_departed_station=True should be filtered (primary path).
+
+        This tests the normal case where the collector correctly set the flag.
+        The time-based fallback is secondary; this verifies the primary mechanism.
+        """
+        # Train departed 10 minutes ago, flag correctly set
+        departed_train = self._create_journey_with_past_departure(
+            "3872", hours_ago=10 / 60, has_departed_station=True
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # has_departed_station=True means it fails the is_(False) check -> filtered
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        assert len(result.departures) == 0, (
+            "Train with has_departed_station=True should be filtered by primary mechanism"
+        )
+
+    @pytest.mark.asyncio
+    async def test_null_scheduled_departure_passes_through(self):
+        """Train with NULL scheduled_departure and has_departed_station=False should pass.
+
+        The filter conservatively keeps trains with unknown departure times rather
+        than hiding them. This prevents hiding trains we can't classify.
+        """
+        # Create a train with NULL scheduled_departure
+        unknown_train = self._create_journey_with_past_departure(
+            "3873", hours_ago=0, has_departed_station=False
+        )
+        # Override: set scheduled_departure to None on the from_stop
+        unknown_train.stops[0].scheduled_departure = None
+        unknown_train.scheduled_departure = None
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # NULL scheduled_departure satisfies is_(None) in the OR, so passes
+        mock_scalars.unique.return_value.all.return_value = [unknown_train]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        train_ids = {d.train_id for d in result.departures}
+        assert "3873" in train_ids, (
+            "Train with NULL scheduled_departure should be conservatively shown"
+        )
+
+    @pytest.mark.asyncio
+    async def test_regression_hamilton_to_ny_penn_stale_trains(self):
+        """Regression test for the original bug: Hamilton->NY Penn trains 3840/3850.
+
+        The original bug: trains 3840 and 3850 departed Hamilton hours ago but
+        appeared as "upcoming" because has_departed_station was never updated
+        (JIT refresh skipped second pass when hide_departed=True, and the
+        collector hadn't processed these trains recently). The time-based
+        fallback should catch and exclude them.
+        """
+        now = now_et()
+
+        # Train 3840: departed Hamilton 3 hours ago, stale flag
+        train_3840 = self._create_journey_with_past_departure(
+            "3840", hours_ago=3.0, has_departed_station=False
+        )
+        # Train 3850: departed Hamilton 2 hours ago, stale flag
+        train_3850 = self._create_journey_with_past_departure(
+            "3850", hours_ago=2.0, has_departed_station=False
+        )
+        # Train 3880: upcoming, departing in 20 minutes
+        train_3880 = self._create_journey_with_past_departure(
+            "3880", hours_ago=-20 / 60, has_departed_station=False
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # SQL time fallback excludes 3840 and 3850 (hours past cutoff),
+        # but keeps 3880 (upcoming)
+        mock_scalars.unique.return_value.all.return_value = [train_3880]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+        result = await self._run_departures(
+            mock_session, service, hide_departed=True
+        )
+
+        train_ids = {d.train_id for d in result.departures}
+        assert "3840" not in train_ids, (
+            "Train 3840 (departed 3h ago with stale flag) must not appear as upcoming"
+        )
+        assert "3850" not in train_ids, (
+            "Train 3850 (departed 2h ago with stale flag) must not appear as upcoming"
+        )
+        assert "3880" in train_ids, (
+            "Train 3880 (upcoming in 20 min) should appear"
+        )
+
+
 class TestDepartureFilterQuery:
     """Tests to verify the SQL WHERE clause includes proper filters."""
 
@@ -517,19 +929,30 @@ class TestDepartureFilterQuery:
     async def test_hide_departed_filter_allows_cancelled_trains_through(self):
         """Verify that the hide_departed filter lets cancelled trains pass through.
 
-        The hide_departed SQL filter should be:
-            OR(has_departed_station IS FALSE, is_cancelled IS TRUE)
+        The hide_departed SQL filter includes:
+        - has_departed_station check (primary)
+        - scheduled_departure time-based fallback (catches stale flags)
+        - is_cancelled bypass (always show cancelled trains)
 
         Cancelled trains always have has_departed_station=False, but we
         explicitly allow them through so the base filter's 2-hour window
         is the sole gatekeeper for stale cancelled trains.
         """
-        from sqlalchemy import or_
+        from sqlalchemy import and_, or_
         from trackrat.models.database import TrainJourney, JourneyStop
+        from trackrat.utils.time import now_et
+
+        past_cutoff = now_et() - timedelta(minutes=5)
 
         # Construct the filter as it appears in departure.py
         filter_expr = or_(
-            JourneyStop.has_departed_station.is_(False),
+            and_(
+                JourneyStop.has_departed_station.is_(False),
+                or_(
+                    JourneyStop.scheduled_departure.is_(None),
+                    JourneyStop.scheduled_departure > past_cutoff,
+                ),
+            ),
             TrainJourney.is_cancelled.is_(True),
         )
 
@@ -540,6 +963,9 @@ class TestDepartureFilterQuery:
         assert (
             "has_departed_station" in filter_str
         ), "hide_departed filter must include has_departed_station check"
+        assert (
+            "scheduled_departure" in filter_str
+        ), "hide_departed filter must include time-based fallback"
 
 
 class TestStaleScheduledFiltering:
