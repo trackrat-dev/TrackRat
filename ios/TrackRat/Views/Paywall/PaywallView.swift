@@ -54,6 +54,7 @@ struct PaywallView: View {
                         Image(systemName: "hand.wave.fill")
                             .font(.system(size: 36))
                             .foregroundColor(.orange)
+                            .frame(maxWidth: .infinity, alignment: .center)
 
                         Text("TrackRat predicts your track assignments before they\u{2019}re posted, forecasts delays at departure & arrival, and lets you subscribe to real-time alerts across Amtrak, NJ Transit, PATH, the subway, and more.")
                             .font(.subheadline)
