@@ -188,13 +188,27 @@ class DepartureService:
 
         # PERFORMANCE: Filter out trains that have already departed from origin station
         # This reduces payload size significantly when using hide_departed=true.
-        # Cancelled trains always have has_departed_station=False, but the base
-        # filter above already handles their 2-hour time window, so we only need
-        # to check has_departed_station for non-cancelled trains here.
+        # Uses two strategies:
+        # 1. has_departed_station flag (set by collectors via API/sequential/time inference)
+        # 2. Time-based fallback: scheduled departure > 5 minutes ago
+        #    This catches trains where has_departed_station wasn't updated (e.g.,
+        #    JIT refresh skips the second pass, or collector hasn't run yet).
+        # Cancelled trains are always shown (they have their own 2-hour window).
         if hide_departed:
+            past_cutoff = now_et() - timedelta(minutes=5)
             departure_filters.append(
                 or_(
-                    JourneyStop.has_departed_station.is_(False),
+                    # Train hasn't departed (normal case)
+                    and_(
+                        JourneyStop.has_departed_station.is_(False),
+                        # Time-based fallback: even if flag isn't set, exclude
+                        # trains whose scheduled departure is well past
+                        or_(
+                            JourneyStop.scheduled_departure.is_(None),
+                            JourneyStop.scheduled_departure > past_cutoff,
+                        ),
+                    ),
+                    # Always show cancelled trains
                     TrainJourney.is_cancelled.is_(True),
                 )
             )
