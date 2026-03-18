@@ -62,7 +62,7 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("All features are free to use with one transit system. Subscribing unlocks unlimited train systems & route alerts \u{2014} and helps me keep the servers running.")
+                        Text("All features are free to use with one transit system. Subscribing unlocks unlimited systems & route alerts \u{2014} and helps me keep the servers running.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
