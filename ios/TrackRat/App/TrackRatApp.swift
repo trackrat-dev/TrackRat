@@ -163,8 +163,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             let context = RouteStatusContext(
                 dataSource: serviceAlert["data_source"] as? String ?? "",
                 lineId: serviceAlert["line_id"] as? String,
-                fromStationCode: nil,
-                toStationCode: nil
+                fromStationCode: serviceAlert["from_station_code"] as? String,
+                toStationCode: serviceAlert["to_station_code"] as? String
             )
             Task { @MainActor in
                 if let appState = AppDelegate.appState {
