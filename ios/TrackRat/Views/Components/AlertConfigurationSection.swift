@@ -15,12 +15,118 @@ struct DirectionDraft {
     let alreadySubscribed: Bool
 }
 
+// MARK: - Line Discovery for Alert Configuration
+
+/// Lightweight model that discovers available systems/lines for a station pair.
+@MainActor
+class LineDiscoveryModel: ObservableObject {
+    @Published var discoveredSystems: [RouteSystemInfo] = []
+    @Published var enabledLineIds: Set<String> = []
+
+    func discover(from: String, to: String) async {
+        let fromSystems = Stations.systemsForStation(from)
+        let toSystems = Stations.systemsForStation(to)
+        let commonSystems = fromSystems.intersection(toSystems).sorted { $0.displayName < $1.displayName }
+
+        guard !commonSystems.isEmpty else { return }
+
+        do {
+            let trains = try await APIService.shared.searchTrains(
+                fromStationCode: from,
+                toStationCode: to,
+                dataSources: Set(commonSystems)
+            )
+
+            var linesBySystem: [String: [RouteLineInfo]] = [:]
+            var seenLines = Set<String>()
+
+            for train in trains {
+                let lineId = "\(train.dataSource):\(train.line.code)"
+                guard !seenLines.contains(lineId) else { continue }
+                seenLines.insert(lineId)
+
+                let info = RouteLineInfo(
+                    dataSource: train.dataSource,
+                    lineCode: train.line.code,
+                    lineName: train.line.name,
+                    lineColor: train.line.color
+                )
+                linesBySystem[train.dataSource, default: []].append(info)
+            }
+
+            var systems: [RouteSystemInfo] = []
+            for system in commonSystems {
+                let lines = linesBySystem[system.rawValue] ?? []
+                if !lines.isEmpty {
+                    systems.append(RouteSystemInfo(system: system, lines: lines.sorted { $0.lineCode < $1.lineCode }))
+                }
+            }
+
+            discoveredSystems = systems
+        } catch {
+            // Silently fail — line selection simply won't appear
+        }
+
+        // Load saved preference
+        let deviceId = AlertSubscriptionService.shared.deviceId
+        do {
+            let pref = try await APIService.shared.fetchRoutePreference(
+                deviceId: deviceId, from: from, to: to
+            )
+            var lineIds = Set<String>()
+            for (system, lines) in pref.enabledSystems {
+                if lines.isEmpty {
+                    for discoveredSystem in discoveredSystems where discoveredSystem.system.rawValue == system {
+                        for line in discoveredSystem.lines {
+                            lineIds.insert(line.id)
+                        }
+                    }
+                } else {
+                    for lineCode in lines {
+                        lineIds.insert("\(system):\(lineCode)")
+                    }
+                }
+            }
+            enabledLineIds = lineIds
+        } catch {
+            // No saved preference — default to all enabled (empty set)
+            enabledLineIds = []
+        }
+    }
+
+    func savePreference(from: String, to: String) async {
+        let deviceId = AlertSubscriptionService.shared.deviceId
+        var systems: [String: [String]] = [:]
+        if enabledLineIds.isEmpty {
+            for system in discoveredSystems {
+                systems[system.system.rawValue] = []
+            }
+        } else {
+            for lineId in enabledLineIds {
+                let parts = lineId.split(separator: ":")
+                guard parts.count == 2 else { continue }
+                let system = String(parts[0])
+                let lineCode = String(parts[1])
+                systems[system, default: []].append(lineCode)
+            }
+        }
+        do {
+            try await APIService.shared.saveRoutePreference(
+                deviceId: deviceId, from: from, to: to, enabledSystems: systems
+            )
+        } catch {
+            print("⚠️ Failed to save route preference: \(error.localizedDescription)")
+        }
+    }
+}
+
 /// Sheet that shows both directions of a route with independent alert settings.
 /// Each direction is shown inline with its own configuration section.
 /// For free users, only the first direction is configurable; the second shows a Pro upsell.
 struct DirectionalAlertConfigurationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionService = SubscriptionService.shared
+    @StateObject private var lineDiscovery = LineDiscoveryModel()
     @State private var directions: [DirectionDraft]
     @State private var showingPaywall = false
     private let onSave: ([RouteAlertSubscription]) -> Void
@@ -28,6 +134,17 @@ struct DirectionalAlertConfigurationSheet: View {
     init(directions: [DirectionDraft], onSave: @escaping ([RouteAlertSubscription]) -> Void) {
         _directions = State(initialValue: directions)
         self.onSave = onSave
+    }
+
+    /// Station pair from the first non-subscribed direction (for line discovery).
+    private var stationPair: (from: String, to: String)? {
+        for dir in directions where !dir.alreadySubscribed {
+            if let from = dir.subscription.fromStationCode,
+               let to = dir.subscription.toStationCode {
+                return (from, to)
+            }
+        }
+        return nil
     }
 
     private var canSave: Bool {
@@ -42,6 +159,12 @@ struct DirectionalAlertConfigurationSheet: View {
             NavigationStack {
                 ScrollView {
                     VStack(spacing: 20) {
+                        // Line Selection (shown when multiple systems/lines serve this route)
+                        LineSelectionView(
+                            systems: lineDiscovery.discoveredSystems,
+                            enabledLineIds: $lineDiscovery.enabledLineIds
+                        )
+
                         ForEach(0..<directions.count, id: \.self) { i in
                             if directions[i].alreadySubscribed {
                                 alreadySubscribedBanner(label: directions[i].label)
@@ -75,11 +198,20 @@ struct DirectionalAlertConfigurationSheet: View {
                                 }
                                 .map(\.element.subscription)
                             onSave(enabledSubs)
+                            // Save line selection preference
+                            if let pair = stationPair {
+                                Task { await lineDiscovery.savePreference(from: pair.from, to: pair.to) }
+                            }
                             dismiss()
                         }
                         .foregroundColor(.orange)
                         .fontWeight(.semibold)
                         .disabled(!canSave)
+                    }
+                }
+                .task {
+                    if let pair = stationPair {
+                        await lineDiscovery.discover(from: pair.from, to: pair.to)
                     }
                 }
             }

@@ -51,7 +51,7 @@ struct RouteStatusView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     mapSection
-                    routeSettingsSection
+                    lineSelectionSection
                     operationsSummarySection
                     historySections
                     alertSubscriptionSection
@@ -258,83 +258,17 @@ struct RouteStatusView: View {
         }
     }
 
-    // MARK: - Route Settings Section
+    // MARK: - Line Selection Section
 
     @ViewBuilder
-    private var routeSettingsSection: some View {
-        if viewModel.showRouteSettings {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Route Settings")
-                    .font(.headline)
-
-                ForEach(viewModel.discoveredSystems) { systemInfo in
-                    VStack(alignment: .leading, spacing: 8) {
-                        // System header — tappable to toggle all lines
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                viewModel.toggleSystem(systemInfo.system)
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: systemInfo.system.icon)
-                                    .font(.caption)
-                                Text(systemInfo.system.displayName)
-                                    .font(.subheadline.bold())
-                                Spacer()
-                            }
-                            .foregroundColor(viewModel.isSystemEnabled(systemInfo.system) ? .white : .white.opacity(0.4))
-                        }
-                        .buttonStyle(.plain)
-
-                        // Line bubbles
-                        if !systemInfo.lines.isEmpty {
-                            lineFilterGrid(lines: systemInfo.lines)
-                        }
-                    }
-                }
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    private var lineSelectionSection: some View {
+        LineSelectionView(
+            systems: viewModel.discoveredSystems,
+            enabledLineIds: $viewModel.enabledLineIds
+        )
+        .onChange(of: viewModel.enabledLineIds) { _, _ in
+            viewModel.onLineSelectionChanged()
         }
-    }
-
-    private func lineFilterGrid(lines: [RouteLineInfo]) -> some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: min(lines.count, 7))
-        return LazyVGrid(columns: columns, spacing: 6) {
-            ForEach(lines) { line in
-                let isOn = viewModel.isLineEnabled(line.id)
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        viewModel.toggleLine(line.id)
-                    }
-                } label: {
-                    Text(line.lineCode)
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isOn ? Color(hex: line.lineColor) : Color.white.opacity(0.08))
-                        )
-                        .foregroundColor(isOn ? lineTextColor(for: line.lineColor) : .white.opacity(0.6))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    /// Determine text color for a line bubble based on background color brightness
-    private func lineTextColor(for hexColor: String) -> Color {
-        let hex = hexColor.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        guard hex.count >= 6,
-              let r = UInt8(hex.prefix(2), radix: 16),
-              let g = UInt8(hex.dropFirst(2).prefix(2), radix: 16),
-              let b = UInt8(hex.dropFirst(4).prefix(2), radix: 16) else {
-            return .white
-        }
-        let brightness = (Double(r) * 299 + Double(g) * 587 + Double(b) * 114) / 1000
-        return brightness > 150 ? .black : .white
     }
 
     // MARK: - Map Section
@@ -934,14 +868,6 @@ final class RouteStatusViewModel: ObservableObject {
     /// Debounced save task — cancelled and re-scheduled on each toggle
     private var saveTask: Task<Void, Never>?
 
-    /// Whether there's anything to filter (multiple systems or multiple lines)
-    var showRouteSettings: Bool {
-        guard filterLoaded else { return false }
-        if discoveredSystems.count > 1 { return true }
-        if discoveredSystems.count == 1, discoveredSystems[0].lines.count > 1 { return true }
-        return false
-    }
-
     /// Systems that are currently enabled (have at least one line enabled)
     var enabledSystems: Set<String> {
         if enabledLineIds.isEmpty { return Set(discoveredSystems.map(\.system.rawValue)) }
@@ -954,15 +880,42 @@ final class RouteStatusViewModel: ObservableObject {
         return systems
     }
 
-    /// Check if a specific line is enabled
-    func isLineEnabled(_ lineId: String) -> Bool {
-        enabledLineIds.isEmpty || enabledLineIds.contains(lineId)
+    /// GTFS route IDs for the currently enabled lines (used to filter service alerts).
+    /// When empty set is returned, no line-level filtering should be applied.
+    var enabledGtfsRouteIds: Set<String> {
+        // If all lines enabled, defer to the context's static gtfsRouteIds
+        guard !enabledLineIds.isEmpty else { return [] }
+
+        var ids = Set<String>()
+        for lineId in enabledLineIds {
+            let parts = lineId.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            let system = String(parts[0])
+            let lineCode = String(parts[1])
+
+            if system == "SUBWAY" {
+                // Subway line codes are GTFS route IDs (e.g., "A", "1", "M", "6X")
+                ids.insert(lineCode.uppercased())
+            } else if let gtfsId = Self.lirrCodeToGtfs[lineCode] ?? Self.mnrCodeToGtfs[lineCode] {
+                ids.insert(gtfsId)
+            }
+        }
+        return ids
     }
 
-    /// Check if a system has any line enabled
-    func isSystemEnabled(_ system: TrainSystem) -> Bool {
-        enabledSystems.contains(system.rawValue)
-    }
+    // LIRR backend line.code → GTFS route_id
+    private static let lirrCodeToGtfs: [String: String] = [
+        "LIRR-BB": "1", "LIRR-HB": "2", "LIRR-OB": "3",
+        "LIRR-RK": "4", "LIRR-MK": "5", "LIRR-LB": "6",
+        "LIRR-FR": "7", "LIRR-WH": "8", "LIRR-PW": "9",
+        "LIRR-PJ": "10", "LIRR-BP": "11", "LIRR-GP": "13",
+    ]
+
+    // MNR backend line.code → GTFS route_id
+    private static let mnrCodeToGtfs: [String: String] = [
+        "MNR-HUD": "1", "MNR-HAR": "2", "MNR-NH": "3",
+        "MNR-NC": "4", "MNR-DAN": "5", "MNR-WAT": "6",
+    ]
 
     init(context: RouteStatusContext) {
         self.context = context
@@ -1082,58 +1035,9 @@ final class RouteStatusViewModel: ObservableObject {
         }
     }
 
-    /// Toggle a line on/off, debounce save, and reload data
-    func toggleLine(_ lineId: String) {
-        // If currently "all enabled" (empty set), populate with all discovered lines first
-        if enabledLineIds.isEmpty {
-            enabledLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
-        }
-
-        if enabledLineIds.contains(lineId) {
-            // Don't allow deselecting the last line
-            if enabledLineIds.count > 1 {
-                enabledLineIds.remove(lineId)
-            }
-        } else {
-            enabledLineIds.insert(lineId)
-        }
-
-        // Check if all lines are now enabled — collapse back to empty set
-        let allLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
-        if enabledLineIds == allLineIds {
-            enabledLineIds = []
-        }
-
-        debounceSaveAndReload()
-    }
-
-    /// Toggle all lines for a system on/off, debounce save, and reload data
-    func toggleSystem(_ system: TrainSystem) {
-        guard let systemInfo = discoveredSystems.first(where: { $0.system == system }) else { return }
-        let systemLineIds = Set(systemInfo.lines.map(\.id))
-
-        // If currently "all enabled" (empty set), populate with all discovered lines first
-        if enabledLineIds.isEmpty {
-            enabledLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
-        }
-
-        let allSystemLinesEnabled = systemLineIds.isSubset(of: enabledLineIds)
-        if allSystemLinesEnabled {
-            // Don't allow deselecting if it would leave nothing
-            let remaining = enabledLineIds.subtracting(systemLineIds)
-            if !remaining.isEmpty {
-                enabledLineIds = remaining
-            }
-        } else {
-            enabledLineIds.formUnion(systemLineIds)
-        }
-
-        // Check if all lines are now enabled — collapse back to empty set
-        let allLineIds = Set(discoveredSystems.flatMap { $0.lines.map(\.id) })
-        if enabledLineIds == allLineIds {
-            enabledLineIds = []
-        }
-
+    /// Called when LineSelectionView changes enabledLineIds via binding.
+    /// Debounces save to backend and reloads filtered data.
+    func onLineSelectionChanged() {
         debounceSaveAndReload()
     }
 
@@ -1277,7 +1181,10 @@ final class RouteStatusViewModel: ObservableObject {
             ? Set([context.dataSource])
             : enabledSystems
 
-        let relevantRouteIds = context.gtfsRouteIds
+        // Use enabled line GTFS IDs when the user has toggled specific lines,
+        // otherwise fall back to the context's static route IDs.
+        let lineGtfsIds = enabledGtfsRouteIds
+        let relevantRouteIds = lineGtfsIds.isEmpty ? context.gtfsRouteIds : lineGtfsIds
         var allAlerts: [V2ServiceAlert] = []
 
         await withTaskGroup(of: [V2ServiceAlert].self) { group in
