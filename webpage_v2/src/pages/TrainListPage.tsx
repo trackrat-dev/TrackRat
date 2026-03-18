@@ -102,11 +102,11 @@ export function TrainListPage() {
         >
           ← Back
         </button>
-        <h2 className="text-2xl font-bold text-text-primary">
+        <h2 className="text-2xl font-bold text-text-primary text-center">
           {fromStation.name} → {toStation.name}
         </h2>
         {lastUpdated && (
-          <div className="text-sm text-text-muted mt-2">
+          <div className="text-sm text-text-muted mt-2 text-center">
             Updated {formatTimeAgo(lastUpdated.toISOString())}
           </div>
         )}

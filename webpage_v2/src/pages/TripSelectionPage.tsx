@@ -35,7 +35,7 @@ export function TripSelectionPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Plan Your Trip</h2>
+      <h2 className="text-2xl font-bold mb-6 text-center text-text-primary">Plan Your Trip</h2>
 
       {/* Station Selection */}
       <div className="space-y-4 mb-8">
