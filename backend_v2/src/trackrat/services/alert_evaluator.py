@@ -1076,11 +1076,10 @@ async def evaluate_service_alerts(
     )
     devices = result.scalars().all()
 
-    # Load all active planned_work alerts for MTA systems
+    # Load all active service alerts (planned_work + real-time)
     alert_result = await db.execute(
         select(ServiceAlert).where(
             ServiceAlert.is_active.is_(True),
-            ServiceAlert.alert_type == "planned_work",
             ServiceAlert.data_source.in_(SERVICE_ALERT_SOURCES),
         )
     )
@@ -1241,10 +1240,15 @@ def _build_service_alert_message(
 
     if len(alerts) == 1:
         alert = alerts[0]
-        title = f"{sub.data_source}: Planned work on {route_name}"
+        label = (
+            "Planned work" if alert.alert_type == "planned_work" else "Service alert"
+        )
+        title = f"{sub.data_source}: {label} on {route_name}"
         body = alert.header_text or ""
     else:
-        title = f"{sub.data_source}: {len(alerts)} planned work alerts for {route_name}"
+        all_planned = all(a.alert_type == "planned_work" for a in alerts)
+        label = "planned work alerts" if all_planned else "service alerts"
+        title = f"{sub.data_source}: {len(alerts)} {label} for {route_name}"
         # Show first alert's header with count
         body = alerts[0].header_text or ""
         if len(alerts) > 1:
