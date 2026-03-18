@@ -720,6 +720,7 @@ extension Stations {
         "Metropark": "MP",
         "New Brunswick": "NB",
         "Princeton Junction": "PJ",
+        "Princeton": "PR",
         "Princeton NJ": "PR",
         "Trenton": "TR",
         "Trenton Transit Center": "TR",
