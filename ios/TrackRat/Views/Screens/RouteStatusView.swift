@@ -50,15 +50,20 @@ struct RouteStatusView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    mapSection
-                    routeSettingsSection
-                    operationsSummarySection
-                    historySections
-                    alertSubscriptionSection
-                    upcomingTrainsSection
-                    serviceAlertsSection
+                    if viewModel.isInitialLoading {
+                        loadingPlaceholder
+                    } else {
+                        mapSection
+                        routeSettingsSection
+                        operationsSummarySection
+                        historySections
+                        alertSubscriptionSection
+                        upcomingTrainsSection
+                        serviceAlertsSection
+                    }
                 }
                 .padding()
+                .animation(.easeInOut(duration: 0.3), value: viewModel.isInitialLoading)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(context.title)
@@ -335,6 +340,43 @@ struct RouteStatusView: View {
         }
         let brightness = (Double(r) * 299 + Double(g) * 587 + Double(b) * 114) / 1000
         return brightness > 150 ? .black : .white
+    }
+
+    // MARK: - Loading Placeholder
+
+    private var loadingPlaceholder: some View {
+        VStack(spacing: 16) {
+            // Map placeholder
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .frame(height: 200)
+                .overlay(ProgressView().tint(.orange))
+
+            // Operations summary placeholder
+            RoundedRectangle(cornerRadius: 10)
+                .fill(.ultraThinMaterial)
+                .frame(height: 56)
+
+            // Route performance placeholder
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Route Performance")
+                    .font(.headline)
+                HStack(spacing: 12) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                            .frame(height: 70)
+                    }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+
+            // Upcoming trains placeholder
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .frame(height: 120)
+        }
     }
 
     // MARK: - Map Section
@@ -888,6 +930,9 @@ private struct UpcomingTrainRow: View {
 final class RouteStatusViewModel: ObservableObject {
     let context: RouteStatusContext
 
+    // Overall loading state — true until first reloadFilteredData() completes
+    @Published var isInitialLoading = true
+
     // Map state
     @Published var filteredSegments: [CongestionSegment] = []
     @Published var journeyStations: [JourneyStation] = []
@@ -972,6 +1017,7 @@ final class RouteStatusViewModel: ObservableObject {
         // Discover available systems first, then load data in parallel
         await discoverSystems()
         await reloadFilteredData()
+        isInitialLoading = false
     }
 
     /// Reload all data sections using current filter state.
