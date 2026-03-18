@@ -100,32 +100,7 @@ struct TrainDetailsView: View {
             // Action buttons row
             if let train = viewModel.train {
                 HStack(spacing: 12) {
-                    // Alerts button
-                    if let fromCode = appState.departureStationCode,
-                       let toCode = appState.destinationStationCode {
-                        Button {
-                            appState.pendingRouteStatus = RouteStatusContext(
-                                dataSource: train.dataSource,
-                                lineId: train.line.code,
-                                fromStationCode: fromCode,
-                                toStationCode: toCode
-                            )
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "bell.badge")
-                                    .font(.subheadline)
-                                Text("Alerts")
-                                    .font(.subheadline)
-                            }
-                            .foregroundColor(.white.opacity(0.8))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    // Watch button (Live Activity)
+                    // Get Updates button (Live Activity)
                     if let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
                         TrackTrainInlineButton(
@@ -134,8 +109,8 @@ struct TrainDetailsView: View {
                             destinationCode: appState.destinationStationCode ?? "",
                             destinationName: appState.selectedDestination,
                             textColor: .white.opacity(0.8),
-                            activeLabel: "Unwatch",
-                            inactiveLabel: "Watch",
+                            activeLabel: "Stop Updates",
+                            inactiveLabel: "Get Updates",
                             font: .subheadline
                         )
                         .padding(.horizontal, 14)
