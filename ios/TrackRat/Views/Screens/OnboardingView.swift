@@ -181,7 +181,7 @@ struct OnboardingView: View {
 
             Spacer()
 
-            Text("Update this and add more later in Settings")
+            Text("You can always update this later")
                 .font(.subheadline)
                 .foregroundColor(.white.opacity(0.5))
                 .padding(.bottom, 40)
