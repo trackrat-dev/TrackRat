@@ -20,10 +20,11 @@ depends_on = None
 BATCH_SIZE = 10000
 
 
-def _batched_update(conn: Connection, query: str, description: str) -> int:
-    """Run an UPDATE in batches, committing after each chunk.
+def _batched_update(conn: Connection, query: str) -> int:
+    """Run an UPDATE in batches using LIMIT.
 
-    Returns total rows updated.
+    Must be called inside an autocommit_block so each execute() is its own
+    transaction.  Returns total rows updated.
     """
     total = 0
     while True:
@@ -32,7 +33,6 @@ def _batched_update(conn: Connection, query: str, description: str) -> int:
         if rows == 0:
             break
         total += rows
-        conn.commit()
     return total
 
 
@@ -44,67 +44,67 @@ def upgrade() -> None:
     excluded from OTP calculations, causing routes to report NULL on-time
     percentage despite having hundreds of trains with arrival data.
 
-    Uses batched updates to avoid blocking the health check on large databases.
+    Runs in autocommit mode so each batched UPDATE is its own transaction,
+    preventing the entire backfill from being held in a single long-running
+    transaction that generates excessive WAL and blocks health checks.
     """
     conn = op.get_bind()
 
-    # Batch 1: Stops on completed journeys where actual != scheduled
-    # (strong signal these were API-observed arrivals)
-    _batched_update(
-        conn,
-        f"""
-        UPDATE journey_stops
-        SET arrival_source = 'api_observed'
-        WHERE id IN (
-            SELECT js.id FROM journey_stops js
-            JOIN train_journeys tj ON tj.id = js.journey_id
-            WHERE js.arrival_source IS NULL
-              AND js.actual_arrival IS NOT NULL
-              AND js.scheduled_arrival IS NOT NULL
-              AND js.actual_arrival != js.scheduled_arrival
-            LIMIT {BATCH_SIZE}
+    with op.get_context().autocommit_block():
+        # Batch 1: Stops on completed journeys where actual != scheduled
+        # (strong signal these were API-observed arrivals)
+        _batched_update(
+            conn,
+            f"""
+            UPDATE journey_stops
+            SET arrival_source = 'api_observed'
+            WHERE id IN (
+                SELECT js.id FROM journey_stops js
+                JOIN train_journeys tj ON tj.id = js.journey_id
+                WHERE js.arrival_source IS NULL
+                  AND js.actual_arrival IS NOT NULL
+                  AND js.scheduled_arrival IS NOT NULL
+                  AND js.actual_arrival != js.scheduled_arrival
+                LIMIT {BATCH_SIZE}
+            )
+            """,
         )
-        """,
-        "actual != scheduled",
-    )
 
-    # Batch 2: Stops on completed journeys where actual == scheduled
-    # (could be scheduled_fallback or exact on-time, but on a completed
-    # journey we trust the data)
-    _batched_update(
-        conn,
-        f"""
-        UPDATE journey_stops
-        SET arrival_source = 'api_observed'
-        WHERE id IN (
-            SELECT js.id FROM journey_stops js
-            JOIN train_journeys tj ON tj.id = js.journey_id
-            WHERE js.arrival_source IS NULL
-              AND js.actual_arrival IS NOT NULL
-              AND tj.is_completed = true
-            LIMIT {BATCH_SIZE}
+        # Batch 2: Stops on completed journeys where actual == scheduled
+        # (could be scheduled_fallback or exact on-time, but on a completed
+        # journey we trust the data)
+        _batched_update(
+            conn,
+            f"""
+            UPDATE journey_stops
+            SET arrival_source = 'api_observed'
+            WHERE id IN (
+                SELECT js.id FROM journey_stops js
+                JOIN train_journeys tj ON tj.id = js.journey_id
+                WHERE js.arrival_source IS NULL
+                  AND js.actual_arrival IS NOT NULL
+                  AND tj.is_completed = true
+                LIMIT {BATCH_SIZE}
+            )
+            """,
         )
-        """,
-        "completed journeys",
-    )
 
-    # Batch 3: Remaining stops with actual_arrival on non-completed journeys
-    # where actual == scheduled. These are departed intermediate stops.
-    _batched_update(
-        conn,
-        f"""
-        UPDATE journey_stops
-        SET arrival_source = 'api_observed'
-        WHERE id IN (
-            SELECT id FROM journey_stops
-            WHERE arrival_source IS NULL
-              AND actual_arrival IS NOT NULL
-              AND has_departed_station = true
-            LIMIT {BATCH_SIZE}
+        # Batch 3: Remaining stops with actual_arrival on non-completed
+        # journeys. These are departed intermediate stops.
+        _batched_update(
+            conn,
+            f"""
+            UPDATE journey_stops
+            SET arrival_source = 'api_observed'
+            WHERE id IN (
+                SELECT id FROM journey_stops
+                WHERE arrival_source IS NULL
+                  AND actual_arrival IS NOT NULL
+                  AND has_departed_station = true
+                LIMIT {BATCH_SIZE}
+            )
+            """,
         )
-        """,
-        "departed stops",
-    )
 
 
 def downgrade() -> None:
