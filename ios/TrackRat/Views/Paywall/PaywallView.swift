@@ -50,7 +50,7 @@ struct PaywallView: View {
                     .padding(.horizontal)
 
                     // Developer message
-                    VStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 20) {
                         Image(systemName: "hand.wave.fill")
                             .font(.system(size: 36))
                             .foregroundColor(.orange)
@@ -62,7 +62,7 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("All features are free to use with one transit system and one route alert. Subscribing unlocks unlimited systems & alerts \u{2014} and helps me keep the servers running.")
+                        Text("All features are free to use with one transit system. Subscribing unlocks unlimited train systems & route alerts \u{2014} and helps me keep the servers running.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
