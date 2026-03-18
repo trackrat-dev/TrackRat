@@ -607,6 +607,10 @@ async def get_train_history(
 
         # Exclude scheduled_fallback arrivals — they always show 0 delay
         # (actual == scheduled) and inflate on-time percentages
+        # NOTE: Historical stops (before ~March 2026) may have NULL
+        # arrival_source (partial backfill — migration f7a8b9c0d1e2 removed).
+        # NULL arrival_source stops still contribute to delay here since we
+        # only exclude "scheduled_fallback", not NULL.
         arrival_delay = (
             int(
                 (last_stop.actual_arrival - last_stop.scheduled_arrival).total_seconds()
@@ -755,6 +759,7 @@ async def get_train_history(
                 continue
 
             # Exclude scheduled_fallback arrivals — inflates OTP
+            # See note above re: historical NULL arrival_source
             arrival_delay = (
                 int(
                     (

@@ -177,7 +177,11 @@ class JourneyStop(Base):
     # How we determined departure (api_explicit, sequential_inference, time_inference)
     departure_source = Column(String(30))
 
-    # How we determined actual_arrival (api_observed, scheduled_fallback)
+    # How we determined actual_arrival (api_observed, scheduled_fallback).
+    # NOTE: Historical stops (before ~March 2026) may have NULL arrival_source
+    # even with valid actual_arrival data. A backfill migration was attempted
+    # but removed (f7a8b9c0d1e2) because it took too long on large datasets
+    # and caused MIG health check failures. New data is populated correctly.
     arrival_source = Column(String(30))
 
     # Track assignment (null until assigned)
