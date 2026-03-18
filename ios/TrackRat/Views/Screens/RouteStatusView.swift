@@ -1361,14 +1361,30 @@ final class RouteStatusViewModel: ObservableObject {
             )
         }
 
+        // Extract per-system line codes from enabledLineIds for filtering
+        // When enabledLineIds is empty (all enabled), pass nil to skip filtering
+        let linesBySystem: [String: [String]?] = {
+            if enabledLineIds.isEmpty { return [:] }
+            var result: [String: [String]] = [:]
+            for id in enabledLineIds {
+                let parts = id.split(separator: ":")
+                guard parts.count == 2 else { continue }
+                let system = String(parts[0])
+                let lineCode = String(parts[1])
+                result[system, default: []].append(lineCode)
+            }
+            return result
+        }()
+
         // Fetch all periods for all systems in parallel
         await withTaskGroup(of: Void.self) { group in
             for system in systemsToFetch {
+                let systemLines = linesBySystem[system] ?? nil
                 // Past hour
                 group.addTask {
                     do {
                         let data = try await APIService.shared.fetchRouteHistoricalData(
-                            from: from, to: to, dataSource: system, hours: 1
+                            from: from, to: to, dataSource: system, hours: 1, lines: systemLines
                         )
                         await MainActor.run {
                             self.historyBySystem[system]?.pastHour = data
@@ -1385,7 +1401,7 @@ final class RouteStatusViewModel: ObservableObject {
                 group.addTask {
                     do {
                         let data = try await APIService.shared.fetchRouteHistoricalData(
-                            from: from, to: to, dataSource: system, hours: 24
+                            from: from, to: to, dataSource: system, hours: 24, lines: systemLines
                         )
                         await MainActor.run {
                             self.historyBySystem[system]?.past24Hours = data
@@ -1402,7 +1418,7 @@ final class RouteStatusViewModel: ObservableObject {
                 group.addTask {
                     do {
                         let data = try await APIService.shared.fetchRouteHistoricalData(
-                            from: from, to: to, dataSource: system, days: 7
+                            from: from, to: to, dataSource: system, days: 7, lines: systemLines
                         )
                         await MainActor.run {
                             self.historyBySystem[system]?.past7Days = data

@@ -66,6 +66,10 @@ async def get_route_history(
         description="Hours lookback (overrides days when provided)",
     ),
     highlight_train: str | None = Query(None, description="Train ID to highlight"),
+    lines: str | None = Query(
+        None,
+        description="Comma-separated line codes to filter (e.g. 'A,1,7')",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> RouteHistoryResponse:
     """Get aggregate historical performance for all trains on a route.
@@ -77,6 +81,9 @@ async def get_route_history(
     When `hours` is provided, filters by actual departure time at the origin station
     instead of journey date, enabling sub-day time windows (e.g. past hour).
     """
+    # Parse line codes filter
+    line_codes = [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+
     logger.info(
         "get_route_history_request",
         from_station=from_station,
@@ -85,6 +92,7 @@ async def get_route_history(
         days=days,
         hours=hours,
         highlight_train=highlight_train,
+        lines=line_codes,
     )
 
     # Validate data_source
@@ -104,6 +112,7 @@ async def get_route_history(
             "data_source": data_source,
             "days": days,
             "hours": hours,
+            "lines": lines,
         }
         cached_response = await cache_service.get_cached_response(
             db=db,
@@ -138,7 +147,8 @@ async def get_route_history(
 
     # Compute aggregate stats via SQL
     aggregate_stats = await _calculate_route_stats_sql(
-        db, data_source, start_date, end_date, from_codes, to_codes, cutoff_time, now
+        db, data_source, start_date, end_date, from_codes, to_codes, cutoff_time, now,
+        line_codes=line_codes,
     )
 
     # Compute highlighted train stats if specified
@@ -154,6 +164,7 @@ async def get_route_history(
             cutoff_time,
             now,
             train_id_filter=highlight_train,
+            line_codes=line_codes,
         )
         if highlighted_stats["total_journeys"] > 0:
             hl_breakdown = highlighted_stats["delay_breakdown"]
@@ -172,7 +183,7 @@ async def get_route_history(
 
     # Calculate baseline train count for frequency comparison
     baseline_train_count = await _calculate_baseline_train_count(
-        db, data_source, from_codes, to_codes, hours, now
+        db, data_source, from_codes, to_codes, hours, now, line_codes=line_codes,
     )
 
     response = RouteHistoryResponse(
@@ -226,6 +237,7 @@ async def _calculate_route_stats_sql(
     cutoff_time: datetime | None,
     now: datetime,
     train_id_filter: str | None = None,
+    line_codes: list[str] | None = None,
 ) -> dict[str, Any]:
     """Calculate route statistics using SQL aggregation instead of loading ORM objects."""
 
@@ -253,6 +265,10 @@ async def _calculate_route_stats_sql(
     if train_id_filter:
         train_filter = "AND tj.train_id = :train_id"
 
+    line_filter = ""
+    if line_codes:
+        line_filter = "AND tj.line_code = ANY(:line_codes)"
+
     # Build the route_journeys CTE SQL (reused by stats and track queries)
     route_journeys_cte = f"""
         SELECT tj.id AS journey_id, tj.is_cancelled
@@ -261,6 +277,7 @@ async def _calculate_route_stats_sql(
           AND tj.journey_date >= :start_date
           AND tj.journey_date <= :end_date
           {train_filter}
+          {line_filter}
           AND EXISTS (
               SELECT 1 FROM journey_stops fs
               WHERE fs.journey_id = tj.id
@@ -378,6 +395,8 @@ async def _calculate_route_stats_sql(
         params["now_time"] = now
     if train_id_filter:
         params["train_id"] = train_id_filter
+    if line_codes:
+        params["line_codes"] = line_codes
 
     result = await db.execute(sql, params)
     row = result.mappings().first()
@@ -443,6 +462,7 @@ async def _calculate_baseline_train_count(
     to_codes: list[str],
     hours: int | None,
     now: datetime,
+    line_codes: list[str] | None = None,
 ) -> float | None:
     """Calculate expected train count for frequency baseline comparison.
 
@@ -463,6 +483,10 @@ async def _calculate_baseline_train_count(
     is_weekend = now_eastern.weekday() >= 5  # Saturday=5, Sunday=6
 
     # Build filters based on time window
+    baseline_line_filter = ""
+    if line_codes:
+        baseline_line_filter = "AND stt.line_code = ANY(:line_codes)"
+
     hour_filter = ""
     day_filter = ""
 
@@ -492,6 +516,7 @@ async def _calculate_baseline_train_count(
             WHERE stt.departure_time >= :baseline_start
               AND stt.from_station_code = ANY(:from_codes)
               AND stt.data_source = :data_source
+              {baseline_line_filter}
               {hour_filter}
               {day_filter}
               AND EXISTS (
@@ -521,6 +546,8 @@ async def _calculate_baseline_train_count(
         params["current_hour"] = current_hour
     if day_filter:
         params["is_weekend"] = is_weekend
+    if line_codes:
+        params["line_codes"] = line_codes
 
     try:
         result = await db.execute(sql, params)

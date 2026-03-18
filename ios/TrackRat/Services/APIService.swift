@@ -439,7 +439,8 @@ final class APIService: ObservableObject {
         dataSource: String,
         highlightTrain: String? = nil,
         days: Int = 365,
-        hours: Int? = nil
+        hours: Int? = nil,
+        lines: [String]? = nil
     ) async throws -> RouteHistoricalData {
         var urlComponents = URLComponents(string: "\(baseURL)/v2/routes/history")!
         urlComponents.queryItems = [
@@ -455,6 +456,10 @@ final class APIService: ObservableObject {
 
         if let highlightTrain = highlightTrain {
             urlComponents.queryItems?.append(URLQueryItem(name: "highlight_train", value: highlightTrain))
+        }
+
+        if let lines = lines, !lines.isEmpty {
+            urlComponents.queryItems?.append(URLQueryItem(name: "lines", value: lines.joined(separator: ",")))
         }
         
         guard let url = urlComponents.url else {
