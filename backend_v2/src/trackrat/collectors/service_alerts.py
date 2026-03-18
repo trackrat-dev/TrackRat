@@ -340,11 +340,11 @@ async def upsert_service_alerts(
     """
     stats = {"inserted": 0, "updated": 0, "deactivated": 0}
 
-    # Load existing active alerts for this data source
+    # Load all existing alerts for this data source (including inactive,
+    # so we can reactivate them instead of inserting duplicates)
     result = await session.execute(
         select(ServiceAlert).where(
             ServiceAlert.data_source == data_source,
-            ServiceAlert.is_active.is_(True),
         )
     )
     existing_by_id: dict[str, ServiceAlert] = {
@@ -396,7 +396,7 @@ async def upsert_service_alerts(
 
     # Deactivate alerts no longer in the feed
     for alert_id, existing in existing_by_id.items():
-        if alert_id not in seen_ids:
+        if alert_id not in seen_ids and existing.is_active:
             existing.is_active = False
             stats["deactivated"] += 1
 

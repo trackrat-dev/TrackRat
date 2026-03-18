@@ -940,14 +940,14 @@ final class RouteStatusViewModel: ObservableObject {
     @Published var isLoadingMap = false
     @Published var mapError: String?
 
-    // Service alerts (MTA systems only)
+    // Service alerts
     @Published var serviceAlerts: [V2ServiceAlert] = []
 
     // Upcoming trains
     @Published var upcomingTrains: [TrainV2] = []
 
     /// Data sources that have service alert data
-    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
+    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
 
     // History state — keyed by system for stacked display
     @Published var historyBySystem: [String: HistoryState] = [:]

@@ -676,3 +676,56 @@ class TestNjtUpsertServiceAlerts:
             )
         )
         assert result.scalar_one().alert_id == "lmm:alert:300"
+
+    async def test_reactivates_previously_deactivated_alert(
+        self, db_session: AsyncSession
+    ):
+        """An alert that was deactivated then reappears is reactivated, not duplicated.
+
+        This is a regression test for a UniqueViolationError that occurred when
+        the upsert only loaded active alerts — a deactivated alert reappearing
+        in the feed would attempt an INSERT and hit the unique constraint.
+        """
+        alert = ParsedAlert(
+            alert_id="lmm:planned_work:reactivate-1",
+            alert_type="planned_work",
+            affected_route_ids=["G"],
+            header_text="G: Weekend service change",
+            description_text="Details",
+            active_periods=[{"start": 1710100000, "end": 1710200000}],
+        )
+
+        # Insert the alert
+        stats = await upsert_service_alerts(db_session, [alert], "SUBWAY")
+        await db_session.flush()
+        assert stats["inserted"] == 1
+
+        # Deactivate it (empty feed)
+        stats = await upsert_service_alerts(db_session, [], "SUBWAY")
+        await db_session.flush()
+        assert stats["deactivated"] == 1
+
+        # Verify it's inactive
+        result = await db_session.execute(
+            select(ServiceAlert).where(
+                ServiceAlert.alert_id == "lmm:planned_work:reactivate-1"
+            )
+        )
+        row = result.scalar_one()
+        assert row.is_active is False
+
+        # Reappear in the feed — should update (reactivate), NOT insert
+        stats = await upsert_service_alerts(db_session, [alert], "SUBWAY")
+        await db_session.flush()
+        assert stats["inserted"] == 0, "Should reactivate, not insert a duplicate"
+        assert stats["updated"] == 1
+
+        # Verify it's active again and there's only one row
+        result = await db_session.execute(
+            select(ServiceAlert).where(
+                ServiceAlert.alert_id == "lmm:planned_work:reactivate-1"
+            )
+        )
+        rows = result.scalars().all()
+        assert len(rows) == 1, f"Expected 1 row, got {len(rows)} (duplicate inserted)"
+        assert rows[0].is_active is True

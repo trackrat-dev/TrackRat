@@ -176,8 +176,8 @@ struct AlertConfigurationSection: View {
         RouteAlertSubscription.frequencyFirstSources.contains(subscription.dataSource)
     }
 
-    /// MTA systems that support planned work notifications.
-    private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR"]
+    /// Systems that support planned work notifications.
+    private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
 
     private var showPlannedWork: Bool {
         (subscription.lineId != nil || subscription.fromStationCode != nil)
