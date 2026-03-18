@@ -53,8 +53,8 @@ REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
 # Data sources where train_id is stable and represents the same daily service
 STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR"}
 
-# Data sources that support service alerts (MTA systems only)
-SERVICE_ALERT_SOURCES = {"SUBWAY", "LIRR", "MNR"}
+# Data sources that support service alerts
+SERVICE_ALERT_SOURCES = {"SUBWAY", "LIRR", "MNR", "NJT"}
 
 # Build route-ID lookup once at import time
 _ROUTES_BY_ID = {route.id: route for route in ALL_ROUTES}
@@ -84,16 +84,20 @@ def _line_codes_to_gtfs_ids(data_source: str, line_codes: frozenset[str]) -> set
             gtfs_id = _MNR_LINE_CODE_TO_GTFS.get(line_code)
             if gtfs_id:
                 gtfs_ids.add(gtfs_id)
+        elif data_source == "NJT":
+            # NJT alert affected_route_ids use the same 2-letter codes
+            # as route topology line_codes (e.g., "NE", "NC", "ME")
+            gtfs_ids.add(line_code)
     return gtfs_ids
 
 
 def _get_gtfs_route_ids_for_subscription(
     sub: RouteAlertSubscription,
 ) -> set[str]:
-    """Get GTFS route_ids that an alert subscription covers.
+    """Get route IDs that an alert subscription covers.
 
-    Maps our internal route topology to the GTFS route_ids used in
-    MTA service alert feeds.
+    Maps our internal route topology to the route IDs used in
+    service alert feeds (MTA GTFS route_ids, NJT line codes).
 
     Supports both line-based subs (direct route lookup) and station-pair
     subs (finds all routes covering the segment).

@@ -179,15 +179,36 @@ class TestGetGtfsRouteIdsForSubscription:
         result = _get_gtfs_route_ids_for_subscription(sub)
         assert result == set()
 
-    def test_non_mta_source_returns_empty(self):
-        """Non-MTA data sources return empty (no GTFS mapping for NJT/Amtrak)."""
+    def test_njt_line_maps_to_line_codes(self):
+        """NJT line IDs map to their 2-letter line codes."""
         sub = RouteAlertSubscription(
             device_id="dev1",
             data_source="NJT",
             line_id="njt-nec",
         )
         result = _get_gtfs_route_ids_for_subscription(sub)
-        # NJT line codes won't match SUBWAY/LIRR/MNR branches
+        assert "NE" in result
+
+    def test_njt_station_pair_finds_matching_routes(self):
+        """NJT station-pair subs find routes covering that segment."""
+        # NY and NP are both on the Northeast Corridor
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="NJT",
+            from_station_code="NY",
+            to_station_code="NP",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert "NE" in result
+
+    def test_unsupported_source_returns_empty(self):
+        """Data sources without alert support return empty."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="AMTRAK",
+            line_id="amtrak-nec",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
         assert result == set()
 
 
@@ -288,9 +309,14 @@ class TestLineCodesToGtfsIds:
         result = _line_codes_to_gtfs_ids("MNR", frozenset({"MNR-HUD"}))
         assert len(result) > 0
 
+    def test_njt_line_codes_pass_through(self):
+        """NJT line codes pass through directly (same format as alert route IDs)."""
+        result = _line_codes_to_gtfs_ids("NJT", frozenset({"NE", "NC"}))
+        assert result == {"NE", "NC"}
+
     def test_unknown_source_returns_empty(self):
-        """Non-MTA data source returns empty set."""
-        result = _line_codes_to_gtfs_ids("NJT", frozenset({"NEC"}))
+        """Unsupported data source returns empty set."""
+        result = _line_codes_to_gtfs_ids("AMTRAK", frozenset({"NEC"}))
         assert result == set()
 
     def test_empty_line_codes_returns_empty(self):
@@ -485,12 +511,67 @@ class TestEvaluateServiceAlerts:
         count = await evaluate_service_alerts(db_session, apns)
         assert count == 0
 
-    async def test_skips_non_mta_data_source(self, db_session: AsyncSession):
-        """Subscriptions for non-MTA systems are skipped even with planned work opt-in."""
+    async def test_njt_planned_work_sends_notification(self, db_session: AsyncSession):
+        """NJT planned work alert matching a subscription triggers a notification."""
         _make_subscription(
             db_session,
+            device_id="njt-dev",
+            apns_token="njt-token",
             data_source="NJT",
             line_id="njt-nec",
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="njt-msg-abc123",
+            data_source="NJT",
+            alert_type="planned_work",
+            route_ids=["NE"],
+            header="NEC: Weekend track work between Newark and New York",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1
+        apns.send_alert_notification.assert_called_once()
+
+        call_args = apns.send_alert_notification.call_args
+        body = call_args.args[2]
+        assert "NEC: Weekend track work" in body
+
+    async def test_njt_realtime_alert_sends_notification(self, db_session: AsyncSession):
+        """NJT real-time alert (RSS) matching a subscription triggers a notification."""
+        _make_subscription(
+            db_session,
+            device_id="njt-rt-dev",
+            apns_token="njt-rt-token",
+            data_source="NJT",
+            line_id="njt-nec",
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="njt-rss-999",
+            data_source="NJT",
+            alert_type="alert",
+            route_ids=["NE"],
+            header="NEC train #3837 is up to 15 min. late.",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1
+
+    async def test_skips_unsupported_data_source(self, db_session: AsyncSession):
+        """Subscriptions for unsupported systems are skipped even with planned work opt-in."""
+        _make_subscription(
+            db_session,
+            data_source="AMTRAK",
+            line_id="amtrak-nec",
             include_planned_work=True,
         )
         await db_session.flush()
