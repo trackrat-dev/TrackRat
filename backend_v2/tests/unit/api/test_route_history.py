@@ -1252,8 +1252,7 @@ def _make_stops(
             "station_code": to_code,
             "stop_sequence": 1,
             "scheduled_arrival": BASE_TIME + timedelta(hours=1),
-            "actual_arrival": BASE_TIME
-            + timedelta(hours=1, minutes=delay_minutes),
+            "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=delay_minutes),
             "arrival_source": "api_observed",
         },
     ]
@@ -1293,9 +1292,9 @@ class TestLineCodesFilter:
             now=BASE_TIME + timedelta(hours=2),
             line_codes=["A"],
         )
-        assert result["total_journeys"] == 1, (
-            f"Expected 1 journey for line A, got {result['total_journeys']}"
-        )
+        assert (
+            result["total_journeys"] == 1
+        ), f"Expected 1 journey for line A, got {result['total_journeys']}"
 
     async def test_line_codes_filter_excludes_non_matching_line(
         self, db_session: AsyncSession
@@ -1327,12 +1326,14 @@ class TestLineCodesFilter:
             f"got {result['total_journeys']}"
         )
 
-    async def test_line_codes_filter_multiple_lines(
-        self, db_session: AsyncSession
-    ):
+    async def test_line_codes_filter_multiple_lines(self, db_session: AsyncSession):
         """Multiple line codes filter includes all matching, excludes non-matching."""
         # Create journeys on 3 different lines
-        for line_code, line_name in [("A", "A Train"), ("1", "1 Train"), ("7", "7 Train")]:
+        for line_code, line_name in [
+            ("A", "A Train"),
+            ("1", "1 Train"),
+            ("7", "7 Train"),
+        ]:
             await _create_journey(
                 db_session,
                 train_id=f"{line_code}_train",
@@ -1360,9 +1361,7 @@ class TestLineCodesFilter:
             "Line 7 should be excluded."
         )
 
-    async def test_line_codes_none_returns_all(
-        self, db_session: AsyncSession
-    ):
+    async def test_line_codes_none_returns_all(self, db_session: AsyncSession):
         """When line_codes is None, all lines are included (backwards compatible)."""
         for line_code, line_name in [("A", "A Train"), ("1", "1 Train")]:
             await _create_journey(
@@ -1432,9 +1431,9 @@ class TestLineCodesFilter:
             line_codes=None,
         )
         assert all_result["total_journeys"] == 2
-        assert all_result["on_time_percentage"] == pytest.approx(50.0, abs=1), (
-            f"Expected ~50% on-time with both lines, got {all_result['on_time_percentage']}"
-        )
+        assert all_result["on_time_percentage"] == pytest.approx(
+            50.0, abs=1
+        ), f"Expected ~50% on-time with both lines, got {all_result['on_time_percentage']}"
 
         # Filtered to line A only: 0% on-time (the A train is 10min late)
         a_result = await _calculate_route_stats_sql(

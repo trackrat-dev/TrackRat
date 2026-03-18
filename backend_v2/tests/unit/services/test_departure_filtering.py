@@ -546,9 +546,7 @@ class TestHideDepartedTimeFallback:
                     "_calculate_train_position",
                     return_value=self._mock_train_position(),
                 ):
-                    with patch(
-                        "trackrat.services.gtfs.GTFSService"
-                    ) as mock_gtfs_class:
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
                         mock_gtfs = AsyncMock()
                         mock_gtfs.get_scheduled_departures = AsyncMock(
                             return_value=Mock(departures=[])
@@ -591,9 +589,7 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
         train_ids = {d.train_id for d in result.departures}
         assert "3840" not in train_ids, (
@@ -623,14 +619,12 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
         train_ids = {d.train_id for d in result.departures}
-        assert "3850" in train_ids, (
-            "Train within 5-min grace period should still appear as upcoming"
-        )
+        assert (
+            "3850" in train_ids
+        ), "Train within 5-min grace period should still appear as upcoming"
 
     @pytest.mark.asyncio
     async def test_cancelled_train_not_affected_by_time_fallback(self):
@@ -654,14 +648,12 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
         train_ids = {d.train_id for d in result.departures}
-        assert "3860" in train_ids, (
-            "Cancelled train from 1 hour ago should still appear"
-        )
+        assert (
+            "3860" in train_ids
+        ), "Cancelled train from 1 hour ago should still appear"
 
     @pytest.mark.asyncio
     async def test_without_hide_departed_shows_all_trains(self):
@@ -683,15 +675,12 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=False
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=False)
 
         train_ids = {d.train_id for d in result.departures}
-        assert "3840" in train_ids, (
-            "Without hide_departed, all trains should appear regardless of time"
-        )
-
+        assert (
+            "3840" in train_ids
+        ), "Without hide_departed, all trains should appear regardless of time"
 
     @pytest.mark.asyncio
     async def test_boundary_at_exactly_five_minutes_ago(self):
@@ -717,13 +706,11 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
-        assert len(result.departures) == 0, (
-            "Train at exactly 5-min cutoff boundary should be excluded"
-        )
+        assert (
+            len(result.departures) == 0
+        ), "Train at exactly 5-min cutoff boundary should be excluded"
 
     @pytest.mark.asyncio
     async def test_train_just_past_cutoff_excluded(self):
@@ -741,13 +728,11 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
-        assert len(result.departures) == 0, (
-            "Train 6 minutes past departure should be excluded by time fallback"
-        )
+        assert (
+            len(result.departures) == 0
+        ), "Train 6 minutes past departure should be excluded by time fallback"
 
     @pytest.mark.asyncio
     async def test_has_departed_true_filtered_by_primary_mechanism(self):
@@ -771,13 +756,11 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
-        assert len(result.departures) == 0, (
-            "Train with has_departed_station=True should be filtered by primary mechanism"
-        )
+        assert (
+            len(result.departures) == 0
+        ), "Train with has_departed_station=True should be filtered by primary mechanism"
 
     @pytest.mark.asyncio
     async def test_null_scheduled_departure_passes_through(self):
@@ -804,14 +787,12 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
         train_ids = {d.train_id for d in result.departures}
-        assert "3873" in train_ids, (
-            "Train with NULL scheduled_departure should be conservatively shown"
-        )
+        assert (
+            "3873" in train_ids
+        ), "Train with NULL scheduled_departure should be conservatively shown"
 
     @pytest.mark.asyncio
     async def test_regression_hamilton_to_ny_penn_stale_trains(self):
@@ -849,20 +830,16 @@ class TestHideDepartedTimeFallback:
         mock_session.scalar = AsyncMock(return_value=None)
 
         service = DepartureService()
-        result = await self._run_departures(
-            mock_session, service, hide_departed=True
-        )
+        result = await self._run_departures(mock_session, service, hide_departed=True)
 
         train_ids = {d.train_id for d in result.departures}
-        assert "3840" not in train_ids, (
-            "Train 3840 (departed 3h ago with stale flag) must not appear as upcoming"
-        )
-        assert "3850" not in train_ids, (
-            "Train 3850 (departed 2h ago with stale flag) must not appear as upcoming"
-        )
-        assert "3880" in train_ids, (
-            "Train 3880 (upcoming in 20 min) should appear"
-        )
+        assert (
+            "3840" not in train_ids
+        ), "Train 3840 (departed 3h ago with stale flag) must not appear as upcoming"
+        assert (
+            "3850" not in train_ids
+        ), "Train 3850 (departed 2h ago with stale flag) must not appear as upcoming"
+        assert "3880" in train_ids, "Train 3880 (upcoming in 20 min) should appear"
 
 
 class TestDepartureFilterQuery:

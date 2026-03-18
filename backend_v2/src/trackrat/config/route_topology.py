@@ -682,7 +682,19 @@ AMTRAK_EMPIRE_SERVICE = Route(
     name="Empire Service",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("NY", "YNY", "CRT", "POU", "RHI", "HUD", "SDY", "ALB", "SYR", "ROC", "BUF"),
+    stations=(
+        "NY",
+        "YNY",
+        "CRT",
+        "POU",
+        "RHI",
+        "HUD",
+        "SDY",
+        "ALB",
+        "SYR",
+        "ROC",
+        "BUF",
+    ),
 )
 
 # =============================================================================

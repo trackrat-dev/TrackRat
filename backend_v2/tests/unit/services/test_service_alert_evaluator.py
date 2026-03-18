@@ -541,7 +541,9 @@ class TestEvaluateServiceAlerts:
         body = call_args.args[2]
         assert "NEC: Weekend track work" in body
 
-    async def test_njt_realtime_alert_sends_notification(self, db_session: AsyncSession):
+    async def test_njt_realtime_alert_sends_notification(
+        self, db_session: AsyncSession
+    ):
         """NJT real-time alert (RSS) matching a subscription triggers a notification."""
         _make_subscription(
             db_session,

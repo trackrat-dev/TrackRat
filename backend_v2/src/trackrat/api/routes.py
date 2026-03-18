@@ -82,7 +82,9 @@ async def get_route_history(
     instead of journey date, enabling sub-day time windows (e.g. past hour).
     """
     # Parse line codes filter
-    line_codes = [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    line_codes = (
+        [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    )
 
     logger.info(
         "get_route_history_request",
@@ -147,7 +149,14 @@ async def get_route_history(
 
     # Compute aggregate stats via SQL
     aggregate_stats = await _calculate_route_stats_sql(
-        db, data_source, start_date, end_date, from_codes, to_codes, cutoff_time, now,
+        db,
+        data_source,
+        start_date,
+        end_date,
+        from_codes,
+        to_codes,
+        cutoff_time,
+        now,
         line_codes=line_codes,
     )
 
@@ -183,7 +192,13 @@ async def get_route_history(
 
     # Calculate baseline train count for frequency comparison
     baseline_train_count = await _calculate_baseline_train_count(
-        db, data_source, from_codes, to_codes, hours, now, line_codes=line_codes,
+        db,
+        data_source,
+        from_codes,
+        to_codes,
+        hours,
+        now,
+        line_codes=line_codes,
     )
 
     response = RouteHistoryResponse(
