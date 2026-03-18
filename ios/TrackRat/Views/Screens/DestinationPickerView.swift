@@ -118,8 +118,38 @@ struct DestinationPickerView: View {
                         
                         // Search results - take full page when searching
                         if isSearching {
+                            let favoriteCodes = Set(favoriteStations.map(\.id))
+                            let favoriteMatches = searchResults.stations.filter { station in
+                                guard let code = Stations.getStationCode(station) else { return false }
+                                return favoriteCodes.contains(code)
+                            }
+                            let otherMatches = searchResults.stations.filter { station in
+                                guard let code = Stations.getStationCode(station) else { return true }
+                                return !favoriteCodes.contains(code)
+                            }
+
                             VStack(spacing: 8) {
-                                ForEach(searchResults.stations, id: \.self) { station in
+                                // Favorite station matches first
+                                if !favoriteMatches.isEmpty {
+                                    Text("Favorites")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+
+                                    ForEach(favoriteMatches, id: \.self) { station in
+                                        Button {
+                                            selectDestination(station)
+                                        } label: {
+                                            destinationSearchRow(station: station)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.horizontal)
+                                    }
+                                }
+
+                                // Remaining station matches
+                                ForEach(otherMatches, id: \.self) { station in
                                     Button {
                                         selectDestination(station)
                                     } label: {
