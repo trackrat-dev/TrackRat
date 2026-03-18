@@ -555,10 +555,9 @@ struct RouteStatusView: View {
             HStack(spacing: 12) {
                 statCard(
                     title: "Frequency",
-                    value: formatFrequency(totalTrains: total, hours: hours),
+                    value: formatHeadway(totalTrains: total, hours: hours),
                     color: freqColor
                 )
-                statCard(title: "On Time", value: onTimeValue, color: onTimeColor)
             }
 
             if stats.cancellationRate > 0 {
@@ -637,6 +636,20 @@ struct RouteStatusView: View {
     private func formatDelay(_ minutes: Double) -> String {
         let rounded = Int(round(minutes))
         return "\(rounded)m"
+    }
+
+    /// Format as headway ("Every ~X min") for frequency-first systems.
+    /// Matches CongestionSegment.headwayDisplayText pattern.
+    private func formatHeadway(totalTrains: Int, hours: Double) -> String {
+        guard totalTrains > 0 else { return "N/A" }
+        let perHour = Double(totalTrains) / hours
+        if perHour >= 1 {
+            let minutes = Int(round(60.0 / perHour))
+            return minutes <= 1 ? "Every ~1 min" : "Every ~\(minutes) min"
+        } else {
+            let perDay = perHour * 24
+            return perDay == perDay.rounded() ? "\(Int(perDay))/day" : String(format: "%.1f/day", perDay)
+        }
     }
 
     private func formatFrequency(totalTrains: Int, hours: Double) -> String {
