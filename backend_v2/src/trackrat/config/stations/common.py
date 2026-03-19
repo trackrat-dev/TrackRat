@@ -73,6 +73,7 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     {"BRP", "MBGP"},  # Bridgeport
     {"NHV", "MNHV"},  # New Haven
     {"STS", "MNSS"},  # New Haven-State St
+    {"NP", "PNK"},  # Newark Penn Station / Newark PATH
     *SUBWAY_STATION_COMPLEXES,
     # PATH ↔ Subway cross-system equivalences (must be after SUBWAY_STATION_COMPLEXES
     # so the larger group overwrites the subway-only group for shared codes)

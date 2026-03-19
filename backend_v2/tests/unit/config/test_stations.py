@@ -554,7 +554,7 @@ class TestStationEquivalences:
 
     def test_expand_station_codes_without_equivalent(self):
         """expand_station_codes returns single-element list for non-shared stations."""
-        non_shared_codes = ["NY", "NP", "TR", "PHO", "MWPL", "JAM"]
+        non_shared_codes = ["NY", "TR", "PHO", "MWPL", "JAM"]
         for code in non_shared_codes:
             result = expand_station_codes(code)
             assert result == [

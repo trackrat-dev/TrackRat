@@ -2342,6 +2342,7 @@ extension Stations {
             ["BRP", "MBGP"],   // Bridgeport
             ["NHV", "MNHV"],   // New Haven
             ["STS", "MNSS"],   // New Haven-State St
+            ["NP", "PNK"],     // Newark Penn Station / Newark PATH
         ]
 
         // Subway station complexes: build groups from (alternate, canonical) pairs
