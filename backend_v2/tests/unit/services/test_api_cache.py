@@ -170,9 +170,7 @@ class TestApiCacheService:
         # Verify the upsert statement contains correct values
         executed_stmt = mock_db.execute.call_args[0][0]
         # Compiled statement should be a PostgreSQL INSERT with ON CONFLICT
-        compiled = executed_stmt.compile(
-            compile_kwargs={"literal_binds": False}
-        )
+        compiled = executed_stmt.compile(compile_kwargs={"literal_binds": False})
         stmt_str = str(compiled)
         assert "INSERT INTO cached_api_responses" in stmt_str
         assert "ON CONFLICT" in stmt_str
