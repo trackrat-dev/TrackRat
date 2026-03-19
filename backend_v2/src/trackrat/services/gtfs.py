@@ -439,9 +439,13 @@ class GTFSService:
         with zf.open("routes.txt") as f:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
             for row in reader:
+                route_id = row.get("route_id", "")
+                if route_id in routes:
+                    continue
+
                 route = GTFSRoute(
                     data_source=data_source,
-                    route_id=row.get("route_id", ""),
+                    route_id=route_id,
                     route_short_name=row.get("route_short_name"),
                     route_long_name=row.get("route_long_name"),
                     route_color=row.get("route_color"),
@@ -463,7 +467,7 @@ class GTFSService:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
             for row in reader:
                 service_id = row.get("service_id", "")
-                if not service_id:
+                if not service_id or service_id in services:
                     continue
 
                 calendar = GTFSCalendar(
@@ -490,6 +494,7 @@ class GTFSService:
     ) -> int:
         """Parse calendar_dates.txt and store in database. Returns count."""
         count = 0
+        seen_keys: set[tuple[str, str]] = set()
 
         with zf.open("calendar_dates.txt") as f:
             reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
@@ -500,6 +505,11 @@ class GTFSService:
 
                 if not service_id or not date_str or not exception_type:
                     continue
+
+                key = (service_id, date_str)
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
 
                 calendar_date = GTFSCalendarDate(
                     data_source=data_source,
