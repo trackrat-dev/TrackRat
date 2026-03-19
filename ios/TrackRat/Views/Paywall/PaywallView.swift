@@ -153,6 +153,19 @@ struct PaywallView: View {
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 }
                             }
+
+                            // Yearly option
+                            if let yearly = subscriptionService.yearlyProduct {
+                                PricingOptionView(
+                                    product: yearly,
+                                    isSelected: selectedProduct?.id == yearly.id,
+                                    subtitle: subscriptionSubtitle(for: yearly),
+                                    badge: subscriptionService.monthlyProduct.flatMap { yearlySavingsText(yearly: yearly, monthly: $0) }
+                                ) {
+                                    selectedProduct = yearly
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            }
                         }
                         .padding(.horizontal)
                     }
@@ -307,7 +320,34 @@ struct PaywallView: View {
     /// Format the subscription subtitle with trial info if available
     private func subscriptionSubtitle(for product: Product) -> String {
         let trialPrefix = trialText(for: product)
-        return "\(trialPrefix)\(product.displayPrice)/month"
+        let periodLabel: String
+        if let subscription = product.subscription {
+            switch subscription.subscriptionPeriod.unit {
+            case .year:
+                periodLabel = "/year"
+            case .month:
+                periodLabel = "/month"
+            case .week:
+                periodLabel = "/week"
+            case .day:
+                periodLabel = "/day"
+            @unknown default:
+                periodLabel = ""
+            }
+        } else {
+            periodLabel = ""
+        }
+        return "\(trialPrefix)\(product.displayPrice)\(periodLabel)"
+    }
+
+    /// Calculate the monthly equivalent price for a yearly product and the savings percentage vs monthly
+    private func yearlySavingsText(yearly: Product, monthly: Product) -> String? {
+        let yearlyTotal = yearly.price
+        let monthlyTotal = monthly.price * 12
+        guard monthlyTotal > 0 else { return nil }
+        let savingsPercent = Int(((monthlyTotal - yearlyTotal) / monthlyTotal * 100).rounded())
+        guard savingsPercent > 0 else { return nil }
+        return "Save \(savingsPercent)%"
     }
 
     private func purchase() async {
@@ -373,15 +413,30 @@ private struct PricingOptionView: View {
     let product: Product
     let isSelected: Bool
     let subtitle: String
+    var badge: String? = nil
     let onSelect: () -> Void
 
     var body: some View {
         Button(action: onSelect) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(product.displayName)
-                        .font(.headline)
-                        .foregroundColor(.white)
+                    HStack(spacing: 8) {
+                        Text(product.displayName)
+                            .font(.headline)
+                            .foregroundColor(.white)
+
+                        if let badge {
+                            Text(badge)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule()
+                                        .fill(.orange.opacity(0.15))
+                                )
+                        }
+                    }
 
                     Text(subtitle)
                         .font(.caption)
