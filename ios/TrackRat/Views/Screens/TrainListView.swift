@@ -112,7 +112,7 @@ struct TrainListView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "bell.badge")
                                 .font(.subheadline)
-                            Text("Alerts")
+                            Text("Route Alerts")
                                 .font(.subheadline)
                         }
                         .foregroundColor(.white.opacity(0.8))
