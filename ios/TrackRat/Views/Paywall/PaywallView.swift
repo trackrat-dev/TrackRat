@@ -342,8 +342,8 @@ struct PaywallView: View {
 
     /// Calculate the monthly equivalent price for a yearly product and the savings percentage vs monthly
     private func yearlySavingsText(yearly: Product, monthly: Product) -> String? {
-        let yearlyTotal = yearly.price
-        let monthlyTotal = monthly.price * 12
+        let yearlyTotal = NSDecimalNumber(decimal: yearly.price).doubleValue
+        let monthlyTotal = NSDecimalNumber(decimal: monthly.price).doubleValue * 12
         guard monthlyTotal > 0 else { return nil }
         let savingsPercent = Int(((monthlyTotal - yearlyTotal) / monthlyTotal * 100).rounded())
         guard savingsPercent > 0 else { return nil }
