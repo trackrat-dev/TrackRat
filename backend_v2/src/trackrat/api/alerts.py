@@ -300,7 +300,9 @@ async def get_service_alerts(
                 header_text=a.header_text,
                 description_text=a.description_text,
                 active_periods=[
-                    ServiceAlertActivePeriod(**p) for p in (a.active_periods or [])
+                    ServiceAlertActivePeriod(**p)
+                    for p in (a.active_periods or [])
+                    if isinstance(p, dict)
                 ],
             )
             for a in alerts

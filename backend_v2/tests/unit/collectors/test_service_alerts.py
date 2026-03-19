@@ -15,6 +15,7 @@ from trackrat.collectors.service_alerts import (
     ParsedAlert,
     classify_alert_type,
     extract_english_text,
+    fetch_and_parse_njt_alerts,
     parse_alert_entity,
     parse_njt_line_scope,
     parse_njt_message,
@@ -216,6 +217,210 @@ class TestParseAlertEntity:
 
         assert result is not None
         assert result.affected_route_ids == ["G"]
+
+
+class TestFetchAndParseAlertsDedupe:
+    """Tests for duplicate entity ID deduplication in fetch_and_parse_alerts.
+
+    MTA feeds (especially SUBWAY) can contain duplicate entity IDs —
+    e.g. elevator alerts like '235N#EL301' appearing twice. Without
+    deduplication, the second occurrence causes a UniqueViolationError
+    during upsert.
+    """
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_alerts_by_entity_id(self):
+        """Duplicate entity IDs in the feed are deduplicated (last wins).
+
+        Reproduces the production bug where MTA SUBWAY feed contains
+        duplicate elevator alert entity IDs, causing IntegrityError on
+        INSERT into service_alerts table.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        from trackrat.collectors.service_alerts import fetch_and_parse_alerts
+
+        # Build a protobuf feed with duplicate entity IDs
+        from google.transit import gtfs_realtime_pb2
+
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = 1710100000
+
+        # First occurrence of duplicate elevator alert
+        e1 = feed.entity.add()
+        e1.id = "235N#EL301"
+        a1 = e1.alert
+        a1.informed_entity.add().route_id = "1"
+        t1 = a1.header_text.translation.add()
+        t1.language = "en"
+        t1.text = "Elevator out of service (first)"
+
+        # Duplicate with same entity ID but different text
+        e2 = feed.entity.add()
+        e2.id = "235N#EL301"
+        a2 = e2.alert
+        a2.informed_entity.add().route_id = "1"
+        t2 = a2.header_text.translation.add()
+        t2.language = "en"
+        t2.text = "Elevator out of service (second)"
+
+        # A unique alert to verify non-duplicates are preserved
+        e3 = feed.entity.add()
+        e3.id = "lmm:planned_work:99999"
+        a3 = e3.alert
+        a3.informed_entity.add().route_id = "L"
+        t3 = a3.header_text.translation.add()
+        t3.language = "en"
+        t3.text = "L train service change"
+
+        # Mock the HTTP fetch to return our crafted feed
+        mock_response = AsyncMock()
+        mock_response.content = feed.SerializeToString()
+        mock_response.raise_for_status = lambda: None
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("trackrat.collectors.service_alerts.httpx.AsyncClient", return_value=mock_client):
+            alerts = await fetch_and_parse_alerts("https://fake-feed-url", "SUBWAY")
+
+        # Should have 2 alerts (deduped), not 3
+        assert len(alerts) == 2, (
+            f"Expected 2 alerts after dedup, got {len(alerts)}. "
+            f"IDs: {[a.alert_id for a in alerts]}"
+        )
+
+        alert_ids = [a.alert_id for a in alerts]
+        assert "235N#EL301" in alert_ids, "Elevator alert should be present"
+        assert "lmm:planned_work:99999" in alert_ids, "Planned work alert should be present"
+
+        # Last occurrence should win
+        elevator_alert = next(a for a in alerts if a.alert_id == "235N#EL301")
+        assert elevator_alert.header_text == "Elevator out of service (second)", (
+            "Last occurrence of duplicate entity ID should win"
+        )
+
+
+class TestFetchAndParseNjtAlertsDedupe:
+    """Tests for duplicate message deduplication in fetch_and_parse_njt_alerts.
+
+    NJT API can return duplicate MSG_IDs, and messages without MSG_ID
+    use a text hash — identical messages would produce the same alert_id.
+    Without deduplication, these cause UniqueViolationError on upsert.
+    """
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_njt_messages_by_alert_id(self):
+        """Duplicate NJT MSG_IDs are deduplicated (last wins)."""
+        from unittest.mock import AsyncMock, patch
+
+        duplicate_messages = [
+            {
+                "MSG_TYPE": "banner",
+                "MSG_TEXT": "NEC train #100 is delayed.",
+                "MSG_PUBDATE": "3/19/2026 8:00:00 PM",
+                "MSG_ID": "9999999",
+                "MSG_AGENCY": "NJT",
+                "MSG_SOURCE": "RSS_NJTRailAlerts",
+                "MSG_STATION_SCOPE": " ",
+                "MSG_LINE_SCOPE": "*Northeast Corridor Line",
+                "MSG_PUBDATE_UTC": "3/20/2026 12:00:00 AM",
+            },
+            {
+                "MSG_TYPE": "banner",
+                "MSG_TEXT": "NEC train #100 is delayed (updated).",
+                "MSG_PUBDATE": "3/19/2026 8:05:00 PM",
+                "MSG_ID": "9999999",  # Same MSG_ID — duplicate
+                "MSG_AGENCY": "NJT",
+                "MSG_SOURCE": "RSS_NJTRailAlerts",
+                "MSG_STATION_SCOPE": " ",
+                "MSG_LINE_SCOPE": "*Northeast Corridor Line",
+                "MSG_PUBDATE_UTC": "3/20/2026 12:05:00 AM",
+            },
+            {
+                "MSG_TYPE": "banner",
+                "MSG_TEXT": "NJCL service restored.",
+                "MSG_PUBDATE": "3/19/2026 8:10:00 PM",
+                "MSG_ID": "9999998",
+                "MSG_AGENCY": "NJT",
+                "MSG_SOURCE": "RSS_NJTRailAlerts",
+                "MSG_STATION_SCOPE": " ",
+                "MSG_LINE_SCOPE": "*North Jersey Coast Line",
+                "MSG_PUBDATE_UTC": "3/20/2026 12:10:00 AM",
+            },
+        ]
+
+        mock_client = AsyncMock()
+        mock_client.get_station_messages.return_value = duplicate_messages
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "trackrat.collectors.service_alerts.NJTransitClient",
+            return_value=mock_client,
+        ):
+            alerts = await fetch_and_parse_njt_alerts()
+
+        # Should have 2 alerts (deduped), not 3
+        assert len(alerts) == 2, (
+            f"Expected 2 alerts after dedup, got {len(alerts)}. "
+            f"IDs: {[a.alert_id for a in alerts]}"
+        )
+
+        # Last occurrence should win for the duplicate
+        deduped = next(a for a in alerts if a.alert_id == "njt-rss-9999999")
+        assert "updated" in deduped.header_text, (
+            "Last occurrence of duplicate MSG_ID should win"
+        )
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_njt_hash_based_ids(self):
+        """Messages without MSG_ID that produce the same text hash are deduplicated."""
+        from unittest.mock import AsyncMock, patch
+
+        # Two identical messages without MSG_ID — same text = same hash = same alert_id
+        identical_messages = [
+            {
+                "MSG_TYPE": "banner",
+                "MSG_TEXT": "System-wide advisory message.",
+                "MSG_PUBDATE": "3/19/2026 8:00:00 PM",
+                "MSG_ID": "",
+                "MSG_AGENCY": "NJT",
+                "MSG_SOURCE": "",
+                "MSG_STATION_SCOPE": "*Newark Penn Station",
+                "MSG_LINE_SCOPE": " ",
+                "MSG_PUBDATE_UTC": "3/20/2026 12:00:00 AM",
+            },
+            {
+                "MSG_TYPE": "banner",
+                "MSG_TEXT": "System-wide advisory message.",  # Identical text
+                "MSG_PUBDATE": "3/19/2026 8:00:00 PM",
+                "MSG_ID": "",
+                "MSG_AGENCY": "NJT",
+                "MSG_SOURCE": "",
+                "MSG_STATION_SCOPE": "*Newark Penn Station",
+                "MSG_LINE_SCOPE": " ",
+                "MSG_PUBDATE_UTC": "3/20/2026 12:00:00 AM",
+            },
+        ]
+
+        mock_client = AsyncMock()
+        mock_client.get_station_messages.return_value = identical_messages
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch(
+            "trackrat.collectors.service_alerts.NJTransitClient",
+            return_value=mock_client,
+        ):
+            alerts = await fetch_and_parse_njt_alerts()
+
+        assert len(alerts) == 1, (
+            f"Identical NJT messages should deduplicate to 1, got {len(alerts)}"
+        )
 
 
 @pytest.mark.asyncio
