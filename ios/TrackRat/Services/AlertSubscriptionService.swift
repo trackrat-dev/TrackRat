@@ -60,10 +60,10 @@ final class AlertSubscriptionService: ObservableObject {
             if let lineId = sub.lineId, lineId == context.lineId {
                 return true
             }
-            // Match station-pair subscriptions (either direction)
+            // Match station-pair subscriptions (exact direction only)
             if let from = sub.fromStationCode, let to = sub.toStationCode,
                let ctxFrom = context.fromStationCode, let ctxTo = context.toStationCode {
-                return (from == ctxFrom && to == ctxTo) || (from == ctxTo && to == ctxFrom)
+                return from == ctxFrom && to == ctxTo
             }
             return false
         }

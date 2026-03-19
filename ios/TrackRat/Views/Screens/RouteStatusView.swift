@@ -172,14 +172,14 @@ struct RouteStatusView: View {
                 showingPaywall = true
                 return
             }
-            // Auto-subscribe — create both directions from draft or fresh template
+            // Auto-subscribe — create single direction matching what user is viewing
             let template = draftSubscription ?? RouteAlertSubscription(
                 dataSource: context.dataSource,
                 fromStationCode: from,
                 toStationCode: to,
                 activeDays: newDays
             )
-            let subAB = RouteAlertSubscription(
+            let sub = RouteAlertSubscription(
                 dataSource: template.dataSource,
                 fromStationCode: from,
                 toStationCode: to,
@@ -196,24 +196,7 @@ struct RouteStatusView: View {
                 digestTimeMinutes: template.digestTimeMinutes,
                 includePlannedWork: template.includePlannedWork
             )
-            let subBA = RouteAlertSubscription(
-                dataSource: template.dataSource,
-                fromStationCode: to,
-                toStationCode: from,
-                activeDays: template.activeDays,
-                activeStartMinutes: template.activeStartMinutes,
-                activeEndMinutes: template.activeEndMinutes,
-                timezone: template.timezone,
-                delayThresholdMinutes: template.delayThresholdMinutes,
-                serviceThresholdPct: template.serviceThresholdPct,
-                cancellationThresholdPct: template.cancellationThresholdPct,
-                notifyCancellation: template.notifyCancellation,
-                notifyDelay: template.notifyDelay,
-                notifyRecovery: template.notifyRecovery,
-                digestTimeMinutes: template.digestTimeMinutes,
-                includePlannedWork: template.includePlannedWork
-            )
-            alertService.addSubscriptions(subscriptionService.isPro ? [subAB, subBA] : [subAB])
+            alertService.addSubscriptions([sub])
             // Move settings into edited subscriptions for the newly-created subs
             for sub in alertService.subscriptions(for: context) {
                 var edited = RouteAlertSubscription.copySettings(from: template, to: sub)
