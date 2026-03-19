@@ -15,6 +15,7 @@ from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
+from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import get_session, retry_on_deadlock
 from trackrat.models.api import (
@@ -77,6 +78,26 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
 SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
 
+def _has_direct_route(
+    from_station: str,
+    to_station: str,
+    data_sources: list[str],
+) -> bool:
+    """Check if any data source has a direct route between two stations.
+
+    Also checks expanded station codes (equivalences) so that e.g. Amtrak's NRO
+    and Metro-North's MNRC for New Rochelle are both considered.
+    """
+    from_codes = expand_station_codes(from_station)
+    to_codes = expand_station_codes(to_station)
+    for source in data_sources:
+        for fc in from_codes:
+            for tc in to_codes:
+                if find_route_for_segment(source, fc, tc) is not None:
+                    return True
+    return False
+
+
 class DepartureService:
     """Service for handling departure queries and processing."""
 
@@ -125,6 +146,13 @@ class DepartureService:
                     d for d in response.departures if d.data_source in data_sources
                 ]
                 response.metadata["count"] = len(response.departures)
+            if to_station:
+                all_sources = data_sources or [
+                    "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"
+                ]
+                response.has_direct_route = _has_direct_route(
+                    from_station, to_station, all_sources
+                )
             return response
 
         # For today or past dates, use real-time data
@@ -438,8 +466,16 @@ class DepartureService:
         # Apply limit to departures
         limited_departures = departures[:limit]
 
+        # Check if a direct route exists between the two stations
+        has_direct_route = True
+        if to_station:
+            has_direct_route = _has_direct_route(
+                from_station, to_station, allowed_sources
+            )
+
         return DeparturesResponse(
             departures=limited_departures,
+            has_direct_route=has_direct_route,
             metadata={
                 "from_station": {
                     "code": from_station,

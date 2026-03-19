@@ -161,7 +161,14 @@ struct TrainListView: View {
                             }
                         }
                     } else if viewModel.trains.isEmpty {
-                        EmptyStateView(message: isFutureDate ? "No scheduled trains for this day" : "No trains found")
+                        if !viewModel.hasDirectRoute {
+                            NoDirectRouteView(
+                                fromName: departureName,
+                                toName: destination
+                            )
+                        } else {
+                            EmptyStateView(message: isFutureDate ? "No scheduled trains for this day" : "No trains found")
+                        }
                     } else {
                         // Schedule info banner for future dates
                         if isFutureDate {
@@ -558,6 +565,7 @@ class TrainListViewModel: ObservableObject {
     @Published var hasStartedLoading = false
     @Published var error: String?
     @Published private(set) var expressTrainIds: Set<String> = []
+    @Published var hasDirectRoute: Bool = true
 
     private var currentDestination: String?
     private var currentFromStationCode: String?
@@ -637,14 +645,16 @@ class TrainListViewModel: ObservableObject {
             print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode) for date \(date)")
 
             // Use injected apiService with optional data sources filter
-            let fetchedTrains = try await self.apiService.searchTrains(
+            let result = try await self.apiService.searchTrainsWithRouteInfo(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
                 date: date,
                 dataSources: selectedSystems
             )
+            let fetchedTrains = result.trains
+            hasDirectRoute = result.hasDirectRoute
 
-            print("🔍 DEBUG: API returned \(fetchedTrains.count) trains")
+            print("🔍 DEBUG: API returned \(fetchedTrains.count) trains, hasDirectRoute=\(result.hasDirectRoute)")
             print("🔍 DEBUG: Train IDs: \(fetchedTrains.map { $0.trainId })")
 
             // Filter trains: only exclude trains that have already departed
@@ -769,15 +779,64 @@ struct ErrorView: View {
 
 struct EmptyStateView: View {
     let message: String
-    
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "tram")
                 .font(.largeTitle)
                 .foregroundColor(.white.opacity(0.5))
-            
+
             Text(message)
                 .foregroundColor(.white.opacity(0.7))
+        }
+        .padding()
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+}
+
+struct NoDirectRouteView: View {
+    let fromName: String
+    let toName: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 40))
+                .foregroundColor(.orange)
+
+            Text("No Direct Route")
+                .font(.title3.bold())
+                .foregroundColor(.white)
+
+            Text("Trips between **\(fromName)** and **\(toName)** require a transfer. Multi-stop journeys are coming soon!\n\nFor now, search each leg of your trip separately.")
+                .multilineTextAlignment(.center)
+                .foregroundColor(.white.opacity(0.7))
+                .font(.subheadline)
+                .padding(.horizontal, 16)
+
+            Button {
+                dismiss()
+            } label: {
+                Label("Search a different route", systemImage: "magnifyingglass")
+                    .font(.subheadline.weight(.medium))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+
+            // Route alerts tip
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "lightbulb.fill")
+                    .foregroundColor(.yellow)
+                    .font(.subheadline)
+                Text("To get route alerts for a trip with transfers, subscribe to each leg individually.")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            .padding(12)
+            .background(.white.opacity(0.06))
+            .cornerRadius(10)
+            .padding(.horizontal, 16)
         }
         .padding()
         .frame(maxWidth: .infinity, minHeight: 200)

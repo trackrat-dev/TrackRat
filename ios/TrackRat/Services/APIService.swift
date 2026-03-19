@@ -95,6 +95,60 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Search
 
+    struct DepartureSearchResult {
+        let trains: [TrainV2]
+        let hasDirectRoute: Bool
+    }
+
+    func searchTrainsWithRouteInfo(fromStationCode: String, toStationCode: String? = nil, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> DepartureSearchResult {
+        guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
+            throw APIError.invalidURL
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "from", value: fromStationCode),
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
+            URLQueryItem(name: "hide_departed", value: "true")
+        ]
+
+        if let toStationCode = toStationCode {
+            queryItems.append(URLQueryItem(name: "to", value: toStationCode))
+        }
+
+        if let date = date {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(identifier: "America/New_York")
+            queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+        }
+
+        if let dataSources = dataSources, !dataSources.isEmpty {
+            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.apiDataSources))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        return try await executeWithRetry {
+            let (data, _) = try await self.session.data(from: url)
+
+            do {
+                let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
+                let adaptedTrains = response.departures.map { self.adaptV2DepartureToTrainV2($0) }
+                return DepartureSearchResult(trains: adaptedTrains, hasDirectRoute: response.hasDirectRoute)
+            } catch {
+                print("🔴 V2 DECODING ERROR (searchTrainsWithRouteInfo): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw error
+            }
+        }
+    }
+
     func searchTrains(fromStationCode: String, toStationCode: String? = nil, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
         guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
             throw APIError.invalidURL
