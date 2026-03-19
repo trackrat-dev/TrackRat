@@ -77,6 +77,9 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
 # visible for at least one discovery cycle before being filtered out.
 SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
+# All supported data sources for departure queries.
+ALL_DATA_SOURCES: list[str] = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+
 
 def _has_direct_route(
     from_station: str,
@@ -203,7 +206,7 @@ class DepartureService:
         allowed_sources = (
             data_sources
             if data_sources
-            else ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+            else ALL_DATA_SOURCES
         )
 
         departure_filters = [
