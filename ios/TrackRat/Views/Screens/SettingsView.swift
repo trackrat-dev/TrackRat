@@ -144,6 +144,7 @@ struct SettingsSection: View {
     @State private var showAddRouteAlert = false
     @State private var selectedSubscription: RouteAlertSubscription?
     @ObservedObject private var alertService = AlertSubscriptionService.shared
+    @State private var showingFeedbackSheet = false
 
     private enum FavoriteStationRole {
         case home, work, other
@@ -520,6 +521,41 @@ struct SettingsSection: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.ultraThinMaterial)
             )
+
+            // Report an Issue
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showingFeedbackSheet = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.bubble")
+                        .font(.title2)
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    Text("Report an Issue")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+
+                    Spacer()
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingFeedbackSheet) {
+                FeedbackSheet(
+                    screen: "settings",
+                    trainId: nil,
+                    originCode: nil,
+                    destinationCode: nil
+                )
+            }
 
             // YouTube & Instagram
             HStack(spacing: 12) {
