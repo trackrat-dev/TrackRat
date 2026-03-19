@@ -43,34 +43,20 @@ struct V2DataFreshness: Codable {
 }
 
 struct V2JourneyProgress: Codable {
-    let completedStops: Int
-    let totalStops: Int
-    let percentage: Int
-    let currentLocation: String
-    let nextStop: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case completedStops = "completed_stops"
-        case totalStops = "total_stops"
-        case percentage
-        case currentLocation = "current_location"
-        case nextStop = "next_stop"
-    }
-}
+    let stopsCompleted: Int
+    let stopsTotal: Int
+    let journeyPercent: Double
+    let minutesToArrival: Int?
+    let lastDeparted: String?
+    let nextArrival: String?
 
-struct V2JourneyInfo: Codable {
-    let origin: String
-    let originName: String
-    let durationMinutes: Int
-    let stopsBetween: Int
-    let progress: V2JourneyProgress
-    
     enum CodingKeys: String, CodingKey {
-        case origin
-        case originName = "origin_name"
-        case durationMinutes = "duration_minutes"
-        case stopsBetween = "stops_between"
-        case progress
+        case stopsCompleted = "stops_completed"
+        case stopsTotal = "stops_total"
+        case journeyPercent = "journey_percent"
+        case minutesToArrival = "minutes_to_arrival"
+        case lastDeparted = "last_departed"
+        case nextArrival = "next_arrival"
     }
 }
 
@@ -80,11 +66,21 @@ struct V2TrainPosition: Codable {
     let lastDepartedStationCode: String?
     let atStationCode: String?
     let nextStationCode: String?
-    
+    let betweenStations: Bool
+
     enum CodingKeys: String, CodingKey {
         case lastDepartedStationCode = "last_departed_station_code"
         case atStationCode = "at_station_code"
         case nextStationCode = "next_station_code"
+        case betweenStations = "between_stations"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        lastDepartedStationCode = try container.decodeIfPresent(String.self, forKey: .lastDepartedStationCode)
+        atStationCode = try container.decodeIfPresent(String.self, forKey: .atStationCode)
+        nextStationCode = try container.decodeIfPresent(String.self, forKey: .nextStationCode)
+        betweenStations = try container.decodeIfPresent(Bool.self, forKey: .betweenStations) ?? false
     }
 }
 
@@ -101,6 +97,9 @@ struct V2TrainDeparture: Codable {
     let observationType: String?
     let isCancelled: Bool
     let cancellationReason: String?
+    let isExpired: Bool
+    let progress: V2JourneyProgress?
+    let predictedArrival: Date?
 
     enum CodingKeys: String, CodingKey {
         case trainId = "train_id"
@@ -112,8 +111,30 @@ struct V2TrainDeparture: Codable {
         case observationType = "observation_type"
         case isCancelled = "is_cancelled"
         case cancellationReason = "cancellation_reason"
+        case isExpired = "is_expired"
+        case progress
+        case predictedArrival = "predicted_arrival"
     }
-    
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        trainId = try container.decode(String.self, forKey: .trainId)
+        journeyDate = try container.decodeIfPresent(Date.self, forKey: .journeyDate)
+        line = try container.decode(V2LineInfo.self, forKey: .line)
+        destination = try container.decode(String.self, forKey: .destination)
+        departure = try container.decode(V2StationInfo.self, forKey: .departure)
+        arrival = try container.decodeIfPresent(V2StationInfo.self, forKey: .arrival)
+        trainPosition = try container.decode(V2TrainPosition.self, forKey: .trainPosition)
+        dataFreshness = try container.decode(V2DataFreshness.self, forKey: .dataFreshness)
+        dataSource = try container.decode(String.self, forKey: .dataSource)
+        observationType = try container.decodeIfPresent(String.self, forKey: .observationType)
+        isCancelled = try container.decodeIfPresent(Bool.self, forKey: .isCancelled) ?? false
+        cancellationReason = try container.decodeIfPresent(String.self, forKey: .cancellationReason)
+        isExpired = try container.decodeIfPresent(Bool.self, forKey: .isExpired) ?? false
+        progress = try container.decodeIfPresent(V2JourneyProgress.self, forKey: .progress)
+        predictedArrival = try container.decodeIfPresent(Date.self, forKey: .predictedArrival)
+    }
+
     // Helper to check if this is a scheduled (not observed) train
     var isScheduledOnly: Bool {
         return observationType == "SCHEDULED"

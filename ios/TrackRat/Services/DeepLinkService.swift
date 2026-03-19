@@ -24,6 +24,7 @@ class DeepLinkService: ObservableObject {
         appState.deepLinkTrainNumber = deepLink.trainId
         appState.deepLinkFromStation = deepLink.fromStationCode
         appState.deepLinkToStation = deepLink.toStationCode
+        appState.deepLinkDate = deepLink.date
         appState.shouldExpandForDeepLink = true
         
         // Set up context for proper display

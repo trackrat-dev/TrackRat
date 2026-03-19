@@ -425,9 +425,10 @@ async def _evaluate_train_subscription(
         "route_alert": {
             "data_source": sub.data_source,
             "train_id": sub.train_id,
-            "line_id": None,
-            "from_station_code": None,
-            "to_station_code": None,
+            "line_id": sub.line_id,
+            "direction": sub.direction,
+            "from_station_code": sub.from_station_code,
+            "to_station_code": sub.to_station_code,
         }
     }
     sent = await apns_service.send_alert_notification(

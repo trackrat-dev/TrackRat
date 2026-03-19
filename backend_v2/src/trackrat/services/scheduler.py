@@ -2263,6 +2263,7 @@ class SchedulerService:
                 current_stop.station_name if current_stop else "Unknown"
             ),
             "nextStopName": next_stop.station_name if next_stop else None,
+            "nextStopCode": next_stop.station_code if next_stop else None,
             "delayMinutes": calculated_delay,
             "journeyProgress": journey_progress,
             "dataTimestamp": int(time.time()),  # Unix timestamp for data freshness
