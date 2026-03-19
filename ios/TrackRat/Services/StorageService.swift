@@ -264,14 +264,27 @@ final class StorageService {
     }
     
     // MARK: - Favorite Stations
-    func loadFavoriteStations() -> [FavoriteStation] {
-        // Load stored favorites from UserDefaults
-        var stations: [FavoriteStation] = []
-        if let data = userDefaults.data(forKey: favoriteStationsKey),
-           let decodedStations = try? JSONDecoder().decode([FavoriteStation].self, from: data) {
-            stations = decodedStations
+
+    /// Loads only the explicitly saved favorites from UserDefaults (no home/work injection).
+    private func loadStoredFavorites() -> [FavoriteStation] {
+        guard let data = userDefaults.data(forKey: favoriteStationsKey),
+              let stations = try? JSONDecoder().decode([FavoriteStation].self, from: data) else {
+            return []
         }
-        
+        return stations
+    }
+
+    /// Persists the given favorites to UserDefaults.
+    private func saveStoredFavorites(_ stations: [FavoriteStation]) {
+        if let data = try? JSONEncoder().encode(stations) {
+            userDefaults.set(data, forKey: favoriteStationsKey)
+        }
+    }
+
+    /// Returns the full favorites list including home/work stations (for display).
+    func loadFavoriteStations() -> [FavoriteStation] {
+        var stations = loadStoredFavorites()
+
         // Always include home station if set
         if let homeCode = RatSenseService.shared.getHomeStation(),
            !stations.contains(where: { $0.id == homeCode }) {
@@ -285,41 +298,32 @@ final class StorageService {
             let workName = Stations.displayName(for: workCode)
             stations.append(FavoriteStation(code: workCode, name: workName))
         }
-        
+
         return stations.sorted { $0.lastUsed > $1.lastUsed }
     }
-    
+
     func toggleFavoriteStation(code: String, name: String) {
-        var stations = loadFavoriteStations()
-        
+        var stations = loadStoredFavorites()
+
         if let index = stations.firstIndex(where: { $0.id == code }) {
-            // Remove from favorites
             stations.remove(at: index)
         } else {
-            // Add to favorites
             let newStation = FavoriteStation(code: code, name: name)
             stations.insert(newStation, at: 0)
-            
-            // Keep only max items
+
             if stations.count > maxFavoriteStations {
                 stations = Array(stations.prefix(maxFavoriteStations))
             }
         }
-        
-        if let data = try? JSONEncoder().encode(stations) {
-            userDefaults.set(data, forKey: favoriteStationsKey)
-        }
+
+        saveStoredFavorites(stations)
     }
-    
+
     func isStationFavorited(code: String) -> Bool {
-        // Check if it's in the favorites list
-        let isInFavorites = loadFavoriteStations().contains { $0.id == code }
-        
-        // Also check if it's home or work station (these are always treated as favorites)
+        let isInStored = loadStoredFavorites().contains { $0.id == code }
         let isHomeStation = RatSenseService.shared.getHomeStation() == code
         let isWorkStation = RatSenseService.shared.getWorkStation() == code
-        
-        return isInFavorites || isHomeStation || isWorkStation
+        return isInStored || isHomeStation || isWorkStation
     }
     
     

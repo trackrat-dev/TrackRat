@@ -899,19 +899,21 @@ final class AppState: ObservableObject {
     func addFavoriteStation(code: String, name: String) {
         if !isStationFavorited(code: code) {
             storageService.toggleFavoriteStation(code: code, name: name)
-            loadFavoriteStations()
         }
+        // Always reload — home/work injection means the display list may have changed
+        // even if the station was already "favorited" via its home/work designation
+        loadFavoriteStations()
     }
-    
+
     /// Explicitly removes a station from favorites
     func removeFavoriteStation(code: String) {
-        if isStationFavorited(code: code) {
-            // Find the station name from our current favorites
-            if let station = favoriteStations.first(where: { $0.id == code }) {
-                storageService.toggleFavoriteStation(code: code, name: station.name)
-                loadFavoriteStations()
-            }
+        // Remove from the explicit favorites list if present
+        if let station = favoriteStations.first(where: { $0.id == code }) {
+            storageService.toggleFavoriteStation(code: code, name: station.name)
         }
+        // Always reload — the station may have been a virtual entry (home/work injection)
+        // that was cleared before this call, so we need to refresh regardless
+        loadFavoriteStations()
     }
 
     // MARK: - Train Systems
