@@ -889,9 +889,9 @@ class TestSubscriptionIdentityHelpers:
             item = SubscriptionItem(**item_kwargs)
             item_key = _subscription_identity_from_item("d1", item)
             row_key = _subscription_identity(row)
-            assert item_key == row_key, (
-                f"Mismatch for {item_kwargs}: item={item_key}, row={row_key}"
-            )
+            assert (
+                item_key == row_key
+            ), f"Mismatch for {item_kwargs}: item={item_key}, row={row_key}"
             print(f"  Matched: {row_key}")
 
     def test_line_null_direction_identity(self):
@@ -946,7 +946,11 @@ class TestSyncPreservesNotificationState:
             row.last_digest_at = state["last_digest_at"]
             row.last_service_alert_ids = state["last_service_alert_ids"]
             # Key by whichever identity field is set
-            key = row.line_id or row.train_id or f"{row.from_station_code}-{row.to_station_code}"
+            key = (
+                row.line_id
+                or row.train_id
+                or f"{row.from_station_code}-{row.to_station_code}"
+            )
             state_by_key[key] = state
         sync_session.commit()
         return state_by_key
@@ -964,7 +968,11 @@ class TestSyncPreservesNotificationState:
         )
         result = {}
         for row in rows:
-            key = row.line_id or row.train_id or f"{row.from_station_code}-{row.to_station_code}"
+            key = (
+                row.line_id
+                or row.train_id
+                or f"{row.from_station_code}-{row.to_station_code}"
+            )
             result[key] = {
                 "last_alerted_at": row.last_alerted_at,
                 "last_alert_hash": row.last_alert_hash,
@@ -1014,18 +1022,18 @@ class TestSyncPreservesNotificationState:
         after_state = self._get_state_from_db(sync_session, device_id)
         for key, orig in original_state.items():
             after = after_state[key]
-            assert after["last_alerted_at"] is not None, (
-                f"{key}: last_alerted_at was wiped"
-            )
-            assert after["last_alert_hash"] == orig["last_alert_hash"], (
-                f"{key}: last_alert_hash was wiped"
-            )
-            assert after["last_digest_at"] is not None, (
-                f"{key}: last_digest_at was wiped"
-            )
-            assert after["last_service_alert_ids"] == orig["last_service_alert_ids"], (
-                f"{key}: last_service_alert_ids was wiped"
-            )
+            assert (
+                after["last_alerted_at"] is not None
+            ), f"{key}: last_alerted_at was wiped"
+            assert (
+                after["last_alert_hash"] == orig["last_alert_hash"]
+            ), f"{key}: last_alert_hash was wiped"
+            assert (
+                after["last_digest_at"] is not None
+            ), f"{key}: last_digest_at was wiped"
+            assert (
+                after["last_service_alert_ids"] == orig["last_service_alert_ids"]
+            ), f"{key}: last_service_alert_ids was wiped"
             print(f"  {key}: all state columns preserved")
 
     def test_resync_identical_station_pair_preserves_state(
@@ -1058,8 +1066,14 @@ class TestSyncPreservesNotificationState:
         sync_session.expire_all()
         after_state = self._get_state_from_db(sync_session, device_id)
         key = "NY-TR"
-        assert after_state[key]["last_alert_hash"] == original_state[key]["last_alert_hash"]
-        assert after_state[key]["last_service_alert_ids"] == original_state[key]["last_service_alert_ids"]
+        assert (
+            after_state[key]["last_alert_hash"]
+            == original_state[key]["last_alert_hash"]
+        )
+        assert (
+            after_state[key]["last_service_alert_ids"]
+            == original_state[key]["last_service_alert_ids"]
+        )
         print(f"  Station-pair state preserved: {key}")
 
     def test_resync_identical_train_sub_preserves_state(
@@ -1091,8 +1105,14 @@ class TestSyncPreservesNotificationState:
 
         sync_session.expire_all()
         after_state = self._get_state_from_db(sync_session, device_id)
-        assert after_state["3254"]["last_alert_hash"] == original_state["3254"]["last_alert_hash"]
-        assert after_state["3254"]["last_service_alert_ids"] == original_state["3254"]["last_service_alert_ids"]
+        assert (
+            after_state["3254"]["last_alert_hash"]
+            == original_state["3254"]["last_alert_hash"]
+        )
+        assert (
+            after_state["3254"]["last_service_alert_ids"]
+            == original_state["3254"]["last_service_alert_ids"]
+        )
         print("  Train subscription state preserved")
 
     def test_new_subscription_gets_null_state(
@@ -1181,14 +1201,12 @@ class TestSyncPreservesNotificationState:
         sync_session.expire_all()
         after_state = self._get_state_from_db(sync_session, device_id)
         assert "njt-nec" not in after_state, "Old subscription should be gone"
-        assert after_state["subway-G"]["last_alert_hash"] is None, (
-            "New subscription should not inherit old state"
-        )
+        assert (
+            after_state["subway-G"]["last_alert_hash"] is None
+        ), "New subscription should not inherit old state"
         print("  No state leakage between different subscriptions")
 
-    def test_config_change_preserves_state(
-        self, e2e_client: TestClient, sync_session
-    ):
+    def test_config_change_preserves_state(self, e2e_client: TestClient, sync_session):
         """Changing config fields (e.g. delay_threshold) preserves notification state."""
         device_id = "dev-state-cfg"
         e2e_client.post(
@@ -1230,6 +1248,12 @@ class TestSyncPreservesNotificationState:
 
         sync_session.expire_all()
         after_state = self._get_state_from_db(sync_session, device_id)
-        assert after_state["njt-nec"]["last_alert_hash"] == original_state["njt-nec"]["last_alert_hash"]
-        assert after_state["njt-nec"]["last_service_alert_ids"] == original_state["njt-nec"]["last_service_alert_ids"]
+        assert (
+            after_state["njt-nec"]["last_alert_hash"]
+            == original_state["njt-nec"]["last_alert_hash"]
+        )
+        assert (
+            after_state["njt-nec"]["last_service_alert_ids"]
+            == original_state["njt-nec"]["last_service_alert_ids"]
+        )
         print("  Config change preserved notification state")

@@ -284,7 +284,10 @@ class TestFetchAndParseAlertsDedupe:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("trackrat.collectors.service_alerts.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "trackrat.collectors.service_alerts.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
             alerts = await fetch_and_parse_alerts("https://fake-feed-url", "SUBWAY")
 
         # Should have 2 alerts (deduped), not 3
@@ -295,13 +298,15 @@ class TestFetchAndParseAlertsDedupe:
 
         alert_ids = [a.alert_id for a in alerts]
         assert "235N#EL301" in alert_ids, "Elevator alert should be present"
-        assert "lmm:planned_work:99999" in alert_ids, "Planned work alert should be present"
+        assert (
+            "lmm:planned_work:99999" in alert_ids
+        ), "Planned work alert should be present"
 
         # Last occurrence should win
         elevator_alert = next(a for a in alerts if a.alert_id == "235N#EL301")
-        assert elevator_alert.header_text == "Elevator out of service (second)", (
-            "Last occurrence of duplicate entity ID should win"
-        )
+        assert (
+            elevator_alert.header_text == "Elevator out of service (second)"
+        ), "Last occurrence of duplicate entity ID should win"
 
 
 class TestFetchAndParseNjtAlertsDedupe:
@@ -372,9 +377,9 @@ class TestFetchAndParseNjtAlertsDedupe:
 
         # Last occurrence should win for the duplicate
         deduped = next(a for a in alerts if a.alert_id == "njt-rss-9999999")
-        assert "updated" in deduped.header_text, (
-            "Last occurrence of duplicate MSG_ID should win"
-        )
+        assert (
+            "updated" in deduped.header_text
+        ), "Last occurrence of duplicate MSG_ID should win"
 
     @pytest.mark.asyncio
     async def test_deduplicates_njt_hash_based_ids(self):
@@ -418,9 +423,9 @@ class TestFetchAndParseNjtAlertsDedupe:
         ):
             alerts = await fetch_and_parse_njt_alerts()
 
-        assert len(alerts) == 1, (
-            f"Identical NJT messages should deduplicate to 1, got {len(alerts)}"
-        )
+        assert (
+            len(alerts) == 1
+        ), f"Identical NJT messages should deduplicate to 1, got {len(alerts)}"
 
 
 @pytest.mark.asyncio
