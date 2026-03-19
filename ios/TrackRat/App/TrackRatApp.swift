@@ -595,6 +595,14 @@ struct RouteStatusContext: Identifiable, Equatable {
     var stationCodes: [String] {
         if let lineId = lineId,
            let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            // When from/to are specified, clip to just that segment of the route
+            if let from = fromStationCode, let to = toStationCode,
+               let fromIdx = route.stationCodes.firstIndex(of: from),
+               let toIdx = route.stationCodes.firstIndex(of: to) {
+                let lower = min(fromIdx, toIdx)
+                let upper = max(fromIdx, toIdx)
+                return Array(route.stationCodes[lower...upper])
+            }
             return route.stationCodes
         }
         if let from = fromStationCode, let to = toStationCode {
