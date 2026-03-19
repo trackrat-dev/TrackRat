@@ -144,6 +144,7 @@ struct SettingsSection: View {
     @State private var showAddRouteAlert = false
     @State private var selectedSubscription: RouteAlertSubscription?
     @ObservedObject private var alertService = AlertSubscriptionService.shared
+    @ObservedObject private var ratSense = RatSenseService.shared
     @State private var showingFeedbackSheet = false
 
     private enum FavoriteStationRole {
@@ -390,7 +391,7 @@ struct SettingsSection: View {
                     // Home Station
                     FavoriteStationRow(
                         label: "Home",
-                        stationCode: RatSenseService.shared.getHomeStation(),
+                        stationCode: ratSense.getHomeStation(),
                         isLast: false
                     ) {
                         stationPickerRole = .home
@@ -398,10 +399,10 @@ struct SettingsSection: View {
                         showStationPicker = true
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } onClear: {
-                        if let code = RatSenseService.shared.getHomeStation() {
+                        if let code = ratSense.getHomeStation() {
                             // Clear designation first so loadFavoriteStations() won't re-add it
-                            RatSenseService.shared.setHomeStation(nil)
-                            if code != RatSenseService.shared.getWorkStation() {
+                            ratSense.setHomeStation(nil)
+                            if code != ratSense.getWorkStation() {
                                 appState.removeFavoriteStation(code: code)
                             }
                         }
@@ -411,7 +412,7 @@ struct SettingsSection: View {
                     // Work Station
                     FavoriteStationRow(
                         label: "Work",
-                        stationCode: RatSenseService.shared.getWorkStation(),
+                        stationCode: ratSense.getWorkStation(),
                         isLast: false
                     ) {
                         stationPickerRole = .work
@@ -419,10 +420,10 @@ struct SettingsSection: View {
                         showStationPicker = true
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } onClear: {
-                        if let code = RatSenseService.shared.getWorkStation() {
+                        if let code = ratSense.getWorkStation() {
                             // Clear designation first so loadFavoriteStations() won't re-add it
-                            RatSenseService.shared.setWorkStation(nil)
-                            if code != RatSenseService.shared.getHomeStation() {
+                            ratSense.setWorkStation(nil)
+                            if code != ratSense.getHomeStation() {
                                 appState.removeFavoriteStation(code: code)
                             }
                         }
@@ -430,8 +431,8 @@ struct SettingsSection: View {
                     }
 
                     // Other favorites
-                    let homeCode = RatSenseService.shared.getHomeStation()
-                    let workCode = RatSenseService.shared.getWorkStation()
+                    let homeCode = ratSense.getHomeStation()
+                    let workCode = ratSense.getWorkStation()
                     let otherFavorites = appState.favoriteStations.filter {
                         $0.id != homeCode && $0.id != workCode
                     }
@@ -475,8 +476,8 @@ struct SettingsSection: View {
                         .background(Color.white.opacity(0.1))
 
                     VStack(spacing: 0) {
-                        let homeCode = RatSenseService.shared.getHomeStation()
-                        let workCode = RatSenseService.shared.getWorkStation()
+                        let homeCode = ratSense.getHomeStation()
+                        let workCode = ratSense.getWorkStation()
                         let otherFavorites = appState.favoriteStations.filter {
                             $0.id != homeCode && $0.id != workCode
                         }
@@ -666,19 +667,19 @@ struct SettingsSection: View {
                 switch stationPickerRole {
                 case .home:
                     // Remove old home from favorites only if it's not also the work station
-                    if let oldCode = RatSenseService.shared.getHomeStation(),
-                       oldCode != RatSenseService.shared.getWorkStation() {
+                    if let oldCode = ratSense.getHomeStation(),
+                       oldCode != ratSense.getWorkStation() {
                         appState.removeFavoriteStation(code: oldCode)
                     }
-                    RatSenseService.shared.setHomeStation(station.code)
+                    ratSense.setHomeStation(station.code)
                     appState.addFavoriteStation(code: station.code, name: station.name)
                 case .work:
                     // Remove old work from favorites only if it's not also the home station
-                    if let oldCode = RatSenseService.shared.getWorkStation(),
-                       oldCode != RatSenseService.shared.getHomeStation() {
+                    if let oldCode = ratSense.getWorkStation(),
+                       oldCode != ratSense.getHomeStation() {
                         appState.removeFavoriteStation(code: oldCode)
                     }
-                    RatSenseService.shared.setWorkStation(station.code)
+                    ratSense.setWorkStation(station.code)
                     appState.addFavoriteStation(code: station.code, name: station.name)
                 case .other:
                     appState.addFavoriteStation(code: station.code, name: station.name)

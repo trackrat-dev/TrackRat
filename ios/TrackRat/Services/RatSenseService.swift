@@ -121,6 +121,7 @@ final class RatSenseService: ObservableObject {
     /// Sets the user's home station
     func setHomeStation(_ station: String?) {
         print("🐀🐀🐀 RatSense: Setting home station to: \(station ?? "nil")")
+        objectWillChange.send()
         if let station = station {
             userDefaults.set(station, forKey: homeStationKey)
             userDefaults.synchronize() // Force save
@@ -134,6 +135,7 @@ final class RatSenseService: ObservableObject {
     /// Sets the user's work station
     func setWorkStation(_ station: String?) {
         print("🐀🐀🐀 RatSense: Setting work station to: \(station ?? "nil")")
+        objectWillChange.send()
         if let station = station {
             userDefaults.set(station, forKey: workStationKey)
             userDefaults.synchronize() // Force save
