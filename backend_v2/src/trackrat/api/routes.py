@@ -890,7 +890,7 @@ async def get_segment_train_details(
     )
 
     result = await db.execute(stmt)
-    journeys = list(result.scalars().all())
+    journeys = list(result.scalars().unique().all())
 
     # Process journeys to extract segment details
     train_details = []
@@ -1117,6 +1117,35 @@ async def get_operations_summary(
                 detail="train_id is required for train scope",
             )
 
+    # Check cache first (train scope is user-specific, skip caching)
+    cache_service = ApiCacheService()
+    cache_params = {
+        "scope": scope,
+        "from_station": from_station,
+        "to_station": to_station,
+        "train_id": train_id,
+        "data_source": data_source,
+    }
+    if scope != "train":
+        cached_response = await cache_service.get_cached_response(
+            db=db,
+            endpoint="/api/v2/routes/summary",
+            params=cache_params,
+        )
+        if cached_response:
+            try:
+                return OperationsSummaryResponse(**cached_response)
+            except (TypeError, ValueError) as e:
+                logger.warning(
+                    "route_summary_cache_deserialization_failed",
+                    error=str(e),
+                )
+                await cache_service.invalidate_cache_entry(
+                    db=db,
+                    endpoint="/api/v2/routes/summary",
+                    params=cache_params,
+                )
+
     if scope == "network":
         summary = await summary_service.get_network_summary(db, data_source)
     elif scope == "route":
@@ -1159,7 +1188,7 @@ async def get_operations_summary(
             trains_by_headway=_convert_train_dict(summary.metrics.trains_by_headway),
         )
 
-    return OperationsSummaryResponse(
+    response = OperationsSummaryResponse(
         headline=summary.headline,
         body=summary.body,
         scope=summary.scope,
@@ -1168,3 +1197,18 @@ async def get_operations_summary(
         generated_at=summary.generated_at,
         metrics=metrics,
     )
+
+    # Store in cache (skip train scope - user-specific)
+    if scope != "train":
+        try:
+            await cache_service.store_cached_response(
+                db=db,
+                endpoint="/api/v2/routes/summary",
+                params=cache_params,
+                response=response.model_dump(mode="json"),
+                ttl_seconds=120,
+            )
+        except Exception as e:
+            logger.warning("route_summary_cache_storage_failed", error=str(e))
+
+    return response

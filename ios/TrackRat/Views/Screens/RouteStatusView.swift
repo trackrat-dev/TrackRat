@@ -50,20 +50,21 @@ struct RouteStatusView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    if viewModel.isInitialLoading {
-                        loadingPlaceholder
-                    } else {
-                        mapSection
+                    mapSection
+                    if viewModel.filterLoaded {
                         lineSelectionSection
-                        operationsSummarySection
-                        historySections
-                        alertSubscriptionSection
-                        upcomingTrainsSection
-                        serviceAlertsSection
                     }
+                    operationsSummarySection
+                    historySections
+                    alertSubscriptionSection
+                    upcomingTrainsSection
+                    serviceAlertsSection
                 }
                 .padding()
-                .animation(.easeInOut(duration: 0.3), value: viewModel.isInitialLoading)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.filterLoaded)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingMap)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingUpcomingTrains)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingServiceAlerts)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle(context.title)
@@ -87,7 +88,7 @@ struct RouteStatusView: View {
                         activeDays: 0
                     )
                 }
-                await viewModel.loadData()
+                await viewModel.loadData(initialPeriod: selectedHistoryPeriod)
             }
             .onDisappear {
                 // Persist any edited subscriptions back to the service
@@ -276,41 +277,85 @@ struct RouteStatusView: View {
         }
     }
 
-    // MARK: - Loading Placeholder
+    // MARK: - Skeleton Sections
 
-    private var loadingPlaceholder: some View {
-        VStack(spacing: 16) {
-            // Map placeholder
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .frame(height: 200)
-                .overlay(ProgressView().tint(.orange))
+    /// Route Performance skeleton matching the delay-focused (NJT/Amtrak) layout
+    private var historySkeletonSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with segmented picker
+            HStack {
+                ShimmerRect(width: 150, height: 20)
+                Spacer()
+                ShimmerRect(width: 200, height: 28, cornerRadius: 8)
+            }
 
-            // Operations summary placeholder
-            RoundedRectangle(cornerRadius: 10)
-                .fill(.ultraThinMaterial)
-                .frame(height: 56)
+            // Stat cards row: On Time, Cancelled, Frequency
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(spacing: 4) {
+                        ShimmerRect(width: 50, height: 28)
+                        ShimmerRect(width: 60, height: 14)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.secondarySystemGroupedBackground)))
+                }
+            }
 
-            // Route performance placeholder
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Route Performance")
-                    .font(.headline)
+            // Delay Statistics section
+            VStack(alignment: .leading, spacing: 8) {
+                ShimmerRect(width: 120, height: 16)
                 HStack(spacing: 12) {
-                    ForEach(0..<3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color(.secondarySystemGroupedBackground))
-                            .frame(height: 70)
+                    ForEach(0..<2, id: \.self) { _ in
+                        VStack(spacing: 4) {
+                            ShimmerRect(width: 40, height: 24)
+                            ShimmerRect(width: 80, height: 12)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 8)
+                            .fill(Color(.secondarySystemGroupedBackground)))
                     }
                 }
             }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-
-            // Upcoming trains placeholder
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .frame(height: 120)
         }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    }
+
+    /// Upcoming Trains skeleton matching the actual train row layout
+    private var upcomingTrainsSkeletonSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ShimmerRect(width: 140, height: 20)
+
+            ForEach(0..<2, id: \.self) { _ in
+                HStack(spacing: 12) {
+                    // Line color bar
+                    ShimmerRect(width: 4, height: 40, cornerRadius: 2)
+
+                    // Train info
+                    VStack(alignment: .leading, spacing: 4) {
+                        ShimmerRect(width: 90, height: 16)
+                        ShimmerRect(width: 60, height: 12)
+                    }
+
+                    Spacer()
+
+                    // Time and delay
+                    VStack(alignment: .trailing, spacing: 4) {
+                        ShimmerRect(width: 60, height: 16)
+                        ShimmerRect(width: 50, height: 12)
+                    }
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .background(RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(.secondarySystemGroupedBackground)))
+            }
+        }
+        .padding()
+        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 
 
@@ -320,10 +365,7 @@ struct RouteStatusView: View {
     private var mapSection: some View {
         VStack(spacing: 8) {
             if viewModel.isLoadingMap {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-                    .frame(height: 200)
-                    .overlay(ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .orange)))
+                ShimmerRect(height: 200, cornerRadius: 12)
             } else if !viewModel.filteredSegments.isEmpty {
                 CongestionMapKitView(
                     region: $viewModel.mapRegion,
@@ -358,7 +400,9 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private var serviceAlertsSection: some View {
-        if viewModel.hasServiceAlertSystems {
+        if viewModel.isLoadingServiceAlerts && viewModel.hasServiceAlertSystems {
+            // No skeleton for service alerts — they appear when ready
+        } else if viewModel.hasServiceAlertSystems {
             let activeAlerts = viewModel.serviceAlerts
                 .filter { $0.isActiveNow }
                 .sorted { $0.earliestStartEpoch < $1.earliestStartEpoch }
@@ -402,7 +446,9 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private var upcomingTrainsSection: some View {
-        if !viewModel.upcomingTrains.isEmpty {
+        if viewModel.isLoadingUpcomingTrains {
+            upcomingTrainsSkeletonSection
+        } else if !viewModel.upcomingTrains.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Upcoming Trains")
                     .font(.headline)
@@ -441,7 +487,10 @@ struct RouteStatusView: View {
 
     @ViewBuilder
     private var historySections: some View {
-        if !viewModel.historyBySystem.isEmpty {
+        if viewModel.isLoadingHistory && viewModel.historyBySystem.isEmpty {
+            // Skeleton while history hasn't arrived yet
+            historySkeletonSection
+        } else if !viewModel.historyBySystem.isEmpty {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Route Performance")
@@ -454,6 +503,9 @@ struct RouteStatusView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
+                .onChange(of: selectedHistoryPeriod) { _, newPeriod in
+                    viewModel.ensureHistoryLoaded(for: newPeriod)
+                }
             }
 
             // Stacked display: one block per enabled system
@@ -880,21 +932,23 @@ private struct UpcomingTrainRow: View {
 final class RouteStatusViewModel: ObservableObject {
     let context: RouteStatusContext
 
-    // Overall loading state — true until first reloadFilteredData() completes
-    @Published var isInitialLoading = true
-
     // Map state
     @Published var filteredSegments: [CongestionSegment] = []
     @Published var journeyStations: [JourneyStation] = []
     @Published var mapRegion = MKCoordinateRegion()
-    @Published var isLoadingMap = false
+    @Published var isLoadingMap = true
     @Published var mapError: String?
 
     // Service alerts
     @Published var serviceAlerts: [V2ServiceAlert] = []
+    @Published var isLoadingServiceAlerts = true
 
     // Upcoming trains
     @Published var upcomingTrains: [TrainV2] = []
+    @Published var isLoadingUpcomingTrains = true
+
+    // History overall loading state (true until first period loads)
+    @Published var isLoadingHistory = true
 
     /// Data sources that have service alert data
     private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
@@ -934,6 +988,9 @@ final class RouteStatusViewModel: ObservableObject {
 
     /// Debounced save task — cancelled and re-scheduled on each toggle
     private var saveTask: Task<Void, Never>?
+
+    /// History periods that have been fetched (to avoid re-fetching on tab switch)
+    private var loadedHistoryPeriods: Set<HistoryPeriod> = []
 
     /// Systems that are currently enabled (have at least one line enabled)
     var enabledSystems: Set<String> {
@@ -991,19 +1048,26 @@ final class RouteStatusViewModel: ObservableObject {
         self.context = context
     }
 
-    func loadData() async {
-        // Discover available systems first, then load data in parallel
-        await discoverSystems()
-        await reloadFilteredData()
-        isInitialLoading = false
+    func loadData(initialPeriod: HistoryPeriod = .hour) async {
+        // Start loading data immediately using context.dataSource while discovery runs in parallel.
+        // When discovery completes, if it reveals additional systems, data will be reloaded.
+        async let discovery: Void = discoverSystems()
+        async let data: Void = reloadFilteredData(historyPeriod: initialPeriod)
+        await discovery
+        await data
     }
 
     /// Reload all data sections using current filter state.
     /// Called on initial load and after filter changes.
-    private func reloadFilteredData() async {
+    private func reloadFilteredData(historyPeriod: HistoryPeriod? = nil) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadCongestionMap() }
-            group.addTask { await self.loadAllHistory() }
+            if let period = historyPeriod {
+                group.addTask { await self.loadHistoryForPeriod(period) }
+            } else {
+                // Reload all previously loaded periods (e.g., after filter change)
+                group.addTask { await self.loadAllLoadedHistoryPeriods() }
+            }
             group.addTask { await self.loadServiceAlerts() }
             group.addTask { await self.loadUpcomingTrains() }
         }
@@ -1075,6 +1139,13 @@ final class RouteStatusViewModel: ObservableObject {
         await loadSavedPreference(from: from, to: to)
 
         filterLoaded = true
+
+        // If discovery found systems beyond the initial context.dataSource,
+        // reload data to include them
+        let discoveredSystemNames = Set(discoveredSystems.map(\.system.rawValue))
+        if discoveredSystemNames.count > 1 || !discoveredSystemNames.contains(context.dataSource) {
+            await reloadFilteredData()
+        }
     }
 
     private func loadSavedPreference(from: String, to: String) async {
@@ -1247,6 +1318,9 @@ final class RouteStatusViewModel: ObservableObject {
     // MARK: - Service Alerts
 
     private func loadServiceAlerts() async {
+        isLoadingServiceAlerts = true
+        defer { isLoadingServiceAlerts = false }
+
         // Fetch service alerts for all enabled systems that support them
         let systemsToFetch = enabledSystems.isEmpty
             ? Set([context.dataSource])
@@ -1287,6 +1361,9 @@ final class RouteStatusViewModel: ObservableObject {
     // MARK: - Upcoming Trains
 
     private func loadUpcomingTrains() async {
+        isLoadingUpcomingTrains = true
+        defer { isLoadingUpcomingTrains = false }
+
         guard let from = context.effectiveFromStation,
               let to = context.effectiveToStation else { return }
         do {
@@ -1320,97 +1397,117 @@ final class RouteStatusViewModel: ObservableObject {
         }
     }
 
-    // MARK: - History (Per-System for Stacked Display)
+    // MARK: - History (Per-System for Stacked Display, Lazy-Loaded by Period)
 
-    private func loadAllHistory() async {
+    /// Extract per-system line codes from enabledLineIds for filtering.
+    /// When enabledLineIds is empty (all enabled), returns empty dict (no filtering).
+    private var lineCodesBySystem: [String: [String]?] {
+        if enabledLineIds.isEmpty { return [:] }
+        var result: [String: [String]] = [:]
+        for id in enabledLineIds {
+            let parts = id.split(separator: ":")
+            guard parts.count == 2 else { continue }
+            result[String(parts[0]), default: []].append(String(parts[1]))
+        }
+        return result
+    }
+
+    /// Load history for a single period across all enabled systems.
+    private func loadHistoryForPeriod(_ period: HistoryPeriod) async {
         guard let from = context.effectiveFromStation,
-              let to = context.effectiveToStation else { return }
+              let to = context.effectiveToStation else {
+            isLoadingHistory = false
+            return
+        }
 
         let systemsToFetch = enabledSystems.isEmpty
             ? [context.dataSource]
             : Array(enabledSystems).sorted()
+        let linesBySystem = lineCodesBySystem
 
-        // Initialize history state for each system
+        // Initialize history state for systems that don't have it yet
         for system in systemsToFetch {
-            historyBySystem[system] = HistoryState(
-                isLoadingPastHour: true,
-                isLoadingPast24Hours: true,
-                isLoadingPast7Days: true
-            )
+            if historyBySystem[system] == nil {
+                historyBySystem[system] = HistoryState()
+            }
+            // Set the specific period to loading
+            switch period {
+            case .hour: historyBySystem[system]?.isLoadingPastHour = true
+            case .day: historyBySystem[system]?.isLoadingPast24Hours = true
+            case .week: historyBySystem[system]?.isLoadingPast7Days = true
+            }
         }
 
-        // Extract per-system line codes from enabledLineIds for filtering
-        // When enabledLineIds is empty (all enabled), pass nil to skip filtering
-        let linesBySystem: [String: [String]?] = {
-            if enabledLineIds.isEmpty { return [:] }
-            var result: [String: [String]] = [:]
-            for id in enabledLineIds {
-                let parts = id.split(separator: ":")
-                guard parts.count == 2 else { continue }
-                let system = String(parts[0])
-                let lineCode = String(parts[1])
-                result[system, default: []].append(lineCode)
-            }
-            return result
-        }()
-
-        // Fetch all periods for all systems in parallel
         await withTaskGroup(of: Void.self) { group in
             for system in systemsToFetch {
                 let systemLines = linesBySystem[system] ?? nil
-                // Past hour
                 group.addTask {
                     do {
-                        let data = try await APIService.shared.fetchRouteHistoricalData(
-                            from: from, to: to, dataSource: system, hours: 1, lines: systemLines
-                        )
-                        await MainActor.run {
-                            self.historyBySystem[system]?.pastHour = data
-                            self.historyBySystem[system]?.isLoadingPastHour = false
+                        let data: RouteHistoricalData
+                        switch period {
+                        case .hour:
+                            data = try await APIService.shared.fetchRouteHistoricalData(
+                                from: from, to: to, dataSource: system, hours: 1, lines: systemLines
+                            )
+                            await MainActor.run {
+                                self.historyBySystem[system]?.pastHour = data
+                                self.historyBySystem[system]?.isLoadingPastHour = false
+                            }
+                        case .day:
+                            data = try await APIService.shared.fetchRouteHistoricalData(
+                                from: from, to: to, dataSource: system, hours: 24, lines: systemLines
+                            )
+                            await MainActor.run {
+                                self.historyBySystem[system]?.past24Hours = data
+                                self.historyBySystem[system]?.isLoadingPast24Hours = false
+                            }
+                        case .week:
+                            data = try await APIService.shared.fetchRouteHistoricalData(
+                                from: from, to: to, dataSource: system, days: 7, lines: systemLines
+                            )
+                            await MainActor.run {
+                                self.historyBySystem[system]?.past7Days = data
+                                self.historyBySystem[system]?.isLoadingPast7Days = false
+                            }
                         }
                     } catch {
                         await MainActor.run {
-                            self.historyBySystem[system]?.pastHourError = error.localizedDescription
-                            self.historyBySystem[system]?.isLoadingPastHour = false
-                        }
-                    }
-                }
-                // Past 24 hours
-                group.addTask {
-                    do {
-                        let data = try await APIService.shared.fetchRouteHistoricalData(
-                            from: from, to: to, dataSource: system, hours: 24, lines: systemLines
-                        )
-                        await MainActor.run {
-                            self.historyBySystem[system]?.past24Hours = data
-                            self.historyBySystem[system]?.isLoadingPast24Hours = false
-                        }
-                    } catch {
-                        await MainActor.run {
-                            self.historyBySystem[system]?.past24HoursError = error.localizedDescription
-                            self.historyBySystem[system]?.isLoadingPast24Hours = false
-                        }
-                    }
-                }
-                // Past 7 days
-                group.addTask {
-                    do {
-                        let data = try await APIService.shared.fetchRouteHistoricalData(
-                            from: from, to: to, dataSource: system, days: 7, lines: systemLines
-                        )
-                        await MainActor.run {
-                            self.historyBySystem[system]?.past7Days = data
-                            self.historyBySystem[system]?.isLoadingPast7Days = false
-                        }
-                    } catch {
-                        await MainActor.run {
-                            self.historyBySystem[system]?.past7DaysError = error.localizedDescription
-                            self.historyBySystem[system]?.isLoadingPast7Days = false
+                            switch period {
+                            case .hour:
+                                self.historyBySystem[system]?.pastHourError = error.localizedDescription
+                                self.historyBySystem[system]?.isLoadingPastHour = false
+                            case .day:
+                                self.historyBySystem[system]?.past24HoursError = error.localizedDescription
+                                self.historyBySystem[system]?.isLoadingPast24Hours = false
+                            case .week:
+                                self.historyBySystem[system]?.past7DaysError = error.localizedDescription
+                                self.historyBySystem[system]?.isLoadingPast7Days = false
+                            }
                         }
                     }
                 }
             }
         }
+
+        loadedHistoryPeriods.insert(period)
+        isLoadingHistory = false
+    }
+
+    /// Reload all previously loaded history periods (used after filter changes).
+    private func loadAllLoadedHistoryPeriods() async {
+        let periodsToLoad = loadedHistoryPeriods.isEmpty ? [HistoryPeriod.hour] : loadedHistoryPeriods
+        await withTaskGroup(of: Void.self) { group in
+            for period in periodsToLoad {
+                group.addTask { await self.loadHistoryForPeriod(period) }
+            }
+        }
+    }
+
+    /// Called from the view when the user switches the history period segmented control.
+    /// Only fetches if the period hasn't been loaded yet.
+    func ensureHistoryLoaded(for period: HistoryPeriod) {
+        guard !loadedHistoryPeriods.contains(period) else { return }
+        Task { await loadHistoryForPeriod(period) }
     }
 }
 
