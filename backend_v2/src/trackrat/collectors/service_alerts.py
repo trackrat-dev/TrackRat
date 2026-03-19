@@ -174,11 +174,15 @@ async def fetch_and_parse_alerts(
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(response.content)
 
-    alerts: list[ParsedAlert] = []
+    # Deduplicate by alert_id (MTA feeds can contain duplicate entity IDs,
+    # e.g. elevator alerts). Last occurrence wins.
+    alerts_by_id: dict[str, ParsedAlert] = {}
     for entity in feed.entity:
         parsed = parse_alert_entity(entity)
         if parsed:
-            alerts.append(parsed)
+            alerts_by_id[parsed.alert_id] = parsed
+
+    alerts = list(alerts_by_id.values())
 
     logger.info(
         "Parsed %d service alerts from %s feed (%d entities total)",
