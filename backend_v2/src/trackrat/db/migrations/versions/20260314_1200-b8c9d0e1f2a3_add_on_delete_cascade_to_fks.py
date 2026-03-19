@@ -1,7 +1,7 @@
 """add_on_delete_cascade_to_fks
 
 Revision ID: b8c9d0e1f2a3
-Revises: f7a8b9c0d1e2
+Revises: e6f7a8b9c0d1
 Create Date: 2026-03-14 12:00:00.000000
 
 """
