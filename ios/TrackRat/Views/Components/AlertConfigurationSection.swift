@@ -344,6 +344,14 @@ struct AlertConfigurationSection: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
+                // Time window presets (directly below day picker)
+                timePresetRow
+
+                if activeTimePreset == .custom || showCustomTime {
+                    customTimeWindow
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
                 if hasDaysSelected {
                     Divider().opacity(0.3)
 
@@ -357,14 +365,6 @@ struct AlertConfigurationSection: View {
                         sensitivity: delaySensitivity
                     )
 
-                    // Recovery (only when at least one alert type is active)
-                    if subscription.notifyCancellation || subscription.notifyDelay {
-                        Toggle(isOn: $subscription.notifyRecovery) {
-                            Text("Notify on Recovery")
-                        }
-                        .tint(.orange)
-                    }
-
                     // Service alerts (MTA + NJT systems)
                     if showPlannedWork {
                         Toggle(isOn: $subscription.includePlannedWork) {
@@ -373,17 +373,12 @@ struct AlertConfigurationSection: View {
                         .tint(.orange)
                     }
 
-                    Divider().opacity(0.3)
-
-                    // Time window presets
-                    Text("At...")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.6))
-                    timePresetRow
-
-                    if activeTimePreset == .custom || showCustomTime {
-                        customTimeWindow
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    // Recovery (only when at least one alert type is active)
+                    if subscription.notifyCancellation || subscription.notifyDelay {
+                        Toggle(isOn: $subscription.notifyRecovery) {
+                            Text("Notify on Recovery")
+                        }
+                        .tint(.orange)
                     }
 
                     Divider().opacity(0.3)
