@@ -528,7 +528,7 @@ struct SettingsSection: View {
                 showingFeedbackSheet = true
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.bubble")
+                    Image(systemName: "exclamationmark.bubble.fill")
                         .font(.title2)
                         .foregroundColor(.orange)
                         .frame(width: 24, height: 24)
