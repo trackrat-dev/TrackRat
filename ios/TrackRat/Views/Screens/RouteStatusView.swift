@@ -130,17 +130,14 @@ struct RouteStatusView: View {
     }
 
     /// Single binding for alert configuration.
-    /// Uses the first matching subscription (syncing edits to all), or the draft if none exist.
+    /// Uses the matching subscription or the draft if none exists.
     private var alertConfigBinding: Binding<RouteAlertSubscription> {
         if let first = matchingSubscriptions.first {
             return Binding(
                 get: { editedSubscriptions[first.id] ?? first },
                 set: { newValue in
-                    // Apply edits to all matching subscriptions
-                    for sub in matchingSubscriptions {
-                        let edited = RouteAlertSubscription.copySettings(from: newValue, to: editedSubscriptions[sub.id] ?? sub)
-                        editedSubscriptions[sub.id] = edited
-                    }
+                    let edited = RouteAlertSubscription.copySettings(from: newValue, to: editedSubscriptions[first.id] ?? first)
+                    editedSubscriptions[first.id] = edited
                 }
             )
         } else {
@@ -183,7 +180,7 @@ struct RouteStatusView: View {
                 dataSource: template.dataSource,
                 fromStationCode: from,
                 toStationCode: to,
-                activeDays: template.activeDays,
+                activeDays: newDays,
                 activeStartMinutes: template.activeStartMinutes,
                 activeEndMinutes: template.activeEndMinutes,
                 timezone: template.timezone,
@@ -197,13 +194,6 @@ struct RouteStatusView: View {
                 includePlannedWork: template.includePlannedWork
             )
             alertService.addSubscriptions([sub])
-            // Move settings into edited subscriptions for the newly-created subs
-            for sub in alertService.subscriptions(for: context) {
-                var edited = RouteAlertSubscription.copySettings(from: template, to: sub)
-                edited.activeDays = newDays
-                editedSubscriptions[sub.id] = edited
-                alertService.updateSubscription(edited)
-            }
             draftSubscription = nil
             alertService.syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
