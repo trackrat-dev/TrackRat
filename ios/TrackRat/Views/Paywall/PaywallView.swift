@@ -70,7 +70,7 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("Please reach out if you hit any issues or have ideas for further improvements!")
+                        Text("Please reach out if you hit any issues or have ideas for improvements!")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
