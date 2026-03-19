@@ -76,6 +76,8 @@
 		8DA494D9EB3E4FFD97C93AB7 /* AlertConfigurationSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E6F30618D8429081157633 /* AlertConfigurationSection.swift */; };
 		B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINSEL01000000000000A1 /* LineSelectionView.swift */; };
 		B1LINSEL02000000000000A1 /* LineSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINSEL01000000000000A1 /* LineSelectionView.swift */; };
+		B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
+		B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */; };
 		A18E543A2DEB88E500AB2B74 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
 		A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */; };
@@ -230,6 +232,7 @@
 		A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DateSelectorSheet.swift; path = TrackRat/Views/Components/DateSelectorSheet.swift; sourceTree = "<group>"; };
 		60E6F30618D8429081157633 /* AlertConfigurationSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AlertConfigurationSection.swift; path = TrackRat/Views/Components/AlertConfigurationSection.swift; sourceTree = "<group>"; };
 		F1LINSEL01000000000000A1 /* LineSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LineSelectionView.swift; path = TrackRat/Views/Components/LineSelectionView.swift; sourceTree = "<group>"; };
+		F1SHIMR001000000000000A1 /* ShimmerRect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShimmerRect.swift; path = TrackRat/Views/Components/ShimmerRect.swift; sourceTree = "<group>"; };
 		F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LineSelectionViewTests.swift; path = TrackRatTests/Views/LineSelectionViewTests.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
@@ -357,6 +360,7 @@
 				60E6F30618D8429081157633 /* AlertConfigurationSection.swift */,
 				F1LINSEL01000000000000A1 /* LineSelectionView.swift */,
 				F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */,
+				F1SHIMR001000000000000A1 /* ShimmerRect.swift */,
 				A1D88F602F27083000111466 /* RouteTopology.swift */,
 				A12C31402F1DA61700CAF76D /* PaywallView.swift */,
 				A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */,
@@ -715,6 +719,7 @@
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */,
 				B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */,
+				B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
 				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A12AADF02EF8407600407794 /* TrainFrequencyChart.swift in Sources */,
@@ -762,6 +767,7 @@
 				A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				8DA494D9EB3E4FFD97C93AB7 /* AlertConfigurationSection.swift in Sources */,
 				B1LINSEL02000000000000A1 /* LineSelectionView.swift in Sources */,
+				B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */,
 				B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
