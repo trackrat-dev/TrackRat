@@ -6,6 +6,8 @@ alert subscriptions for delay/cancellation events, and query
 active MTA service alerts (planned work, delays).
 """
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
 from sqlalchemy import ColumnElement, delete, select
@@ -112,6 +114,44 @@ class GetSubscriptionsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _subscription_identity(
+    row: RouteAlertSubscription,
+) -> tuple[Any, ...]:
+    """Return a hashable key uniquely identifying a subscription's logical target.
+
+    Three mutually exclusive subscription types:
+    - Line-based: (data_source, line_id, direction)
+    - Station-pair: (data_source, from_station_code, to_station_code)
+    - Train-specific: (data_source, train_id)
+    """
+    if row.train_id:
+        return ("train", row.data_source, row.train_id)
+    if row.from_station_code and row.to_station_code:
+        return ("stations", row.data_source, row.from_station_code, row.to_station_code)
+    return ("line", row.data_source, row.line_id, row.direction)
+
+
+def _subscription_identity_from_item(
+    device_id: str, item: SubscriptionItem
+) -> tuple[Any, ...]:
+    """Same identity key as ``_subscription_identity`` but from request data."""
+    if item.train_id:
+        return ("train", item.data_source, item.train_id)
+    if item.from_station_code and item.to_station_code:
+        return (
+            "stations",
+            item.data_source,
+            item.from_station_code,
+            item.to_station_code,
+        )
+    return ("line", item.data_source, item.line_id, item.direction)
+
+
+# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -145,13 +185,35 @@ async def register_device(
 async def sync_subscriptions(
     request: SyncSubscriptionsRequest, db: AsyncSession = Depends(get_db)
 ) -> SyncSubscriptionsResponse:
-    """Full-replace all alert subscriptions for a device."""
+    """Full-replace all alert subscriptions for a device.
+
+    Preserves server-side notification state (last_alerted_at, last_alert_hash,
+    last_digest_at, last_service_alert_ids) when a subscription's logical
+    identity matches an existing row, preventing duplicate notifications on
+    re-sync.
+    """
     # Verify device exists
     existing = await db.execute(
         select(DeviceToken).where(DeviceToken.device_id == request.device_id)
     )
     if not existing.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Device not registered")
+
+    # Read existing subscriptions and build state map keyed by logical identity
+    old_rows = await db.execute(
+        select(RouteAlertSubscription).where(
+            RouteAlertSubscription.device_id == request.device_id
+        )
+    )
+    state_map: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for row in old_rows.scalars():
+        key = _subscription_identity(row)
+        state_map[key] = {
+            "last_alerted_at": row.last_alerted_at,
+            "last_alert_hash": row.last_alert_hash,
+            "last_digest_at": row.last_digest_at,
+            "last_service_alert_ids": row.last_service_alert_ids,
+        }
 
     # Delete existing subscriptions
     await db.execute(
@@ -160,7 +222,7 @@ async def sync_subscriptions(
         )
     )
 
-    # Insert new subscriptions
+    # Insert new subscriptions, restoring state for matching identities
     for item in request.subscriptions:
         sub = RouteAlertSubscription(
             device_id=request.device_id,
@@ -183,6 +245,13 @@ async def sync_subscriptions(
             digest_time_minutes=item.digest_time_minutes,
             include_planned_work=item.include_planned_work,
         )
+        key = _subscription_identity(sub)
+        preserved = state_map.get(key)
+        if preserved:
+            sub.last_alerted_at = preserved["last_alerted_at"]
+            sub.last_alert_hash = preserved["last_alert_hash"]
+            sub.last_digest_at = preserved["last_digest_at"]
+            sub.last_service_alert_ids = preserved["last_service_alert_ids"]
         db.add(sub)
 
     await db.commit()
@@ -191,6 +260,11 @@ async def sync_subscriptions(
         "subscriptions_synced",
         device_id=request.device_id,
         count=len(request.subscriptions),
+        preserved=sum(
+            1
+            for item in request.subscriptions
+            if _subscription_identity_from_item(request.device_id, item) in state_map
+        ),
     )
     return SyncSubscriptionsResponse(count=len(request.subscriptions))
 
