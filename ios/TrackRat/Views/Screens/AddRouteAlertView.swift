@@ -27,7 +27,7 @@ struct AddRouteAlertView: View {
                 .navigationTitle("Add Route Alert")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button("Done") { dismiss() }
                             .foregroundColor(.orange)
                     }
@@ -51,11 +51,19 @@ struct AddRouteAlertView: View {
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
         guard !atAlertLimit else { return }
         alertService.addSubscriptions(subs)
+        syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         directionalSheetData = nil
         withAnimation {
             fromStation = nil
             toStation = nil
+        }
+    }
+
+    private func syncIfPossible() {
+        Task { @MainActor in
+            guard let token = AppDelegate.deviceToken else { return }
+            await alertService.syncWithBackend(apnsToken: token)
         }
     }
 
