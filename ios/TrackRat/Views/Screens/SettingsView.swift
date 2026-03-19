@@ -248,13 +248,16 @@ struct SettingsSection: View {
             // Route Alerts
             VStack(spacing: 0) {
                 Button {
-                    if alertService.subscriptions.isEmpty {
+                    if isEditingRouteAlerts {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isEditingRouteAlerts = false
+                            alertService.syncIfPossible()
+                        }
+                    } else if alertService.subscriptions.isEmpty {
                         showAddRouteAlert = true
                     } else {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            let wasEditing = isEditingRouteAlerts
-                            isEditingRouteAlerts.toggle()
-                            if wasEditing { alertService.syncIfPossible() }
+                            isEditingRouteAlerts = true
                         }
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -272,7 +275,7 @@ struct SettingsSection: View {
 
                         Spacer()
 
-                        Text(alertService.subscriptions.isEmpty ? "Create" : (isEditingRouteAlerts ? "Done" : "Edit"))
+                        Text(isEditingRouteAlerts ? "Done" : (alertService.subscriptions.isEmpty ? "Create" : "Edit"))
                             .font(.subheadline)
                             .foregroundColor(.orange)
                     }
