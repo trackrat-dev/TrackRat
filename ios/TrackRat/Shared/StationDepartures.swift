@@ -11,7 +11,6 @@ extension Stations {
         ("World Trade Center", "PWC"),
         ("33rd Street", "P33"),
         ("Journal Square", "PJS"),
-        ("Newark PATH", "PNK"),
         ("Metropark", "MP"),
         ("Princeton Junction", "PJ"),
         ("Hamilton", "HL"),
