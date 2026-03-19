@@ -100,6 +100,35 @@ struct TrainDetailsView: View {
             // Action buttons row
             if let train = viewModel.train {
                 HStack(spacing: 12) {
+                    // Route alerts button
+                    if let destCode = appState.destinationStationCode,
+                       !destCode.isEmpty,
+                       let originCode = appState.departureStationCode,
+                       !originCode.isEmpty {
+                        Button {
+                            let ds = train.dataSource
+                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: originCode, to: destCode, dataSource: ds)?.id
+                            appState.pendingRouteStatus = RouteStatusContext(
+                                dataSource: ds,
+                                lineId: lineId,
+                                fromStationCode: originCode,
+                                toStationCode: destCode
+                            )
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bell.badge")
+                                    .font(.subheadline)
+                                Text("Route Alerts")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     // Get Updates button (Live Activity)
                     if let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
