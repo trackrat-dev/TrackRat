@@ -143,7 +143,21 @@ struct V2TrainDeparture: Codable {
 
 struct V2DeparturesResponse: Codable {
     let departures: [V2TrainDeparture]
+    let hasDirectRoute: Bool
     let metadata: V2DeparturesMetadata?
+
+    enum CodingKeys: String, CodingKey {
+        case departures
+        case hasDirectRoute = "has_direct_route"
+        case metadata
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        departures = try container.decode([V2TrainDeparture].self, forKey: .departures)
+        hasDirectRoute = try container.decodeIfPresent(Bool.self, forKey: .hasDirectRoute) ?? true
+        metadata = try container.decodeIfPresent(V2DeparturesMetadata.self, forKey: .metadata)
+    }
 }
 
 struct V2DeparturesMetadata: Codable {

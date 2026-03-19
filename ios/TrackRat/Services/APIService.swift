@@ -95,7 +95,12 @@ final class APIService: ObservableObject {
     
     // MARK: - Train Search
 
-    func searchTrains(fromStationCode: String, toStationCode: String? = nil, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
+    struct DepartureSearchResult {
+        let trains: [TrainV2]
+        let hasDirectRoute: Bool
+    }
+
+    func searchTrainsWithRouteInfo(fromStationCode: String, toStationCode: String? = nil, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> DepartureSearchResult {
         guard var components = URLComponents(string: "\(baseURL)/v2/trains/departures") else {
             throw APIError.invalidURL
         }
@@ -103,8 +108,6 @@ final class APIService: ObservableObject {
         var queryItems = [
             URLQueryItem(name: "from", value: fromStationCode),
             URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
-            // PERFORMANCE: Filter out already-departed trains server-side
-            // This reduces payload size and eliminates redundant client filtering
             URLQueryItem(name: "hide_departed", value: "true")
         ]
 
@@ -119,7 +122,6 @@ final class APIService: ObservableObject {
             queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
         }
 
-        // Add data_sources filter if specified (comma-separated)
         if let dataSources = dataSources, !dataSources.isEmpty {
             queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.apiDataSources))
         }
@@ -130,29 +132,31 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
 
-        print("🔵 DEBUG API: Fetching trains from URL: \(url)")
-
-        // PERFORMANCE: Use retry logic for transient network failures
         return try await executeWithRetry {
             let (data, _) = try await self.session.data(from: url)
 
             do {
                 let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
-                print("🔵 DEBUG API: Decoded \(response.departures.count) departures from API")
-                print("🔵 DEBUG API: Train IDs in response: \(response.departures.map { $0.trainId })")
-
                 let adaptedTrains = response.departures.map { self.adaptV2DepartureToTrainV2($0) }
-                print("🔵 DEBUG API: Adapted to \(adaptedTrains.count) TrainV2 objects")
-
-                return adaptedTrains
+                return DepartureSearchResult(trains: adaptedTrains, hasDirectRoute: response.hasDirectRoute)
             } catch {
-                print("🔴 V2 DECODING ERROR (searchTrains): \(error)")
+                print("🔴 V2 DECODING ERROR (searchTrainsWithRouteInfo): \(error)")
                 if let jsonString = String(data: data, encoding: .utf8) {
                     print("🔴 RAW DATA: \(jsonString.prefix(500))")
                 }
                 throw error
             }
         }
+    }
+
+    func searchTrains(fromStationCode: String, toStationCode: String? = nil, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
+        let result = try await searchTrainsWithRouteInfo(
+            fromStationCode: fromStationCode,
+            toStationCode: toStationCode,
+            date: date,
+            dataSources: dataSources
+        )
+        return result.trains
     }
     
     // MARK: - Service Alerts

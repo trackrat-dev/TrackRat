@@ -171,6 +171,7 @@ class DeparturesResponse(BaseModel):
     """Response for departures endpoint."""
 
     departures: list[TrainDeparture]
+    has_direct_route: bool = True
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         examples=[
