@@ -255,6 +255,17 @@ class SchedulerService:
             coalesce=True,
         )
 
+        # Schedule route history API cache pre-computation (every 5 minutes)
+        self.scheduler.add_job(
+            self.precompute_route_history_cache,
+            trigger=IntervalTrigger(minutes=5, jitter=30),
+            id="route_history_cache_precompute",
+            name="Route History Cache Pre-computation",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+
         # Schedule train validation (every hour, offset 10min from token cleanup)
         self.scheduler.add_job(
             self.run_train_validation,
@@ -2607,6 +2618,44 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("departure_cache_precompute_skipped_still_fresh")
+
+    async def precompute_route_history_cache(self) -> None:
+        """Pre-compute route history API responses for recently-requested param combinations."""
+        task_id = f"route_history_cache_{now_et().isoformat()}"
+
+        async def do_cache_work() -> None:
+            try:
+                logger.info("starting_route_history_cache_precomputation")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                from trackrat.services.api_cache import ApiCacheService
+
+                async def _inner() -> None:
+                    async with get_session() as session:
+                        cache_service = ApiCacheService()
+                        await cache_service.precompute_route_history_responses(session)
+
+                await asyncio.create_task(_inner())
+
+                logger.info("route_history_cache_precomputation_completed")
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(5)  # 5-minute scheduled interval
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="route_history_cache_precompute",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_cache_work,
+            )
+
+            if not executed:
+                logger.debug("route_history_cache_precompute_skipped_still_fresh")
 
     async def update_live_activities(self) -> None:
         """Update all active Live Activities with current train data."""

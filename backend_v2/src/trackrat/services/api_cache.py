@@ -437,6 +437,73 @@ class ApiCacheService:
 
         return response.model_dump(mode="json")
 
+    async def precompute_route_history_responses(self, db: AsyncSession) -> None:
+        """Pre-compute route history responses for recently-requested parameter combinations.
+
+        Discovers popular param sets from the cache table (last 7 days) rather than
+        hardcoding routes, so it automatically adapts to actual usage patterns.
+        """
+        # Discover unique param sets from recent cache entries
+        query = (
+            select(CachedApiResponse.params)
+            .where(
+                and_(
+                    CachedApiResponse.endpoint == "/api/v2/routes/history",
+                    CachedApiResponse.created_at >= now_et() - timedelta(days=7),
+                )
+            )
+            .distinct(CachedApiResponse.params_hash)
+            .order_by(
+                CachedApiResponse.params_hash, CachedApiResponse.created_at.desc()
+            )
+            .limit(50)
+        )
+        result = await db.execute(query)
+        param_sets = [row[0] for row in result.fetchall()]
+
+        if not param_sets:
+            logger.debug("route_history_precompute_no_recent_params")
+            return
+
+        logger.info("precomputing_route_history_responses", param_count=len(param_sets))
+
+        from trackrat.api.routes import compute_route_history
+
+        for params in param_sets:
+            try:
+                response = await compute_route_history(
+                    db=db,
+                    from_station=params["from_station"],
+                    to_station=params["to_station"],
+                    data_source=params["data_source"],
+                    days=params.get("days", 30),
+                    hours=params.get("hours"),
+                    lines=params.get("lines"),
+                )
+
+                await self.store_cached_response(
+                    db=db,
+                    endpoint="/api/v2/routes/history",
+                    params=params,
+                    response=response.model_dump(mode="json"),
+                    ttl_seconds=600,
+                )
+
+                logger.info(
+                    "precomputed_route_history_response",
+                    params=params,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "precompute_route_history_error",
+                    params=params,
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                await db.rollback()
+
     async def cleanup_expired_cache(self, db: AsyncSession) -> int:
         """Remove expired cache entries. Returns number of entries removed."""
 

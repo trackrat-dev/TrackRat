@@ -133,11 +133,51 @@ async def get_route_history(
                     db, "/api/v2/routes/history", cache_params
                 )
 
-    # Calculate date range
+    # Compute route history (shared with pre-warming in api_cache.py)
+    response = await compute_route_history(
+        db,
+        from_station,
+        to_station,
+        data_source,
+        days,
+        hours,
+        lines,
+        highlight_train=highlight_train,
+    )
+
+    # Store in cache (skip when highlight_train is provided)
+    if not highlight_train:
+        try:
+            await cache_service.store_cached_response(
+                db=db,
+                endpoint="/api/v2/routes/history",
+                params=cache_params,
+                response=response.model_dump(mode="json"),
+                ttl_seconds=120,
+            )
+        except Exception as e:
+            logger.warning("route_history_cache_storage_failed", error=str(e))
+
+    return response
+
+
+async def compute_route_history(
+    db: AsyncSession,
+    from_station: str,
+    to_station: str,
+    data_source: str,
+    days: int = 30,
+    hours: int | None = None,
+    lines: str | None = None,
+    highlight_train: str | None = None,
+) -> RouteHistoryResponse:
+    """Compute route history response. Used by both the API endpoint and cache pre-warming."""
+    line_codes = (
+        [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    )
     now = now_et()
     cutoff_time = None
     if hours:
-        # Hours-based filtering: use timestamp on destination stop arrival
         cutoff_time = now - timedelta(hours=hours)
         start_date = cutoff_time.date()
     else:
@@ -147,7 +187,6 @@ async def get_route_history(
     from_codes = expand_station_codes(from_station)
     to_codes = expand_station_codes(to_station)
 
-    # Compute aggregate stats via SQL
     aggregate_stats = await _calculate_route_stats_sql(
         db,
         data_source,
@@ -160,7 +199,6 @@ async def get_route_history(
         line_codes=line_codes,
     )
 
-    # Compute highlighted train stats if specified
     highlighted_train_data = None
     if highlight_train:
         highlighted_stats = await _calculate_route_stats_sql(
@@ -190,7 +228,6 @@ async def get_route_history(
                 track_usage_at_origin=highlighted_stats["track_usage"],
             )
 
-    # Calculate baseline train count for frequency comparison
     baseline_train_count = await _calculate_baseline_train_count(
         db,
         data_source,
@@ -201,7 +238,7 @@ async def get_route_history(
         line_codes=line_codes,
     )
 
-    response = RouteHistoryResponse(
+    return RouteHistoryResponse(
         route=HistoricalRouteInfo(
             from_station=from_station,
             to_station=to_station,
@@ -225,21 +262,6 @@ async def get_route_history(
         ),
         highlighted_train=highlighted_train_data,
     )
-
-    # Store in cache (skip when highlight_train is provided)
-    if not highlight_train:
-        try:
-            await cache_service.store_cached_response(
-                db=db,
-                endpoint="/api/v2/routes/history",
-                params=cache_params,
-                response=response.model_dump(mode="json"),
-                ttl_seconds=120,
-            )
-        except Exception as e:
-            logger.warning("route_history_cache_storage_failed", error=str(e))
-
-    return response
 
 
 async def _calculate_route_stats_sql(
