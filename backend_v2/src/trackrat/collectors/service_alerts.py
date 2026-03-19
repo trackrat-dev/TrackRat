@@ -317,11 +317,15 @@ async def fetch_and_parse_njt_alerts() -> list[ParsedAlert]:
     async with NJTransitClient() as client:
         messages = await client.get_station_messages()
 
-    alerts: list[ParsedAlert] = []
+    # Deduplicate by alert_id — NJT messages without MSG_ID use a text hash,
+    # so identical messages or duplicate MSG_IDs would collide. Last wins.
+    alerts_by_id: dict[str, ParsedAlert] = {}
     for msg in messages:
         parsed = parse_njt_message(msg)
         if parsed:
-            alerts.append(parsed)
+            alerts_by_id[parsed.alert_id] = parsed
+
+    alerts = list(alerts_by_id.values())
 
     logger.info(
         "Parsed %d NJT service alerts from %d messages",
