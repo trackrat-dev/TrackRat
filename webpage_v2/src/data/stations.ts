@@ -279,7 +279,6 @@ export const STATIONS = ([
 
 
   // PATH
-  { code: 'PNK', name: 'Newark PATH', system: 'PATH' },
   { code: 'PHR', name: 'Harrison PATH', system: 'PATH' },
   { code: 'PJS', name: 'Journal Square', system: 'PATH' },
   { code: 'PGR', name: 'Grove Street', system: 'PATH' },
@@ -1045,7 +1044,7 @@ export const STATIONS = ([
 export const PRIMARY_STATIONS: Record<TransitSystem, string[]> = {
   NJT: ['NY', 'NP', 'HB', 'SE', 'MP', 'PJ', 'HL', 'TR', 'LB', 'PF', 'DN', 'RA'],
   AMTRAK: ['NY', 'PH', 'WI', 'BL', 'WS', 'BOS', 'RVR', 'CLT', 'RGH', 'ATL'],
-  PATH: ['PNK', 'PHO', 'PWC', 'PJS', 'P33', 'PGR', 'PEX', 'PNP'],
+  PATH: ['NP', 'PHO', 'PWC', 'PJS', 'P33', 'PGR', 'PEX', 'PNP'],
   PATCO: ['LND', 'FFL', 'CTH', 'HDF'],
   LIRR: ['JAM', 'GCT', 'LAT', 'BTA', 'LHUN', 'RON', 'PJN', 'LBH', 'PWS', 'LHVL'],
   MNR: ['GCT', 'M125', 'MWPL', 'MCRH', 'MPOK', 'MBRS', 'MSTM', 'MNHV'],

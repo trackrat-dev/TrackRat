@@ -74,7 +74,7 @@ extension Stations {
         "Avenel", "Jersey Avenue",
 
         // PATH Stations
-        "Newark PATH", "Harrison PATH", "Journal Square",
+        "Harrison PATH", "Journal Square",
         "Grove Street", "Exchange Place", "Newport",
         "Hoboken PATH", "Christopher Street", "9th Street",
         "14th Street", "23rd Street", "33rd Street",
