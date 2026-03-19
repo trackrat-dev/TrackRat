@@ -56,7 +56,7 @@ struct PaywallView: View {
                             .foregroundColor(.orange)
                             .frame(maxWidth: .infinity, alignment: .center)
 
-                        Text("TrackRat predicts your track assignments before they\u{2019}re posted, forecasts delays at departure & arrival, and lets you subscribe to real-time alerts across Amtrak, NJ Transit, PATH, the subway, and more.")
+                        Text("TrackRat predicts track assignments, forecasts delays at departure & arrival, and lets you subscribe to real-time alerts for Amtrak, NJ Transit, PATH, the subway, and more.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
@@ -70,7 +70,7 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("Please reach out if you hit any issues or have ideas for improvements!")
+                        Text("Please reach out if you hit issues or have ideas for new features!")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
