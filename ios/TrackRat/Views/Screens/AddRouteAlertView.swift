@@ -51,19 +51,12 @@ struct AddRouteAlertView: View {
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
         guard !atAlertLimit else { return }
         alertService.addSubscriptions(subs)
-        syncIfPossible()
+        alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         directionalSheetData = nil
         withAnimation {
             fromStation = nil
             toStation = nil
-        }
-    }
-
-    private func syncIfPossible() {
-        Task { @MainActor in
-            guard let token = AppDelegate.deviceToken else { return }
-            await alertService.syncWithBackend(apnsToken: token)
         }
     }
 

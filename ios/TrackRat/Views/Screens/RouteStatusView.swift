@@ -96,7 +96,7 @@ struct RouteStatusView: View {
                 for (_, edited) in editedSubscriptions {
                     alertService.updateSubscription(edited)
                 }
-                syncIfPossible()
+                alertService.syncIfPossible()
             }
             .sheet(item: $selectedTrain) { train in
                 NavigationStack {
@@ -205,7 +205,7 @@ struct RouteStatusView: View {
                 alertService.updateSubscription(edited)
             }
             draftSubscription = nil
-            syncIfPossible()
+            alertService.syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         } else if newDays == 0 && isSubscribed {
             // Auto-unsubscribe — reset draft for potential re-subscribe
@@ -219,18 +219,12 @@ struct RouteStatusView: View {
                 toStationCode: to,
                 activeDays: 0
             )
-            syncIfPossible()
+            alertService.syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
     }
 
 
-    private func syncIfPossible() {
-        Task { @MainActor in
-            guard let token = AppDelegate.deviceToken else { return }
-            await alertService.syncWithBackend(apnsToken: token)
-        }
-    }
 
     /// Dismiss this sheet and navigate to the full departures list in the main app.
     private func navigateToAllDepartures() {

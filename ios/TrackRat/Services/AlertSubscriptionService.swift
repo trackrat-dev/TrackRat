@@ -83,6 +83,14 @@ final class AlertSubscriptionService: ObservableObject {
 
     // MARK: - Backend Sync
 
+    /// Fire-and-forget sync: registers device and pushes subscriptions to backend.
+    func syncIfPossible() {
+        Task { @MainActor in
+            guard let token = AppDelegate.deviceToken else { return }
+            await syncWithBackend(apnsToken: token)
+        }
+    }
+
     func syncWithBackend(apnsToken: String) async {
         do {
             _ = try await APIService.shared.registerDevice(

@@ -254,7 +254,7 @@ struct SettingsSection: View {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             let wasEditing = isEditingRouteAlerts
                             isEditingRouteAlerts.toggle()
-                            if wasEditing { syncRouteAlerts() }
+                            if wasEditing { alertService.syncIfPossible() }
                         }
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -293,11 +293,12 @@ struct SettingsSection: View {
                         .padding()
                     } else {
                         ForEach(alertService.subscriptions) { sub in
-                            RouteAlertRow(subscription: sub) {
+                            RouteAlertRow(subscription: sub, isLast: sub.id == alertService.subscriptions.last?.id) {
                                 selectedSubscription = sub
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             } onDelete: {
                                 alertService.removeSubscription(sub)
+                                alertService.syncIfPossible()
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
                         }
@@ -337,7 +338,7 @@ struct SettingsSection: View {
                                 Button {
                                     selectedSubscription = sub
                                 } label: {
-                                    RouteAlertRow(subscription: sub, showControls: false)
+                                    RouteAlertRow(subscription: sub, isLast: sub.id == alertService.subscriptions.last?.id, showControls: false)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -709,12 +710,6 @@ struct SettingsSection: View {
 
     // MARK: - Helpers
 
-    private func syncRouteAlerts() {
-        Task { @MainActor in
-            guard let token = AppDelegate.deviceToken else { return }
-            await alertService.syncWithBackend(apnsToken: token)
-        }
-    }
 
     private func routeStatusContext(for sub: RouteAlertSubscription) -> RouteStatusContext {
         if let lineId = sub.lineId, let direction = sub.direction,
@@ -830,6 +825,7 @@ private struct FavoriteStationRow: View {
 
 private struct RouteAlertRow: View {
     let subscription: RouteAlertSubscription
+    var isLast: Bool = false
     var showControls: Bool = true
     var onTap: () -> Void = {}
     var onDelete: () -> Void = {}
@@ -870,8 +866,10 @@ private struct RouteAlertRow: View {
             .padding(.horizontal)
             .padding(.vertical, 10)
 
-            Divider()
-                .background(Color.white.opacity(0.1))
+            if !isLast {
+                Divider()
+                    .background(Color.white.opacity(0.1))
+            }
         }
     }
 
