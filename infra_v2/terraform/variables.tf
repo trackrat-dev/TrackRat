@@ -36,7 +36,7 @@ variable "domain" {
 variable "machine_type" {
   description = "GCE machine type"
   type        = string
-  default     = "t2d-standard-1"
+  default     = "t2d-standard-2"
 }
 
 variable "disk_size_gb" {
