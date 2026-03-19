@@ -67,7 +67,8 @@ final class SubscriptionService: ObservableObject {
 
     // Product IDs - configure these in App Store Connect
     static let monthlyProductId = "com.trackrat.pro.monthly"
-    private let productIds: Set<String> = [monthlyProductId]
+    static let yearlyProductId = "com.trackrat.pro.yearly"
+    private let productIds: Set<String> = [monthlyProductId, yearlyProductId]
 
     // Free tier limits
     static let freeTrainSystemLimit = 1
@@ -83,6 +84,10 @@ final class SubscriptionService: ObservableObject {
 
     var monthlyProduct: Product? {
         availableProducts.first { $0.id == Self.monthlyProductId }
+    }
+
+    var yearlyProduct: Product? {
+        availableProducts.first { $0.id == Self.yearlyProductId }
     }
 
     // MARK: - Initialization
