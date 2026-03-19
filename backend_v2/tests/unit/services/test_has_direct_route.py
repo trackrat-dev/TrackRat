@@ -42,9 +42,8 @@ class TestHasDirectRoute:
 
     def test_subway_different_lines(self):
         """Stations on different subway lines with no shared route — should be False."""
-        # SH04 is on A/C, a 7 train station should not share a route
-        # Use a known 7 train station
-        assert _has_direct_route("SH04", "SH53", ["SUBWAY"]) is False
+        # SH04 is on A/C line, S726 is on the 7 line — no shared route
+        assert _has_direct_route("SH04", "S726", ["SUBWAY"]) is False
 
     def test_no_to_station_not_called(self):
         """This function should only be called when to_station is provided.
