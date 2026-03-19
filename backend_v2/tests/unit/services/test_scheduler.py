@@ -99,6 +99,7 @@ class TestSchedulerService:
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),
                 ("congestion_cache_precompute", IntervalTrigger, {"minutes": 15}),
                 ("departure_cache_precompute", IntervalTrigger, {"seconds": 90}),
+                ("route_history_cache_precompute", IntervalTrigger, {"minutes": 5}),
                 ("train_validation", IntervalTrigger, {"hours": 1}),
                 ("njt_schedule_collection", CronTrigger, {"hour": 0, "minute": 30}),
                 ("amtrak_schedule_generation", CronTrigger, {"hour": 0, "minute": 45}),
