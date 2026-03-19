@@ -373,15 +373,16 @@ struct AlertConfigurationSection: View {
                         .tint(.orange)
                     }
 
-                    // Recovery (only when at least one alert type is active)
+                    // Recovery & daily summary
                     if subscription.notifyCancellation || subscription.notifyDelay {
+                        Text("Also...")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.6))
                         Toggle(isOn: $subscription.notifyRecovery) {
                             Text("Notify on Recovery")
                         }
                         .tint(.orange)
                     }
-
-                    Divider().opacity(0.3)
 
                     // Daily status summary
                     Toggle(isOn: digestEnabled) {
