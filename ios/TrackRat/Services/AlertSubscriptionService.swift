@@ -227,7 +227,8 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
         cancellationThresholdPct: Int? = nil,
         notifyCancellation: Bool = true, notifyDelay: Bool = true,
-        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil
+        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil,
+        includePlannedWork: Bool = false
     ) {
         self.id = UUID()
         self.dataSource = dataSource
@@ -249,7 +250,7 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.notifyDelay = notifyDelay
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
-        self.includePlannedWork = false
+        self.includePlannedWork = includePlannedWork
     }
 
     /// Train-specific subscription.

@@ -193,7 +193,8 @@ struct RouteStatusView: View {
                 notifyCancellation: template.notifyCancellation,
                 notifyDelay: template.notifyDelay,
                 notifyRecovery: template.notifyRecovery,
-                digestTimeMinutes: template.digestTimeMinutes
+                digestTimeMinutes: template.digestTimeMinutes,
+                includePlannedWork: template.includePlannedWork
             )
             let subBA = RouteAlertSubscription(
                 dataSource: template.dataSource,
@@ -209,7 +210,8 @@ struct RouteStatusView: View {
                 notifyCancellation: template.notifyCancellation,
                 notifyDelay: template.notifyDelay,
                 notifyRecovery: template.notifyRecovery,
-                digestTimeMinutes: template.digestTimeMinutes
+                digestTimeMinutes: template.digestTimeMinutes,
+                includePlannedWork: template.includePlannedWork
             )
             alertService.addSubscriptions(subscriptionService.isPro ? [subAB, subBA] : [subAB])
             // Move settings into edited subscriptions for the newly-created subs
@@ -1048,6 +1050,10 @@ final class RouteStatusViewModel: ObservableObject {
         self.context = context
     }
 
+    deinit {
+        saveTask?.cancel()
+    }
+
     func loadData(initialPeriod: HistoryPeriod = .hour) async {
         // Start loading data immediately using context.dataSource while discovery runs in parallel.
         // When discovery completes, if it reveals additional systems, data will be reloaded.
@@ -1424,6 +1430,12 @@ final class RouteStatusViewModel: ObservableObject {
             ? [context.dataSource]
             : Array(enabledSystems).sorted()
         let linesBySystem = lineCodesBySystem
+
+        // Remove history for systems that are no longer enabled
+        let systemsToFetchSet = Set(systemsToFetch)
+        for key in historyBySystem.keys where !systemsToFetchSet.contains(key) {
+            historyBySystem.removeValue(forKey: key)
+        }
 
         // Initialize history state for systems that don't have it yet
         for system in systemsToFetch {

@@ -531,7 +531,7 @@ class LiveActivityService: ObservableObject {
     }
     
     /// Get the next stop in user's journey segment
-    private func getNextStop(_ train: TrainV2, originCode: String, destinationCode: String, hasTrainDeparted: Bool) -> Stop? {
+    private func getNextStop(_ train: TrainV2, originCode: String, destinationCode: String, hasTrainDeparted: Bool) -> StopV2? {
         guard let stops = train.stops else { return nil }
 
         // Find origin and destination stops by station CODE (reliable)
