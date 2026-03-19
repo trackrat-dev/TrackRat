@@ -149,6 +149,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             let context = RouteStatusContext(
                 dataSource: routeAlert["data_source"] as? String ?? "",
                 lineId: routeAlert["line_id"] as? String,
+                direction: routeAlert["direction"] as? String,
                 fromStationCode: routeAlert["from_station_code"] as? String,
                 toStationCode: routeAlert["to_station_code"] as? String
             )
@@ -163,6 +164,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             let context = RouteStatusContext(
                 dataSource: serviceAlert["data_source"] as? String ?? "",
                 lineId: serviceAlert["line_id"] as? String,
+                direction: serviceAlert["direction"] as? String,
                 fromStationCode: serviceAlert["from_station_code"] as? String,
                 toStationCode: serviceAlert["to_station_code"] as? String
             )
@@ -561,8 +563,17 @@ struct RouteStatusContext: Identifiable, Equatable {
     let id = UUID()
     let dataSource: String
     let lineId: String?
+    let direction: String?
     let fromStationCode: String?
     let toStationCode: String?
+
+    init(dataSource: String, lineId: String? = nil, direction: String? = nil, fromStationCode: String? = nil, toStationCode: String? = nil) {
+        self.dataSource = dataSource
+        self.lineId = lineId
+        self.direction = direction
+        self.fromStationCode = fromStationCode
+        self.toStationCode = toStationCode
+    }
 
     /// Human-readable title for the route
     var title: String {
@@ -571,6 +582,9 @@ struct RouteStatusContext: Identifiable, Equatable {
         }
         if let lineId = lineId,
            let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+            if let direction = direction {
+                return "\(route.name) toward \(direction)"
+            }
             return route.name
         }
         return dataSource
@@ -738,6 +752,7 @@ final class AppState: ObservableObject {
     @Published var deepLinkTrainNumber: String? = nil
     @Published var deepLinkFromStation: String? = nil
     @Published var deepLinkToStation: String? = nil
+    @Published var deepLinkDate: Date? = nil
     @Published var shouldExpandForDeepLink: Bool = false
 
     // Pending navigation - set by views to request navigation that requires sheet expansion first
@@ -815,6 +830,7 @@ final class AppState: ObservableObject {
         deepLinkTrainNumber = nil
         deepLinkFromStation = nil
         deepLinkToStation = nil
+        deepLinkDate = nil
         shouldExpandForDeepLink = false
     }
     

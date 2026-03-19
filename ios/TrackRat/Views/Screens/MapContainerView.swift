@@ -286,7 +286,7 @@ struct MapContainerView: View {
             appState.pendingNavigation = .trainDetailsFlexible(
                 trainNumber: trainNumber,
                 fromStation: appState.deepLinkFromStation,
-                journeyDate: nil,
+                journeyDate: appState.deepLinkDate,
                 dataSource: nil
             )
             print("🔗 Pending navigation set for train \(trainNumber)")

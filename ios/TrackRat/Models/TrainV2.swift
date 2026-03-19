@@ -495,22 +495,23 @@ extension TrainV2 {
         // Calculate context-aware progress for user's journey segment
         let progress = calculateJourneyProgress(from: originCode, toCode: destinationCode)
         
-        // Get current and next stop names based on train position
-        let currentStop = trainPosition?.atStationCode ?? 
-                         stops?.last(where: { $0.hasDepartedStation })?.stationName ?? 
+        // Get current and next stop based on train position
+        let currentStop = trainPosition?.atStationCode ??
+                         stops?.last(where: { $0.hasDepartedStation })?.stationName ??
                          departure.name
-        let nextStop = trainPosition?.nextStationCode ??
-                      stops?.first(where: { !$0.hasDepartedStation })?.stationName
-        
+        let nextStopObj = stops?.first(where: { !$0.hasDepartedStation })
+        let nextStop = trainPosition?.nextStationCode ?? nextStopObj?.stationName
+        let nextStopCode = nextStopObj?.stationCode
+
         // Calculate context-aware status
         let contextStatus = calculateStatus(fromStationCode: originCode, toStationName: destinationName)
-        
+
         // Determine if train has departed user's origin
         let hasTrainDeparted = hasTrainDepartedFromStation(originCode)
-        
+
         // Get next stop arrival time
         let nextStopArrivalTime = getNextStopArrivalTime()
-        
+
         return TrainActivityAttributes.ContentState(
             status: contextStatus.rawValue,
             track: track,
@@ -522,6 +523,7 @@ extension TrainV2 {
             scheduledDepartureTime: getEstimatedDepartureTime(fromStationCode: originCode)?.toISO8601String(),
             scheduledArrivalTime: getEstimatedArrivalTime(toStationCode: destinationCode)?.toISO8601String(),
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
+            nextStopCode: nextStopCode,
             hasTrainDeparted: hasTrainDeparted,
             originStationCode: originCode,
             destinationStationCode: destinationStationCode ?? ""
