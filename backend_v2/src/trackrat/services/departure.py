@@ -42,6 +42,11 @@ logger = get_logger(__name__)
 # Prevents duplicate concurrent JIT refreshes for the same station.
 _refreshing_stations: set[str] = set()
 
+# Strong references to background tasks to prevent GC before completion.
+# asyncio.create_task only holds a weak reference; without this set, tasks
+# can be silently garbage collected. See: https://docs.python.org/3/library/asyncio-task.html#creating-tasks
+_background_tasks: set[asyncio.Task[None]] = set()
+
 # NJT line code normalization for deduplication.
 # Canonical codes are uppercase (NE, NC, GL, MO, MA, etc.) matching route_topology.py.
 # This map handles old mixed-case codes from pre-2026-03 collectors and DB records.
@@ -628,6 +633,8 @@ class DepartureService:
             ),
             name=f"jit_refresh_{station_code}",
         )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
         task.add_done_callback(lambda _t: _refreshing_stations.discard(station_code))
 
     async def _ensure_fresh_station_data(
