@@ -319,6 +319,16 @@ final class StorageService {
         saveStoredFavorites(stations)
     }
 
+    /// Removes a station from the explicit favorites list (no-op if not present).
+    /// Unlike toggleFavoriteStation, this never adds.
+    func removeFavoriteStation(code: String) {
+        var stations = loadStoredFavorites()
+        if let index = stations.firstIndex(where: { $0.id == code }) {
+            stations.remove(at: index)
+            saveStoredFavorites(stations)
+        }
+    }
+
     func isStationFavorited(code: String) -> Bool {
         let isInStored = loadStoredFavorites().contains { $0.id == code }
         let isHomeStation = RatSenseService.shared.getHomeStation() == code

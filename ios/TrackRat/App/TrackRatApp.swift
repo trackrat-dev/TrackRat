@@ -907,12 +907,9 @@ final class AppState: ObservableObject {
 
     /// Explicitly removes a station from favorites
     func removeFavoriteStation(code: String) {
-        // Remove from the explicit favorites list if present
-        if let station = favoriteStations.first(where: { $0.id == code }) {
-            storageService.toggleFavoriteStation(code: code, name: station.name)
-        }
-        // Always reload — the station may have been a virtual entry (home/work injection)
-        // that was cleared before this call, so we need to refresh regardless
+        // Use dedicated remove (never adds) — safe even if the station was only
+        // present via home/work injection and not in stored favorites
+        storageService.removeFavoriteStation(code: code)
         loadFavoriteStations()
     }
 

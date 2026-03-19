@@ -158,6 +158,52 @@ class StorageServiceTests: XCTestCase {
         XCTAssertLessThanOrEqual(favorites.count, 10, "Should cap at 10 explicit favorites")
     }
 
+    func testRemoveFavoriteStation_injectedOnly_doesNotAdd() {
+        // Removing a station that only exists via home/work injection (not in UserDefaults)
+        // must NOT add it to UserDefaults. This was the toggle-direction bug.
+        print("--- testRemoveFavoriteStation_injectedOnly_doesNotAdd ---")
+
+        RatSenseService.shared.setHomeStation("NY")
+        print("  Home set to NY (not explicitly favorited)")
+
+        // Verify NY appears in display list via injection
+        var favorites = storageService.loadFavoriteStations()
+        XCTAssertTrue(favorites.contains { $0.id == "NY" }, "NY should be in display list via injection")
+
+        // Now clear home and call removeFavoriteStation
+        RatSenseService.shared.setHomeStation(nil)
+        storageService.removeFavoriteStation(code: "NY")
+
+        favorites = storageService.loadFavoriteStations()
+        print("  After clearing home + remove: \(favorites.map(\.id))")
+        XCTAssertFalse(favorites.contains { $0.id == "NY" },
+                       "NY should NOT be in favorites — remove must not add an injected-only station")
+        XCTAssertFalse(storageService.isStationFavorited(code: "NY"),
+                       "NY should not report as favorited")
+    }
+
+    func testRemoveFavoriteStation_explicitlyAdded_removes() {
+        // Removing a station that was explicitly added should remove it
+        print("--- testRemoveFavoriteStation_explicitlyAdded_removes ---")
+
+        storageService.toggleFavoriteStation(code: "TR", name: "Trenton")
+        XCTAssertTrue(storageService.isStationFavorited(code: "TR"), "TR should be favorited")
+
+        storageService.removeFavoriteStation(code: "TR")
+        XCTAssertFalse(storageService.isStationFavorited(code: "TR"),
+                       "TR should be removed after explicit remove")
+    }
+
+    func testRemoveFavoriteStation_notPresent_noOp() {
+        // Removing a station that doesn't exist at all should be a safe no-op
+        print("--- testRemoveFavoriteStation_notPresent_noOp ---")
+
+        storageService.removeFavoriteStation(code: "NONEXISTENT")
+        let favorites = storageService.loadFavoriteStations()
+        print("  After removing nonexistent: \(favorites.map(\.id))")
+        XCTAssertTrue(favorites.isEmpty, "Should have no favorites after removing nonexistent station")
+    }
+
     func testIsStationFavorited_homeWorkAndExplicit() {
         print("--- testIsStationFavorited_homeWorkAndExplicit ---")
 
