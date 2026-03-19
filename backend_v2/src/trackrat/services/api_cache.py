@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -109,26 +110,24 @@ class ApiCacheService:
         generated_at = now_et()
         expires_at = generated_at + timedelta(seconds=ttl_seconds)
 
-        # Use PostgreSQL UPSERT to handle concurrent updates gracefully
-        cache_record = CachedApiResponse(
+        # Use PostgreSQL UPSERT to handle concurrent updates atomically
+        stmt = pg_insert(CachedApiResponse).values(
             endpoint=endpoint,
             params_hash=params_hash,
             params=params,
             response=response,
             generated_at=generated_at,
             expires_at=expires_at,
+        ).on_conflict_do_update(
+            constraint="uq_cached_api_endpoint_params",
+            set_={
+                "params": params,
+                "response": response,
+                "generated_at": generated_at,
+                "expires_at": expires_at,
+            },
         )
-
-        # Delete existing record if it exists, then insert new one
-        delete_stmt = delete(CachedApiResponse).where(
-            and_(
-                CachedApiResponse.endpoint == endpoint,
-                CachedApiResponse.params_hash == params_hash,
-            )
-        )
-        await db.execute(delete_stmt)
-
-        db.add(cache_record)
+        await db.execute(stmt)
         await db.commit()
 
         logger.info(

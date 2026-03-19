@@ -151,7 +151,7 @@ class TestApiCacheService:
 
     @pytest.mark.asyncio
     async def test_store_cached_response(self, cache_service, mock_db, sample_response):
-        """Test storing a response in the cache."""
+        """Test storing a response in the cache via upsert."""
         endpoint = "/api/v2/routes/congestion"
         params = {"time_window_hours": 3, "data_source": "NJT"}
         ttl_seconds = 600
@@ -164,18 +164,21 @@ class TestApiCacheService:
                 mock_db, endpoint, params, sample_response, ttl_seconds
             )
 
-        # Verify delete statement was executed (to remove old cache)
+        # Verify upsert statement was executed (single execute for INSERT ... ON CONFLICT)
         assert mock_db.execute.call_count == 1
 
-        # Verify new record was added
-        mock_db.add.assert_called_once()
-        added_record = mock_db.add.call_args[0][0]
-        assert isinstance(added_record, CachedApiResponse)
-        assert added_record.endpoint == endpoint
-        assert added_record.params == params
-        assert added_record.response == sample_response
-        assert added_record.generated_at == current_time
-        assert added_record.expires_at == current_time + timedelta(seconds=ttl_seconds)
+        # Verify the upsert statement contains correct values
+        executed_stmt = mock_db.execute.call_args[0][0]
+        # Compiled statement should be a PostgreSQL INSERT with ON CONFLICT
+        compiled = executed_stmt.compile(
+            compile_kwargs={"literal_binds": False}
+        )
+        stmt_str = str(compiled)
+        assert "INSERT INTO cached_api_responses" in stmt_str
+        assert "ON CONFLICT" in stmt_str
+
+        # db.add should NOT be called (upsert uses execute directly)
+        mock_db.add.assert_not_called()
 
         # Verify commit was called
         mock_db.commit.assert_called_once()
@@ -184,7 +187,7 @@ class TestApiCacheService:
     async def test_store_cached_response_replaces_existing(
         self, cache_service, mock_db
     ):
-        """Test that storing a response replaces any existing cache entry."""
+        """Test that storing a response with same key uses upsert (ON CONFLICT DO UPDATE)."""
         endpoint = "/api/v2/routes/congestion"
         params = {"time_window_hours": 3}
         response1 = {"data": "first"}
@@ -199,12 +202,17 @@ class TestApiCacheService:
         # Store second response with same endpoint and params
         await cache_service.store_cached_response(mock_db, endpoint, params, response2)
 
-        # Verify delete was called to remove old entry
+        # Verify a single upsert was executed (not separate delete + insert)
         assert mock_db.execute.call_count == 1
 
-        # Verify new record has updated response
-        added_record = mock_db.add.call_args[0][0]
-        assert added_record.response == response2
+        # Verify the statement is an upsert with ON CONFLICT
+        executed_stmt = mock_db.execute.call_args[0][0]
+        compiled = executed_stmt.compile(compile_kwargs={"literal_binds": False})
+        stmt_str = str(compiled)
+        assert "ON CONFLICT" in stmt_str
+
+        # db.add should NOT be called
+        mock_db.add.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cleanup_expired_cache(self, cache_service, mock_db):

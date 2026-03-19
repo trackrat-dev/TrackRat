@@ -193,13 +193,16 @@ async def get_departures(
     )
 
     if use_cache:
-        await cache_service.store_cached_response(
-            db,
-            "/api/v2/trains/departures",
-            cache_params,
-            response.model_dump(mode="json"),
-            ttl_seconds=120,
-        )
+        try:
+            await cache_service.store_cached_response(
+                db,
+                "/api/v2/trains/departures",
+                cache_params,
+                response.model_dump(mode="json"),
+                ttl_seconds=120,
+            )
+        except Exception as e:
+            logger.warning("departure_cache_storage_failed", error=str(e))
 
     return response
 
