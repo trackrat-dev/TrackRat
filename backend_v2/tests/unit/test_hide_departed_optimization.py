@@ -159,9 +159,9 @@ class TestHideDepartedOptimization:
         self, service, mock_session
     ):
         """Test that get_departures passes hide_departed to station refresh."""
-        # Mock _ensure_fresh_station_data to verify parameters
+        # Mock _maybe_trigger_background_refresh to verify parameters
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             # Mock the query to return empty results
             mock_result = Mock()
@@ -178,7 +178,7 @@ class TestHideDepartedOptimization:
                 hide_departed=True,
             )
 
-            # Verify _ensure_fresh_station_data was called with hide_departed=True
+            # Verify _maybe_trigger_background_refresh was called with hide_departed=True
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
             # Args: db, from_station, target_date, skip_individual_refresh, hide_departed
@@ -190,7 +190,7 @@ class TestHideDepartedOptimization:
     ):
         """Test that get_departures defaults hide_departed to False."""
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             mock_result = Mock()
             mock_scalars = Mock()
@@ -206,7 +206,7 @@ class TestHideDepartedOptimization:
                 # Note: not passing hide_departed, should default to False
             )
 
-            # Verify _ensure_fresh_station_data was called with hide_departed=False
+            # Verify _maybe_trigger_background_refresh was called with hide_departed=False
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
             assert call_args[0][4] is False  # 5th positional arg is hide_departed

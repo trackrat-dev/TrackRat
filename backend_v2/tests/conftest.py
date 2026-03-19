@@ -113,6 +113,21 @@ async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+@pytest.fixture(autouse=True)
+def _no_background_jit_refresh():
+    """Prevent background JIT refresh tasks from firing in tests.
+
+    Background tasks created via asyncio.create_task outlive individual tests
+    and cause 'Event loop is closed' errors. Tests that need to verify the
+    refresh logic should call _ensure_fresh_station_data directly.
+    """
+    with patch(
+        "trackrat.services.departure._background_refresh_station",
+        new_callable=AsyncMock,
+    ):
+        yield
+
+
 @pytest.fixture
 def client(test_settings) -> TestClient:
     """Create a test client with dependency overrides."""

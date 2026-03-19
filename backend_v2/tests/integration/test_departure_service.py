@@ -1037,9 +1037,9 @@ class TestDepartureServiceIntegration:
         db_session.add(journey)
         await db_session.commit()
 
-        # Mock the station refresh method to verify parameters
+        # Mock the background refresh method to verify parameters
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             await service.get_departures(
                 db=db_session,
@@ -1049,9 +1049,10 @@ class TestDepartureServiceIntegration:
                 skip_individual_refresh=True,
             )
 
-            # Verify _ensure_fresh_station_data was called with skip_individual_refresh=True
+            # Verify _maybe_trigger_background_refresh was called with skip_individual_refresh=True
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
+            # Args: db, from_station, target_date, skip_individual_refresh, hide_departed
             assert (
                 call_args[0][3] is True
             )  # 4th positional arg is skip_individual_refresh
@@ -1075,9 +1076,9 @@ class TestDepartureServiceIntegration:
         db_session.add(journey)
         await db_session.commit()
 
-        # Mock the station refresh method
+        # Mock the background refresh method
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             await service.get_departures(
                 db=db_session,
@@ -1087,9 +1088,10 @@ class TestDepartureServiceIntegration:
                 # Note: not passing skip_individual_refresh, should default to False
             )
 
-            # Verify _ensure_fresh_station_data was called with skip_individual_refresh=False
+            # Verify _maybe_trigger_background_refresh was called with skip_individual_refresh=False
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
+            # Args: db, from_station, target_date, skip_individual_refresh, hide_departed
             assert (
                 call_args[0][3] is False
             )  # 4th positional arg is skip_individual_refresh
@@ -1251,9 +1253,9 @@ class TestDepartureServiceIntegration:
         db_session.add(journey)
         await db_session.commit()
 
-        # Mock the station refresh method to verify parameters
+        # Mock the background refresh method to verify parameters
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             await service.get_departures(
                 db=db_session,
@@ -1263,7 +1265,7 @@ class TestDepartureServiceIntegration:
                 hide_departed=True,
             )
 
-            # Verify _ensure_fresh_station_data was called with hide_departed=True
+            # Verify _maybe_trigger_background_refresh was called with hide_departed=True
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
             # Args: db, from_station, target_date, skip_individual_refresh, hide_departed
@@ -1290,9 +1292,9 @@ class TestDepartureServiceIntegration:
         db_session.add(journey)
         await db_session.commit()
 
-        # Mock the station refresh method
+        # Mock the background refresh method
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ) as mock_refresh:
             await service.get_departures(
                 db=db_session,
@@ -1302,7 +1304,7 @@ class TestDepartureServiceIntegration:
                 # Note: not passing hide_departed, should default to False
             )
 
-            # Verify _ensure_fresh_station_data was called with hide_departed=False
+            # Verify _maybe_trigger_background_refresh was called with hide_departed=False
             mock_refresh.assert_called_once()
             call_args = mock_refresh.call_args
             assert call_args[0][4] is False  # 5th positional arg is hide_departed

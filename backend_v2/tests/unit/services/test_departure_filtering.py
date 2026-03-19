@@ -124,7 +124,7 @@ class TestDepartureFiltering:
         service = DepartureService()
 
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock
@@ -175,7 +175,7 @@ class TestDepartureFiltering:
         service = DepartureService()
 
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock
@@ -234,7 +234,7 @@ class TestDepartureFiltering:
         service = DepartureService()
 
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock
@@ -314,7 +314,7 @@ class TestDepartureFiltering:
         service = DepartureService()
 
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock
@@ -375,7 +375,7 @@ class TestDepartureFiltering:
         service = DepartureService()
 
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock
@@ -423,7 +423,7 @@ class TestDepartureFiltering:
         service = DepartureService()
 
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock
@@ -535,7 +535,7 @@ class TestHideDepartedTimeFallback:
     async def _run_departures(self, mock_session, service, **kwargs):
         """Helper to run get_departures with standard mocks."""
         with patch.object(
-            service, "_ensure_fresh_station_data", new_callable=AsyncMock
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
         ):
             with patch.object(
                 service, "_get_path_cutoff_time", new_callable=AsyncMock

@@ -2,6 +2,7 @@
 Departure service for handling train departure queries.
 """
 
+import asyncio
 import time
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -15,7 +16,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.config.stations import expand_station_codes, get_station_name
-from trackrat.db.engine import retry_on_deadlock
+from trackrat.db.engine import get_session, retry_on_deadlock
 from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
@@ -36,6 +37,10 @@ from trackrat.utils.time import (
 from trackrat.utils.train import get_effective_observation_type
 
 logger = get_logger(__name__)
+
+# Tracks station codes currently being refreshed in background tasks.
+# Prevents duplicate concurrent JIT refreshes for the same station.
+_refreshing_stations: set[str] = set()
 
 # NJT line code normalization for deduplication.
 # Canonical codes are uppercase (NE, NC, GL, MO, MA, etc.) matching route_topology.py.
@@ -216,31 +221,16 @@ class DepartureService:
         # PERFORMANCE: Track timing for observability
         perf_start = time.perf_counter()
 
-        # Ensure fresh data for NJT trains BEFORE querying, so the query returns
-        # up-to-date departure times. This prevents stale data from causing
-        # incorrect delay calculations in the response.
-        # Skip when NJT is not in the requested data sources — the NJT JIT
-        # refresh makes an external API call that's irrelevant for other providers.
+        # Non-blocking JIT refresh for NJT trains. Instead of blocking the
+        # request while making external API calls (2-15s), we check staleness
+        # cheaply and fire the refresh as a background task. The current request
+        # serves data that's at most ~60s stale; the next request gets fresh data.
+        # Skip when NJT is not in the requested data sources.
         jit_start = time.perf_counter()
         if "NJT" in allowed_sources:
-            try:
-                await self._ensure_fresh_station_data(
-                    db,
-                    from_station,
-                    target_date,
-                    skip_individual_refresh,
-                    hide_departed,
-                )
-            except Exception as e:
-                logger.warning(
-                    "jit_refresh_failed_serving_stale",
-                    station_code=from_station,
-                    error=str(e),
-                )
-                try:
-                    await db.rollback()
-                except Exception:
-                    pass
+            await self._maybe_trigger_background_refresh(
+                db, from_station, target_date, skip_individual_refresh, hide_departed
+            )
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
         query_start = time.perf_counter()
@@ -585,6 +575,60 @@ class DepartureService:
 
         observed_cutoff = last_observed + timedelta(minutes=2)
         return max(min_cutoff, observed_cutoff)
+
+    async def _maybe_trigger_background_refresh(
+        self,
+        db: AsyncSession,
+        station_code: str,
+        target_date: date,
+        skip_individual_refresh: bool,
+        hide_departed: bool,
+    ) -> None:
+        """Check staleness and fire a background JIT refresh if needed.
+
+        Uses an in-memory set to debounce: if a refresh is already in-flight
+        for this station, we skip. The staleness check runs on the caller's
+        DB session (cheap read-only query); only the background refresh task
+        creates its own session.
+        """
+        if station_code in _refreshing_stations:
+            logger.debug("jit_refresh_already_in_flight", station_code=station_code)
+            return
+
+        # Quick staleness check on the caller's session (read-only, no commit needed)
+        cutoff_time = now_et() - timedelta(seconds=60)
+        needs_refresh = await db.scalar(
+            select(TrainJourney.id)
+            .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code.in_(expand_station_codes(station_code)),
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == target_date,
+                    TrainJourney.last_updated_at < cutoff_time,
+                    TrainJourney.is_expired.is_not(True),
+                    TrainJourney.is_completed.is_not(True),
+                    TrainJourney.is_cancelled.is_not(True),
+                )
+            )
+            .limit(1)
+        )
+
+        if not needs_refresh:
+            return
+
+        _refreshing_stations.add(station_code)
+        task = asyncio.create_task(
+            _background_refresh_station(
+                self,
+                station_code,
+                target_date,
+                skip_individual_refresh,
+                hide_departed,
+            ),
+            name=f"jit_refresh_{station_code}",
+        )
+        task.add_done_callback(lambda _t: _refreshing_stations.discard(station_code))
 
     async def _ensure_fresh_station_data(
         self,
@@ -1199,3 +1243,34 @@ class DepartureService:
             )
 
         return result
+
+
+async def _background_refresh_station(
+    service: "DepartureService",
+    station_code: str,
+    target_date: date,
+    skip_individual_refresh: bool,
+    hide_departed: bool,
+) -> None:
+    """Run NJT station JIT refresh in the background with its own DB session.
+
+    Errors are logged but never propagated — the caller already served
+    whatever data was in the DB, matching the existing graceful-degradation
+    behavior when JIT fails.
+    """
+    try:
+        async with get_session() as db:
+            await service._ensure_fresh_station_data(
+                db,
+                station_code,
+                target_date,
+                skip_individual_refresh,
+                hide_departed,
+            )
+        logger.info("background_jit_refresh_complete", station_code=station_code)
+    except Exception as e:
+        logger.warning(
+            "background_jit_refresh_failed",
+            station_code=station_code,
+            error=str(e),
+        )
