@@ -78,7 +78,15 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
 SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
 # All supported data sources for departure queries.
-ALL_DATA_SOURCES: list[str] = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+ALL_DATA_SOURCES: list[str] = [
+    "NJT",
+    "AMTRAK",
+    "PATH",
+    "PATCO",
+    "LIRR",
+    "MNR",
+    "SUBWAY",
+]
 
 
 def _has_direct_route(
@@ -151,7 +159,13 @@ class DepartureService:
                 response.metadata["count"] = len(response.departures)
             if to_station:
                 all_sources = data_sources or [
-                    "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"
+                    "NJT",
+                    "AMTRAK",
+                    "PATH",
+                    "PATCO",
+                    "LIRR",
+                    "MNR",
+                    "SUBWAY",
                 ]
                 response.has_direct_route = _has_direct_route(
                     from_station, to_station, all_sources
@@ -203,11 +217,7 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = (
-            data_sources
-            if data_sources
-            else ALL_DATA_SOURCES
-        )
+        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
