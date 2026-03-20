@@ -270,13 +270,13 @@ resource "google_compute_health_check" "trackrat" {
 
   http_health_check {
     port         = 8000
-    request_path = "/health/live"
+    request_path = "/health/ready"
   }
 
   check_interval_sec  = 30
   timeout_sec         = 10
   healthy_threshold   = 2
-  unhealthy_threshold = 3
+  unhealthy_threshold = 5
 
   depends_on = [google_project_service.apis]
 }
