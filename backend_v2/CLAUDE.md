@@ -551,8 +551,8 @@ docker run -p 8000:8000 \
 # Check database connectivity
 poetry run python -c "from trackrat.db.engine import test_connection; import asyncio; asyncio.run(test_connection())"
 
-# Verify NJ Transit API
-poetry run python -c "from trackrat.utils.nj_transit import test_api; import asyncio; asyncio.run(test_api())"
+# Verify NJ Transit API connectivity
+curl -s http://localhost:8000/health | jq .data_freshness
 
 # View scheduler jobs
 curl http://localhost:8000/health | jq .scheduler

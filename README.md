@@ -45,8 +45,8 @@ TrackRat tracks trains across seven transit systems in real time, predicts platf
 │ • Metro-North   │             │
 │ • NYC Subway    │     ┌───────▼────────┐
 └─────────────────┘     │   GCP Infra    │
-                        │ • Compute      │
-                        │ • Cloud SQL    │
+                        │ • GCE (MIG)   │
+                        │ • PostgreSQL   │
                         │ • Monitoring   │
                         └────────────────┘
 ```
