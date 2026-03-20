@@ -409,8 +409,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend services: `backend_v2/src/trackrat/services/`
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway, service_alerts)
-- Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway, service_alerts, mta_common, mta_extensions)
+- Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings)
 - Backend tests: `backend_v2/tests/`
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
 - iOS services: `ios/TrackRat/Services/`
@@ -447,6 +447,12 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /api/v2/devices/register           # Register APNS device token
 /api/v2/alerts/subscriptions       # Sync route alert subscriptions (PUT)
 /api/v2/alerts/service             # MTA service alerts (planned work, delays)
+
+# Feedback
+/api/v2/feedback                   # Submit user feedback
+
+# Route Preferences
+/api/v2/route-preferences          # User route preferences
 
 # Admin
 /admin/stats                       # Server usage statistics page (HTML)

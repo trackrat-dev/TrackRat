@@ -27,11 +27,11 @@ SwiftUI app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and
 TrackRat/
 ├── App/              # TrackRatApp.swift, AppState
 ├── Views/
-│   ├── Screens/      # 16 screen-level views
-│   └── Components/   # Reusable UI components
-├── Models/           # Data models, API responses, DeepLink
-├── Services/         # 15 singleton services
-├── Shared/           # Stations.swift, StationData.swift, LiveActivityModels
+│   ├── Screens/      # 14 screen-level views
+│   └── Components/   # 23 reusable UI components
+├── Models/           # Data models, API responses, DeepLink, CompletedTrip
+├── Services/         # 14 singleton services
+├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
 └── Resources/        # Assets, Info.plist

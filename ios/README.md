@@ -42,7 +42,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **Delay Forecasts**: AI-powered delay predictions
 - **1-Week Free Trial**: Apple introductory offer for new subscribers
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
-- **Monthly-Only Subscription**: $4.99/month pricing after trial
+- **Subscription Tiers**: $4.99/month or $49.99/year after trial
 
 ### Train System Filtering
 - **Per-System Toggles**: Users can enable/disable each transit system in Settings
@@ -95,10 +95,11 @@ TrackRat/
 │   ├── TrainV2.swift           # Pure data model with context-aware calculations
 │   ├── V2APIModels.swift       # Backend V2 API models
 │   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway)
+│   ├── CompletedTrip.swift     # Completed trip model for trip history
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
 │
-├── Services/                    # Business logic (14 services)
+├── Services/                    # Business logic
 │   ├── APIService.swift        # Network communication
 │   ├── LiveActivityService.swift # Live Activity management
 │   ├── AlertSubscriptionService.swift # Route alert subscriptions
@@ -115,7 +116,7 @@ TrackRat/
 │   └── StaticTrackDistributionService.swift # Track analytics
 │
 ├── Views/                       # UI layer
-│   ├── Screens/                # Full-screen views (16 screens)
+│   ├── Screens/                # Full-screen views (14 screens)
 │   │   ├── TripSelectionView.swift      # Home screen with search
 │   │   ├── DeparturePickerView.swift    # Origin station selection
 │   │   ├── DestinationPickerView.swift  # Destination selection
@@ -131,17 +132,20 @@ TrackRat/
 │   │   ├── AddRouteAlertView.swift      # Add route alert
 │   │   └── TripHistoryView.swift        # Trip history
 │   │
-│   └── Components/              # Reusable UI components (20 files)
+│   └── Components/              # Reusable UI components (23 files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
 │       ├── AlertConfigurationSection.swift # Route alert configuration
+│       ├── ConfettiView.swift           # Confetti animation effect
 │       ├── DateSelectorSheet.swift      # Date picker sheet
 │       ├── FeedbackButton.swift         # Issue reporting
 │       ├── JourneyCongestionMapView.swift # Journey congestion map
 │       ├── JourneyFeedbackPromptView.swift # Journey feedback
 │       ├── LegacyBottomSheetView.swift  # Draggable sheets
 │       ├── LegacySheetAwareScrollView.swift # Coordinated scrolling
+│       ├── LineSelectionView.swift      # Transit line selection
 │       ├── LiveActivityControls.swift   # Start/stop buttons
 │       ├── OperationsSummaryView.swift  # Operations summary
+│       ├── ShimmerRect.swift            # Shimmer loading placeholder
 │       ├── StationButton.swift          # Station selection button
 │       ├── StationPickerSheet.swift     # Station picker modal
 │       ├── StationRow.swift             # Station list row
@@ -159,6 +163,9 @@ TrackRat/
 │
 ├── Shared/                      # Cross-target code
 │   ├── Stations.swift          # Station database
+│   ├── StationData.swift       # Station metadata and grouping
+│   ├── StationCoordinates.swift # Station GPS coordinates
+│   ├── StationDepartures.swift # Station departure configuration
 │   ├── LiveActivityModels.swift # Widget shared types
 │   └── RouteTopology.swift      # Route definitions for map layers
 │

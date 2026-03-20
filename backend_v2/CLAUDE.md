@@ -215,6 +215,13 @@ POST /feedback                                       # Submit user feedback
 POST /live-activities/register    # Register Live Activity
 DELETE /live-activities/{token}   # Unregister Live Activity
 
+# Admin
+GET /admin/stats              # Server usage statistics (HTML)
+GET /admin/stats.json         # Server usage statistics (JSON)
+
+# Route Preferences
+GET /route-preferences        # User route preferences
+
 # System Health and Metrics
 GET /health                    # Comprehensive health check
 GET /health/live              # Liveness probe
@@ -640,6 +647,8 @@ The backend is organized into service classes for better maintainability:
 - **TrainValidationService** (`services/validation.py`): Coverage validation and monitoring
 - **ApiCacheService** (`services/api_cache.py`): Intelligent response caching with pre-computation
 - **SummaryService** (`services/summary.py`): Natural language operations summaries
+- **GTFSService** (`services/gtfs.py`): GTFS static and real-time feed management
+- **SegmentNormalizer** (`services/segment_normalizer.py`): Station segment normalization for analytics
 
 #### Analytics & ML
 - **TransitAnalyzer** (`services/transit_analyzer.py`): Transit time and dwell time analysis
@@ -663,6 +672,16 @@ The backend is organized into service classes for better maintainability:
 - ✅ PATH line color disambiguation: resolves misattribution for overlapping routes (e.g., JSQ-33H vs HOB-33)
 - ✅ Expanded subway station complexes: 15+ missing in-station transfers added to STATION_EQUIVALENTS
 - ✅ Unified shuttle station equivalences (S901/S902) across backend and iOS
+- ✅ Fix cache race condition causing 503s on departures endpoint
+- ✅ Fix Alembic migration cycle causing staging crash loop
+- ✅ SUBWAY service alerts crash fix caused by duplicate entity IDs in MTA feed
+- ✅ NJT alert deduplication and defensive active_periods handling
+- ✅ Duplicate-row protection added to GTFS static parsers
+- ✅ Removed Newark PATH (PNK) from search; Newark Penn Station covers it via equivalence
+- ✅ Merged Newark PATH into Newark Penn Station equivalence group
+- ✅ Subscription sync fix preventing notification deduplication state wipe
+- ✅ Fix route segment map showing full route instead of selected segment
+- ✅ Backend instance upgrade from t2d-standard-1 to t2d-standard-2
 
 ### Recent Improvements (February 2026)
 - ✅ Recurring train alerts: subscribe to specific train numbers for daily commute monitoring

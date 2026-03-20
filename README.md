@@ -43,8 +43,8 @@ TrackRat tracks trains across seven transit systems in real time, predicts platf
 │ • PATCO         │     │ • PostgreSQL     │     └─────────────────┘
 │ • LIRR          │     └─────────────────┘
 │ • Metro-North   │             │
-└─────────────────┘     ┌───────▼────────┐
-                        │   GCP Infra    │
+│ • NYC Subway    │     ┌───────▼────────┐
+└─────────────────┘     │   GCP Infra    │
                         │ • Compute      │
                         │ • Cloud SQL    │
                         │ • Monitoring   │
@@ -123,8 +123,8 @@ TrackRat/
 ├── backend_v2/          # Python FastAPI backend
 │   ├── src/trackrat/
 │   │   ├── api/         # API endpoints (FastAPI routers)
-│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, service_alerts)
-│   │   ├── config/      # Station configs, route topology
+│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, service_alerts, mta_common)
+│   │   ├── config/      # Station configs, route topology, platform mappings
 │   │   ├── models/      # SQLAlchemy + Pydantic models
 │   │   ├── services/    # Business logic, ML predictions, scheduling
 │   │   └── main.py      # App entrypoint
@@ -173,7 +173,9 @@ GET  /api/v2/predictions/delay              # Delay/cancellation forecasts
 POST /api/v2/devices/register              # Register device for push notifications
 PUT  /api/v2/alerts/subscriptions          # Sync route alert subscriptions
 GET  /api/v2/alerts/service                # MTA service alerts (planned work, delays)
-GET  /admin/stats                           # Server usage statistics
+POST /api/v2/feedback                      # Submit user feedback
+GET  /admin/stats                           # Server usage statistics (HTML)
+GET  /admin/stats.json                      # Server usage statistics (JSON)
 GET  /health                                # Health check
 ```
 

@@ -266,6 +266,12 @@ GET /api/v2/validation/results/{route}/{source}
 ```
 Route-specific validation details (e.g., `/api/v2/validation/results/NY-TR/NJT`)
 
+### Admin
+```
+GET /admin/stats       # Server usage statistics (HTML)
+GET /admin/stats.json  # Server usage statistics (JSON)
+```
+
 ### Route Alerts
 
 #### Register Device
@@ -280,6 +286,12 @@ PUT /api/v2/alerts/subscriptions
 {"device_token": "...", "subscriptions": [...]}
 ```
 Sync route alert subscriptions for delay/cancellation push notifications
+
+#### Service Alerts
+```
+GET /api/v2/alerts/service
+```
+MTA service alerts (planned work, delays) for Subway, LIRR, and Metro-North
 
 ### Feedback
 ```
@@ -448,10 +460,13 @@ The scheduler supports multiple replicas:
 - **DirectArrivalForecaster**: Real-time arrival predictions
 - **ApiCacheService**: Response caching with pre-computation
 - **SummaryService**: Natural language operations summaries
+- **SegmentNormalizer**: Station segment normalization for analytics
+- **GTFSService**: GTFS static and real-time feed management
 
 #### ML & Predictions
 - **HistoricalTrackPredictor**: Track assignment predictions using historical patterns
 - **TrackOccupancyService**: Track availability analysis
+- **DelayForecaster**: Delay and cancellation forecasting using hierarchical historical data
 
 #### Route Alerts
 - **AlertEvaluatorService**: Evaluates delay/cancellation conditions for push notifications
