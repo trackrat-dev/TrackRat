@@ -932,8 +932,32 @@ LIRR_PORT_WASHINGTON = Route(
     data_source="LIRR",
     line_codes=frozenset({"LIRR-PW"}),
     stations=(
-        # Port Washington doesn't go through Jamaica
+        # Port Washington — Penn Station terminus
         "NY",
+        "WDD",
+        "LSSM",
+        "FLS",
+        "LMHL",
+        "BDY",
+        "ADL",
+        "BSD",
+        "DGL",
+        "LLNK",
+        "GNK",
+        "MHT",
+        "PDM",
+        "PWS",
+    ),
+)
+
+LIRR_PORT_WASHINGTON_GCT = Route(
+    id="lirr-port-washington-gct",
+    name="Port Washington Branch",
+    data_source="LIRR",
+    line_codes=frozenset({"LIRR-PW"}),
+    stations=(
+        # Port Washington — Grand Central Terminal terminus (via East Side Access)
+        "GCT",
         "WDD",
         "LSSM",
         "FLS",
@@ -990,7 +1014,7 @@ LIRR_GRAND_CENTRAL = Route(
     name="Grand Central Madison",
     data_source="LIRR",
     line_codes=frozenset(),  # Terminal approach, trains tagged with branch line_code
-    stations=("GCT", "JAM"),
+    stations=("GCT", "FHL", "KGN", "JAM"),
 )
 
 LIRR_BELMONT_PARK = Route(
@@ -2660,6 +2684,7 @@ ALL_ROUTES: tuple[Route, ...] = (
     LIRR_FAR_ROCKAWAY,
     LIRR_WEST_HEMPSTEAD,
     LIRR_PORT_WASHINGTON,
+    LIRR_PORT_WASHINGTON_GCT,
     LIRR_PORT_JEFFERSON,
     LIRR_ATLANTIC,
     LIRR_GRAND_CENTRAL,
