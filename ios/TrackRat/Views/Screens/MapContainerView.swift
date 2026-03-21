@@ -51,6 +51,7 @@ class MapRegionViewModel: ObservableObject {
 
 struct MapContainerView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedDetent: PresentationDetent = .fraction(0.50)
     @State private var isSheetPresented = true  // Always show sheet (persistent)
     @State private var sheetExpansionTask: Task<Void, Never>?  // Track pending expansion for cancellation
@@ -251,12 +252,27 @@ struct MapContainerView: View {
             Task.detached(priority: .utility) { [weak mapViewModel] in
                 await mapViewModel?.fetchCongestionDataIfNeeded()
             }
+            mapViewModel.startAutoRefresh()
         }
         .onAppear {
             // Sync AppState settings to ViewModel on appear
             mapViewModel.setSelectedSystems(appState.selectedSystems)
             mapViewModel.highlightMode = appState.mapHighlightMode
             mapViewModel.showStations = appState.showMapStations
+        }
+        .onDisappear {
+            mapViewModel.stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                mapViewModel.refreshIfStale()
+                mapViewModel.startAutoRefresh()
+            case .background, .inactive:
+                mapViewModel.stopAutoRefresh()
+            @unknown default:
+                break
+            }
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
             mapViewModel.setSelectedSystems(newSystems)
