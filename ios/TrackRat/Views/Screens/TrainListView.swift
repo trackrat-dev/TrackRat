@@ -337,12 +337,6 @@ struct TrainCard: View {
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 3
 
-    /// Check if train is scheduled only (not observed)
-    /// For future dates, don't show "Scheduled" label since all trains are scheduled
-    private var shouldShowScheduledLabel: Bool {
-        return train.observationType == "SCHEDULED" && !isFutureDate
-    }
-
     private var isScheduledOnly: Bool {
         return train.observationType == "SCHEDULED"
     }
@@ -459,10 +453,6 @@ struct TrainCard: View {
                 Text("Departed")
                     .font(.caption)
                     .foregroundColor(Color.black.opacity(0.5))
-            } else if shouldShowScheduledLabel {
-                Text("Scheduled")
-                    .font(.caption)
-                    .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.7) : Color.black.opacity(0.5))
             }
 
             // Track and status - only show for boarding trains at origin
@@ -519,10 +509,8 @@ struct StatusV2Badge: View {
             return .blue
         case .delayed:
             return .red
-        case .onTime:
+        case .onTime, .scheduled:
             return .green
-        case .scheduled:
-            return .gray
         case .cancelled:
             return .red
         case .unknown:
@@ -540,7 +528,7 @@ struct StatusV2Badge: View {
         let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
         switch contextStatus {
         case .boarding:
-            return train.track != nil ? "Boarding" : "Scheduled"
+            return train.track != nil ? "Boarding" : "On Time"
         case .departed:
             return "En Route"
         case .delayed:
@@ -548,7 +536,7 @@ struct StatusV2Badge: View {
         case .onTime:
             return "On Time"
         case .scheduled:
-            return "Scheduled"
+            return "On Time"
         case .cancelled:
             return "Cancelled"
         case .unknown:

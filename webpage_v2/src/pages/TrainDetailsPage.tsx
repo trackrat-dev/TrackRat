@@ -148,7 +148,7 @@ export function TrainDetailsPage() {
       <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
-            <h2 className="text-3xl font-bold text-text-primary">Train {train.train_id}</h2>
+            <h2 className="text-3xl font-bold text-text-primary">Train {train.observation_type === 'SCHEDULED' ? 'TBD' : train.train_id}</h2>
             <div className="text-text-muted mt-1">{train.line.name}</div>
           </div>
           <div className="flex items-center gap-3">
