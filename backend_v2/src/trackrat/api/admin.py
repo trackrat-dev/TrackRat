@@ -4,12 +4,16 @@ Server usage statistics page.
 Serves a self-contained HTML page at /admin/stats showing live server usage:
 request traffic, popular routes, per-provider health, scheduler status, and errors.
 All request-level stats are in-memory and reset on restart.
+
+Supports query params:
+  ?hours=N       — only show requests from the last N hours
+  ?ios_only=true — filter to iOS clients only (shows per-IP breakdown)
 """
 
 from datetime import timedelta
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,15 +148,90 @@ def _format_duration(ms: float) -> str:
     return f"{ms:.0f}ms"
 
 
+def _render_latency_trend(
+    trend_data: list[dict[str, Any]],
+) -> str:
+    """Render a CSS mini-bar chart for latency trend data (12 five-minute buckets)."""
+    # Filter to buckets with actual data
+    values = [b["avg_ms"] for b in trend_data]
+    max_val = max((v for v in values if v > 0), default=0)
+    if max_val == 0:
+        return ""
+
+    bars = []
+    for b in trend_data:
+        if b["count"] == 0:
+            bars.append("<span class='trend-bar trend-bar-empty'></span>")
+        else:
+            height = max(2, int(16 * b["avg_ms"] / max_val))
+            # Color: green < 100ms, yellow < 500ms, red >= 500ms
+            color = (
+                "#3fb950"
+                if b["avg_ms"] < 100
+                else ("#d29922" if b["avg_ms"] < 500 else "#f85149")
+            )
+            bars.append(
+                f"<span class='trend-bar' style='height:{height}px;"
+                f"background:{color}'></span>"
+            )
+
+    return f"<span class='trend-container'>{''.join(bars)}</span>"
+
+
+def _build_filter_links(
+    current_hours: int | None,
+    current_ios_only: bool,
+) -> str:
+    """Build the filter control links for the HTML page."""
+
+    def _link(label: str, hours: int | None, ios: bool, is_active: bool) -> str:
+        params = []
+        if hours is not None:
+            params.append(f"hours={hours}")
+        if ios:
+            params.append("ios_only=true")
+        qs = f"?{'&'.join(params)}" if params else "/admin/stats"
+        cls = "filter-active" if is_active else "filter-link"
+        return f"<a href='{qs}' class='{cls}'>{label}</a>"
+
+    time_links = [
+        _link("All time", None, current_ios_only, current_hours is None),
+        _link("1h", 1, current_ios_only, current_hours == 1),
+        _link("6h", 6, current_ios_only, current_hours == 6),
+        _link("24h", 24, current_ios_only, current_hours == 24),
+    ]
+    client_links = [
+        _link("All clients", current_hours, False, not current_ios_only),
+        _link("iOS only", current_hours, True, current_ios_only),
+    ]
+
+    return (
+        f"<div class='filters'>Time: {' &middot; '.join(time_links)} "
+        f"&nbsp;&nbsp;|&nbsp;&nbsp; "
+        f"Client: {' &middot; '.join(client_links)}</div>"
+    )
+
+
 def _render_html(
     request_stats: dict[str, Any],
     db_stats: dict[str, Any],
     scheduler_jobs: list[dict[str, Any]],
     settings: Settings,
+    *,
+    hours: int | None = None,
+    ios_only: bool = False,
 ) -> str:
     """Render the stats page as self-contained HTML."""
     now = now_et()
     uptime = _format_uptime(request_stats["uptime_seconds"])
+    unique_ips = request_stats.get("unique_ips", 0)
+
+    # Window description for header
+    window_desc = f"last {hours}h" if hours else "since restart"
+    ios_desc = " (iOS only)" if ios_only else ""
+
+    # -- Filter controls --
+    filter_html = _build_filter_links(hours, ios_only)
 
     # -- Header --
     header = f"""
@@ -161,7 +240,8 @@ def _render_html(
         <div class="meta">
             {settings.environment.upper()} &middot; Uptime: {uptime} &middot;
             {now.strftime('%Y-%m-%d %H:%M:%S ET')} &middot;
-            {request_stats['total_requests']} total requests since restart
+            {request_stats['total_requests']} requests {window_desc}{ios_desc} &middot;
+            {unique_ips} unique IPs
         </div>
     </div>"""
 
@@ -171,6 +251,7 @@ def _render_html(
         client_rows += f"<tr><td>{_esc(client)}</td><td class='num'>{count}</td></tr>"
 
     # -- Traffic by endpoint --
+    latency_trend = request_stats.get("latency_trend", {})
     endpoint_rows = ""
     for path, count in list(request_stats["requests_by_path"].items())[:15]:
         lat = request_stats["latency"].get(path)
@@ -180,10 +261,12 @@ def _render_html(
             if lat
             else "-"
         )
+        trend_html = _render_latency_trend(latency_trend.get(path, []))
         endpoint_rows += (
             f"<tr><td><code>{_esc(path)}</code></td>"
             f"<td class='num'>{count}</td>"
-            f"<td class='num'>{lat_str}</td></tr>"
+            f"<td class='num'>{lat_str}</td>"
+            f"<td>{trend_html}</td></tr>"
         )
 
     # -- Status codes --
@@ -247,6 +330,20 @@ def _render_html(
             f"<td>{pending}</td></tr>"
         )
 
+    # -- Requests by IP (shown when ios_only or always useful) --
+    ip_section = ""
+    requests_by_ip = request_stats.get("requests_by_ip", {})
+    if ios_only and requests_by_ip:
+        ip_rows = ""
+        for ip, count in list(requests_by_ip.items())[:20]:
+            ip_rows += f"<tr><td><code>{_esc(ip)}</code></td><td class='num'>{count}</td></tr>"
+        ip_section = f"""
+<h2>Requests by IP ({len(requests_by_ip)} unique)</h2>
+<table>
+<tr><th>IP Address</th><th class="num">Requests</th></tr>
+{ip_rows}
+</table>"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -258,9 +355,13 @@ def _render_html(
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
          background: #0d1117; color: #c9d1d9; padding: 20px; line-height: 1.5; }}
-  .header {{ margin-bottom: 24px; }}
+  .header {{ margin-bottom: 16px; }}
   h1 {{ color: #58a6ff; font-size: 1.4em; }}
   .meta {{ color: #8b949e; font-size: 0.85em; margin-top: 4px; }}
+  .filters {{ font-size: 0.85em; margin-bottom: 16px; padding: 8px 0; border-bottom: 1px solid #21262d; }}
+  .filter-link {{ color: #58a6ff; text-decoration: none; }}
+  .filter-link:hover {{ text-decoration: underline; }}
+  .filter-active {{ color: #c9d1d9; font-weight: bold; text-decoration: none; }}
   h2 {{ color: #58a6ff; font-size: 1.05em; margin: 20px 0 8px; border-bottom: 1px solid #21262d; padding-bottom: 4px; }}
   table {{ border-collapse: collapse; width: 100%; margin-bottom: 16px; }}
   th, td {{ text-align: left; padding: 4px 12px 4px 0; font-size: 0.85em; }}
@@ -276,10 +377,14 @@ def _render_html(
   .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; }}
   @media (max-width: 800px) {{ .grid {{ grid-template-columns: 1fr; }} }}
   .footer {{ margin-top: 24px; color: #484f58; font-size: 0.75em; text-align: center; }}
+  .trend-container {{ display: inline-flex; align-items: flex-end; gap: 1px; height: 16px; vertical-align: middle; margin-left: 6px; }}
+  .trend-bar {{ display: inline-block; width: 4px; border-radius: 1px; }}
+  .trend-bar-empty {{ height: 2px; background: #21262d; }}
 </style>
 </head>
 <body>
 {header}
+{filter_html}
 
 <div class="status-line">Status codes: {status_line}</div>
 <div class="reg-line">{reg_line}</div>
@@ -288,8 +393,8 @@ def _render_html(
 <div>
 <h2>Traffic by Endpoint</h2>
 <table>
-<tr><th>Path</th><th class="num">Hits</th><th class="num">Latency</th></tr>
-{endpoint_rows if endpoint_rows else "<tr><td colspan='3'>No requests yet</td></tr>"}
+<tr><th>Path</th><th class="num">Hits</th><th class="num">Latency</th><th>Trend</th></tr>
+{endpoint_rows if endpoint_rows else "<tr><td colspan='4'>No requests yet</td></tr>"}
 </table>
 
 <h2>Popular Route Searches</h2>
@@ -311,6 +416,7 @@ def _render_html(
 <tr><th>Source</th><th class="num">Active</th><th class="num">Today</th><th class="num">Cancelled</th><th class="num">Freshness</th></tr>
 {provider_rows if provider_rows else "<tr><td colspan='5'>No data</td></tr>"}
 </table>
+{ip_section}
 </div>
 </div>
 
@@ -334,28 +440,45 @@ def _esc(text: str) -> str:
 async def stats_page(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    hours: int | None = Query(None, ge=1, le=168),
+    ios_only: bool = Query(False),
 ) -> HTMLResponse:
     """Server usage statistics page."""
-    request_data = get_request_stats().snapshot()
+    request_data = get_request_stats().snapshot(
+        hours=hours, ios_only=ios_only
+    )
     db_data = await _db_stats(db)
     scheduler_jobs = _scheduler_stats()
-    html = _render_html(request_data, db_data, scheduler_jobs, settings)
+    html = _render_html(
+        request_data, db_data, scheduler_jobs, settings,
+        hours=hours, ios_only=ios_only,
+    )
     return HTMLResponse(content=html)
 
 
 @router.get("/admin/stats.json")
 async def stats_json(
     db: AsyncSession = Depends(get_db),
+    hours: int | None = Query(None, ge=1, le=168),
+    ios_only: bool = Query(False),
 ) -> dict[str, Any]:
     """Server usage statistics as JSON."""
-    request_data = get_request_stats().snapshot()
+    request_data = get_request_stats().snapshot(
+        hours=hours, ios_only=ios_only
+    )
     db_data = await _db_stats(db)
+    scheduler_jobs = _scheduler_stats()
 
-    # Convert list-of-dicts to string-keyed dict for JSON consumers
+    # Resolve station names in route searches for JSON consumers
     route_searches = {
-        f"{entry['from']} -> {entry['to']}": entry["count"]
+        f"{get_station_name(entry['from'])} -> {get_station_name(entry['to'])}": entry[
+            "count"
+        ]
         for entry in request_data["route_searches"]
     }
     request_data["route_searches"] = route_searches
+
+    # Include scheduler jobs (JSON parity with HTML)
+    request_data["scheduler_jobs"] = scheduler_jobs
 
     return {**request_data, **db_data}
