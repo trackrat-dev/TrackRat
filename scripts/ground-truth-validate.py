@@ -388,8 +388,25 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
                     if internal_code == dest_code and stop == stations[-1]:
                         continue
 
-                    # Use actual departure > scheduled departure
-                    time_str = stop.dep or stop.schDep
+                    # Use actual departure only if the station has been departed.
+                    # The Amtraker API may prematurely set dep=arr for stations
+                    # the train hasn't left yet (e.g. layover stops).
+                    if stop.status == "Departed" and stop.dep:
+                        time_str = stop.dep
+                        # Clamp actual dep to scheduled if earlier (same as
+                        # production collector logic in journey.py)
+                        if stop.schDep:
+                            try:
+                                dep_raw = stop.dep.replace("Z", "+00:00") if "Z" in stop.dep else stop.dep
+                                sch_raw = stop.schDep.replace("Z", "+00:00") if "Z" in stop.schDep else stop.schDep
+                                dep_dt = datetime.fromisoformat(dep_raw)
+                                sch_dt = datetime.fromisoformat(sch_raw)
+                                if dep_dt < sch_dt:
+                                    time_str = stop.schDep
+                            except ValueError:
+                                pass
+                    else:
+                        time_str = stop.schDep
                     if not time_str:
                         continue
 
