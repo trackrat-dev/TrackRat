@@ -42,7 +42,7 @@ prometheus-client = "^0.24.1"
 pyjwt = {extras = ["crypto"], version = "^2.8.0"}
 
 # Google Cloud Storage (for database backups)
-google-cloud-storage = "^3.9.0"
+google-cloud-storage = "^3.10.0"
 greenlet = "^3.3.2"
 
 # Utilities
