@@ -74,6 +74,16 @@ HEADSIGN_TO_LINE_INFO: dict[str, tuple[str, str, str]] = {
     "jsq": ("JSQ-33", "Journal Square - 33rd Street", "#ff9900"),
 }
 
+# NWK-WTC line color is exclusive — no other PATH route uses it.
+# The RidePATH API shows intermediate stops as headsigns at NWK-WTC terminus
+# stations (e.g., "Harrison" at NWK instead of "World Trade Center"), causing
+# truncated journeys and duplicates. Use color + direction to override.
+NWK_WTC_COLOR = "#d93a30"
+NWK_WTC_TERMINUS: dict[str, tuple[str, str]] = {
+    "ToNY": ("PWC", "World Trade Center"),
+    "ToNJ": ("PNK", "Newark"),
+}
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -507,6 +517,24 @@ class PathCollector:
                 headsign=destination_headsign,
             )
             return False
+
+        # Override destination for NWK-WTC trains with misleading headsigns.
+        # The RidePATH API shows intermediate stops (e.g., "Harrison" at NWK,
+        # "Journal Square" at WTC) instead of the true final destination.
+        if arrival.line_color:
+            normalized_color = _normalize_line_color(arrival.line_color)
+            terminus = NWK_WTC_TERMINUS.get(arrival.direction)
+            if normalized_color == NWK_WTC_COLOR and terminus:
+                correct_dest, correct_headsign = terminus
+                if destination_station != correct_dest:
+                    logger.debug(
+                        "path_nwk_wtc_headsign_override",
+                        station=discovered_at_station,
+                        original_headsign=destination_headsign,
+                        corrected_destination=correct_dest,
+                    )
+                    destination_station = correct_dest
+                    destination_headsign = correct_headsign
 
         # Infer the true origin station (may be different if discovered mid-route)
         # Pass line_color to disambiguate overlapping routes (e.g., HOB-33 vs JSQ-33H)

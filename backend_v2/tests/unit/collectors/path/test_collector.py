@@ -985,6 +985,219 @@ class TestPathCollectorDiscovery:
 
 
 # =============================================================================
+# NWK-WTC HEADSIGN OVERRIDE TESTS
+# =============================================================================
+
+
+class TestNwkWtcHeadsignOverride:
+    """Tests for NWK-WTC color-based destination override.
+
+    The RidePATH API shows intermediate stops as headsigns at NWK-WTC terminus
+    stations (e.g., "Harrison" at NWK instead of "World Trade Center"). The
+    collector uses the exclusive NWK-WTC line color (D93A30) to detect and
+    correct these misleading headsigns.
+    """
+
+    @pytest.fixture
+    def mock_client(self):
+        client = AsyncMock()
+        client.close = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def collector(self, mock_client):
+        return PathCollector(client=mock_client)
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        session.scalar = AsyncMock(return_value=None)
+        mock_scalars_obj = MagicMock()
+        mock_scalars_obj.all.return_value = []
+        session.scalars = AsyncMock(return_value=mock_scalars_obj)
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_nwk_harrison_headsign_overridden_to_wtc(
+        self, collector, mock_session
+    ):
+        """At NWK, headsign 'Harrison' with NWK-WTC color should create full
+        PNK->PWC journey, not truncated PNK->PHR."""
+        arrival = PathArrival(
+            station_code="PNK",
+            headsign="Harrison",
+            direction="ToNY",
+            minutes_away=0,
+            arrival_time=datetime(2026, 3, 22, 10, 0, 0),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+
+        assert mock_session.add.called, "Journey should have been created"
+        journey = mock_session.add.call_args_list[0][0][0]
+        assert journey.origin_station_code == "PNK", (
+            f"Origin should be PNK (Newark), got {journey.origin_station_code}"
+        )
+        assert journey.terminal_station_code == "PWC", (
+            f"Terminal should be PWC (World Trade Center), got {journey.terminal_station_code}"
+        )
+        assert journey.destination == "World Trade Center", (
+            f"Destination should be 'World Trade Center', got '{journey.destination}'"
+        )
+        assert journey.line_code == "NWK-WTC", (
+            f"Line code should be NWK-WTC, got {journey.line_code}"
+        )
+        assert journey.stops_count == 6, (
+            f"Full NWK-WTC route has 6 stops, got {journey.stops_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_wtc_journal_square_headsign_overridden_to_newark(
+        self, collector, mock_session
+    ):
+        """At WTC, headsign 'Journal Square' with NWK-WTC color should create
+        full PWC->PNK journey, not truncated PWC->PJS."""
+        arrival = PathArrival(
+            station_code="PWC",
+            headsign="Journal Square",
+            direction="ToNJ",
+            minutes_away=0,
+            arrival_time=datetime(2026, 3, 22, 10, 0, 0),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+
+        assert mock_session.add.called, "Journey should have been created"
+        journey = mock_session.add.call_args_list[0][0][0]
+        assert journey.origin_station_code == "PWC", (
+            f"Origin should be PWC (WTC), got {journey.origin_station_code}"
+        )
+        assert journey.terminal_station_code == "PNK", (
+            f"Terminal should be PNK (Newark), got {journey.terminal_station_code}"
+        )
+        assert journey.destination == "Newark", (
+            f"Destination should be 'Newark', got '{journey.destination}'"
+        )
+        assert journey.stops_count == 6, (
+            f"Full NWK-WTC route has 6 stops, got {journey.stops_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_correct_headsign_not_overridden(
+        self, collector, mock_session
+    ):
+        """At JSQ, headsign 'World Trade Center' with NWK-WTC color should NOT
+        be overridden — it's already correct."""
+        arrival = PathArrival(
+            station_code="PJS",
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=5,
+            arrival_time=datetime(2026, 3, 22, 10, 5, 0),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+
+        assert mock_session.add.called, "Journey should have been created"
+        journey = mock_session.add.call_args_list[0][0][0]
+        assert journey.terminal_station_code == "PWC", (
+            f"Terminal should be PWC, got {journey.terminal_station_code}"
+        )
+        assert journey.destination == "World Trade Center", (
+            f"Destination should remain 'World Trade Center', got '{journey.destination}'"
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_nwk_wtc_color_not_overridden(
+        self, collector, mock_session
+    ):
+        """JSQ-33 trains (orange #FF9900) showing 'Journal Square' headsign at
+        P33 should NOT be overridden — only NWK-WTC color triggers override."""
+        arrival = PathArrival(
+            station_code="P33",
+            headsign="Journal Square",
+            direction="ToNJ",
+            minutes_away=3,
+            arrival_time=datetime(2026, 3, 22, 10, 3, 0),
+            line_color="FF9900",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+
+        assert mock_session.add.called, "Journey should have been created"
+        journey = mock_session.add.call_args_list[0][0][0]
+        # Should resolve to PJS (Journal Square), not be overridden to PNK
+        assert journey.terminal_station_code == "PJS", (
+            f"Non-NWK-WTC train should NOT be overridden. "
+            f"Terminal should be PJS, got {journey.terminal_station_code}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_nwk_and_jsq_discover_same_train_with_same_id(
+        self, collector, mock_session
+    ):
+        """A train discovered at NWK with 'Harrison' headsign and the same train
+        discovered at JSQ with 'World Trade Center' headsign should produce the
+        same train_id (both resolve to origin=PNK, dest='World Trade Center')."""
+        base_time = datetime(2026, 3, 22, 10, 0, 0)
+
+        # Train at NWK (origin) with misleading headsign
+        nwk_arrival = PathArrival(
+            station_code="PNK",
+            headsign="Harrison",
+            direction="ToNY",
+            minutes_away=0,
+            arrival_time=base_time,
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, nwk_arrival, {})
+        assert mock_session.add.called
+        nwk_journey = mock_session.add.call_args_list[0][0][0]
+        nwk_train_id = nwk_journey.train_id
+
+        mock_session.reset_mock()
+
+        # Same train at JSQ (3 stops later) with correct headsign
+        # arrival_time is later since the train has traveled from NWK to JSQ
+        jsq_arrival = PathArrival(
+            station_code="PJS",
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=5,
+            arrival_time=base_time + timedelta(minutes=10),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, jsq_arrival, {})
+        assert mock_session.add.called
+        jsq_journey = mock_session.add.call_args_list[0][0][0]
+        jsq_train_id = jsq_journey.train_id
+
+        # Both should use "World Trade Center" as destination in their train IDs
+        # (headsign is truncated to 10 chars in train ID: "WorldTrad" -> "worldtrad")
+        assert "worldtrad" in nwk_train_id.lower(), (
+            f"NWK train ID should use 'worldtrad' (overridden), got: {nwk_train_id}"
+        )
+        assert "worldtrad" in jsq_train_id.lower(), (
+            f"JSQ train ID should use 'worldtrad', got: {jsq_train_id}"
+        )
+        # Both should have same origin
+        assert nwk_journey.origin_station_code == jsq_journey.origin_station_code == "PNK"
+
+
+# =============================================================================
 # UPDATE PHASE TESTS
 # =============================================================================
 

@@ -77,6 +77,7 @@ bash scripts/validate-staging.sh --no-wait              # Skip 30s stabilization
 bash scripts/validate-staging.sh --no-random             # Skip Phase 2 random routes
 bash scripts/validate-staging.sh --skip-logs             # Skip GCP log check (no creds needed)
 bash scripts/validate-staging.sh --no-wait --no-random   # Fast: health + fixed routes only
+bash scripts/validate-staging.sh --ground-truth           # Include ground truth validation (all providers)
 
 # Against production:
 bash scripts/validate-staging.sh https://apiv2.trackrat.net
@@ -123,9 +124,12 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider MNR --verbose
 
 # SUBWAY (no auth needed)
 poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbose
+
+# All providers at once
+poetry run python3 ../scripts/ground-truth-validate.py --all --verbose
 ```
 
-Options: `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
+Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
 Default target is staging; pass a URL as first positional arg for production.
 
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
