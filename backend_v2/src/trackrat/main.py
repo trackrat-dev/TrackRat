@@ -24,6 +24,7 @@ from trackrat.api import (
     predictions,
     routes,
     trains,
+    trips,
     validation,
 )
 from trackrat.db.database import init_database, shutdown_database
@@ -190,6 +191,7 @@ app.include_router(live_activities.router, include_in_schema=False)
 app.include_router(predictions.router)
 app.include_router(routes.router)
 app.include_router(trains.router)
+app.include_router(trips.router)
 app.include_router(validation.router, include_in_schema=False)
 
 # Prometheus metrics endpoint (direct route avoids Starlette mount 307 redirect)
