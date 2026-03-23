@@ -10,11 +10,9 @@ struct DestinationPickerView: View {
 
     private var searchResults: [String] {
         let results = Stations.search(searchText)
-        // Filter out the current departure station and stations not in selected systems
+        // Filter out the current departure station — show all systems for cross-system transfers
         return results.filter { stationName in
-            guard stationName != appState.selectedDeparture else { return false }
-            guard let code = Stations.getStationCode(stationName) else { return false }
-            return Stations.isStationVisible(code, withSystems: appState.selectedSystems, amtrakMode: appState.amtrakMode)
+            stationName != appState.selectedDeparture
         }
     }
 

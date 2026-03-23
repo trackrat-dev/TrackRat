@@ -31,6 +31,7 @@
 		A11A0DC12F4B840B00C96DA1 /* AddRouteAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */; };
 		A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */; };
 		A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5562E25BBC700958ABA /* TrainV2.swift */; };
+		A1TRIP0012F60000000000001 /* TripOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1TRIP0012F60000000000002 /* TripOption.swift */; };
 		A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5552E25BBC700958ABA /* DeepLink.swift */; };
 		A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55B2E25BBD800958ABA /* DeepLinkService.swift */; };
 		A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
@@ -192,6 +193,7 @@
 		A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StaticTrackDistributionService.swift; path = Services/StaticTrackDistributionService.swift; sourceTree = "<group>"; };
 		A126E5552E25BBC700958ABA /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLink.swift; path = Models/DeepLink.swift; sourceTree = "<group>"; };
 		A126E5562E25BBC700958ABA /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = Models/TrainV2.swift; sourceTree = "<group>"; };
+		A1TRIP0012F60000000000002 /* TripOption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripOption.swift; path = Models/TripOption.swift; sourceTree = "<group>"; };
 		A126E5572E25BBC700958ABA /* V2APIModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModels.swift; path = Models/V2APIModels.swift; sourceTree = "<group>"; };
 		A126E55B2E25BBD800958ABA /* DeepLinkService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLinkService.swift; path = Services/DeepLinkService.swift; sourceTree = "<group>"; };
 		A126E55C2E25BBD800958ABA /* ShareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShareService.swift; path = Services/ShareService.swift; sourceTree = "<group>"; };
@@ -389,6 +391,7 @@
 				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
 				A126E5552E25BBC700958ABA /* DeepLink.swift */,
 				A126E5562E25BBC700958ABA /* TrainV2.swift */,
+				A1TRIP0012F60000000000002 /* TripOption.swift */,
 				A126E5572E25BBC700958ABA /* V2APIModels.swift */,
 				A10E97FF2DE39F23002F3214 /* TrainListView.swift */,
 				A126E55B2E25BBD800958ABA /* DeepLinkService.swift */,
@@ -690,6 +693,7 @@
 				A1D88F632F27083000111466 /* RouteTopology.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
+				A1TRIP0012F60000000000001 /* TripOption.swift in Sources */,
 				A12AADE82EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */,
 				A1F97BB42F1E8B2500BF816D /* TrainSystem.swift in Sources */,

@@ -145,6 +145,83 @@ struct V2StationMetadata: Codable {
     let name: String
 }
 
+// MARK: - Trip Search Endpoint Models
+
+struct V2TripLeg: Codable {
+    let trainId: String
+    let journeyDate: Date?
+    let line: V2LineInfo
+    let dataSource: String
+    let destination: String
+    let boarding: V2StationInfo
+    let alighting: V2StationInfo
+    let observationType: String?
+    let isCancelled: Bool
+    let trainPosition: V2TrainPosition?
+
+    enum CodingKeys: String, CodingKey {
+        case trainId = "train_id"
+        case journeyDate = "journey_date"
+        case line, destination, boarding, alighting
+        case dataSource = "data_source"
+        case observationType = "observation_type"
+        case isCancelled = "is_cancelled"
+        case trainPosition = "train_position"
+    }
+}
+
+struct V2TransferInfo: Codable {
+    let fromStation: V2SimpleStationInfo
+    let toStation: V2SimpleStationInfo
+    let walkMinutes: Int
+    let sameStation: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case fromStation = "from_station"
+        case toStation = "to_station"
+        case walkMinutes = "walk_minutes"
+        case sameStation = "same_station"
+    }
+}
+
+struct V2TripOption: Codable {
+    let legs: [V2TripLeg]
+    let transfers: [V2TransferInfo]
+    let departureTime: Date
+    let arrivalTime: Date
+    let totalDurationMinutes: Int
+    let isDirect: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case legs, transfers
+        case departureTime = "departure_time"
+        case arrivalTime = "arrival_time"
+        case totalDurationMinutes = "total_duration_minutes"
+        case isDirect = "is_direct"
+    }
+}
+
+struct V2TripSearchResponse: Codable {
+    let trips: [V2TripOption]
+    let metadata: V2TripSearchMetadata?
+}
+
+struct V2TripSearchMetadata: Codable {
+    let fromStation: V2StationMetadata?
+    let toStation: V2StationMetadata?
+    let count: Int?
+    let searchType: String?
+    let generatedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case fromStation = "from_station"
+        case toStation = "to_station"
+        case count
+        case searchType = "search_type"
+        case generatedAt = "generated_at"
+    }
+}
+
 // MARK: - Train Details Endpoint Models
 
 struct V2RouteInfo: Codable {
