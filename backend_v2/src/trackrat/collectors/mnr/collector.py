@@ -464,6 +464,8 @@ class MNRCollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                     if arr.track:
+                        if not existing_stop.track:
+                            existing_stop.track_assigned_at = now_et()
                         existing_stop.track = arr.track
 
             # Update departure status and journey metadata
@@ -572,6 +574,8 @@ class MNRCollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                 if arr.track:
+                    if not stop.track:
+                        stop.track_assigned_at = now_et()
                     stop.track = arr.track
 
         # Update journey-level times — arrival_time is already the predicted time

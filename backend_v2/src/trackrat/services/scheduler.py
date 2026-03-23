@@ -2799,9 +2799,51 @@ class SchedulerService:
 
                             continue  # Skip normal update processing
 
+                        # Force JIT refresh for trains with active LAs awaiting track assignment
+                        # This ensures we poll the transit API every LA cycle (~1 min) for
+                        # trains approaching departure without a track, rather than waiting
+                        # for the normal staleness threshold (~60s).
+                        force_refresh_for_track = False
+                        if journey.data_source in ("NJT", "LIRR", "MNR"):
+                            for t in tokens:
+                                if t.track_notified_at is not None:
+                                    continue
+                                origin_stop = next(
+                                    (
+                                        s
+                                        for s in (journey.stops or [])
+                                        if s.station_code == t.origin_code
+                                    ),
+                                    None,
+                                )
+                                if not origin_stop or origin_stop.track:
+                                    continue  # Already has track or stop not found
+                                dep_time = (
+                                    origin_stop.updated_departure
+                                    or origin_stop.scheduled_departure
+                                )
+                                if (
+                                    dep_time
+                                    and (
+                                        ensure_timezone_aware(dep_time) - now_et()
+                                    ).total_seconds()
+                                    < 1800
+                                ):
+                                    force_refresh_for_track = True
+                                    logger.info(
+                                        "force_refresh_for_track_assignment",
+                                        train_number=train_number,
+                                        origin_code=t.origin_code,
+                                    )
+                                    break
+
                         # Check if journey data is stale (>60 seconds old)
-                        if journey.last_updated_at is None or self._is_stale(
-                            ensure_timezone_aware(journey.last_updated_at)
+                        if (
+                            force_refresh_for_track
+                            or journey.last_updated_at is None
+                            or self._is_stale(
+                                ensure_timezone_aware(journey.last_updated_at)
+                            )
                         ):
                             logger.info(
                                 "live_activity_journey_stale",
@@ -2870,12 +2912,34 @@ class SchedulerService:
                                     )
                                 )
 
+                                # Inject alertMetadata when track is newly assigned
+                                track_just_assigned = (
+                                    content_state.get("track") is not None
+                                    and token.track_notified_at is None
+                                )
+                                if track_just_assigned:
+                                    content_state["alertMetadata"] = {
+                                        "alert_type": "track_assigned",
+                                        "train_id": journey.train_id,
+                                        "dynamic_island_priority": "high",
+                                    }
+                                    logger.info(
+                                        "track_assignment_notification",
+                                        train_number=train_number,
+                                        track=content_state["track"],
+                                        origin_code=token.origin_code,
+                                    )
+
                                 # Send token-specific update via APNS
                                 success = (
                                     await self.apns_service.send_live_activity_update(
                                         token.push_token, content_state
                                     )
                                 )
+
+                                if success and track_just_assigned:
+                                    token.track_notified_at = now_et()
+                                    session.commit()
 
                                 # Mark token as inactive if it failed with 410
                                 if not success:
