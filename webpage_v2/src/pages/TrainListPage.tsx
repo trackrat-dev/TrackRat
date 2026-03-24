@@ -64,28 +64,22 @@ export function TrainListPage() {
       setError(null);
       const response = await apiService.searchTrips(from, to);
 
-      const hasTransfers = response.trips.some(t => !t.is_direct);
+      // Split response into direct and transfer trips
+      const directTrips = response.trips.filter(t => t.is_direct);
+      const transferTripsResult = response.trips.filter(t => !t.is_direct);
 
-      if (hasTransfers) {
-        setTransferTrips(response.trips);
-        setTrains([]);
-        setIsTransferSearch(true);
-      } else {
-        // Convert direct trips to Train objects for existing UI
-        const directTrains = response.trips.map(tripLegToTrain);
+      // Convert direct trips to Train objects for existing TrainCard
+      const directTrains = directTrips.map(tripLegToTrain);
+      const sorted = [...directTrains].sort((a, b) => {
+        const aDeparted = hasTrainDeparted(a);
+        const bDeparted = hasTrainDeparted(b);
+        if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+        return 0;
+      });
 
-        // Sort: upcoming trains first, then departed trains
-        const sorted = [...directTrains].sort((a, b) => {
-          const aDeparted = hasTrainDeparted(a);
-          const bDeparted = hasTrainDeparted(b);
-          if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
-          return 0;
-        });
-
-        setTrains(sorted);
-        setTransferTrips([]);
-        setIsTransferSearch(false);
-      }
+      setTrains(sorted);
+      setTransferTrips(transferTripsResult);
+      setIsTransferSearch(transferTripsResult.length > 0);
 
       setLastUpdated(new Date());
       setLoading(false);
@@ -127,13 +121,8 @@ export function TrainListPage() {
     );
   }, [transferTrips, trainFilter]);
 
-  const isEmpty = isTransferSearch
-    ? filteredTransferTrips.length === 0
-    : filteredTrains.length === 0;
-
-  const hasResults = isTransferSearch
-    ? transferTrips.length > 0
-    : trains.length > 0;
+  const isEmpty = filteredTrains.length === 0 && filteredTransferTrips.length === 0;
+  const hasResults = trains.length > 0 || transferTrips.length > 0;
 
   if (!from || !to || !fromStation || !toStation) {
     return (
@@ -224,26 +213,23 @@ export function TrainListPage() {
         <div className="text-center py-12 text-text-muted">
           {trainFilter ? 'No matching trains' : 'No trains found for this route'}
         </div>
-      ) : isTransferSearch ? (
-        <div className="space-y-3">
-          {filteredTransferTrips.map((trip, index) => (
-            <TransferTripCard
-              key={`transfer-${index}`}
-              trip={trip}
-              onLegClick={(leg) => navigate(`/train/${leg.train_id}/${leg.boarding.code}/${leg.alighting.code}`)}
-            />
-          ))}
-        </div>
       ) : (
         <div className="space-y-3">
-          {filteredTrains.map((train, index) => (
+          {filteredTrains.map((train) => (
             <TrainCard
-              key={`${train.train_id}-${index}`}
+              key={train.train_id}
               train={train}
               onClick={() => navigate(`/train/${train.train_id}/${from}/${to}`)}
               from={from}
               to={to}
               departed={hasTrainDeparted(train)}
+            />
+          ))}
+          {filteredTransferTrips.map((trip) => (
+            <TransferTripCard
+              key={trip.legs.map(l => l.train_id).join('-')}
+              trip={trip}
+              onLegClick={(leg) => navigate(`/train/${leg.train_id}/${leg.boarding.code}/${leg.alighting.code}`)}
             />
           ))}
         </div>

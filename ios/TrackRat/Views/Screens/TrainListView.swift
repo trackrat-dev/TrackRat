@@ -620,18 +620,14 @@ class TrainListViewModel: ObservableObject {
                 return
             }
 
-            print("🔍 DEBUG: Loading trips from \(fromStationCode) to \(toStationCode) for date \(date)")
-
-            let fetchedTrips = try await self.apiService.searchTrips(
+let fetchedTrips = try await self.apiService.searchTrips(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
                 date: date,
                 dataSources: selectedSystems
             )
 
-            print("🔍 DEBUG: API returned \(fetchedTrips.count) trip options")
-
-            let hasTransfers = fetchedTrips.contains { !$0.isDirect }
+let hasTransfers = fetchedTrips.contains { !$0.isDirect }
 
             if hasTransfers {
                 // Transfer results: deduplicate and store directly (backend sorts by departure)
@@ -659,7 +655,7 @@ class TrainListViewModel: ObservableObject {
                 expressTrainIds = identifyExpressTrains()
             }
 
-            print("🔍 DEBUG: isTransferSearch=\(isTransferSearch), trains=\(trains.count), transferTrips=\(transferTrips.count)")
+
         } catch {
             self.error = error.localizedDescription
         }
@@ -756,70 +752,65 @@ struct TransferTripCard: View {
 
     var body: some View {
         if trip.legs.count >= 2, !trip.transfers.isEmpty {
-            let leg1 = trip.legs[0]
-            let leg2 = trip.legs[1]
-            let transfer = trip.transfers[0]
-
             VStack(alignment: .leading, spacing: 0) {
-            // Leg 1
-            LegRow(leg: leg1, label: "1", onTap: { onLegTap(leg1) })
+                ForEach(Array(trip.legs.enumerated()), id: \.element.id) { index, leg in
+                    LegRow(leg: leg, label: "\(index + 1)", onTap: { onLegTap(leg) })
 
-            // Transfer indicator
-            HStack(spacing: 8) {
-                // Vertical connector
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.15))
-                        .frame(width: 2, height: 8)
-                    Image(systemName: transfer.sameStation ? "arrow.down" : "figure.walk")
-                        .font(.caption2)
-                        .foregroundColor(.black.opacity(0.4))
-                    Rectangle()
-                        .fill(Color.black.opacity(0.15))
-                        .frame(width: 2, height: 8)
+                    if index < trip.transfers.count {
+                        let transfer = trip.transfers[index]
+                        HStack(spacing: 8) {
+                            VStack(spacing: 0) {
+                                Rectangle()
+                                    .fill(Color.black.opacity(0.15))
+                                    .frame(width: 2, height: 8)
+                                Image(systemName: transfer.sameStation ? "arrow.down" : "figure.walk")
+                                    .font(.caption2)
+                                    .foregroundColor(.black.opacity(0.4))
+                                Rectangle()
+                                    .fill(Color.black.opacity(0.15))
+                                    .frame(width: 2, height: 8)
+                            }
+                            .frame(width: 24)
+
+                            Text(transfer.walkDescription)
+                                .font(.caption)
+                                .foregroundColor(.black.opacity(0.45))
+
+                            if !transfer.sameStation {
+                                Text("at \(transfer.toStation.name)")
+                                    .font(.caption)
+                                    .foregroundColor(.black.opacity(0.35))
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.vertical, 2)
+                    }
                 }
-                .frame(width: 24)
 
-                Text(transfer.walkDescription)
-                    .font(.caption)
-                    .foregroundColor(.black.opacity(0.45))
-
-                if !transfer.sameStation {
-                    Text("at \(transfer.toStation.name)")
+                // Trip summary footer
+                HStack {
+                    Text(trip.durationDisplay)
                         .font(.caption)
-                        .foregroundColor(.black.opacity(0.35))
-                        .lineLimit(1)
+                        .fontWeight(.medium)
+                        .foregroundColor(.black.opacity(0.6))
+
+                    Spacer()
+
+                    Text("\(timeString(trip.departureTime)) → \(timeString(trip.arrivalTime))")
+                        .font(.caption)
+                        .foregroundColor(.black.opacity(0.5))
                 }
-
-                Spacer()
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
             }
-            .padding(.leading, 16)
-            .padding(.vertical, 2)
-
-            // Leg 2
-            LegRow(leg: leg2, label: "2", onTap: { onLegTap(leg2) })
-
-            // Trip summary footer
-            HStack {
-                Text(trip.durationDisplay)
-                    .font(.caption)
-                    .fontWeight(.medium)
-                    .foregroundColor(.black.opacity(0.6))
-
-                Spacer()
-
-                Text("\(timeString(trip.departureTime)) → \(timeString(trip.arrivalTime))")
-                    .font(.caption)
-                    .foregroundColor(.black.opacity(0.5))
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 4)
-        }
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.9))
-        .cornerRadius(TrackRatTheme.CornerRadius.lg)
-        .trackRatShadow()
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.9))
+            .cornerRadius(TrackRatTheme.CornerRadius.lg)
+            .trackRatShadow()
         }
     }
 }

@@ -79,12 +79,7 @@ def _build_station_to_systems() -> dict[str, set[str]]:
     return dict(station_systems)
 
 
-def _build_station_to_systems_cached() -> dict[str, set[str]]:
-    """Cached version — called once at module load."""
-    return _build_station_to_systems()
-
-
-_STATION_SYSTEMS: dict[str, set[str]] = _build_station_to_systems_cached()
+_STATION_SYSTEMS: dict[str, set[str]] = _build_station_to_systems()
 
 
 def _generate_transfer_points() -> tuple[TransferPoint, ...]:

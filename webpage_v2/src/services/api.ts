@@ -62,7 +62,7 @@ class APIService {
 
   async searchTrips(from: string, to: string, limit = 50): Promise<TripSearchResponse> {
     const url = `${BASE_URL}/trips/search?from=${from}&to=${to}&limit=${limit}&hide_departed=true`;
-    return this.fetch<TripSearchResponse>(url);
+    return this.fetch<TripSearchResponse>(url, false); // Don't cache — 30s polling needs fresh data
   }
 
   async getRouteSummary(from: string, to: string): Promise<OperationsSummaryResponse | null> {

@@ -7,7 +7,7 @@ and transfer-based connections transparently.
 
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -27,14 +27,14 @@ async def search_trips_endpoint(
     from_station: str = Query(
         ...,
         alias="from",
-        min_length=1,
+        min_length=2,
         max_length=10,
         description="Departure station code",
     ),
     to_station: str = Query(
         ...,
         alias="to",
-        min_length=1,
+        min_length=2,
         max_length=10,
         description="Arrival station code",
     ),
@@ -68,6 +68,9 @@ async def search_trips_endpoint(
     automatically finds 1-transfer connections via nearby stations in
     other transit systems.
     """
+    if from_station.upper() == to_station.upper():
+        raise HTTPException(status_code=400, detail="Origin and destination cannot be the same station")
+
     # Parse data_sources the same way as departures endpoint
     source_list: list[str] | None = None
     if data_sources:

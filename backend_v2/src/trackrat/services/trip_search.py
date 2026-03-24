@@ -9,19 +9,17 @@ real-time departures at transfer points between transit systems.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config.route_topology import ALL_ROUTES
 from trackrat.config.stations import get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
+    get_systems_serving_station,
     get_transfer_points,
 )
 from trackrat.models.api import (
-    LineInfo,
     SimpleStationInfo,
     StationInfo,
     TrainDeparture,
@@ -51,7 +49,7 @@ def _get_best_time(info: StationInfo) -> datetime | None:
     return info.actual_time or info.updated_time or info.scheduled_time
 
 
-def _departure_to_leg(dep: TrainDeparture, from_code: str, to_code: str) -> TripLeg:
+def _departure_to_leg(dep: TrainDeparture) -> TripLeg:
     """Convert a TrainDeparture into a TripLeg."""
     return TripLeg(
         train_id=dep.train_id,
@@ -74,7 +72,7 @@ def _make_direct_trip(dep: TrainDeparture) -> TripOption | None:
     if not departure_time:
         return None
 
-    leg = _departure_to_leg(dep, dep.departure.code, dep.arrival.code if dep.arrival else dep.departure.code)
+    leg = _departure_to_leg(dep)
 
     duration = 0
     if arrival_time and departure_time:
@@ -88,15 +86,6 @@ def _make_direct_trip(dep: TrainDeparture) -> TripOption | None:
         total_duration_minutes=duration,
         is_direct=True,
     )
-
-
-def _find_systems_for_station(station_code: str) -> set[str]:
-    """Find which transit systems serve a given station code."""
-    systems: set[str] = set()
-    for route in ALL_ROUTES:
-        if station_code in route._station_set:
-            systems.add(route.data_source)
-    return systems
 
 
 def _find_relevant_transfer_points(
@@ -153,6 +142,14 @@ async def search_trips(
     """
     departure_service = DepartureService()
 
+    logger.info(
+        "trip_search_started",
+        from_station=from_station,
+        to_station=to_station,
+        hide_departed=hide_departed,
+        data_sources=data_sources,
+    )
+
     # --- Step 1: Try direct service ---
     direct_response = await departure_service.get_departures(
         db=db,
@@ -173,6 +170,7 @@ async def search_trips(
             trip = _make_direct_trip(dep)
             if trip:
                 trips.append(trip)
+        logger.info("trip_search_direct", count=len(trips))
         return TripSearchResponse(
             trips=trips,
             metadata={
@@ -185,18 +183,14 @@ async def search_trips(
         )
 
     # --- Step 2: No direct service — find transfers ---
-    from_systems = _find_systems_for_station(from_station)
-    to_systems = _find_systems_for_station(to_station)
+    from_systems = get_systems_serving_station(from_station)
+    to_systems = get_systems_serving_station(to_station)
 
     if not from_systems or not to_systems:
         return _empty_response(from_station, to_station, "no_systems")
 
-    # Check if they share a system (direct service exists but no trains right now)
-    shared_systems = from_systems & to_systems
-    if shared_systems:
-        # Direct service exists but returned 0 trains — no transfers to suggest
-        return _empty_response(from_station, to_station, "direct_no_trains")
-
+    # Find transfer points between systems that DON'T both serve origin and destination.
+    # (If systems share both stations, direct service exists but has no trains right now.)
     transfer_points = _find_relevant_transfer_points(from_systems, to_systems)
     if not transfer_points:
         return _empty_response(from_station, to_station, "no_transfer_points")
@@ -204,10 +198,12 @@ async def search_trips(
     # Query departures for each transfer point
     trips: list[TripOption] = []
     queries_made = 0
+    transfer_points_checked = 0
 
     for tp in transfer_points:
         if queries_made >= MAX_TRANSFER_QUERIES:
             break
+        transfer_points_checked += 1
 
         alight_station, alight_system, board_station, board_system = _orient_transfer(
             tp, from_systems, to_systems
@@ -289,8 +285,8 @@ async def search_trips(
 
                 trip = TripOption(
                     legs=[
-                        _departure_to_leg(dep1, from_station, alight_station),
-                        _departure_to_leg(dep2, board_station, to_station),
+                        _departure_to_leg(dep1),
+                        _departure_to_leg(dep2),
                     ],
                     transfers=[
                         TransferInfo(
@@ -318,6 +314,13 @@ async def search_trips(
     trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))
     trips = trips[:limit]
 
+    logger.info(
+        "trip_search_transfer",
+        count=len(trips),
+        transfer_points_checked=transfer_points_checked,
+        queries_made=queries_made,
+    )
+
     return TripSearchResponse(
         trips=trips,
         metadata={
@@ -325,7 +328,7 @@ async def search_trips(
             "to_station": {"code": to_station, "name": get_station_name(to_station)},
             "count": len(trips),
             "search_type": "transfer",
-            "transfer_points_checked": queries_made // 2,
+            "transfer_points_checked": transfer_points_checked,
             "generated_at": now_et().isoformat(),
         },
     )

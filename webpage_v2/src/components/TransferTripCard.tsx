@@ -1,4 +1,4 @@
-import { TripOption, TripLeg } from '../types';
+import { TripOption, TripLeg, TransferInfo } from '../types';
 import { formatTime } from '../utils/date';
 
 interface TransferTripCardProps {
@@ -42,17 +42,7 @@ function LegRow({ leg, onLegClick }: { leg: TripLeg; onLegClick: () => void }) {
   );
 }
 
-export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
-  if (trip.legs.length < 2 || trip.transfers.length < 1) return null;
-
-  const leg1 = trip.legs[0];
-  const leg2 = trip.legs[1];
-  const transfer = trip.transfers[0];
-
-  const durationDisplay = trip.total_duration_minutes < 60
-    ? `${trip.total_duration_minutes} min`
-    : `${Math.floor(trip.total_duration_minutes / 60)}h ${trip.total_duration_minutes % 60}m`;
-
+function TransferIndicator({ transfer }: { transfer: TransferInfo }) {
   const walkDescription = transfer.same_station
     ? 'Same station'
     : transfer.walk_minutes <= 1
@@ -60,25 +50,39 @@ export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
     : `${transfer.walk_minutes} min walk`;
 
   return (
-    <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl py-3 transition-all">
-      <LegRow leg={leg1} onLegClick={() => onLegClick(leg1)} />
-
-      {/* Transfer indicator */}
-      <div className="flex items-center gap-2 px-4 py-1">
-        <div className="w-1 flex flex-col items-center gap-0.5 flex-shrink-0">
-          <div className="w-px h-2 bg-text-muted/20" />
-          <span className="text-text-muted/40 text-[10px]">
-            {transfer.same_station ? '↓' : '🚶'}
-          </span>
-          <div className="w-px h-2 bg-text-muted/20" />
-        </div>
-        <span className="text-xs text-text-muted/60 ml-2">
-          {walkDescription}
-          {!transfer.same_station && ` at ${transfer.to_station.name}`}
+    <div className="flex items-center gap-2 px-4 py-1">
+      <div className="w-1 flex flex-col items-center gap-0.5 flex-shrink-0">
+        <div className="w-px h-2 bg-text-muted/20" />
+        <span className="text-text-muted/40 text-[10px]">
+          {transfer.same_station ? '↓' : '🚶'}
         </span>
+        <div className="w-px h-2 bg-text-muted/20" />
       </div>
+      <span className="text-xs text-text-muted/60 ml-2">
+        {walkDescription}
+        {!transfer.same_station && ` at ${transfer.to_station.name}`}
+      </span>
+    </div>
+  );
+}
 
-      <LegRow leg={leg2} onLegClick={() => onLegClick(leg2)} />
+export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
+  if (trip.legs.length < 2 || trip.transfers.length < 1) return null;
+
+  const durationDisplay = trip.total_duration_minutes < 60
+    ? `${trip.total_duration_minutes} min`
+    : `${Math.floor(trip.total_duration_minutes / 60)}h ${trip.total_duration_minutes % 60}m`;
+
+  return (
+    <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl py-3 transition-all">
+      {trip.legs.map((leg, i) => (
+        <div key={leg.train_id}>
+          <LegRow leg={leg} onLegClick={() => onLegClick(leg)} />
+          {i < trip.transfers.length && (
+            <TransferIndicator transfer={trip.transfers[i]} />
+          )}
+        </div>
+      ))}
 
       {/* Trip summary footer */}
       <div className="flex items-center justify-between px-4 pt-2 mt-1 border-t border-text-muted/10">
