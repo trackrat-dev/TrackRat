@@ -134,63 +134,73 @@ struct AddRouteAlertView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
-            let systems = alertCapableSystems.sorted { $0.displayName < $1.displayName }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
-                ForEach(systems, id: \.self) { system in
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            selectedSystem = selectedSystem == system ? nil : system
-                        }
-                    } label: {
-                        Text(system.displayName)
-                            .font(.subheadline)
-                            .fontWeight(selectedSystem == system ? .semibold : .regular)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(selectedSystem == system ? Color.orange : .ultraThinMaterial)
-                            )
-                            .foregroundColor(selectedSystem == system ? .black : .white)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal)
+            systemGrid
 
-            if let system = selectedSystem {
-                Button {
-                    let alreadyExists = alertService.subscriptions.contains {
-                        $0.isSystemWide && $0.dataSource == system.rawValue
-                    }
-
-                    if alreadyExists {
-                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                        showConfirmation("Already subscribed")
-                    } else {
-                        let sub = RouteAlertSubscription(dataSource: system.rawValue)
-                        systemAlertSheetData = DirectionalSheetData(directions: [
-                            DirectionDraft(
-                                label: "\(system.displayName) System Alerts",
-                                subscription: sub,
-                                alreadySubscribed: false
-                            ),
-                        ])
-                    }
-                } label: {
-                    Text("Add Alert")
-                        .font(.headline)
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Capsule().fill(.orange))
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
+            if selectedSystem != nil {
+                systemAddButton
             }
 
             Spacer()
         }
+    }
+
+    private var systemGrid: some View {
+        let systems = alertCapableSystems.sorted { $0.displayName < $1.displayName }
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+            ForEach(systems, id: \.self) { system in
+                let isSelected = selectedSystem == system
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedSystem = isSelected ? nil : system
+                    }
+                } label: {
+                    Text(system.displayName)
+                        .font(.subheadline)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(isSelected ? Color.orange : .ultraThinMaterial)
+                        )
+                        .foregroundColor(isSelected ? .black : .white)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var systemAddButton: some View {
+        Button {
+            guard let system = selectedSystem else { return }
+            let alreadyExists = alertService.subscriptions.contains {
+                $0.isSystemWide && $0.dataSource == system.rawValue
+            }
+
+            if alreadyExists {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                showConfirmation("Already subscribed")
+            } else {
+                let sub = RouteAlertSubscription(dataSource: system.rawValue)
+                systemAlertSheetData = DirectionalSheetData(directions: [
+                    DirectionDraft(
+                        label: "\(system.displayName) System Alerts",
+                        subscription: sub,
+                        alreadySubscribed: false
+                    ),
+                ])
+            }
+        } label: {
+            Text("Add Alert")
+                .font(.headline)
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Capsule().fill(.orange))
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
     }
 
     // MARK: - Route Mode (Station-Pair Picker)
