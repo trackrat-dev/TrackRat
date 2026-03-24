@@ -39,6 +39,7 @@ from trackrat.services.departure import DepartureService
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
+from trackrat.utils.request_stats import get_request_stats
 from trackrat.utils.time import DATETIME_MIN_ET, now_et, safe_datetime_subtract
 from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
 
@@ -203,6 +204,12 @@ async def get_departures(
             )
         except Exception as e:
             logger.warning("departure_cache_storage_failed", error=str(e))
+
+    # Record result count for admin stats
+    if to_station:
+        get_request_stats().record_departure_results(
+            from_station, to_station, len(response.departures)
+        )
 
     return response
 
@@ -463,6 +470,14 @@ async def get_train_details(
                         station=from_station,
                         error=str(e),
                     )
+
+    # Record train detail view for admin stats
+    if from_station:
+        get_request_stats().record_train_detail_view(
+            journey.train_id,
+            from_station,
+            journey.terminal_station_code or journey.destination or "",
+        )
 
     return TrainDetailsResponse(train=train_details, track_prediction=track_prediction)
 

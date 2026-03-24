@@ -27,6 +27,10 @@ class RequestStats:
     requests_by_status: Counter[int] = field(default_factory=Counter)
     requests_by_client: Counter[str] = field(default_factory=Counter)
     route_searches: Counter[tuple[str, str]] = field(default_factory=Counter)
+    route_search_results: dict[tuple[str, str], list[int]] = field(default_factory=dict)
+    train_detail_views: Counter[tuple[str, str, str]] = field(
+        default_factory=Counter
+    )  # (train_id, from_station, to_station)
 
     # Latency tracking: path_template -> list of durations (reservoir sampling)
     _latencies: dict[str, list[float]] = field(default_factory=dict)
@@ -70,6 +74,27 @@ class RequestStats:
                 if from_station and to_station:
                     self.route_searches[(from_station, to_station)] += 1
 
+    def record_departure_results(
+        self, from_station: str, to_station: str, count: int
+    ) -> None:
+        """Record the number of trains returned for a departure search."""
+        key = (from_station, to_station)
+        with self._lock:
+            samples = self.route_search_results.setdefault(key, [])
+            # Keep last 500 samples per route to bound memory
+            if len(samples) < self._MAX_LATENCY_SAMPLES:
+                samples.append(count)
+            else:
+                idx = random.randint(0, len(samples) - 1)
+                samples[idx] = count
+
+    def record_train_detail_view(
+        self, train_id: str, from_station: str, to_station: str
+    ) -> None:
+        """Record a train detail page view with user's origin/destination."""
+        with self._lock:
+            self.train_detail_views[(train_id, from_station, to_station)] += 1
+
     def snapshot(self) -> dict[str, Any]:
         """Return a point-in-time copy of all stats."""
         with self._lock:
@@ -85,6 +110,15 @@ class RequestStats:
                         "max": s[-1],
                     }
 
+            # Compute per-route search result stats
+            route_search_stats: dict[tuple[str, str], dict[str, float]] = {}
+            for key, samples in self.route_search_results.items():
+                if samples:
+                    route_search_stats[key] = {
+                        "avg_trains": sum(samples) / len(samples),
+                        "empty_count": samples.count(0),
+                    }
+
             return {
                 "uptime_seconds": time.time() - self.start_time,
                 "total_requests": self.total_requests,
@@ -92,8 +126,22 @@ class RequestStats:
                 "requests_by_status": dict(self.requests_by_status.most_common()),
                 "requests_by_client": dict(self.requests_by_client.most_common()),
                 "route_searches": [
-                    {"from": k[0], "to": k[1], "count": v}
+                    {
+                        "from": k[0],
+                        "to": k[1],
+                        "count": v,
+                        **route_search_stats.get(k, {}),
+                    }
                     for k, v in self.route_searches.most_common(20)
+                ],
+                "train_detail_views": [
+                    {
+                        "train_id": k[0],
+                        "from": k[1],
+                        "to": k[2],
+                        "count": v,
+                    }
+                    for k, v in self.train_detail_views.most_common(20)
                 ],
                 "latency": latency_stats,
             }
