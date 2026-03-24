@@ -99,7 +99,9 @@ def _find_relevant_transfer_points(
             if sys_from == sys_to:
                 continue
             for tp in get_transfer_points(sys_from, sys_to):
-                key = frozenset({(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)})
+                key = frozenset(
+                    {(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)}
+                )
                 if key not in seen:
                     seen.add(key)
                     transfers.append(tp)
@@ -174,8 +176,14 @@ async def search_trips(
         return TripSearchResponse(
             trips=trips,
             metadata={
-                "from_station": {"code": from_station, "name": get_station_name(from_station)},
-                "to_station": {"code": to_station, "name": get_station_name(to_station)},
+                "from_station": {
+                    "code": from_station,
+                    "name": get_station_name(from_station),
+                },
+                "to_station": {
+                    "code": to_station,
+                    "name": get_station_name(to_station),
+                },
                 "count": len(trips),
                 "search_type": "direct",
                 "generated_at": now_et().isoformat(),
@@ -327,7 +335,10 @@ async def search_trips(
     return TripSearchResponse(
         trips=trips,
         metadata={
-            "from_station": {"code": from_station, "name": get_station_name(from_station)},
+            "from_station": {
+                "code": from_station,
+                "name": get_station_name(from_station),
+            },
             "to_station": {"code": to_station, "name": get_station_name(to_station)},
             "count": len(trips),
             "search_type": "transfer",
@@ -337,12 +348,17 @@ async def search_trips(
     )
 
 
-def _empty_response(from_station: str, to_station: str, reason: str) -> TripSearchResponse:
+def _empty_response(
+    from_station: str, to_station: str, reason: str
+) -> TripSearchResponse:
     """Build an empty TripSearchResponse with metadata."""
     return TripSearchResponse(
         trips=[],
         metadata={
-            "from_station": {"code": from_station, "name": get_station_name(from_station)},
+            "from_station": {
+                "code": from_station,
+                "name": get_station_name(from_station),
+            },
             "to_station": {"code": to_station, "name": get_station_name(to_station)},
             "count": 0,
             "search_type": reason,

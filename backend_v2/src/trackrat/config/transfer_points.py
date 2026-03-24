@@ -37,7 +37,10 @@ def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> flo
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlam = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
@@ -95,26 +98,34 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
     transfers: list[TransferPoint] = []
 
     def _add(
-        code_a: str, sys_a: str, code_b: str, sys_b: str,
-        walk_m: float, same: bool,
+        code_a: str,
+        sys_a: str,
+        code_b: str,
+        sys_b: str,
+        walk_m: float,
+        same: bool,
     ) -> None:
         key = frozenset({(code_a, sys_a), (code_b, sys_b)})
         if key not in seen:
             seen.add(key)
-            transfers.append(TransferPoint(
-                station_a=code_a, system_a=sys_a,
-                station_b=code_b, system_b=sys_b,
-                walk_meters=walk_m,
-                walk_minutes=_estimate_walk_minutes(walk_m),
-                same_station=same,
-            ))
+            transfers.append(
+                TransferPoint(
+                    station_a=code_a,
+                    system_a=sys_a,
+                    station_b=code_b,
+                    system_b=sys_b,
+                    walk_meters=walk_m,
+                    walk_minutes=_estimate_walk_minutes(walk_m),
+                    same_station=same,
+                )
+            )
 
     # --- Source 1: Shared station codes ---
     for code, systems in station_systems.items():
         if len(systems) > 1:
             system_list = sorted(systems)
             for i, sys_a in enumerate(system_list):
-                for sys_b in system_list[i + 1:]:
+                for sys_b in system_list[i + 1 :]:
                     _add(code, sys_a, code, sys_b, 0.0, True)
 
     # --- Source 2: Equivalence groups (skip subway-only complexes) ---
@@ -126,7 +137,7 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
                 code_sys_pairs.append((code, system))
         # Create transfer between different-system pairs
         for i, (code_a, sys_a) in enumerate(code_sys_pairs):
-            for code_b, sys_b in code_sys_pairs[i + 1:]:
+            for code_b, sys_b in code_sys_pairs[i + 1 :]:
                 if sys_a != sys_b:
                     _add(code_a, sys_a, code_b, sys_b, 0.0, True)
 
@@ -141,7 +152,7 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
 
     # Check pairwise distances across different systems
     for i, (code_a, sys_a, lat_a, lon_a) in enumerate(station_coords):
-        for code_b, sys_b, lat_b, lon_b in station_coords[i + 1:]:
+        for code_b, sys_b, lat_b, lon_b in station_coords[i + 1 :]:
             if sys_a == sys_b:
                 continue
             if code_a == code_b:
@@ -157,7 +168,9 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
 TRANSFER_POINTS: tuple[TransferPoint, ...] = _generate_transfer_points()
 
 # Lookup indexes
-_TRANSFERS_BY_SYSTEM_PAIR: dict[tuple[str, str], list[TransferPoint]] = defaultdict(list)
+_TRANSFERS_BY_SYSTEM_PAIR: dict[tuple[str, str], list[TransferPoint]] = defaultdict(
+    list
+)
 _TRANSFERS_BY_STATION: dict[str, list[TransferPoint]] = defaultdict(list)
 
 for _tp in TRANSFER_POINTS:

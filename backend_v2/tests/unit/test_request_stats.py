@@ -239,12 +239,12 @@ class TestTimeWindowedSnapshot:
         snap_all = stats.snapshot()
         snap_1h = stats.snapshot(hours=1)
 
-        assert snap_all["total_requests"] == 2, (
-            f"Expected 2 total requests, got {snap_all['total_requests']}"
-        )
-        assert snap_1h["total_requests"] == 1, (
-            f"Expected 1 request in 1h window, got {snap_1h['total_requests']}"
-        )
+        assert (
+            snap_all["total_requests"] == 2
+        ), f"Expected 2 total requests, got {snap_all['total_requests']}"
+        assert (
+            snap_1h["total_requests"] == 1
+        ), f"Expected 1 request in 1h window, got {snap_1h['total_requests']}"
         assert snap_1h["window_hours"] == 1
 
     def test_hours_none_returns_all(self):
@@ -285,9 +285,9 @@ class TestTimeWindowedSnapshot:
         )
 
         snap = stats.snapshot(hours=1)
-        assert "/old" not in snap["requests_by_path"], (
-            f"Old path should be excluded, got: {snap['requests_by_path']}"
-        )
+        assert (
+            "/old" not in snap["requests_by_path"]
+        ), f"Old path should be excluded, got: {snap['requests_by_path']}"
         assert snap["requests_by_path"]["/new"] == 1
         assert 500 not in snap["requests_by_status"]
         assert snap["requests_by_status"][200] == 1
@@ -320,9 +320,9 @@ class TestIosOnlyFilter:
         )
 
         snap = stats.snapshot(ios_only=True)
-        assert snap["total_requests"] == 2, (
-            f"Expected 2 iOS requests, got {snap['total_requests']}"
-        )
+        assert (
+            snap["total_requests"] == 2
+        ), f"Expected 2 iOS requests, got {snap['total_requests']}"
         assert snap["ios_only"] is True
         assert "curl" not in snap["requests_by_client"]
         assert "browser" not in snap["requests_by_client"]
@@ -352,9 +352,9 @@ class TestIosOnlyFilter:
         self._make_request(stats, user_agent="curl/7", client_ip="10.0.0.3")
 
         snap = stats.snapshot(hours=1, ios_only=True)
-        assert snap["total_requests"] == 1, (
-            f"Expected 1 recent iOS request, got {snap['total_requests']}"
-        )
+        assert (
+            snap["total_requests"] == 1
+        ), f"Expected 1 recent iOS request, got {snap['total_requests']}"
         assert snap["window_hours"] == 1
         assert snap["ios_only"] is True
 
@@ -381,9 +381,9 @@ class TestIpTracking:
         self._make_request(stats, client_ip="10.0.0.2")
 
         snap = stats.snapshot()
-        assert snap["requests_by_ip"]["10.0.0.1"] == 2, (
-            f"Expected 2 requests from 10.0.0.1, got {snap['requests_by_ip']}"
-        )
+        assert (
+            snap["requests_by_ip"]["10.0.0.1"] == 2
+        ), f"Expected 2 requests from 10.0.0.1, got {snap['requests_by_ip']}"
         assert snap["requests_by_ip"]["10.0.0.2"] == 1
 
     def test_unique_ips_count(self):
@@ -395,9 +395,9 @@ class TestIpTracking:
         self._make_request(stats, client_ip="10.0.0.3")
 
         snap = stats.snapshot()
-        assert snap["unique_ips"] == 3, (
-            f"Expected 3 unique IPs, got {snap['unique_ips']}"
-        )
+        assert (
+            snap["unique_ips"] == 3
+        ), f"Expected 3 unique IPs, got {snap['unique_ips']}"
 
     def test_default_ip_when_not_provided(self):
         """Default client_ip is 'unknown' when not provided."""
@@ -420,12 +420,10 @@ class TestIpTracking:
         self._make_request(stats, user_agent="TrackRat/191", client_ip="10.0.0.3")
 
         snap = stats.snapshot(ios_only=True)
-        assert snap["unique_ips"] == 2, (
-            f"Expected 2 unique iOS IPs, got {snap['unique_ips']}"
-        )
-        assert "10.0.0.2" not in snap["requests_by_ip"], (
-            "Non-iOS IP should be excluded"
-        )
+        assert (
+            snap["unique_ips"] == 2
+        ), f"Expected 2 unique iOS IPs, got {snap['unique_ips']}"
+        assert "10.0.0.2" not in snap["requests_by_ip"], "Non-iOS IP should be excluded"
 
 
 class TestLatencyTrend:
@@ -449,9 +447,9 @@ class TestLatencyTrend:
 
         snap = stats.snapshot()
         assert "latency_trend" in snap, "latency_trend should be in snapshot"
-        assert "/test" in snap["latency_trend"], (
-            f"Expected /test in trend data, got: {list(snap['latency_trend'].keys())}"
-        )
+        assert (
+            "/test" in snap["latency_trend"]
+        ), f"Expected /test in trend data, got: {list(snap['latency_trend'].keys())}"
 
     def test_trend_has_12_buckets(self):
         """Each path in latency_trend has exactly 12 five-minute buckets."""
@@ -460,9 +458,7 @@ class TestLatencyTrend:
 
         snap = stats.snapshot()
         trend = snap["latency_trend"]["/test"]
-        assert len(trend) == 12, (
-            f"Expected 12 trend buckets, got {len(trend)}"
-        )
+        assert len(trend) == 12, f"Expected 12 trend buckets, got {len(trend)}"
 
     def test_trend_bucket_structure(self):
         """Each trend bucket has bucket, avg_ms, and count keys."""
@@ -480,9 +476,7 @@ class TestLatencyTrend:
         assert "bucket" in bucket
         assert "avg_ms" in bucket
         assert "count" in bucket
-        assert bucket["avg_ms"] > 0, (
-            f"Expected positive avg_ms, got {bucket['avg_ms']}"
-        )
+        assert bucket["avg_ms"] > 0, f"Expected positive avg_ms, got {bucket['avg_ms']}"
         assert bucket["count"] >= 1
 
     def test_trend_avg_ms_calculation(self):
@@ -501,16 +495,15 @@ class TestLatencyTrend:
         bucket = non_empty[0]
         assert bucket["count"] == 3
         expected_avg_ms = (0.1 + 0.2 + 0.3) / 3 * 1000  # 200ms
-        assert abs(bucket["avg_ms"] - expected_avg_ms) < 0.1, (
-            f"Expected avg_ms ≈ {expected_avg_ms}, got {bucket['avg_ms']}"
-        )
+        assert (
+            abs(bucket["avg_ms"] - expected_avg_ms) < 0.1
+        ), f"Expected avg_ms ≈ {expected_avg_ms}, got {bucket['avg_ms']}"
 
     def test_trend_empty_when_no_requests(self):
         """latency_trend is empty dict when no requests recorded."""
         stats = RequestStats()
         snap = stats.snapshot()
         assert snap["latency_trend"] == {}
-
 
     def test_departure_result_counts(self):
         """record_departure_results tracks avg trains and empty count per route."""

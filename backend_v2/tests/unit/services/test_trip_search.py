@@ -81,9 +81,7 @@ def _make_departure(
         departure=_make_station_info(code=from_code, name=from_name, scheduled=dep),
         arrival=_make_station_info(code=to_code, name=to_name, scheduled=arr),
         train_position=TrainPosition(),
-        data_freshness=DataFreshness(
-            last_updated=now, age_seconds=5, update_count=1
-        ),
+        data_freshness=DataFreshness(last_updated=now, age_seconds=5, update_count=1),
         data_source=data_source,
         observation_type="OBSERVED",
         is_cancelled=is_cancelled,
@@ -96,7 +94,9 @@ class TestGetBestTime:
     def test_returns_actual_when_available(self):
         now = datetime.now(ET)
         info = _make_station_info(
-            scheduled=now, updated=now + timedelta(minutes=1), actual=now + timedelta(minutes=2)
+            scheduled=now,
+            updated=now + timedelta(minutes=1),
+            actual=now + timedelta(minutes=2),
         )
         assert _get_best_time(info) == now + timedelta(minutes=2)
 
@@ -201,9 +201,7 @@ class TestFindRelevantTransferPoints:
         assert len(transfers) > 0
         # Should find Hoboken and Newark Penn
         station_pairs = {(tp.station_a, tp.station_b) for tp in transfers}
-        hoboken_found = any(
-            "HB" in pair and "PHO" in pair for pair in station_pairs
-        )
+        hoboken_found = any("HB" in pair and "PHO" in pair for pair in station_pairs)
         assert hoboken_found, "Should find Hoboken NJT <-> PATH transfer"
 
     def test_same_system_returns_empty(self):
@@ -232,7 +230,8 @@ class TestOrientTransfer:
         # Get a real NJT<->PATH transfer (Hoboken)
         transfers = get_transfer_points("NJT", "PATH")
         hoboken = [
-            tp for tp in transfers
+            tp
+            for tp in transfers
             if "HB" in (tp.station_a, tp.station_b)
             and "PHO" in (tp.station_a, tp.station_b)
         ]
@@ -251,7 +250,8 @@ class TestOrientTransfer:
     def test_orient_reverse_direction(self):
         transfers = get_transfer_points("NJT", "PATH")
         hoboken = [
-            tp for tp in transfers
+            tp
+            for tp in transfers
             if "HB" in (tp.station_a, tp.station_b)
             and "PHO" in (tp.station_a, tp.station_b)
         ]
@@ -289,15 +289,25 @@ class TestTripOptionModel:
     def test_direct_trip_serialization(self):
         now = datetime.now(ET)
         trip = TripOption(
-            legs=[TripLeg(
-                train_id="3456",
-                journey_date=now.date(),
-                line=LineInfo(code="NE", name="Northeast Corridor", color="#000000"),
-                data_source="NJT",
-                destination="New York Penn Station",
-                boarding=_make_station_info(code="NP", name="Newark Penn Station", scheduled=now),
-                alighting=_make_station_info(code="NY", name="New York Penn Station", scheduled=now + timedelta(minutes=30)),
-            )],
+            legs=[
+                TripLeg(
+                    train_id="3456",
+                    journey_date=now.date(),
+                    line=LineInfo(
+                        code="NE", name="Northeast Corridor", color="#000000"
+                    ),
+                    data_source="NJT",
+                    destination="New York Penn Station",
+                    boarding=_make_station_info(
+                        code="NP", name="Newark Penn Station", scheduled=now
+                    ),
+                    alighting=_make_station_info(
+                        code="NY",
+                        name="New York Penn Station",
+                        scheduled=now + timedelta(minutes=30),
+                    ),
+                )
+            ],
             transfers=[],
             departure_time=now,
             arrival_time=now + timedelta(minutes=30),
@@ -317,20 +327,36 @@ class TestTripOptionModel:
                 TripLeg(
                     train_id="3456",
                     journey_date=now.date(),
-                    line=LineInfo(code="NE", name="Northeast Corridor", color="#000000"),
+                    line=LineInfo(
+                        code="NE", name="Northeast Corridor", color="#000000"
+                    ),
                     data_source="NJT",
                     destination="Hoboken",
-                    boarding=_make_station_info(code="NP", name="Newark Penn Station", scheduled=now),
-                    alighting=_make_station_info(code="HB", name="Hoboken", scheduled=now + timedelta(minutes=20)),
+                    boarding=_make_station_info(
+                        code="NP", name="Newark Penn Station", scheduled=now
+                    ),
+                    alighting=_make_station_info(
+                        code="HB", name="Hoboken", scheduled=now + timedelta(minutes=20)
+                    ),
                 ),
                 TripLeg(
                     train_id="HOB-WTC-001",
                     journey_date=now.date(),
-                    line=LineInfo(code="HOB-WTC", name="Hoboken - WTC", color="#65c100"),
+                    line=LineInfo(
+                        code="HOB-WTC", name="Hoboken - WTC", color="#65c100"
+                    ),
                     data_source="PATH",
                     destination="World Trade Center",
-                    boarding=_make_station_info(code="PHO", name="Hoboken PATH", scheduled=now + timedelta(minutes=28)),
-                    alighting=_make_station_info(code="PWC", name="World Trade Center", scheduled=now + timedelta(minutes=42)),
+                    boarding=_make_station_info(
+                        code="PHO",
+                        name="Hoboken PATH",
+                        scheduled=now + timedelta(minutes=28),
+                    ),
+                    alighting=_make_station_info(
+                        code="PWC",
+                        name="World Trade Center",
+                        scheduled=now + timedelta(minutes=42),
+                    ),
                 ),
             ],
             transfers=[

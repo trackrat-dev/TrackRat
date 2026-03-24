@@ -110,7 +110,10 @@ async def _check_staging_notification_safety(settings: Any) -> bool:
                 message="Small number of tokens present — likely from staging testers.",
             )
         else:
-            logger.info("staging_notification_safety_ok", message="No production tokens in staging database.")
+            logger.info(
+                "staging_notification_safety_ok",
+                message="No production tokens in staging database.",
+            )
     except Exception as e:
         logger.warning(
             "staging_notification_safety_check_failed",
@@ -280,9 +283,9 @@ async def request_stats_middleware(
     if path_template not in {"/health", "/health/live", "/health/ready", "/metrics"}:
         query_params = dict(request.query_params)
         # Prefer X-Forwarded-For (set by GCP load balancer) over direct client IP
-        client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
-            request.client.host if request.client else "unknown"
-        )
+        client_ip = request.headers.get("x-forwarded-for", "").split(",")[
+            0
+        ].strip() or (request.client.host if request.client else "unknown")
         get_request_stats().record_request(
             path_template=path_template,
             status_code=response.status_code,

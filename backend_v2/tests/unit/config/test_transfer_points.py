@@ -44,9 +44,9 @@ class TestTransferPointGeneration:
 
     def test_total_count_reasonable(self):
         """Should find a meaningful number of transfers (not 0, not thousands)."""
-        assert 30 < len(TRANSFER_POINTS) < 200, (
-            f"Expected 30-200 transfer points, got {len(TRANSFER_POINTS)}"
-        )
+        assert (
+            30 < len(TRANSFER_POINTS) < 200
+        ), f"Expected 30-200 transfer points, got {len(TRANSFER_POINTS)}"
 
     def test_all_transfers_are_cross_system(self):
         """Every transfer must connect different systems."""
@@ -59,17 +59,17 @@ class TestTransferPointGeneration:
     def test_walk_minutes_at_least_minimum(self):
         """Walk time should always be at least MIN_TRANSFER_MINUTES."""
         for tp in TRANSFER_POINTS:
-            assert tp.walk_minutes >= 5, (
-                f"Walk time too low: {tp.station_a} <-> {tp.station_b} = {tp.walk_minutes}min"
-            )
+            assert (
+                tp.walk_minutes >= 5
+            ), f"Walk time too low: {tp.station_a} <-> {tp.station_b} = {tp.walk_minutes}min"
 
     def test_walk_meters_within_threshold(self):
         """All proximity-based transfers should be within the threshold."""
         for tp in TRANSFER_POINTS:
             if not tp.same_station:
-                assert tp.walk_meters <= WALK_THRESHOLD_METERS, (
-                    f"Transfer too far: {tp.station_a} <-> {tp.station_b} = {tp.walk_meters:.0f}m"
-                )
+                assert (
+                    tp.walk_meters <= WALK_THRESHOLD_METERS
+                ), f"Transfer too far: {tp.station_a} <-> {tp.station_b} = {tp.walk_meters:.0f}m"
 
     def test_same_station_has_zero_walk_meters(self):
         """Same-station transfers should have 0 walk distance."""
@@ -85,9 +85,9 @@ class TestTransferPointGeneration:
         seen: set[frozenset[tuple[str, str]]] = set()
         for tp in TRANSFER_POINTS:
             key = frozenset({(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)})
-            assert key not in seen, (
-                f"Duplicate transfer: {tp.station_a}/{tp.system_a} <-> {tp.station_b}/{tp.system_b}"
-            )
+            assert (
+                key not in seen
+            ), f"Duplicate transfer: {tp.station_a}/{tp.system_a} <-> {tp.station_b}/{tp.system_b}"
             seen.add(key)
 
 
@@ -104,7 +104,8 @@ class TestSharedStationCodes:
     def test_ny_penn_has_transfers_between_all_pairs(self):
         """NY should generate transfers: NJT<->AMTRAK, NJT<->LIRR, AMTRAK<->LIRR."""
         ny_transfers = [
-            tp for tp in get_transfers_from_station("NY")
+            tp
+            for tp in get_transfers_from_station("NY")
             if tp.same_station and tp.station_a == "NY" and tp.station_b == "NY"
         ]
         system_pairs = {frozenset({tp.system_a, tp.system_b}) for tp in ny_transfers}
@@ -118,7 +119,8 @@ class TestSharedStationCodes:
         assert "LIRR" in systems
         assert "MNR" in systems
         gct_transfers = [
-            tp for tp in get_transfers_from_station("GCT")
+            tp
+            for tp in get_transfers_from_station("GCT")
             if tp.same_station and "GCT" in (tp.station_a, tp.station_b)
         ]
         assert len(gct_transfers) >= 1
@@ -133,25 +135,28 @@ class TestSharedStationCodes:
 class TestEquivalenceGroupTransfers:
     """Test transfers from STATION_EQUIVALENCE_GROUPS."""
 
-    @pytest.mark.parametrize("amtrak_code,mnr_code,station_name", [
-        ("STM", "MSTM", "Stamford"),
-        ("NHV", "MNHV", "New Haven"),
-        # NRO and CRT are in equivalence groups but not in any Amtrak route
-        # in ALL_ROUTES, so they won't generate transfers.
-        # BRP and POU are also valid Amtrak/MNR pairs:
-        ("BRP", "MBGP", "Bridgeport"),
-    ])
+    @pytest.mark.parametrize(
+        "amtrak_code,mnr_code,station_name",
+        [
+            ("STM", "MSTM", "Stamford"),
+            ("NHV", "MNHV", "New Haven"),
+            # NRO and CRT are in equivalence groups but not in any Amtrak route
+            # in ALL_ROUTES, so they won't generate transfers.
+            # BRP and POU are also valid Amtrak/MNR pairs:
+            ("BRP", "MBGP", "Bridgeport"),
+        ],
+    )
     def test_amtrak_mnr_equivalence(self, amtrak_code, mnr_code, station_name):
         """Amtrak/MNR shared stations should be found as same-station transfers."""
         transfers = get_transfers_from_station(amtrak_code)
         matching = [
-            tp for tp in transfers
-            if tp.same_station
-            and mnr_code in (tp.station_a, tp.station_b)
+            tp
+            for tp in transfers
+            if tp.same_station and mnr_code in (tp.station_a, tp.station_b)
         ]
-        assert len(matching) >= 1, (
-            f"No transfer found for {station_name}: {amtrak_code} <-> {mnr_code}"
-        )
+        assert (
+            len(matching) >= 1
+        ), f"No transfer found for {station_name}: {amtrak_code} <-> {mnr_code}"
 
 
 class TestProximityTransfers:
@@ -161,7 +166,8 @@ class TestProximityTransfers:
         """NJT Hoboken (HB) should connect to PATH Hoboken (PHO)."""
         transfers = get_transfer_points("NJT", "PATH")
         hoboken = [
-            tp for tp in transfers
+            tp
+            for tp in transfers
             if "HB" in (tp.station_a, tp.station_b)
             and "PHO" in (tp.station_a, tp.station_b)
         ]
@@ -173,7 +179,8 @@ class TestProximityTransfers:
         """NJT/Amtrak Newark (NP) should connect to PATH Newark (PNK)."""
         transfers = get_transfer_points("NJT", "PATH")
         newark = [
-            tp for tp in transfers
+            tp
+            for tp in transfers
             if "NP" in (tp.station_a, tp.station_b)
             and "PNK" in (tp.station_a, tp.station_b)
         ]
@@ -184,7 +191,8 @@ class TestProximityTransfers:
         """NJT Lindenwold (LW) should connect to PATCO Lindenwold (LND)."""
         transfers = get_transfer_points("NJT", "PATCO")
         lindenwold = [
-            tp for tp in transfers
+            tp
+            for tp in transfers
             if "LW" in (tp.station_a, tp.station_b)
             and "LND" in (tp.station_a, tp.station_b)
         ]
@@ -195,8 +203,7 @@ class TestProximityTransfers:
         """PATH 33rd St (P33) should be a transfer to NY Penn (NJT/AMTRAK/LIRR)."""
         transfers = get_transfers_from_station("P33")
         penn_transfers = [
-            tp for tp in transfers
-            if "NY" in (tp.station_a, tp.station_b)
+            tp for tp in transfers if "NY" in (tp.station_a, tp.station_b)
         ]
         assert len(penn_transfers) >= 1, "PATH 33rd St should connect to NY Penn"
         # Should be within walking distance but not same station
@@ -245,9 +252,13 @@ class TestTransferPointProperties:
     def test_station_names(self):
         """station_a_name and station_b_name return human-readable names."""
         tp = TransferPoint(
-            station_a="NY", system_a="NJT",
-            station_b="P33", system_b="PATH",
-            walk_meters=366.0, walk_minutes=5, same_station=False,
+            station_a="NY",
+            system_a="NJT",
+            station_b="P33",
+            system_b="PATH",
+            walk_meters=366.0,
+            walk_minutes=5,
+            same_station=False,
         )
         assert tp.station_a_name == "New York Penn Station"
         assert tp.station_b_name == "33rd Street"

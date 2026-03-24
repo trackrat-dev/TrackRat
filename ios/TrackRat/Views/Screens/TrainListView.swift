@@ -602,7 +602,8 @@ class TrainListViewModel: ObservableObject {
             )
 
             let hasTransfers = fetchedTrips.contains { !$0.isDirect }
-            hasDirectRoute = !hasTransfers || !fetchedTrips.isEmpty
+            // No direct route only when we got transfer results but zero direct trips
+            hasDirectRoute = !hasTransfers || fetchedTrips.contains { $0.isDirect }
 
             if hasTransfers {
                 // Transfer results: deduplicate and store directly (backend sorts by departure)

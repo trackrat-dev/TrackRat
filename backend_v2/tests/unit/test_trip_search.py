@@ -25,20 +25,24 @@ from trackrat.services.trip_search import (
     _orient_transfer,
 )
 
-
 # --- Test Fixtures ---
 
+
 def _make_station_info(
-    code: str, name: str,
+    code: str,
+    name: str,
     scheduled: datetime | None = None,
     updated: datetime | None = None,
     actual: datetime | None = None,
     track: str | None = None,
 ) -> StationInfo:
     return StationInfo(
-        code=code, name=name,
-        scheduled_time=scheduled, updated_time=updated,
-        actual_time=actual, track=track,
+        code=code,
+        name=name,
+        scheduled_time=scheduled,
+        updated_time=updated,
+        actual_time=actual,
+        track=track,
     )
 
 
@@ -68,13 +72,23 @@ def _make_departure(
     arr_time = scheduled_arr or dep_time + timedelta(minutes=60)
 
     departure = _make_station_info(
-        from_code, from_name,
-        scheduled=dep_time, updated=updated_dep, actual=actual_dep,
+        from_code,
+        from_name,
+        scheduled=dep_time,
+        updated=updated_dep,
+        actual=actual_dep,
     )
-    arrival = _make_station_info(
-        to_code, to_name,
-        scheduled=arr_time, updated=updated_arr, actual=actual_arr,
-    ) if has_arrival else None
+    arrival = (
+        _make_station_info(
+            to_code,
+            to_name,
+            scheduled=arr_time,
+            updated=updated_arr,
+            actual=actual_arr,
+        )
+        if has_arrival
+        else None
+    )
 
     return TrainDeparture(
         train_id=train_id,
@@ -106,9 +120,12 @@ def _make_transfer_point(
     same_station: bool = True,
 ) -> TransferPoint:
     return TransferPoint(
-        station_a=station_a, system_a=system_a,
-        station_b=station_b, system_b=system_b,
-        walk_meters=walk_meters, walk_minutes=walk_minutes,
+        station_a=station_a,
+        system_a=system_a,
+        station_b=station_b,
+        system_b=system_b,
+        walk_meters=walk_meters,
+        walk_minutes=walk_minutes,
         same_station=same_station,
     )
 
@@ -122,7 +139,8 @@ class TestGetBestTime:
     def test_actual_takes_priority(self):
         now = datetime.now(timezone.utc)
         info = _make_station_info(
-            "NY", "Test",
+            "NY",
+            "Test",
             scheduled=now - timedelta(minutes=5),
             updated=now - timedelta(minutes=2),
             actual=now,
@@ -132,7 +150,9 @@ class TestGetBestTime:
     def test_updated_when_no_actual(self):
         now = datetime.now(timezone.utc)
         updated = now - timedelta(minutes=2)
-        info = _make_station_info("NY", "Test", scheduled=now - timedelta(minutes=5), updated=updated)
+        info = _make_station_info(
+            "NY", "Test", scheduled=now - timedelta(minutes=5), updated=updated
+        )
         assert _get_best_time(info) == updated
 
     def test_scheduled_as_fallback(self):
@@ -232,13 +252,17 @@ class TestOrientTransfer:
 
     def test_standard_orientation_a_to_b(self):
         tp = _make_transfer_point(
-            station_a="NP", system_a="NJT",
-            station_b="NP", system_b="PATH",
+            station_a="NP",
+            system_a="NJT",
+            station_b="NP",
+            system_b="PATH",
         )
         from_systems = {"NJT"}
         to_systems = {"PATH"}
 
-        alight, alight_sys, board, board_sys = _orient_transfer(tp, from_systems, to_systems)
+        alight, alight_sys, board, board_sys = _orient_transfer(
+            tp, from_systems, to_systems
+        )
         assert alight == "NP"
         assert alight_sys == "NJT"
         assert board == "NP"
@@ -246,13 +270,17 @@ class TestOrientTransfer:
 
     def test_reverse_orientation_b_to_a(self):
         tp = _make_transfer_point(
-            station_a="NP", system_a="NJT",
-            station_b="NP", system_b="PATH",
+            station_a="NP",
+            system_a="NJT",
+            station_b="NP",
+            system_b="PATH",
         )
         from_systems = {"PATH"}
         to_systems = {"NJT"}
 
-        alight, alight_sys, board, board_sys = _orient_transfer(tp, from_systems, to_systems)
+        alight, alight_sys, board, board_sys = _orient_transfer(
+            tp, from_systems, to_systems
+        )
         assert alight == "NP"
         assert alight_sys == "PATH"
         assert board == "NP"
@@ -261,14 +289,20 @@ class TestOrientTransfer:
     def test_cross_station_transfer(self):
         """Transfer between different physical stations."""
         tp = _make_transfer_point(
-            station_a="NP", system_a="NJT",
-            station_b="NWK", system_b="PATH",
-            walk_meters=200, walk_minutes=5, same_station=False,
+            station_a="NP",
+            system_a="NJT",
+            station_b="NWK",
+            system_b="PATH",
+            walk_meters=200,
+            walk_minutes=5,
+            same_station=False,
         )
         from_systems = {"NJT"}
         to_systems = {"PATH"}
 
-        alight, alight_sys, board, board_sys = _orient_transfer(tp, from_systems, to_systems)
+        alight, alight_sys, board, board_sys = _orient_transfer(
+            tp, from_systems, to_systems
+        )
         assert alight == "NP"
         assert board == "NWK"
 
@@ -299,7 +333,9 @@ class TestFindRelevantTransferPoints:
         seen = set()
         for tp in tps:
             key = frozenset({(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)})
-            assert key not in seen, f"Duplicate: {tp.station_a}({tp.system_a}) <-> {tp.station_b}({tp.system_b})"
+            assert (
+                key not in seen
+            ), f"Duplicate: {tp.station_a}({tp.system_a}) <-> {tp.station_b}({tp.system_b})"
             seen.add(key)
 
     def test_nonexistent_system_returns_empty(self):

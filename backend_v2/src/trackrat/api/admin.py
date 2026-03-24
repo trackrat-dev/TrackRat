@@ -354,7 +354,9 @@ def _render_html(
     if ios_only and requests_by_ip:
         ip_rows = ""
         for ip, count in list(requests_by_ip.items())[:20]:
-            ip_rows += f"<tr><td><code>{_esc(ip)}</code></td><td class='num'>{count}</td></tr>"
+            ip_rows += (
+                f"<tr><td><code>{_esc(ip)}</code></td><td class='num'>{count}</td></tr>"
+            )
         ip_section = f"""
 <h2>Requests by IP ({len(requests_by_ip)} unique)</h2>
 <table>
@@ -468,14 +470,16 @@ async def stats_page(
     ios_only: bool = Query(False),
 ) -> HTMLResponse:
     """Server usage statistics page."""
-    request_data = get_request_stats().snapshot(
-        hours=hours, ios_only=ios_only
-    )
+    request_data = get_request_stats().snapshot(hours=hours, ios_only=ios_only)
     db_data = await _db_stats(db)
     scheduler_jobs = _scheduler_stats()
     html = _render_html(
-        request_data, db_data, scheduler_jobs, settings,
-        hours=hours, ios_only=ios_only,
+        request_data,
+        db_data,
+        scheduler_jobs,
+        settings,
+        hours=hours,
+        ios_only=ios_only,
     )
     return HTMLResponse(content=html)
 
@@ -487,9 +491,7 @@ async def stats_json(
     ios_only: bool = Query(False),
 ) -> dict[str, Any]:
     """Server usage statistics as JSON."""
-    request_data = get_request_stats().snapshot(
-        hours=hours, ios_only=ios_only
-    )
+    request_data = get_request_stats().snapshot(hours=hours, ios_only=ios_only)
     db_data = await _db_stats(db)
     scheduler_jobs = _scheduler_stats()
 
@@ -497,8 +499,16 @@ async def stats_json(
     route_searches = {
         f"{get_station_name(entry['from'])} -> {get_station_name(entry['to'])}": {
             "count": entry["count"],
-            **({"avg_trains": round(entry["avg_trains"], 1)} if "avg_trains" in entry else {}),
-            **({"empty_count": entry["empty_count"]} if entry.get("empty_count") else {}),
+            **(
+                {"avg_trains": round(entry["avg_trains"], 1)}
+                if "avg_trains" in entry
+                else {}
+            ),
+            **(
+                {"empty_count": entry["empty_count"]}
+                if entry.get("empty_count")
+                else {}
+            ),
         }
         for entry in request_data["route_searches"]
     }
@@ -508,7 +518,9 @@ async def stats_json(
     request_data["scheduler_jobs"] = scheduler_jobs
 
     train_detail_views = {
-        f"{entry['train_id']} ({entry['from']} -> {entry['to']})": entry["count"]
+        f"{entry['train_id']} ({get_station_name(entry['from'])} -> {get_station_name(entry['to'])})": entry[
+            "count"
+        ]
         for entry in request_data.get("train_detail_views", [])
     }
     request_data["train_detail_views"] = train_detail_views

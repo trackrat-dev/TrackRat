@@ -72,7 +72,9 @@ async def search_trips_endpoint(
     to_station = to_station.upper()
 
     if from_station == to_station:
-        raise HTTPException(status_code=400, detail="Origin and destination cannot be the same station")
+        raise HTTPException(
+            status_code=400, detail="Origin and destination cannot be the same station"
+        )
 
     # Parse data_sources the same way as departures endpoint
     source_list: list[str] | None = None

@@ -179,7 +179,6 @@ class TestAdminStatsPage:
         assert "last 1h" in html
         assert "(iOS only)" in html
 
-
     def test_shows_route_search_result_metrics(self, client):
         """Stats page shows avg trains and empty response count per route."""
         reset_request_stats()
@@ -263,9 +262,9 @@ class TestAdminStatsJson:
         """JSON response includes scheduler_jobs (parity with HTML)."""
         response = client.get("/admin/stats.json")
         data = response.json()
-        assert "scheduler_jobs" in data, (
-            f"scheduler_jobs missing from JSON, keys: {list(data.keys())}"
-        )
+        assert (
+            "scheduler_jobs" in data
+        ), f"scheduler_jobs missing from JSON, keys: {list(data.keys())}"
 
     def test_json_includes_latency_trend(self, client):
         """JSON response includes latency_trend data."""
@@ -319,9 +318,9 @@ class TestAdminStatsJson:
         # Station names should be resolved in JSON (not raw codes)
         route_keys = list(data["route_searches"].keys())
         assert len(route_keys) == 1, f"Expected 1 route, got: {route_keys}"
-        assert "New York Penn Station" in route_keys[0], (
-            f"Expected resolved station name, got: {route_keys[0]}"
-        )
+        assert (
+            "New York Penn Station" in route_keys[0]
+        ), f"Expected resolved station name, got: {route_keys[0]}"
         assert "Trenton" in route_keys[0]
 
     def test_json_reflects_recorded_data(self, client):
@@ -346,9 +345,9 @@ class TestAdminStatsJson:
         assert data["requests_by_path"].get("/api/v2/trains/departures", 0) >= 5
         # Route searches now use resolved names
         route_keys = list(data["route_searches"].keys())
-        assert any("Newark Penn Station" in k for k in route_keys), (
-            f"Expected resolved NP station name, got: {route_keys}"
-        )
+        assert any(
+            "Newark Penn Station" in k for k in route_keys
+        ), f"Expected resolved NP station name, got: {route_keys}"
 
     def test_json_hours_filter(self, client):
         """JSON endpoint accepts ?hours= parameter."""
@@ -380,9 +379,9 @@ class TestAdminStatsJson:
         data = response.json()
 
         assert data["ios_only"] is True
-        assert data["total_requests"] == 1, (
-            f"Expected 1 iOS request, got {data['total_requests']}"
-        )
+        assert (
+            data["total_requests"] == 1
+        ), f"Expected 1 iOS request, got {data['total_requests']}"
         assert "curl" not in data["requests_by_client"]
 
     def test_json_includes_route_search_metrics(self, client):
@@ -423,4 +422,7 @@ class TestAdminStatsJson:
         data = response.json()
 
         assert "train_detail_views" in data
-        assert data["train_detail_views"]["3254 (NY -> TR)"] == 2
+        # Station names are resolved in JSON output
+        view_key = next(k for k in data["train_detail_views"] if "3254" in k)
+        assert "Trenton" in view_key, f"Expected resolved station name, got: {view_key}"
+        assert data["train_detail_views"][view_key] == 2

@@ -92,11 +92,12 @@ class TestTransferPointGeneration:
 
     def test_shared_station_ny_generates_transfers(self):
         """NY Penn Station (shared by NJT, AMTRAK, LIRR) should generate transfers."""
-        ny_transfers = [tp for tp in TRANSFER_POINTS
-                        if tp.station_a == "NY" or tp.station_b == "NY"]
-        assert len(ny_transfers) >= 2, (
-            f"Expected at least 2 transfer points for NY, got {len(ny_transfers)}"
-        )
+        ny_transfers = [
+            tp for tp in TRANSFER_POINTS if tp.station_a == "NY" or tp.station_b == "NY"
+        ]
+        assert (
+            len(ny_transfers) >= 2
+        ), f"Expected at least 2 transfer points for NY, got {len(ny_transfers)}"
         # Check that NJT-AMTRAK pair exists
         systems = set()
         for tp in ny_transfers:

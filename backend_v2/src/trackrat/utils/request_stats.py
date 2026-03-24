@@ -158,9 +158,9 @@ class RequestStats:
 
             # Assign to trend bucket (floored to _TREND_BUCKET_SECONDS)
             bucket = int(r.timestamp // _TREND_BUCKET_SECONDS) * _TREND_BUCKET_SECONDS
-            trend_buckets.setdefault(bucket, {}).setdefault(
-                r.path_template, []
-            ).append(r.duration)
+            trend_buckets.setdefault(bucket, {}).setdefault(r.path_template, []).append(
+                r.duration
+            )
 
         # Compute latency percentiles
         latency_stats = {}
