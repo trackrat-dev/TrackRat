@@ -159,10 +159,15 @@ struct AddRouteAlertView: View {
                         .fontWeight(isSelected ? .semibold : .regular)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(isSelected ? Color.orange : .ultraThinMaterial)
-                        )
+                        .background {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.orange)
+                            } else {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(.ultraThinMaterial)
+                            }
+                        }
                         .foregroundColor(isSelected ? .black : .white)
                 }
                 .buttonStyle(.plain)
