@@ -165,7 +165,11 @@ class TestResolveNameCollisions:
     def test_consolidated_collision_uses_all_codes_for_routes(self):
         """Consolidated entries collect routes from all codes in the complex."""
         consolidated = [
-            {"name": "Test St", "canonical_code": "SA01", "all_codes": {"SA01", "SB01"}},
+            {
+                "name": "Test St",
+                "canonical_code": "SA01",
+                "all_codes": {"SA01", "SB01"},
+            },
             {"name": "Test St", "canonical_code": "SC01", "all_codes": {"SC01"}},
         ]
         station_routes = {
@@ -197,7 +201,10 @@ class TestStripRouteSuffix:
         assert strip_route_suffix("103 St (1)") == "103 St"
 
     def test_strips_dash_suffix(self):
-        assert strip_route_suffix("Cathedral Pkwy (110 St) - 1") == "Cathedral Pkwy (110 St)"
+        assert (
+            strip_route_suffix("Cathedral Pkwy (110 St) - 1")
+            == "Cathedral Pkwy (110 St)"
+        )
 
     def test_strips_station_code_suffix(self):
         assert strip_route_suffix("104 St (SA63)") == "104 St"

@@ -954,7 +954,7 @@ LIRR_PORT_WASHINGTON_GCT = Route(
     id="lirr-port-washington-gct",
     name="Port Washington Branch",
     data_source="LIRR",
-    line_codes=frozenset({"LIRR-PW"}),
+    line_codes=frozenset(),  # Terminal variant, resolved via find_route_for_segment
     stations=(
         # Port Washington — Grand Central Terminal terminus (via East Side Access)
         "GCT",

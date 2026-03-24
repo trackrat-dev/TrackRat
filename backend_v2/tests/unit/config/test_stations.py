@@ -946,12 +946,12 @@ class TestSubwayGTFSStopMapping:
         SA63 (104 St on A line) and SA64 (111 St on A line) should have '(A)' suffix,
         not their station codes.
         """
-        assert SUBWAY_STATION_NAMES["SA63"] == "104 St (A)", (
-            f"SA63 should be '104 St (A)' but got '{SUBWAY_STATION_NAMES['SA63']}'"
-        )
-        assert SUBWAY_STATION_NAMES["SA64"] == "111 St (A)", (
-            f"SA64 should be '111 St (A)' but got '{SUBWAY_STATION_NAMES['SA64']}'"
-        )
+        assert (
+            SUBWAY_STATION_NAMES["SA63"] == "104 St (A)"
+        ), f"SA63 should be '104 St (A)' but got '{SUBWAY_STATION_NAMES['SA63']}'"
+        assert (
+            SUBWAY_STATION_NAMES["SA64"] == "111 St (A)"
+        ), f"SA64 should be '111 St (A)' but got '{SUBWAY_STATION_NAMES['SA64']}'"
 
 
 class TestMNRGTFSStopMapping:

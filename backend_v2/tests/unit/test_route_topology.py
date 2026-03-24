@@ -139,6 +139,16 @@ class TestRouteLookups:
         route = get_route_by_line_code("LIRR", "LIRR-RK")
         assert route == LIRR_RONKONKOMA
 
+    def test_get_route_by_line_code_lirr_port_washington(self):
+        """Test LIRR-PW resolves to Penn Station variant, not GCT."""
+        route = get_route_by_line_code("LIRR", "LIRR-PW")
+        assert route == LIRR_PORT_WASHINGTON
+        assert "NY" in route.stations, "LIRR-PW should map to Penn Station terminus"
+
+    def test_port_washington_gct_has_no_line_codes(self):
+        """GCT variant should have empty line_codes (resolved via segment lookup)."""
+        assert len(LIRR_PORT_WASHINGTON_GCT.line_codes) == 0
+
     def test_get_route_by_line_code_mnr(self):
         """Test MNR route lookup by line code."""
         route = get_route_by_line_code("MNR", "MNR-HUD")

@@ -1133,10 +1133,11 @@ async def evaluate_service_alerts(
                 continue
 
             # Filter out alerts already sent to this device via another subscription
+            # alert_id is non-nullable in the DB; str() satisfies mypy's Column type inference
             unsent_alerts = [
                 a
                 for a in new_alerts
-                if (device.apns_token, a.alert_id) not in sent_device_alerts
+                if (device.apns_token, str(a.alert_id)) not in sent_device_alerts
             ]
 
             # Always mark these alerts as notified on this subscription,
@@ -1180,7 +1181,7 @@ async def evaluate_service_alerts(
 
             if sent:
                 for a in unsent_alerts:
-                    sent_device_alerts.add((device.apns_token, a.alert_id))
+                    sent_device_alerts.add((device.apns_token, str(a.alert_id)))
                 alerts_sent += 1
 
                 logger.info(
