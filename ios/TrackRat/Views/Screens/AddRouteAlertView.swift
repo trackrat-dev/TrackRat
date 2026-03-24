@@ -147,7 +147,7 @@ struct AddRouteAlertView: View {
     private var systemGrid: some View {
         let systems = alertCapableSystems.sorted { $0.displayName < $1.displayName }
         return LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
-            ForEach(systems, id: \.self) { system in
+            ForEach(systems) { system in
                 let isSelected = selectedSystem == system
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
