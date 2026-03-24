@@ -141,6 +141,20 @@ struct TrainListView: View {
                                 TransferTripCard(
                                     trip: trip,
                                     onLegTap: { leg in
+                                        appState.currentTrainId = leg.trainId
+                                        appState.currentTrain = nil
+
+                                        if let destCode = Stations.getStationCode(destination) {
+                                            appState.selectedRoute = TripPair(
+                                                departureCode: departureStationCode,
+                                                departureName: departureName,
+                                                destinationCode: destCode,
+                                                destinationName: destination,
+                                                lastUsed: Date(),
+                                                isFavorite: false
+                                            )
+                                        }
+
                                         appState.pendingNavigation = .trainDetailsFlexible(
                                             trainNumber: leg.trainId,
                                             fromStation: leg.boarding.code,
@@ -611,6 +625,9 @@ let hasTransfers = fetchedTrips.contains { !$0.isDirect }
                 date: date,
                 dataSources: systems
             )
+
+            // Clear any stale error from a previous failed load
+            self.error = nil
 
             let hasTransfers = fetchedTrips.contains { !$0.isDirect }
 
