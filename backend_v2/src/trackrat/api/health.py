@@ -15,6 +15,7 @@ from trackrat.db.engine import get_db
 from trackrat.models.database import DiscoveryRun, TrainJourney
 from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import Settings, get_settings
+from trackrat.utils.system_stats import get_disk_usage, get_memory_usage
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
@@ -122,6 +123,34 @@ async def health_check(
         }
     except Exception as e:
         health_status["checks"]["discovery"] = {"status": "unhealthy", "error": str(e)}
+
+    # Disk space check
+    disk = get_disk_usage("/")
+    if disk:
+        pct = disk["usage_percent"]
+        if pct >= 95:
+            disk_status = "unhealthy"
+        elif pct >= 90:
+            disk_status = "warning"
+        else:
+            disk_status = "healthy"
+        health_status["checks"]["disk"] = {
+            "status": disk_status,
+            **disk,
+        }
+
+    # Memory check
+    memory = get_memory_usage()
+    if memory:
+        pct = memory["usage_percent"]
+        if pct >= 95:
+            mem_status = "warning"
+        else:
+            mem_status = "healthy"
+        health_status["checks"]["memory"] = {
+            "status": mem_status,
+            **memory,
+        }
 
     # PostgreSQL with Cloud SQL provides automated backups
     health_status["checks"]["backup"] = {
