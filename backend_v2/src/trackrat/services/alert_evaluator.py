@@ -91,6 +91,11 @@ def _line_codes_to_gtfs_ids(data_source: str, line_codes: frozenset[str]) -> set
     return gtfs_ids
 
 
+def _is_system_wide(sub: RouteAlertSubscription) -> bool:
+    """Check if a subscription is system-wide (no line, station pair, or train)."""
+    return not sub.line_id and not sub.from_station_code and not sub.to_station_code and not sub.train_id
+
+
 def _get_gtfs_route_ids_for_subscription(
     sub: RouteAlertSubscription,
 ) -> set[str]:
@@ -99,8 +104,12 @@ def _get_gtfs_route_ids_for_subscription(
     Maps our internal route topology to the route IDs used in
     service alert feeds (MTA GTFS route_ids, NJT line codes).
 
-    Supports both line-based subs (direct route lookup) and station-pair
-    subs (finds all routes covering the segment).
+    Supports line-based subs (direct route lookup), station-pair
+    subs (finds all routes covering the segment), and system-wide
+    subs (returns None to match all routes for that data source).
+
+    Returns an empty set if no routes could be resolved (except
+    system-wide, which is handled separately).
     """
     if sub.line_id:
         route = _ROUTES_BY_ID.get(sub.line_id)
@@ -166,6 +175,11 @@ async def evaluate_route_alerts(
                 if sent:
                     alerts_sent += 1
                     state_changed = True
+                continue
+
+            # System-wide subscriptions: skip real-time delay/cancellation
+            # evaluation (handled entirely via service alerts in evaluate_service_alerts)
+            if _is_system_wide(sub):
                 continue
 
             # Build query for relevant journeys (line / station-pair modes)
@@ -765,6 +779,8 @@ async def _send_recovery_notification(
 
 def _get_route_name(sub: RouteAlertSubscription) -> str:
     """Build a human-readable route name for a subscription."""
+    if _is_system_wide(sub):
+        return sub.data_source or "Unknown"
     if sub.line_id:
         route = _ROUTES_BY_ID.get(sub.line_id)
         route_name = route.name if route else sub.line_id
@@ -1102,10 +1118,16 @@ async def evaluate_service_alerts(
             if sub.data_source not in SERVICE_ALERT_SOURCES:
                 continue
 
-            # Get GTFS route_ids this subscription covers
-            gtfs_route_ids = _get_gtfs_route_ids_for_subscription(sub)
-            if not gtfs_route_ids:
-                continue
+            # System-wide subs match ALL alerts for the data source
+            is_sw = _is_system_wide(sub)
+
+            if not is_sw:
+                # Get GTFS route_ids this subscription covers
+                gtfs_route_ids = _get_gtfs_route_ids_for_subscription(sub)
+                if not gtfs_route_ids:
+                    continue
+            else:
+                gtfs_route_ids = None  # sentinel: match all routes
 
             # Find alerts affecting this subscription's routes
             matching_alerts = _find_matching_alerts(
@@ -1176,14 +1198,14 @@ async def evaluate_service_alerts(
 def _find_matching_alerts(
     alerts: list[ServiceAlert],
     data_source: str,
-    gtfs_route_ids: set[str],
+    gtfs_route_ids: set[str] | None,
     now_epoch: int,
 ) -> list[ServiceAlert]:
     """Find service alerts that match a subscription and are currently active.
 
     Returns alerts that:
     1. Are for the same data source
-    2. Affect at least one of the subscription's routes
+    2. Affect at least one of the subscription's routes (or all if gtfs_route_ids is None)
     3. Have at least one active period that is currently active (started and not yet ended)
     """
     matching: list[ServiceAlert] = []
@@ -1192,10 +1214,11 @@ def _find_matching_alerts(
         if alert.data_source != data_source:
             continue
 
-        # Check route overlap
-        alert_routes = set(alert.affected_route_ids or [])
-        if not alert_routes & gtfs_route_ids:
-            continue
+        # Check route overlap (None = system-wide, match all)
+        if gtfs_route_ids is not None:
+            alert_routes = set(alert.affected_route_ids or [])
+            if not alert_routes & gtfs_route_ids:
+                continue
 
         # Check if any active period is currently active
         is_currently_active = False
@@ -1219,6 +1242,8 @@ def _find_matching_alerts(
 
 def _get_route_name_for_subscription(sub: RouteAlertSubscription) -> str:
     """Get a human-readable route name for a subscription."""
+    if _is_system_wide(sub):
+        return sub.data_source or "Unknown"
     if sub.line_id:
         route = _ROUTES_BY_ID.get(sub.line_id)
         return route.name if route else sub.line_id

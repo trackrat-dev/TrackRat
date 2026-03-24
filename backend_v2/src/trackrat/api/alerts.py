@@ -61,15 +61,21 @@ class SubscriptionItem(BaseModel):
 
     @model_validator(mode="after")
     def check_subscription_type(self) -> "SubscriptionItem":
-        """Require exactly one of: line_id, both station codes, or train_id."""
+        """Require exactly one of: line_id, both station codes, train_id, or none (system-wide)."""
         has_line = bool(self.line_id)
         has_stations = bool(self.from_station_code and self.to_station_code)
         has_train = bool(self.train_id)
         modes = sum([has_line, has_stations, has_train])
-        if modes != 1:
+        if modes > 1:
             raise ValueError(
-                "Must provide exactly one of: line_id, both from_station_code "
-                "and to_station_code, or train_id"
+                "Must provide at most one of: line_id, both from_station_code "
+                "and to_station_code, or train_id. "
+                "Provide none for a system-wide subscription."
+            )
+        # Reject partial station pairs (one set, the other not)
+        if bool(self.from_station_code) != bool(self.to_station_code):
+            raise ValueError(
+                "Both from_station_code and to_station_code must be provided together"
             )
         return self
 
@@ -123,16 +129,19 @@ def _subscription_identity(
 ) -> tuple[Any, ...]:
     """Return a hashable key uniquely identifying a subscription's logical target.
 
-    Three mutually exclusive subscription types:
+    Four mutually exclusive subscription types:
     - Line-based: (data_source, line_id, direction)
     - Station-pair: (data_source, from_station_code, to_station_code)
     - Train-specific: (data_source, train_id)
+    - System-wide: (data_source,) — all identifiers are NULL
     """
     if row.train_id:
         return ("train", row.data_source, row.train_id)
     if row.from_station_code and row.to_station_code:
         return ("stations", row.data_source, row.from_station_code, row.to_station_code)
-    return ("line", row.data_source, row.line_id, row.direction)
+    if row.line_id:
+        return ("line", row.data_source, row.line_id, row.direction)
+    return ("system", row.data_source)
 
 
 def _subscription_identity_from_item(
@@ -148,7 +157,9 @@ def _subscription_identity_from_item(
             item.from_station_code,
             item.to_station_code,
         )
-    return ("line", item.data_source, item.line_id, item.direction)
+    if item.line_id:
+        return ("line", item.data_source, item.line_id, item.direction)
+    return ("system", item.data_source)
 
 
 # ---------------------------------------------------------------------------
