@@ -79,15 +79,10 @@ export function TrainListPage() {
 
       setTrains(sorted);
       setTransferTrips(transferTripsResult);
-      setIsTransferSearch(transferTripsResult.length > 0);
+      setIsTransferSearch(transferTripsResult.length > 0 && directTrips.length === 0);
 
       setLastUpdated(new Date());
       setLoading(false);
-
-      // Save to recent trips
-      if (fromStation && toStation) {
-        addRecentTrip(fromStation, toStation);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load trains');
       setLoading(false);
@@ -96,6 +91,11 @@ export function TrainListPage() {
 
   useEffect(() => {
     fetchTrains();
+
+    // Save to recent trips once on mount, not every poll cycle
+    if (fromStation && toStation) {
+      addRecentTrip(fromStation, toStation);
+    }
 
     // Fetch summary once on mount (not polled) - only for direct routes
     if (from && to) {

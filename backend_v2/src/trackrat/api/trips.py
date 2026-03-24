@@ -68,7 +68,10 @@ async def search_trips_endpoint(
     automatically finds 1-transfer connections via nearby stations in
     other transit systems.
     """
-    if from_station.upper() == to_station.upper():
+    from_station = from_station.upper()
+    to_station = to_station.upper()
+
+    if from_station == to_station:
         raise HTTPException(status_code=400, detail="Origin and destination cannot be the same station")
 
     # Parse data_sources the same way as departures endpoint

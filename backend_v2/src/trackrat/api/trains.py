@@ -438,7 +438,7 @@ async def get_train_details(
 @handle_errors
 async def get_train_history(
     train_id: str = Path(..., description="Train ID"),
-    days: int = Query(30, ge=1, description="Number of days of history"),
+    days: int = Query(30, ge=1, le=365, description="Number of days of history"),
     from_station: str | None = Query(
         None, description="Filter to journeys containing this origin station"
     ),
