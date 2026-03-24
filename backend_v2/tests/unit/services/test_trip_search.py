@@ -5,7 +5,7 @@ Tests the pure logic functions used in trip composition:
 - _get_best_time: time priority selection
 - _departure_to_leg: TrainDeparture -> TripLeg conversion
 - _make_direct_trip: single-leg TripOption construction
-- _find_systems_for_station: system lookup from route topology
+- get_systems_serving_station: system lookup from route topology
 - _find_relevant_transfer_points: transfer point discovery between systems
 - _orient_transfer: transfer point orientation for routing
 - _empty_response: empty response construction
@@ -29,11 +29,11 @@ from trackrat.models.api import (
     TripOption,
     TripSearchResponse,
 )
+from trackrat.config.transfer_points import get_systems_serving_station
 from trackrat.services.trip_search import (
     _departure_to_leg,
     _empty_response,
     _find_relevant_transfer_points,
-    _find_systems_for_station,
     _get_best_time,
     _make_direct_trip,
     _orient_transfer,
@@ -173,21 +173,21 @@ class TestFindSystemsForStation:
     """Test station-to-system lookup using route topology."""
 
     def test_ny_penn(self):
-        systems = _find_systems_for_station("NY")
+        systems = get_systems_serving_station("NY")
         assert "NJT" in systems
         assert "AMTRAK" in systems
         assert "LIRR" in systems
 
     def test_hoboken_njt(self):
-        systems = _find_systems_for_station("HB")
+        systems = get_systems_serving_station("HB")
         assert "NJT" in systems
 
     def test_path_stations(self):
-        systems = _find_systems_for_station("PWC")
+        systems = get_systems_serving_station("PWC")
         assert "PATH" in systems
 
     def test_unknown_station(self):
-        systems = _find_systems_for_station("ZZZZ")
+        systems = get_systems_serving_station("ZZZZ")
         assert len(systems) == 0
 
 

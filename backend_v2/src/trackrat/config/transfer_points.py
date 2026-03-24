@@ -17,7 +17,6 @@ from trackrat.config.route_topology import ALL_ROUTES
 from trackrat.config.stations.common import (
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
-    STATION_NAMES,
     get_station_name,
 )
 
