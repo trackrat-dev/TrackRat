@@ -146,7 +146,7 @@ struct TrainListView: View {
             // Scrollable content
             ScrollView {
                 LazyVStack(spacing: 16) {
-                    if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty) {
+                    if viewModel.isLoading || (!viewModel.hasStartedLoading && viewModel.trains.isEmpty && viewModel.transferTrips.isEmpty) {
                         TrackRatLoadingView(message: "Finding your trains...")
                             .frame(maxWidth: .infinity, minHeight: 200)
                     } else if let error = viewModel.error {
@@ -160,7 +160,7 @@ struct TrainListView: View {
                                 )
                             }
                         }
-                    } else if viewModel.trains.isEmpty {
+                    } else if viewModel.trains.isEmpty && viewModel.transferTrips.isEmpty {
                         if !viewModel.hasDirectRoute {
                             NoDirectRouteView(
                                 fromName: departureName,
@@ -175,69 +175,98 @@ struct TrainListView: View {
                             ScheduleInfoBanner(date: selectedDate)
                         }
 
-                        // Route summary (if we have both origin and destination) - only for today - Pro feature
-                        if !isFutureDate,
-                           !departureStationCode.isEmpty,
-                           let destinationCode = Stations.getStationCode(destination) {
-                            OperationsSummaryView(
-                                scope: .route,
-                                fromStation: departureStationCode,
-                                toStation: destinationCode,
-                                isExpandable: true,
-                                onTrainTap: { selectedTrainId in
-                                    // Navigate to the selected train's detail view
-                                    // Note: dataSource not available from this callback, backend uses two-phase search
-                                    appState.navigationPath.append(
-                                        NavigationDestination.trainDetailsFlexible(
-                                            trainNumber: selectedTrainId,
-                                            fromStation: departureStationCode,
-                                            journeyDate: nil,
-                                            dataSource: nil
-                                        )
-                                    )
-                                }
-                            )
-                            .padding(.bottom, 4)
-                        }
+                        if viewModel.isTransferSearch {
+                            // Transfer results
+                            TransferSearchBanner()
 
-                        ForEach(viewModel.trains) { train in
-                            TrainCard(
-                                train: train,
-                                destination: destination,
-                                departureStationCode: departureStationCode,
-                                isFutureDate: isFutureDate,
-                                onTap: {
-                                    appState.currentTrainId = train.id
-                                    appState.currentTrain = train  // Store the full train object
+                            ForEach(viewModel.transferTrips) { trip in
+                                TransferTripCard(
+                                    trip: trip,
+                                    onLegTap: { leg in
+                                        appState.currentTrainId = leg.trainId
+                                        appState.currentTrain = nil
 
-                                    // Set the route context for bottom sheet expansion
-                                    if let destinationCode = Stations.getStationCode(destination) {
-                                        appState.selectedRoute = TripPair(
-                                            departureCode: departureStationCode,
-                                            departureName: departureName,
-                                            destinationCode: destinationCode,
-                                            destinationName: destination,
-                                            lastUsed: Date(),
-                                            isFavorite: false
+                                        if let destCode = Stations.getStationCode(destination) {
+                                            appState.selectedRoute = TripPair(
+                                                departureCode: departureStationCode,
+                                                departureName: departureName,
+                                                destinationCode: destCode,
+                                                destinationName: destination,
+                                                lastUsed: Date(),
+                                                isFavorite: false
+                                            )
+                                        }
+
+                                        appState.pendingNavigation = .trainDetailsFlexible(
+                                            trainNumber: leg.trainId,
+                                            fromStation: leg.boarding.code,
+                                            journeyDate: leg.journeyDate,
+                                            dataSource: leg.dataSource
                                         )
                                     }
+                                )
+                            }
+                        } else {
+                            // Direct results (existing behavior)
+                            // Route summary - only for today - Pro feature
+                            if !isFutureDate,
+                               !departureStationCode.isEmpty,
+                               let destinationCode = Stations.getStationCode(destination) {
+                                OperationsSummaryView(
+                                    scope: .route,
+                                    fromStation: departureStationCode,
+                                    toStation: destinationCode,
+                                    isExpandable: true,
+                                    onTrainTap: { selectedTrainId in
+                                        appState.navigationPath.append(
+                                            NavigationDestination.trainDetailsFlexible(
+                                                trainNumber: selectedTrainId,
+                                                fromStation: departureStationCode,
+                                                journeyDate: nil,
+                                                dataSource: nil
+                                            )
+                                        )
+                                    }
+                                )
+                                .padding(.bottom, 4)
+                            }
 
-                                    // Use pendingNavigation to expand sheet FIRST, then navigate
-                                    // This prevents the glitch where sheet expands with empty space
-                                    appState.pendingNavigation = .trainDetailsFlexible(
-                                        trainNumber: train.trainId,
-                                        fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
-                                        journeyDate: train.journeyDate,
-                                        dataSource: train.dataSource
-                                    )
-                                },
-                                isExpress: viewModel.expressTrainIds.contains(train.trainId)
-                            )
+                            ForEach(viewModel.trains) { train in
+                                TrainCard(
+                                    train: train,
+                                    destination: destination,
+                                    departureStationCode: departureStationCode,
+                                    isFutureDate: isFutureDate,
+                                    onTap: {
+                                        appState.currentTrainId = train.id
+                                        appState.currentTrain = train
+
+                                        if let destinationCode = Stations.getStationCode(destination) {
+                                            appState.selectedRoute = TripPair(
+                                                departureCode: departureStationCode,
+                                                departureName: departureName,
+                                                destinationCode: destinationCode,
+                                                destinationName: destination,
+                                                lastUsed: Date(),
+                                                isFavorite: false
+                                            )
+                                        }
+
+                                        appState.pendingNavigation = .trainDetailsFlexible(
+                                            trainNumber: train.trainId,
+                                            fromStation: departureStationCode.isEmpty ? nil : departureStationCode,
+                                            journeyDate: train.journeyDate,
+                                            dataSource: train.dataSource
+                                        )
+                                    },
+                                    isExpress: viewModel.expressTrainIds.contains(train.trainId)
+                                )
+                            }
                         }
                     }
 
                     // Feedback button at bottom of content
-                    if !viewModel.trains.isEmpty {
+                    if !viewModel.trains.isEmpty || !viewModel.transferTrips.isEmpty {
                         FeedbackButton(
                             screen: "train_list",
                             trainId: nil,
@@ -482,6 +511,8 @@ struct TrainCard: View {
 @MainActor
 class TrainListViewModel: ObservableObject {
     @Published var trains: [TrainV2] = []
+    @Published var transferTrips: [TripOption] = []
+    @Published var isTransferSearch = false
     @Published var isLoading = false
     @Published var hasStartedLoading = false
     @Published var error: String?
@@ -563,48 +594,46 @@ class TrainListViewModel: ObservableObject {
                 return
             }
 
-            print("🔍 DEBUG: Loading trains from \(fromStationCode) to \(toStationCode) for date \(date)")
-
-            // Use injected apiService with optional data sources filter
-            let result = try await self.apiService.searchTrainsWithRouteInfo(
+            let fetchedTrips = try await self.apiService.searchTrips(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
                 date: date,
                 dataSources: selectedSystems
             )
-            let fetchedTrains = result.trains
-            hasDirectRoute = result.hasDirectRoute
 
-            print("🔍 DEBUG: API returned \(fetchedTrains.count) trains, hasDirectRoute=\(result.hasDirectRoute)")
-            print("🔍 DEBUG: Train IDs: \(fetchedTrains.map { $0.trainId })")
+            let hasTransfers = fetchedTrips.contains { !$0.isDirect }
+            hasDirectRoute = !hasTransfers || !fetchedTrips.isEmpty
 
-            // Filter trains: only exclude trains that have already departed
-            let now = Date()
-            print("🔍 DEBUG: Current time: \(now)")
+            if hasTransfers {
+                // Transfer results: deduplicate and store directly (backend sorts by departure)
+                let uniqueTrips = Array(Dictionary(grouping: fetchedTrips, by: \.id).compactMapValues(\.first).values)
+                    .sorted { $0.departureTime < $1.departureTime }
+                transferTrips = uniqueTrips
+                trains = []
+                isTransferSearch = true
+            } else {
+                // Direct results: convert to TrainV2 for existing UI
+                let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
+                let sixHoursFromNow = Date().addingTimeInterval(6 * 60 * 60)
 
-            let filteredTrains = fetchedTrains.filter { train in
-                // Show trains that haven't departed OR departed within 10 minutes
-                if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
-                    return minutesAgo <= 10
+                let filteredTrains = fetchedTrains.filter { train in
+                    let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
+                    let isWithinTimeWindow = departureTime <= sixHoursFromNow
+                    if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
+                        return minutesAgo <= 10
+                    }
+                    return isWithinTimeWindow
                 }
-                return true
+
+                let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+                trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
+                transferTrips = []
+                isTransferSearch = false
+
+                expressTrainIds = identifyExpressTrains()
             }
 
-            print("🔍 DEBUG: After filtering departed trains: \(filteredTrains.count) trains remain")
 
-            // Deduplicate trains by ID to prevent ForEach crashes
-            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
-
-            print("🔍 DEBUG: After deduplication: \(uniqueTrains.count) unique trains")
-            print("🔍 DEBUG: Unique train IDs: \(uniqueTrains.map { $0.trainId })")
-
-            // Sort trains by origin station departure time
-            trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
-
-            // PERFORMANCE: Calculate express trains once, not on every render
-            expressTrainIds = identifyExpressTrains()
-
-            print("🔍 DEBUG: Final sorted trains count: \(trains.count)")
         } catch {
             self.error = error.localizedDescription
         }
@@ -615,61 +644,222 @@ class TrainListViewModel: ObservableObject {
         guard let destination = currentDestination,
               let fromStationCode = currentFromStationCode,
               let toStationCode = Stations.getStationCode(destination) else {
-            return // Or set an error if appropriate for silent refresh
+            return
         }
 
-        // Use provided systems or fall back to stored systems
         let systems = selectedSystems ?? currentSelectedSystems
 
         do {
-            // Use injected apiService with optional data sources filter
-            let fetchedTrains = try await self.apiService.searchTrains(
+            let fetchedTrips = try await self.apiService.searchTrips(
                 fromStationCode: fromStationCode,
                 toStationCode: toStationCode,
                 date: date,
                 dataSources: systems
             )
 
-            let now = Date()
-            let sixHoursFromNow = now.addingTimeInterval(6 * 60 * 60)
-            
-            let filteredTrains = fetchedTrains.filter { train in
-                let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                let isWithinTimeWindow = departureTime <= sixHoursFromNow
+            // Clear any stale error from a previous failed load
+            self.error = nil
 
-                // Show trains that haven't departed OR departed within 10 minutes
-                if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
-                    return minutesAgo <= 10
+            let hasTransfers = fetchedTrips.contains { !$0.isDirect }
+
+            if hasTransfers {
+                let uniqueTrips = Array(Dictionary(grouping: fetchedTrips, by: \.id).compactMapValues(\.first).values)
+                    .sorted { $0.departureTime < $1.departureTime }
+                transferTrips = uniqueTrips
+                trains = []
+                isTransferSearch = true
+            } else {
+                let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
+                let sixHoursFromNow = Date().addingTimeInterval(6 * 60 * 60)
+
+                let filteredTrains = fetchedTrains.filter { train in
+                    let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
+                    let isWithinTimeWindow = departureTime <= sixHoursFromNow
+                    if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
+                        return minutesAgo <= 10
+                    }
+                    return isWithinTimeWindow
                 }
-                return isWithinTimeWindow
-            }
-            
-            // Deduplicate trains by ID to prevent ForEach crashes
-            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
-            
-            // Sort trains by origin station departure time
-            let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
-            
-            // Check for boarding status changes (StatusV2 only)
-            for train in trains {
-                if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                    if !train.isBoarding(fromStationCode: fromStationCode) && newTrain.isBoarding(fromStationCode: fromStationCode) {
-                        // Haptic feedback for boarding status
-                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+
+                let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+                let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
+
+                // Check for boarding status changes
+                for train in trains {
+                    if let newTrain = newTrains.first(where: { $0.id == train.id }) {
+                        if !train.isBoarding(fromStationCode: fromStationCode) && newTrain.isBoarding(fromStationCode: fromStationCode) {
+                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        }
                     }
                 }
+
+                trains = newTrains
+                transferTrips = []
+                isTransferSearch = false
+                expressTrainIds = identifyExpressTrains()
             }
-            
-            // Update trains list with new data
-            trains = newTrains
-
-            // PERFORMANCE: Recalculate express trains when data changes
-            expressTrainIds = identifyExpressTrains()
-
         } catch {
-            // Silent failure for background refresh
             print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - Transfer Search Banner
+struct TransferSearchBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.triangle.swap")
+                .foregroundColor(.white.opacity(0.6))
+            Text("No direct service — showing connections with 1 transfer")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.7))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(8)
+    }
+}
+
+// MARK: - Transfer Trip Card
+struct TransferTripCard: View {
+    let trip: TripOption
+    let onLegTap: (TripLeg) -> Void
+
+    private func timeString(_ date: Date) -> String {
+        DateFormatter.easternTimeShort.string(from: date)
+    }
+
+    var body: some View {
+        if trip.legs.count >= 2, !trip.transfers.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(trip.legs.enumerated()), id: \.element.id) { index, leg in
+                    LegRow(leg: leg, label: "\(index + 1)", onTap: { onLegTap(leg) })
+
+                    if index < trip.transfers.count {
+                        let transfer = trip.transfers[index]
+                        HStack(spacing: 8) {
+                            VStack(spacing: 0) {
+                                Rectangle()
+                                    .fill(Color.black.opacity(0.15))
+                                    .frame(width: 2, height: 8)
+                                Image(systemName: transfer.sameStation ? "arrow.down" : "figure.walk")
+                                    .font(.caption2)
+                                    .foregroundColor(.black.opacity(0.4))
+                                Rectangle()
+                                    .fill(Color.black.opacity(0.15))
+                                    .frame(width: 2, height: 8)
+                            }
+                            .frame(width: 24)
+
+                            Text(transfer.walkDescription)
+                                .font(.caption)
+                                .foregroundColor(.black.opacity(0.45))
+
+                            if !transfer.sameStation {
+                                Text("at \(transfer.toStation.name)")
+                                    .font(.caption)
+                                    .foregroundColor(.black.opacity(0.35))
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                // Trip summary footer
+                HStack {
+                    Text(trip.durationDisplay)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.black.opacity(0.6))
+
+                    Spacer()
+
+                    Text("\(timeString(trip.departureTime)) → \(timeString(trip.arrivalTime))")
+                        .font(.caption)
+                        .foregroundColor(.black.opacity(0.5))
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            }
+            .padding(.vertical, 12)
+            .background(Color.white.opacity(0.9))
+            .cornerRadius(TrackRatTheme.CornerRadius.lg)
+            .trackRatShadow()
+        }
+    }
+}
+
+// MARK: - Leg Row (inside TransferTripCard)
+private struct LegRow: View {
+    let leg: TripLeg
+    let label: String
+    let onTap: () -> Void
+
+    private var departureTime: String {
+        let time = leg.boarding.updatedTime ?? leg.boarding.scheduledTime
+        return time.map { DateFormatter.easternTimeShort.string(from: $0) } ?? "--:--"
+    }
+
+    private var arrivalTime: String {
+        let time = leg.alighting.updatedTime ?? leg.alighting.scheduledTime
+        return time.map { DateFormatter.easternTimeShort.string(from: $0) } ?? "--:--"
+    }
+
+    private var lineColor: Color {
+        Color(hex: leg.line.color) ?? .gray
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                // Line color indicator
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(lineColor)
+                    .frame(width: 4, height: 36)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(leg.line.name)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.black)
+                            .lineLimit(1)
+
+                        if leg.isCancelled {
+                            Text("Cancelled")
+                                .font(.caption2)
+                                .foregroundColor(.red)
+                        }
+                    }
+
+                    Text("\(leg.boarding.name) → \(leg.alighting.name)")
+                        .font(.caption)
+                        .foregroundColor(.black.opacity(0.5))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text("\(departureTime) → \(arrivalTime)")
+                    .font(.caption)
+                    .foregroundColor(.black.opacity(0.6))
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption2)
+                    .foregroundColor(.black.opacity(0.3))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+        }
+        .buttonStyle(.plain)
     }
 }
 

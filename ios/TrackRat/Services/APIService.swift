@@ -225,6 +225,57 @@ final class APIService: ObservableObject {
         }
     }
 
+    // MARK: - Trip Search
+
+    func searchTrips(fromStationCode: String, toStationCode: String, date: Date? = nil, dataSources: Set<TrainSystem>? = nil) async throws -> [TripOption] {
+        guard var components = URLComponents(string: "\(baseURL)/v2/trips/search") else {
+            throw APIError.invalidURL
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "from", value: fromStationCode),
+            URLQueryItem(name: "to", value: toStationCode),
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
+            URLQueryItem(name: "hide_departed", value: "true")
+        ]
+
+        if let date = date {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.timeZone = TimeZone(identifier: "America/New_York")
+            queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+        }
+
+        if let dataSources = dataSources, !dataSources.isEmpty {
+            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.apiDataSources))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        print("🔵 DEBUG API: Searching trips from URL: \(url)")
+
+        return try await executeWithRetry {
+            let (data, _) = try await self.session.data(from: url)
+
+            do {
+                let response = try self.decoder.decode(V2TripSearchResponse.self, from: data)
+                print("🔵 DEBUG API: Decoded \(response.trips.count) trip options (search_type: \(response.metadata?.searchType ?? "unknown"))")
+
+                return response.trips.map { self.adaptV2TripOption($0) }
+            } catch {
+                print("🔴 V2 DECODING ERROR (searchTrips): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw error
+            }
+        }
+    }
+
     // MARK: - Train Details
 
     func fetchTrainDetails(id: String, fromStationCode: String? = nil, date: Date? = nil, dataSource: String? = nil) async throws -> TrainV2 {
@@ -950,6 +1001,65 @@ final class APIService: ObservableObject {
             isCompleted: false, // Departures are never completed at search time
             dataSource: departure.dataSource,
             stops: nil
+        )
+    }
+
+    private func adaptV2TripOption(_ option: V2TripOption) -> TripOption {
+        let legs = option.legs.map { leg in
+            TripLeg(
+                trainId: leg.trainId,
+                journeyDate: leg.journeyDate,
+                line: LineInfo(
+                    code: leg.line.code,
+                    name: leg.line.name,
+                    color: leg.line.color
+                ),
+                dataSource: leg.dataSource,
+                destination: leg.destination,
+                boarding: StationTiming(
+                    code: leg.boarding.code,
+                    name: leg.boarding.name,
+                    scheduledTime: leg.boarding.scheduledTime,
+                    updatedTime: leg.boarding.updatedTime,
+                    actualTime: leg.boarding.actualTime,
+                    track: leg.boarding.track
+                ),
+                alighting: StationTiming(
+                    code: leg.alighting.code,
+                    name: leg.alighting.name,
+                    scheduledTime: leg.alighting.scheduledTime,
+                    updatedTime: leg.alighting.updatedTime,
+                    actualTime: leg.alighting.actualTime,
+                    track: leg.alighting.track
+                ),
+                observationType: leg.observationType,
+                isCancelled: leg.isCancelled,
+                trainPosition: leg.trainPosition.map {
+                    TrainPosition(
+                        lastDepartedStationCode: $0.lastDepartedStationCode,
+                        atStationCode: $0.atStationCode,
+                        nextStationCode: $0.nextStationCode
+                    )
+                }
+            )
+        }
+
+        let transfers = option.transfers.map { transfer in
+            TransferInfo(
+                fromStation: SimpleStation(code: transfer.fromStation.code, name: transfer.fromStation.name),
+                toStation: SimpleStation(code: transfer.toStation.code, name: transfer.toStation.name),
+                walkMinutes: transfer.walkMinutes,
+                sameStation: transfer.sameStation
+            )
+        }
+
+        return TripOption(
+            legs: legs,
+            transfers: transfers,
+            departureTime: option.departureTime,
+            arrivalTime: option.arrivalTime,
+            totalDurationMinutes: option.totalDurationMinutes,
+            isDirect: option.isDirect
         )
     }
 

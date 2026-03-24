@@ -1,106 +1,285 @@
-# Track Assignment Notification — Implementation Plan
+# Transit Transfers: Design Proposal
 
-## Key Insight
+## Overview
 
-The iOS side **already** handles track assignment notifications via `handleCriticalEventNotification` in `TrackRatApp.swift`. When a Live Activity push contains `alertMetadata` with `alert_type: "track_assigned"` in the content state, iOS creates a local banner notification with sound. **No iOS changes needed.**
+Add implicit transfer support: when a user picks two stations with no direct service, the backend automatically finds 1-transfer connections using real-time departure data.
 
-The backend just needs to:
-1. Detect when a track is newly assigned to a followed train's origin stop
-2. Include `alertMetadata` in the Live Activity content state push
-3. Force-refresh data more aggressively for followed trains awaiting track assignment
+## Architecture
 
-## Changes
+### New endpoint: `GET /api/v2/trips/search`
 
-### 1. Database Migration: Add `track_notified_at` to `LiveActivityToken`
+Single smart endpoint replaces the departures call on clients. Internally:
+1. Checks for direct service (reuses existing `DepartureService.get_departures()`)
+2. If direct trains exist → returns them as single-leg trips
+3. If no direct trains → runs connection search and returns multi-leg options
 
-**File:** `backend_v2/src/trackrat/db/migrations/versions/20260323_1200-a1b2c3d4e5f6_add_track_notified_at.py`
+**No changes to existing `/api/v2/trains/departures` endpoint.** It stays for backward compatibility and internal use by the trip search.
 
-Add nullable `DateTime(timezone=True)` column `track_notified_at` to `live_activity_tokens`. This tracks whether we've already sent a track assignment alert for this token, preventing duplicate notifications.
-
-### 2. Model Update: `LiveActivityToken`
-
-**File:** `backend_v2/src/trackrat/models/database.py` (line ~300)
-
-Add `track_notified_at = Column(DateTime(timezone=True), nullable=True)` to `LiveActivityToken`.
-
-### 3. Content State: Add `alertMetadata` for Track Assignments
-
-**File:** `backend_v2/src/trackrat/services/scheduler.py`
-
-Modify `_calculate_live_activity_content_state` to accept a `track_just_assigned: bool` parameter. When `True`, add to the content state dict:
+### Response shape
 
 ```python
-content_state["alertMetadata"] = {
-    "alert_type": "track_assigned",
-    "train_id": journey.train_id,
-    "dynamic_island_priority": "high",
-}
+class TripLeg(BaseModel):
+    train_id: str
+    journey_date: date
+    line: LineInfo
+    data_source: str
+    boarding: StationInfo      # where you board
+    alighting: StationInfo     # where you exit
+    destination: str           # train's final destination (for display)
+    observation_type: str
+    is_cancelled: bool
+    train_position: TrainPosition | None
+
+class TransferInfo(BaseModel):
+    from_station: StationInfo  # where you exit leg N
+    to_station: StationInfo    # where you board leg N+1
+    walk_minutes: int          # estimated walk time
+    same_station: bool         # same physical station vs short walk
+
+class TripOption(BaseModel):
+    legs: list[TripLeg]
+    transfers: list[TransferInfo]    # len = len(legs) - 1
+    departure_time: datetime         # first leg boarding time
+    arrival_time: datetime           # last leg alighting time
+    total_duration_minutes: int
+    is_direct: bool                  # single leg, no transfers
+
+class TripSearchResponse(BaseModel):
+    trips: list[TripOption]
+    metadata: dict[str, Any]
 ```
 
-This matches what the iOS `handleCriticalEventNotification` already expects (line 378-385 of TrackRatApp.swift).
+For direct service, each `TripOption` has 1 leg and 0 transfers. Clients render this identically to current behavior — just mapping `TripLeg` fields to what they currently get from `TrainDeparture`.
 
-### 4. Live Activity Update Loop: Detect & Notify Track Assignments
+### Scope limitation: 1 transfer max (2 legs)
 
-**File:** `backend_v2/src/trackrat/services/scheduler.py`
+This covers the vast majority of NYC-area trips. Multi-transfer can be added later. This simplifies the algorithm significantly — we're matching timetables at transfer points, not running graph search.
 
-In `update_live_activities`, after calculating content state for each token:
+---
 
-1. Check if `content_state["track"]` is non-null AND `token.track_notified_at` is null
-2. If so, set `track_just_assigned=True` when calling `_calculate_live_activity_content_state` (or just inject `alertMetadata` after the call)
-3. After successful APNS send, set `token.track_notified_at = now_et()` and commit
+## Backend changes
 
-### 5. Force Refresh for Followed Trains Awaiting Track
+### 1. Transfer point auto-generation
 
-**File:** `backend_v2/src/trackrat/services/scheduler.py`
+**New file:** `backend_v2/src/trackrat/config/transfer_points.py`
 
-In `update_live_activities`, for tokens where:
-- `token.track_notified_at is None` (haven't notified about track yet)
-- Train departs within 30 minutes from origin
-- Data source is NJT, LIRR, or MNR (providers with track assignments)
+Uses `STATION_COORDINATES` to find station pairs within walking distance (~400m) across different transit systems. Also detects shared station codes (e.g., `NY` used by NJT, Amtrak, LIRR).
 
-**Always** force a JIT refresh regardless of staleness. This ensures we check the transit API on every 1-minute LA cycle for trains actively awaiting track assignment, reducing worst-case latency from 60s (staleness threshold) to the LA cycle interval (~1 min).
-
-### 6. Fix LIRR/MNR `track_assigned_at` (consistency)
-
-**Files:**
-- `backend_v2/src/trackrat/collectors/lirr/collector.py` (lines 476, 585)
-- `backend_v2/src/trackrat/collectors/mnr/collector.py` (lines 467, 575)
-
-At each track write location, add:
 ```python
-if arr.track and not existing_stop.track:
-    existing_stop.track_assigned_at = now_et()
-existing_stop.track = arr.track
+@dataclass(frozen=True)
+class TransferPoint:
+    station_a: str           # station code in system A
+    system_a: str            # data source (e.g., "NJT")
+    station_b: str           # station code in system B
+    system_b: str
+    walk_meters: float       # 0 for same-station transfers
+    walk_minutes: int        # estimated (walk_meters / 80m per minute, min 3)
+    same_station: bool       # same physical station
+
+TRANSFER_POINTS: tuple[TransferPoint, ...]  # auto-generated at import time
 ```
 
-This ensures `track_assigned_at` is populated consistently across all providers (NJT already does this).
+**Generation logic:**
+1. Scan `ALL_ROUTES` to build `{station_code: set[data_source]}` mapping
+2. Shared codes (same code, multiple systems) → `TransferPoint` with `walk_meters=0, same_station=True`
+3. Existing `STATION_EQUIVALENCE_GROUPS` → same treatment
+4. Coordinate proximity: for each pair of stations in different systems, compute haversine distance. If ≤ 400m → `TransferPoint` with estimated walk time
+5. Deduplicate (A↔B and B↔A are the same transfer)
 
-### 7. Tests
+**Lookup indexes** (built at import time):
+```python
+# Given two systems, what transfer points connect them?
+_TRANSFERS_BY_SYSTEM_PAIR: dict[tuple[str, str], list[TransferPoint]]
 
-**File:** `backend_v2/tests/unit/test_track_assignment_notification.py`
+# Given a station, what transfers are available?
+_TRANSFERS_BY_STATION: dict[str, list[TransferPoint]]
 
-Tests:
-- `test_track_assignment_detected`: Content state includes `alertMetadata` when track transitions from None to a value
-- `test_track_assignment_not_repeated`: Second call does NOT include `alertMetadata` after `track_notified_at` is set
-- `test_no_alert_when_track_already_assigned`: Token created after track already assigned doesn't trigger alert
-- `test_force_refresh_for_awaiting_track`: Verify JIT refresh is forced when track is pending and departure is within 30 min
-- `test_lirr_mnr_track_assigned_at`: Verify LIRR/MNR collectors set `track_assigned_at`
+def get_transfer_points(system_a: str, system_b: str) -> list[TransferPoint]
+def get_transfers_from_station(station_code: str) -> list[TransferPoint]
+```
 
-## Latency Analysis (After Implementation)
+### 2. Trip search service
 
-| Scenario | Before | After |
-|----------|--------|-------|
-| NJT, track assigned between collection cycles | Up to 31 min | ~1 min (force refresh on every LA cycle) |
-| NJT hot train (<15 min to departure) | ~3 min | ~1 min |
-| LIRR/MNR | ~5 min | ~1 min (force refresh on every LA cycle) |
-| Best case (user viewing train) | ~1-2 min | ~1 min |
+**New file:** `backend_v2/src/trackrat/services/trip_search.py`
 
-The 1-minute floor is the Live Activity scheduler interval. Could be reduced further by increasing LA update frequency for tokens awaiting track, but 1 minute is a good starting point.
+```python
+class TripSearchService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.departure_service = DepartureService(db)
 
-## What We're NOT Doing
+    async def search(
+        self,
+        from_station: str,
+        to_station: str,
+        date: date | None = None,
+        time_from: time | None = None,
+        time_to: time | None = None,
+        data_sources: list[str] | None = None,
+        hide_departed: bool = False,
+        limit: int = 10,
+    ) -> TripSearchResponse:
+```
 
-- **No new scheduled job**: The existing 1-minute LA update loop handles everything
-- **No iOS changes**: The `handleCriticalEventNotification` + `createFallbackNotification("track_assigned")` path already works
-- **No device token linkage**: Using local notifications triggered by LA push, not a separate APNS alert push
-- **No Amtrak**: Amtrak API doesn't provide track/platform data
-- **No Subway**: Subway doesn't have meaningful platform assignments
+**Algorithm:**
+1. Call `self.departure_service.get_departures(from_station, to_station, ...)` for direct trains
+2. If results → wrap each `TrainDeparture` as a single-leg `TripOption`, return
+3. If no results → find connections:
+   a. Determine which systems serve `from_station` and `to_station` (scan `ALL_ROUTES`)
+   b. For each system pair `(sys_from, sys_to)` where `sys_from ≠ sys_to`:
+      - Get `transfer_points = get_transfer_points(sys_from, sys_to)`
+      - For each transfer point:
+        - Query departures: `from_station → transfer.station_a` (filtered to `sys_from`)
+        - Query departures: `transfer.station_b → to_station` (filtered to `sys_to`)
+        - Match connections: first leg arrival + transfer walk time ≤ second leg departure
+        - Build `TripOption` for each valid pair
+   c. Also check: can the same system serve both if we expand to equivalent stations? (handles cases where equivalence provides a direct route)
+4. Sort by `departure_time`, then `total_duration_minutes`
+5. Return top `limit` options
+
+**Performance considerations:**
+- Transfer point lookup is O(1) (pre-computed dict)
+- Departure queries reuse the existing optimized SQL + caching
+- Worst case for a 2-system transfer: ~2-4 departure queries (one per transfer point per direction)
+- Typical case: 1-2 transfer points between any two systems
+- Cache the trip search response the same way departures are cached (120s TTL)
+
+### 3. API endpoint
+
+**New route in:** `backend_v2/src/trackrat/api/trains.py` (or new file `trips.py`)
+
+```python
+@router.get("/api/v2/trips/search")
+async def search_trips(
+    from_station: str = Query(..., alias="from"),
+    to_station: str = Query(..., alias="to"),
+    date: date | None = None,
+    time_from: time | None = None,
+    time_to: time | None = None,
+    hide_departed: bool = False,
+    data_sources: str | None = None,
+    limit: int = Query(10, le=50),
+    db: AsyncSession = Depends(get_db),
+) -> TripSearchResponse:
+```
+
+Parameters mirror the existing departures endpoint for easy client migration.
+
+---
+
+## iOS changes
+
+### Station picker: remove system filtering for destination
+
+Currently, destination picker only shows stations from `appState.selectedSystems`. For transfers to work, the destination picker should show all stations (or at least stations reachable via transfer from the origin's systems).
+
+**Simplest approach:** Keep system filtering for the origin station (user picks where they're starting from within their enabled systems). For the destination, show all stations — the backend will figure out if a transfer is needed.
+
+**Files changed:**
+- `ios/TrackRat/Views/Screens/DestinationPickerView.swift` — remove or relax `selectedSystems` filter
+
+### TrainListView → TripListView migration
+
+Replace the departures API call with the trip search call. The view needs to handle both single-leg and multi-leg results.
+
+**Single-leg rendering:** Identical to current `TrainDeparture` rows. Same visual, just sourced from `TripOption.legs[0]`.
+
+**Multi-leg rendering:** Show as a single card with:
+- First leg departure time and station
+- Transfer indicator (station name + walk time)
+- Last leg arrival time and station
+- Total duration
+- Both line colors/names
+
+**Files changed:**
+- `ios/TrackRat/Views/Screens/TrainListView.swift` — new view model logic, updated row rendering
+- `ios/TrackRat/Services/APIService.swift` — new `searchTrips()` method
+- `ios/TrackRat/Models/V2APIModels.swift` — new response types (`TripOption`, `TripLeg`, `TransferInfo`)
+
+### TrainDetailsView
+
+When user taps a multi-leg trip, show both legs' stops with a transfer section between them. Single-leg trips show identical to current behavior.
+
+**Files changed:**
+- `ios/TrackRat/Views/Screens/TrainDetailsView.swift` — handle multi-leg display
+
+### Out of scope (confirmed)
+- Live Activity changes (stays single-train)
+- Push notification changes
+
+---
+
+## Web changes
+
+### Station picker
+
+Web already shows all stations from all systems — no changes needed.
+
+### TrainListPage
+
+Same migration as iOS: call `/trips/search` instead of `/departures`. Handle multi-leg rendering.
+
+**Files changed:**
+- `webpage_v2/src/pages/TrainListPage.tsx` — updated API call, new trip row component
+- `webpage_v2/src/services/api.ts` — new `searchTrips()` method
+- `webpage_v2/src/types/` — new TypeScript types for trip response
+
+### TrainDetailsPage
+
+Handle multi-leg display.
+
+**Files changed:**
+- `webpage_v2/src/pages/TrainDetailsPage.tsx` — multi-leg stop list
+
+---
+
+## Implementation order
+
+### Phase 1: Backend transfer infrastructure
+1. `transfer_points.py` — auto-generate transfer map from coordinates + equivalences + shared codes
+2. Tests for transfer point generation (verify known NYC-area transfer hubs are discovered)
+3. `trip_search.py` — service with connection matching algorithm
+4. Tests for trip search (direct service returns single-leg, cross-system returns multi-leg)
+5. API endpoint + response models
+6. API tests
+
+### Phase 2: iOS client
+7. New API models and service method
+8. Destination picker: relax system filtering
+9. TripListView: render both single-leg and multi-leg results
+10. TripDetailsView: multi-leg stop display
+
+### Phase 3: Web client
+11. New TypeScript types and API method
+12. TrainListPage: render both result types
+13. TrainDetailsPage: multi-leg display
+
+### Phase 4: Polish
+14. Review auto-generated transfer points, tune distance threshold if needed
+15. Add transfer walk time estimates based on real-world knowledge (override auto-calculated times for major hubs)
+16. Edge cases: cancelled first leg, delayed connections
+
+---
+
+## Key design decisions recap
+
+| Decision | Choice | Rationale |
+|---|---|---|
+| Where does composition live? | Backend | Complex logic, unified across clients |
+| How does user trigger it? | Implicit | Backend handles direct vs transfer transparently |
+| Transfer map source | Auto-generated from coordinates | Low maintenance, iterate from feedback |
+| Max transfers | 1 (2 legs) | Covers NYC area, keeps algorithm simple |
+| New endpoint vs modify existing | New `/trips/search` | No breaking changes to existing clients |
+| Live Activity | Out of scope | Revisit after core transfer work |
+| System filtering (iOS dest picker) | Relaxed for destination | Required for cross-system transfers |
+
+---
+
+## What this does NOT change
+
+- Existing `/api/v2/trains/departures` endpoint (unchanged, backward compatible)
+- TrainJourney / JourneyStop database models (no schema changes)
+- Data collectors (no changes)
+- Congestion/analytics endpoints (no changes)
+- Live Activities (out of scope)
+- Route alerts / notifications (no changes)

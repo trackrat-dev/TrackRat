@@ -1,4 +1,4 @@
-import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse } from '../types';
+import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse } from '../types';
 
 const BASE_URL = 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -49,20 +49,25 @@ class APIService {
   }
 
   async getDepartures(from: string, to: string, limit = 100): Promise<DeparturesResponse> {
-    const url = `${BASE_URL}/trains/departures?from=${from}&to=${to}&limit=${limit}`;
+    const url = `${BASE_URL}/trains/departures?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`;
     return this.fetch<DeparturesResponse>(url);
   }
 
   async getTrainDetails(trainId: string, date?: string): Promise<TrainDetailsResponse> {
     const dateParam = date || new Date().toISOString().split('T')[0];
-    const url = `${BASE_URL}/trains/${trainId}?date=${dateParam}`;
+    const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}?date=${dateParam}`;
     // Don't cache train details - always fetch fresh
     return this.fetch<TrainDetailsResponse>(url, false);
   }
 
+  async searchTrips(from: string, to: string, limit = 50): Promise<TripSearchResponse> {
+    const url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
+    return this.fetch<TripSearchResponse>(url, false); // Don't cache — 30s polling needs fresh data
+  }
+
   async getRouteSummary(from: string, to: string): Promise<OperationsSummaryResponse | null> {
     try {
-      const url = `${BASE_URL}/routes/summary?scope=route&from_station=${from}&to_station=${to}`;
+      const url = `${BASE_URL}/routes/summary?scope=route&from_station=${encodeURIComponent(from)}&to_station=${encodeURIComponent(to)}`;
       return await this.fetch<OperationsSummaryResponse>(url);
     } catch {
       // Fail silently - summary is optional

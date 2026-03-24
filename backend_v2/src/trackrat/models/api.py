@@ -812,3 +812,56 @@ class DelayForecastResponse(BaseModel):
     @field_serializer("journey_date")
     def serialize_journey_date(self, journey_date: date) -> str:
         return journey_date.isoformat()
+
+
+# Trip Search API Models
+
+
+class TripLeg(BaseModel):
+    """A single leg of a trip (one train ride)."""
+
+    train_id: str
+    journey_date: date
+    line: LineInfo
+    data_source: str
+    destination: str  # Train's final destination (for display)
+    boarding: StationInfo  # Where you board this train
+    alighting: StationInfo  # Where you exit this train
+    observation_type: str = "OBSERVED"
+    is_cancelled: bool = False
+    train_position: TrainPosition | None = None
+
+    @field_serializer("journey_date")
+    def serialize_journey_date(self, journey_date: date) -> str:
+        return f"{journey_date.isoformat()}T00:00:00"
+
+
+class TransferInfo(BaseModel):
+    """Transfer between two legs of a trip."""
+
+    from_station: SimpleStationInfo  # Where you exit previous leg
+    to_station: SimpleStationInfo  # Where you board next leg
+    walk_minutes: int = Field(..., ge=0)
+    same_station: bool  # Same physical station vs short walk
+
+
+class TripOption(BaseModel):
+    """A complete trip from origin to destination, possibly with transfers."""
+
+    legs: list[TripLeg]
+    transfers: list[TransferInfo] = Field(default_factory=list)
+    departure_time: datetime  # First leg boarding time
+    arrival_time: datetime  # Last leg alighting time
+    total_duration_minutes: int = Field(..., ge=0)
+    is_direct: bool  # True if single leg, no transfers
+
+    @field_serializer("departure_time", "arrival_time")
+    def serialize_dt(self, dt: datetime) -> str:
+        return serialize_eastern_datetime(dt) or ""
+
+
+class TripSearchResponse(BaseModel):
+    """Response for trip search endpoint."""
+
+    trips: list[TripOption]
+    metadata: dict[str, Any] = Field(default_factory=dict)
