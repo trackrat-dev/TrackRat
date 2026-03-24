@@ -93,7 +93,12 @@ def _line_codes_to_gtfs_ids(data_source: str, line_codes: frozenset[str]) -> set
 
 def _is_system_wide(sub: RouteAlertSubscription) -> bool:
     """Check if a subscription is system-wide (no line, station pair, or train)."""
-    return not sub.line_id and not sub.from_station_code and not sub.to_station_code and not sub.train_id
+    return (
+        not sub.line_id
+        and not sub.from_station_code
+        and not sub.to_station_code
+        and not sub.train_id
+    )
 
 
 def _get_gtfs_route_ids_for_subscription(

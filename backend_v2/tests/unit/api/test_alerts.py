@@ -135,8 +135,8 @@ class TestSyncSubscriptions:
 class TestSubscriptionValidation:
     """Pydantic validation on SubscriptionItem."""
 
-    def test_missing_both_line_and_stations_returns_422(self, e2e_client: TestClient):
-        """Subscription with no line_id and no station codes is rejected."""
+    def test_system_wide_subscription_is_valid(self, e2e_client: TestClient):
+        """Subscription with only data_source (no line/stations/train) is a valid system-wide subscription."""
         e2e_client.post(
             "/api/v2/devices/register",
             json={"device_id": "dev-val-1", "apns_token": "tok-val"},
@@ -149,8 +149,9 @@ class TestSubscriptionValidation:
             },
         )
         assert (
-            resp.status_code == 422
-        ), f"Expected 422, got {resp.status_code}: {resp.json()}"
+            resp.status_code == 200
+        ), f"Expected 200, got {resp.status_code}: {resp.json()}"
+        assert resp.json()["count"] == 1
 
     def test_partial_station_codes_returns_422(self, e2e_client: TestClient):
         """Subscription with only from_station_code but no to_station_code is rejected."""
