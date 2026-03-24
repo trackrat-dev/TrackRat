@@ -301,9 +301,61 @@ class TestLIRRCollectorProcessTrip:
         existing_journey.train_id = "L123456"
         existing_journey.data_source = "LIRR"
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing_journey
-        mock_session.execute.return_value = mock_result
+        # Mock existing stops (one per sample arrival) with attributes needed
+        # by update_stop_departure_status and the track assignment logic
+        now = datetime.now(timezone.utc)
+        mock_stop_1 = MagicMock(spec=JourneyStop)
+        mock_stop_1.track = None
+        mock_stop_1.actual_departure = now
+        mock_stop_1.actual_arrival = now
+        mock_stop_1.scheduled_arrival = now
+        mock_stop_1.has_departed_station = False
+        mock_stop_1.departure_source = None
+        mock_stop_1.stop_sequence = 1
+        mock_stop_2 = MagicMock(spec=JourneyStop)
+        mock_stop_2.track = None
+        mock_stop_2.actual_departure = None
+        mock_stop_2.actual_arrival = now + timedelta(minutes=30)
+        mock_stop_2.scheduled_arrival = now + timedelta(minutes=30)
+        mock_stop_2.has_departed_station = False
+        mock_stop_2.departure_source = None
+        mock_stop_2.stop_sequence = 2
+
+        # First execute returns journey, next two return stops,
+        # then all-stops query for departure status update
+        journey_result = MagicMock()
+        journey_result.scalar_one_or_none.return_value = existing_journey
+
+        stop_result_1 = MagicMock()
+        stop_result_1.scalar_one_or_none.return_value = mock_stop_1
+
+        stop_result_2 = MagicMock()
+        stop_result_2.scalar_one_or_none.return_value = mock_stop_2
+
+        all_stops_result = MagicMock()
+        all_stops_scalars = MagicMock()
+        all_stops_scalars.all.return_value = [mock_stop_1, mock_stop_2]
+        all_stops_result.scalars.return_value = all_stops_scalars
+
+        # Remaining calls (transit analyzer etc.) return empty results
+        empty_result = MagicMock()
+        empty_scalars = MagicMock()
+        empty_scalars.all.return_value = []
+        empty_result.scalars.return_value = empty_scalars
+        empty_result.scalar_one_or_none.return_value = None
+
+        mock_session.execute = AsyncMock(
+            side_effect=[
+                journey_result,
+                stop_result_1,
+                stop_result_2,
+                all_stops_result,
+                empty_result,
+                empty_result,
+                empty_result,
+                empty_result,
+            ]
+        )
 
         result = await collector._process_trip(
             mock_session, "trip_123456", sample_arrivals

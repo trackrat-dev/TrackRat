@@ -298,6 +298,7 @@ class LiveActivityToken(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True))  # Auto-expire after journey
     is_active = Column(Boolean, default=True, nullable=False)
+    track_notified_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         Index("idx_active_tokens", "is_active", "train_number"),

@@ -1,108 +1,106 @@
-# Admin Stats Improvements Plan
+# Track Assignment Notification — Implementation Plan
 
-## Summary
+## Key Insight
 
-Add time-windowed views, iOS/IP filtering, JSON parity, and latency trends to the admin stats endpoint. Two files change: `request_stats.py` (data collection) and `admin.py` (rendering + JSON).
+The iOS side **already** handles track assignment notifications via `handleCriticalEventNotification` in `TrackRatApp.swift`. When a Live Activity push contains `alertMetadata` with `alert_type: "track_assigned"` in the content state, iOS creates a local banner notification with sound. **No iOS changes needed.**
+
+The backend just needs to:
+1. Detect when a track is newly assigned to a followed train's origin stop
+2. Include `alertMetadata` in the Live Activity content state push
+3. Force-refresh data more aggressively for followed trains awaiting track assignment
 
 ## Changes
 
-### 1. `request_stats.py` — Time-windowed + per-client-IP tracking
+### 1. Database Migration: Add `track_notified_at` to `LiveActivityToken`
 
-**Current**: Counters accumulate since restart. No IP tracking. No timestamps on individual records.
+**File:** `backend_v2/src/trackrat/db/migrations/versions/20260323_1200-a1b2c3d4e5f6_add_track_notified_at.py`
 
-**Change**: Instead of bare `Counter`s, store each request as a timestamped record in a bounded deque (ring buffer). This lets us filter by time window at query time.
+Add nullable `DateTime(timezone=True)` column `track_notified_at` to `live_activity_tokens`. This tracks whether we've already sent a track assignment alert for this token, preventing duplicate notifications.
 
-```python
-@dataclass
-class RequestRecord:
-    timestamp: float
-    path_template: str
-    status_code: int
-    client_label: str  # "iOS/230", "curl", etc.
-    client_ip: str
-    duration: float
-    from_station: str | None = None
-    to_station: str | None = None
-```
+### 2. Model Update: `LiveActivityToken`
 
-- Add a `collections.deque(maxlen=50_000)` of `RequestRecord` objects (bounded to ~50K, enough for days of typical traffic)
-- `record_request()` gains a `client_ip: str` parameter
-- `snapshot()` gains an optional `hours: int | None` parameter — when set, filters records to only those within the window
-- `snapshot()` gains an optional `ios_only: bool` parameter — when set, filters to iOS client labels only
-- Keep the existing reservoir sampling for latency (it's already good), but also add a simple time-bucketed latency structure for trend data: `dict[str, list[tuple[float, float]]]` mapping `path_template -> [(timestamp, duration), ...]`
-- The latency trend data enables sparkline-style views
+**File:** `backend_v2/src/trackrat/models/database.py` (line ~300)
 
-**Latency trends**: For each path, keep the last N minutes of (timestamp, duration) pairs in a separate bounded structure. `snapshot()` returns per-path latency broken into time buckets (e.g., 5-min buckets) with avg latency per bucket.
+Add `track_notified_at = Column(DateTime(timezone=True), nullable=True)` to `LiveActivityToken`.
 
-**snapshot() output additions**:
-- `requests_by_ip: dict[str, int]` — only populated when `ios_only=True`
-- `unique_ips: int` — count of distinct client IPs in the window
-- `latency_trend: dict[str, list[dict]]` — per-path list of `{bucket: str, avg_ms: float, count: int}`
+### 3. Content State: Add `alertMetadata` for Track Assignments
 
-### 2. `main.py` — Pass client IP to middleware
+**File:** `backend_v2/src/trackrat/services/scheduler.py`
 
-One-line change: extract `request.client.host` (with fallback for X-Forwarded-For behind load balancer) and pass it to `record_request()`.
+Modify `_calculate_live_activity_content_state` to accept a `track_just_assigned: bool` parameter. When `True`, add to the content state dict:
 
 ```python
-# In request_stats_middleware
-client_ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
-    request.client.host if request.client else "unknown"
-)
-get_request_stats().record_request(
-    ...,
-    client_ip=client_ip,
-)
+content_state["alertMetadata"] = {
+    "alert_type": "track_assigned",
+    "train_id": journey.train_id,
+    "dynamic_island_priority": "high",
+}
 ```
 
-### 3. `admin.py` — Query params, JSON parity, HTML updates
+This matches what the iOS `handleCriticalEventNotification` already expects (line 378-385 of TrackRatApp.swift).
 
-**Query params** (both HTML and JSON endpoints):
-- `?hours=N` — time window (default: None = all since restart)
-- `?ios_only=true` — filter to iOS clients only
+### 4. Live Activity Update Loop: Detect & Notify Track Assignments
 
-**JSON parity fixes**:
-- Add `scheduler_jobs` to JSON response
-- Resolve station names in JSON route searches (use `get_station_name()`)
+**File:** `backend_v2/src/trackrat/services/scheduler.py`
 
-**HTML additions**:
-- Filter controls at the top: links for "All time | 1h | 6h | 24h" and "All clients | iOS only"
-- When `ios_only=true`, show a "Requests by IP" table (IP, request count) — gives rough user count
-- Show `unique_ips` in the header meta line
-- Latency trend: add a simple ASCII/text sparkline next to each endpoint's latency (e.g., `▁▃▅▇▅▃` using Unicode block chars), or a CSS-based mini bar chart. The CSS approach is cleaner and still self-contained (no JS libraries needed).
+In `update_live_activities`, after calculating content state for each token:
 
-**Latency trend rendering** (CSS mini bars):
-- For each endpoint row, render the last 12 five-minute buckets as tiny inline `<span>` elements with height proportional to avg latency
-- Fits in a new column or below the existing latency numbers
-- Pure CSS, no JavaScript dependencies
+1. Check if `content_state["track"]` is non-null AND `token.track_notified_at` is null
+2. If so, set `track_just_assigned=True` when calling `_calculate_live_activity_content_state` (or just inject `alertMetadata` after the call)
+3. After successful APNS send, set `token.track_notified_at = now_et()` and commit
 
-### 4. Tests
+### 5. Force Refresh for Followed Trains Awaiting Track
 
-New test file or additions to existing admin test file:
-- `test_request_stats_time_window` — records span 2 hours, snapshot with `hours=1` returns only recent
-- `test_request_stats_ios_filter` — mix of iOS/curl/browser, `ios_only=True` filters correctly
-- `test_request_stats_ip_tracking` — verify `requests_by_ip` populated correctly
-- `test_request_stats_latency_trend` — verify bucket aggregation
-- `test_stats_json_parity` — verify JSON includes scheduler_jobs and resolved station names
-- `test_snapshot_default_unchanged` — existing behavior unchanged when no params passed
+**File:** `backend_v2/src/trackrat/services/scheduler.py`
 
-## File Change Summary
+In `update_live_activities`, for tokens where:
+- `token.track_notified_at is None` (haven't notified about track yet)
+- Train departs within 30 minutes from origin
+- Data source is NJT, LIRR, or MNR (providers with track assignments)
 
-| File | Change |
-|------|--------|
-| `backend_v2/src/trackrat/utils/request_stats.py` | Add `RequestRecord`, deque, time-windowed snapshot, IP tracking, latency trends |
-| `backend_v2/src/trackrat/main.py` | Pass `client_ip` to `record_request()` |
-| `backend_v2/src/trackrat/api/admin.py` | Query params, filter UI, JSON parity, latency trend rendering, IP table |
-| `backend_v2/tests/unit/test_admin_stats.py` | New tests for all features |
+**Always** force a JIT refresh regardless of staleness. This ensures we check the transit API on every 1-minute LA cycle for trains actively awaiting track assignment, reducing worst-case latency from 60s (staleness threshold) to the LA cycle interval (~1 min).
 
-## Design Decisions
+### 6. Fix LIRR/MNR `track_assigned_at` (consistency)
 
-**Why a deque instead of just adding timestamps to counters?**
-Counters can't be filtered retroactively. A bounded deque of lightweight records lets us slice by any dimension (time, client type, IP) at query time without pre-aggregating. 50K records at ~200 bytes each = ~10MB, negligible.
+**Files:**
+- `backend_v2/src/trackrat/collectors/lirr/collector.py` (lines 476, 585)
+- `backend_v2/src/trackrat/collectors/mnr/collector.py` (lines 467, 575)
 
-**Why not use a database?**
-The whole point of this endpoint is fast, in-memory, zero-dependency stats. Adding DB writes per request would be a significant change for minimal benefit.
+At each track write location, add:
+```python
+if arr.track and not existing_stop.track:
+    existing_stop.track_assigned_at = now_et()
+existing_stop.track = arr.track
+```
 
-**Why CSS bars instead of a JS charting library?**
-Self-contained HTML with no external dependencies is a feature of this page. CSS-only mini bars keep that property.
+This ensures `track_assigned_at` is populated consistently across all providers (NJT already does this).
 
-**Memory bound**: The 50K record deque auto-evicts old entries. At typical traffic (~100 req/min), that's ~8 hours of history. Heavy traffic (~1000 req/min) gives ~50 minutes. This is acceptable for an operational dashboard.
+### 7. Tests
+
+**File:** `backend_v2/tests/unit/test_track_assignment_notification.py`
+
+Tests:
+- `test_track_assignment_detected`: Content state includes `alertMetadata` when track transitions from None to a value
+- `test_track_assignment_not_repeated`: Second call does NOT include `alertMetadata` after `track_notified_at` is set
+- `test_no_alert_when_track_already_assigned`: Token created after track already assigned doesn't trigger alert
+- `test_force_refresh_for_awaiting_track`: Verify JIT refresh is forced when track is pending and departure is within 30 min
+- `test_lirr_mnr_track_assigned_at`: Verify LIRR/MNR collectors set `track_assigned_at`
+
+## Latency Analysis (After Implementation)
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| NJT, track assigned between collection cycles | Up to 31 min | ~1 min (force refresh on every LA cycle) |
+| NJT hot train (<15 min to departure) | ~3 min | ~1 min |
+| LIRR/MNR | ~5 min | ~1 min (force refresh on every LA cycle) |
+| Best case (user viewing train) | ~1-2 min | ~1 min |
+
+The 1-minute floor is the Live Activity scheduler interval. Could be reduced further by increasing LA update frequency for tokens awaiting track, but 1 minute is a good starting point.
+
+## What We're NOT Doing
+
+- **No new scheduled job**: The existing 1-minute LA update loop handles everything
+- **No iOS changes**: The `handleCriticalEventNotification` + `createFallbackNotification("track_assigned")` path already works
+- **No device token linkage**: Using local notifications triggered by LA push, not a separate APNS alert push
+- **No Amtrak**: Amtrak API doesn't provide track/platform data
+- **No Subway**: Subway doesn't have meaningful platform assignments
