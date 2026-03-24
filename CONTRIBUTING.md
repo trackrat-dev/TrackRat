@@ -82,7 +82,10 @@ collectors/
 ├── lirr/         # LIRR (GTFS-RT)
 ├── mnr/          # Metro-North (GTFS-RT)
 ├── subway/       # NYC Subway (GTFS-RT, 8 feeds)
-└── patco/        # PATCO (GTFS static only)
+├── service_alerts.py  # MTA service alerts collector
+├── mta_common.py      # Shared MTA logic (stop merging, departure inference)
+└── mta_extensions.py  # MTA extension utilities
+# Note: PATCO uses GTFS static schedules via services/gtfs.py (no dedicated collector)
 ```
 
 ### Steps

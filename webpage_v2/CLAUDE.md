@@ -5,8 +5,8 @@
 ## Technology Stack
 
 - **Framework**: React 19.2 + TypeScript 5.5 + PWA (vite-plugin-pwa)
-- **Build Tool**: Vite 7.3 (fast dev server, optimized builds)
-- **Styling**: Tailwind CSS 4.1 (utility-first, custom design system)
+- **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
+- **Styling**: Tailwind CSS 4.2 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
 - **Routing**: React Router DOM 7.13
 - **Date Handling**: date-fns 4.1

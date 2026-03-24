@@ -24,7 +24,7 @@ A mobile-first web application for tracking NJ Transit, Amtrak, PATH, PATCO, LIR
 ## Tech Stack
 
 - React 19 + TypeScript
-- Vite 7 (build tool)
+- Vite 8 (build tool)
 - Tailwind CSS 4 (styling)
 - Zustand 5 (state management)
 - React Router v7 (routing)
