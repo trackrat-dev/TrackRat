@@ -1,13 +1,32 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Train, OperationsSummaryResponse } from '../types';
+import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { TrainCard } from '../components/TrainCard';
+import { TransferTripCard } from '../components/TransferTripCard';
 import { getStationByCode } from '../data/stations';
 import { formatTimeAgo } from '../utils/date';
+
+/** Convert a direct TripOption (1 leg) to a Train for the existing TrainCard */
+function tripLegToTrain(trip: TripOption): Train {
+  const leg = trip.legs[0];
+  return {
+    train_id: leg.train_id,
+    journey_date: leg.journey_date,
+    line: leg.line,
+    destination: leg.destination,
+    departure: leg.boarding,
+    arrival: leg.alighting,
+    train_position: leg.train_position,
+    data_freshness: { last_updated: '', age_seconds: 0, update_count: 0, collection_method: null },
+    data_source: leg.data_source,
+    observation_type: (leg.observation_type as 'OBSERVED' | 'SCHEDULED') || 'OBSERVED',
+    is_cancelled: leg.is_cancelled,
+  };
+}
 
 export function TrainListPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
@@ -15,6 +34,8 @@ export function TrainListPage() {
   const { addRecentTrip } = useAppStore();
 
   const [trains, setTrains] = useState<Train[]>([]);
+  const [transferTrips, setTransferTrips] = useState<TripOption[]>([]);
+  const [isTransferSearch, setIsTransferSearch] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -41,17 +62,31 @@ export function TrainListPage() {
 
     try {
       setError(null);
-      const response = await apiService.getDepartures(from, to);
+      const response = await apiService.searchTrips(from, to);
 
-      // Sort: upcoming trains first, then departed trains
-      const sorted = [...response.departures].sort((a, b) => {
-        const aDeparted = hasTrainDeparted(a);
-        const bDeparted = hasTrainDeparted(b);
-        if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
-        return 0; // preserve API order within each group
-      });
+      const hasTransfers = response.trips.some(t => !t.is_direct);
 
-      setTrains(sorted);
+      if (hasTransfers) {
+        setTransferTrips(response.trips);
+        setTrains([]);
+        setIsTransferSearch(true);
+      } else {
+        // Convert direct trips to Train objects for existing UI
+        const directTrains = response.trips.map(tripLegToTrain);
+
+        // Sort: upcoming trains first, then departed trains
+        const sorted = [...directTrains].sort((a, b) => {
+          const aDeparted = hasTrainDeparted(a);
+          const bDeparted = hasTrainDeparted(b);
+          if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+          return 0;
+        });
+
+        setTrains(sorted);
+        setTransferTrips([]);
+        setIsTransferSearch(false);
+      }
+
       setLastUpdated(new Date());
       setLoading(false);
 
@@ -68,12 +103,12 @@ export function TrainListPage() {
   useEffect(() => {
     fetchTrains();
 
-    // Fetch summary once on mount (not polled)
+    // Fetch summary once on mount (not polled) - only for direct routes
     if (from && to) {
       apiService.getRouteSummary(from, to).then(setSummary);
     }
 
-    // Poll departures every 30 seconds
+    // Poll every 30 seconds
     const interval = setInterval(fetchTrains, 30000);
     return () => clearInterval(interval);
   }, [from, to]);
@@ -83,6 +118,22 @@ export function TrainListPage() {
     const q = trainFilter.trim().toLowerCase();
     return trains.filter(t => t.train_id.toLowerCase().includes(q));
   }, [trains, trainFilter]);
+
+  const filteredTransferTrips = useMemo(() => {
+    if (!trainFilter.trim()) return transferTrips;
+    const q = trainFilter.trim().toLowerCase();
+    return transferTrips.filter(t =>
+      t.legs.some(leg => leg.train_id.toLowerCase().includes(q))
+    );
+  }, [transferTrips, trainFilter]);
+
+  const isEmpty = isTransferSearch
+    ? filteredTransferTrips.length === 0
+    : filteredTrains.length === 0;
+
+  const hasResults = isTransferSearch
+    ? transferTrips.length > 0
+    : trains.length > 0;
 
   if (!from || !to || !fromStation || !toStation) {
     return (
@@ -112,7 +163,8 @@ export function TrainListPage() {
         )}
       </div>
 
-      {summary && (
+      {/* Route summary (direct routes only) */}
+      {summary && !isTransferSearch && (
         <button
           onClick={() => setSummaryExpanded(!summaryExpanded)}
           className="w-full mb-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4 text-left transition-all hover:bg-surface"
@@ -125,6 +177,16 @@ export function TrainListPage() {
             <div className="mt-3 text-sm text-text-muted whitespace-pre-line">{summary.body}</div>
           )}
         </button>
+      )}
+
+      {/* Transfer search banner */}
+      {isTransferSearch && hasResults && (
+        <div className="mb-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl px-4 py-3">
+          <div className="text-sm text-text-muted flex items-center gap-2">
+            <span>⇆</span>
+            <span>No direct service — showing connections with 1 transfer</span>
+          </div>
+        </div>
       )}
 
       <div className="flex gap-2 mb-4">
@@ -154,13 +216,23 @@ export function TrainListPage() {
         </div>
       </div>
 
-      {loading && trains.length === 0 ? (
+      {loading && !hasResults ? (
         <LoadingSpinner />
       ) : error ? (
         <ErrorMessage message={error} onRetry={fetchTrains} />
-      ) : filteredTrains.length === 0 ? (
+      ) : isEmpty ? (
         <div className="text-center py-12 text-text-muted">
           {trainFilter ? 'No matching trains' : 'No trains found for this route'}
+        </div>
+      ) : isTransferSearch ? (
+        <div className="space-y-3">
+          {filteredTransferTrips.map((trip, index) => (
+            <TransferTripCard
+              key={`transfer-${index}`}
+              trip={trip}
+              onLegClick={(leg) => navigate(`/train/${leg.train_id}/${leg.boarding.code}/${leg.alighting.code}`)}
+            />
+          ))}
         </div>
       ) : (
         <div className="space-y-3">

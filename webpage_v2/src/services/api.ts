@@ -1,4 +1,4 @@
-import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse } from '../types';
+import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse } from '../types';
 
 const BASE_URL = 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -58,6 +58,11 @@ class APIService {
     const url = `${BASE_URL}/trains/${trainId}?date=${dateParam}`;
     // Don't cache train details - always fetch fresh
     return this.fetch<TrainDetailsResponse>(url, false);
+  }
+
+  async searchTrips(from: string, to: string, limit = 50): Promise<TripSearchResponse> {
+    const url = `${BASE_URL}/trips/search?from=${from}&to=${to}&limit=${limit}&hide_departed=true`;
+    return this.fetch<TripSearchResponse>(url);
   }
 
   async getRouteSummary(from: string, to: string): Promise<OperationsSummaryResponse | null> {

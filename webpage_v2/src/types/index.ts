@@ -158,3 +158,49 @@ export interface PlatformPrediction {
   station_code: string;
   train_id: string;
 }
+
+// Trip Search Types (supports direct + transfer connections)
+
+export interface TripLeg {
+  train_id: string;
+  journey_date: string;
+  line: LineInfo;
+  data_source: TransitSystem;
+  destination: string;
+  boarding: StationTiming;
+  alighting: StationTiming;
+  observation_type?: string;
+  is_cancelled: boolean;
+  train_position?: {
+    last_departed_station_code?: string;
+    at_station_code?: string | null;
+    next_station_code?: string;
+  };
+}
+
+export interface TransferInfo {
+  from_station: StationInfo;
+  to_station: StationInfo;
+  walk_minutes: number;
+  same_station: boolean;
+}
+
+export interface TripOption {
+  legs: TripLeg[];
+  transfers: TransferInfo[];
+  departure_time: string;
+  arrival_time: string;
+  total_duration_minutes: number;
+  is_direct: boolean;
+}
+
+export interface TripSearchResponse {
+  trips: TripOption[];
+  metadata: {
+    from_station: { code: string; name: string };
+    to_station: { code: string; name: string };
+    count: number;
+    search_type: string;
+    generated_at: string;
+  };
+}
