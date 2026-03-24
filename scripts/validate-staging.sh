@@ -8,11 +8,12 @@
 #
 # Automatically installs Python dependencies for step 3 if missing.
 #
-# Usage: ./scripts/validate-staging.sh [base_url] [--no-wait] [--no-random] [--skip-logs]
-#   base_url     defaults to https://staging.apiv2.trackrat.net
-#   --no-wait    skip the stabilization sleep in step 1
-#   --no-random  skip random route generation in step 2
-#   --skip-logs  skip the GCP log check (step 3)
+# Usage: ./scripts/validate-staging.sh [base_url] [--no-wait] [--no-random] [--skip-logs] [--ground-truth]
+#   base_url        defaults to https://staging.apiv2.trackrat.net
+#   --no-wait       skip the stabilization sleep in step 1
+#   --no-random     skip random route generation in step 2
+#   --skip-logs     skip the GCP log check (step 3)
+#   --ground-truth  run ground truth validation against all providers (step 4)
 
 set -euo pipefail
 
@@ -22,14 +23,16 @@ BASE_URL="https://staging.apiv2.trackrat.net"
 NO_WAIT=false
 NO_RANDOM=false
 SKIP_LOGS=false
+GROUND_TRUTH=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --no-wait)   NO_WAIT=true; shift ;;
-    --no-random) NO_RANDOM=true; shift ;;
-    --skip-logs) SKIP_LOGS=true; shift ;;
+    --no-wait)       NO_WAIT=true; shift ;;
+    --no-random)     NO_RANDOM=true; shift ;;
+    --skip-logs)     SKIP_LOGS=true; shift ;;
+    --ground-truth)  GROUND_TRUTH=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [base_url] [--no-wait] [--no-random] [--skip-logs]"
+      echo "Usage: $0 [base_url] [--no-wait] [--no-random] [--skip-logs] [--ground-truth]"
       exit 0
       ;;
     *) BASE_URL="$1"; shift ;;
@@ -98,6 +101,18 @@ else
     step_pass "3 (logs)"
   else
     step_fail "3 (logs)"
+  fi
+fi
+
+# ---------- Step 4: Ground truth validation (optional) ----------
+
+if [[ "$GROUND_TRUTH" == "true" ]]; then
+  echo -e "${BOLD}===== Step 4: Ground Truth Validation (all providers) =====${NC}"
+
+  if (cd "$REPO_ROOT/backend_v2" && poetry run python3 ../scripts/ground-truth-validate.py "$BASE_URL" --all); then
+    step_pass "4 (ground truth)"
+  else
+    step_fail "4 (ground truth)"
   fi
 fi
 

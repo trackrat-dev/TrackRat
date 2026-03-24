@@ -2,7 +2,7 @@
 """Ground truth validation: compare TrackRat departures against raw transit provider data.
 
 Run from the repo root using the backend poetry environment:
-    cd backend_v2 && poetry run python3 ../scripts/ground-truth-validate.py [base_url] [--provider PATH] [--tolerance 1.5]
+    cd backend_v2 && poetry run python3 ../scripts/ground-truth-validate.py [base_url] [--provider PATH] [--all] [--tolerance 1.5]
 """
 
 import argparse
@@ -1204,6 +1204,11 @@ def main() -> None:
         help="Transit provider to validate (default: PATH)",
     )
     parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Validate all providers sequentially (overrides --provider)",
+    )
+    parser.add_argument(
         "--tolerance",
         type=float,
         default=2.0,
@@ -1237,12 +1242,19 @@ def main() -> None:
         "SUBWAY": run_subway_validation,
     }
 
-    runner = runners.get(args.provider)
-    if runner:
-        runner(args.base_url, args.tolerance, verbose=args.verbose, gt_window=args.window, far_future=args.far_future)
+    if args.all:
+        for provider, runner in runners.items():
+            print(f"\n{BOLD}{'='*60}")
+            print(f" {provider}")
+            print(f"{'='*60}{NC}\n")
+            runner(args.base_url, args.tolerance, verbose=args.verbose, gt_window=args.window, far_future=args.far_future)
     else:
-        print(f"{RED}FAIL{NC} Unsupported provider: {args.provider}")
-        sys.exit(1)
+        runner = runners.get(args.provider)
+        if runner:
+            runner(args.base_url, args.tolerance, verbose=args.verbose, gt_window=args.window, far_future=args.far_future)
+        else:
+            print(f"{RED}FAIL{NC} Unsupported provider: {args.provider}")
+            sys.exit(1)
 
     sys.exit(1 if FAIL_COUNT > 0 else 0)
 
