@@ -9,6 +9,7 @@ TrackRat is an open-source transit tracking framework (Apache 2.0) with:
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
 - **Android**: Kotlin (Jetpack Compose + Hilt + Retrofit) in `android/`
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
+- **Backend docs**: See `backend_v2/CLAUDE.md` for detailed backend architecture
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
@@ -166,6 +167,19 @@ script and provide a narrative summary that highlights:
   congestion_cache are known to be slow). Zero errors is worth calling out.
 - **Scanner noise**: mention probe count but don't dwell on it unless unusual.
 
+**Other Utility Scripts:**
+
+```bash
+# Scrub staging database (remove production PII before testing)
+bash scripts/scrub-staging-db.sh
+
+# Generate subway station data from GTFS
+python3 scripts/generate_subway_data.py
+
+# Create DB backup, restore, and train ML model
+bash scripts/create-and-restore-db-then-train-model.sh
+```
+
 ### Architecture Patterns
 
 **Backend Data Collection (NJT/Amtrak - Multi-Phase):**
@@ -203,6 +217,12 @@ script and provide a narrative summary that highlights:
 - Three alert types: `planned_work`, `alert` (real-time), `elevator` (outages)
 - Upserts into `service_alerts` table; marks missing alerts as inactive
 - Used to send planned work / service change push notifications to subscribed users
+
+**Transit Transfers / Trip Search:**
+- Multi-leg trip search across transit systems via `/api/v2/trips/search`
+- Transfer points defined in `backend_v2/src/trackrat/config/transfer_points.py`
+- Service in `backend_v2/src/trackrat/services/trip_search.py`, API in `backend_v2/src/trackrat/api/trips.py`
+- Supports system-wide alert subscriptions (not just per-route)
 
 **Route Alert Customization:**
 - Per-subscription settings: active days (bitmask), time windows, delay/service thresholds
@@ -279,7 +299,6 @@ poetry run uvicorn trackrat.main:app --reload
 
 # Lint & type check
 poetry run black . && poetry run ruff check . && poetry run mypy src/
-# Or use: make lint
 ```
 
 ### iOS Development
@@ -414,7 +433,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
 - Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway, service_alerts, mta_common, mta_extensions)
-- Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings)
+- Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
+- Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize)
 - Backend tests: `backend_v2/tests/`
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
 - iOS services: `ios/TrackRat/Services/`
@@ -447,16 +467,20 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /api/v2/predictions/delay          # Delay/cancellation forecasts (iOS)
 /api/v2/predictions/supported-stations  # Stations with predictions
 
+# Trip Search
+/api/v2/trips/search               # Multi-leg trip search with transfers
+
 # Route Alerts
 /api/v2/devices/register           # Register APNS device token
 /api/v2/alerts/subscriptions       # Sync route alert subscriptions (PUT)
+/api/v2/alerts/subscriptions/{device_id}  # Get current subscriptions (GET)
 /api/v2/alerts/service             # MTA service alerts (planned work, delays)
 
 # Feedback
 /api/v2/feedback                   # Submit user feedback
 
 # Route Preferences
-/api/v2/route-preferences          # User route preferences
+/api/v2/routes/preferences         # User route preferences (GET/PUT)
 
 # Admin
 /admin/stats                       # Server usage statistics page (HTML)
