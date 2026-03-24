@@ -532,7 +532,7 @@ struct SettingsSection: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showingFeedbackSheet = true
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: 16) {
                     Image(systemName: "exclamationmark.bubble.fill")
                         .font(.title2)
                         .foregroundColor(.orange)
