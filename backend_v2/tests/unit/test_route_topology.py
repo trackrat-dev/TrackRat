@@ -8,6 +8,7 @@ from trackrat.config.route_topology import (
     ALL_ROUTES,
     LIRR_BABYLON,
     LIRR_PORT_WASHINGTON,
+    LIRR_PORT_WASHINGTON_GCT,
     LIRR_RONKONKOMA,
     MNR_HUDSON,
     MNR_NEW_HAVEN,
@@ -212,6 +213,12 @@ class TestFindRouteForSegment:
         # PWS (Port Washington) is only on the Port Washington Branch
         route = find_route_for_segment("LIRR", "NY", "PWS")
         assert route == LIRR_PORT_WASHINGTON
+
+    def test_find_route_for_lirr_port_washington_gct(self):
+        """Test finding LIRR Port Washington GCT route."""
+        route = find_route_for_segment("LIRR", "GCT", "PWS")
+        assert route is not None
+        assert route == LIRR_PORT_WASHINGTON_GCT
 
     def test_find_route_for_mnr_segment(self):
         """Test finding MNR route with line code."""

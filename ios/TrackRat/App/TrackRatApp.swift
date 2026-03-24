@@ -681,7 +681,8 @@ struct RouteStatusContext: Identifiable, Equatable {
             "lirr-babylon": "1", "lirr-hempstead": "2", "lirr-oyster-bay": "3",
             "lirr-ronkonkoma": "4", "lirr-montauk": "5", "lirr-long-beach": "6",
             "lirr-far-rockaway": "7", "lirr-west-hempstead": "8",
-            "lirr-port-washington": "9", "lirr-port-jefferson": "10",
+            "lirr-port-washington": "9", "lirr-port-washington-gct": "9",
+            "lirr-port-jefferson": "10",
             "lirr-belmont-park": "11", "lirr-greenport": "13",
         ]
         // LIRR: Backend line.code → GTFS route_id (e.g., "LIRR-BB" → "1")

@@ -437,12 +437,20 @@ struct RouteTopology {
             stationCodes: ["JAM", "LSAB", "VSM", "LWWD", "LMVN", "LLVW", "HGN", "WHD"]
         ),
 
-        // Port Washington Branch (doesn't go through Jamaica)
+        // Port Washington Branch — Penn Station terminus
         RouteLine(
             id: "lirr-port-washington",
             name: "Port Washington Branch",
             dataSource: "LIRR",
             stationCodes: ["NY", "WDD", "LSSM", "FLS", "LMHL", "BDY", "ADL", "BSD", "DGL", "LLNK", "GNK", "MHT", "PDM", "PWS"]
+        ),
+
+        // Port Washington Branch — Grand Central Terminal terminus (via East Side Access)
+        RouteLine(
+            id: "lirr-port-washington-gct",
+            name: "Port Washington Branch",
+            dataSource: "LIRR",
+            stationCodes: ["GCT", "WDD", "LSSM", "FLS", "LMHL", "BDY", "ADL", "BSD", "DGL", "LLNK", "GNK", "MHT", "PDM", "PWS"]
         ),
 
         // Port Jefferson Branch
@@ -461,12 +469,12 @@ struct RouteTopology {
             stationCodes: ["LAT", "NAV", "ENY", "JAM"]
         ),
 
-        // Grand Central Madison extension
+        // Grand Central Madison extension (includes Forest Hills & Kew Gardens stops)
         RouteLine(
             id: "lirr-grand-central",
             name: "Grand Central Madison",
             dataSource: "LIRR",
-            stationCodes: ["GCT", "JAM"]
+            stationCodes: ["GCT", "FHL", "KGN", "JAM"]
         ),
 
         // Belmont Park (seasonal service via Hempstead Branch)
