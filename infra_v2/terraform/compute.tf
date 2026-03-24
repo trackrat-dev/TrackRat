@@ -223,7 +223,56 @@ ENVEOF
       # Pull latest images (DOCKER_CONFIG is exported, so compose uses it)
       $COMPOSE_PATH pull
 
-      # Start containers
+      # ---------------------------------------------------------
+      # 7a. Scrub production user data on staging
+      # ---------------------------------------------------------
+      # When staging boots from a cloned production disk, the database
+      # contains real APNS device tokens and Live Activity tokens.
+      # Without scrubbing, the staging scheduler would send push
+      # notifications to production users within minutes of startup.
+      #
+      # We start only the DB first, run the scrub, then bring up the
+      # full stack so the API never sees production notification data.
+      if [ "$ENVIRONMENT" = "staging" ]; then
+        echo "=== Scrubbing production notification data for staging ==="
+
+        # Start only the database container
+        $COMPOSE_PATH up -d db
+
+        # Wait for PostgreSQL to become healthy
+        echo "Waiting for PostgreSQL to be ready..."
+        for i in $(seq 1 60); do
+          if docker exec trackrat-postgres pg_isready -U trackrat -d trackrat >/dev/null 2>&1; then
+            echo "PostgreSQL is ready"
+            break
+          fi
+          if [ $i -eq 60 ]; then
+            echo "ERROR: PostgreSQL not ready after 60 seconds"
+            exit 1
+          fi
+          sleep 1
+        done
+
+        # Scrub notification-related tables
+        docker exec trackrat-postgres psql -U trackrat -d trackrat -c "
+          -- Count before scrub for logging
+          SELECT 'device_tokens' AS tbl, COUNT(*) AS cnt FROM device_tokens
+          UNION ALL SELECT 'live_activity_tokens', COUNT(*) FROM live_activity_tokens
+          UNION ALL SELECT 'cached_api_responses', COUNT(*) FROM cached_api_responses
+          UNION ALL SELECT 'scheduler_task_runs', COUNT(*) FROM scheduler_task_runs;
+        "
+
+        docker exec trackrat-postgres psql -U trackrat -d trackrat -c "
+          TRUNCATE TABLE device_tokens CASCADE;
+          TRUNCATE TABLE live_activity_tokens;
+          TRUNCATE TABLE cached_api_responses;
+          TRUNCATE TABLE scheduler_task_runs;
+        "
+
+        echo "✅ Staging database scrubbed"
+      fi
+
+      # Start all containers (db is already running on staging, this adds the api)
       $COMPOSE_PATH up -d
 
       echo ""

@@ -30,7 +30,7 @@ from trackrat.api import (
     validation,
 )
 from trackrat.db.database import init_database, shutdown_database
-from trackrat.db.engine import close_engine
+from trackrat.db.engine import close_engine, get_session
 from trackrat.services.apns import SimpleAPNSService
 from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import get_settings
@@ -61,6 +61,65 @@ structlog.configure(
 )
 
 
+_STAGING_DEVICE_TOKEN_THRESHOLD = 50
+
+
+async def _check_staging_notification_safety(settings: Any) -> bool:
+    """Check if staging database contains production notification data.
+
+    After cloning production to staging, the scrub script should have cleared
+    device_tokens and live_activity_tokens. If they still contain many rows,
+    it means the scrub was skipped or failed, and the scheduler would send
+    push notifications to real production users.
+
+    Returns True if APNS should be disabled (unsafe token count detected).
+    """
+    from sqlalchemy import func, select
+
+    from trackrat.models.database import DeviceToken, LiveActivityToken
+
+    try:
+        async with get_session() as session:
+            device_count = await session.scalar(
+                select(func.count()).select_from(DeviceToken)
+            )
+            la_count = await session.scalar(
+                select(func.count()).select_from(LiveActivityToken)
+            )
+
+        if (device_count or 0) > _STAGING_DEVICE_TOKEN_THRESHOLD:
+            logger.critical(
+                "staging_notification_safety_warning",
+                message=(
+                    f"Staging database contains {device_count} device tokens and "
+                    f"{la_count} Live Activity tokens. This likely means the "
+                    "post-clone scrub did not run. APNS will be disabled to "
+                    "prevent sending notifications to production users."
+                ),
+                device_tokens=device_count,
+                live_activity_tokens=la_count,
+                threshold=_STAGING_DEVICE_TOKEN_THRESHOLD,
+            )
+            return True
+        elif (device_count or 0) > 0 or (la_count or 0) > 0:
+            logger.info(
+                "staging_notification_tokens_present",
+                device_tokens=device_count,
+                live_activity_tokens=la_count,
+                message="Small number of tokens present — likely from staging testers.",
+            )
+        else:
+            logger.info("staging_notification_safety_ok", message="No production tokens in staging database.")
+    except Exception as e:
+        logger.warning(
+            "staging_notification_safety_check_failed",
+            error=str(e),
+            message="Could not verify staging notification safety. Proceeding with caution.",
+        )
+
+    return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifecycle events."""
@@ -75,21 +134,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_database()
     logger.info("database_initialization_complete")
 
+    # Defensive check: warn if staging has production notification data.
+    # If the post-clone scrub was skipped, disable APNS to prevent sending
+    # push notifications to production users.
+    disable_apns = False
+    if settings.environment == "staging":
+        disable_apns = await _check_staging_notification_safety(settings)
+
     # Initialize APNS service
     logger.info("initializing_apns_service")
-    apns_service = SimpleAPNSService()
-    logger.info(
-        "apns_service_initialized",
-        is_configured=apns_service.is_configured,
-        environment=settings.environment,
-        apns_environment=settings.apns_environment,
-        apns_base_url=apns_service.base_url,
-    )
+    if disable_apns:
+        apns_service = None
+        logger.critical(
+            "apns_disabled_for_safety",
+            message="APNS disabled on staging due to unscrubbed production tokens.",
+        )
+    else:
+        apns_service = SimpleAPNSService()
+        logger.info(
+            "apns_service_initialized",
+            is_configured=apns_service.is_configured,
+            environment=settings.environment,
+            apns_environment=settings.apns_environment,
+            apns_base_url=apns_service.base_url,
+        )
 
     # Store APNS service on app state for use by other routers
     app.state.apns_service = apns_service
 
-    # Start scheduler with APNS service
+    # Start scheduler with APNS service (None = no notification jobs)
     logger.info("starting_scheduler_from_lifespan")
     scheduler = get_scheduler(apns_service=apns_service)
     await scheduler.start()
