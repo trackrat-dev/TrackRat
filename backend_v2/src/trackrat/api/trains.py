@@ -472,7 +472,7 @@ async def get_train_details(
                     )
 
     # Record train detail view for admin stats
-    if from_station:
+    if from_station and journey.train_id:
         get_request_stats().record_train_detail_view(
             journey.train_id,
             from_station,

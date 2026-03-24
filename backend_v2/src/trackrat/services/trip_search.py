@@ -204,7 +204,7 @@ async def search_trips(
         return _empty_response(from_station, to_station, "no_transfer_points")
 
     # Query departures for each transfer point
-    trips: list[TripOption] = []
+    transfer_trips: list[TripOption] = []
     queries_made = 0
     transfer_points_checked = 0
 
@@ -318,29 +318,29 @@ async def search_trips(
                     total_duration_minutes=total_duration,
                     is_direct=False,
                 )
-                trips.append(trip)
+                transfer_trips.append(trip)
                 break  # Only take the first matching leg2 for this leg1
 
     # Sort by departure time, then total duration
-    trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))
-    trips = trips[:limit]
+    transfer_trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))
+    transfer_trips = transfer_trips[:limit]
 
     logger.info(
         "trip_search_transfer",
-        count=len(trips),
+        count=len(transfer_trips),
         transfer_points_checked=transfer_points_checked,
         queries_made=queries_made,
     )
 
     return TripSearchResponse(
-        trips=trips,
+        trips=transfer_trips,
         metadata={
             "from_station": {
                 "code": from_station,
                 "name": get_station_name(from_station),
             },
             "to_station": {"code": to_station, "name": get_station_name(to_station)},
-            "count": len(trips),
+            "count": len(transfer_trips),
             "search_type": "transfer",
             "transfer_points_checked": transfer_points_checked,
             "generated_at": now_et().isoformat(),
