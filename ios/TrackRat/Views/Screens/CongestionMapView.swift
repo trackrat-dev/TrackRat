@@ -6,6 +6,7 @@ import ActivityKit
 
 struct CongestionMapView: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var subscriptionService = SubscriptionService.shared
     @StateObject private var viewModel = CongestionMapViewModel()
     @State private var region = MKCoordinateRegion.newarkPennDefault // Updated to selected systems on appear
@@ -177,6 +178,7 @@ struct CongestionMapView: View {
         }
         .task {
             await viewModel.fetchCongestionData()
+            viewModel.startAutoRefresh()
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
             viewModel.setSelectedSystems(newSystems)
@@ -198,6 +200,20 @@ struct CongestionMapView: View {
             viewModel.showStations = appState.showMapStations
             // Set initial region based on selected systems
             region = appState.selectedSystems.combinedMapRegion
+        }
+        .onDisappear {
+            viewModel.stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                viewModel.refreshIfStale()
+                viewModel.startAutoRefresh()
+            case .background, .inactive:
+                viewModel.stopAutoRefresh()
+            @unknown default:
+                break
+            }
         }
     }
 
@@ -526,6 +542,12 @@ class CongestionMapViewModel: ObservableObject {
     // Live Activity observation
     private var liveActivityCancellables = Set<AnyCancellable>()
 
+    // MARK: - Auto-Refresh
+    private static let refreshInterval: TimeInterval = 60
+    private var refreshTimer: Timer?
+    private var lastFetchDate: Date?
+    private var lastDataSource: String?
+
     init() {
         // Don't start loading data immediately - wait for explicit trigger
         // This prevents blocking the UI during app startup and navigation
@@ -536,6 +558,39 @@ class CongestionMapViewModel: ObservableObject {
 
         // Observe Live Activity state changes
         observeLiveActivityState()
+    }
+
+    // MARK: - Auto-Refresh Methods
+
+    func startAutoRefresh() {
+        guard refreshTimer == nil else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.fetchCongestionData(
+                    timeWindowHours: self?.lastTimeWindowHours ?? 1,
+                    dataSource: self?.lastDataSource
+                )
+            }
+        }
+        print("🚦 Auto-refresh started (\(Int(Self.refreshInterval))s interval)")
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    /// Fetches immediately if data is older than the refresh interval (e.g., after returning from background)
+    func refreshIfStale() {
+        guard let lastFetch = lastFetchDate else { return }
+        if Date().timeIntervalSince(lastFetch) > Self.refreshInterval {
+            Task {
+                await fetchCongestionData(
+                    timeWindowHours: lastTimeWindowHours,
+                    dataSource: lastDataSource
+                )
+            }
+        }
     }
 
     /// Loads all stations from route topology (client-side, no API call)
@@ -628,7 +683,8 @@ class CongestionMapViewModel: ObservableObject {
         isLoading = true
         error = nil
         lastTimeWindowHours = timeWindowHours
-        
+        lastDataSource = dataSource
+
         do {
             // Determine maxPerSegment based on detail mode (fetch individual trains only if showing)
             let maxPerSegment: Int
@@ -724,7 +780,8 @@ class CongestionMapViewModel: ObservableObject {
 
             // Filter based on current display mode
             applyDisplayModeFilter()
-            
+            lastFetchDate = Date()
+
         } catch {
             self.error = error.localizedDescription
             print("🚦 Failed to fetch congestion data: \(error)")
