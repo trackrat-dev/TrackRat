@@ -920,6 +920,39 @@ class TestSubwayGTFSStopMapping:
         assert map_subway_gtfs_stop("S31") == "SS31"
         assert map_subway_gtfs_stop("99999") is None
 
+    def test_subway_station_names_have_route_labels_not_station_codes(self):
+        """No subway station name should use a raw station code (e.g., 'SA63') as its
+        parenthetical label. Labels should use route letters/numbers like '(A)' or '(1/2/3)'.
+
+        Regression test for: SA63 was '104 St (SA63)' instead of '104 St (A)',
+        and SA64 was '111 St (SA64)' instead of '111 St (A)'.
+        """
+        import re
+
+        station_code_pattern = re.compile(r"\(S[A-Z]?\d+\)")
+        violations = []
+        for code, name in SUBWAY_STATION_NAMES.items():
+            if station_code_pattern.search(name):
+                violations.append(f"{code}: {name}")
+
+        assert not violations, (
+            f"Station names contain raw station codes as labels instead of route "
+            f"letters/numbers:\n" + "\n".join(f"  {v}" for v in violations)
+        )
+
+    def test_subway_station_names_known_a_line_labels(self):
+        """Verify specific A-line stations have correct route labels.
+
+        SA63 (104 St on A line) and SA64 (111 St on A line) should have '(A)' suffix,
+        not their station codes.
+        """
+        assert SUBWAY_STATION_NAMES["SA63"] == "104 St (A)", (
+            f"SA63 should be '104 St (A)' but got '{SUBWAY_STATION_NAMES['SA63']}'"
+        )
+        assert SUBWAY_STATION_NAMES["SA64"] == "111 St (A)", (
+            f"SA64 should be '111 St (A)' but got '{SUBWAY_STATION_NAMES['SA64']}'"
+        )
+
 
 class TestMNRGTFSStopMapping:
     """Tests for Metro-North GTFS stop_id to internal station code mapping.

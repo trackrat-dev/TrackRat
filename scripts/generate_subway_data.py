@@ -350,6 +350,23 @@ def build_station_routes(
     return dict(station_routes)
 
 
+def _format_route_suffix(routes: set[str]) -> str | None:
+    """Format a set of route IDs into a display suffix like '1/2/3' or 'A/B/C'.
+
+    Filters out express variants (6X, 7X, FX) since the base route is already present.
+    Returns None if no displayable routes remain.
+    """
+    display_routes = {r for r in routes if not r.endswith("X")}
+    if not display_routes:
+        return None
+    # Sort: numbers first (ascending), then letters (alphabetical)
+    sorted_routes = sorted(
+        display_routes,
+        key=lambda r: (not r[0].isdigit(), int(r) if r.isdigit() else 0, r),
+    )
+    return "/".join(sorted_routes)
+
+
 def resolve_name_collisions(
     consolidated: list[dict], station_routes: dict[str, set[str]]
 ) -> None:
@@ -373,23 +390,37 @@ def resolve_name_collisions(
             for code in entry["all_codes"]:
                 routes.update(station_routes.get(code, set()))
 
-            # Filter out express variants (6X, 7X, FX) and shuttles for cleaner display
-            display_routes = set()
-            for r in routes:
-                if r.endswith("X"):
-                    continue  # Skip express variants (6X → already have 6)
-                display_routes.add(r)
-
-            if display_routes:
-                # Sort: numbers first (ascending), then letters (alphabetical)
-                sorted_routes = sorted(
-                    display_routes,
-                    key=lambda r: (not r[0].isdigit(), int(r) if r.isdigit() else 0, r),
-                )
-                entry["name"] = f"{name} ({'/'.join(sorted_routes)})"
+            suffix = _format_route_suffix(routes)
+            if suffix:
+                entry["name"] = f"{name} ({suffix})"
             else:
                 # No route info available — use canonical code as fallback
                 entry["name"] = f"{name} ({entry['canonical_code']})"
+
+
+def resolve_backend_name_collisions(
+    stations: list[dict], station_routes: dict[str, set[str]]
+) -> None:
+    """Add route suffixes to backend station names where GTFS names collide.
+
+    Most GTFS station names already include route suffixes (e.g., '96 St (1/2/3)'),
+    but a few don't (e.g., '104 St' on the A line). This resolves those remaining
+    collisions using actual route-serving data instead of station codes.
+    """
+    name_groups: dict[str, list[dict]] = defaultdict(list)
+    for station in stations:
+        name_groups[station["name"]].append(station)
+
+    for name, entries in name_groups.items():
+        if len(entries) <= 1:
+            continue
+        for entry in entries:
+            routes = station_routes.get(entry["code"], set())
+            suffix = _format_route_suffix(routes)
+            if suffix:
+                entry["name"] = f"{name} ({suffix})"
+            else:
+                entry["name"] = f"{name} ({entry['code']})"
 
 
 def generate_python_stations(
@@ -778,9 +809,14 @@ def main():
     complexes = build_station_complexes(data["transfers"], stations)
     print(f"Found {len(complexes)} station complexes (multi-platform groups)")
 
+    # Build station routes mapping (used for name collision resolution)
+    station_routes = build_station_routes(data["trips"], data["stop_times"], stations)
+
+    # Resolve backend name collisions (GTFS names like "104 St" that lack route suffixes)
+    resolve_backend_name_collisions(stations, station_routes)
+
     # Build consolidated stations for iOS
     consolidated = build_consolidated_stations(stations, complexes)
-    station_routes = build_station_routes(data["trips"], data["stop_times"], stations)
     resolve_name_collisions(consolidated, station_routes)
     print(f"Consolidated to {len(consolidated)} station entries "
           f"({len(stations) - len(consolidated)} fewer than raw GTFS)")
