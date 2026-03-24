@@ -464,76 +464,6 @@ struct TrainCard: View {
     }
 }
 
-// MARK: - StatusV2 Badge
-struct StatusV2Badge: View {
-    let train: TrainV2
-    let departureStationCode: String
-    
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
-            
-            Text(statusText)
-                .font(.caption)
-                .fontWeight(.medium)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(statusColor.opacity(0.2))
-        .cornerRadius(TrackRatTheme.CornerRadius.sm)
-    }
-    
-    private var statusColor: Color {
-        // Use context-aware status
-        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
-        
-        switch contextStatus {
-        case .boarding:
-            return train.track != nil ? .orange : .gray
-        case .departed:
-            return .blue
-        case .delayed:
-            return .red
-        case .onTime:
-            return .green
-        case .scheduled:
-            return .gray
-        case .cancelled:
-            return .red
-        case .unknown:
-            return .gray
-        }
-    }
-    
-    private var statusText: String {
-        // Use enhanced display status if available
-        if !train.enhancedDisplayStatus.isEmpty {
-            return train.enhancedDisplayStatus
-        }
-        
-        // Otherwise use context-aware status
-        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
-        switch contextStatus {
-        case .boarding:
-            return train.track != nil ? "Boarding" : "Scheduled"
-        case .departed:
-            return "En Route"
-        case .delayed:
-            return "Delayed"
-        case .onTime:
-            return "On Time"
-        case .scheduled:
-            return "Scheduled"
-        case .cancelled:
-            return "Cancelled"
-        case .unknown:
-            return "Unknown"
-        }
-    }
-}
-
 // MARK: - View Model
 @MainActor
 class TrainListViewModel: ObservableObject {
@@ -639,12 +569,15 @@ let hasTransfers = fetchedTrips.contains { !$0.isDirect }
             } else {
                 // Direct results: convert to TrainV2 for existing UI
                 let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
+                let sixHoursFromNow = Date().addingTimeInterval(6 * 60 * 60)
 
                 let filteredTrains = fetchedTrains.filter { train in
+                    let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
+                    let isWithinTimeWindow = departureTime <= sixHoursFromNow
                     if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
                         return minutesAgo <= 10
                     }
-                    return true
+                    return isWithinTimeWindow
                 }
 
                 let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
