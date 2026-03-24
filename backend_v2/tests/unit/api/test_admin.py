@@ -2,7 +2,8 @@
 Tests for the admin stats page endpoint.
 
 Validates that /admin/stats returns HTML with expected sections,
-and /admin/stats.json returns structured data.
+/admin/stats.json returns structured data with full parity,
+and both endpoints support time-windowed and iOS-only filtering.
 """
 
 from trackrat.utils.request_stats import get_request_stats, reset_request_stats
@@ -30,6 +31,18 @@ class TestAdminStatsPage:
         assert "Providers (Today)" in html
         assert "Scheduler Jobs" in html
 
+    def test_contains_filter_controls(self, client):
+        """Stats page has time window and client filter links."""
+        response = client.get("/admin/stats")
+        html = response.text
+
+        assert "All time" in html
+        assert "1h" in html
+        assert "6h" in html
+        assert "24h" in html
+        assert "All clients" in html
+        assert "iOS only" in html
+
     def test_contains_environment(self, client):
         """Stats page shows the current environment."""
         response = client.get("/admin/stats")
@@ -41,17 +54,39 @@ class TestAdminStatsPage:
         response = client.get("/admin/stats")
         assert 'http-equiv="refresh"' in response.text
 
+    def test_contains_unique_ip_count(self, client):
+        """Stats page shows unique IP count in header."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/test",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.01,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats")
+        html = response.text
+        assert "unique IPs" in html
+
+    def test_contains_trend_column(self, client):
+        """Stats page has a Trend column in the endpoint table."""
+        response = client.get("/admin/stats")
+        html = response.text
+        assert "Trend" in html
+
     def test_shows_request_stats(self, client):
         """Stats page reflects in-memory request data after recording."""
         reset_request_stats()
         stats = get_request_stats()
 
-        # Simulate some recorded traffic
         stats.record_request(
             path_template="/api/v2/trains/departures",
             status_code=200,
             user_agent="TrackRat/230 CFNetwork/1568",
             duration=0.05,
+            client_ip="10.0.0.1",
             query_params={"from": "NY", "to": "TR"},
         )
         stats.record_request(
@@ -59,12 +94,12 @@ class TestAdminStatsPage:
             status_code=200,
             user_agent="curl/7.88",
             duration=0.03,
+            client_ip="10.0.0.2",
         )
 
         response = client.get("/admin/stats")
         html = response.text
 
-        # Verify request data appears in the page
         assert "/api/v2/trains/departures" in html
         assert "/api/v2/trains/{train_id}" in html
         assert "iOS/230" in html
@@ -80,13 +115,13 @@ class TestAdminStatsPage:
             status_code=200,
             user_agent="TrackRat/230",
             duration=0.05,
+            client_ip="10.0.0.1",
             query_params={"from": "NY", "to": "TR"},
         )
 
         response = client.get("/admin/stats")
         html = response.text
 
-        # Station names should be resolved (NY = New York Penn Station, TR = Trenton)
         assert "New York Penn Station" in html
         assert "Trenton" in html
 
@@ -98,6 +133,51 @@ class TestAdminStatsPage:
 
         assert response.status_code == 200
         assert "No requests yet" in html
+
+    def test_hours_filter(self, client):
+        """Stats page accepts ?hours= query parameter."""
+        response = client.get("/admin/stats?hours=6")
+        assert response.status_code == 200
+        assert "last 6h" in response.text
+
+    def test_ios_only_filter(self, client):
+        """Stats page accepts ?ios_only=true and shows IP table."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/test",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.01,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats?ios_only=true")
+        html = response.text
+
+        assert response.status_code == 200
+        assert "(iOS only)" in html
+        assert "Requests by IP" in html
+        assert "10.0.0.1" in html
+
+    def test_ios_only_no_ip_table_when_false(self, client):
+        """IP table is not shown when ios_only is false."""
+        reset_request_stats()
+        response = client.get("/admin/stats")
+        assert "Requests by IP" not in response.text
+
+    def test_invalid_hours_rejected(self, client):
+        """Invalid hours parameter returns 422."""
+        response = client.get("/admin/stats?hours=0")
+        assert response.status_code == 422
+
+    def test_combined_filters(self, client):
+        """Both hours and ios_only can be combined."""
+        response = client.get("/admin/stats?hours=1&ios_only=true")
+        assert response.status_code == 200
+        html = response.text
+        assert "last 1h" in html
+        assert "(iOS only)" in html
 
 
 class TestAdminStatsJson:
@@ -126,6 +206,71 @@ class TestAdminStatsJson:
         assert "alert_subscription_count" in data
         assert "live_activity_count" in data
 
+    def test_json_includes_scheduler_jobs(self, client):
+        """JSON response includes scheduler_jobs (parity with HTML)."""
+        response = client.get("/admin/stats.json")
+        data = response.json()
+        assert "scheduler_jobs" in data, (
+            f"scheduler_jobs missing from JSON, keys: {list(data.keys())}"
+        )
+
+    def test_json_includes_latency_trend(self, client):
+        """JSON response includes latency_trend data."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/test",
+            status_code=200,
+            user_agent="curl/7",
+            duration=0.05,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+        assert "latency_trend" in data
+
+    def test_json_includes_unique_ips(self, client):
+        """JSON response includes unique_ips and requests_by_ip."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/test",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.01,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+        assert "unique_ips" in data
+        assert "requests_by_ip" in data
+
+    def test_json_route_searches_resolved_names(self, client):
+        """JSON route searches use resolved station names."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.04,
+            client_ip="10.0.0.1",
+            query_params={"from": "NY", "to": "TR"},
+        )
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+
+        # Station names should be resolved in JSON (not raw codes)
+        route_keys = list(data["route_searches"].keys())
+        assert len(route_keys) == 1, f"Expected 1 route, got: {route_keys}"
+        assert "New York Penn Station" in route_keys[0], (
+            f"Expected resolved station name, got: {route_keys[0]}"
+        )
+        assert "Trenton" in route_keys[0]
+
     def test_json_reflects_recorded_data(self, client):
         """JSON endpoint reflects in-memory request stats."""
         reset_request_stats()
@@ -137,6 +282,7 @@ class TestAdminStatsJson:
                 status_code=200,
                 user_agent="TrackRat/230",
                 duration=0.04,
+                client_ip="10.0.0.1",
                 query_params={"from": "NP", "to": "NY"},
             )
 
@@ -145,4 +291,43 @@ class TestAdminStatsJson:
 
         assert data["total_requests"] >= 5
         assert data["requests_by_path"].get("/api/v2/trains/departures", 0) >= 5
-        assert "NP -> NY" in data["route_searches"]
+        # Route searches now use resolved names
+        route_keys = list(data["route_searches"].keys())
+        assert any("Newark Penn Station" in k for k in route_keys), (
+            f"Expected resolved NP station name, got: {route_keys}"
+        )
+
+    def test_json_hours_filter(self, client):
+        """JSON endpoint accepts ?hours= parameter."""
+        response = client.get("/admin/stats.json?hours=6")
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("window_hours") == 6
+
+    def test_json_ios_only_filter(self, client):
+        """JSON endpoint accepts ?ios_only=true parameter."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/test",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.01,
+            client_ip="10.0.0.1",
+        )
+        stats.record_request(
+            path_template="/test",
+            status_code=200,
+            user_agent="curl/7",
+            duration=0.01,
+            client_ip="10.0.0.2",
+        )
+
+        response = client.get("/admin/stats.json?ios_only=true")
+        data = response.json()
+
+        assert data["ios_only"] is True
+        assert data["total_requests"] == 1, (
+            f"Expected 1 iOS request, got {data['total_requests']}"
+        )
+        assert "curl" not in data["requests_by_client"]
