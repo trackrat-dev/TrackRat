@@ -1,7 +1,7 @@
 """add_track_notified_at
 
-Revision ID: a1b2c3d4e5f6
-Revises: c3d4e5f6a7b8
+Revision ID: 5a14a873c3f9
+Revises: b8ca879ae8c5
 Create Date: 2026-03-23 12:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "a1b2c3d4e5f6"
-down_revision = "c3d4e5f6a7b8"
+revision = "5a14a873c3f9"
+down_revision = "b8ca879ae8c5"
 branch_labels = None
 depends_on = None
 

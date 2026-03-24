@@ -5,7 +5,7 @@ where all of line_id, from_station_code, to_station_code, and train_id
 are NULL, representing a system-wide subscription keyed only by data_source.
 
 Revision ID: 4ae83310c010
-Revises: b8ca879ae8c5
+Revises: 5a14a873c3f9
 Create Date: 2026-03-24 16:44:00.000000+00:00
 """
 
@@ -13,7 +13,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "4ae83310c010"
-down_revision = "b8ca879ae8c5"
+down_revision = "5a14a873c3f9"
 branch_labels = None
 depends_on = None
 
