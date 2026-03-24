@@ -731,6 +731,210 @@ class TestEvaluateServiceAlerts:
         count = await evaluate_service_alerts(db_session, apns)
         assert count == 0
 
+    async def test_bidirectional_subs_same_device_sends_once(
+        self, db_session: AsyncSession
+    ):
+        """Two subscriptions on the same device for opposite directions of the same
+        route should only produce one push notification per service alert.
+
+        This is the exact scenario: user subscribes to Hamilton->NYP and NYP->Hamilton,
+        and a service alert affects the Northeast Corridor. Both subscriptions match
+        the same alert, but the device should only receive one notification.
+        """
+        device = DeviceToken(device_id="bidir-dev", apns_token="bidir-token")
+        db_session.add(device)
+
+        # Hamilton (HL) -> NY (NJT Northeast Corridor)
+        sub_forward = RouteAlertSubscription(
+            device_id="bidir-dev",
+            data_source="NJT",
+            from_station_code="HL",
+            to_station_code="NY",
+            include_planned_work=True,
+        )
+        db_session.add(sub_forward)
+
+        # NY -> Hamilton (reverse direction, same route)
+        sub_reverse = RouteAlertSubscription(
+            device_id="bidir-dev",
+            data_source="NJT",
+            from_station_code="NY",
+            to_station_code="HL",
+            include_planned_work=True,
+        )
+        db_session.add(sub_reverse)
+
+        _make_service_alert(
+            db_session,
+            alert_id="njt-msg-nec-weekend",
+            data_source="NJT",
+            alert_type="planned_work",
+            route_ids=["NE"],
+            header="NEC: Weekend track work between Newark and New York",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        # Only ONE notification should be sent despite two matching subscriptions
+        assert count == 1
+        assert apns.send_alert_notification.call_count == 1
+
+        # Both subscriptions should have the alert tracked in last_service_alert_ids
+        # so neither retries on the next cycle
+        assert "njt-msg-nec-weekend" in (sub_forward.last_service_alert_ids or [])
+        assert "njt-msg-nec-weekend" in (sub_reverse.last_service_alert_ids or [])
+
+    async def test_bidirectional_subs_different_devices_sends_both(
+        self, db_session: AsyncSession
+    ):
+        """Two subscriptions on DIFFERENT devices for opposite directions should
+        each receive a notification — dedup is per-device, not global.
+        """
+        device_a = DeviceToken(device_id="dev-a", apns_token="token-a")
+        device_b = DeviceToken(device_id="dev-b", apns_token="token-b")
+        db_session.add(device_a)
+        db_session.add(device_b)
+
+        sub_a = RouteAlertSubscription(
+            device_id="dev-a",
+            data_source="NJT",
+            from_station_code="HL",
+            to_station_code="NY",
+            include_planned_work=True,
+        )
+        sub_b = RouteAlertSubscription(
+            device_id="dev-b",
+            data_source="NJT",
+            from_station_code="NY",
+            to_station_code="HL",
+            include_planned_work=True,
+        )
+        db_session.add(sub_a)
+        db_session.add(sub_b)
+
+        _make_service_alert(
+            db_session,
+            alert_id="njt-msg-nec-both",
+            data_source="NJT",
+            alert_type="planned_work",
+            route_ids=["NE"],
+            header="NEC: Service change",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        # Both devices should get a notification
+        assert count == 2
+        assert apns.send_alert_notification.call_count == 2
+
+    async def test_bidirectional_dedup_does_not_block_different_alerts(
+        self, db_session: AsyncSession
+    ):
+        """Dedup only suppresses the same alert_id. Different alerts on the same
+        device with overlapping subscriptions should all be sent.
+        """
+        device = DeviceToken(device_id="multi-alert-dev", apns_token="multi-token")
+        db_session.add(device)
+
+        sub_forward = RouteAlertSubscription(
+            device_id="multi-alert-dev",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+        )
+        sub_reverse = RouteAlertSubscription(
+            device_id="multi-alert-dev",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+        )
+        db_session.add(sub_forward)
+        db_session.add(sub_reverse)
+
+        # Two different alerts on the same route
+        _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:alpha",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: No service Saturday",
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:beta",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: Shuttle bus Sunday",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        # Only 1 notification should be sent (both alerts bundled via first sub,
+        # second sub deduplicated)
+        assert count == 1
+        assert apns.send_alert_notification.call_count == 1
+
+        # Both subs should track both alert IDs
+        assert "lmm:planned_work:alpha" in (sub_forward.last_service_alert_ids or [])
+        assert "lmm:planned_work:beta" in (sub_forward.last_service_alert_ids or [])
+        assert "lmm:planned_work:alpha" in (sub_reverse.last_service_alert_ids or [])
+        assert "lmm:planned_work:beta" in (sub_reverse.last_service_alert_ids or [])
+
+    async def test_bidirectional_dedup_next_cycle_stays_quiet(
+        self, db_session: AsyncSession
+    ):
+        """After dedup suppresses a duplicate, the next evaluation cycle should
+        not re-send the suppressed alert. Verifies that last_service_alert_ids
+        is updated even when the notification was deduplicated.
+        """
+        device = DeviceToken(device_id="cycle-dev", apns_token="cycle-token")
+        db_session.add(device)
+
+        sub1 = RouteAlertSubscription(
+            device_id="cycle-dev",
+            data_source="NJT",
+            from_station_code="HL",
+            to_station_code="NY",
+            include_planned_work=True,
+        )
+        sub2 = RouteAlertSubscription(
+            device_id="cycle-dev",
+            data_source="NJT",
+            from_station_code="NY",
+            to_station_code="HL",
+            include_planned_work=True,
+        )
+        db_session.add(sub1)
+        db_session.add(sub2)
+
+        _make_service_alert(
+            db_session,
+            alert_id="njt-msg-cycle-test",
+            data_source="NJT",
+            alert_type="planned_work",
+            route_ids=["NE"],
+            header="NEC: Track work",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+
+        # First cycle: 1 notification
+        count1 = await evaluate_service_alerts(db_session, apns)
+        assert count1 == 1
+
+        # Second cycle: 0 notifications (both subs already tracked the alert)
+        count2 = await evaluate_service_alerts(db_session, apns)
+        assert count2 == 0
+        # Total calls should still be 1
+        assert apns.send_alert_notification.call_count == 1
+
     async def test_dedup_truncation_keeps_most_recent(self, db_session: AsyncSession):
         """When >50 alert IDs accumulate, the 50 most recent are kept.
 

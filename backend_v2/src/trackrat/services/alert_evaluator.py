@@ -1091,6 +1091,11 @@ async def evaluate_service_alerts(
 
     alerts_sent = 0
 
+    # Track (apns_token, alert_id) pairs already sent this cycle to prevent
+    # duplicate notifications when multiple subscriptions on the same device
+    # match the same service alert (e.g. bidirectional route subscriptions).
+    sent_device_alerts: set[tuple[str, str]] = set()
+
     for device in devices:
         if not device.apns_token:
             continue
@@ -1127,13 +1132,41 @@ async def evaluate_service_alerts(
             if not new_alerts:
                 continue
 
-            # Build and send notification for new alerts
-            title, body = _build_service_alert_message(sub, new_alerts)
+            # Filter out alerts already sent to this device via another subscription
+            unsent_alerts = [
+                a
+                for a in new_alerts
+                if (device.apns_token, a.alert_id) not in sent_device_alerts
+            ]
+
+            # Always mark these alerts as notified on this subscription,
+            # even if we skip sending (another subscription already sent them).
+            # This prevents the subscription from retrying on the next cycle.
+            notified_ids = list(sub.last_service_alert_ids or [])
+            for a in new_alerts:
+                if a.alert_id not in already_notified:
+                    notified_ids.append(a.alert_id)
+            sub.last_service_alert_ids = notified_ids[-50:]
+
+            if not unsent_alerts:
+                logger.info(
+                    "service_alert_deduplicated",
+                    device_id=device.device_id,
+                    data_source=sub.data_source,
+                    from_station=sub.from_station_code,
+                    to_station=sub.to_station_code,
+                    skipped_alert_count=len(new_alerts),
+                    alert_ids=[a.alert_id for a in new_alerts],
+                )
+                continue
+
+            # Build and send notification for unsent alerts only
+            title, body = _build_service_alert_message(sub, unsent_alerts)
 
             alert_payload: dict[str, object] = {
                 "data_source": sub.data_source,
-                "alert_count": len(new_alerts),
-                "alert_ids": [a.alert_id for a in new_alerts],
+                "alert_count": len(unsent_alerts),
+                "alert_ids": [a.alert_id for a in unsent_alerts],
             }
             if sub.line_id:
                 alert_payload["line_id"] = sub.line_id
@@ -1146,13 +1179,8 @@ async def evaluate_service_alerts(
             )
 
             if sent:
-                # Track notified alert IDs (keep last 50 to prevent unbounded growth).
-                # Preserve order: existing first, new appended, so [-50:] keeps most recent.
-                notified_ids = list(sub.last_service_alert_ids or [])
-                for a in new_alerts:
-                    if a.alert_id not in already_notified:
-                        notified_ids.append(a.alert_id)
-                sub.last_service_alert_ids = notified_ids[-50:]
+                for a in unsent_alerts:
+                    sent_device_alerts.add((device.apns_token, a.alert_id))
                 alerts_sent += 1
 
                 logger.info(
@@ -1162,8 +1190,8 @@ async def evaluate_service_alerts(
                     line_id=sub.line_id,
                     from_station=sub.from_station_code,
                     to_station=sub.to_station_code,
-                    new_alert_count=len(new_alerts),
-                    alert_ids=[a.alert_id for a in new_alerts],
+                    new_alert_count=len(unsent_alerts),
+                    alert_ids=[a.alert_id for a in unsent_alerts],
                 )
 
     if alerts_sent > 0:
