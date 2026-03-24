@@ -1,10 +1,19 @@
 import SwiftUI
 
+/// Alert mode: route-specific (station pair) or system-wide.
+private enum AlertMode: String, CaseIterable {
+    case route = "Route"
+    case system = "System"
+}
+
 struct AddRouteAlertView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var subscriptionService = SubscriptionService.shared
+
+    // Mode selection
+    @State private var alertMode: AlertMode = .route
 
     // Station-pair state
     @State private var showFromPicker = false
@@ -12,6 +21,10 @@ struct AddRouteAlertView: View {
     @State private var fromStation: Station? = nil
     @State private var toStation: Station? = nil
     @State private var confirmationMessage: String? = nil
+
+    // System-wide state
+    @State private var selectedSystem: TrainSystem? = nil
+    @State private var systemAlertSheetData: DirectionalSheetData? = nil
 
     // Customization sheet state
     @State private var directionalSheetData: DirectionalSheetData? = nil
@@ -23,7 +36,7 @@ struct AddRouteAlertView: View {
 
     var body: some View {
         NavigationStack {
-            stationPairPicker
+            alertContent
                 .navigationTitle("Add Route Alert")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -37,6 +50,11 @@ struct AddRouteAlertView: View {
         .sheet(item: $directionalSheetData) { data in
             DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
                 saveDirectionalSubscriptions(subs)
+            }
+        }
+        .sheet(item: $systemAlertSheetData) { data in
+            DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
+                saveSystemSubscription(subs)
             }
         }
     }
@@ -60,13 +78,130 @@ struct AddRouteAlertView: View {
         }
     }
 
-    // MARK: - Station-Pair Picker
+    private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
+        guard !atAlertLimit else { return }
+        alertService.addSubscriptions(subs)
+        alertService.syncIfPossible()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        systemAlertSheetData = nil
+        withAnimation { selectedSystem = nil }
+    }
 
-    private var stationPairPicker: some View {
+    // MARK: - Alert Content
+
+    private var alertContent: some View {
         VStack(spacing: 16) {
             if alertCapableSystems.isEmpty {
                 noEligibleSystemsView(detail: "Your selected systems are schedule-only and cannot detect delays.")
             } else {
+                Picker("Alert Type", selection: $alertMode) {
+                    ForEach(AlertMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
+                switch alertMode {
+                case .route:
+                    routeModePicker
+                case .system:
+                    systemModePicker
+                }
+
+                if let message = confirmationMessage {
+                    HStack(spacing: 6) {
+                        Image(systemName: message.hasPrefix("Alert") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundColor(message.hasPrefix("Alert") ? .green : .yellow)
+                        Text(message)
+                            .foregroundColor(.white)
+                    }
+                    .font(.subheadline)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
+        }
+        .padding(.top)
+    }
+
+    // MARK: - System Mode
+
+    private var systemModePicker: some View {
+        VStack(spacing: 16) {
+            Text("Get notified about service alerts, delays, and planned work across an entire transit system.")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            let systems = alertCapableSystems.sorted { $0.displayName < $1.displayName }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+                ForEach(systems, id: \.self) { system in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            selectedSystem = selectedSystem == system ? nil : system
+                        }
+                    } label: {
+                        Text(system.displayName)
+                            .font(.subheadline)
+                            .fontWeight(selectedSystem == system ? .semibold : .regular)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(selectedSystem == system ? Color.orange : .ultraThinMaterial)
+                            )
+                            .foregroundColor(selectedSystem == system ? .black : .white)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal)
+
+            if let system = selectedSystem {
+                Button {
+                    let alreadyExists = alertService.subscriptions.contains {
+                        $0.isSystemWide && $0.dataSource == system.rawValue
+                    }
+
+                    if alreadyExists {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        showConfirmation("Already subscribed")
+                    } else {
+                        let sub = RouteAlertSubscription(dataSource: system.rawValue)
+                        systemAlertSheetData = DirectionalSheetData(directions: [
+                            DirectionDraft(
+                                label: "\(system.displayName) System Alerts",
+                                subscription: sub,
+                                alreadySubscribed: false
+                            ),
+                        ])
+                    }
+                } label: {
+                    Text("Add Alert")
+                        .font(.headline)
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(.orange))
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Route Mode (Station-Pair Picker)
+
+    private var routeModePicker: some View {
+        VStack(spacing: 16) {
+            Text("Get notified about delays and cancellations between two stations.")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
             // First station
             Button {
                 showFromPicker = true
@@ -158,22 +293,9 @@ struct AddRouteAlertView: View {
                 .padding(.top, 8)
             }
 
-            if let message = confirmationMessage {
-                HStack(spacing: 6) {
-                    Image(systemName: message.hasPrefix("Alert") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                        .foregroundColor(message.hasPrefix("Alert") ? .green : .yellow)
-                    Text(message)
-                        .foregroundColor(.white)
-                }
-                .font(.subheadline)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-                .padding(.top, 8)
-            }
-
             Spacer()
-            } // else alertCapableSystems not empty
         }
-        .padding()
+        .padding(.horizontal)
         .sheet(isPresented: $showFromPicker) {
             StationPickerSheet(
                 selectedStation: $fromStation,

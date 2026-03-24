@@ -312,7 +312,7 @@ struct AlertConfigurationSection: View {
     private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
 
     private var showPlannedWork: Bool {
-        (subscription.lineId != nil || subscription.fromStationCode != nil)
+        (subscription.isSystemWide || subscription.lineId != nil || subscription.fromStationCode != nil)
             && Self.plannedWorkSystems.contains(subscription.dataSource)
     }
 

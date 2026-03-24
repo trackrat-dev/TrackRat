@@ -386,7 +386,9 @@ class RouteAlertSubscription(Base):
         CheckConstraint(
             "(line_id IS NOT NULL) OR "
             "(from_station_code IS NOT NULL AND to_station_code IS NOT NULL) OR "
-            "(train_id IS NOT NULL)",
+            "(train_id IS NOT NULL) OR "
+            "(line_id IS NULL AND from_station_code IS NULL "
+            "AND to_station_code IS NULL AND train_id IS NULL)",
             name="ck_alert_sub_type",
         ),
         Index("idx_alert_sub_device", "device_id"),

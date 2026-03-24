@@ -30,7 +30,11 @@ final class AlertSubscriptionService: ObservableObject {
     func addSubscriptions(_ subs: [RouteAlertSubscription]) {
         for sub in subs {
             let isDuplicate: Bool
-            if let lineId = sub.lineId, let direction = sub.direction {
+            if sub.isSystemWide {
+                isDuplicate = subscriptions.contains {
+                    $0.isSystemWide && $0.dataSource == sub.dataSource
+                }
+            } else if let lineId = sub.lineId, let direction = sub.direction {
                 isDuplicate = subscriptions.contains {
                     $0.lineId == lineId && $0.dataSource == sub.dataSource && $0.direction == direction
                 }
@@ -143,9 +147,17 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     var digestTimeMinutes: Int?  // Minutes from midnight, nil = disabled
     var includePlannedWork: Bool
 
+    /// Whether this is a system-wide subscription (no line, station pair, or train specified).
+    var isSystemWide: Bool {
+        lineId == nil && fromStationCode == nil && toStationCode == nil && trainId == nil
+    }
+
     /// Human-readable name for this subscription (e.g. "Hoboken to 33rd Street").
     var displayName: String {
-        if let trainName = trainName {
+        if isSystemWide {
+            let system = TrainSystem(rawValue: dataSource)
+            return "\(system?.displayName ?? dataSource) — System Alerts"
+        } else if let trainName = trainName {
             return trainName
         } else if let lineName = lineName {
             guard let direction = direction else { return lineName }
@@ -291,6 +303,39 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
         self.notifyRecovery = notifyRecovery
         self.digestTimeMinutes = digestTimeMinutes
         self.includePlannedWork = false
+    }
+
+    /// System-wide subscription (all alerts for a transit system).
+    init(
+        dataSource: String,
+        activeDays: Int = 127, activeStartMinutes: Int? = nil, activeEndMinutes: Int? = nil,
+        timezone: String? = nil, delayThresholdMinutes: Int? = nil, serviceThresholdPct: Int? = nil,
+        cancellationThresholdPct: Int? = nil,
+        notifyCancellation: Bool = true, notifyDelay: Bool = true,
+        notifyRecovery: Bool = false, digestTimeMinutes: Int? = nil,
+        includePlannedWork: Bool = true
+    ) {
+        self.id = UUID()
+        self.dataSource = dataSource
+        self.lineId = nil
+        self.lineName = nil
+        self.fromStationCode = nil
+        self.toStationCode = nil
+        self.trainId = nil
+        self.trainName = nil
+        self.direction = nil
+        self.activeDays = activeDays
+        self.activeStartMinutes = activeStartMinutes
+        self.activeEndMinutes = activeEndMinutes
+        self.timezone = timezone
+        self.delayThresholdMinutes = delayThresholdMinutes
+        self.serviceThresholdPct = serviceThresholdPct
+        self.cancellationThresholdPct = cancellationThresholdPct
+        self.notifyCancellation = notifyCancellation
+        self.notifyDelay = notifyDelay
+        self.notifyRecovery = notifyRecovery
+        self.digestTimeMinutes = digestTimeMinutes
+        self.includePlannedWork = includePlannedWork
     }
 
     /// Backward-compatible decoding: new fields default to sensible values if missing.
