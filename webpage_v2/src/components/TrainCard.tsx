@@ -32,8 +32,6 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
     ? 'departed'
     : isBoarding
     ? 'boarding'
-    : train.observation_type === 'SCHEDULED'
-    ? 'scheduled'
     : delayMinutes > 0
     ? 'delayed'
     : 'on time';
@@ -52,7 +50,7 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className={`text-lg font-semibold text-text-primary ${train.is_cancelled ? 'line-through' : ''}`}>
-            Train {train.train_id}
+            Train {train.observation_type === 'SCHEDULED' ? 'TBD' : train.train_id}
           </div>
           <div className="text-sm text-text-muted">{train.line.name}</div>
         </div>
@@ -76,8 +74,6 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
               ? 'Departed'
               : status === 'boarding'
               ? 'Boarding'
-              : status === 'scheduled'
-              ? 'Scheduled'
               : formatDelayText(delayMinutes)}
           </span>
         </div>

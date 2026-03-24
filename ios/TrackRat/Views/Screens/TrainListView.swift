@@ -337,12 +337,6 @@ struct TrainCard: View {
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 3
 
-    /// Check if train is scheduled only (not observed)
-    /// For future dates, don't show "Scheduled" label since all trains are scheduled
-    private var shouldShowScheduledLabel: Bool {
-        return train.observationType == "SCHEDULED" && !isFutureDate
-    }
-
     private var isScheduledOnly: Bool {
         return train.observationType == "SCHEDULED"
     }
@@ -459,10 +453,6 @@ struct TrainCard: View {
                 Text("Departed")
                     .font(.caption)
                     .foregroundColor(Color.black.opacity(0.5))
-            } else if shouldShowScheduledLabel {
-                Text("Scheduled")
-                    .font(.caption)
-                    .foregroundColor(isBoardingAtOrigin ? .white.opacity(0.7) : Color.black.opacity(0.5))
             }
 
             // Track and status - only show for boarding trains at origin
@@ -488,75 +478,6 @@ struct TrainCard: View {
 }
 
 // MARK: - StatusV2 Badge
-struct StatusV2Badge: View {
-    let train: TrainV2
-    let departureStationCode: String
-    
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
-            
-            Text(statusText)
-                .font(.caption)
-                .fontWeight(.medium)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(statusColor.opacity(0.2))
-        .cornerRadius(TrackRatTheme.CornerRadius.sm)
-    }
-    
-    private var statusColor: Color {
-        // Use context-aware status
-        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
-        
-        switch contextStatus {
-        case .boarding:
-            return train.track != nil ? .orange : .gray
-        case .departed:
-            return .blue
-        case .delayed:
-            return .red
-        case .onTime:
-            return .green
-        case .scheduled:
-            return .gray
-        case .cancelled:
-            return .red
-        case .unknown:
-            return .gray
-        }
-    }
-    
-    private var statusText: String {
-        // Use enhanced display status if available
-        if !train.enhancedDisplayStatus.isEmpty {
-            return train.enhancedDisplayStatus
-        }
-        
-        // Otherwise use context-aware status
-        let contextStatus = train.calculateStatus(fromStationCode: departureStationCode)
-        switch contextStatus {
-        case .boarding:
-            return train.track != nil ? "Boarding" : "Scheduled"
-        case .departed:
-            return "En Route"
-        case .delayed:
-            return "Delayed"
-        case .onTime:
-            return "On Time"
-        case .scheduled:
-            return "Scheduled"
-        case .cancelled:
-            return "Cancelled"
-        case .unknown:
-            return "Unknown"
-        }
-    }
-}
-
 // MARK: - View Model
 @MainActor
 class TrainListViewModel: ObservableObject {

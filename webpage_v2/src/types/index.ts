@@ -121,6 +121,7 @@ export interface TrainDetails {
   stops: Stop[];
   data_freshness: DataFreshness;
   data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
+  observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
   is_completed: boolean;
 }

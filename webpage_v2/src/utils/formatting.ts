@@ -8,7 +8,6 @@ export function getStatusBadgeClass(status: string): string {
   const baseClass = 'px-2 py-1 rounded-full text-xs font-semibold';
   switch (status.toLowerCase()) {
     case 'on time':
-    case 'scheduled':
       return `${baseClass} bg-success/20 text-success`;
     case 'boarding':
       return `${baseClass} bg-accent/20 text-accent`;
