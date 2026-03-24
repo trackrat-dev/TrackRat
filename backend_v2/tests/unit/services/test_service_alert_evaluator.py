@@ -744,11 +744,11 @@ class TestEvaluateServiceAlerts:
         device = DeviceToken(device_id="bidir-dev", apns_token="bidir-token")
         db_session.add(device)
 
-        # Hamilton -> NY (NJT Northeast Corridor)
+        # Hamilton (HL) -> NY (NJT Northeast Corridor)
         sub_forward = RouteAlertSubscription(
             device_id="bidir-dev",
             data_source="NJT",
-            from_station_code="HAM",
+            from_station_code="HL",
             to_station_code="NY",
             include_planned_work=True,
         )
@@ -759,7 +759,7 @@ class TestEvaluateServiceAlerts:
             device_id="bidir-dev",
             data_source="NJT",
             from_station_code="NY",
-            to_station_code="HAM",
+            to_station_code="HL",
             include_planned_work=True,
         )
         db_session.add(sub_reverse)
@@ -800,7 +800,7 @@ class TestEvaluateServiceAlerts:
         sub_a = RouteAlertSubscription(
             device_id="dev-a",
             data_source="NJT",
-            from_station_code="HAM",
+            from_station_code="HL",
             to_station_code="NY",
             include_planned_work=True,
         )
@@ -808,7 +808,7 @@ class TestEvaluateServiceAlerts:
             device_id="dev-b",
             data_source="NJT",
             from_station_code="NY",
-            to_station_code="HAM",
+            to_station_code="HL",
             include_planned_work=True,
         )
         db_session.add(sub_a)
@@ -899,7 +899,7 @@ class TestEvaluateServiceAlerts:
         sub1 = RouteAlertSubscription(
             device_id="cycle-dev",
             data_source="NJT",
-            from_station_code="HAM",
+            from_station_code="HL",
             to_station_code="NY",
             include_planned_work=True,
         )
@@ -907,7 +907,7 @@ class TestEvaluateServiceAlerts:
             device_id="cycle-dev",
             data_source="NJT",
             from_station_code="NY",
-            to_station_code="HAM",
+            to_station_code="HL",
             include_planned_work=True,
         )
         db_session.add(sub1)
