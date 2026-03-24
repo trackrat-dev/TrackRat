@@ -512,6 +512,100 @@ class TestLatencyTrend:
         assert snap["latency_trend"] == {}
 
 
+    def test_departure_result_counts(self):
+        """record_departure_results tracks avg trains and empty count per route."""
+        stats = RequestStats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.05,
+            query_params={"from": "NY", "to": "TR"},
+        )
+        # Record result counts: 5 trains, 0 trains, 3 trains
+        stats.record_departure_results("NY", "TR", 5)
+        stats.record_departure_results("NY", "TR", 0)
+        stats.record_departure_results("NY", "TR", 3)
+
+        snap = stats.snapshot()
+        route_entry = next(
+            e for e in snap["route_searches"] if e["from"] == "NY" and e["to"] == "TR"
+        )
+        assert abs(route_entry["avg_trains"] - (5 + 0 + 3) / 3) < 0.01
+        assert route_entry["empty_count"] == 1
+
+    def test_departure_result_all_empty(self):
+        """All-empty results correctly counted."""
+        stats = RequestStats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="curl/7",
+            duration=0.01,
+            query_params={"from": "NP", "to": "AB"},
+        )
+        stats.record_departure_results("NP", "AB", 0)
+        stats.record_departure_results("NP", "AB", 0)
+
+        snap = stats.snapshot()
+        route_entry = next(
+            e for e in snap["route_searches"] if e["from"] == "NP" and e["to"] == "AB"
+        )
+        assert route_entry["avg_trains"] == 0.0
+        assert route_entry["empty_count"] == 2
+
+    def test_departure_result_no_results_recorded(self):
+        """Route search without result recording has no avg/empty fields."""
+        stats = RequestStats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="curl/7",
+            duration=0.01,
+            query_params={"from": "NY", "to": "TR"},
+        )
+
+        snap = stats.snapshot()
+        route_entry = next(
+            e for e in snap["route_searches"] if e["from"] == "NY" and e["to"] == "TR"
+        )
+        assert "avg_trains" not in route_entry
+        assert "empty_count" not in route_entry
+
+    def test_train_detail_view_tracking(self):
+        """record_train_detail_view tracks train ID, origin, and destination."""
+        stats = RequestStats()
+        stats.record_train_detail_view("3254", "NY", "TR")
+        stats.record_train_detail_view("3254", "NY", "TR")
+        stats.record_train_detail_view("1078", "NP", "NY")
+
+        snap = stats.snapshot()
+        views = {
+            (e["train_id"], e["from"], e["to"]): e["count"]
+            for e in snap["train_detail_views"]
+        }
+        assert views[("3254", "NY", "TR")] == 2
+        assert views[("1078", "NP", "NY")] == 1
+
+    def test_train_detail_views_top_20(self):
+        """Only top 20 train detail views are returned in snapshot."""
+        stats = RequestStats()
+        for i in range(25):
+            for _ in range(i + 1):  # Different counts so ordering is deterministic
+                stats.record_train_detail_view(f"T{i:03d}", "NY", "TR")
+
+        snap = stats.snapshot()
+        assert len(snap["train_detail_views"]) == 20
+        # Most popular should be first (T024 with 25 views)
+        assert snap["train_detail_views"][0]["train_id"] == "T024"
+
+    def test_train_detail_views_empty(self):
+        """Snapshot includes empty train_detail_views when none recorded."""
+        stats = RequestStats()
+        snap = stats.snapshot()
+        assert snap["train_detail_views"] == []
+
+
 class TestSingleton:
     """Tests for the module-level singleton."""
 

@@ -8,6 +8,7 @@ Stores individual request records in a bounded deque, enabling time-windowed
 queries and per-client-IP filtering at snapshot time.
 """
 
+import random
 import re
 import threading
 import time
@@ -46,6 +47,11 @@ class RequestStats:
     _records: deque[RequestRecord] = field(
         default_factory=lambda: deque(maxlen=_MAX_RECORDS)
     )
+    route_search_results: dict[tuple[str, str], list[int]] = field(default_factory=dict)
+    train_detail_views: Counter[tuple[str, str, str]] = field(
+        default_factory=Counter
+    )  # (train_id, from_station, to_station)
+    _MAX_LATENCY_SAMPLES: int = 500
 
     def record_request(
         self,
@@ -79,6 +85,27 @@ class RequestStats:
 
         with self._lock:
             self._records.append(record)
+
+    def record_departure_results(
+        self, from_station: str, to_station: str, count: int
+    ) -> None:
+        """Record the number of trains returned for a departure search."""
+        key = (from_station, to_station)
+        with self._lock:
+            samples = self.route_search_results.setdefault(key, [])
+            # Keep last 500 samples per route to bound memory
+            if len(samples) < self._MAX_LATENCY_SAMPLES:
+                samples.append(count)
+            else:
+                idx = random.randint(0, len(samples) - 1)
+                samples[idx] = count
+
+    def record_train_detail_view(
+        self, train_id: str, from_station: str, to_station: str
+    ) -> None:
+        """Record a train detail page view with user's origin/destination."""
+        with self._lock:
+            self.train_detail_views[(train_id, from_station, to_station)] += 1
 
     def snapshot(
         self,
@@ -147,6 +174,15 @@ class RequestStats:
                 "max": s[-1],
             }
 
+        # Compute per-route search result stats
+        route_search_stats: dict[tuple[str, str], dict[str, float]] = {}
+        for key, rss in self.route_search_results.items():
+            if rss:
+                route_search_stats[key] = {
+                    "avg_trains": sum(rss) / len(rss),
+                    "empty_count": rss.count(0),
+                }
+
         # Compute latency trends: last 12 buckets per path, sorted by time
         latency_trend = _compute_latency_trends(trend_buckets, now)
 
@@ -157,8 +193,22 @@ class RequestStats:
             "requests_by_status": dict(by_status.most_common()),
             "requests_by_client": dict(by_client.most_common()),
             "route_searches": [
-                {"from": k[0], "to": k[1], "count": v}
+                {
+                    "from": k[0],
+                    "to": k[1],
+                    "count": v,
+                    **route_search_stats.get(k, {}),
+                }
                 for k, v in route_searches.most_common(20)
+            ],
+            "train_detail_views": [
+                {
+                    "train_id": k[0],
+                    "from": k[1],
+                    "to": k[2],
+                    "count": v,
+                }
+                for k, v in self.train_detail_views.most_common(20)
             ],
             "latency": latency_stats,
             "latency_trend": latency_trend,

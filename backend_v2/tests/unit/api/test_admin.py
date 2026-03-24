@@ -180,6 +180,59 @@ class TestAdminStatsPage:
         assert "(iOS only)" in html
 
 
+    def test_shows_route_search_result_metrics(self, client):
+        """Stats page shows avg trains and empty response count per route."""
+        reset_request_stats()
+        stats = get_request_stats()
+
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.05,
+            query_params={"from": "NY", "to": "TR"},
+        )
+        stats.record_departure_results("NY", "TR", 5)
+        stats.record_departure_results("NY", "TR", 0)
+        stats.record_departure_results("NY", "TR", 3)
+
+        response = client.get("/admin/stats")
+        html = response.text
+
+        # Table headers
+        assert "Avg Trains" in html
+        assert "Empty" in html
+        # Average of 5,0,3 = 2.7
+        assert "2.7" in html
+        # One empty response
+        assert "warn" in html  # empty count > 0 gets warn class
+
+    def test_shows_train_detail_views(self, client):
+        """Stats page shows Popular Train Details section."""
+        reset_request_stats()
+        stats = get_request_stats()
+
+        stats.record_train_detail_view("3254", "NY", "TR")
+        stats.record_train_detail_view("3254", "NY", "TR")
+
+        response = client.get("/admin/stats")
+        html = response.text
+
+        assert "Popular Train Details" in html
+        assert "3254" in html
+        assert "New York Penn Station" in html
+        assert "Trenton" in html
+
+    def test_train_detail_views_empty_state(self, client):
+        """Stats page shows empty state for train detail views when none recorded."""
+        reset_request_stats()
+        response = client.get("/admin/stats")
+        html = response.text
+
+        assert "Popular Train Details" in html
+        assert "No views yet" in html
+
+
 class TestAdminStatsJson:
     """Tests for the /admin/stats.json JSON endpoint."""
 
@@ -331,3 +384,43 @@ class TestAdminStatsJson:
             f"Expected 1 iOS request, got {data['total_requests']}"
         )
         assert "curl" not in data["requests_by_client"]
+
+    def test_json_includes_route_search_metrics(self, client):
+        """JSON endpoint includes avg_trains and empty_count in route searches."""
+        reset_request_stats()
+        stats = get_request_stats()
+
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.04,
+            client_ip="10.0.0.1",
+            query_params={"from": "NY", "to": "TR"},
+        )
+        stats.record_departure_results("NY", "TR", 4)
+        stats.record_departure_results("NY", "TR", 0)
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+
+        # Route key uses resolved station names
+        route_key = next(k for k in data["route_searches"] if "Trenton" in k)
+        route_data = data["route_searches"][route_key]
+        assert route_data["count"] == 1
+        assert route_data["avg_trains"] == 2.0
+        assert route_data["empty_count"] == 1
+
+    def test_json_includes_train_detail_views(self, client):
+        """JSON endpoint includes train_detail_views."""
+        reset_request_stats()
+        stats = get_request_stats()
+
+        stats.record_train_detail_view("3254", "NY", "TR")
+        stats.record_train_detail_view("3254", "NY", "TR")
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+
+        assert "train_detail_views" in data
+        assert data["train_detail_views"]["3254 (NY -> TR)"] == 2

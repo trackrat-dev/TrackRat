@@ -282,10 +282,28 @@ def _render_html(
         from_name = get_station_name(entry["from"])
         to_name = get_station_name(entry["to"])
         count = entry["count"]
+        avg_trains = entry.get("avg_trains")
+        empty_count = entry.get("empty_count", 0)
+        avg_str = f"{avg_trains:.1f}" if avg_trains is not None else "-"
+        empty_cls = "num warn" if empty_count > 0 else "num"
         route_rows += (
             f"<tr><td>{_esc(from_name)}</td>"
             f"<td>{_esc(to_name)}</td>"
-            f"<td class='num'>{count}</td></tr>"
+            f"<td class='num'>{count}</td>"
+            f"<td class='num'>{avg_str}</td>"
+            f"<td class='{empty_cls}'>{empty_count}</td></tr>"
+        )
+
+    # -- Popular train detail views --
+    train_detail_rows = ""
+    for entry in request_stats.get("train_detail_views", []):
+        from_name = get_station_name(entry["from"])
+        to_name = get_station_name(entry["to"])
+        train_detail_rows += (
+            f"<tr><td><strong>{_esc(entry['train_id'])}</strong></td>"
+            f"<td>{_esc(from_name)}</td>"
+            f"<td>{_esc(to_name)}</td>"
+            f"<td class='num'>{entry['count']}</td></tr>"
         )
 
     # -- Providers --
@@ -399,8 +417,14 @@ def _render_html(
 
 <h2>Popular Route Searches</h2>
 <table>
-<tr><th>From</th><th>To</th><th class="num">Count</th></tr>
-{route_rows if route_rows else "<tr><td colspan='3'>No searches yet</td></tr>"}
+<tr><th>From</th><th>To</th><th class="num">Searches</th><th class="num">Avg Trains</th><th class="num">Empty</th></tr>
+{route_rows if route_rows else "<tr><td colspan='5'>No searches yet</td></tr>"}
+</table>
+
+<h2>Popular Train Details</h2>
+<table>
+<tr><th>Train ID</th><th>From</th><th>To</th><th class="num">Views</th></tr>
+{train_detail_rows if train_detail_rows else "<tr><td colspan='4'>No views yet</td></tr>"}
 </table>
 </div>
 
@@ -471,14 +495,22 @@ async def stats_json(
 
     # Resolve station names in route searches for JSON consumers
     route_searches = {
-        f"{get_station_name(entry['from'])} -> {get_station_name(entry['to'])}": entry[
-            "count"
-        ]
+        f"{get_station_name(entry['from'])} -> {get_station_name(entry['to'])}": {
+            "count": entry["count"],
+            **({"avg_trains": round(entry["avg_trains"], 1)} if "avg_trains" in entry else {}),
+            **({"empty_count": entry["empty_count"]} if entry.get("empty_count") else {}),
+        }
         for entry in request_data["route_searches"]
     }
     request_data["route_searches"] = route_searches
 
     # Include scheduler jobs (JSON parity with HTML)
     request_data["scheduler_jobs"] = scheduler_jobs
+
+    train_detail_views = {
+        f"{entry['train_id']} ({entry['from']} -> {entry['to']})": entry["count"]
+        for entry in request_data.get("train_detail_views", [])
+    }
+    request_data["train_detail_views"] = train_detail_views
 
     return {**request_data, **db_data}
