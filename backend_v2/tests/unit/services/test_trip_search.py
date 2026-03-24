@@ -120,7 +120,7 @@ class TestDepartureToLeg:
 
     def test_basic_conversion(self):
         dep = _make_departure()
-        leg = _departure_to_leg(dep, "NP", "NY")
+        leg = _departure_to_leg(dep)
         assert leg.train_id == "3456"
         assert leg.line.code == "NE"
         assert leg.data_source == "NJT"
@@ -130,12 +130,12 @@ class TestDepartureToLeg:
 
     def test_cancelled_train(self):
         dep = _make_departure(is_cancelled=True)
-        leg = _departure_to_leg(dep, "NP", "NY")
+        leg = _departure_to_leg(dep)
         assert leg.is_cancelled is True
 
     def test_preserves_train_position(self):
         dep = _make_departure()
-        leg = _departure_to_leg(dep, "NP", "NY")
+        leg = _departure_to_leg(dep)
         assert leg.train_position is not None
 
 

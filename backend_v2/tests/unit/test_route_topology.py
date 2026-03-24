@@ -388,7 +388,11 @@ class TestAllRoutesConsistency:
         """Test that all routes have required fields populated."""
         # Terminal approach routes intentionally have no line_codes
         # (trains are tagged with their destination branch's line_code)
-        terminal_routes = {"lirr-atlantic", "lirr-grand-central"}
+        terminal_routes = {
+            "lirr-atlantic",
+            "lirr-grand-central",
+            "lirr-port-washington-gct",
+        }
         for route in ALL_ROUTES:
             assert route.id, f"Route missing id"
             assert route.name, f"Route {route.id} missing name"
