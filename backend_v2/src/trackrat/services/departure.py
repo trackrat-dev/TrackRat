@@ -776,7 +776,15 @@ class DepartureService:
                                 TrainJourney.data_source == "NJT",
                             )
                         )
-                        .options(selectinload(TrainJourney.stops))
+                        .options(
+                            selectinload(TrainJourney.stops),
+                            # Load all delete-orphan collections to prevent
+                            # greenlet_spawn errors during flush orphan checks
+                            selectinload(TrainJourney.snapshots),
+                            selectinload(TrainJourney.segment_times),
+                            selectinload(TrainJourney.dwell_times),
+                            selectinload(TrainJourney.progress_snapshots),
+                        )
                         .order_by(TrainJourney.id)
                     )
                     result = await db.execute(stmt)

@@ -539,6 +539,10 @@ class CongestionAnalyzer:
         if data_source:
             params["data_source"] = data_source
 
+        # Guard against runaway queries (especially for high-volume providers
+        # like SUBWAY). SET LOCAL is transaction-scoped and auto-resets.
+        await db.execute(text("SET LOCAL statement_timeout = '30000'"))
+
         query_start = now_et()
         result = await db.execute(query, params)
         rows = result.fetchall()

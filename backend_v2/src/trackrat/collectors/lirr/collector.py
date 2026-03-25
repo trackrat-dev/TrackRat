@@ -261,7 +261,15 @@ class LIRRCollector:
                 TrainJourney.journey_date == journey_date,
                 TrainJourney.data_source == "LIRR",
             )
-            .options(selectinload(TrainJourney.stops))
+            .options(
+                selectinload(TrainJourney.stops),
+                # Load all delete-orphan collections to prevent
+                # greenlet_spawn errors during flush orphan checks
+                selectinload(TrainJourney.snapshots),
+                selectinload(TrainJourney.segment_times),
+                selectinload(TrainJourney.dwell_times),
+                selectinload(TrainJourney.progress_snapshots),
+            )
         )
         journey = existing.scalar_one_or_none()
 

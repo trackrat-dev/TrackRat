@@ -485,8 +485,8 @@ class SegmentTransitTime(Base):
         Index(
             "idx_segment_baseline",
             "data_source",
-            "from_station_code",
             "hour_of_day",
+            "day_of_week",
             "departure_time",
         ),
     )
