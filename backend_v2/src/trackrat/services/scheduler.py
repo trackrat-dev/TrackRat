@@ -19,6 +19,7 @@ from structlog import get_logger
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.metra.collector import MetraCollector
 from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
@@ -198,6 +199,18 @@ class SchedulerService:
             ),
             id="subway_collection",
             name="Subway Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        self.scheduler.add_job(
+            self.run_metra_collection,
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(minutes=3, seconds=30), jitter=30
+            ),
+            id="metra_collection",
+            name="Metra Collection",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=120,
@@ -388,6 +401,7 @@ class SchedulerService:
             ("lirr_collection", self.run_lirr_collection),
             ("mnr_collection", self.run_mnr_collection),
             ("subway_collection", self.run_subway_collection),
+            ("metra_collection", self.run_metra_collection),
         ]
         for name, collector in collectors:
             logger.info("startup_collector_launch", collector=name)
@@ -720,6 +734,50 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("subway_collection_skipped_still_fresh")
+
+    async def run_metra_collection(self) -> None:
+        """Run unified Metra collection (discovery + journey updates)."""
+        task_id = f"metra_collection_{now_et().isoformat()}"
+
+        async def do_metra_collection_work() -> dict[str, Any]:
+            """The actual Metra collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_metra_collection")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                collector = MetraCollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "metra_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="metra_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_metra_collection_work,
+            )
+
+            if not executed:
+                logger.debug("metra_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -2410,7 +2468,7 @@ class SchedulerService:
             )
 
     # All GTFS feed sources — add new systems here
-    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY")
+    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA")
 
     async def refresh_gtfs_feeds(self) -> None:
         """Refresh GTFS static schedule data for all transit systems.

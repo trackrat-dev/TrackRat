@@ -10,6 +10,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case lirr = "LIRR"
     case mnr = "MNR"
     case subway = "SUBWAY"
+    case metra = "METRA"
 
     var id: String { rawValue }
 
@@ -26,6 +27,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .lirr: return "LIRR"
         case .mnr: return "Metro-North"
         case .subway: return "NYC Subway"
+        case .metra: return "Metra"
         }
     }
 
@@ -39,6 +41,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .lirr: return "train.side.rear.car"
         case .mnr: return "train.side.front.car"
         case .subway: return "tram.fill"
+        case .metra: return "tram.fill"
         }
     }
 
@@ -52,12 +55,13 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .lirr: return "#0039A6"  // MTA LIRR blue
         case .mnr: return "#0039A6"   // MTA Metro-North blue
         case .subway: return "#0039A6"  // MTA blue
+        case .metra: return "#00558A"  // Metra blue
         }
     }
 
     /// Whether this system uses synthetic (non-user-facing) train IDs.
     /// These systems should display destination or line name instead of raw train ID.
-    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA"]
 
     /// Systems where boarding track numbers are not meaningful to display.
     /// Subway and PATH use fixed platforms, not assignable tracks.
@@ -67,7 +71,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Schedule-only systems (e.g., PATCO) cannot detect delays or cancellations.
     var supportsAlerts: Bool {
         switch self {
-        case .njt, .amtrak, .path, .lirr, .mnr, .subway:
+        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra:
             return true
         case .patco:
             return false
@@ -85,7 +89,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     var preferredHighlightMode: SegmentHighlightMode {
         switch self {
         case .subway, .path, .patco: return .health
-        case .njt, .amtrak, .lirr, .mnr: return .delays
+        case .njt, .amtrak, .lirr, .mnr, .metra: return .delays
         }
     }
 }
@@ -213,6 +217,11 @@ extension TrainSystem {
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 40.730, longitude: -73.950),
                 span: MKCoordinateSpan(latitudeDelta: 0.45, longitudeDelta: 0.55)
+            )
+        case .metra:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 41.88, longitude: -88.00),
+                span: MKCoordinateSpan(latitudeDelta: 1.50, longitudeDelta: 2.00)
             )
         }
     }

@@ -14,6 +14,7 @@ from structlog import get_logger
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.metra.collector import MetraCollector
 from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
@@ -44,6 +45,7 @@ class JustInTimeUpdateService:
         self._lirr_collector: LIRRCollector | None = None
         self._mnr_collector: MNRCollector | None = None
         self._subway_collector: SubwayCollector | None = None
+        self._metra_collector: MetraCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -68,6 +70,9 @@ class JustInTimeUpdateService:
         if self._subway_collector:
             await self._subway_collector.client.close()
             self._subway_collector = None
+        if self._metra_collector:
+            await self._metra_collector.client.close()
+            self._metra_collector = None
         # AmtrakJourneyCollector doesn't have a close method - no cleanup needed
         self._amtrak_collector = None
 
@@ -115,6 +120,13 @@ class JustInTimeUpdateService:
             self._subway_collector = SubwayCollector()
         return self._subway_collector
 
+    @property
+    def metra_collector(self) -> MetraCollector:
+        """Get or create Metra journey collector."""
+        if self._metra_collector is None:
+            self._metra_collector = MetraCollector()
+        return self._metra_collector
+
     async def get_collector_for_journey(
         self, journey: TrainJourney
     ) -> (
@@ -122,6 +134,7 @@ class JustInTimeUpdateService:
         | AmtrakJourneyCollector
         | PathCollector
         | LIRRCollector
+        | MetraCollector
         | MNRCollector
         | SubwayCollector
         | None
@@ -147,6 +160,8 @@ class JustInTimeUpdateService:
             return self.mnr_collector
         elif journey.data_source == "SUBWAY":
             return self.subway_collector
+        elif journey.data_source == "METRA":
+            return self.metra_collector
         elif journey.data_source == "PATCO":
             # PATCO is schedule-only (GTFS static), no real-time API available
             return None
@@ -304,7 +319,7 @@ class JustInTimeUpdateService:
     # Data sources with high-frequency background collectors (every 4 min).
     # JIT refresh for these sources creates lock contention with negligible
     # freshness gain, so we use the collector interval as the staleness baseline.
-    _HIGH_FREQ_COLLECTOR_SOURCES = {"PATH", "LIRR", "MNR", "SUBWAY"}
+    _HIGH_FREQ_COLLECTOR_SOURCES = {"PATH", "LIRR", "MNR", "SUBWAY", "METRA"}
     _HIGH_FREQ_STALENESS_SECONDS = 240  # 4 minutes, matches collector interval
 
     def needs_refresh(self, journey: TrainJourney) -> bool:

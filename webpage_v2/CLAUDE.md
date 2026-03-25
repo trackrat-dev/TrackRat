@@ -124,7 +124,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   └── stations.ts     # Static station list (1000+ stations, 7 transit systems)
+│   │   └── stations.ts     # Static station list (1200+ stations, 8 transit systems)
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/
@@ -232,7 +232,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 
 ### Station
 ```typescript
-type TransitSystem = 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
+type TransitSystem = 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA';
 
 interface Station {
   code: string;           // "NY", "PNK", "S127", etc.
@@ -256,7 +256,7 @@ interface Train {
   arrival: StationTiming;     // Destination timing
   train_position?: { ... };   // Current location (at_station_code, etc.)
   data_freshness: { ... };    // Last updated info
-  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA';
   observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
 }

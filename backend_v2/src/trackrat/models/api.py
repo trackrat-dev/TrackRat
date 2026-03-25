@@ -470,7 +470,7 @@ class HistoricalRouteInfo(BaseModel):
     from_station: str = Field(..., min_length=1, max_length=10)
     to_station: str = Field(..., min_length=1, max_length=10)
     total_trains: int = Field(..., ge=0)
-    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA"]
     baseline_train_count: float | None = Field(
         default=None,
         ge=0.0,
@@ -545,7 +545,7 @@ class TrainLocationData(BaseModel):
 
     train_id: str
     line: str
-    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+    data_source: Literal["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA"]
 
     # GPS coordinates (Amtrak only)
     lat: float | None = None

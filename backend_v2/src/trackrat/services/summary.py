@@ -60,6 +60,7 @@ CARRIER_DISPLAY_NAMES: dict[str, str] = {
     "LIRR": "LIRR",
     "MNR": "Metro-North",
     "SUBWAY": "NYC Subway",
+    "METRA": "Metra",
 }
 
 

@@ -1090,6 +1090,249 @@ extension Stations {
         "STN": CLLocationCoordinate2D(latitude: 48.3198, longitude: -102.3894),       // Stanley, ND
         "WWD": CLLocationCoordinate2D(latitude: 28.8662, longitude: -82.0395),         // Wildwood, FL
 
+        // Metra (Chicago) stations
+        "103RD-BEV": CLLocationCoordinate2D(latitude: 41.706111, longitude: -87.668889),  // 103rd St. - Beverly Hills
+        "103RD-UP": CLLocationCoordinate2D(latitude: 41.706944, longitude: -87.607222),  // 103rd St. (Rosemoor)
+        "107TH-BEV": CLLocationCoordinate2D(latitude: 41.698889, longitude: -87.67),  // 107th St. - Beverly Hills
+        "107TH-UP": CLLocationCoordinate2D(latitude: 41.699722, longitude: -87.608889),  // 107th St.
+        "111TH-BEV": CLLocationCoordinate2D(latitude: 41.692778, longitude: -87.670556),  // 111th St. - Morgan Park
+        "111TH-UP": CLLocationCoordinate2D(latitude: 41.692778, longitude: -87.610556),  // 111th St. (Pullman)
+        "115TH-BEV": CLLocationCoordinate2D(latitude: 41.685, longitude: -87.671667),  // 115th St. - Morgan Park
+        "119TH-BEV": CLLocationCoordinate2D(latitude: 41.676389, longitude: -87.6725),  // 119th St.
+        "123RD-BEV": CLLocationCoordinate2D(latitude: 41.67, longitude: -87.673611),  // 123rd St.
+        "143RD-SWS": CLLocationCoordinate2D(latitude: 41.630556, longitude: -87.859167),  // Orland Park 143rd
+        "147TH-UP": CLLocationCoordinate2D(latitude: 41.622778, longitude: -87.636111),  // 147th St.
+        "153RD-SWS": CLLocationCoordinate2D(latitude: 41.609444, longitude: -87.873333),  // Orland Park 153rd
+        "179TH-SWS": CLLocationCoordinate2D(latitude: 41.563889, longitude: -87.9025),  // Orland Park 179th
+        "18TH-UP": CLLocationCoordinate2D(latitude: 41.858333, longitude: -87.618056),  // 18th St.
+        "211TH-UP": CLLocationCoordinate2D(latitude: 41.506111, longitude: -87.698333),  // 211th St.
+        "27TH-UP": CLLocationCoordinate2D(latitude: 41.844167, longitude: -87.613333),  // 27th St.
+        "35TH": CLLocationCoordinate2D(latitude: 41.831389, longitude: -87.629167),  // 35th St. - Lou Jones
+        "47TH-UP": CLLocationCoordinate2D(latitude: 41.809722, longitude: -87.591389),  // 47th St. (Kenwood)
+        "51ST-53RD": CLLocationCoordinate2D(latitude: 41.8, longitude: -87.586944),  // 51st/53rd St. (Hyde Park)
+        "55-56-57TH": CLLocationCoordinate2D(latitude: 41.793333, longitude: -87.5875),  // 55th - 56th - 57th St.
+        "59TH-UP": CLLocationCoordinate2D(latitude: 41.788056, longitude: -87.588611),  // 59th St. (U. of Chicago)
+        "63RD-UP": CLLocationCoordinate2D(latitude: 41.780278, longitude: -87.590556),  // 63rd St.
+        "75TH-UP": CLLocationCoordinate2D(latitude: 41.758889, longitude: -87.595278),  // 75th St. (Grand Crossing)
+        "79TH-SC": CLLocationCoordinate2D(latitude: 41.752222, longitude: -87.5525),  // Cheltenham (79th St.)
+        "79TH-UP": CLLocationCoordinate2D(latitude: 41.750833, longitude: -87.597222),  // 79th St. (Chatham)
+        "83RD-SC": CLLocationCoordinate2D(latitude: 41.745, longitude: -87.551667),  // 83rd St.
+        "83RD-UP": CLLocationCoordinate2D(latitude: 41.744167, longitude: -87.598611),  // 83rd St. (Avalon Park)
+        "87TH-SC": CLLocationCoordinate2D(latitude: 41.737778, longitude: -87.548333),  // 87th St.
+        "87TH-UP": CLLocationCoordinate2D(latitude: 41.736944, longitude: -87.600278),  // 87th St. (Woodruff)
+        "91ST-BEV": CLLocationCoordinate2D(latitude: 41.728056, longitude: -87.667222),  // 91st St. - Beverly Hills
+        "91ST-UP": CLLocationCoordinate2D(latitude: 41.729444, longitude: -87.601944),  // 91st St.
+        "93RD-SC": CLLocationCoordinate2D(latitude: 41.726667, longitude: -87.547778),  // South Chicago (93rd)
+        "95TH-BEV": CLLocationCoordinate2D(latitude: 41.721389, longitude: -87.667222),  // 95th St. - Beverly Hills
+        "95TH-UP": CLLocationCoordinate2D(latitude: 41.721944, longitude: -87.603889),  // 95th St.
+        "99TH-BEV": CLLocationCoordinate2D(latitude: 41.713611, longitude: -87.6675),  // 99th St. - Beverly Hills
+        "ANTIOCH": CLLocationCoordinate2D(latitude: 42.481111, longitude: -88.0925),  // Antioch
+        "ARLINGTNHT": CLLocationCoordinate2D(latitude: 42.084167, longitude: -87.983611),  // Arlington Heights
+        "ARLINGTNPK": CLLocationCoordinate2D(latitude: 42.095278, longitude: -88.009167),  // Arlington Park
+        "ASHBURN": CLLocationCoordinate2D(latitude: 41.741667, longitude: -87.7125),  // Ashburn
+        "ASHLAND": CLLocationCoordinate2D(latitude: 41.669444, longitude: -87.660556),  // Ashland
+        "AURORA": CLLocationCoordinate2D(latitude: 41.760833, longitude: -88.308333),  // Aurora
+        "BARRINGTON": CLLocationCoordinate2D(latitude: 42.152778, longitude: -88.131944),  // Barrington
+        "BARTLETT": CLLocationCoordinate2D(latitude: 41.992222, longitude: -88.183889),  // Bartlett
+        "BELLWOOD": CLLocationCoordinate2D(latitude: 41.891389, longitude: -87.8825),  // Bellwood
+        "BELMONT": CLLocationCoordinate2D(latitude: 41.795278, longitude: -88.038056),  // Belmont
+        "BENSENVIL": CLLocationCoordinate2D(latitude: 41.956944, longitude: -87.941944),  // Bensenville
+        "BERKELEY": CLLocationCoordinate2D(latitude: 41.896111, longitude: -87.915278),  // Berkeley
+        "BERWYN": CLLocationCoordinate2D(latitude: 41.833056, longitude: -87.793611),  // Berwyn
+        "BIGTIMBER": CLLocationCoordinate2D(latitude: 42.058611, longitude: -88.327778),  // Big Timber
+        "BLUEISLAND": CLLocationCoordinate2D(latitude: 41.656111, longitude: -87.675833),  // Blue Island
+        "BNWESTERN": CLLocationCoordinate2D(latitude: 41.857778, longitude: -87.685278),  // Western Avenue
+        "BRAESIDE": CLLocationCoordinate2D(latitude: 42.152778, longitude: -87.7725),  // Braeside
+        "BRAINERD": CLLocationCoordinate2D(latitude: 41.732222, longitude: -87.658889),  // Brainerd
+        "BROOKFIELD": CLLocationCoordinate2D(latitude: 41.821944, longitude: -87.843056),  // Brookfield
+        "BRYNMAWR": CLLocationCoordinate2D(latitude: 41.766111, longitude: -87.576667),  // Bryn Mawr
+        "BUFFGROVE": CLLocationCoordinate2D(latitude: 42.168611, longitude: -87.941389),  // Buffalo Grove
+        "BURROAK": CLLocationCoordinate2D(latitude: 41.662222, longitude: -87.668889),  // Burr Oak
+        "CALUMET": CLLocationCoordinate2D(latitude: 41.573611, longitude: -87.6625),  // Calumet
+        "CARY": CLLocationCoordinate2D(latitude: 42.208889, longitude: -88.241389),  // Cary
+        "CENTRALST": CLLocationCoordinate2D(latitude: 42.064167, longitude: -87.698056),  // Central St.
+        "CHICRIDGE": CLLocationCoordinate2D(latitude: 41.703333, longitude: -87.780278),  // Chicago Ridge
+        "CICERO": CLLocationCoordinate2D(latitude: 41.844167, longitude: -87.745556),  // Cicero
+        "CLARNDNHIL": CLLocationCoordinate2D(latitude: 41.796944, longitude: -87.953611),  // Clarendon Hills
+        "CLYBOURN": CLLocationCoordinate2D(latitude: 41.916944, longitude: -87.668056),  // Clybourn
+        "COLLEGEAVE": CLLocationCoordinate2D(latitude: 41.868333, longitude: -88.090278),  // College Ave
+        "CONGRESSPK": CLLocationCoordinate2D(latitude: 41.818889, longitude: -87.8575),  // Congress Park
+        "CRYSTAL": CLLocationCoordinate2D(latitude: 42.244167, longitude: -88.317222),  // Crystal Lake
+        "CUMBERLAND": CLLocationCoordinate2D(latitude: 42.0525, longitude: -87.912222),  // Cumberland
+        "CUS": CLLocationCoordinate2D(latitude: 41.878889, longitude: -87.638889),  // Chicago Union Station
+        "DEERFIELD": CLLocationCoordinate2D(latitude: 42.168056, longitude: -87.85),  // Deerfield
+        "DEEROAD": CLLocationCoordinate2D(latitude: 42.024167, longitude: -87.856111),  // Dee Road
+        "DESPLAINES": CLLocationCoordinate2D(latitude: 42.040833, longitude: -87.886667),  // Des Plaines
+        "EDGEBROOK": CLLocationCoordinate2D(latitude: 41.997778, longitude: -87.765556),  // Edgebrook
+        "EDISONPK": CLLocationCoordinate2D(latitude: 42.002222, longitude: -87.8175),  // Edison Park
+        "ELBURN": CLLocationCoordinate2D(latitude: 41.890556, longitude: -88.463889),  // Elburn
+        "ELGIN": CLLocationCoordinate2D(latitude: 42.036111, longitude: -88.286111),  // Elgin
+        "ELMHURST": CLLocationCoordinate2D(latitude: 41.899722, longitude: -87.940833),  // Elmhurst
+        "ELMWOODPK": CLLocationCoordinate2D(latitude: 41.924722, longitude: -87.814722),  // Elmwood Park
+        "EVANSTON": CLLocationCoordinate2D(latitude: 42.048056, longitude: -87.684722),  // Evanston (Davis St.)
+        "FAIRVIEWDG": CLLocationCoordinate2D(latitude: 41.795278, longitude: -87.993611),  // Fairview Ave.
+        "FLOSSMOOR": CLLocationCoordinate2D(latitude: 41.543056, longitude: -87.678611),  // Flossmoor
+        "FORESTGLEN": CLLocationCoordinate2D(latitude: 41.978056, longitude: -87.755556),  // Forest Glen
+        "FOXLAKE": CLLocationCoordinate2D(latitude: 42.398333, longitude: -88.182222),  // Fox Lake
+        "FOXRG": CLLocationCoordinate2D(latitude: 42.197778, longitude: -88.219444),  // Fox River Grove
+        "FRANKLIN": CLLocationCoordinate2D(latitude: 41.936667, longitude: -87.866389),  // Franklin Park
+        "FRANKLINPK": CLLocationCoordinate2D(latitude: 41.937778, longitude: -87.86),  // Franklin Pk
+        "FTSHERIDAN": CLLocationCoordinate2D(latitude: 42.2175, longitude: -87.820833),  // Fort Sheridan
+        "GALEWOOD": CLLocationCoordinate2D(latitude: 41.916389, longitude: -87.785833),  // Galewood
+        "GENEVA": CLLocationCoordinate2D(latitude: 41.881667, longitude: -88.31),  // Geneva
+        "GLADSTONEP": CLLocationCoordinate2D(latitude: 41.979722, longitude: -87.778056),  // Gladstone Park
+        "GLENCOE": CLLocationCoordinate2D(latitude: 42.135556, longitude: -87.758056),  // Glencoe
+        "GLENELLYN": CLLocationCoordinate2D(latitude: 41.876667, longitude: -88.064722),  // Glen Ellyn
+        "GLENVIEW": CLLocationCoordinate2D(latitude: 42.075, longitude: -87.805556),  // Glenview
+        "GOLF": CLLocationCoordinate2D(latitude: 42.058333, longitude: -87.796944),  // Golf
+        "GRAND-CIC": CLLocationCoordinate2D(latitude: 41.914444, longitude: -87.746111),  // Grand/Cicero
+        "GRAYLAND": CLLocationCoordinate2D(latitude: 41.948889, longitude: -87.740278),  // Grayland
+        "GRAYSLAKE": CLLocationCoordinate2D(latitude: 42.333611, longitude: -88.043333),  // Grayslake
+        "GRESHAM": CLLocationCoordinate2D(latitude: 41.736389, longitude: -87.644722),  // Gresham
+        "GRTLAKES": CLLocationCoordinate2D(latitude: 42.306944, longitude: -87.846389),  // Great Lakes
+        "HALSTED": CLLocationCoordinate2D(latitude: 41.860278, longitude: -87.647222),  // Halsted Street
+        "HANOVERP": CLLocationCoordinate2D(latitude: 41.988056, longitude: -88.149167),  // Hanover Park
+        "HANSONPK": CLLocationCoordinate2D(latitude: 41.916667, longitude: -87.766944),  // Hanson Park
+        "HARLEM": CLLocationCoordinate2D(latitude: 41.831389, longitude: -87.801944),  // Harlem Ave.
+        "HARVARD": CLLocationCoordinate2D(latitude: 42.419722, longitude: -88.6175),  // Harvard
+        "HARVEY": CLLocationCoordinate2D(latitude: 41.608333, longitude: -87.643889),  // Harvey
+        "HAZELCREST": CLLocationCoordinate2D(latitude: 41.580833, longitude: -87.658611),  // Hazel Crest
+        "HEALY": CLLocationCoordinate2D(latitude: 41.924722, longitude: -87.727778),  // Healy
+        "HICKORYCRK": CLLocationCoordinate2D(latitude: 41.548611, longitude: -87.845556),  // Hickory Creek
+        "HIGHLANDPK": CLLocationCoordinate2D(latitude: 42.183333, longitude: -87.7975),  // Highland Park
+        "HIGHLANDS": CLLocationCoordinate2D(latitude: 41.805, longitude: -87.918333),  // Highlands
+        "HIGHWOOD": CLLocationCoordinate2D(latitude: 42.203333, longitude: -87.810556),  // Highwood
+        "HINSDALE": CLLocationCoordinate2D(latitude: 41.802778, longitude: -87.928333),  // Hinsdale
+        "HOLLYWOOD": CLLocationCoordinate2D(latitude: 41.824444, longitude: -87.833889),  // Hollywood
+        "HOMEWOOD": CLLocationCoordinate2D(latitude: 41.562222, longitude: -87.668611),  // Homewood
+        "HUBARDWOOD": CLLocationCoordinate2D(latitude: 42.118056, longitude: -87.743611),  // Hubbard Woods
+        "INDIANHILL": CLLocationCoordinate2D(latitude: 42.094444, longitude: -87.723889),  // Indian Hill
+        "INGLESIDE": CLLocationCoordinate2D(latitude: 42.383889, longitude: -88.153611),  // Ingleside
+        "IRVINGPK": CLLocationCoordinate2D(latitude: 41.9525, longitude: -87.729722),  // Irving Park
+        "ITASCA": CLLocationCoordinate2D(latitude: 41.971389, longitude: -88.014167),  // Itasca
+        "IVANHOE": CLLocationCoordinate2D(latitude: 41.633333, longitude: -87.630278),  // Ivanhoe
+        "JEFFERSONP": CLLocationCoordinate2D(latitude: 41.971389, longitude: -87.763333),  // Jefferson Park
+        "JOLIET": CLLocationCoordinate2D(latitude: 41.524444, longitude: -88.079722),  // Joliet
+        "KEDZIE": CLLocationCoordinate2D(latitude: 41.888333, longitude: -87.706944),  // Kedzie
+        "KENILWORTH": CLLocationCoordinate2D(latitude: 42.086389, longitude: -87.716667),  // Kenilworth
+        "KENOSHA": CLLocationCoordinate2D(latitude: 42.585833, longitude: -87.825833),  // Kenosha
+        "KENSINGTN": CLLocationCoordinate2D(latitude: 41.685833, longitude: -87.612222),  // Kensington
+        "LAFOX": CLLocationCoordinate2D(latitude: 41.886667, longitude: -88.412222),  // La Fox
+        "LAGRANGE": CLLocationCoordinate2D(latitude: 41.815833, longitude: -87.871111),  // LaGrange Road
+        "LAKEBLUFF": CLLocationCoordinate2D(latitude: 42.279722, longitude: -87.846667),  // Lake Bluff
+        "LAKECOOKRD": CLLocationCoordinate2D(latitude: 42.151667, longitude: -87.841389),  // Lake-Cook
+        "LAKEFRST": CLLocationCoordinate2D(latitude: 42.223611, longitude: -87.874722),  // Lake Forest
+        "LAKEVILLA": CLLocationCoordinate2D(latitude: 42.4175, longitude: -88.079444),  // Lake Villa
+        "LARAWAY": CLLocationCoordinate2D(latitude: 41.484722, longitude: -87.959722),  // Laraway Road
+        "LAVERGNE": CLLocationCoordinate2D(latitude: 41.835556, longitude: -87.783333),  // Lavergne
+        "LEMONT": CLLocationCoordinate2D(latitude: 41.673611, longitude: -88.0025),  // Lemont
+        "LIBERTYVIL": CLLocationCoordinate2D(latitude: 42.291111, longitude: -87.956389),  // Libertyville
+        "LISLE": CLLocationCoordinate2D(latitude: 41.797778, longitude: -88.071944),  // Lisle
+        "LKFOREST": CLLocationCoordinate2D(latitude: 42.2525, longitude: -87.839722),  // Lake Forest.
+        "LOCKPORT": CLLocationCoordinate2D(latitude: 41.585, longitude: -88.060278),  // Lockport
+        "LOMBARD": CLLocationCoordinate2D(latitude: 41.886667, longitude: -88.018611),  // Lombard
+        "LONGLAKE": CLLocationCoordinate2D(latitude: 42.368056, longitude: -88.128056),  // Long Lake
+        "LONGWOOD": CLLocationCoordinate2D(latitude: 41.721111, longitude: -87.650278),  // 95th St.-Longwood
+        "LSS": CLLocationCoordinate2D(latitude: 41.876389, longitude: -87.632222),  // LaSalle Street
+        "MAINST": CLLocationCoordinate2D(latitude: 42.033333, longitude: -87.68),  // Main St.
+        "MAINST-DG": CLLocationCoordinate2D(latitude: 41.795278, longitude: -88.009722),  // Downers Grove
+        "MANHATTAN": CLLocationCoordinate2D(latitude: 41.418333, longitude: -87.989167),  // Manhattan
+        "MANNHEIM": CLLocationCoordinate2D(latitude: 41.941667, longitude: -87.883333),  // Mannheim
+        "MARS": CLLocationCoordinate2D(latitude: 41.919167, longitude: -87.794444),  // Mars
+        "MATTESON": CLLocationCoordinate2D(latitude: 41.498611, longitude: -87.702222),  // Matteson
+        "MAYFAIR": CLLocationCoordinate2D(latitude: 41.959722, longitude: -87.745833),  // Mayfair
+        "MAYWOOD": CLLocationCoordinate2D(latitude: 41.888333, longitude: -87.838611),  // Maywood
+        "MCCORMICK": CLLocationCoordinate2D(latitude: 41.851389, longitude: -87.616389),  // McCormick Place
+        "MCHENRY": CLLocationCoordinate2D(latitude: 42.343333, longitude: -88.276111),  // McHenry
+        "MEDINAH": CLLocationCoordinate2D(latitude: 41.978056, longitude: -88.050833),  // Medinah
+        "MELROSEPK": CLLocationCoordinate2D(latitude: 41.890278, longitude: -87.855556),  // Melrose Park
+        "MIDLOTHIAN": CLLocationCoordinate2D(latitude: 41.626389, longitude: -87.711667),  // Midlothian
+        "MILLENNIUM": CLLocationCoordinate2D(latitude: 41.884167, longitude: -87.623056),  // Millennium Station
+        "MOKENA": CLLocationCoordinate2D(latitude: 41.530833, longitude: -87.886667),  // Mokena
+        "MONTCLARE": CLLocationCoordinate2D(latitude: 41.921667, longitude: -87.801667),  // Mont Clare
+        "MORTONGRV": CLLocationCoordinate2D(latitude: 42.035, longitude: -87.785278),  // Morton Grove
+        "MTPROSPECT": CLLocationCoordinate2D(latitude: 42.063056, longitude: -87.936111),  // Mt. Prospect
+        "MUNDELEIN": CLLocationCoordinate2D(latitude: 42.266944, longitude: -87.998056),  // Mundelein
+        "MUSEUM": CLLocationCoordinate2D(latitude: 41.868611, longitude: -87.621389),  // Museum Campus/11th St.
+        "NAPERVILLE": CLLocationCoordinate2D(latitude: 41.779722, longitude: -88.145556),  // Naperville
+        "NATIONALS": CLLocationCoordinate2D(latitude: 42.026389, longitude: -88.278889),  // National St
+        "NBROOK": CLLocationCoordinate2D(latitude: 42.126944, longitude: -87.827778),  // Northbrook
+        "NCHICAGO": CLLocationCoordinate2D(latitude: 42.328611, longitude: -87.836944),  // North Chicago
+        "NCSGRAYSLK": CLLocationCoordinate2D(latitude: 42.359167, longitude: -88.050556),  // Washington St (Grayslake)
+        "NEWLENOX": CLLocationCoordinate2D(latitude: 41.514444, longitude: -87.965278),  // New Lenox
+        "NGLENVIEW": CLLocationCoordinate2D(latitude: 42.0975, longitude: -87.815833),  // Glen/N. Glenview
+        "NORWOODP": CLLocationCoordinate2D(latitude: 41.991667, longitude: -87.798889),  // Norwood Park
+        "OAKFOREST": CLLocationCoordinate2D(latitude: 41.604444, longitude: -87.738333),  // Oak Forest
+        "OAKLAWN": CLLocationCoordinate2D(latitude: 41.719444, longitude: -87.748611),  // Oak Lawn Patriot
+        "OAKPARK": CLLocationCoordinate2D(latitude: 41.886944, longitude: -87.801111),  // Oak Park
+        "OHARE": CLLocationCoordinate2D(latitude: 41.995, longitude: -87.880556),  // O'Hare Transfer
+        "OLYMPIA": CLLocationCoordinate2D(latitude: 41.521389, longitude: -87.69),  // Olympia Fields
+        "OTC": CLLocationCoordinate2D(latitude: 41.882222, longitude: -87.640556),  // Chicago OTC
+        "PALATINE": CLLocationCoordinate2D(latitude: 42.113056, longitude: -88.048333),  // Palatine
+        "PALOSHTS": CLLocationCoordinate2D(latitude: 41.681944, longitude: -87.806944),  // Palos Heights
+        "PALOSPARK": CLLocationCoordinate2D(latitude: 41.668889, longitude: -87.820278),  // Palos Park
+        "PARKRIDGE": CLLocationCoordinate2D(latitude: 42.010278, longitude: -87.831667),  // Park Ridge
+        "PETERSON": CLLocationCoordinate2D(latitude: 41.991111, longitude: -87.675),  // Peterson/Ridge
+        "PINGREE": CLLocationCoordinate2D(latitude: 42.234167, longitude: -88.298056),  // Pingree Road
+        "PRAIRCROSS": CLLocationCoordinate2D(latitude: 42.318056, longitude: -88.017222),  // Prairie Crossing.
+        "PRAIRIEST": CLLocationCoordinate2D(latitude: 41.6625, longitude: -87.675),  // Prairie St.
+        "PRAIRIEVW": CLLocationCoordinate2D(latitude: 42.198056, longitude: -87.955833),  // Prairie View
+        "PRAIRIEXNG": CLLocationCoordinate2D(latitude: 42.320833, longitude: -88.015278),  // Prairie Crossing
+        "PROSPECTHG": CLLocationCoordinate2D(latitude: 42.092222, longitude: -87.908056),  // Prospect Hts
+        "RACINE": CLLocationCoordinate2D(latitude: 41.674167, longitude: -87.651944),  // Racine
+        "RAVENSWOOD": CLLocationCoordinate2D(latitude: 41.968333, longitude: -87.674444),  // Ravenswood
+        "RAVINIA": CLLocationCoordinate2D(latitude: 42.165, longitude: -87.782778),  // Ravinia
+        "RAVINIAPK": CLLocationCoordinate2D(latitude: 42.158056, longitude: -87.776944),  // Ravinia Park
+        "RICHTON": CLLocationCoordinate2D(latitude: 41.485556, longitude: -87.709444),  // Richton Park
+        "RIVERDALE": CLLocationCoordinate2D(latitude: 41.646667, longitude: -87.623333),  // Riverdale
+        "RIVERGROVE": CLLocationCoordinate2D(latitude: 41.931111, longitude: -87.836111),  // River Grove
+        "RIVERSIDE": CLLocationCoordinate2D(latitude: 41.827222, longitude: -87.82),  // Riverside
+        "RIVRFOREST": CLLocationCoordinate2D(latitude: 41.886944, longitude: -87.825),  // River Forest
+        "ROBBINS": CLLocationCoordinate2D(latitude: 41.640833, longitude: -87.694444),  // Robbins
+        "ROGERPK": CLLocationCoordinate2D(latitude: 42.009444, longitude: -87.675556),  // Rogers Park
+        "ROMEOVILLE": CLLocationCoordinate2D(latitude: 41.637222, longitude: -88.049444),  // Romeoville
+        "ROSELLE": CLLocationCoordinate2D(latitude: 41.981389, longitude: -88.067222),  // Roselle
+        "ROSEMONT": CLLocationCoordinate2D(latitude: 41.976111, longitude: -87.873889),  // Rosemont
+        "ROUNDLAKE": CLLocationCoordinate2D(latitude: 42.354444, longitude: -88.094167),  // Round Lake
+        "ROUNDLKBCH": CLLocationCoordinate2D(latitude: 42.385, longitude: -88.065556),  // Round Lake Beach
+        "ROUTE59": CLLocationCoordinate2D(latitude: 41.777778, longitude: -88.208611),  // Route 59
+        "SCHAUM": CLLocationCoordinate2D(latitude: 41.989167, longitude: -88.118056),  // Schaumburg
+        "SCHILLERPK": CLLocationCoordinate2D(latitude: 41.962778, longitude: -87.870556),  // Schiller Park
+        "SOUTHSHORE": CLLocationCoordinate2D(latitude: 41.765278, longitude: -87.565833),  // South Shore
+        "STATEST": CLLocationCoordinate2D(latitude: 41.674444, longitude: -87.621944),  // State St.
+        "STEWARTRID": CLLocationCoordinate2D(latitude: 41.674444, longitude: -87.631667),  // Stewart Ridge
+        "STONEAVE": CLLocationCoordinate2D(latitude: 41.814167, longitude: -87.878333),  // Stone Ave.
+        "STONYISLND": CLLocationCoordinate2D(latitude: 41.766111, longitude: -87.586944),  // Stony Island
+        "SUMMIT": CLLocationCoordinate2D(latitude: 41.795, longitude: -87.809722),  // Summit
+        "TINLEY80TH": CLLocationCoordinate2D(latitude: 41.564444, longitude: -87.809444),  // Tinley-80th
+        "TINLEYPARK": CLLocationCoordinate2D(latitude: 41.575833, longitude: -87.782778),  // Tinley Park
+        "UNIVERSITY": CLLocationCoordinate2D(latitude: 41.459444, longitude: -87.723333),  // University Park
+        "VANBUREN": CLLocationCoordinate2D(latitude: 41.876944, longitude: -87.623056),  // Van Buren St.
+        "VERMONT": CLLocationCoordinate2D(latitude: 41.654722, longitude: -87.677778),  // Blue Island-Vermont
+        "VERNON": CLLocationCoordinate2D(latitude: 42.215556, longitude: -87.964444),  // Vernon Hills
+        "VILLAPARK": CLLocationCoordinate2D(latitude: 41.896389, longitude: -87.9775),  // Villa Park
+        "WASHHGTS": CLLocationCoordinate2D(latitude: 41.705556, longitude: -87.655833),  // 103rd St.-Washington Hts.
+        "WAUKEGAN": CLLocationCoordinate2D(latitude: 42.360556, longitude: -87.828333),  // Waukegan
+        "WCHICAGO": CLLocationCoordinate2D(latitude: 41.881111, longitude: -88.198889),  // West Chicago
+        "WESTERNAVE": CLLocationCoordinate2D(latitude: 41.889167, longitude: -87.688056),  // Western Ave
+        "WESTMONT": CLLocationCoordinate2D(latitude: 41.795556, longitude: -87.976389),  // Westmont
+        "WESTSPRING": CLLocationCoordinate2D(latitude: 41.808889, longitude: -87.901111),  // Western Springs
+        "WHEATON": CLLocationCoordinate2D(latitude: 41.864444, longitude: -88.111944),  // Wheaton
+        "WHEELING": CLLocationCoordinate2D(latitude: 42.136389, longitude: -87.927222),  // Wheeling
+        "WHINSDALE": CLLocationCoordinate2D(latitude: 41.798889, longitude: -87.945278),  // West Hinsdale
+        "WILLOWSPRN": CLLocationCoordinate2D(latitude: 41.733333, longitude: -87.878333),  // Willow Springs
+        "WILMETTE": CLLocationCoordinate2D(latitude: 42.077222, longitude: -87.709167),  // Wilmette
+        "WINDSORPK": CLLocationCoordinate2D(latitude: 41.758611, longitude: -87.559444),  // Windsor Park
+        "WINFIELD": CLLocationCoordinate2D(latitude: 41.87, longitude: -88.156944),  // Winfield
+        "WINNETKA": CLLocationCoordinate2D(latitude: 42.105278, longitude: -87.732778),  // Winnetka
+        "WINTHROP": CLLocationCoordinate2D(latitude: 42.482778, longitude: -87.816111),  // Winthrop Harbor
+        "WOODDALE": CLLocationCoordinate2D(latitude: 41.9625, longitude: -87.975278),  // Wood Dale
+        "WOODSTOCK": CLLocationCoordinate2D(latitude: 42.316944, longitude: -88.4475),  // Woodstock
+        "WORTH": CLLocationCoordinate2D(latitude: 41.691389, longitude: -87.795833),  // Worth
+        "WPULLMAN": CLLocationCoordinate2D(latitude: 41.674167, longitude: -87.642222),  // West Pullman
+        "WRIGHTWOOD": CLLocationCoordinate2D(latitude: 41.748889, longitude: -87.703611),  // Wrightwood
+        "ZION": CLLocationCoordinate2D(latitude: 42.449167, longitude: -87.818056),  // Zion
+
         // NYC Subway Stations
     "S101": CLLocationCoordinate2D(latitude: 40.889248, longitude: -73.898583),
     "S103": CLLocationCoordinate2D(latitude: 40.884667, longitude: -73.90087),
