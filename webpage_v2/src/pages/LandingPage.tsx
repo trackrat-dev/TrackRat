@@ -46,6 +46,7 @@ const transitSystems = [
   { name: 'NYC Subway', beta: true },
   { name: 'PATCO' },
   { name: 'PATH' },
+  { name: 'DC Metro', beta: true },
 ];
 
 function IOSBanner() {
@@ -111,7 +112,7 @@ export function LandingPage() {
           TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-muted mb-8 max-w-xl mx-auto">
-          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North!
+          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, DC Metro!
         </p>
         <div className="flex items-center justify-center gap-4">
           <a
