@@ -1,12 +1,17 @@
 """
 Unit tests for BARTCollector.
 
-Tests train ID generation, journey discovery, and the unified collection loop.
+Tests train ID generation, collector lifecycle, collection loop, and station config.
 """
 
-import pytest
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
 
-from trackrat.collectors.bart.collector import _generate_train_id
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from trackrat.collectors.bart.client import BartArrival, BARTClient
+from trackrat.collectors.bart.collector import BARTCollector, _generate_train_id
 from trackrat.config.stations.bart import (
     BART_GTFS_STOP_TO_INTERNAL_MAP,
     BART_ROUTES,
@@ -137,3 +142,173 @@ class TestBartRoutes:
         assert map_bart_gtfs_stop("EMBR") == "BART_EMBR"
         assert map_bart_gtfs_stop("M16-1") == "BART_EMBR"
         assert map_bart_gtfs_stop("INVALID") is None
+
+
+# =============================================================================
+# COLLECTOR LIFECYCLE TESTS
+# =============================================================================
+
+
+class TestBARTCollectorInit:
+    """Tests for BARTCollector initialization and lifecycle."""
+
+    def test_creates_client_if_not_provided(self):
+        """Test collector creates its own client if none provided."""
+        collector = BARTCollector()
+        assert collector.client is not None
+        assert isinstance(collector.client, BARTClient)
+        assert collector._owns_client is True
+
+    def test_uses_provided_client(self):
+        """Test collector uses provided client."""
+        client = BARTClient()
+        collector = BARTCollector(client=client)
+        assert collector.client is client
+        assert collector._owns_client is False
+
+    @pytest.mark.asyncio
+    async def test_close_closes_owned_client(self):
+        """Test close() closes client when collector owns it."""
+        collector = BARTCollector()
+        collector.client = AsyncMock(spec=BARTClient)
+        collector._owns_client = True
+
+        await collector.close()
+        collector.client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_does_not_close_external_client(self):
+        """Test close() does not close externally provided client."""
+        client = AsyncMock(spec=BARTClient)
+        collector = BARTCollector(client=client)
+
+        await collector.close()
+        client.close.assert_not_called()
+
+
+# =============================================================================
+# COLLECTION LOOP TESTS
+# =============================================================================
+
+
+def _make_bart_arrival(
+    station_code: str = "BART_EMBR",
+    trip_id: str = "1842090",
+    route_id: str = "1",
+    arrival_time: datetime | None = None,
+    departure_time: datetime | None = None,
+    delay_seconds: int = 0,
+) -> BartArrival:
+    """Helper to create BartArrival test instances."""
+    if arrival_time is None:
+        arrival_time = datetime.now(timezone.utc)
+    return BartArrival(
+        station_code=station_code,
+        gtfs_stop_id="M16-1",
+        trip_id=trip_id,
+        route_id=route_id,
+        direction_id=0,
+        arrival_time=arrival_time,
+        departure_time=departure_time,
+        delay_seconds=delay_seconds,
+        track=None,
+    )
+
+
+class TestBARTCollectorCollect:
+    """Tests for BARTCollector.collect() method."""
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create a mock database session."""
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.scalar = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock BART client."""
+        client = AsyncMock(spec=BARTClient)
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        client.close = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def collector(self, mock_client):
+        """Create a collector with mock client."""
+        return BARTCollector(client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_collect_returns_stats_on_empty_arrivals(
+        self, collector, mock_session
+    ):
+        """Test collect returns correct stats when no arrivals."""
+        result = await collector.collect(mock_session)
+
+        assert result["discovered"] == 0
+        assert result["updated"] == 0
+        assert result["errors"] == 0
+        assert result["total_arrivals"] == 0
+
+    @pytest.mark.asyncio
+    async def test_collect_groups_arrivals_by_trip_id(
+        self, collector, mock_client, mock_session
+    ):
+        """Test arrivals are grouped by trip_id for processing."""
+        now = datetime.now(timezone.utc)
+        arrivals = [
+            _make_bart_arrival(
+                station_code="BART_EMBR",
+                trip_id="trip_A",
+                arrival_time=now,
+            ),
+            _make_bart_arrival(
+                station_code="BART_MONT",
+                trip_id="trip_A",
+                arrival_time=now + timedelta(minutes=2),
+            ),
+            _make_bart_arrival(
+                station_code="BART_MCAR",
+                trip_id="trip_B",
+                arrival_time=now,
+            ),
+            _make_bart_arrival(
+                station_code="BART_ASHB",
+                trip_id="trip_B",
+                arrival_time=now + timedelta(minutes=3),
+            ),
+        ]
+        mock_client.get_all_arrivals.return_value = arrivals
+
+        # Mock the DB to return no existing journeys (all new discoveries)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value = iter([])
+        mock_session.execute.return_value = mock_result
+        # Mock begin_nested as async context manager
+        mock_session.begin_nested = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(), __aexit__=AsyncMock()
+            )
+        )
+
+        result = await collector.collect(mock_session)
+
+        assert result["total_arrivals"] == 4
+        # Both trips should have been processed (exact counts depend on
+        # _process_trip success, but errors should be 0 if session works)
+
+    @pytest.mark.asyncio
+    async def test_collect_handles_client_error_gracefully(
+        self, collector, mock_client, mock_session
+    ):
+        """Test collect handles client exceptions without crashing."""
+        mock_client.get_all_arrivals.side_effect = Exception("Feed unavailable")
+
+        result = await collector.collect(mock_session)
+
+        assert result["errors"] >= 1

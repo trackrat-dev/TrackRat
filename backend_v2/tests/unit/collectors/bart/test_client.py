@@ -363,3 +363,146 @@ class TestBARTClient:
             _ = client.session
             assert client._session is not None
         assert client._session is None
+
+    @pytest.mark.asyncio
+    async def test_departure_only_stop_uses_departure_as_arrival(self):
+        """Test that stops with only departure_time (no arrival) use it as arrival fallback.
+
+        GTFS-RT origin stops legitimately omit arrival times — only departure
+        is meaningful at the first station.
+        """
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(timezone.utc).timestamp())
+
+        entity = feed.entity.add()
+        entity.id = "trip1"
+        tu = entity.trip_update
+        tu.trip.trip_id = "9999"
+        tu.trip.route_id = "7"
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+
+        # Origin stop: departure only, no arrival
+        stu1 = tu.stop_time_update.add()
+        stu1.stop_id = "RICH"  # Richmond (parent code)
+        stu1.departure.time = now_ts
+        stu1.departure.delay = 0
+        # Note: no stu1.arrival set at all
+
+        # Mid-journey stop: has arrival
+        stu2 = tu.stop_time_update.add()
+        stu2.stop_id = "DELN"  # El Cerrito del Norte (parent code)
+        stu2.arrival.time = now_ts + 180
+
+        protobuf_bytes = feed.SerializeToString()
+
+        client = BARTClient()
+        mock_response = MagicMock()
+        mock_response.content = protobuf_bytes
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        arrivals = await client.get_all_arrivals()
+
+        assert len(arrivals) == 2
+        # Origin stop should have arrival_time == departure_time
+        origin = [a for a in arrivals if a.station_code == "BART_RICH"][0]
+        assert origin.arrival_time == origin.departure_time
+        assert origin.departure_time is not None
+
+    @pytest.mark.asyncio
+    async def test_stops_with_no_times_are_skipped(self):
+        """Test that stops with neither arrival nor departure are dropped."""
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(timezone.utc).timestamp())
+
+        entity = feed.entity.add()
+        entity.id = "trip1"
+        tu = entity.trip_update
+        tu.trip.trip_id = "8888"
+        tu.trip.route_id = "1"
+
+        now_ts = int(datetime.now(timezone.utc).timestamp())
+
+        # Stop with times
+        stu1 = tu.stop_time_update.add()
+        stu1.stop_id = "EMBR"
+        stu1.arrival.time = now_ts
+
+        # Stop with no times at all (just stop_id)
+        stu2 = tu.stop_time_update.add()
+        stu2.stop_id = "MONT"
+        # No arrival or departure set
+
+        protobuf_bytes = feed.SerializeToString()
+
+        client = BARTClient()
+        mock_response = MagicMock()
+        mock_response.content = protobuf_bytes
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        arrivals = await client.get_all_arrivals()
+
+        assert len(arrivals) == 1
+        assert arrivals[0].station_code == "BART_EMBR"
+
+    @pytest.mark.asyncio
+    async def test_corrupt_protobuf_returns_stale_cache(self):
+        """Test that corrupt (non-protobuf) response returns stale cache."""
+        client = BARTClient()
+        stale_arrival = BartArrival(
+            station_code="BART_EMBR",
+            gtfs_stop_id="M16-1",
+            trip_id="stale",
+            route_id="1",
+            direction_id=0,
+            arrival_time=datetime.now(timezone.utc),
+            departure_time=None,
+            delay_seconds=0,
+            track=None,
+        )
+        client._cache = [stale_arrival]
+        client._cache_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+
+        mock_response = MagicMock()
+        mock_response.content = b"this is not valid protobuf data"
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        arrivals = await client.get_all_arrivals()
+
+        # Should fall back to stale cache
+        assert len(arrivals) == 1
+        assert arrivals[0].trip_id == "stale"
+
+    @pytest.mark.asyncio
+    async def test_empty_feed_returns_empty_list(self):
+        """Test that an empty GTFS-RT feed (no entities) returns empty list."""
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(timezone.utc).timestamp())
+        # No entities added
+
+        client = BARTClient()
+        mock_response = MagicMock()
+        mock_response.content = feed.SerializeToString()
+        mock_response.raise_for_status = MagicMock()
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        arrivals = await client.get_all_arrivals()
+        assert arrivals == []

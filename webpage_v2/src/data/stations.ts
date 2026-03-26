@@ -1070,7 +1070,7 @@ export const STATIONS = ([
   { code: 'BART_MONT', name: 'Montgomery St.', system: 'BART', coordinates: { lat: 37.789173, lon: -122.401587 } },
   { code: 'BART_NBRK', name: 'North Berkeley', system: 'BART', coordinates: { lat: 37.874005, lon: -122.283523 } },
   { code: 'BART_NCON', name: 'North Concord / Martinez', system: 'BART', coordinates: { lat: 38.003383, lon: -122.024512 } },
-  { code: 'BART_OAKL', name: 'Oakland Intl Airport', system: 'BART', coordinates: { lat: 37.713256, lon: -122.212237 } },
+  { code: 'BART_OAKL', name: 'Oakland International Airport', system: 'BART', coordinates: { lat: 37.713256, lon: -122.212237 } },
   { code: 'BART_ORIN', name: 'Orinda', system: 'BART', coordinates: { lat: 37.878481, lon: -122.183667 } },
   { code: 'BART_PCTR', name: 'Pittsburg Center', system: 'BART', coordinates: { lat: 38.016847, lon: -121.889062 } },
   { code: 'BART_PHIL', name: 'Pleasant Hill / Contra Costa Centre', system: 'BART', coordinates: { lat: 37.928434, lon: -122.055971 } },
