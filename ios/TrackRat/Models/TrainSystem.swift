@@ -80,7 +80,10 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
 
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
-        return false
+        switch self {
+        case .bart: return true
+        default: return false
+        }
     }
 
     /// Preferred health indicator for this system.
