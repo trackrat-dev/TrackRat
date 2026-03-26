@@ -431,7 +431,7 @@ class StationsTests: XCTestCase {
     }
 
     func testSystemMappingReturnsValidSystems() {
-        let validSystems: Set<String> = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+        let validSystems: Set<String> = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "MBTA"]
         let allCodes = Set(Stations.stationCodes.values)
 
         for code in allCodes {

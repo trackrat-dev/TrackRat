@@ -623,6 +623,8 @@ extension TrainV2 {
             return "Metro-North"
         case "SUBWAY":
             return "NYC Subway"
+        case "MBTA":
+            return "MBTA"
         default:
             return "NJ Transit"
         }
