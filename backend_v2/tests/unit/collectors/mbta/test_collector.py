@@ -366,7 +366,11 @@ class TestMBTACollectorProcessTrip:
         collector._gtfs_service = MagicMock()
         collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
 
-        with patch("trackrat.collectors.mbta.collector.TransitAnalyzer"), patch(
+        mock_analyzer = AsyncMock()
+        with patch(
+            "trackrat.collectors.mbta.collector.TransitAnalyzer",
+            return_value=mock_analyzer,
+        ), patch(
             "trackrat.collectors.mbta.collector.now_et",
             return_value=datetime.now(timezone.utc),
         ):
