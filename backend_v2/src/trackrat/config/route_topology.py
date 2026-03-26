@@ -2630,6 +2630,180 @@ SUBWAY_Z = Route(
 )
 
 
+# =============================================================================
+# BART ROUTES
+# =============================================================================
+
+BART_RED = Route(
+    id="bart-red",
+    name="Richmond - SFO/Millbrae",
+    data_source="BART",
+    line_codes=frozenset({"BART-RED"}),
+    stations=(
+        "BART_RICH",
+        "BART_DELN",
+        "BART_PLZA",
+        "BART_NBRK",
+        "BART_DBRK",
+        "BART_ASHB",
+        "BART_MCAR",
+        "BART_19TH",
+        "BART_12TH",
+        "BART_WOAK",
+        "BART_EMBR",
+        "BART_MONT",
+        "BART_POWL",
+        "BART_CIVC",
+        "BART_16TH",
+        "BART_24TH",
+        "BART_GLEN",
+        "BART_BALB",
+        "BART_DALY",
+        "BART_COLM",
+        "BART_SSAN",
+        "BART_SBRN",
+        "BART_MLBR",
+        "BART_SFIA",
+    ),
+)
+
+BART_ORANGE = Route(
+    id="bart-orange",
+    name="Berryessa - Richmond",
+    data_source="BART",
+    line_codes=frozenset({"BART-ORG"}),
+    stations=(
+        "BART_BERY",
+        "BART_MLPT",
+        "BART_WARM",
+        "BART_FRMT",
+        "BART_UCTY",
+        "BART_SHAY",
+        "BART_HAYW",
+        "BART_BAYF",
+        "BART_SANL",
+        "BART_COLS",
+        "BART_FTVL",
+        "BART_LAKE",
+        "BART_12TH",
+        "BART_19TH",
+        "BART_MCAR",
+        "BART_ASHB",
+        "BART_DBRK",
+        "BART_NBRK",
+        "BART_PLZA",
+        "BART_DELN",
+        "BART_RICH",
+    ),
+)
+
+BART_YELLOW = Route(
+    id="bart-yellow",
+    name="Antioch - SFO/Millbrae",
+    data_source="BART",
+    line_codes=frozenset({"BART-YEL"}),
+    stations=(
+        "BART_ANTC",
+        "BART_PCTR",
+        "BART_PITT",
+        "BART_NCON",
+        "BART_CONC",
+        "BART_PHIL",
+        "BART_WCRK",
+        "BART_LAFY",
+        "BART_ORIN",
+        "BART_ROCK",
+        "BART_MCAR",
+        "BART_19TH",
+        "BART_12TH",
+        "BART_WOAK",
+        "BART_EMBR",
+        "BART_MONT",
+        "BART_POWL",
+        "BART_CIVC",
+        "BART_16TH",
+        "BART_24TH",
+        "BART_GLEN",
+        "BART_BALB",
+        "BART_DALY",
+        "BART_COLM",
+        "BART_SSAN",
+        "BART_SBRN",
+        "BART_MLBR",
+        "BART_SFIA",
+    ),
+)
+
+BART_GREEN = Route(
+    id="bart-green",
+    name="Berryessa - Daly City",
+    data_source="BART",
+    line_codes=frozenset({"BART-GRN"}),
+    stations=(
+        "BART_BERY",
+        "BART_MLPT",
+        "BART_WARM",
+        "BART_FRMT",
+        "BART_UCTY",
+        "BART_SHAY",
+        "BART_HAYW",
+        "BART_BAYF",
+        "BART_SANL",
+        "BART_COLS",
+        "BART_FTVL",
+        "BART_LAKE",
+        "BART_WOAK",
+        "BART_EMBR",
+        "BART_MONT",
+        "BART_POWL",
+        "BART_CIVC",
+        "BART_16TH",
+        "BART_24TH",
+        "BART_GLEN",
+        "BART_BALB",
+        "BART_DALY",
+    ),
+)
+
+BART_BLUE = Route(
+    id="bart-blue",
+    name="Dublin/Pleasanton - Daly City",
+    data_source="BART",
+    line_codes=frozenset({"BART-BLU"}),
+    stations=(
+        "BART_DUBL",
+        "BART_WDUB",
+        "BART_CAST",
+        "BART_BAYF",
+        "BART_SANL",
+        "BART_COLS",
+        "BART_FTVL",
+        "BART_LAKE",
+        "BART_WOAK",
+        "BART_EMBR",
+        "BART_MONT",
+        "BART_POWL",
+        "BART_CIVC",
+        "BART_16TH",
+        "BART_24TH",
+        "BART_GLEN",
+        "BART_BALB",
+        "BART_DALY",
+    ),
+)
+
+BART_OAK = Route(
+    id="bart-oak",
+    name="Oakland Airport - Coliseum",
+    data_source="BART",
+    line_codes=frozenset({"BART-OAK"}),
+    stations=(
+        "BART_COLS",
+        "BART_OAKL",
+    ),
+)
+
+
 ALL_ROUTES: tuple[Route, ...] = (
     # NJT
     NJT_NORTHEAST_CORRIDOR,
@@ -2728,6 +2902,13 @@ ALL_ROUTES: tuple[Route, ...] = (
     SUBWAY_W,
     SUBWAY_SI,
     SUBWAY_Z,
+    # BART
+    BART_RED,
+    BART_ORANGE,
+    BART_YELLOW,
+    BART_GREEN,
+    BART_BLUE,
+    BART_OAK,
 )
 
 # Lookup indexes for fast access

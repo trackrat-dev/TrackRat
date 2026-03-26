@@ -39,7 +39,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes + bartRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -768,6 +768,47 @@ struct RouteTopology {
             stationCodes: ["SM23", "SM22", "SM21", "SM20", "SM19", "SM18", "SM16", "SM11", "SJ30", "SJ28", "SJ27", "SJ24", "SJ23", "SJ21", "SJ20", "SJ17", "SJ15", "SJ14", "SJ12", "SG06", "SG05"]
         ),
 
+    ]
+
+    // MARK: - BART Routes
+
+    static let bartRoutes: [RouteLine] = [
+        RouteLine(
+            id: "bart-red",
+            name: "Richmond - SFO/Millbrae",
+            dataSource: "BART",
+            stationCodes: ["BART_RICH", "BART_DELN", "BART_PLZA", "BART_NBRK", "BART_DBRK", "BART_ASHB", "BART_MCAR", "BART_19TH", "BART_12TH", "BART_WOAK", "BART_EMBR", "BART_MONT", "BART_POWL", "BART_CIVC", "BART_16TH", "BART_24TH", "BART_GLEN", "BART_BALB", "BART_DALY", "BART_COLM", "BART_SSAN", "BART_SBRN", "BART_MLBR", "BART_SFIA"]
+        ),
+        RouteLine(
+            id: "bart-orange",
+            name: "Berryessa - Richmond",
+            dataSource: "BART",
+            stationCodes: ["BART_BERY", "BART_MLPT", "BART_WARM", "BART_FRMT", "BART_UCTY", "BART_SHAY", "BART_HAYW", "BART_BAYF", "BART_SANL", "BART_COLS", "BART_FTVL", "BART_LAKE", "BART_12TH", "BART_19TH", "BART_MCAR", "BART_ASHB", "BART_DBRK", "BART_NBRK", "BART_PLZA", "BART_DELN", "BART_RICH"]
+        ),
+        RouteLine(
+            id: "bart-yellow",
+            name: "Antioch - SFO/Millbrae",
+            dataSource: "BART",
+            stationCodes: ["BART_ANTC", "BART_PCTR", "BART_PITT", "BART_NCON", "BART_CONC", "BART_PHIL", "BART_WCRK", "BART_LAFY", "BART_ORIN", "BART_ROCK", "BART_MCAR", "BART_19TH", "BART_12TH", "BART_WOAK", "BART_EMBR", "BART_MONT", "BART_POWL", "BART_CIVC", "BART_16TH", "BART_24TH", "BART_GLEN", "BART_BALB", "BART_DALY", "BART_COLM", "BART_SSAN", "BART_SBRN", "BART_MLBR", "BART_SFIA"]
+        ),
+        RouteLine(
+            id: "bart-green",
+            name: "Berryessa - Daly City",
+            dataSource: "BART",
+            stationCodes: ["BART_BERY", "BART_MLPT", "BART_WARM", "BART_FRMT", "BART_UCTY", "BART_SHAY", "BART_HAYW", "BART_BAYF", "BART_SANL", "BART_COLS", "BART_FTVL", "BART_LAKE", "BART_WOAK", "BART_EMBR", "BART_MONT", "BART_POWL", "BART_CIVC", "BART_16TH", "BART_24TH", "BART_GLEN", "BART_BALB", "BART_DALY"]
+        ),
+        RouteLine(
+            id: "bart-blue",
+            name: "Dublin/Pleasanton - Daly City",
+            dataSource: "BART",
+            stationCodes: ["BART_DUBL", "BART_WDUB", "BART_CAST", "BART_BAYF", "BART_SANL", "BART_COLS", "BART_FTVL", "BART_LAKE", "BART_WOAK", "BART_EMBR", "BART_MONT", "BART_POWL", "BART_CIVC", "BART_16TH", "BART_24TH", "BART_GLEN", "BART_BALB", "BART_DALY"]
+        ),
+        RouteLine(
+            id: "bart-oak",
+            name: "Oakland Airport - Coliseum",
+            dataSource: "BART",
+            stationCodes: ["BART_COLS", "BART_OAKL"]
+        ),
     ]
 
     // MARK: - Station Expansion

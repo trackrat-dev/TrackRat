@@ -111,7 +111,7 @@ export function LandingPage() {
           TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-muted mb-8 max-w-xl mx-auto">
-          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North!
+          Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, BART!
         </p>
         <div className="flex items-center justify-center gap-4">
           <a

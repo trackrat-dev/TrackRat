@@ -65,6 +65,17 @@ __all__ = [
     "SUBWAY_STATION_NAMES",
     "get_subway_route_info",
     "map_subway_gtfs_stop",
+    # BART
+    "BART_ALERTS_FEED_URL",
+    "BART_DISCOVERY_STATIONS",
+    "BART_GTFS_RT_FEED_URL",
+    "BART_GTFS_STOP_TO_INTERNAL_MAP",
+    "BART_ROUTES",
+    "BART_STATION_COORDINATES",
+    "BART_STATION_NAMES",
+    "INTERNAL_TO_BART_GTFS_STOP_MAP",
+    "get_bart_route_info",
+    "map_bart_gtfs_stop",
     # MNR
     "INTERNAL_TO_MNR_GTFS_STOP_MAP",
     "MNR_DISCOVERY_STATIONS",
@@ -93,6 +104,19 @@ __all__ = [
 
 # NJT
 # Amtrak
+from trackrat.config.stations.bart import (
+    BART_ALERTS_FEED_URL,
+    BART_DISCOVERY_STATIONS,
+    BART_GTFS_RT_FEED_URL,
+    BART_GTFS_STOP_TO_INTERNAL_MAP,
+    BART_ROUTES,
+    BART_STATION_COORDINATES,
+    BART_STATION_NAMES,
+    INTERNAL_TO_BART_GTFS_STOP_MAP,
+    get_bart_route_info,
+    map_bart_gtfs_stop,
+)
+
 from trackrat.config.stations.amtrak import (
     AMTRAK_STATION_NAMES,
     AMTRAK_TO_INTERNAL_STATION_MAP,

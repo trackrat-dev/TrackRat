@@ -57,6 +57,7 @@ GTFS_FEED_URLS = {
     "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
+    "BART": "https://www.bart.gov/dev/schedules/google_transit.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
