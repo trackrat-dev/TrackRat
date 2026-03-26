@@ -28,6 +28,7 @@ from trackrat.config.stations import (  # noqa: E402
     DISCOVERY_STATIONS,
     AMTRAK_TO_INTERNAL_STATION_MAP,
     PATH_RIDEPATH_API_TO_INTERNAL_MAP,
+    WMATA_STATION_NAMES,
     get_station_code_by_name,
     get_station_name,
     map_amtrak_station_code,
@@ -993,6 +994,72 @@ def _print_header(provider: str, base_url: str, tolerance: float, gt_window: int
     print(f"Time: {now_et.strftime('%Y-%m-%d %H:%M')} ET\n")
 
 
+# --- Fetch ground truth from WMATA ---
+
+WMATA_API_BASE = "https://api.wmata.com"
+
+
+def fetch_wmata_arrivals(client: httpx.Client, api_key: str) -> list[GroundTruthArrival]:
+    """Fetch all predictions from WMATA GetPrediction/All endpoint."""
+    try:
+        resp = client.get(
+            f"{WMATA_API_BASE}/StationPrediction.svc/json/GetPrediction/All",
+            headers={"api_key": api_key},
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        log_fail(f"WMATA API request failed: {e}")
+        return []
+
+    data = resp.json()
+    now = datetime.now(timezone.utc)
+    arrivals: list[GroundTruthArrival] = []
+
+    for train in data.get("Trains", []):
+        location_code = train.get("LocationCode", "")
+        destination_code = train.get("DestinationCode")
+        destination_name = train.get("Destination", "")
+        line = train.get("Line", "")
+        min_str = train.get("Min", "")
+
+        # Skip non-revenue and invalid entries
+        if not location_code or not line or line == "--":
+            continue
+        if destination_name in ("No Passenger", "Train", ""):
+            continue
+        if location_code not in WMATA_STATION_NAMES:
+            continue
+        if not destination_code:
+            continue
+
+        # Parse minutes
+        minutes: int | None = None
+        if min_str == "ARR" or min_str == "BRD":
+            minutes = 0
+        elif min_str and min_str not in ("---", "", "--"):
+            try:
+                minutes = int(min_str)
+            except ValueError:
+                continue
+        else:
+            continue
+
+        expected_time = now + timedelta(minutes=minutes)
+        arrivals.append(
+            GroundTruthArrival(
+                station_code=location_code,
+                destination_code=destination_code,
+                expected_time=expected_time,
+                line_color=line,
+                headsign=destination_name,
+                minutes_away=minutes,
+            )
+        )
+
+    return arrivals
+
+
 # --- Provider-specific runners ---
 
 
@@ -1184,6 +1251,42 @@ def run_subway_validation(base_url: str, tolerance: float, verbose: bool = False
     print_summary(route_directions_tested)
 
 
+def run_wmata_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120, far_future: int = 12) -> None:
+    """Run ground truth validation for WMATA (DC Metro)."""
+    api_key = os.environ.get("TRACKRAT_WMATA_API_KEY") or os.environ.get("WMATA_API_KEY")
+    if not api_key:
+        print(f"{YELLOW}WARN{NC} TRACKRAT_WMATA_API_KEY / WMATA_API_KEY not set, skipping WMATA validation")
+        return
+
+    _print_header("WMATA", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
+
+    client = httpx.Client()
+    try:
+        gt_arrivals = fetch_wmata_arrivals(client, api_key)
+        if not gt_arrivals:
+            if FAIL_COUNT == 0:
+                log_warn("No arrivals from WMATA API (off-peak / late night?)")
+            print(f"\nNote: Fetched 0 arrivals from WMATA API")
+            print_summary(0)
+            return
+        print(f"Note: Fetched {len(gt_arrivals)} arrivals from WMATA API")
+
+        if verbose:
+            print(f"\n{BOLD}--- Ground Truth Arrivals ---{NC}")
+            for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+                time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+                print(
+                    f"  {a.station_code} -> {a.destination_code}  "
+                    f'{time_str} ({a.minutes_away}min)  line={a.line_color}  "{a.headsign}"'
+                )
+    finally:
+        client.close()
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "WMATA", base_url, tolerance, verbose, gt_window, far_future)
+    print_summary(route_directions_tested)
+
+
 # --- Main ---
 
 
@@ -1200,7 +1303,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         default="PATH",
-        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR", "SUBWAY"],
+        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR", "SUBWAY", "WMATA"],
         help="Transit provider to validate (default: PATH)",
     )
     parser.add_argument(
@@ -1240,6 +1343,7 @@ def main() -> None:
         "LIRR": run_lirr_validation,
         "MNR": run_mnr_validation,
         "SUBWAY": run_subway_validation,
+        "WMATA": run_wmata_validation,
     }
 
     if args.all:
