@@ -328,3 +328,24 @@ class TestMetraCommonIntegration:
         """METRA should be in JIT high-frequency collector sources."""
         from trackrat.services.jit import JustInTimeUpdateService
         assert "METRA" in JustInTimeUpdateService._HIGH_FREQ_COLLECTOR_SOURCES
+
+    def test_metra_in_realtime_sources(self):
+        """METRA should be registered as a real-time data source everywhere."""
+        from trackrat.services.departure import REAL_TIME_DATA_SOURCES
+        from trackrat.services.alert_evaluator import REALTIME_SOURCES as ALERT_RT
+        from trackrat.services.congestion import REALTIME_SOURCES as CONG_RT
+
+        assert "METRA" in REAL_TIME_DATA_SOURCES, "Missing from departure REAL_TIME_DATA_SOURCES"
+        assert "METRA" in ALERT_RT, "Missing from alert_evaluator REALTIME_SOURCES"
+        assert "METRA" in CONG_RT, "Missing from congestion REALTIME_SOURCES"
+
+    def test_metra_in_gtfs_feed_urls(self):
+        """METRA should have a GTFS feed URL registered."""
+        from trackrat.services.gtfs import GTFS_FEED_URLS, DEFAULT_LINE_COLORS
+        assert "METRA" in GTFS_FEED_URLS, "Missing from GTFS_FEED_URLS"
+        assert "METRA" in DEFAULT_LINE_COLORS, "Missing from DEFAULT_LINE_COLORS"
+
+    def test_metra_in_gtfs_source_lists(self):
+        """METRA should appear in GTFS source enumeration lists."""
+        from trackrat.services.scheduler import SchedulerService
+        assert "METRA" in SchedulerService.GTFS_SOURCES
