@@ -230,6 +230,9 @@ MBTA_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     "FR-0115-02": "BBNR",  # Brandeis/Roberts
     "FR-0132-01": "BKGN",  # Kendal Green
     "FR-0132-02": "BKGN",  # Kendal Green
+    "FR-0137": "BHST",  # Hastings
+    "FR-0137-01": "BHST",  # Hastings
+    "FR-0137-02": "BHST",  # Hastings
     "FR-0147-01": "BSLH",  # Silver Hill
     "FR-0147-02": "BSLH",  # Silver Hill
     "FR-0167-01": "BLIN",  # Lincoln
@@ -255,6 +258,9 @@ MBTA_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     "FS-0049-S": "BFOX",  # Foxboro
     "GB-0198-01": "BMTS",  # Montserrat
     "GB-0198-02": "BMTS",  # Montserrat
+    "GB-0222": "BPRC",  # Prides Crossing
+    "GB-0222-01": "BPRC",  # Prides Crossing
+    "GB-0222-02": "BPRC",  # Prides Crossing
     "GB-0229-01": "BBFM",  # Beverly Farms
     "GB-0229-02": "BBFM",  # Beverly Farms
     "GB-0254-01": "BMCH",  # Manchester
@@ -335,6 +341,9 @@ MBTA_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     "NHRML-0073-02": "BWDM",  # Wedgemere
     "NHRML-0078-01": "BWNC",  # Winchester Center
     "NHRML-0078-02": "BWNC",  # Winchester Center
+    "NHRML-0116": "BMSH",  # Mishawum
+    "NHRML-0116-01": "BMSH",  # Mishawum
+    "NHRML-0116-02": "BMSH",  # Mishawum
     "NHRML-0127-01": "BAWB",  # Anderson/Woburn
     "NHRML-0127-02": "BAWB",  # Anderson/Woburn
     "NHRML-0152-01": "BWLM",  # Wilmington
@@ -347,6 +356,7 @@ MBTA_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     "PB-0212-S": "BWHT",  # Whitman
     "PB-0245-S": "BHAN",  # Hanson
     "PB-0281-S": "BHLX",  # Halifax
+    "PB-0356-S": "BPLY",  # Plymouth
     "SB-0150-04": "BCJN",  # Canton Junction
     "SB-0150-06": "BCJN",  # Canton Junction
     "SB-0156-S": "BCNC",  # Canton Center

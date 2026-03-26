@@ -844,6 +844,13 @@ struct RouteTopology {
         ),
 
         RouteLine(
+            id: "mbta-middleborough",
+            name: "Middleborough/Lakeville Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BJFK", "BQNC", "BBRN", "BHLR", "BMTL", "BBRO", "BCMP", "BBDG", "BLKV", "BMID"]
+        ),
+
+        RouteLine(
             id: "mbta-newburyport",
             name: "Newburyport Branch",
             dataSource: "MBTA",

@@ -2796,6 +2796,17 @@ MBTA_WORCESTER = Route(
     ),
 )
 
+MBTA_MIDDLEBOROUGH = Route(
+    id="mbta-middleborough",
+    name="Middleborough/Lakeville Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-MI"}),
+    stations=(
+        "BOS", "BJFK", "BQNC", "BBRN", "BHLR", "BMTL", "BBRO", "BCMP",
+        "BBDG", "BLKV", "BMID",
+    ),
+)
+
 MBTA_CAPEFLYER = Route(
     id="mbta-capeflyer",
     name="CapeFLYER",
@@ -2913,6 +2924,7 @@ ALL_ROUTES: tuple[Route, ...] = (
     MBTA_KINGSTON,
     MBTA_LOWELL,
     MBTA_NEEDHAM,
+    MBTA_MIDDLEBOROUGH,
     MBTA_NEWBEDFORD,
     MBTA_NEWBURYPORT,
     MBTA_ROCKPORT,
