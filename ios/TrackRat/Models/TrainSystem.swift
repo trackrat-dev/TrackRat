@@ -92,7 +92,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     var preferredHighlightMode: SegmentHighlightMode {
         switch self {
         case .subway, .path, .patco: return .health
-        case .njt, .amtrak, .lirr, .mnr: return .delays
+        case .njt, .amtrak, .lirr, .mnr, .mbta: return .delays
         }
     }
 }
@@ -220,6 +220,11 @@ extension TrainSystem {
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 40.730, longitude: -73.950),
                 span: MKCoordinateSpan(latitudeDelta: 0.45, longitudeDelta: 0.55)
+            )
+        case .mbta:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 42.36, longitude: -71.06),
+                span: MKCoordinateSpan(latitudeDelta: 2.5, longitudeDelta: 2.5)
             )
         }
     }
