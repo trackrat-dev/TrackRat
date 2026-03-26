@@ -6,7 +6,7 @@ class TrainSystemTests: XCTestCase {
     // MARK: - supportsAlerts
 
     func testSupportsAlerts_realtimeSystems() {
-        let realtimeSystems: [TrainSystem] = [.njt, .amtrak, .path, .lirr, .mnr, .subway]
+        let realtimeSystems: [TrainSystem] = [.njt, .amtrak, .path, .lirr, .mnr, .subway, .wmata]
         for system in realtimeSystems {
             XCTAssertTrue(
                 system.supportsAlerts,
@@ -38,8 +38,8 @@ class TrainSystemTests: XCTestCase {
             allSystems.count,
             "Every TrainSystem must be classified as either alert-capable or schedule-only"
         )
-        // Current expectations: 6 real-time, 1 schedule-only
-        XCTAssertEqual(alertCapable.count, 6, "Expected 6 alert-capable systems: \(alertCapable)")
+        // Current expectations: 7 real-time, 1 schedule-only
+        XCTAssertEqual(alertCapable.count, 7, "Expected 7 alert-capable systems: \(alertCapable)")
         XCTAssertEqual(scheduleOnly.count, 1, "Expected 1 schedule-only system: \(scheduleOnly)")
     }
 

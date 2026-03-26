@@ -65,6 +65,23 @@ extension Stations {
         ("125 St (1)", "S116"),
         ("Jackson Hts-Roosevelt Av", "SG14"),
         ("Flushing-Main St", "S701"),
-        ("59 St-Columbus Circle (1/2)", "S125")
+        ("59 St-Columbus Circle (1/2)", "S125"),
+        // WMATA (DC Metro) - key hub stations
+        ("Metro Center", "A01"),
+        ("Gallery Pl-Chinatown", "B01"),
+        ("Union Station", "B03"),
+        ("L'Enfant Plaza", "D03"),
+        ("Pentagon", "C07"),
+        ("Rosslyn", "C05"),
+        ("Shady Grove", "A15"),
+        ("Glenmont", "B11"),
+        ("Vienna/Fairfax-GMU", "K08"),
+        ("New Carrollton", "D13"),
+        ("Franconia-Springfield", "J03"),
+        ("Huntington", "C15"),
+        ("Greenbelt", "E10"),
+        ("Branch Ave", "F11"),
+        ("Ashburn", "N12"),
+        ("Downtown Largo", "G05")
     ]
 }
