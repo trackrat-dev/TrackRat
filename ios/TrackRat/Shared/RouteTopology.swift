@@ -801,7 +801,7 @@ struct RouteTopology {
             id: "bart-blue",
             name: "Dublin/Pleasanton - Daly City",
             dataSource: "BART",
-            stationCodes: ["BART_DUBL", "BART_WDUB", "BART_CAST", "BART_BAYF", "BART_SANL", "BART_COLS", "BART_FTVL", "BART_LAKE", "BART_WOAK", "BART_EMBR", "BART_MONT", "BART_POWL", "BART_CIVC", "BART_16TH", "BART_24TH", "BART_GLEN", "BART_BALB", "BART_DALY"]
+            stationCodes: ["BART_DUBL", "BART_WDUB", "BART_CAST", "BART_BAYF", "BART_SANL", "BART_COLS", "BART_FTVL", "BART_LAKE", "BART_12TH", "BART_19TH", "BART_MCAR", "BART_WOAK", "BART_EMBR", "BART_MONT", "BART_POWL", "BART_CIVC", "BART_16TH", "BART_24TH", "BART_GLEN", "BART_BALB", "BART_DALY"]
         ),
         RouteLine(
             id: "bart-oak",

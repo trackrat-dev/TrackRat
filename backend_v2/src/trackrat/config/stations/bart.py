@@ -276,8 +276,9 @@ BART_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
 INTERNAL_TO_BART_GTFS_STOP_MAP: dict[str, str] = {
     v: k
     for k, v in BART_GTFS_STOP_TO_INTERNAL_MAP.items()
-    # Only include 4-letter parent station codes in reverse map
-    if "-" not in k and len(k) <= 4
+    # Only include 4-letter parent station codes in reverse map;
+    # excludes platform codes (A40-2) and special codes (H10, H40)
+    if "-" not in k and len(k) == 4
 }
 
 # BART route definitions (route_id -> line_code, name, color)

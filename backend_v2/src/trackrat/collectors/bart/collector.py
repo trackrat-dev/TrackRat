@@ -260,6 +260,13 @@ class BARTCollector:
             else:
                 merged_stops = None
 
+            # Note: Unlike LIRR/MNR, we don't call infer_missing_origin() here.
+            # BART has multiple terminal stations per line (e.g., Richmond,
+            # Millbrae, SFO, Antioch, Berryessa, Dublin, Daly City) making
+            # single-terminal inference unreliable. GTFS static backfill
+            # handles the common case; mid-journey discoveries without static
+            # data will show a truncated origin.
+
             # Skip trips with fewer than 2 usable stops
             effective_stop_count = (
                 len(merged_stops) if merged_stops else len(arrivals)

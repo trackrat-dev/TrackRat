@@ -81,9 +81,18 @@ class TestBartStationConfig:
             assert "-" not in gtfs_id, (
                 f"Reverse mapping value {gtfs_id} should be a parent code, not platform"
             )
-            assert len(gtfs_id) <= 4, (
-                f"Reverse mapping value {gtfs_id} too long for parent station code"
+            assert len(gtfs_id) == 4, (
+                f"Reverse mapping value {gtfs_id} should be exactly 4 chars "
+                f"(got {len(gtfs_id)})"
             )
+
+    def test_reverse_mapping_coliseum_uses_parent_code(self):
+        """Coliseum reverse map should use 'COLS' not 'H10' (OAC connector)."""
+        assert INTERNAL_TO_BART_GTFS_STOP_MAP["BART_COLS"] == "COLS"
+
+    def test_reverse_mapping_oakland_airport_uses_parent_code(self):
+        """Oakland Airport reverse map should use 'OAKL' not 'H40'."""
+        assert INTERNAL_TO_BART_GTFS_STOP_MAP["BART_OAKL"] == "OAKL"
 
     def test_no_duplicate_internal_codes_in_names(self):
         """Station codes should be unique."""
