@@ -5,7 +5,7 @@ Tests parsing of predictions, train positions, and incidents
 from the WMATA developer API.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -239,7 +239,7 @@ class TestWMATAClient:
         client._session = mock_session
 
         await client.get_all_predictions()
-        client._pred_cache_time = datetime.now() - timedelta(seconds=60)
+        client._pred_cache_time = datetime.now(timezone.utc) - timedelta(seconds=60)
         await client.get_all_predictions()
 
         assert mock_session.get.call_count == 2

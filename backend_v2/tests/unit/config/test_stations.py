@@ -448,8 +448,17 @@ class TestNJTStationCoordinates:
         """No two distinct stations should share identical coordinates.
 
         Exception: Secaucus variants (SE/SC/TS) share the same location.
+        Exception: WMATA transfer stations share coordinates (same physical station, different platforms).
         """
         secaucus_codes = {"SE", "SC", "TS"}
+        # WMATA transfer stations: dual platform codes at the same physical station
+        from trackrat.config.stations import WMATA_TRANSFER_STATIONS
+
+        wmata_transfer_codes: set[str] = set()
+        for a, b in WMATA_TRANSFER_STATIONS:
+            wmata_transfer_codes.add(a)
+            wmata_transfer_codes.add(b)
+
         coord_to_codes: dict[tuple[float, float], list[str]] = {}
         for code, coords in STATION_COORDINATES.items():
             key = (coords["lat"], coords["lon"])
@@ -466,7 +475,11 @@ class TestNJTStationCoordinates:
                 non_secaucus_non_subway = [
                     c for c in non_secaucus if not c.startswith("S") or len(c) <= 2
                 ]
-                assert len(non_secaucus_non_subway) <= 1, (
+                # Allow WMATA transfer stations to share coordinates
+                non_exempt = [
+                    c for c in non_secaucus_non_subway if c not in wmata_transfer_codes
+                ]
+                assert len(non_exempt) <= 1, (
                     f"Stations {codes} share coordinates {coord}: "
                     f"{[STATION_NAMES.get(c, '???') for c in codes]}"
                 )

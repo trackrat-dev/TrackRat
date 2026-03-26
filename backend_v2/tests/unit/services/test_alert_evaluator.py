@@ -867,7 +867,7 @@ class TestSystemAwareAlertPriority:
 
     async def test_frequency_first_sources_constant(self):
         """FREQUENCY_FIRST_SOURCES should match iOS preferredHighlightMode == .health."""
-        assert FREQUENCY_FIRST_SOURCES == {"SUBWAY", "PATH", "PATCO"}
+        assert FREQUENCY_FIRST_SOURCES == {"SUBWAY", "PATH", "PATCO", "WMATA"}
         # Verify no overlap: frequency-first should not include delay-first systems
         delay_first = {"NJT", "AMTRAK", "LIRR", "MNR"}
         assert FREQUENCY_FIRST_SOURCES.isdisjoint(
