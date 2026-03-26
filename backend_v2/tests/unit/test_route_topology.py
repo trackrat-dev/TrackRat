@@ -410,7 +410,7 @@ class TestAllRoutesConsistency:
 
     def test_data_sources_are_valid(self):
         """Test that all data sources are valid."""
-        valid_sources = {"NJT", "PATH", "PATCO", "AMTRAK", "LIRR", "MNR", "SUBWAY"}
+        valid_sources = {"NJT", "PATH", "PATCO", "AMTRAK", "LIRR", "MNR", "SUBWAY", "METRA"}
         for route in ALL_ROUTES:
             assert (
                 route.data_source in valid_sources
@@ -450,6 +450,13 @@ class TestAllRoutesConsistency:
         assert (
             len(mnr_routes) >= 6
         ), f"Expected at least 6 MNR routes, got {len(mnr_routes)}"
+
+    def test_metra_routes_count(self):
+        """Test that we have expected number of METRA routes."""
+        metra_routes = [r for r in ALL_ROUTES if r.data_source == "METRA"]
+        assert (
+            len(metra_routes) == 14
+        ), f"Expected 14 METRA routes (11 lines + 3 branches), got {len(metra_routes)}"
 
     def test_lirr_routes_include_trunk(self):
         """Test that LIRR Jamaica-based routes include trunk stations."""
@@ -507,6 +514,104 @@ class TestAllRoutesConsistency:
         # Waterbury includes trunk to Bridgeport then branch to Waterbury
         assert "MBGP" in MNR_WATERBURY.stations
         assert MNR_WATERBURY.stations[-1] == "MWTB"
+
+
+class TestMetraRouteTopology:
+    """Test Metra route topology configuration."""
+
+    def test_metra_route_lookup_by_line_code(self):
+        """Test that Metra routes can be looked up by line code."""
+        route = get_route_by_line_code("METRA", "METRA-BNSF")
+        assert route is not None
+        assert route.id == "metra-bnsf"
+        assert route.data_source == "METRA"
+
+    def test_metra_all_lines_have_routes(self):
+        """Test that all 11 Metra lines have at least one route."""
+        metra_routes = get_routes_for_data_source("METRA")
+        line_codes_found = set()
+        for route in metra_routes:
+            line_codes_found.update(route.line_codes)
+        expected_codes = {
+            "METRA-BNSF", "METRA-HC", "METRA-MD-N", "METRA-MD-W",
+            "METRA-NCS", "METRA-SWS", "METRA-UP-N", "METRA-UP-NW",
+            "METRA-UP-W", "METRA-RI", "METRA-ME",
+        }
+        assert expected_codes == line_codes_found, (
+            f"Missing line codes: {expected_codes - line_codes_found}"
+        )
+
+    def test_metra_terminals_correct(self):
+        """Test that each Metra route ends at the correct downtown terminal."""
+        from trackrat.config.route_topology import (
+            METRA_BNSF, METRA_HC, METRA_MD_N, METRA_MD_W,
+            METRA_NCS, METRA_SWS, METRA_UP_N, METRA_UP_NW,
+            METRA_UP_NW_MCHENRY, METRA_UP_W, METRA_RI, METRA_ME,
+            METRA_ME_BI, METRA_ME_SC,
+        )
+        # Union Station lines
+        for route in [METRA_BNSF, METRA_HC, METRA_MD_N, METRA_MD_W, METRA_NCS, METRA_SWS]:
+            assert route.stations[-1] == "CUS", f"{route.id} should end at CUS"
+        # Ogilvie lines
+        for route in [METRA_UP_N, METRA_UP_NW, METRA_UP_NW_MCHENRY, METRA_UP_W]:
+            assert route.stations[-1] == "OTC", f"{route.id} should end at OTC"
+        # LaSalle Street
+        assert METRA_RI.stations[-1] == "LSS"
+        # Millennium Station
+        for route in [METRA_ME, METRA_ME_BI, METRA_ME_SC]:
+            assert route.stations[-1] == "MILLENNIUM", f"{route.id} should end at MILLENNIUM"
+
+    def test_metra_me_branches_share_trunk(self):
+        """Test ME branches share trunk stations from KENSINGTN to MILLENNIUM."""
+        from trackrat.config.route_topology import METRA_ME, METRA_ME_BI, METRA_ME_SC
+        # All three merge at different points but share 63RD-UP onward
+        shared = {"63RD-UP", "59TH-UP", "55-56-57TH", "51ST-53RD", "47TH-UP",
+                  "27TH-UP", "MCCORMICK", "18TH-UP", "MUSEUM", "VANBUREN", "MILLENNIUM"}
+        assert shared.issubset(set(METRA_ME.stations))
+        assert shared.issubset(set(METRA_ME_BI.stations))
+        assert shared.issubset(set(METRA_ME_SC.stations))
+
+    def test_metra_up_nw_mchenry_is_subset(self):
+        """Test McHenry branch stations are a subset of main UP-NW stations
+        (except MCHENRY origin which is unique to the branch)."""
+        from trackrat.config.route_topology import METRA_UP_NW, METRA_UP_NW_MCHENRY
+        mchenry_set = set(METRA_UP_NW_MCHENRY.stations) - {"MCHENRY"}
+        main_set = set(METRA_UP_NW.stations)
+        assert mchenry_set.issubset(main_set), (
+            f"McHenry branch has stations not on main UP-NW: {mchenry_set - main_set}"
+        )
+
+    def test_metra_has_direct_route_same_line(self):
+        """Test has_direct_route for stations on the same Metra line."""
+        route = find_route_for_segment("METRA", "AURORA", "CUS")
+        assert route is not None
+        assert route.id == "metra-bnsf"
+
+    def test_metra_has_direct_route_cross_line(self):
+        """Test that cross-line Metra queries return no direct route."""
+        # AURORA is BNSF, KENOSHA is UP-N — no direct route
+        route = find_route_for_segment("METRA", "AURORA", "KENOSHA")
+        assert route is None
+
+    def test_metra_canonical_segments_expansion(self):
+        """Test segment expansion for Metra skip-stop journey."""
+        segments = get_canonical_segments("METRA", "AURORA", "NAPERVILLE")
+        assert segments is not None
+        # AURORA -> ROUTE59 -> NAPERVILLE
+        assert len(segments) == 2
+        assert segments[0] == ("AURORA", "ROUTE59")
+        assert segments[1] == ("ROUTE59", "NAPERVILLE")
+
+    def test_metra_station_names_cover_all_topology_stations(self):
+        """Every station code in Metra routes should have a name."""
+        from trackrat.config.stations.metra import METRA_STATION_NAMES
+        metra_routes = [r for r in ALL_ROUTES if r.data_source == "METRA"]
+        missing = []
+        for route in metra_routes:
+            for station in route.stations:
+                if station not in METRA_STATION_NAMES:
+                    missing.append(f"{route.id}: {station}")
+        assert not missing, f"Stations missing names: {missing}"
 
 
 class TestSubwayARockawayBranch:
