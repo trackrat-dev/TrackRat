@@ -120,7 +120,7 @@ class WMATAClient:
             await self._session.aclose()
             self._session = None
 
-    @track_api_call("wmata_predictions")
+    @track_api_call(api_name="wmata", endpoint="predictions")
     async def get_all_predictions(self) -> list[WMATAPrediction]:
         """Fetch arrival predictions for all stations in a single API call.
 
@@ -157,7 +157,7 @@ class WMATAClient:
         )
         return predictions
 
-    @track_api_call("wmata_positions")
+    @track_api_call(api_name="wmata", endpoint="positions")
     async def get_train_positions(self) -> list[WMATATrainPosition]:
         """Fetch real-time positions for all trains.
 
@@ -194,7 +194,7 @@ class WMATAClient:
         )
         return positions
 
-    @track_api_call("wmata_incidents")
+    @track_api_call(api_name="wmata", endpoint="incidents")
     async def get_incidents(self) -> list[WMATAIncident]:
         """Fetch current rail service incidents.
 
