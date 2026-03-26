@@ -21,10 +21,12 @@ logger = logging.getLogger(__name__)
 # Used as a fallback when GTFS static backfill is unavailable.
 LIRR_ORIGIN_TERMINALS = frozenset({"NY", "LAT", "GCT", "HPA"})
 MNR_ORIGIN_TERMINALS = frozenset({"GCT"})
+MBTA_ORIGIN_TERMINALS = frozenset({"BOS", "BNST"})
 
 _ORIGIN_TERMINAL_CONFIG: dict[str, tuple[frozenset[str], str | None]] = {
     "LIRR": (LIRR_ORIGIN_TERMINALS, "NY"),  # Penn Station is most common
     "MNR": (MNR_ORIGIN_TERMINALS, "GCT"),  # Grand Central is the only terminal
+    "MBTA": (MBTA_ORIGIN_TERMINALS, "BOS"),  # South Station is most common
     # Subway has too many terminals for a single default; origin inference
     # is best-effort since GTFS-RT usually includes all stops for subway trips.
     "SUBWAY": (frozenset(), None),

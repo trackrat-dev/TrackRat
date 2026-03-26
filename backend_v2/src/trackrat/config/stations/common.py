@@ -12,6 +12,11 @@ from trackrat.config.stations.lirr import (
     LIRR_GTFS_STOP_TO_INTERNAL_MAP,
     LIRR_STATION_NAMES,
 )
+from trackrat.config.stations.mbta import (
+    MBTA_GTFS_STOP_TO_INTERNAL_MAP,
+    MBTA_STATION_COORDINATES,
+    MBTA_STATION_NAMES,
+)
 from trackrat.config.stations.mnr import (
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
     MNR_STATION_NAMES,
@@ -45,6 +50,7 @@ STATION_NAMES: dict[str, str] = {
     **LIRR_STATION_NAMES,
     **MNR_STATION_NAMES,
     **SUBWAY_STATION_NAMES,
+    **MBTA_STATION_NAMES,
 }
 
 
@@ -1147,6 +1153,9 @@ STATION_COORDINATES = {
 for _code, (_lat, _lon) in SUBWAY_STATION_COORDINATES.items():
     STATION_COORDINATES[_code] = {"lat": _lat, "lon": _lon}
 
+# Merge MBTA coordinates (stored as {"lat": float, "lon": float} dicts)
+STATION_COORDINATES.update(MBTA_STATION_COORDINATES)
+
 
 def get_station_coordinates(code: str) -> dict[str, float] | None:
     """Get station coordinates for mapping.
@@ -1208,7 +1217,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", or "SUBWAY"
+        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", or "MBTA"
 
     Returns:
         Our internal station code or None if no match found
@@ -1228,6 +1237,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "MNR":
         # Metro-North uses numeric stop_id from MTA GTFS
         return MNR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+    if data_source == "MBTA":
+        # MBTA uses child stop_ids like "NEC-2287", "BNT-0000"
+        return MBTA_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "SUBWAY":
         # NYC Subway stop IDs have N/S directional suffix

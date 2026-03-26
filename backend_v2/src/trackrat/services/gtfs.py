@@ -57,6 +57,7 @@ GTFS_FEED_URLS = {
     "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
+    "MBTA": "https://cdn.mbta.com/MBTA_GTFS.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -71,6 +72,7 @@ DEFAULT_LINE_COLORS = {
     "LIRR": "#0039A6",  # LIRR blue (MTA blue)
     "MNR": "#0039A6",  # Metro-North blue (MTA blue)
     "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
+    "MBTA": "#80276C",  # MBTA purple
 }
 
 # NJT GTFS route_short_name to line code mapping

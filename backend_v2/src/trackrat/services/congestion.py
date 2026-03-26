@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 
 # Data sources with real-time data (frequency metrics are meaningful)
-REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
+REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY", "MBTA"}
 
 
 # Re-export for backward compatibility

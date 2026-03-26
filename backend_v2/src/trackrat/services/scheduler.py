@@ -25,6 +25,7 @@ from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.service_alerts import collect_service_alerts
+from trackrat.collectors.mbta.collector import MBTACollector
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
@@ -198,6 +199,18 @@ class SchedulerService:
             ),
             id="subway_collection",
             name="Subway Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        self.scheduler.add_job(
+            self.run_mbta_collection,
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(seconds=210), jitter=30
+            ),
+            id="mbta_collection",
+            name="MBTA Collection",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=120,
@@ -388,6 +401,7 @@ class SchedulerService:
             ("lirr_collection", self.run_lirr_collection),
             ("mnr_collection", self.run_mnr_collection),
             ("subway_collection", self.run_subway_collection),
+            ("mbta_collection", self.run_mbta_collection),
         ]
         for name, collector in collectors:
             logger.info("startup_collector_launch", collector=name)
@@ -720,6 +734,50 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("subway_collection_skipped_still_fresh")
+
+    async def run_mbta_collection(self) -> None:
+        """Run unified MBTA collection (discovery + journey updates)."""
+        task_id = f"mbta_collection_{now_et().isoformat()}"
+
+        async def do_mbta_collection_work() -> dict[str, Any]:
+            """The actual MBTA collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_mbta_collection")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                collector = MBTACollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "mbta_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(4)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="mbta_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_mbta_collection_work,
+            )
+
+            if not executed:
+                logger.debug("mbta_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -2410,7 +2468,7 @@ class SchedulerService:
             )
 
     # All GTFS feed sources — add new systems here
-    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY")
+    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "MBTA")
 
     async def refresh_gtfs_feeds(self) -> None:
         """Refresh GTFS static schedule data for all transit systems.

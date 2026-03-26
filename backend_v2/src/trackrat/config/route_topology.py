@@ -2630,6 +2630,181 @@ SUBWAY_Z = Route(
 )
 
 
+# ============================================================================
+# MBTA Commuter Rail routes
+# ============================================================================
+
+MBTA_FAIRMOUNT = Route(
+    id="mbta-fairmount",
+    name="Fairmount Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-FA"}),
+    stations=(
+        "BOS", "BNMK", "BUPH", "BFCG", "BTLB", "BMRT", "BBHA", "BFMT", "BRDV",
+    ),
+)
+
+MBTA_FITCHBURG = Route(
+    id="mbta-fitchburg",
+    name="Fitchburg Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-FI"}),
+    stations=(
+        "BNST", "BPOR", "BBMT", "BWAV", "BWTH", "BBNR", "BKGN", "BHST",
+        "BSLH", "BLIN", "BCON", "BWCN", "BSAC", "BLIT", "BAYE", "BSHR",
+        "BNLM", "BFIT", "BWAC",
+    ),
+)
+
+MBTA_FOXBORO = Route(
+    id="mbta-foxboro",
+    name="Foxboro Event Service",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-FX"}),
+    stations=("BOS", "BBY", "BDCC", "BFOX"),
+)
+
+MBTA_FRANKLIN = Route(
+    id="mbta-franklin",
+    name="Franklin/Foxboro Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-FR"}),
+    stations=(
+        "BOS", "BBY", "BRUG", "BFHL", "BHPK", "BRDV", "BEND", "BDCC",
+        "BISL", "BNWD", "BNWC", "BWDG", "BPLM", "BWAL", "BNFK", "BFRK", "BFPK",
+    ),
+)
+
+MBTA_GREENBUSH = Route(
+    id="mbta-greenbush",
+    name="Greenbush Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-GR"}),
+    stations=(
+        "BOS", "BJFK", "BQNC", "BBRN", "BWLE", "BEWY", "BWHI", "BNAN",
+        "BCOH", "BNSC", "BGRB",
+    ),
+)
+
+MBTA_HAVERHILL = Route(
+    id="mbta-haverhill",
+    name="Haverhill Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-HA"}),
+    stations=(
+        "BNST", "BMAL", "BOKG", "BWYH", "BMCP", "BMHG", "BGNW", "BWAK",
+        "BRDG", "BNWI", "BBVL", "BAND", "BLAW", "BBRD", "BHAV",
+    ),
+)
+
+MBTA_KINGSTON = Route(
+    id="mbta-kingston",
+    name="Kingston Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-KN"}),
+    stations=(
+        "BOS", "BJFK", "BQNC", "BBRN", "BSWY", "BABI", "BWHT", "BHAN",
+        "BHLX", "BKNG", "BPLY",
+    ),
+)
+
+MBTA_LOWELL = Route(
+    id="mbta-lowell",
+    name="Lowell Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-LO"}),
+    stations=(
+        "BNST", "BWMF", "BWDM", "BWNC", "BMSH", "BAWB", "BWLM", "BNBL", "BLOW",
+    ),
+)
+
+MBTA_NEEDHAM = Route(
+    id="mbta-needham",
+    name="Needham Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-NE"}),
+    stations=(
+        "BOS", "BBY", "BRUG", "BFHL", "BRSV", "BBLV", "BHLD", "BWRX",
+        "BHRS", "BNJN", "BNDC", "BNDH",
+    ),
+)
+
+MBTA_NEWBEDFORD = Route(
+    id="mbta-newbedford",
+    name="Fall River/New Bedford Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-NB"}),
+    stations=(
+        "BOS", "BJFK", "BQNC", "BBRN", "BHLR", "BMTL", "BBRO", "BCMP",
+        "BBDG", "BMID", "BETN", "BFTW", "BFRD", "BCST", "BNBD",
+    ),
+)
+
+MBTA_NEWBURYPORT = Route(
+    id="mbta-newburyport",
+    name="Newburyport Branch",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-NP"}),
+    stations=(
+        "BNST", "BCHE", "BRWK", "BLNI", "BSWP", "BSLM", "BBEV",
+        "BNBV", "BHWN", "BIPS", "BROW", "BNBP",
+    ),
+)
+
+MBTA_ROCKPORT = Route(
+    id="mbta-rockport",
+    name="Rockport Branch",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-NP"}),  # Same line code as Newburyport (shared trunk)
+    stations=(
+        "BNST", "BCHE", "BRWK", "BLNI", "BSWP", "BSLM", "BBEV",
+        "BMTS", "BPRC", "BBFM", "BMCH", "BWGL", "BGLO", "BRPT",
+    ),
+)
+
+MBTA_PROVIDENCE = Route(
+    id="mbta-providence",
+    name="Providence/Stoughton Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-PV"}),
+    stations=(
+        "BOS", "BBY", "BRUG", "BFHL", "BHPK", "BRDV", "RTE", "BCJN",
+        "BSHA", "BMAN", "BATT", "BSAT", "BPCF", "PVD", "BTFG", "BWKF",
+    ),
+)
+
+MBTA_STOUGHTON = Route(
+    id="mbta-stoughton",
+    name="Stoughton Branch",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-PV"}),  # Same line code as Providence (shared trunk)
+    stations=(
+        "BOS", "BBY", "BRUG", "BFHL", "BHPK", "BRDV", "RTE", "BCJN",
+        "BCNC", "BSTO",
+    ),
+)
+
+MBTA_WORCESTER = Route(
+    id="mbta-worcester",
+    name="Framingham/Worcester Line",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-WR"}),
+    stations=(
+        "BOS", "BBY", "BLDN", "BBLN", "BNVL", "BWNT", "BAUB", "BWFM",
+        "BWHL", "BWSQ", "BNTC", "BWNA", "BFRM", "BASH", "BSBO", "BWSB",
+        "BGRF", "WOR",
+    ),
+)
+
+MBTA_CAPEFLYER = Route(
+    id="mbta-capeflyer",
+    name="CapeFLYER",
+    data_source="MBTA",
+    line_codes=frozenset({"MBTA-CF"}),
+    stations=("BOS", "BBRN", "BBRO", "BLKV", "BWRV", "BBZB", "BBNE", "BHYN"),
+)
+
+
 ALL_ROUTES: tuple[Route, ...] = (
     # NJT
     NJT_NORTHEAST_CORRIDOR,
@@ -2728,6 +2903,23 @@ ALL_ROUTES: tuple[Route, ...] = (
     SUBWAY_W,
     SUBWAY_SI,
     SUBWAY_Z,
+    # MBTA Commuter Rail
+    MBTA_FAIRMOUNT,
+    MBTA_FITCHBURG,
+    MBTA_FOXBORO,
+    MBTA_FRANKLIN,
+    MBTA_GREENBUSH,
+    MBTA_HAVERHILL,
+    MBTA_KINGSTON,
+    MBTA_LOWELL,
+    MBTA_NEEDHAM,
+    MBTA_NEWBEDFORD,
+    MBTA_NEWBURYPORT,
+    MBTA_ROCKPORT,
+    MBTA_PROVIDENCE,
+    MBTA_STOUGHTON,
+    MBTA_WORCESTER,
+    MBTA_CAPEFLYER,
 )
 
 # Lookup indexes for fast access
