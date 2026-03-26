@@ -75,6 +75,20 @@ __all__ = [
     "MNR_STATION_NAMES",
     "get_mnr_route_info",
     "map_mnr_gtfs_stop",
+    # WMATA
+    "INTERNAL_TO_WMATA_API_MAP",
+    "WMATA_API_TO_INTERNAL_MAP",
+    "WMATA_ROUTE_STOPS",
+    "WMATA_ROUTES",
+    "WMATA_STATION_NAMES",
+    "WMATA_TERMINUS_STATIONS",
+    "WMATA_TRANSFER_STATIONS",
+    "get_wmata_line_for_station",
+    "get_wmata_route_and_stops",
+    "get_wmata_route_info",
+    "get_wmata_route_stops",
+    "infer_wmata_origin",
+    "map_wmata_api_stop",
     # Common
     "STATION_COORDINATES",
     "STATION_EQUIVALENCE_GROUPS",
@@ -179,6 +193,23 @@ from trackrat.config.stations.path import (
     get_path_stops_by_origin_destination,
     map_internal_to_path_station,
     map_path_station_code,
+)
+
+# WMATA
+from trackrat.config.stations.wmata import (
+    INTERNAL_TO_WMATA_API_MAP,
+    WMATA_API_TO_INTERNAL_MAP,
+    WMATA_ROUTE_STOPS,
+    WMATA_ROUTES,
+    WMATA_STATION_NAMES,
+    WMATA_TERMINUS_STATIONS,
+    WMATA_TRANSFER_STATIONS,
+    get_wmata_line_for_station,
+    get_wmata_route_and_stops,
+    get_wmata_route_info,
+    get_wmata_route_stops,
+    infer_wmata_origin,
+    map_wmata_api_stop,
 )
 
 # Subway

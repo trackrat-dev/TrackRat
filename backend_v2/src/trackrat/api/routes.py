@@ -98,7 +98,7 @@ async def get_route_history(
     )
 
     # Validate data_source
-    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "WMATA"]
     if data_source not in valid_sources:
         raise HTTPException(
             status_code=400,

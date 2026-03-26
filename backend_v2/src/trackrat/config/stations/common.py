@@ -35,6 +35,11 @@ from trackrat.config.stations.subway import (
     SUBWAY_STATION_NAMES,
     map_subway_gtfs_stop,
 )
+from trackrat.config.stations.wmata import (
+    WMATA_API_TO_INTERNAL_MAP,
+    WMATA_STATION_NAMES,
+    WMATA_TRANSFER_STATIONS,
+)
 
 # Unified station code to name mapping (all systems)
 STATION_NAMES: dict[str, str] = {
@@ -45,6 +50,7 @@ STATION_NAMES: dict[str, str] = {
     **LIRR_STATION_NAMES,
     **MNR_STATION_NAMES,
     **SUBWAY_STATION_NAMES,
+    **WMATA_STATION_NAMES,
 }
 
 
@@ -78,6 +84,8 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     # PATH ↔ Subway cross-system equivalences (must be after SUBWAY_STATION_COMPLEXES
     # so the larger group overwrites the subway-only group for shared codes)
     {"PWC", "S138", "S228", "SA36", "SE01", "SR25"},  # World Trade Center / Oculus
+    # WMATA transfer stations (dual-platform codes for the same physical station)
+    *[{a, b} for a, b in WMATA_TRANSFER_STATIONS],
 ]
 
 # Derived lookup: code -> full equivalence group
@@ -1147,6 +1155,113 @@ STATION_COORDINATES = {
 for _code, (_lat, _lon) in SUBWAY_STATION_COORDINATES.items():
     STATION_COORDINATES[_code] = {"lat": _lat, "lon": _lon}
 
+# WMATA station coordinates (from WMATA API jStations endpoint)
+_WMATA_STATION_COORDINATES: dict[str, dict[str, float]] = {
+    "A01": {"lat": 38.898303, "lon": -77.028099},
+    "A02": {"lat": 38.903192, "lon": -77.039766},
+    "A03": {"lat": 38.909499, "lon": -77.04362},
+    "A04": {"lat": 38.924999, "lon": -77.052648},
+    "A05": {"lat": 38.934703, "lon": -77.058226},
+    "A06": {"lat": 38.94362, "lon": -77.063511},
+    "A07": {"lat": 38.947808, "lon": -77.079615},
+    "A08": {"lat": 38.960744, "lon": -77.085969},
+    "A09": {"lat": 38.984282, "lon": -77.094431},
+    "A10": {"lat": 38.999947, "lon": -77.097253},
+    "A11": {"lat": 39.029158, "lon": -77.10415},
+    "A12": {"lat": 39.048043, "lon": -77.113131},
+    "A13": {"lat": 39.062359, "lon": -77.121113},
+    "A14": {"lat": 39.084215, "lon": -77.146424},
+    "A15": {"lat": 39.119819, "lon": -77.164921},
+    "B01": {"lat": 38.89834, "lon": -77.021851},
+    "B02": {"lat": 38.896084, "lon": -77.016643},
+    "B03": {"lat": 38.897723, "lon": -77.006745},
+    "B04": {"lat": 38.920741, "lon": -76.995984},
+    "B05": {"lat": 38.933234, "lon": -76.994544},
+    "B06": {"lat": 38.951777, "lon": -77.002174},
+    "B07": {"lat": 38.975532, "lon": -77.017834},
+    "B08": {"lat": 38.993841, "lon": -77.031321},
+    "B09": {"lat": 39.015413, "lon": -77.042953},
+    "B10": {"lat": 39.038558, "lon": -77.051098},
+    "B11": {"lat": 39.061713, "lon": -77.05341},
+    "B35": {"lat": 38.907407, "lon": -77.002961},
+    "C01": {"lat": 38.898303, "lon": -77.028099},
+    "C02": {"lat": 38.901316, "lon": -77.033652},
+    "C03": {"lat": 38.901311, "lon": -77.03981},
+    "C04": {"lat": 38.900599, "lon": -77.050273},
+    "C05": {"lat": 38.896595, "lon": -77.07146},
+    "C06": {"lat": 38.884574, "lon": -77.063108},
+    "C07": {"lat": 38.869349, "lon": -77.054013},
+    "C08": {"lat": 38.863045, "lon": -77.059507},
+    "C09": {"lat": 38.85779, "lon": -77.050589},
+    "C10": {"lat": 38.852985, "lon": -77.043805},
+    "C11": {"lat": 38.83321, "lon": -77.04642},
+    "C12": {"lat": 38.814009, "lon": -77.053763},
+    "C13": {"lat": 38.806474, "lon": -77.061115},
+    "C14": {"lat": 38.800313, "lon": -77.071173},
+    "C15": {"lat": 38.793841, "lon": -77.075301},
+    "D01": {"lat": 38.893757, "lon": -77.028218},
+    "D02": {"lat": 38.888022, "lon": -77.028232},
+    "D03": {"lat": 38.884775, "lon": -77.021964},
+    "D04": {"lat": 38.884958, "lon": -77.01586},
+    "D05": {"lat": 38.884968, "lon": -77.005137},
+    "D06": {"lat": 38.884124, "lon": -76.995334},
+    "D07": {"lat": 38.880841, "lon": -76.985721},
+    "D08": {"lat": 38.88594, "lon": -76.977485},
+    "D09": {"lat": 38.898284, "lon": -76.948042},
+    "D10": {"lat": 38.907734, "lon": -76.936177},
+    "D11": {"lat": 38.91652, "lon": -76.915427},
+    "D12": {"lat": 38.934411, "lon": -76.890988},
+    "D13": {"lat": 38.947674, "lon": -76.872144},
+    "E01": {"lat": 38.905604, "lon": -77.022256},
+    "E02": {"lat": 38.912919, "lon": -77.022194},
+    "E03": {"lat": 38.916489, "lon": -77.028938},
+    "E04": {"lat": 38.928672, "lon": -77.032775},
+    "E05": {"lat": 38.936077, "lon": -77.024728},
+    "E06": {"lat": 38.951777, "lon": -77.002174},
+    "E07": {"lat": 38.954931, "lon": -76.969881},
+    "E08": {"lat": 38.965276, "lon": -76.956182},
+    "E09": {"lat": 38.978523, "lon": -76.928432},
+    "E10": {"lat": 39.011036, "lon": -76.911362},
+    "F01": {"lat": 38.89834, "lon": -77.021851},
+    "F02": {"lat": 38.893893, "lon": -77.021902},
+    "F03": {"lat": 38.884775, "lon": -77.021964},
+    "F04": {"lat": 38.876221, "lon": -77.017491},
+    "F05": {"lat": 38.876588, "lon": -77.005086},
+    "F06": {"lat": 38.862072, "lon": -76.995648},
+    "F07": {"lat": 38.845334, "lon": -76.98817},
+    "F08": {"lat": 38.840974, "lon": -76.97536},
+    "F09": {"lat": 38.851187, "lon": -76.956565},
+    "F10": {"lat": 38.843891, "lon": -76.932022},
+    "F11": {"lat": 38.826995, "lon": -76.912134},
+    "G01": {"lat": 38.890488, "lon": -76.938291},
+    "G02": {"lat": 38.889757, "lon": -76.913382},
+    "G03": {"lat": 38.886713, "lon": -76.893592},
+    "G04": {"lat": 38.8913, "lon": -76.8682},
+    "G05": {"lat": 38.9008, "lon": -76.8449},
+    "J02": {"lat": 38.799193, "lon": -77.129407},
+    "J03": {"lat": 38.766129, "lon": -77.168797},
+    "K01": {"lat": 38.891499, "lon": -77.08391},
+    "K02": {"lat": 38.886373, "lon": -77.096963},
+    "K03": {"lat": 38.88331, "lon": -77.104267},
+    "K04": {"lat": 38.882071, "lon": -77.111845},
+    "K05": {"lat": 38.885841, "lon": -77.157177},
+    "K06": {"lat": 38.90067, "lon": -77.189394},
+    "K07": {"lat": 38.883015, "lon": -77.228939},
+    "K08": {"lat": 38.877693, "lon": -77.271562},
+    "N01": {"lat": 38.924478, "lon": -77.210167},
+    "N02": {"lat": 38.920056, "lon": -77.223314},
+    "N03": {"lat": 38.919749, "lon": -77.235192},
+    "N04": {"lat": 38.929273, "lon": -77.241988},
+    "N06": {"lat": 38.947753, "lon": -77.340179},
+    "N07": {"lat": 38.952768, "lon": -77.360185},
+    "N08": {"lat": 38.952821, "lon": -77.385178},
+    "N09": {"lat": 38.960758, "lon": -77.415295},
+    "N10": {"lat": 38.955784, "lon": -77.448148},
+    "N11": {"lat": 38.99204, "lon": -77.460685},
+    "N12": {"lat": 39.005283, "lon": -77.491537},
+}
+STATION_COORDINATES.update(_WMATA_STATION_COORDINATES)
+
 
 def get_station_coordinates(code: str) -> dict[str, float] | None:
     """Get station coordinates for mapping.
@@ -1208,7 +1323,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", or "SUBWAY"
+        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", or "WMATA"
 
     Returns:
         Our internal station code or None if no match found
@@ -1232,6 +1347,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "SUBWAY":
         # NYC Subway stop IDs have N/S directional suffix
         return map_subway_gtfs_stop(gtfs_stop_id)
+
+    if data_source == "WMATA":
+        # WMATA uses its native station codes (A01, B01, etc.) directly
+        return WMATA_API_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "PATH":
         # PATH - first try by stop_id (GTFS uses same IDs as Transiter: 26722-26734)

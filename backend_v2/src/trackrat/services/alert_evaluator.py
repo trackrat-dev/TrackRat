@@ -48,7 +48,7 @@ BASELINE_LOOKBACK_DAYS = 30
 MIN_BASELINE_DAYS = 3  # Need at least 3 comparable days for a reliable baseline
 
 # Data sources with real-time data (frequency alerts only apply to these)
-REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY"}
+REALTIME_SOURCES = {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY", "WMATA"}
 
 # Data sources where train_id is stable and represents the same daily service
 STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR"}

@@ -57,6 +57,7 @@ GTFS_FEED_URLS = {
     "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
+    "WMATA": "https://api.wmata.com/gtfs/rail-gtfs-static.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -71,6 +72,7 @@ DEFAULT_LINE_COLORS = {
     "LIRR": "#0039A6",  # LIRR blue (MTA blue)
     "MNR": "#0039A6",  # Metro-North blue (MTA blue)
     "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
+    "WMATA": "#004E8C",  # WMATA blue
 }
 
 # NJT GTFS route_short_name to line code mapping
@@ -1213,7 +1215,7 @@ class GTFSService:
         departures: list[TrainDeparture] = []
 
         # All known GTFS data sources
-        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "WMATA"]
 
         # Filter to requested sources if specified
         sources_to_query = (
