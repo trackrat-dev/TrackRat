@@ -86,6 +86,7 @@ ALL_DATA_SOURCES: list[str] = [
     "LIRR",
     "MNR",
     "SUBWAY",
+    "METRA",
 ]
 
 
@@ -158,15 +159,7 @@ class DepartureService:
                 ]
                 response.metadata["count"] = len(response.departures)
             if to_station:
-                all_sources = data_sources or [
-                    "NJT",
-                    "AMTRAK",
-                    "PATH",
-                    "PATCO",
-                    "LIRR",
-                    "MNR",
-                    "SUBWAY",
-                ]
+                all_sources = data_sources or ALL_DATA_SOURCES
                 response.has_direct_route = _has_direct_route(
                     from_station, to_station, all_sources
                 )
