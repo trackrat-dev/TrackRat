@@ -148,6 +148,12 @@ struct Stations {
         "SA63": ["SUBWAY"],  // 104 St (A)
         "SA64": ["SUBWAY"],  // 111 St (A)
         "SA65": ["SUBWAY"],  // Ozone Park-Lefferts Blvd
+        // MBTA stations shared with Amtrak (both systems serve these)
+        "BOS": ["AMTRAK", "MBTA"],   // South Station
+        "BBY": ["AMTRAK", "MBTA"],   // Back Bay
+        "PVD": ["AMTRAK", "MBTA"],   // Providence
+        "RTE": ["AMTRAK", "MBTA"],   // Route 128
+        "WOR": ["AMTRAK", "MBTA"],   // Worcester
     ]
 
     /// Cached mapping of station codes to their systems, derived from RouteTopology.

@@ -706,6 +706,76 @@ extension Stations {
         "Tompkinsville",
         "St George",
 
+        // MBTA Commuter Rail Stations
+        // Shared hubs (some already listed above for Amtrak)
+        "North Station", "Ruggles", "Forest Hills MBTA", "Hyde Park", "Readville",
+        "Canton Junction", "JFK/UMass", "Quincy Center",
+        "Porter", "Chelsea", "Malden Center", "Oak Grove",
+
+        // Fairmount Line
+        "Newmarket", "Uphams Corner", "Four Corners/Geneva", "Talbot Avenue",
+        "Morton Street", "Blue Hill Avenue", "Fairmount",
+
+        // Franklin/Foxboro Line
+        "Endicott", "Dedham Corporate Center", "Islington", "Norwood Depot",
+        "Norwood Central", "Windsor Gardens", "Plimptonville", "Walpole",
+        "Norfolk MBTA", "Franklin/Dean College", "Forge Park/495",
+
+        // Foxboro Event Service
+        "Foxboro",
+
+        // Providence/Stoughton Line
+        "Sharon", "Mansfield", "Attleboro", "South Attleboro",
+        "Pawtucket/Central Falls", "TF Green Airport", "Wickford Junction",
+        "Canton Center", "Stoughton",
+
+        // Needham Line
+        "Roslindale Village", "Bellevue", "Highland", "West Roxbury",
+        "Hersey", "Needham Junction", "Needham Center", "Needham Heights",
+
+        // Worcester/Framingham Line
+        "Lansdowne", "Boston Landing", "Newtonville", "West Newton",
+        "Auburndale MBTA", "Wellesley Farms", "Wellesley Hills", "Wellesley Square",
+        "Natick Center", "West Natick", "Ashland",
+        "Southborough", "Westborough", "Grafton",
+
+        // Greenbush Line
+        "Weymouth Landing/East Braintree", "East Weymouth", "West Hingham",
+        "Nantasket Junction", "Cohasset", "North Scituate", "Greenbush",
+
+        // Kingston Line
+        "South Weymouth", "Abington", "Whitman", "Hanson", "Halifax",
+        "Kingston MBTA", "Plymouth",
+
+        // Middleborough/New Bedford Line
+        "Holbrook/Randolph", "Montello", "Brockton", "Campello",
+        "Bridgewater MBTA", "Lakeville", "Middleborough",
+        "East Taunton", "Freetown", "Fall River Depot", "Church Street", "New Bedford",
+
+        // Newburyport/Rockport Line
+        "River Works", "Lynn", "Lynn Interim", "Swampscott", "Salem",
+        "Beverly", "North Beverly", "Hamilton/Wenham", "Ipswich", "Rowley",
+        "Newburyport", "Montserrat", "Prides Crossing", "Beverly Farms",
+        "Manchester MBTA", "West Gloucester", "Gloucester", "Rockport",
+
+        // Haverhill Line
+        "Wyoming Hill", "Melrose/Cedar Park", "Melrose Highlands",
+        "Greenwood MBTA", "Wakefield MBTA", "Reading", "North Wilmington",
+        "Ballardvale", "Andover", "Lawrence MBTA", "Bradford", "Haverhill MBTA",
+
+        // Lowell Line
+        "West Medford", "Wedgemere", "Winchester Center", "Mishawum",
+        "Anderson/Woburn", "Wilmington MBTA", "North Billerica", "Lowell",
+
+        // Fitchburg Line
+        "Belmont", "Waverley", "Waltham", "Brandeis/Roberts",
+        "Kendal Green", "Hastings MBTA", "Silver Hill", "Lincoln",
+        "Concord MBTA", "West Concord", "South Acton", "Littleton/Route 495",
+        "Ayer", "Shirley", "North Leominster", "Fitchburg", "Wachusett",
+
+        // CapeFlyer
+        "Wareham Village", "Buzzards Bay", "Bourne", "Hyannis",
+
     ].sorted()
     
     // Station name to code mapping - Updated to match backend STATION_CODES.txt
@@ -2205,6 +2275,170 @@ extension Stations {
         "Stapleton": "SS29",
         "Tompkinsville": "SS30",
         "St George": "SS31",
+
+        // MBTA Commuter Rail station codes
+        // Shared stations with Amtrak reuse existing codes: BOS, BBY, PVD, RTE, WOR
+        "North Station": "BNST",
+        "Porter": "BPOR",
+        "Ruggles": "BRUG",
+        "Forest Hills MBTA": "BFHL",
+        "Hyde Park": "BHPK",
+        "Readville": "BRDV",
+        "Canton Junction": "BCJN",
+        "JFK/UMass": "BJFK",
+        "Quincy Center": "BQNC",
+        "Braintree": "BBRN",
+        "Chelsea": "BCHE",
+        "Malden Center": "BMAL",
+        "Oak Grove": "BOKG",
+        // Fairmount Line
+        "Newmarket": "BNMK",
+        "Uphams Corner": "BUPH",
+        "Four Corners/Geneva": "BFCG",
+        "Talbot Avenue": "BTLB",
+        "Morton Street": "BMRT",
+        "Blue Hill Avenue": "BBHA",
+        "Fairmount": "BFMT",
+        // Franklin/Foxboro Line
+        "Endicott": "BEND",
+        "Dedham Corporate Center": "BDCC",
+        "Islington": "BISL",
+        "Norwood Depot": "BNWD",
+        "Norwood Central": "BNWC",
+        "Windsor Gardens": "BWDG",
+        "Plimptonville": "BPLM",
+        "Walpole": "BWAL",
+        "Norfolk MBTA": "BNFK",
+        "Franklin/Dean College": "BFRK",
+        "Forge Park/495": "BFPK",
+        "Foxboro": "BFOX",
+        // Providence/Stoughton Line
+        "Sharon": "BSHA",
+        "Mansfield": "BMAN",
+        "Attleboro": "BATT",
+        "South Attleboro": "BSAT",
+        "Pawtucket/Central Falls": "BPCF",
+        "TF Green Airport": "BTFG",
+        "Wickford Junction": "BWKF",
+        "Canton Center": "BCNC",
+        "Stoughton": "BSTO",
+        // Needham Line
+        "Roslindale Village": "BRSV",
+        "Bellevue": "BBLV",
+        "Highland": "BHLD",
+        "West Roxbury": "BWRX",
+        "Hersey": "BHRS",
+        "Needham Junction": "BNJN",
+        "Needham Center": "BNDC",
+        "Needham Heights": "BNDH",
+        // Worcester/Framingham Line
+        "Lansdowne": "BLDN",
+        "Boston Landing": "BBLN",
+        "Newtonville": "BNVL",
+        "West Newton": "BWNT",
+        "Auburndale MBTA": "BAUB",
+        "Wellesley Farms": "BWFM",
+        "Wellesley Hills": "BWHL",
+        "Wellesley Square": "BWSQ",
+        "Natick Center": "BNTC",
+        "West Natick": "BWNA",
+        "Ashland": "BASH",
+        "Southborough": "BSBO",
+        "Westborough": "BWSB",
+        "Grafton": "BGRF",
+        // Greenbush Line
+        "Weymouth Landing/East Braintree": "BWLE",
+        "East Weymouth": "BEWY",
+        "West Hingham": "BWHI",
+        "Nantasket Junction": "BNAN",
+        "Cohasset": "BCOH",
+        "North Scituate": "BNSC",
+        "Greenbush": "BGRB",
+        // Kingston Line
+        "South Weymouth": "BSWY",
+        "Abington": "BABI",
+        "Whitman": "BWHT",
+        "Hanson": "BHAN",
+        "Halifax": "BHLX",
+        "Kingston MBTA": "BKNG",
+        "Plymouth": "BPLY",
+        // Middleborough/New Bedford Line
+        "Holbrook/Randolph": "BHLR",
+        "Montello": "BMTL",
+        "Brockton": "BBRO",
+        "Campello": "BCMP",
+        "Bridgewater MBTA": "BBDG",
+        "Lakeville": "BLKV",
+        "Middleborough": "BMID",
+        "East Taunton": "BETN",
+        "Freetown": "BFTW",
+        "Fall River Depot": "BFRD",
+        "Church Street": "BCST",
+        "New Bedford": "BNBD",
+        // Newburyport/Rockport Line
+        "River Works": "BRWK",
+        "Lynn": "BLNN",
+        "Lynn Interim": "BLNI",
+        "Swampscott": "BSWP",
+        "Salem": "BSLM",
+        "Beverly": "BBEV",
+        "North Beverly": "BNBV",
+        "Hamilton/Wenham": "BHWN",
+        "Ipswich": "BIPS",
+        "Rowley": "BROW",
+        "Newburyport": "BNBP",
+        "Montserrat": "BMTS",
+        "Prides Crossing": "BPRC",
+        "Beverly Farms": "BBFM",
+        "Manchester MBTA": "BMCH",
+        "West Gloucester": "BWGL",
+        "Gloucester": "BGLO",
+        "Rockport": "BRPT",
+        // Haverhill Line
+        "Wyoming Hill": "BWYH",
+        "Melrose/Cedar Park": "BMCP",
+        "Melrose Highlands": "BMHG",
+        "Greenwood MBTA": "BGNW",
+        "Wakefield MBTA": "BWAK",
+        "Reading": "BRDG",
+        "North Wilmington": "BNWI",
+        "Ballardvale": "BBVL",
+        "Andover": "BAND",
+        "Lawrence MBTA": "BLAW",
+        "Bradford": "BBRD",
+        "Haverhill MBTA": "BHAV",
+        // Lowell Line
+        "West Medford": "BWMF",
+        "Wedgemere": "BWDM",
+        "Winchester Center": "BWNC",
+        "Mishawum": "BMSH",
+        "Anderson/Woburn": "BAWB",
+        "Wilmington MBTA": "BWLM",
+        "North Billerica": "BNBL",
+        "Lowell": "BLOW",
+        // Fitchburg Line
+        "Belmont": "BBMT",
+        "Waverley": "BWAV",
+        "Waltham": "BWTH",
+        "Brandeis/Roberts": "BBNR",
+        "Kendal Green": "BKGN",
+        "Hastings MBTA": "BHST",
+        "Silver Hill": "BSLH",
+        "Lincoln": "BLIN",
+        "Concord MBTA": "BCON",
+        "West Concord": "BWCN",
+        "South Acton": "BSAC",
+        "Littleton/Route 495": "BLIT",
+        "Ayer": "BAYE",
+        "Shirley": "BSHR",
+        "North Leominster": "BNLM",
+        "Fitchburg": "BFIT",
+        "Wachusett": "BWAC",
+        // CapeFlyer
+        "Wareham Village": "BWRV",
+        "Buzzards Bay": "BBZB",
+        "Bourne": "BBNE",
+        "Hyannis": "BHYN",
 
     ]
 

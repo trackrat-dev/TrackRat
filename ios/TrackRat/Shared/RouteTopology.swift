@@ -6,7 +6,7 @@ import CoreLocation
 struct RouteLine: Identifiable {
     let id: String
     let name: String
-    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"
+    let dataSource: String  // "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "MBTA"
     let stationCodes: [String]
 
     /// Human-readable terminal stations, e.g. "New York Penn → Trenton".
@@ -39,7 +39,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes + mbtaRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -768,6 +768,122 @@ struct RouteTopology {
             stationCodes: ["SM23", "SM22", "SM21", "SM20", "SM19", "SM18", "SM16", "SM11", "SJ30", "SJ28", "SJ27", "SJ24", "SJ23", "SJ21", "SJ20", "SJ17", "SJ15", "SJ14", "SJ12", "SG06", "SG05"]
         ),
 
+    ]
+
+    // MARK: - MBTA Commuter Rail Routes
+
+    static let mbtaRoutes: [RouteLine] = [
+        RouteLine(
+            id: "mbta-fairmount",
+            name: "Fairmount Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BNMK", "BUPH", "BFCG", "BTLB", "BMRT", "BBHA", "BFMT", "BRDV"]
+        ),
+
+        RouteLine(
+            id: "mbta-fitchburg",
+            name: "Fitchburg Line",
+            dataSource: "MBTA",
+            stationCodes: ["BNST", "BPOR", "BBMT", "BWAV", "BWTH", "BBNR", "BKGN", "BHST", "BSLH", "BLIN", "BCON", "BWCN", "BSAC", "BLIT", "BAYE", "BSHR", "BNLM", "BFIT", "BWAC"]
+        ),
+
+        RouteLine(
+            id: "mbta-foxboro",
+            name: "Foxboro Event Service",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBY", "BDCC", "BFOX"]
+        ),
+
+        RouteLine(
+            id: "mbta-franklin",
+            name: "Franklin/Foxboro Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBY", "BRUG", "BFHL", "BHPK", "BRDV", "BEND", "BDCC", "BISL", "BNWD", "BNWC", "BWDG", "BPLM", "BWAL", "BNFK", "BFRK", "BFPK"]
+        ),
+
+        RouteLine(
+            id: "mbta-greenbush",
+            name: "Greenbush Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BJFK", "BQNC", "BBRN", "BWLE", "BEWY", "BWHI", "BNAN", "BCOH", "BNSC", "BGRB"]
+        ),
+
+        RouteLine(
+            id: "mbta-haverhill",
+            name: "Haverhill Line",
+            dataSource: "MBTA",
+            stationCodes: ["BNST", "BMAL", "BOKG", "BWYH", "BMCP", "BMHG", "BGNW", "BWAK", "BRDG", "BNWI", "BBVL", "BAND", "BLAW", "BBRD", "BHAV"]
+        ),
+
+        RouteLine(
+            id: "mbta-kingston",
+            name: "Kingston Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BJFK", "BQNC", "BBRN", "BSWY", "BABI", "BWHT", "BHAN", "BHLX", "BKNG", "BPLY"]
+        ),
+
+        RouteLine(
+            id: "mbta-lowell",
+            name: "Lowell Line",
+            dataSource: "MBTA",
+            stationCodes: ["BNST", "BWMF", "BWDM", "BWNC", "BMSH", "BAWB", "BWLM", "BNBL", "BLOW"]
+        ),
+
+        RouteLine(
+            id: "mbta-needham",
+            name: "Needham Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBY", "BRUG", "BFHL", "BRSV", "BBLV", "BHLD", "BWRX", "BHRS", "BNJN", "BNDC", "BNDH"]
+        ),
+
+        RouteLine(
+            id: "mbta-newbedford",
+            name: "Fall River/New Bedford Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BJFK", "BQNC", "BBRN", "BHLR", "BMTL", "BBRO", "BCMP", "BBDG", "BMID", "BETN", "BFTW", "BFRD", "BCST", "BNBD"]
+        ),
+
+        RouteLine(
+            id: "mbta-newburyport",
+            name: "Newburyport Branch",
+            dataSource: "MBTA",
+            stationCodes: ["BNST", "BCHE", "BRWK", "BLNI", "BSWP", "BSLM", "BBEV", "BNBV", "BHWN", "BIPS", "BROW", "BNBP"]
+        ),
+
+        RouteLine(
+            id: "mbta-rockport",
+            name: "Rockport Branch",
+            dataSource: "MBTA",
+            stationCodes: ["BNST", "BCHE", "BRWK", "BLNI", "BSWP", "BSLM", "BBEV", "BMTS", "BPRC", "BBFM", "BMCH", "BWGL", "BGLO", "BRPT"]
+        ),
+
+        RouteLine(
+            id: "mbta-providence",
+            name: "Providence/Stoughton Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBY", "BRUG", "BFHL", "BHPK", "BRDV", "RTE", "BCJN", "BSHA", "BMAN", "BATT", "BSAT", "BPCF", "PVD", "BTFG", "BWKF"]
+        ),
+
+        RouteLine(
+            id: "mbta-stoughton",
+            name: "Stoughton Branch",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBY", "BRUG", "BFHL", "BHPK", "BRDV", "RTE", "BCJN", "BCNC", "BSTO"]
+        ),
+
+        RouteLine(
+            id: "mbta-worcester",
+            name: "Framingham/Worcester Line",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBY", "BLDN", "BBLN", "BNVL", "BWNT", "BAUB", "BWFM", "BWHL", "BWSQ", "BNTC", "BWNA", "BFRM", "BASH", "BSBO", "BWSB", "BGRF", "WOR"]
+        ),
+
+        RouteLine(
+            id: "mbta-capeflyer",
+            name: "CapeFLYER",
+            dataSource: "MBTA",
+            stationCodes: ["BOS", "BBRN", "BBRO", "BLKV", "BWRV", "BBZB", "BBNE", "BHYN"]
+        ),
     ]
 
     // MARK: - Station Expansion
