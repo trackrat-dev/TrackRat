@@ -134,7 +134,9 @@ class TestWMATAClient:
     # === Prediction Tests ===
 
     @pytest.mark.asyncio
-    async def test_get_all_predictions_success(self, client, sample_predictions_response):
+    async def test_get_all_predictions_success(
+        self, client, sample_predictions_response
+    ):
         """Test successful fetch and parsing of predictions."""
         mock_response = MagicMock()
         mock_response.json.return_value = sample_predictions_response
@@ -150,7 +152,9 @@ class TestWMATAClient:
         assert all(isinstance(p, WMATAPrediction) for p in predictions)
 
     @pytest.mark.asyncio
-    async def test_prediction_parsing_numeric_minutes(self, client, sample_predictions_response):
+    async def test_prediction_parsing_numeric_minutes(
+        self, client, sample_predictions_response
+    ):
         """Test that numeric minutes are parsed correctly."""
         mock_response = MagicMock()
         mock_response.json.return_value = sample_predictions_response
@@ -187,7 +191,9 @@ class TestWMATAClient:
         assert glenmont[0].is_boarding is False
 
     @pytest.mark.asyncio
-    async def test_prediction_filtering_no_passenger(self, client, sample_predictions_response):
+    async def test_prediction_filtering_no_passenger(
+        self, client, sample_predictions_response
+    ):
         """Test that No Passenger trains are filtered out."""
         mock_response = MagicMock()
         mock_response.json.return_value = sample_predictions_response

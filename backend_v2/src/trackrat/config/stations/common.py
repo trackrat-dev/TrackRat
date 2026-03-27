@@ -17,15 +17,15 @@ from trackrat.config.stations.lirr import (
     LIRR_GTFS_STOP_TO_INTERNAL_MAP,
     LIRR_STATION_NAMES,
 )
-from trackrat.config.stations.metra import (
-    METRA_GTFS_STOP_TO_INTERNAL_MAP,
-    METRA_STATION_COORDINATES,
-    METRA_STATION_NAMES,
-)
 from trackrat.config.stations.mbta import (
     MBTA_GTFS_STOP_TO_INTERNAL_MAP,
     MBTA_STATION_COORDINATES,
     MBTA_STATION_NAMES,
+)
+from trackrat.config.stations.metra import (
+    METRA_GTFS_STOP_TO_INTERNAL_MAP,
+    METRA_STATION_COORDINATES,
+    METRA_STATION_NAMES,
 )
 from trackrat.config.stations.mnr import (
     MNR_GTFS_STOP_TO_INTERNAL_MAP,

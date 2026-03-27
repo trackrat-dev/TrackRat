@@ -268,9 +268,7 @@ class BARTCollector:
             # data will show a truncated origin.
 
             # Skip trips with fewer than 2 usable stops
-            effective_stop_count = (
-                len(merged_stops) if merged_stops else len(arrivals)
-            )
+            effective_stop_count = len(merged_stops) if merged_stops else len(arrivals)
             if effective_stop_count < 2:
                 logger.debug(
                     "Skipping BART trip %s: only %d usable stop(s)",
@@ -305,9 +303,7 @@ class BARTCollector:
                 scheduled_arrival=sched_arrival,
                 actual_departure=first_arrival.arrival_time,
                 has_complete_journey=True,
-                stops_count=(
-                    len(merged_stops) if merged_stops else len(arrivals)
-                ),
+                stops_count=(len(merged_stops) if merged_stops else len(arrivals)),
                 is_cancelled=False,
                 is_completed=False,
                 api_error_count=0,
@@ -485,9 +481,7 @@ class BARTCollector:
                     best_trip = trip_arrivals
 
         if not best_trip:
-            logger.debug(
-                f"No matching BART trip found for journey {journey.train_id}"
-            )
+            logger.debug(f"No matching BART trip found for journey {journey.train_id}")
             return
 
         # Update journey with latest data

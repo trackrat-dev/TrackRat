@@ -366,9 +366,11 @@ async def _fetch_and_parse_wmata_alerts() -> list[ParsedAlert] | None:
                 description_text=incident.description,
                 active_periods=[
                     {
-                        "start": int(incident.date_updated.timestamp())
-                        if incident.date_updated
-                        else None,
+                        "start": (
+                            int(incident.date_updated.timestamp())
+                            if incident.date_updated
+                            else None
+                        ),
                         "end": None,
                     }
                 ],
@@ -523,9 +525,7 @@ async def collect_service_alerts() -> dict[str, Any]:
             wmata_alerts = await _fetch_and_parse_wmata_alerts()
             if wmata_alerts is not None:
                 async with session.begin_nested():
-                    stats = await upsert_service_alerts(
-                        session, wmata_alerts, "WMATA"
-                    )
+                    stats = await upsert_service_alerts(session, wmata_alerts, "WMATA")
                 all_stats["WMATA"] = {
                     "total_parsed": len(wmata_alerts),
                     **stats,

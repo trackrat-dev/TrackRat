@@ -26,7 +26,6 @@ from trackrat.config.stations import (
     get_station_name,
 )
 from trackrat.config.stations.metra import (
-    METRA_LINE_TERMINAL,
     METRA_ROUTES,
 )
 from trackrat.db.engine import get_session
@@ -57,7 +56,7 @@ def _generate_train_id(trip_id: str) -> str:
         # Strip the route prefix if it's duplicated (e.g., "ME2012" -> "2012")
         route_prefix = parts[0]
         if train_number.startswith(route_prefix):
-            train_number = train_number[len(route_prefix):]
+            train_number = train_number[len(route_prefix) :]
         if train_number:
             return f"MT{train_number}"
 
@@ -540,9 +539,7 @@ class MetraCollector:
                     best_trip = trip_arrivals
 
         if not best_trip:
-            logger.debug(
-                f"No matching Metra trip found for journey {journey.train_id}"
-            )
+            logger.debug(f"No matching Metra trip found for journey {journey.train_id}")
             return
 
         # Update journey with latest data

@@ -56,9 +56,9 @@ class TestBartStationConfig:
     def test_all_stations_have_coordinates(self):
         """Every station in BART_STATION_NAMES should have coordinates."""
         for code in BART_STATION_NAMES:
-            assert code in BART_STATION_COORDINATES, (
-                f"Station {code} missing from BART_STATION_COORDINATES"
-            )
+            assert (
+                code in BART_STATION_COORDINATES
+            ), f"Station {code} missing from BART_STATION_COORDINATES"
             lat, lon = BART_STATION_COORDINATES[code]
             # BART is in the San Francisco Bay Area
             assert 37.0 <= lat <= 39.0, f"Station {code} lat {lat} out of range"
@@ -68,19 +68,19 @@ class TestBartStationConfig:
         """Every BART station should be reachable via at least one GTFS stop_id."""
         mapped_internal_codes = set(BART_GTFS_STOP_TO_INTERNAL_MAP.values())
         for code in BART_STATION_NAMES:
-            assert code in mapped_internal_codes, (
-                f"Station {code} has no GTFS stop_id mapping"
-            )
+            assert (
+                code in mapped_internal_codes
+            ), f"Station {code} has no GTFS stop_id mapping"
 
     def test_reverse_mapping_has_parent_codes_only(self):
         """Reverse mapping should only contain 4-letter parent station codes."""
         for internal_code, gtfs_id in INTERNAL_TO_BART_GTFS_STOP_MAP.items():
-            assert internal_code.startswith("BART_"), (
-                f"Reverse mapping key {internal_code} missing BART_ prefix"
-            )
-            assert "-" not in gtfs_id, (
-                f"Reverse mapping value {gtfs_id} should be a parent code, not platform"
-            )
+            assert internal_code.startswith(
+                "BART_"
+            ), f"Reverse mapping key {internal_code} missing BART_ prefix"
+            assert (
+                "-" not in gtfs_id
+            ), f"Reverse mapping value {gtfs_id} should be a parent code, not platform"
             assert len(gtfs_id) == 4, (
                 f"Reverse mapping value {gtfs_id} should be exactly 4 chars "
                 f"(got {len(gtfs_id)})"
@@ -123,11 +123,18 @@ class TestBartRoutes:
 
     def test_directional_routes_share_line_code(self):
         """Paired directional routes should map to the same line."""
-        pairs = [("1", "2"), ("3", "4"), ("5", "6"), ("7", "8"), ("11", "12"), ("19", "20")]
+        pairs = [
+            ("1", "2"),
+            ("3", "4"),
+            ("5", "6"),
+            ("7", "8"),
+            ("11", "12"),
+            ("19", "20"),
+        ]
         for fwd, rev in pairs:
-            assert BART_ROUTES[fwd][0] == BART_ROUTES[rev][0], (
-                f"Routes {fwd} and {rev} should share line code"
-            )
+            assert (
+                BART_ROUTES[fwd][0] == BART_ROUTES[rev][0]
+            ), f"Routes {fwd} and {rev} should share line code"
 
     def test_route_colors_are_hex(self):
         """All route colors should be valid hex color strings."""
@@ -300,9 +307,7 @@ class TestBARTCollectorCollect:
         mock_session.execute.return_value = mock_result
         # Mock begin_nested as async context manager
         mock_session.begin_nested = MagicMock(
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(), __aexit__=AsyncMock()
-            )
+            return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock())
         )
 
         result = await collector.collect(mock_session)

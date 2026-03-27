@@ -1063,18 +1063,18 @@ class TestWMATAStations:
         """WMATA station names dict should have entries."""
         from trackrat.config.stations import WMATA_STATION_NAMES
 
-        assert len(WMATA_STATION_NAMES) > 90, (
-            f"Expected 90+ WMATA stations, got {len(WMATA_STATION_NAMES)}"
-        )
+        assert (
+            len(WMATA_STATION_NAMES) > 90
+        ), f"Expected 90+ WMATA stations, got {len(WMATA_STATION_NAMES)}"
 
     def test_wmata_station_names_in_global(self):
         """All WMATA stations should be in the global STATION_NAMES dict."""
         from trackrat.config.stations import WMATA_STATION_NAMES
 
         for code, name in WMATA_STATION_NAMES.items():
-            assert code in STATION_NAMES, (
-                f"WMATA station {code} ({name}) not in STATION_NAMES"
-            )
+            assert (
+                code in STATION_NAMES
+            ), f"WMATA station {code} ({name}) not in STATION_NAMES"
 
     def test_wmata_station_coordinates(self):
         """All WMATA stations should have coordinates in the DC area."""
@@ -1083,12 +1083,12 @@ class TestWMATAStations:
         for code in WMATA_STATION_NAMES:
             coords = STATION_COORDINATES.get(code)
             assert coords is not None, f"WMATA station {code} missing coordinates"
-            assert 38.0 < coords["lat"] < 40.0, (
-                f"WMATA station {code} lat {coords['lat']} out of DC area range"
-            )
-            assert -78.0 < coords["lon"] < -76.0, (
-                f"WMATA station {code} lon {coords['lon']} out of DC area range"
-            )
+            assert (
+                38.0 < coords["lat"] < 40.0
+            ), f"WMATA station {code} lat {coords['lat']} out of DC area range"
+            assert (
+                -78.0 < coords["lon"] < -76.0
+            ), f"WMATA station {code} lon {coords['lon']} out of DC area range"
 
     def test_wmata_routes_defined(self):
         """All 6 WMATA lines should be defined."""
@@ -1104,9 +1104,9 @@ class TestWMATAStations:
         for line, stops in WMATA_ROUTE_STOPS.items():
             assert len(stops) > 0, f"Route {line} has no stops"
             for code in stops:
-                assert code in WMATA_STATION_NAMES, (
-                    f"Station {code} in route {line} not in WMATA_STATION_NAMES"
-                )
+                assert (
+                    code in WMATA_STATION_NAMES
+                ), f"Station {code} in route {line} not in WMATA_STATION_NAMES"
 
     def test_wmata_transfer_station_equivalences(self):
         """Transfer stations should be in STATION_EQUIVALENTS."""
@@ -1114,12 +1114,12 @@ class TestWMATAStations:
 
         for code_a, code_b in WMATA_TRANSFER_STATIONS:
             group = STATION_EQUIVALENTS.get(code_a)
-            assert group is not None, (
-                f"Transfer station {code_a} not in STATION_EQUIVALENTS"
-            )
-            assert code_b in group, (
-                f"Transfer station {code_b} not in equivalence group for {code_a}: {group}"
-            )
+            assert (
+                group is not None
+            ), f"Transfer station {code_a} not in STATION_EQUIVALENTS"
+            assert (
+                code_b in group
+            ), f"Transfer station {code_b} not in equivalence group for {code_a}: {group}"
 
     def test_wmata_api_to_internal_identity(self):
         """WMATA API codes should map to themselves (identity mapping)."""
@@ -1132,9 +1132,9 @@ class TestWMATAStations:
         """WMATA station codes should map correctly via map_gtfs_stop_to_station_code."""
         for code in ["A01", "B03", "C07", "E10"]:
             result = map_gtfs_stop_to_station_code(code, "", "WMATA")
-            assert result == code, (
-                f"WMATA GTFS mapping for {code} returned {result}, expected {code}"
-            )
+            assert (
+                result == code
+            ), f"WMATA GTFS mapping for {code} returned {result}, expected {code}"
 
     def test_wmata_route_and_stops_lookup(self):
         """get_wmata_route_and_stops should find routes correctly."""

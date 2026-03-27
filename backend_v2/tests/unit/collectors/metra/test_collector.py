@@ -92,7 +92,9 @@ class TestGenerateTrainId:
         ]
         for trip_id in test_cases:
             result = _generate_train_id(trip_id)
-            assert result.startswith("MT"), f"Expected MT prefix for {trip_id}, got {result}"
+            assert result.startswith(
+                "MT"
+            ), f"Expected MT prefix for {trip_id}, got {result}"
 
     def test_fallback_for_unexpected_format(self):
         """Unexpected formats should still produce a valid train ID."""
@@ -149,6 +151,7 @@ class TestMetraTimezone:
     def test_provider_timezone_is_central(self):
         """Metra should use Central Time."""
         from trackrat.utils.time import PROVIDER_TIMEZONE
+
         ct = PROVIDER_TIMEZONE["METRA"]
         assert "Central" in str(ct) or "Chicago" in str(ct)
 
@@ -197,23 +200,35 @@ class TestMetraStationConfig:
     def test_station_names_populated(self):
         """METRA_STATION_NAMES should have 241 stations."""
         from trackrat.config.stations.metra import METRA_STATION_NAMES
+
         assert len(METRA_STATION_NAMES) == 241
 
     def test_key_stations_exist(self):
         """Key stations should be present in the mapping."""
         from trackrat.config.stations.metra import METRA_STATION_NAMES
-        key_stations = ["CUS", "OTC", "LSS", "MILLENNIUM", "AURORA", "JOLIET", "KENOSHA"]
+
+        key_stations = [
+            "CUS",
+            "OTC",
+            "LSS",
+            "MILLENNIUM",
+            "AURORA",
+            "JOLIET",
+            "KENOSHA",
+        ]
         for code in key_stations:
             assert code in METRA_STATION_NAMES, f"Missing key station: {code}"
 
     def test_routes_populated(self):
         """METRA_ROUTES should have 11 routes."""
         from trackrat.config.stations.metra import METRA_ROUTES
+
         assert len(METRA_ROUTES) == 11
 
     def test_route_info_structure(self):
         """Each route should have (line_code, name, color) tuple."""
         from trackrat.config.stations.metra import METRA_ROUTES
+
         for route_id, route_info in METRA_ROUTES.items():
             assert len(route_info) == 3, f"Route {route_id} should have 3 elements"
             line_code, name, color = route_info
@@ -224,6 +239,7 @@ class TestMetraStationConfig:
     def test_downtown_terminals(self):
         """METRA_DOWNTOWN_TERMINALS should contain the 4 Chicago terminals."""
         from trackrat.config.stations.metra import METRA_DOWNTOWN_TERMINALS
+
         assert "CUS" in METRA_DOWNTOWN_TERMINALS  # Chicago Union Station
         assert "OTC" in METRA_DOWNTOWN_TERMINALS  # Ogilvie Transportation Center
         assert "LSS" in METRA_DOWNTOWN_TERMINALS  # LaSalle Street Station
@@ -233,6 +249,7 @@ class TestMetraStationConfig:
     def test_line_terminal_mapping(self):
         """Each route should map to its correct downtown terminal."""
         from trackrat.config.stations.metra import METRA_LINE_TERMINAL
+
         # Union Station lines
         assert METRA_LINE_TERMINAL["BNSF"] == "CUS"
         assert METRA_LINE_TERMINAL["HC"] == "CUS"
@@ -252,6 +269,7 @@ class TestMetraStationConfig:
             METRA_GTFS_STOP_TO_INTERNAL_MAP,
             METRA_STATION_NAMES,
         )
+
         for code in METRA_STATION_NAMES:
             assert METRA_GTFS_STOP_TO_INTERNAL_MAP[code] == code
 
@@ -262,7 +280,9 @@ class TestMetraStationConfig:
 
         # All Metra stations should be in the unified STATION_NAMES
         for code in METRA_STATION_NAMES:
-            assert code in STATION_NAMES, f"Metra station {code} missing from STATION_NAMES"
+            assert (
+                code in STATION_NAMES
+            ), f"Metra station {code} missing from STATION_NAMES"
 
     def test_coordinates_populated(self):
         """Most Metra stations should have coordinates."""
@@ -270,14 +290,19 @@ class TestMetraStationConfig:
             METRA_STATION_COORDINATES,
             METRA_STATION_NAMES,
         )
+
         # All stations should have coordinates
         assert len(METRA_STATION_COORDINATES) == len(METRA_STATION_NAMES)
         for code, coords in METRA_STATION_COORDINATES.items():
             assert "lat" in coords, f"Station {code} missing lat"
             assert "lon" in coords, f"Station {code} missing lon"
             # Chicago area: roughly 41-43 lat, -87 to -89 lon
-            assert 40.5 < coords["lat"] < 43.5, f"Station {code} lat {coords['lat']} out of range"
-            assert -90 < coords["lon"] < -86, f"Station {code} lon {coords['lon']} out of range"
+            assert (
+                40.5 < coords["lat"] < 43.5
+            ), f"Station {code} lat {coords['lat']} out of range"
+            assert (
+                -90 < coords["lon"] < -86
+            ), f"Station {code} lon {coords['lon']} out of range"
 
 
 # =============================================================================
@@ -291,6 +316,7 @@ class TestMetraCommonIntegration:
     def test_metra_in_origin_terminal_config(self):
         """Metra should be registered in mta_common origin terminal config."""
         from trackrat.collectors.mta_common import _ORIGIN_TERMINAL_CONFIG
+
         assert "METRA" in _ORIGIN_TERMINAL_CONFIG
 
         terminals, default = _ORIGIN_TERMINAL_CONFIG["METRA"]
@@ -303,6 +329,7 @@ class TestMetraCommonIntegration:
     def test_metra_in_station_equivalence(self):
         """CUS and CHI should be in the same equivalence group (Amtrak overlap)."""
         from trackrat.config.stations.common import STATION_EQUIVALENCE_GROUPS
+
         found = False
         for group in STATION_EQUIVALENCE_GROUPS:
             if "CUS" in group and "CHI" in group:
@@ -314,6 +341,7 @@ class TestMetraCommonIntegration:
         """METRA should be a valid data_source in API models."""
         import trackrat.models.api as api_module
         import inspect
+
         # Verify METRA appears in the module source (Literal types)
         source = inspect.getsource(api_module)
         assert "METRA" in source, "METRA should appear in api models source"
@@ -321,12 +349,14 @@ class TestMetraCommonIntegration:
     def test_metra_in_summary_display_names(self):
         """METRA should have a display name in summary service."""
         from trackrat.services.summary import CARRIER_DISPLAY_NAMES
+
         assert "METRA" in CARRIER_DISPLAY_NAMES
         assert CARRIER_DISPLAY_NAMES["METRA"] == "Metra"
 
     def test_metra_in_high_freq_jit_sources(self):
         """METRA should be in JIT high-frequency collector sources."""
         from trackrat.services.jit import JustInTimeUpdateService
+
         assert "METRA" in JustInTimeUpdateService._HIGH_FREQ_COLLECTOR_SOURCES
 
     def test_metra_in_realtime_sources(self):
@@ -335,17 +365,21 @@ class TestMetraCommonIntegration:
         from trackrat.services.alert_evaluator import REALTIME_SOURCES as ALERT_RT
         from trackrat.services.congestion import REALTIME_SOURCES as CONG_RT
 
-        assert "METRA" in REAL_TIME_DATA_SOURCES, "Missing from departure REAL_TIME_DATA_SOURCES"
+        assert (
+            "METRA" in REAL_TIME_DATA_SOURCES
+        ), "Missing from departure REAL_TIME_DATA_SOURCES"
         assert "METRA" in ALERT_RT, "Missing from alert_evaluator REALTIME_SOURCES"
         assert "METRA" in CONG_RT, "Missing from congestion REALTIME_SOURCES"
 
     def test_metra_in_gtfs_feed_urls(self):
         """METRA should have a GTFS feed URL registered."""
         from trackrat.services.gtfs import GTFS_FEED_URLS, DEFAULT_LINE_COLORS
+
         assert "METRA" in GTFS_FEED_URLS, "Missing from GTFS_FEED_URLS"
         assert "METRA" in DEFAULT_LINE_COLORS, "Missing from DEFAULT_LINE_COLORS"
 
     def test_metra_in_gtfs_source_lists(self):
         """METRA should appear in GTFS source enumeration lists."""
         from trackrat.services.scheduler import SchedulerService
+
         assert "METRA" in SchedulerService.GTFS_SOURCES

@@ -487,7 +487,9 @@ class TestAPNSTrackAssignmentAlert:
 
         # alertMetadata should NOT be in content-state (would confuse ActivityKit decoder)
         assert "alertMetadata" not in content_state
-        print(f"  alertMetadata removed from content-state: {list(content_state.keys())}")
+        print(
+            f"  alertMetadata removed from content-state: {list(content_state.keys())}"
+        )
 
         # Alert should be present in aps
         assert "alert" in aps

@@ -165,9 +165,7 @@ class TestMBTACollectorCollect:
         # Mock session context manager for begin_nested
         mock_session.begin_nested.return_value = AsyncMock()
         mock_session.begin_nested.return_value.__aenter__ = AsyncMock()
-        mock_session.begin_nested.return_value.__aexit__ = AsyncMock(
-            return_value=False
-        )
+        mock_session.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
 
         # Mock stale query for expiration
         mock_stale_result = MagicMock()
@@ -367,12 +365,15 @@ class TestMBTACollectorProcessTrip:
         collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
 
         mock_analyzer = AsyncMock()
-        with patch(
-            "trackrat.collectors.mbta.collector.TransitAnalyzer",
-            return_value=mock_analyzer,
-        ), patch(
-            "trackrat.collectors.mbta.collector.now_et",
-            return_value=datetime.now(timezone.utc),
+        with (
+            patch(
+                "trackrat.collectors.mbta.collector.TransitAnalyzer",
+                return_value=mock_analyzer,
+            ),
+            patch(
+                "trackrat.collectors.mbta.collector.now_et",
+                return_value=datetime.now(timezone.utc),
+            ),
         ):
             result = await collector._process_trip(mock_session, "trip_1", arrivals)
 
@@ -497,9 +498,7 @@ class TestMBTACollectorRun:
     async def test_run_returns_stats(self, mock_get_session):
         """Test run() creates session and returns stats."""
         mock_session = AsyncMock()
-        mock_get_session.return_value.__aenter__ = AsyncMock(
-            return_value=mock_session
-        )
+        mock_get_session.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_get_session.return_value.__aexit__ = AsyncMock(return_value=False)
 
         mock_client = AsyncMock(spec=MBTAClient)

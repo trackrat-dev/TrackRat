@@ -18,7 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
+from trackrat.collectors.bart.collector import BARTCollector
 from trackrat.collectors.lirr.collector import LIRRCollector
+from trackrat.collectors.mbta.collector import MBTACollector
 from trackrat.collectors.metra.collector import MetraCollector
 from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
@@ -26,8 +28,6 @@ from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.service_alerts import collect_service_alerts
-from trackrat.collectors.bart.collector import BARTCollector
-from trackrat.collectors.mbta.collector import MBTACollector
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import get_session
@@ -2644,7 +2644,19 @@ class SchedulerService:
             )
 
     # All GTFS feed sources — add new systems here
-    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA")
+    GTFS_SOURCES = (
+        "NJT",
+        "AMTRAK",
+        "PATH",
+        "PATCO",
+        "LIRR",
+        "MNR",
+        "SUBWAY",
+        "METRA",
+        "WMATA",
+        "BART",
+        "MBTA",
+    )
 
     async def refresh_gtfs_feeds(self) -> None:
         """Refresh GTFS static schedule data for all transit systems.

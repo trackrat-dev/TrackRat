@@ -13,14 +13,14 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
+from trackrat.collectors.bart.collector import BARTCollector
 from trackrat.collectors.lirr.collector import LIRRCollector
-from trackrat.collectors.metra.collector import MetraCollector
 from trackrat.collectors.mbta.collector import MBTACollector
+from trackrat.collectors.metra.collector import MetraCollector
 from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.path.collector import PathCollector
-from trackrat.collectors.bart.collector import BARTCollector
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import retry_on_deadlock
@@ -369,7 +369,16 @@ class JustInTimeUpdateService:
     # Data sources with high-frequency background collectors (every 4 min).
     # JIT refresh for these sources creates lock contention with negligible
     # freshness gain, so we use the collector interval as the staleness baseline.
-    _HIGH_FREQ_COLLECTOR_SOURCES = {"PATH", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"}
+    _HIGH_FREQ_COLLECTOR_SOURCES = {
+        "PATH",
+        "LIRR",
+        "MNR",
+        "SUBWAY",
+        "METRA",
+        "WMATA",
+        "BART",
+        "MBTA",
+    }
     _HIGH_FREQ_STALENESS_SECONDS = 240  # 4 minutes, matches collector interval
 
     def needs_refresh(self, journey: TrainJourney) -> bool:

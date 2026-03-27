@@ -135,9 +135,7 @@ class BARTClient:
 
                 trip_id = trip.trip_id if trip.HasField("trip_id") else ""
                 route_id = trip.route_id if trip.HasField("route_id") else ""
-                direction_id = (
-                    trip.direction_id if trip.HasField("direction_id") else 0
-                )
+                direction_id = trip.direction_id if trip.HasField("direction_id") else 0
 
                 for stu in trip_update.stop_time_update:
                     gtfs_stop_id = stu.stop_id if stu.HasField("stop_id") else ""

@@ -31,10 +31,12 @@ class TestGetDiskUsage:
         assert "usage_percent" in result
 
         # Sanity: total should be positive, percent in range
-        assert result["total_gb"] > 0, f"total_gb should be positive, got {result['total_gb']}"
-        assert 0 <= result["usage_percent"] <= 100, (
-            f"usage_percent out of range: {result['usage_percent']}"
-        )
+        assert (
+            result["total_gb"] > 0
+        ), f"total_gb should be positive, got {result['total_gb']}"
+        assert (
+            0 <= result["usage_percent"] <= 100
+        ), f"usage_percent out of range: {result['usage_percent']}"
         # used + free <= total (reserved blocks may account for the difference)
         assert result["used_gb"] + result["free_gb"] <= result["total_gb"] + 0.1, (
             f"used ({result['used_gb']}) + free ({result['free_gb']}) > "
@@ -55,7 +57,9 @@ class TestGetDiskUsage:
 
     def test_oserror_returns_empty(self) -> None:
         """Should return empty dict when shutil raises OSError."""
-        with patch("trackrat.utils.system_stats.shutil.disk_usage", side_effect=OSError("boom")):
+        with patch(
+            "trackrat.utils.system_stats.shutil.disk_usage", side_effect=OSError("boom")
+        ):
             result = get_disk_usage("/")
         assert result == {}
 
@@ -75,10 +79,12 @@ class TestGetMemoryUsage:
         assert "available_gb" in result
         assert "usage_percent" in result
 
-        assert result["total_gb"] > 0, f"total_gb should be positive, got {result['total_gb']}"
-        assert 0 <= result["usage_percent"] <= 100, (
-            f"usage_percent out of range: {result['usage_percent']}"
-        )
+        assert (
+            result["total_gb"] > 0
+        ), f"total_gb should be positive, got {result['total_gb']}"
+        assert (
+            0 <= result["usage_percent"] <= 100
+        ), f"usage_percent out of range: {result['usage_percent']}"
 
     def test_missing_proc_returns_empty(self) -> None:
         """Should return empty dict when /proc/meminfo doesn't exist."""
@@ -137,7 +143,9 @@ class TestGetCpuLoad:
 
     def test_parses_known_loadavg_format(self) -> None:
         """Should correctly parse a known /proc/loadavg line."""
-        with patch.object(Path, "read_text", return_value="1.23 4.56 7.89 2/300 12345\n"):
+        with patch.object(
+            Path, "read_text", return_value="1.23 4.56 7.89 2/300 12345\n"
+        ):
             result = get_cpu_load()
 
         assert result["load_1m"] == 1.23
@@ -152,7 +160,9 @@ class TestGetSystemStats:
         """On Linux, should return disk, memory, and cpu sections."""
         result = get_system_stats()
         # Disk should always work (shutil is cross-platform)
-        assert "disk" in result, f"Missing disk section. Got keys: {list(result.keys())}"
+        assert (
+            "disk" in result
+        ), f"Missing disk section. Got keys: {list(result.keys())}"
 
         if Path("/proc/meminfo").exists():
             assert "memory" in result, "Missing memory section on Linux"

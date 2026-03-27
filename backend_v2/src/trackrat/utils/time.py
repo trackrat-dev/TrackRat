@@ -40,6 +40,7 @@ def now_for_provider(data_source: str) -> datetime:
     tz = PROVIDER_TIMEZONE.get(data_source, ET)
     return datetime.now(tz)
 
+
 # Timezone-aware min/max constants for safe datetime comparisons
 # Note: year 9999 causes OverflowError in pytz, use 2099/1900 as safe bounds
 # These should be used instead of datetime.min/datetime.max when comparing

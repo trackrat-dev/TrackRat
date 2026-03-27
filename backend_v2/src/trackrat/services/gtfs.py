@@ -1235,7 +1235,19 @@ class GTFSService:
         departures: list[TrainDeparture] = []
 
         # All known GTFS data sources
-        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"]
+        all_source_names = [
+            "NJT",
+            "AMTRAK",
+            "PATH",
+            "PATCO",
+            "LIRR",
+            "MNR",
+            "SUBWAY",
+            "METRA",
+            "WMATA",
+            "BART",
+            "MBTA",
+        ]
 
         # Filter to requested sources if specified
         sources_to_query = (
@@ -1679,7 +1691,19 @@ class GTFSService:
             _strip_source_prefix(train_id, data_source) if data_source else train_id
         )
 
-        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"]
+        all_sources = [
+            "NJT",
+            "AMTRAK",
+            "PATH",
+            "PATCO",
+            "LIRR",
+            "MNR",
+            "SUBWAY",
+            "METRA",
+            "WMATA",
+            "BART",
+            "MBTA",
+        ]
         sources_to_search = [data_source] if data_source else all_sources
 
         # Cache service_ids per source to avoid repeated queries

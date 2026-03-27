@@ -225,7 +225,8 @@ async def get_train_details(
         None, description="User's origin station code (filters predictions)"
     ),
     data_source: str | None = Query(
-        None, description="Data source filter (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, MBTA)"
+        None,
+        description="Data source filter (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, MBTA)",
     ),
     db: AsyncSession = Depends(get_db),
 ) -> TrainDetailsResponse:

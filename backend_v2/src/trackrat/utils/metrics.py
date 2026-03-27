@@ -86,7 +86,11 @@ system_cpu_load_1m = Gauge(
 
 def update_system_metrics() -> None:
     """Update system resource Prometheus gauges from /proc and shutil."""
-    from trackrat.utils.system_stats import get_cpu_load, get_disk_usage, get_memory_usage
+    from trackrat.utils.system_stats import (
+        get_cpu_load,
+        get_disk_usage,
+        get_memory_usage,
+    )
 
     disk = get_disk_usage("/")
     if disk:
