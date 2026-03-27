@@ -202,7 +202,7 @@ GET /predictions/supported-stations                   # Stations with prediction
 # Route Alerts
 POST /devices/register                               # Register APNS device token
 PUT  /alerts/subscriptions                           # Sync route alert subscriptions
-GET  /alerts/subscriptions                           # Get current alert subscriptions
+GET  /alerts/subscriptions/{device_id}               # Get current alert subscriptions
 
 # Validation
 GET /validation/status                               # Validation status and recent results
@@ -219,8 +219,12 @@ DELETE /live-activities/{token}   # Unregister Live Activity
 GET /admin/stats              # Server usage statistics (HTML)
 GET /admin/stats.json         # Server usage statistics (JSON)
 
+# Trip Search
+GET /trips/search             # Multi-leg trip search with transfers
+
 # Route Preferences
-GET /route-preferences        # User route preferences
+GET /routes/preferences       # User route preferences
+PUT /routes/preferences       # Update route preferences
 
 # System Health and Metrics
 GET /health                    # Comprehensive health check
@@ -343,7 +347,7 @@ poetry run ruff check .
 poetry run mypy src/
 
 # Run all checks
-make lint
+poetry run black . && poetry run ruff check . && poetry run mypy src/
 ```
 
 ### Testing
@@ -662,6 +666,11 @@ The backend is organized into service classes for better maintainability:
 - **AlertEvaluatorService** (`services/alert_evaluator.py`): Evaluates delay/cancellation conditions for route alert push notifications
 - **AlertsAPI** (`api/alerts.py`): Device registration and alert subscription management endpoints
 
+#### Trip Search & Transfers
+- **TripSearchService** (`services/trip_search.py`): Multi-leg trip search across transit systems
+- **TransferPoints** (`config/transfer_points.py`): Defines transfer connections between transit systems
+- **TripsAPI** (`api/trips.py`): Trip search endpoint
+
 #### Infrastructure
 - **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities and Route Alerts
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
@@ -682,6 +691,12 @@ The backend is organized into service classes for better maintainability:
 - ✅ Subscription sync fix preventing notification deduplication state wipe
 - ✅ Fix route segment map showing full route instead of selected segment
 - ✅ Backend instance upgrade from t2d-standard-1 to t2d-standard-2
+- ✅ Multi-leg trip search with transit transfers (`/api/v2/trips/search`)
+- ✅ Transfer points configuration for cross-system connections
+- ✅ System-wide alert subscriptions (not just per-route)
+- ✅ Request stats tracking for API usage metrics
+- ✅ Track assignment push notifications
+- ✅ LIRR Port Washington line code collision fix
 
 ### Recent Improvements (February 2026)
 - ✅ Recurring train alerts: subscribe to specific train numbers for daily commute monitoring
