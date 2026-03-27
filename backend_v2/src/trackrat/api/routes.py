@@ -56,7 +56,7 @@ async def get_route_history(
         ..., min_length=1, max_length=10, description="Destination station code"
     ),
     data_source: str = Query(
-        ..., description="Data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA)"
+        ..., description="Data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)"
     ),
     days: int = Query(30, ge=1, le=365, description="Number of days of history"),
     hours: int | None = Query(
@@ -98,7 +98,7 @@ async def get_route_history(
     )
 
     # Validate data_source
-    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA"]
+    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "MBTA"]
     if data_source not in valid_sources:
         raise HTTPException(
             status_code=400,
@@ -621,7 +621,7 @@ async def get_route_congestion(
     ),
     data_source: str | None = Query(
         None,
-        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA)",
+        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)",
     ),
     force_refresh: bool = Query(False, description="Force bypass cache and recompute"),
     db: AsyncSession = Depends(get_db),
@@ -845,7 +845,7 @@ async def get_segment_train_details(
     to_station: str,
     data_source: str | None = Query(
         None,
-        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA)",
+        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)",
     ),
     start_time: datetime | None = Query(None, description="Start time (ISO format)"),
     end_time: datetime | None = Query(None, description="End time (ISO format)"),
@@ -1114,7 +1114,7 @@ async def get_operations_summary(
     train_id: str | None = Query(None, description="Train ID (for train scope)"),
     data_source: str | None = Query(
         None,
-        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA)",
+        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)",
     ),
     db: AsyncSession = Depends(get_db),
 ) -> OperationsSummaryResponse:

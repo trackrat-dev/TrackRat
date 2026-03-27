@@ -60,6 +60,7 @@ GTFS_FEED_URLS = {
     "METRA": "https://schedules.metrarail.com/gtfs/schedule.zip",
     "WMATA": "https://api.wmata.com/gtfs/rail-gtfs-static.zip",
     "BART": "https://www.bart.gov/dev/schedules/google_transit.zip",
+    "MBTA": "https://cdn.mbta.com/MBTA_GTFS.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -77,6 +78,7 @@ DEFAULT_LINE_COLORS = {
     "METRA": "#00558A",  # Metra blue
     "WMATA": "#004E8C",  # WMATA blue
     "BART": "#009BDA",  # BART blue
+    "MBTA": "#80276C",  # MBTA purple
 }
 
 # NJT GTFS route_short_name to line code mapping

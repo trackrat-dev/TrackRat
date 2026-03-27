@@ -55,6 +55,18 @@ extension Stations {
         ("White Plains", "MWPL"),
         ("Croton-Harmon", "MCRH"),
 
+        // MBTA Commuter Rail hubs
+        ("South Station", "BOS"),
+        ("North Station", "BNST"),
+        ("Back Bay", "BBY"),
+        ("Worcester", "WOR"),
+        ("Providence", "PVD"),
+        ("Braintree", "BBRN"),
+        ("Lowell", "BLOW"),
+        ("Haverhill MBTA", "BHAV"),
+        ("Newburyport", "BNBP"),
+        ("Fitchburg", "BFIT"),
+
         // NYC Subway hubs
         ("Times Sq-42 St (1/2/3)", "S127"),
         ("14 St-Union Sq (4/5/6)", "S635"),

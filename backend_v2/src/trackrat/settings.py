@@ -78,6 +78,17 @@ class Settings(BaseSettings):
                 break
         return v
 
+    # MBTA API
+    mbta_api_key: str = Field(default="", description="MBTA API key")
+
+    @field_validator("mbta_api_key", mode="before")
+    @classmethod
+    def load_mbta_api_key(cls, v: str) -> str:
+        """Load MBTA API key from env vars."""
+        if v:
+            return v
+        return os.environ.get("MBTA_API_KEY", "")
+
     # Collection Settings
     discovery_interval_minutes: int = Field(
         default=30, description="Interval between discovery runs (minutes)", ge=1

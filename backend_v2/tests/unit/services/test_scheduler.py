@@ -97,6 +97,7 @@ class TestSchedulerService:
                 ("metra_collection", IntervalTrigger, {"minutes": 4}),
                 ("wmata_collection", IntervalTrigger, {"minutes": 3}),
                 ("bart_collection", IntervalTrigger, {"minutes": 4}),
+                ("mbta_collection", IntervalTrigger, {"minutes": 4}),
                 ("journey_update_check", IntervalTrigger, {"minutes": 5}),
                 ("live_activity_updates", IntervalTrigger, {"minutes": 1}),
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),
@@ -145,7 +146,7 @@ class TestSchedulerService:
 
         # --- 4-minute collector stagger group ---
         # PATH has no start_date offset (fires at T+0)
-        # LIRR, MNR, Subway are staggered 1, 2, 3 minutes from PATH
+        # LIRR, MNR, Subway, MBTA are staggered 1, 2, 3, 3.5 minutes from PATH
         four_min_jobs = [
             "path_collection",
             "lirr_collection",
@@ -153,6 +154,7 @@ class TestSchedulerService:
             "subway_collection",
             "metra_collection",
             "bart_collection",
+            "mbta_collection",
         ]
         for job_id in four_min_jobs:
             trigger = jobs[job_id].trigger

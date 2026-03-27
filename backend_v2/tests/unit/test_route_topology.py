@@ -410,7 +410,7 @@ class TestAllRoutesConsistency:
 
     def test_data_sources_are_valid(self):
         """Test that all data sources are valid."""
-        valid_sources = {"NJT", "PATH", "PATCO", "AMTRAK", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART"}
+        valid_sources = {"NJT", "PATH", "PATCO", "AMTRAK", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"}
         for route in ALL_ROUTES:
             assert (
                 route.data_source in valid_sources
