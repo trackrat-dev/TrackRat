@@ -59,6 +59,7 @@ GTFS_FEED_URLS = {
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
     "METRA": "https://schedules.metrarail.com/gtfs/schedule.zip",
     "WMATA": "https://api.wmata.com/gtfs/rail-gtfs-static.zip",
+    "BART": "https://www.bart.gov/dev/schedules/google_transit.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -75,6 +76,7 @@ DEFAULT_LINE_COLORS = {
     "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
     "METRA": "#00558A",  # Metra blue
     "WMATA": "#004E8C",  # WMATA blue
+    "BART": "#009BDA",  # BART blue
 }
 
 # NJT GTFS route_short_name to line code mapping

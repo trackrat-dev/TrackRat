@@ -96,6 +96,7 @@ class TestSchedulerService:
                 ("subway_collection", IntervalTrigger, {"minutes": 4}),
                 ("metra_collection", IntervalTrigger, {"minutes": 4}),
                 ("wmata_collection", IntervalTrigger, {"minutes": 3}),
+                ("bart_collection", IntervalTrigger, {"minutes": 4}),
                 ("journey_update_check", IntervalTrigger, {"minutes": 5}),
                 ("live_activity_updates", IntervalTrigger, {"minutes": 1}),
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),
@@ -151,6 +152,7 @@ class TestSchedulerService:
             "mnr_collection",
             "subway_collection",
             "metra_collection",
+            "bart_collection",
         ]
         for job_id in four_min_jobs:
             trigger = jobs[job_id].trigger
@@ -169,10 +171,12 @@ class TestSchedulerService:
         mnr_start = jobs["mnr_collection"].trigger.start_date
         subway_start = jobs["subway_collection"].trigger.start_date
         metra_start = jobs["metra_collection"].trigger.start_date
+        bart_start = jobs["bart_collection"].trigger.start_date
 
         assert (mnr_start - lirr_start).total_seconds() == pytest.approx(60, abs=1)
         assert (subway_start - mnr_start).total_seconds() == pytest.approx(60, abs=1)
         assert (metra_start - subway_start).total_seconds() == pytest.approx(30, abs=1)
+        assert (bart_start - metra_start).total_seconds() == pytest.approx(15, abs=1)
 
         # --- Discovery stagger group ---
         njt_disc = jobs["njt_train_discovery"].trigger

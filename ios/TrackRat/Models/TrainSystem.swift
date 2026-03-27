@@ -12,6 +12,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case subway = "SUBWAY"
     case metra = "METRA"
     case wmata = "WMATA"
+    case bart = "BART"
 
     var id: String { rawValue }
 
@@ -30,6 +31,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .subway: return "NYC Subway"
         case .metra: return "Metra"
         case .wmata: return "DC Metro"
+        case .bart: return "BART"
         }
     }
 
@@ -45,6 +47,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .subway: return "tram.fill"
         case .metra: return "tram.fill"
         case .wmata: return "tram.fill"
+        case .bart: return "tram"
         }
     }
 
@@ -60,22 +63,23 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .subway: return "#0039A6"  // MTA blue
         case .metra: return "#00558A"  // Metra blue
         case .wmata: return "#004E8C"  // WMATA blue
+        case .bart: return "#009BDA"   // BART blue
         }
     }
 
     /// Whether this system uses synthetic (non-user-facing) train IDs.
     /// These systems should display destination or line name instead of raw train ID.
-    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA"]
+    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART"]
 
     /// Systems where boarding track numbers are not meaningful to display.
     /// Subway and PATH use fixed platforms, not assignable tracks.
-    static let noTrackDisplaySources: Set<String> = ["PATH", "SUBWAY", "WMATA"]
+    static let noTrackDisplaySources: Set<String> = ["PATH", "SUBWAY", "WMATA", "BART"]
 
     /// Whether this system has real-time data capable of generating meaningful route alerts.
     /// Schedule-only systems (e.g., PATCO) cannot detect delays or cancellations.
     var supportsAlerts: Bool {
         switch self {
-        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata:
+        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart:
             return true
         case .patco:
             return false
@@ -85,7 +89,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
         switch self {
-        case .metra, .wmata: return true
+        case .metra, .wmata, .bart: return true
         default: return false
         }
     }
@@ -95,7 +99,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Commuter/intercity rail → Travel Time (delays are more variable and meaningful).
     var preferredHighlightMode: SegmentHighlightMode {
         switch self {
-        case .subway, .path, .patco, .wmata: return .health
+        case .subway, .path, .patco, .wmata, .bart: return .health
         case .njt, .amtrak, .lirr, .mnr, .metra: return .delays
         }
     }
@@ -234,6 +238,11 @@ extension TrainSystem {
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 38.900, longitude: -77.050),
                 span: MKCoordinateSpan(latitudeDelta: 0.55, longitudeDelta: 0.80)
+            )
+        case .bart:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 37.75, longitude: -122.20),
+                span: MKCoordinateSpan(latitudeDelta: 0.80, longitudeDelta: 0.80)
             )
         }
     }

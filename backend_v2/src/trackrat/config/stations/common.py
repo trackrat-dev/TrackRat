@@ -8,6 +8,11 @@ from trackrat.config.stations.amtrak import (
     AMTRAK_STATION_NAMES,
     map_amtrak_station_code,
 )
+from trackrat.config.stations.bart import (
+    BART_GTFS_STOP_TO_INTERNAL_MAP,
+    BART_STATION_COORDINATES,
+    BART_STATION_NAMES,
+)
 from trackrat.config.stations.lirr import (
     LIRR_GTFS_STOP_TO_INTERNAL_MAP,
     LIRR_STATION_NAMES,
@@ -57,6 +62,7 @@ STATION_NAMES: dict[str, str] = {
     **SUBWAY_STATION_NAMES,
     **METRA_STATION_NAMES,
     **WMATA_STATION_NAMES,
+    **BART_STATION_NAMES,
 }
 
 
@@ -1273,6 +1279,10 @@ _WMATA_STATION_COORDINATES: dict[str, dict[str, float]] = {
 }
 STATION_COORDINATES.update(_WMATA_STATION_COORDINATES)
 
+# Merge BART coordinates (stored as (lat, lon) tuples in bart module)
+for _code, (_lat, _lon) in BART_STATION_COORDINATES.items():
+    STATION_COORDINATES[_code] = {"lat": _lat, "lon": _lon}
+
 
 def get_station_coordinates(code: str) -> dict[str, float] | None:
     """Get station coordinates for mapping.
@@ -1334,7 +1344,7 @@ def map_gtfs_stop_to_station_code(
     Args:
         gtfs_stop_id: The GTFS stop_id (numeric for NJT, code for Amtrak)
         gtfs_stop_name: The GTFS stop_name for fallback matching
-        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", or "WMATA"
+        data_source: "NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "WMATA", or "BART"
 
     Returns:
         Our internal station code or None if no match found
@@ -1366,6 +1376,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "WMATA":
         # WMATA uses its native station codes (A01, B01, etc.) directly
         return WMATA_API_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+    if data_source == "BART":
+        # BART uses platform-level stop_ids (e.g., "A40-2") and parent codes
+        return BART_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "PATH":
         # PATH - first try by stop_id (GTFS uses same IDs as Transiter: 26722-26734)

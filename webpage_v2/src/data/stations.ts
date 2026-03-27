@@ -1387,6 +1387,59 @@ const _STATIONS_RAW: any[] = [
   { code: 'N11', name: 'Loudoun Gateway', system: 'WMATA' },
   { code: 'N12', name: 'Ashburn', system: 'WMATA' },
 
+
+  // BART Stations
+  { code: 'BART_12TH', name: '12th St. Oakland City Center', system: 'BART', coordinates: { lat: 37.803482, lon: -122.271630 } },
+  { code: 'BART_16TH', name: '16th St. Mission', system: 'BART', coordinates: { lat: 37.765173, lon: -122.419704 } },
+  { code: 'BART_19TH', name: '19th St. Oakland', system: 'BART', coordinates: { lat: 37.808078, lon: -122.268758 } },
+  { code: 'BART_24TH', name: '24th St. Mission', system: 'BART', coordinates: { lat: 37.752419, lon: -122.418468 } },
+  { code: 'BART_ANTC', name: 'Antioch', system: 'BART', coordinates: { lat: 37.995373, lon: -121.780346 } },
+  { code: 'BART_ASHB', name: 'Ashby', system: 'BART', coordinates: { lat: 37.853072, lon: -122.269771 } },
+  { code: 'BART_BALB', name: 'Balboa Park', system: 'BART', coordinates: { lat: 37.721747, lon: -122.447457 } },
+  { code: 'BART_BAYF', name: 'Bay Fair', system: 'BART', coordinates: { lat: 37.696908, lon: -122.126446 } },
+  { code: 'BART_BERY', name: 'Berryessa / North San Jose', system: 'BART', coordinates: { lat: 37.368473, lon: -121.874681 } },
+  { code: 'BART_CAST', name: 'Castro Valley', system: 'BART', coordinates: { lat: 37.690737, lon: -122.075601 } },
+  { code: 'BART_CIVC', name: 'Civic Center / UN Plaza', system: 'BART', coordinates: { lat: 37.779408, lon: -122.413826 } },
+  { code: 'BART_COLS', name: 'Coliseum', system: 'BART', coordinates: { lat: 37.753576, lon: -122.196716 } },
+  { code: 'BART_COLM', name: 'Colma', system: 'BART', coordinates: { lat: 37.684635, lon: -122.466157 } },
+  { code: 'BART_CONC', name: 'Concord', system: 'BART', coordinates: { lat: 37.973757, lon: -122.029072 } },
+  { code: 'BART_DALY', name: 'Daly City', system: 'BART', coordinates: { lat: 37.706259, lon: -122.468908 } },
+  { code: 'BART_DBRK', name: 'Downtown Berkeley', system: 'BART', coordinates: { lat: 37.870110, lon: -122.268109 } },
+  { code: 'BART_DELN', name: 'El Cerrito del Norte', system: 'BART', coordinates: { lat: 37.925184, lon: -122.316892 } },
+  { code: 'BART_DUBL', name: 'Dublin / Pleasanton', system: 'BART', coordinates: { lat: 37.701646, lon: -121.899229 } },
+  { code: 'BART_EMBR', name: 'Embarcadero', system: 'BART', coordinates: { lat: 37.792762, lon: -122.397037 } },
+  { code: 'BART_FRMT', name: 'Fremont', system: 'BART', coordinates: { lat: 37.557480, lon: -121.976619 } },
+  { code: 'BART_FTVL', name: 'Fruitvale', system: 'BART', coordinates: { lat: 37.774841, lon: -122.224081 } },
+  { code: 'BART_GLEN', name: 'Glen Park', system: 'BART', coordinates: { lat: 37.733235, lon: -122.433515 } },
+  { code: 'BART_HAYW', name: 'Hayward', system: 'BART', coordinates: { lat: 37.669699, lon: -122.086958 } },
+  { code: 'BART_LAFY', name: 'Lafayette', system: 'BART', coordinates: { lat: 37.893183, lon: -122.124620 } },
+  { code: 'BART_LAKE', name: 'Lake Merritt', system: 'BART', coordinates: { lat: 37.797322, lon: -122.265247 } },
+  { code: 'BART_MCAR', name: 'MacArthur', system: 'BART', coordinates: { lat: 37.828803, lon: -122.267105 } },
+  { code: 'BART_MLBR', name: 'Millbrae', system: 'BART', coordinates: { lat: 37.600237, lon: -122.386757 } },
+  { code: 'BART_MLPT', name: 'Milpitas', system: 'BART', coordinates: { lat: 37.410277, lon: -121.891081 } },
+  { code: 'BART_MONT', name: 'Montgomery St.', system: 'BART', coordinates: { lat: 37.789173, lon: -122.401587 } },
+  { code: 'BART_NBRK', name: 'North Berkeley', system: 'BART', coordinates: { lat: 37.874005, lon: -122.283523 } },
+  { code: 'BART_NCON', name: 'North Concord / Martinez', system: 'BART', coordinates: { lat: 38.003383, lon: -122.024512 } },
+  { code: 'BART_OAKL', name: 'Oakland International Airport', system: 'BART', coordinates: { lat: 37.713256, lon: -122.212237 } },
+  { code: 'BART_ORIN', name: 'Orinda', system: 'BART', coordinates: { lat: 37.878481, lon: -122.183667 } },
+  { code: 'BART_PCTR', name: 'Pittsburg Center', system: 'BART', coordinates: { lat: 38.016847, lon: -121.889062 } },
+  { code: 'BART_PHIL', name: 'Pleasant Hill / Contra Costa Centre', system: 'BART', coordinates: { lat: 37.928434, lon: -122.055971 } },
+  { code: 'BART_PITT', name: 'Pittsburg / Bay Point', system: 'BART', coordinates: { lat: 38.018910, lon: -121.944236 } },
+  { code: 'BART_PLZA', name: 'El Cerrito Plaza', system: 'BART', coordinates: { lat: 37.902610, lon: -122.298920 } },
+  { code: 'BART_POWL', name: 'Powell St.', system: 'BART', coordinates: { lat: 37.784606, lon: -122.407331 } },
+  { code: 'BART_RICH', name: 'Richmond', system: 'BART', coordinates: { lat: 37.936758, lon: -122.353047 } },
+  { code: 'BART_ROCK', name: 'Rockridge', system: 'BART', coordinates: { lat: 37.844755, lon: -122.251235 } },
+  { code: 'BART_SANL', name: 'San Leandro', system: 'BART', coordinates: { lat: 37.721784, lon: -122.160740 } },
+  { code: 'BART_SBRN', name: 'San Bruno', system: 'BART', coordinates: { lat: 37.637730, lon: -122.416326 } },
+  { code: 'BART_SFIA', name: 'San Francisco Intl Airport', system: 'BART', coordinates: { lat: 37.616091, lon: -122.391954 } },
+  { code: 'BART_SHAY', name: 'South Hayward', system: 'BART', coordinates: { lat: 37.634340, lon: -122.057182 } },
+  { code: 'BART_SSAN', name: 'South San Francisco', system: 'BART', coordinates: { lat: 37.664462, lon: -122.444211 } },
+  { code: 'BART_UCTY', name: 'Union City', system: 'BART', coordinates: { lat: 37.590735, lon: -122.017248 } },
+  { code: 'BART_WARM', name: 'Warm Springs / South Fremont', system: 'BART', coordinates: { lat: 37.502285, lon: -121.939395 } },
+  { code: 'BART_WCRK', name: 'Walnut Creek', system: 'BART', coordinates: { lat: 37.905791, lon: -122.067327 } },
+  { code: 'BART_WDUB', name: 'West Dublin / Pleasanton', system: 'BART', coordinates: { lat: 37.699721, lon: -121.928277 } },
+  { code: 'BART_WOAK', name: 'West Oakland', system: 'BART', coordinates: { lat: 37.804888, lon: -122.295151 } },
+
 ];
 export const STATIONS: Station[] = _STATIONS_RAW.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -1401,6 +1454,7 @@ export const PRIMARY_STATIONS: Record<TransitSystem, string[]> = {
   SUBWAY: ['S127', 'S631', 'S635', 'SR16', 'SA24', 'SD17', 'S128', 'SA15', 'SD24', 'SA41', 'SR31'],
   METRA: ['CUS', 'OTC', 'LSS', 'MILLENNIUM', 'AURORA', 'JOLIET', 'KENOSHA', 'ELBURN', 'FOXLAKE', 'GENEVA'],
   WMATA: ['A01', 'B01', 'B03', 'D03', 'C07', 'C05', 'A15', 'B11', 'K08', 'D13', 'J03', 'C15', 'E10', 'F11', 'N12', 'G05'],
+  BART: ['BART_EMBR', 'BART_MCAR', 'BART_12TH', 'BART_DALY', 'BART_SFIA', 'BART_RICH', 'BART_BERY', 'BART_DUBL', 'BART_BAYF', 'BART_MLBR'],
 };
 
 // System display names
@@ -1414,10 +1468,11 @@ export const SYSTEM_NAMES: Record<TransitSystem, string> = {
   SUBWAY: 'NYC Subway',
   METRA: 'Metra',
   WMATA: 'DC Metro',
+  BART: 'BART',
 };
 
 // System display order
-export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'WMATA', 'AMTRAK', 'PATCO', 'METRA'];
+export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'WMATA', 'BART', 'AMTRAK', 'PATCO', 'METRA'];
 
 // Helper functions
 export function getStationByCode(code: string): Station | undefined {
