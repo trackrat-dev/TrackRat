@@ -256,7 +256,7 @@ class WMATACollector:
             key = (pred.line, dest_code, pred.group)
             train_groups[key].append(pred)
 
-        for (line, dest_code, group), preds in train_groups.items():
+        for (line, dest_code, _group), preds in train_groups.items():
             if not preds:
                 continue
 
