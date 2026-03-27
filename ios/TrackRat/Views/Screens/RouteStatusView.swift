@@ -56,9 +56,9 @@ struct RouteStatusView: View {
                     }
                     operationsSummarySection
                     historySections
-                    alertSubscriptionSection
                     upcomingTrainsSection
                     serviceAlertsSection
+                    alertSubscriptionSection
                 }
                 .padding()
                 .animation(.easeInOut(duration: 0.3), value: viewModel.filterLoaded)
