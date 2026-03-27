@@ -1,12 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { TrainDetails } from '../types';
+import { TrainDetails, StationPredictionSupport } from '../types';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
 import { ShareButton } from '../components/ShareButton';
+import { DelayForecastCard } from '../components/DelayForecastCard';
+import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
+import { HistoricalPerformance } from '../components/HistoricalPerformance';
 import { getTodayDateString, formatTimeAgo, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
 
@@ -23,6 +26,7 @@ export function TrainDetailsPage() {
   const [train, setTrain] = useState<TrainDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [supportedStations, setSupportedStations] = useState<StationPredictionSupport[]>([]);
 
   const fetchTrainDetails = async () => {
     if (!trainId) return;
@@ -45,6 +49,13 @@ export function TrainDetailsPage() {
     const interval = setInterval(fetchTrainDetails, 30000);
     return () => clearInterval(interval);
   }, [trainId]);
+
+  // Fetch supported stations for track predictions (once, cached by API service)
+  useEffect(() => {
+    apiService.getSupportedStations()
+      .then(res => setSupportedStations(res.stations))
+      .catch(() => {}); // Fail silently — predictions are optional
+  }, []);
 
   // Attempt iOS deep link on mobile Safari — try to open in native app
   useEffect(() => {
@@ -122,17 +133,17 @@ export function TrainDetailsPage() {
     return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
   }
 
-  // Stations that support track predictions (backend has ml_enabled: true for these)
-  const supportedStations = new Set(['NY', 'NP', 'ND', 'HB', 'MP', 'ST', 'TR', 'PH', 'DV', 'DN', 'PL', 'LB', 'JA', 'JAM', 'GCT']);
-
   // Check if we should show track predictions
   // Use the user's boarding station (from route params), not the train's origin
   const predictionStationCode = from?.toUpperCase() || train.route.origin_code;
   const predictionStop = train.stops.find(s => s.station.code === predictionStationCode);
+  const stationSupported = supportedStations.some(
+    s => s.code === predictionStationCode && s.predictions_available
+  );
   const shouldShowPredictions =
-    supportedStations.has(predictionStationCode) &&  // Supported station
-    !predictionStop?.track &&                        // No track assigned
-    !train.is_cancelled;                             // Not cancelled
+    stationSupported &&              // Supported station (from API)
+    !predictionStop?.track &&        // No track assigned
+    !train.is_cancelled;             // Not cancelled
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -193,12 +204,29 @@ export function TrainDetailsPage() {
         </div>
       </div>
 
+      {/* Service alerts for this train's system */}
+      <ServiceAlertBanner
+        dataSource={train.data_source}
+        routeIds={train.line?.code ? [train.line.code] : undefined}
+      />
+
       {/* Track predictions */}
       {shouldShowPredictions && (
         <div className="mb-6">
           <TrackPredictionBar
             trainId={train.train_id}
             originStationCode={predictionStationCode}
+            journeyDate={train.journey_date}
+          />
+        </div>
+      )}
+
+      {/* Delay forecast */}
+      {!train.is_cancelled && (
+        <div className="mb-6">
+          <DelayForecastCard
+            trainId={train.train_id}
+            stationCode={predictionStationCode}
             journeyDate={train.journey_date}
           />
         </div>
@@ -228,6 +256,15 @@ export function TrainDetailsPage() {
           Train has later stops
         </div>
       )}
+
+      {/* Historical performance */}
+      <div className="mt-6">
+        <HistoricalPerformance
+          trainId={train.train_id}
+          fromStation={from?.toUpperCase()}
+          toStation={to?.toUpperCase()}
+        />
+      </div>
     </div>
   );
 }

@@ -45,16 +45,17 @@ API Service (fetch + cache)
 
 ## Design System
 
-### Colors (tailwind.config.js)
-- **Primary**: Purple gradient (`#667eea` → `#764ba2`)
-- **Accent**: Orange (`#ff6b35`)
-- **Background**: Near-black (`#0a0a0a`)
-- **Surface**: Dark gray (`#1a1a1a`)
-- **Status**: Success green, warning yellow, error red
+### Colors (index.css @theme)
+- **Primary**: Brown gradient (`#8B5A3C` → `#D4753E`)
+- **Accent**: Burnt orange (`#CC5500`)
+- **Background**: Light cream (`#F5F1E8`)
+- **Surface**: Darker cream (`#EAE3D2`)
+- **Success**: Olive green (`#6B8E23`), **Warning**: Orange (`#D4753E`), **Error**: Dark red (`#A52A2A`)
+- **Text**: Warm dark tones (`#2D1B0E` primary, `#4A3728` secondary, `#7B6C5D` muted)
 
 ### Glassmorphism Pattern
 ```tsx
-className="bg-surface/80 backdrop-blur-xl border border-white/10 rounded-2xl"
+className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl"
 ```
 
 ### Typography
@@ -72,8 +73,8 @@ className="bg-surface/80 backdrop-blur-xl border border-white/10 rounded-2xl"
 
 ### Base Configuration (src/services/api.ts)
 - **Production**: `https://apiv2.trackrat.net/api/v2`
-- **Staging**: Not used in web (iOS uses staging)
-- **Cache Duration**: 2 minutes for departure lists
+- **Override**: Set `VITE_API_BASE_URL` env var to use a different base URL (e.g., staging)
+- **Cache Duration**: 2 minutes for cacheable endpoints
 - **Cache Strategy**: In-memory Map with timestamp checks
 
 ### Polling Pattern
@@ -92,10 +93,18 @@ useEffect(() => {
 - User-friendly error messages via `ErrorMessage` component
 
 ### Endpoints Used
-1. `GET /trains/departures?from={code}&to={code}&limit=100`
-2. `GET /trains/{trainId}?date={YYYY-MM-DD}`
-3. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
-4. `GET /routes/summary?scope=route&from_station={code}&to_station={code}` (optional, fail-silent)
+1. `GET /trips/search?from={code}&to={code}&limit=50&hide_departed=true&date={YYYY-MM-DD}` (departure/trip list, optional date)
+2. `GET /trains/{trainId}?date={YYYY-MM-DD}` (train details, polled every 30s)
+3. `GET /trains/{trainId}/history?days=365&from_station={code}&to_station={code}` (historical performance)
+4. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
+5. `GET /predictions/supported-stations` (cached, determines which stations show predictions)
+6. `GET /predictions/delay?train_id={id}&station_code={code}&journey_date={date}` (delay forecast, fail-silent)
+7. `GET /routes/summary?scope=route&from_station={code}&to_station={code}` (optional, fail-silent)
+8. `GET /routes/summary?scope=network` (network-wide summary for status page)
+9. `GET /routes/history?from_station={code}&to_station={code}&data_source={src}&days={n}` (route performance)
+10. `GET /routes/congestion` (network congestion, 60s polling on status page)
+11. `GET /alerts/service?data_source={src}` (MTA service alerts, cached 2min)
+12. `POST /feedback` (user feedback submission)
 
 ## Key File Locations
 
@@ -111,12 +120,18 @@ webpage_v2/
 │   │   ├── TrackPredictionBar.tsx # Track/platform predictions
 │   │   ├── ShareButton.tsx  # Web Share API with clipboard fallback
 │   │   ├── LoadingSpinner.tsx
+│   │   ├── DelayForecastCard.tsx  # Delay/cancellation forecast
+│   │   ├── FeedbackModal.tsx     # In-app feedback submission
+│   │   ├── HistoricalPerformance.tsx # Train history + track distribution
+│   │   ├── ServiceAlertBanner.tsx # MTA service alerts (collapsible)
 │   │   └── ErrorMessage.tsx
 │   ├── pages/              # Route components
 │   │   ├── LandingPage.tsx        # Marketing landing (/, open-source section, iOS banner)
 │   │   ├── TripSelectionPage.tsx  # Station selection (/departures)
-│   │   ├── TrainListPage.tsx      # Departures for route (filter, summary, departed dimming)
-│   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (freshness, journey date)
+│   │   ├── TrainListPage.tsx      # Departures for route (filter, summary, date picker)
+│   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (predictions, history, alerts)
+│   │   ├── RouteStatusPage.tsx    # Route performance over time
+│   │   ├── NetworkStatusPage.tsx  # System-wide congestion overview
 │   │   └── FavoritesPage.tsx      # Manage favorite stations
 │   ├── services/
 │   │   ├── api.ts          # API client with caching
@@ -141,8 +156,10 @@ webpage_v2/
 
 - `/` - Landing page (marketing, open-source info, iOS banner)
 - `/departures` - Trip selection (origin + destination pickers, last route restore)
-- `/trains/:from/:to` - Train list for route (filter, summary, departed dimming)
-- `/train/:trainId/:from?/:to?` - Train details with stops
+- `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts)
+- `/train/:trainId/:from?/:to?` - Train details (predictions, history, alerts)
+- `/route/:from/:to` - Route performance history (7d/30d/90d)
+- `/status` - Network-wide congestion overview by system
 - `/favorites` - Manage favorite stations
 
 **Base Path**: `/` (hosted at `trackrat.net`)
@@ -217,8 +234,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
 - **No Push Notifications** - Browser notifications not implemented
-- **No Maps** - No Leaflet/Mapbox integration
-- **No Charts** - No historical performance visualization
+- **No Maps** - No Leaflet/Mapbox integration (list-based network status instead)
 - **No Backend Auth** - Stateless, no user accounts
 
 ### Intentional Simplifications
@@ -308,9 +324,15 @@ interface PlatformPrediction {
 
 ## Testing
 
-**Current Status**: No automated tests (MVP phase)
+**Framework**: Vitest 4.x + React Testing Library + jsdom
 
-**Future**: Add Vitest for unit tests, React Testing Library for components
+```bash
+npm test          # Run all tests once
+npm run test:watch  # Watch mode for development
+```
+
+**Test files**: Colocated with source (`*.test.ts` next to source file)
+**Setup**: `src/test/setup.ts` loads `@testing-library/jest-dom/vitest` matchers
 
 ## Naming Conventions
 

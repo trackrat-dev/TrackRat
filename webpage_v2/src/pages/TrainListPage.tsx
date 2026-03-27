@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
@@ -7,8 +7,9 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { TrainCard } from '../components/TrainCard';
 import { TransferTripCard } from '../components/TransferTripCard';
+import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { getStationByCode } from '../data/stations';
-import { formatTimeAgo } from '../utils/date';
+import { formatTimeAgo, getTodayDateString } from '../utils/date';
 
 /** Convert a direct TripOption (1 leg) to a Train for the existing TrainCard */
 function tripLegToTrain(trip: TripOption): Train {
@@ -40,8 +41,11 @@ export function TrainListPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [trainFilter, setTrainFilter] = useState('');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
+
+  const isViewingFutureDate = selectedDate !== null && selectedDate !== getTodayDateString();
 
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
@@ -62,7 +66,7 @@ export function TrainListPage() {
 
     try {
       setError(null);
-      const response = await apiService.searchTrips(from, to);
+      const response = await apiService.searchTrips(from, to, 50, selectedDate || undefined);
 
       // Split response into direct and transfer trips
       const directTrips = response.trips.filter(t => t.is_direct);
@@ -102,10 +106,12 @@ export function TrainListPage() {
       apiService.getRouteSummary(from, to).then(setSummary);
     }
 
-    // Poll every 30 seconds
-    const interval = setInterval(fetchTrains, 30000);
-    return () => clearInterval(interval);
-  }, [from, to]);
+    // Poll every 30 seconds — but not for future dates (no real-time data)
+    if (!isViewingFutureDate) {
+      const interval = setInterval(fetchTrains, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [from, to, selectedDate]);
 
   const filteredTrains = useMemo(() => {
     if (!trainFilter.trim()) return trains;
@@ -145,12 +151,25 @@ export function TrainListPage() {
         <h2 className="text-2xl font-bold text-text-primary text-center">
           {fromStation.name} → {toStation.name}
         </h2>
-        {lastUpdated && (
-          <div className="text-sm text-text-muted mt-2 text-center">
-            Updated {formatTimeAgo(lastUpdated.toISOString())}
-          </div>
-        )}
+        <div className="flex items-center justify-center gap-4 mt-2">
+          {lastUpdated && (
+            <span className="text-sm text-text-muted">
+              Updated {formatTimeAgo(lastUpdated.toISOString())}
+            </span>
+          )}
+          <Link
+            to={`/route/${from}/${to}`}
+            className="text-sm text-accent hover:text-accent/80 font-medium"
+          >
+            Route Status →
+          </Link>
+        </div>
       </div>
+
+      {/* Service alerts for MTA systems */}
+      {fromStation.system && (
+        <ServiceAlertBanner dataSource={fromStation.system} />
+      )}
 
       {/* Route summary (direct routes only) */}
       {summary && !isTransferSearch && (
@@ -178,6 +197,21 @@ export function TrainListPage() {
         </div>
       )}
 
+      {/* Future date banner */}
+      {isViewingFutureDate && (
+        <div className="mb-4 bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 flex items-center justify-between">
+          <div className="text-sm text-text-primary">
+            Showing scheduled departures for <span className="font-semibold">{selectedDate}</span>
+          </div>
+          <button
+            onClick={() => setSelectedDate(null)}
+            className="text-xs text-accent font-semibold hover:text-accent/80"
+          >
+            Back to today
+          </button>
+        </div>
+      )}
+
       <div className="flex gap-2 mb-4">
         <button
           onClick={fetchTrains}
@@ -186,6 +220,13 @@ export function TrainListPage() {
         >
           {loading ? '...' : '🔄'}
         </button>
+        <input
+          type="date"
+          value={selectedDate || getTodayDateString()}
+          min={getTodayDateString()}
+          onChange={(e) => setSelectedDate(e.target.value === getTodayDateString() ? null : e.target.value)}
+          className="py-3 px-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
         <div className="flex-1 relative">
           <input
             type="text"
