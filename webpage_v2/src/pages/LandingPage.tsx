@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 // Matches the base path in vite.config.ts and BrowserRouter basename
 const BASE = '/';
@@ -117,6 +118,13 @@ export function LandingPage() {
         <p className="text-lg md:text-xl text-text-muted mb-8 max-w-xl mx-auto">
           Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, DC Metro, BART, MBTA!
         </p>
+        <Link
+          to="/departures"
+          className="inline-flex items-center gap-2 px-6 py-3 mb-6 rounded-xl bg-accent text-white font-semibold text-lg hover:bg-accent/90 transition-colors shadow-lg"
+        >
+          Try the Web App
+          <span className="text-xs font-medium bg-white/20 px-2 py-0.5 rounded-full">BETA</span>
+        </Link>
         <div className="flex items-center justify-center gap-4">
           <a
             href={APP_STORE_URL}
