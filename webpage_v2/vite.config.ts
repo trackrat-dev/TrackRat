@@ -35,7 +35,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,gif,webp,woff,woff2}'],
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/apiv2\.trackrat\.net\/api\/v2\/.*/i,
+            urlPattern: /^https:\/\/(apiv2|staging\.apiv2)\.trackrat\.net\/api\/v2\/.*/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'trackrat-api-cache',
