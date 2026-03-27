@@ -1,6 +1,6 @@
 import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse } from '../types';
 
-const BASE_URL = 'https://apiv2.trackrat.net/api/v2';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
 
 interface CacheEntry<T> {

@@ -1,31 +1,55 @@
 #!/bin/bash
 # Build and deploy webpage_v2 to GCS
 #
-# Usage: ./scripts/deploy-webpage.sh [--dry-run]
+# Usage: ./scripts/deploy-webpage.sh [staging|production] [--dry-run]
 #
+# Defaults to production if no environment specified.
 # Prerequisites: gsutil authenticated, npm installed
 
 set -e
 
-BUCKET="gs://trackrat-links-2caf78c68fded156"
+PROD_BUCKET="gs://trackrat-links-2caf78c68fded156"
+STAGING_BUCKET="gs://trackrat-webpage-staging"
+PROD_API_URL="https://apiv2.trackrat.net/api/v2"
+STAGING_API_URL="https://staging.apiv2.trackrat.net/api/v2"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WEB_DIR="$PROJECT_DIR/webpage_v2"
 DIST_DIR="$WEB_DIR/dist"
 DRY_RUN=false
+ENVIRONMENT="production"
 
 for arg in "$@"; do
     case $arg in
         --dry-run)
             DRY_RUN=true
             ;;
+        staging)
+            ENVIRONMENT="staging"
+            ;;
+        production)
+            ENVIRONMENT="production"
+            ;;
         *)
             echo "❌ Unknown argument: $arg"
-            echo "Usage: $0 [--dry-run]"
+            echo "Usage: $0 [staging|production] [--dry-run]"
             exit 1
             ;;
     esac
 done
+
+if [[ "$ENVIRONMENT" == "staging" ]]; then
+    BUCKET="$STAGING_BUCKET"
+    API_URL="$STAGING_API_URL"
+else
+    BUCKET="$PROD_BUCKET"
+    API_URL="$PROD_API_URL"
+fi
+
+echo "Environment: $ENVIRONMENT"
+echo "Bucket: $BUCKET"
+echo "API URL: $API_URL"
 
 # Check prerequisites
 if ! command -v gsutil &>/dev/null; then
@@ -39,10 +63,10 @@ if ! command -v npm &>/dev/null; then
 fi
 
 # Build
-echo "📦 Building webpage_v2..."
+echo "📦 Building webpage_v2 ($ENVIRONMENT)..."
 cd "$WEB_DIR"
 npm ci --silent
-npm run build
+VITE_API_BASE_URL="$API_URL" npm run build
 
 if [[ ! -d "$DIST_DIR" ]]; then
     echo "❌ Build failed: dist/ directory not created"
@@ -70,5 +94,5 @@ else
     gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" "$BUCKET/registerSW.js" 2>/dev/null || true
     gsutil -m setmeta -h "Cache-Control:public, max-age=31536000, immutable" "$BUCKET/assets/**" 2>/dev/null || true
 
-    echo "✅ Deploy complete"
+    echo "✅ Deploy complete ($ENVIRONMENT)"
 fi
