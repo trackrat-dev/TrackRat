@@ -1094,7 +1094,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         if highlightModeChanged {
             context.coordinator.highlightMode = highlightMode
             // Update aggregated segment colors
-            for (_, overlay) in context.coordinator.aggregatedOverlayMap {
+            for overlay in context.coordinator.aggregatedOverlays {
                 if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer,
                    let segment = overlay.segment {
                     var color = context.coordinator.getColorForSegmentPublic(segment)
@@ -1116,21 +1116,23 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        // Diff aggregated overlays
-        let aggregatedToRemove = context.coordinator.currentAggregatedOverlayState.subtracting(desiredAggregatedState)
-        let aggregatedToAdd = desiredAggregatedState.subtracting(context.coordinator.currentAggregatedOverlayState)
-
         // Diff individual overlays
         let individualToRemove = context.coordinator.currentIndividualOverlayState.subtracting(desiredIndividualState)
         let individualToAdd = desiredIndividualState.subtracting(context.coordinator.currentIndividualOverlayState)
 
-        // Remove old aggregated overlays (batch operation)
-        if !aggregatedToRemove.isEmpty {
-            let overlaysToRemove = aggregatedToRemove.compactMap { context.coordinator.aggregatedOverlayMap[$0.segmentID] }
-            if !overlaysToRemove.isEmpty {
-                mapView.removeOverlays(overlaysToRemove)
+        // Rebuild aggregated overlays when any segment changed (merging makes incremental updates impractical)
+        let aggregatedChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState
+        if aggregatedChanged {
+            if !context.coordinator.aggregatedOverlays.isEmpty {
+                mapView.removeOverlays(context.coordinator.aggregatedOverlays)
+                context.coordinator.aggregatedOverlays = []
             }
-            aggregatedToRemove.forEach { context.coordinator.aggregatedOverlayMap.removeValue(forKey: $0.segmentID) }
+
+            let newOverlays = buildMergedAggregatedOverlays(from: segments, isDimmed: !individualSegments.isEmpty)
+            if !newOverlays.isEmpty {
+                mapView.addOverlays(newOverlays)
+            }
+            context.coordinator.aggregatedOverlays = newOverlays
         }
 
         // Remove old individual overlays (batch operation)
@@ -1140,35 +1142,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 mapView.removeOverlays(overlaysToRemove)
             }
             individualToRemove.forEach { context.coordinator.individualOverlayMap.removeValue(forKey: $0.segmentID) }
-        }
-
-        // Add new aggregated overlays (batch operation)
-        if !aggregatedToAdd.isEmpty {
-            let segmentsToAdd = segments.filter { aggregatedToAdd.contains(OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel)) }
-            let sortedSegments = segmentsToAdd.sorted { $0.congestionFactor < $1.congestionFactor }
-
-            var newOverlays: [SystemCongestionPolyline] = []
-            for segment in sortedSegments {
-                if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
-                   let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                    // Use GTFS shape data for smooth curves, fall back to straight line
-                    let directionOffset = segment.fromStation < segment.toStation ? 1 : -1
-                    var coordinates: [CLLocationCoordinate2D]
-                    if let shapeCoords = RouteShapes.coordinates(from: segment.fromStation, to: segment.toStation) {
-                        coordinates = offsetPolylineCoordinates(shapeCoords, offsetIndex: directionOffset)
-                    } else {
-                        coordinates = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: directionOffset)
-                    }
-                    let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
-                    polyline.segment = segment
-                    polyline.isDimmed = !individualSegments.isEmpty
-                    newOverlays.append(polyline)
-                    context.coordinator.aggregatedOverlayMap[segment.id] = polyline
-                }
-            }
-            if !newOverlays.isEmpty {
-                mapView.addOverlays(newOverlays)
-            }
         }
 
         // Add new individual overlays (batch operation)
@@ -1212,7 +1185,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         // Update dimming on existing aggregated overlays if individual segments changed
         if desiredIndividualState != context.coordinator.currentIndividualOverlayState {
             let shouldDim = !individualSegments.isEmpty
-            for overlay in context.coordinator.aggregatedOverlayMap.values {
+            for overlay in context.coordinator.aggregatedOverlays {
                 if overlay.isDimmed != shouldDim {
                     overlay.isDimmed = shouldDim
                     if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer {
@@ -1316,7 +1289,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         var highlightMode: SegmentHighlightMode = .delays
 
         var currentAggregatedOverlayState: Set<OverlayIdentity> = []
-        var aggregatedOverlayMap: [String: SystemCongestionPolyline] = [:]
+        var aggregatedOverlays: [SystemCongestionPolyline] = []
         var currentIndividualOverlayState: Set<OverlayIdentity> = []
         var individualOverlayMap: [String: IndividualJourneyPolyline] = [:]
 
@@ -1542,10 +1515,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 }
             }
 
-            // Then check aggregated segment polylines
-            for (_, polyline) in aggregatedOverlayMap {
+            // Then check aggregated segment polylines (may be merged)
+            for polyline in aggregatedOverlays {
                 if isCoordinate(tapCoordinate, nearPolyline: polyline, inMapView: mapView) {
-                    if let segment = polyline.segment {
+                    if let segment = closestSegment(at: tapCoordinate, in: polyline, mapView: mapView) {
                         onSegmentTap(segment)
                         return
                     }
@@ -1570,6 +1543,31 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 }
             }
             return false
+        }
+
+        /// For merged polylines, find which constituent segment the tap is closest to.
+        private func closestSegment(at coordinate: CLLocationCoordinate2D, in polyline: SystemCongestionPolyline, mapView: MKMapView) -> CongestionSegment? {
+            guard polyline.segments.count > 1 else { return polyline.segment }
+
+            let tapPoint = mapView.convert(coordinate, toPointTo: mapView)
+            var bestSegment: CongestionSegment?
+            var bestDistance = CGFloat.infinity
+
+            for segment in polyline.segments {
+                guard let fromCoord = Stations.getCoordinates(for: segment.fromStation),
+                      let toCoord = Stations.getCoordinates(for: segment.toStation) else { continue }
+                let midCoord = CLLocationCoordinate2D(
+                    latitude: (fromCoord.latitude + toCoord.latitude) / 2,
+                    longitude: (fromCoord.longitude + toCoord.longitude) / 2
+                )
+                let midPoint = mapView.convert(midCoord, toPointTo: mapView)
+                let dist = hypot(tapPoint.x - midPoint.x, tapPoint.y - midPoint.y)
+                if dist < bestDistance {
+                    bestDistance = dist
+                    bestSegment = segment
+                }
+            }
+            return bestSegment
         }
 
         private func distanceFromPoint(_ point: CGPoint, toLineSegmentBetween p1: CGPoint, and p2: CGPoint) -> CGFloat {
@@ -1656,6 +1654,154 @@ func offsetPolylineCoordinates(_ coordinates: [CLLocationCoordinate2D], offsetIn
     }
 }
 
+// MARK: - Segment Merging
+
+/// Groups adjacent segments with the same visual properties into continuous polylines.
+/// Walks each route line in RouteTopology, finds runs of consecutive segments that share
+/// the same congestion level / cancellation bracket / dash style, and concatenates their
+/// coordinates into a single MKPolyline. This dramatically reduces overlay count and
+/// eliminates visual seams at station boundaries.
+func buildMergedAggregatedOverlays(
+    from segments: [CongestionSegment],
+    isDimmed: Bool
+) -> [SystemCongestionPolyline] {
+    guard !segments.isEmpty else { return [] }
+
+    // Index segments by canonical station-pair key for O(1) lookup
+    var segmentIndex: [String: CongestionSegment] = [:]
+    for segment in segments {
+        let key = canonicalSegmentKey(segment.fromStation, segment.toStation, segment.dataSource)
+        segmentIndex[key] = segment
+    }
+
+    var usedSegmentIDs = Set<String>()
+    var result: [SystemCongestionPolyline] = []
+
+    // Walk each route line and find runs of adjacent same-visual segments
+    for route in RouteTopology.allRoutes {
+        var currentRun: [(segment: CongestionSegment, fromCode: String, toCode: String)] = []
+        var currentKey: String?
+
+        for i in 0..<(route.stationCodes.count - 1) {
+            let fromCode = route.stationCodes[i]
+            let toCode = route.stationCodes[i + 1]
+            let lookupKey = canonicalSegmentKey(fromCode, toCode, route.dataSource)
+
+            if let segment = segmentIndex[lookupKey], !usedSegmentIDs.contains(segment.id) {
+                let vizKey = visualMergeKey(for: segment)
+                if vizKey == currentKey {
+                    currentRun.append((segment, fromCode, toCode))
+                } else {
+                    flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedSegmentIDs)
+                    currentRun = [(segment, fromCode, toCode)]
+                    currentKey = vizKey
+                }
+            } else {
+                flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedSegmentIDs)
+                currentRun = []
+                currentKey = nil
+            }
+        }
+        flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedSegmentIDs)
+    }
+
+    // Handle segments not matched to any route line (rendered as individual overlays)
+    for segment in segments where !usedSegmentIDs.contains(segment.id) {
+        if let overlay = createSingleSegmentOverlay(segment, isDimmed: isDimmed) {
+            result.append(overlay)
+        }
+    }
+
+    // Sort by congestion factor so lower-congestion segments draw first (higher on top)
+    result.sort { ($0.segment?.congestionFactor ?? 0) < ($1.segment?.congestionFactor ?? 0) }
+    return result
+}
+
+/// Alphabetically-ordered canonical key for a station pair + data source.
+private func canonicalSegmentKey(_ stationA: String, _ stationB: String, _ dataSource: String) -> String {
+    let (a, b) = stationA < stationB ? (stationA, stationB) : (stationB, stationA)
+    return "\(a)-\(b)-\(dataSource)"
+}
+
+/// Key that determines whether two segments can be visually merged (same color, dash, etc.).
+private func visualMergeKey(for segment: CongestionSegment) -> String {
+    let cancBracket = segment.cancellationRate > 20 ? 2 : segment.cancellationRate > 10 ? 1 : 0
+    let dashed = segment.dashPattern != nil
+    return "\(segment.congestionLevel)-\(cancBracket)-\(dashed)"
+}
+
+/// Flush a run of adjacent segments into a single merged overlay.
+private func flushRun(
+    _ run: inout [(segment: CongestionSegment, fromCode: String, toCode: String)],
+    isDimmed: Bool,
+    into result: inout [SystemCongestionPolyline],
+    used: inout Set<String>
+) {
+    guard !run.isEmpty else { return }
+    if let overlay = createMergedOverlay(from: run, isDimmed: isDimmed) {
+        result.append(overlay)
+        for item in run { used.insert(item.segment.id) }
+    }
+    run = []
+}
+
+/// Create a single polyline from a run of adjacent segments by concatenating their coordinates.
+private func createMergedOverlay(
+    from run: [(segment: CongestionSegment, fromCode: String, toCode: String)],
+    isDimmed: Bool
+) -> SystemCongestionPolyline? {
+    guard !run.isEmpty else { return nil }
+
+    var allCoordinates: [CLLocationCoordinate2D] = []
+
+    for (i, item) in run.enumerated() {
+        var segCoords: [CLLocationCoordinate2D]
+        if let shapeCoords = RouteShapes.coordinates(from: item.fromCode, to: item.toCode) {
+            segCoords = shapeCoords
+        } else if let fromCoord = Stations.getCoordinates(for: item.fromCode),
+                  let toCoord = Stations.getCoordinates(for: item.toCode) {
+            segCoords = [fromCoord, toCoord]
+        } else {
+            continue
+        }
+        // Skip the shared station coordinate at the join point
+        if i > 0 && !allCoordinates.isEmpty && !segCoords.isEmpty {
+            segCoords = Array(segCoords.dropFirst())
+        }
+        allCoordinates.append(contentsOf: segCoords)
+    }
+
+    guard allCoordinates.count >= 2 else { return nil }
+
+    // Apply consistent perpendicular offset across the entire merged polyline
+    let directionOffset = run.first!.fromCode < run.last!.toCode ? 1 : -1
+    let offsetCoords = offsetPolylineCoordinates(allCoordinates, offsetIndex: directionOffset)
+
+    let polyline = SystemCongestionPolyline(coordinates: offsetCoords, count: offsetCoords.count)
+    polyline.segments = run.map { $0.segment }
+    polyline.isDimmed = isDimmed
+    return polyline
+}
+
+/// Create a single-segment overlay (for segments not on any known route line).
+private func createSingleSegmentOverlay(_ segment: CongestionSegment, isDimmed: Bool) -> SystemCongestionPolyline? {
+    guard let fromCoord = Stations.getCoordinates(for: segment.fromStation),
+          let toCoord = Stations.getCoordinates(for: segment.toStation) else { return nil }
+
+    let directionOffset = segment.fromStation < segment.toStation ? 1 : -1
+    let coordinates: [CLLocationCoordinate2D]
+    if let shapeCoords = RouteShapes.coordinates(from: segment.fromStation, to: segment.toStation) {
+        coordinates = offsetPolylineCoordinates(shapeCoords, offsetIndex: directionOffset)
+    } else {
+        coordinates = createOffsetCoordinates(from: fromCoord, to: toCoord, offsetIndex: directionOffset)
+    }
+
+    let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
+    polyline.segments = [segment]
+    polyline.isDimmed = isDimmed
+    return polyline
+}
+
 // MARK: - Outlined Polyline Renderer
 
 /// Draws a dark border stroke behind the colored fill stroke for better contrast on any map background.
@@ -1665,6 +1811,10 @@ class OutlinedPolylineRenderer: MKPolylineRenderer {
     var borderWidth: CGFloat = 1.5
 
     override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        // Round caps/joins for smooth endpoints and transitions
+        lineCap = .round
+        lineJoin = .round
+
         let originalColor = strokeColor
         let originalWidth = lineWidth
         let originalAlpha = alpha
@@ -1691,8 +1841,12 @@ class OutlinedPolylineRenderer: MKPolylineRenderer {
 // MARK: - Custom Polyline Classes
 
 class SystemCongestionPolyline: MKPolyline {
-    var segment: CongestionSegment?
+    /// All segments represented by this polyline (merged adjacent same-visual segments).
+    var segments: [CongestionSegment] = []
     var isDimmed: Bool = false
+
+    /// First (or only) segment — used for color/dash lookups since all merged segments share the same visual properties.
+    var segment: CongestionSegment? { segments.first }
 }
 
 class IndividualJourneyPolyline: MKPolyline {
