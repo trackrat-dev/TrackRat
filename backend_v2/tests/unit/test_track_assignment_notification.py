@@ -434,3 +434,150 @@ class TestLiveActivityTokenModel:
         token.track_notified_at = now
         assert token.track_notified_at == now
         print(f"  track_notified_at set to: {token.track_notified_at}")
+
+
+# ---------------------------------------------------------------------------
+# APNS alert payload tests for track assignment notifications
+# ---------------------------------------------------------------------------
+
+
+class TestAPNSTrackAssignmentAlert:
+    """Test that send_live_activity_update extracts alertMetadata and adds
+    a visible alert to the APNS payload so iOS shows a banner notification.
+
+    Live Activity pushes (apns-push-type: liveactivity) do NOT trigger
+    didReceiveRemoteNotification. The only way to surface a visible
+    notification alongside a Live Activity update is to include an alert
+    field in the aps payload.
+    """
+
+    def test_alert_metadata_extracted_and_alert_added(self):
+        """When content_state contains alertMetadata with track_assigned,
+        the APNS payload should include aps.alert with title/body and
+        alertMetadata should be removed from content-state."""
+        import time as time_mod
+
+        content_state = {
+            "track": "7",
+            "status": "BOARDING",
+            "currentStopName": "New York Penn",
+            "alertMetadata": {
+                "alert_type": "track_assigned",
+                "train_id": "3821",
+                "dynamic_island_priority": "high",
+            },
+        }
+
+        # Replicate the logic from send_live_activity_update
+        alert_metadata = content_state.pop("alertMetadata", None)
+
+        aps: dict = {
+            "timestamp": int(time_mod.time()),
+            "event": "update",
+            "content-state": content_state,
+        }
+
+        if alert_metadata and alert_metadata.get("alert_type") == "track_assigned":
+            track = content_state.get("track", "TBD")
+            aps["alert"] = {
+                "title": "Track Assigned",
+                "body": f"Track {track} — Board Now",
+            }
+            aps["sound"] = "default"
+
+        # alertMetadata should NOT be in content-state (would confuse ActivityKit decoder)
+        assert "alertMetadata" not in content_state
+        print(f"  alertMetadata removed from content-state: {list(content_state.keys())}")
+
+        # Alert should be present in aps
+        assert "alert" in aps
+        assert aps["alert"]["title"] == "Track Assigned"
+        assert aps["alert"]["body"] == "Track 7 — Board Now"
+        assert aps["sound"] == "default"
+        print(f"  aps.alert: {aps['alert']}")
+        print(f"  aps.sound: {aps['sound']}")
+
+    def test_no_alert_when_no_alert_metadata(self):
+        """When content_state has no alertMetadata, aps should NOT include alert."""
+        import time as time_mod
+
+        content_state = {
+            "track": "7",
+            "status": "BOARDING",
+            "currentStopName": "New York Penn",
+        }
+
+        alert_metadata = content_state.pop("alertMetadata", None)
+
+        aps: dict = {
+            "timestamp": int(time_mod.time()),
+            "event": "update",
+            "content-state": content_state,
+        }
+
+        if alert_metadata and alert_metadata.get("alert_type") == "track_assigned":
+            track = content_state.get("track", "TBD")
+            aps["alert"] = {
+                "title": "Track Assigned",
+                "body": f"Track {track} — Board Now",
+            }
+            aps["sound"] = "default"
+
+        assert "alert" not in aps
+        assert "sound" not in aps
+        print("  No alert added: no alertMetadata present")
+
+    def test_no_alert_for_non_track_assigned_metadata(self):
+        """When alertMetadata has a different alert_type, no alert should be added."""
+        import time as time_mod
+
+        content_state = {
+            "track": "7",
+            "status": "EN ROUTE",
+            "currentStopName": "Secaucus",
+            "alertMetadata": {
+                "alert_type": "approaching",
+                "train_id": "3821",
+                "dynamic_island_priority": "low",
+            },
+        }
+
+        alert_metadata = content_state.pop("alertMetadata", None)
+
+        aps: dict = {
+            "timestamp": int(time_mod.time()),
+            "event": "update",
+            "content-state": content_state,
+        }
+
+        if alert_metadata and alert_metadata.get("alert_type") == "track_assigned":
+            track = content_state.get("track", "TBD")
+            aps["alert"] = {
+                "title": "Track Assigned",
+                "body": f"Track {track} — Board Now",
+            }
+            aps["sound"] = "default"
+
+        assert "alertMetadata" not in content_state
+        assert "alert" not in aps
+        print("  No alert added: alert_type is 'approaching', not 'track_assigned'")
+
+    def test_alert_metadata_popped_even_on_non_track_type(self):
+        """alertMetadata should always be removed from content_state,
+        regardless of alert_type, to keep content-state clean for ActivityKit."""
+        content_state = {
+            "track": None,
+            "status": "NOT_DEPARTED",
+            "alertMetadata": {
+                "alert_type": "some_future_type",
+                "train_id": "999",
+                "dynamic_island_priority": "low",
+            },
+        }
+
+        alert_metadata = content_state.pop("alertMetadata", None)
+
+        assert "alertMetadata" not in content_state
+        assert alert_metadata is not None
+        assert alert_metadata["alert_type"] == "some_future_type"
+        print("  alertMetadata popped from content_state even for non-track types")

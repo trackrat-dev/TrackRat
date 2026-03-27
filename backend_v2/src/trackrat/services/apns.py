@@ -135,14 +135,30 @@ class SimpleAPNSService:
             logger.warning("apns_send_skipped", reason="Not configured")
             return False
 
+        # Extract alertMetadata before building payload (not part of ContentState)
+        alert_metadata = content_state.pop("alertMetadata", None)
+
         # Build minimal Live Activity payload
-        payload = {
-            "aps": {
-                "timestamp": int(time.time()),
-                "event": "update",
-                "content-state": content_state,
-            }
+        aps: dict[str, Any] = {
+            "timestamp": int(time.time()),
+            "event": "update",
+            "content-state": content_state,
         }
+
+        # Add alert for track assignments so iOS shows a banner notification.
+        # Live Activity pushes (apns-push-type: liveactivity) do NOT trigger
+        # didReceiveRemoteNotification — the alert field in the aps payload
+        # is the only way to surface a visible notification alongside the
+        # Live Activity widget update.
+        if alert_metadata and alert_metadata.get("alert_type") == "track_assigned":
+            track = content_state.get("track", "TBD")
+            aps["alert"] = {
+                "title": "Track Assigned",
+                "body": f"Track {track} — Board Now",
+            }
+            aps["sound"] = "default"
+
+        payload = {"aps": aps}
 
         # Log the full payload for debugging
         logger.debug(
