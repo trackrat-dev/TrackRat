@@ -356,6 +356,16 @@ class ApiCacheService:
             {"from_station": "PHO", "to_station": None},
             {"from_station": "PNK", "to_station": None},
             {"from_station": "PWC", "to_station": None},
+            # Subway terminals — uncached subway queries are expensive due to
+            # high stop counts and large GTFS static datasets
+            {"from_station": "S101", "to_station": None},  # South Ferry (1)
+            {"from_station": "S142", "to_station": None},  # 242 St (1)
+            {"from_station": "SL29", "to_station": None},  # 8 Av (L)
+            {"from_station": "SL01", "to_station": None},  # Canarsie (L)
+            {"from_station": "S701", "to_station": None},  # Hudson Yards (7)
+            {"from_station": "S726", "to_station": None},  # Flushing (7)
+            {"from_station": "SR01", "to_station": None},  # Coney Island (N)
+            {"from_station": "SD43", "to_station": None},  # Ditmars Blvd (N)
         ]
 
         # Generate both hide_departed variants for each route

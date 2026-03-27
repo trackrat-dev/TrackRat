@@ -594,11 +594,11 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_departure_responses(mock_db)
 
-                # 14 routes × 2 hide_departed variants = 28 calls
-                # (8 with destination + 6 origin-only)
-                assert mock_compute.call_count == 28
+                # 22 routes × 2 hide_departed variants = 44 calls
+                # (8 with destination + 6 origin-only + 8 subway terminals)
+                assert mock_compute.call_count == 44
 
-                assert mock_store.call_count == 28
+                assert mock_store.call_count == 44
 
                 # Verify first few routes have correct structure including data_sources key
                 first_call_params = mock_compute.call_args_list[0][0][1]
@@ -612,7 +612,7 @@ class TestApiCacheService:
                 }
 
                 # Verify all calls include the data_sources key
-                for i in range(28):
+                for i in range(44):
                     actual_params = mock_compute.call_args_list[i][0][1]
                     assert (
                         "data_sources" in actual_params
@@ -626,20 +626,20 @@ class TestApiCacheService:
     async def test_precompute_departure_handles_errors(self, cache_service, mock_db):
         """Test that departure pre-computation continues even if some computations fail."""
         with patch.object(cache_service, "_compute_departure_response") as mock_compute:
-            # 28 calls: first fails, rest succeed
-            # (14 routes × 2 hide_departed variants = 28)
+            # 44 calls: first fails, rest succeed
+            # (22 routes × 2 hide_departed variants = 44)
             mock_compute.side_effect = [
                 Exception("Computation failed"),
-            ] + [{"departures": []}] * 27
+            ] + [{"departures": []}] * 43
 
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_departure_responses(mock_db)
 
-                # 14 routes × 2 hide_departed variants = 28 calls
-                assert mock_compute.call_count == 28
+                # 22 routes × 2 hide_departed variants = 44 calls
+                assert mock_compute.call_count == 44
 
-                # Only 27 successful (first one failed)
-                assert mock_store.call_count == 27
+                # Only 43 successful (first one failed)
+                assert mock_store.call_count == 43
 
     @pytest.mark.asyncio
     async def test_compute_departure_response(self, cache_service, mock_db):

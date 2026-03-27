@@ -674,11 +674,28 @@ async def get_route_congestion(
                 )
 
     analyzer = CongestionAnalyzer()
-    aggregated_segments, journeys, individual_segments = (
-        await analyzer.get_network_congestion_with_trains(
-            db, effective_time_window, max_per_segment, data_source
+    try:
+        aggregated_segments, journeys, individual_segments = (
+            await analyzer.get_network_congestion_with_trains(
+                db, effective_time_window, max_per_segment, data_source
+            )
         )
-    )
+    except Exception as e:
+        # Statement timeout or other DB error on live computation path.
+        # The precompute job will populate the cache on next run.
+        error_name = type(e).__name__
+        if "QueryCanceled" in error_name or "statement timeout" in str(e).lower():
+            logger.warning(
+                "congestion_query_timeout",
+                data_source=data_source,
+                time_window_hours=effective_time_window,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Congestion data is temporarily unavailable. Please retry shortly.",
+                headers={"Retry-After": "60"},
+            )
+        raise
 
     # Filter out segments containing "SAN" station code - collision between
     # San Diego Santa Fe Depot (Pacific Surfliner) and Sanford, FL (Silver Service)

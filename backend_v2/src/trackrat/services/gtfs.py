@@ -1300,6 +1300,10 @@ class GTFSService:
                 )
             )
             .order_by(GTFSStopTime.departure_time)
+            # Cap results to avoid fetching hundreds of trips for high-volume
+            # providers like SUBWAY. Callers apply their own limit (typically
+            # 50-200) after merge/filter, so 250 provides ample headroom.
+            .limit(250)
         )
 
         trips_data = result.all()
