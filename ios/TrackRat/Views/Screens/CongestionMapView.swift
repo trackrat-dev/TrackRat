@@ -1104,7 +1104,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
                         color = context.coordinator.escalateColorPublic(color)
                     }
                     renderer.strokeColor = color
-                    renderer.lineWidth = context.coordinator.getSegmentLineWidthPublic(segment)
                 }
             }
             // Update individual segment colors
@@ -1152,9 +1151,14 @@ struct SystemCongestionMapView: UIViewRepresentable {
             for segment in sortedSegments {
                 if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                    let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                    // Offset based on direction so opposite-direction segments don't overlap
+                    // Use GTFS shape data for smooth curves, fall back to straight line
                     let directionOffset = segment.fromStation < segment.toStation ? 1 : -1
-                    let coordinates = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: directionOffset)
+                    var coordinates: [CLLocationCoordinate2D]
+                    if let shapeCoords = RouteShapes.coordinates(from: segment.fromStation, to: segment.toStation) {
+                        coordinates = offsetPolylineCoordinates(shapeCoords, offsetIndex: directionOffset)
+                    } else {
+                        coordinates = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: directionOffset)
+                    }
                     let polyline = SystemCongestionPolyline(coordinates: coordinates, count: coordinates.count)
                     polyline.segment = segment
                     polyline.isDimmed = !individualSegments.isEmpty
@@ -1187,7 +1191,12 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     let offsetIndex = segmentCounts[segmentKey, default: 0]
                     segmentCounts[segmentKey] = offsetIndex + 1
 
-                    let offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
+                    var offsetCoords: [CLLocationCoordinate2D]
+                    if let shapeCoords = RouteShapes.coordinates(from: individualSegment.fromStation, to: individualSegment.toStation) {
+                        offsetCoords = offsetPolylineCoordinates(shapeCoords, offsetIndex: offsetIndex)
+                    } else {
+                        offsetCoords = createOffsetCoordinates(from: fromCoords, to: toCoords, offsetIndex: offsetIndex)
+                    }
                     let polyline = IndividualJourneyPolyline(coordinates: offsetCoords, count: offsetCoords.count)
                     polyline.individualSegment = individualSegment
                     polyline.offsetIndex = offsetIndex
@@ -1229,9 +1238,22 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 let filteredRoutes = RouteTopology.allRoutes.filter { selectedSystemStrings.contains($0.dataSource) }
 
                 var newRouteOverlays: [RouteTopologyPolyline] = []
+                var drawnSegments = Set<String>()
                 for route in filteredRoutes {
-                    for (from, to) in route.coordinatePairs {
-                        let coordinates = [from, to]
+                    for i in 0..<(route.stationCodes.count - 1) {
+                        let fromCode = route.stationCodes[i]
+                        let toCode = route.stationCodes[i + 1]
+
+                        // Deduplicate shared track segments (e.g., NEC and NJCL share NY→RH)
+                        // Use canonical ordering so A→B and B→A are the same segment
+                        let segmentKey = fromCode < toCode ? "\(fromCode)-\(toCode)" : "\(toCode)-\(fromCode)"
+                        guard drawnSegments.insert(segmentKey).inserted else { continue }
+
+                        guard let fromCoord = Stations.getCoordinates(for: fromCode),
+                              let toCoord = Stations.getCoordinates(for: toCode) else { continue }
+
+                        // Use GTFS shape data for smooth curves, fall back to straight line
+                        let coordinates = RouteShapes.coordinates(from: fromCode, to: toCode) ?? [fromCoord, toCoord]
                         let polyline = RouteTopologyPolyline(coordinates: coordinates, count: coordinates.count)
                         polyline.routeId = route.id
                         polyline.routeName = route.name
@@ -1337,7 +1359,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
             // Handle aggregated segment polylines
             if let polyline = overlay as? SystemCongestionPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
+                let renderer = OutlinedPolylineRenderer(polyline: polyline)
 
                 if let segment = polyline.segment {
                     // Base color from delay/frequency metrics
@@ -1351,7 +1373,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     }
 
                     renderer.strokeColor = color
-                    renderer.lineWidth = getSegmentLineWidth(segment)
+                    renderer.lineWidth = 6.0
 
                     // Dash pattern indicates cancellation severity (>5%)
                     if let dashPattern = segment.dashPattern {
@@ -1360,6 +1382,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
                 } else {
                     renderer.strokeColor = UIColor.gray
+                    renderer.lineWidth = 6.0
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8
                 }
 
@@ -1420,18 +1443,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
         
         // MARK: - Helper Methods
-        private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
-            if factor < 1.05 {
-                return 5
-            } else if factor < 1.25 {
-                return 7
-            } else if factor < 2.0 {
-                return 8
-            } else {
-                return 9
-            }
-        }
-        
         private func getUIColor(for congestionFactor: Double) -> UIColor {
             CongestionColors.color(forCongestionFactor: congestionFactor)
         }
@@ -1470,30 +1481,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         /// Public accessor for getColorForIndividualSegment (used by updateUIView for mode changes)
         func getColorForIndividualSegmentPublic(_ segment: IndividualJourneySegment) -> UIColor {
             getColorForIndividualSegment(segment)
-        }
-
-        /// Get line width for segment based on highlight mode
-        private func getSegmentLineWidth(_ segment: CongestionSegment) -> CGFloat {
-            guard highlightMode != .off else { return 0 }
-            switch segment.preferredHighlightMode {
-            case .health:
-                // Use frequency factor for line width (thicker = worse service)
-                // Fall back to delay-based width when no frequency baseline exists yet
-                guard let factor = segment.frequencyFactor else {
-                    return getCongestionLineWidth(segment.congestionFactor)
-                }
-                if factor >= 0.9 { return 5 }
-                else if factor >= 0.7 { return 7 }
-                else if factor >= 0.5 { return 8 }
-                else { return 9 }
-            case .delays, .off:
-                return getCongestionLineWidth(segment.congestionFactor)
-            }
-        }
-
-        /// Public accessor for getSegmentLineWidth (used by updateUIView for mode changes)
-        func getSegmentLineWidthPublic(_ segment: CongestionSegment) -> CGFloat {
-            getSegmentLineWidth(segment)
         }
 
         /// Escalate a health color by one level toward red for cancellation impact
@@ -1640,6 +1627,65 @@ func createOffsetCoordinates(from: CLLocationCoordinate2D, to: CLLocationCoordin
     )
 
     return [offsetFrom, offsetTo]
+}
+
+/// Offset a multi-point polyline perpendicularly (for separating overlapping segments).
+/// Uses the overall segment direction for a consistent offset across all points.
+func offsetPolylineCoordinates(_ coordinates: [CLLocationCoordinate2D], offsetIndex: Int) -> [CLLocationCoordinate2D] {
+    guard offsetIndex != 0, coordinates.count >= 2 else { return coordinates }
+
+    let offsetDistance = Double(offsetIndex) * 0.00015
+
+    // Use overall direction (first to last point) for consistent offset
+    let first = coordinates.first!
+    let last = coordinates.last!
+    let (refFrom, refTo) = first.longitude <= last.longitude ? (first, last) : (last, first)
+
+    let dx = refTo.longitude - refFrom.longitude
+    let dy = refTo.latitude - refFrom.latitude
+    let perpDx = -dy
+    let perpDy = dx
+    let length = sqrt(perpDx * perpDx + perpDy * perpDy)
+    guard length > 0 else { return coordinates }
+
+    let offsetLat = offsetDistance * (perpDy / length)
+    let offsetLon = offsetDistance * (perpDx / length)
+
+    return coordinates.map {
+        CLLocationCoordinate2D(latitude: $0.latitude + offsetLat, longitude: $0.longitude + offsetLon)
+    }
+}
+
+// MARK: - Outlined Polyline Renderer
+
+/// Draws a dark border stroke behind the colored fill stroke for better contrast on any map background.
+/// The border uses a darkened version of the stroke color for a cohesive look.
+class OutlinedPolylineRenderer: MKPolylineRenderer {
+    /// Width of the border around each side of the stroke. Total rendered width = lineWidth + 2 * borderWidth.
+    var borderWidth: CGFloat = 1.5
+
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        let originalColor = strokeColor
+        let originalWidth = lineWidth
+        let originalAlpha = alpha
+
+        // Draw border: darkened version of the stroke color
+        var hue: CGFloat = 0, sat: CGFloat = 0, bri: CGFloat = 0, a: CGFloat = 0
+        if let color = originalColor, color.getHue(&hue, saturation: &sat, brightness: &bri, alpha: &a) {
+            strokeColor = UIColor(hue: hue, saturation: sat, brightness: bri * 0.4, alpha: a)
+        } else {
+            strokeColor = UIColor.black.withAlphaComponent(0.5)
+        }
+        lineWidth = originalWidth + borderWidth * 2
+        alpha = originalAlpha
+        super.draw(mapRect, zoomScale: zoomScale, in: context)
+
+        // Draw fill on top
+        strokeColor = originalColor
+        lineWidth = originalWidth
+        alpha = originalAlpha
+        super.draw(mapRect, zoomScale: zoomScale, in: context)
+    }
 }
 
 // MARK: - Custom Polyline Classes

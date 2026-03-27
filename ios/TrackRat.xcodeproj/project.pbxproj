@@ -122,6 +122,9 @@
 		A1D88F612F27083000111466 /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D88F602F27083000111466 /* RouteTopology.swift */; };
 		A1D88F622F27083000111466 /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D88F602F27083000111466 /* RouteTopology.swift */; };
 		A1D88F632F27083000111466 /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D88F602F27083000111466 /* RouteTopology.swift */; };
+		B11DC1018BF600000002 /* RouteShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11DC1018BF600000001 /* RouteShapes.swift */; };
+		B11DC1018BF600000003 /* RouteShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11DC1018BF600000001 /* RouteShapes.swift */; };
+		B11DC1018BF600000004 /* RouteShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11DC1018BF600000001 /* RouteShapes.swift */; };
 		A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */; };
 		A1D92A6F2F0AEFE50098897F /* TripRecordingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */; };
 		A1D92A712F0AEFFC0098897F /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */; };
@@ -274,6 +277,7 @@
 		A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapView.swift; path = Views/Screens/CongestionMapView.swift; sourceTree = "<group>"; };
 		A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyCongestionMapView.swift; path = Views/Components/JourneyCongestionMapView.swift; sourceTree = "<group>"; };
 		A1D88F602F27083000111466 /* RouteTopology.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteTopology.swift; path = TrackRat/Shared/RouteTopology.swift; sourceTree = "<group>"; };
+		B11DC1018BF600000001 /* RouteShapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteShapes.swift; path = TrackRat/Shared/RouteShapes.swift; sourceTree = "<group>"; };
 		A1D92A6D2F0AEFE50098897F /* TripRecordingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripRecordingService.swift; path = TrackRat/Services/TripRecordingService.swift; sourceTree = "<group>"; };
 		A1D92A702F0AEFFC0098897F /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = TrackRat/Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
 		A1D92A732F0AF01E0098897F /* CompletedTrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompletedTrip.swift; path = TrackRat/Models/CompletedTrip.swift; sourceTree = "<group>"; };
@@ -364,6 +368,7 @@
 				F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */,
 				F1SHIMR001000000000000A1 /* ShimmerRect.swift */,
 				A1D88F602F27083000111466 /* RouteTopology.swift */,
+				B11DC1018BF600000001 /* RouteShapes.swift */,
 				A12C31402F1DA61700CAF76D /* PaywallView.swift */,
 				A12C31432F1DA62600CAF76D /* ProFeatureLockView.swift */,
 				A12C31462F1DA63A00CAF76D /* TrackTrainInlineButton.swift */,
@@ -719,6 +724,7 @@
 				A10E97F12DE39EC1002F3214 /* ContentView.swift in Sources */,
 				A1FEA5A12E7F7EB600041405 /* BackendWakeupService.swift in Sources */,
 				A1D88F632F27083000111466 /* RouteTopology.swift in Sources */,
+				B11DC1018BF600000004 /* RouteShapes.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */,
 				B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */,
@@ -788,6 +794,7 @@
 				A1F97BB52F1E8B2500BF816D /* TrainSystem.swift in Sources */,
 				A17A63E12EE60FD2003BD685 /* TrainStatsSummaryView.swift in Sources */,
 				A1D88F622F27083000111466 /* RouteTopology.swift in Sources */,
+				B11DC1018BF600000003 /* RouteShapes.swift in Sources */,
 				A1BA60F02DFC73650002FB39 /* StorageServiceTests.swift in Sources */,
 				A11A0DB82F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */,
 				A11A0DB92F4B83CF00C96DA1 /* APIService.swift in Sources */,
@@ -818,6 +825,7 @@
 				A1AD0D172E106D1B003DA39F /* StationCoordinates.swift in Sources */,
 				A1AD0D182E106D1B003DA39F /* StationDepartures.swift in Sources */,
 				A1D88F612F27083000111466 /* RouteTopology.swift in Sources */,
+				B11DC1018BF600000002 /* RouteShapes.swift in Sources */,
 				A1WIDGET172DFC73650002FB39 /* Extensions.swift in Sources */,
 				A1WIDGET342DFC73650002FB39 /* LiveActivityWidget.swift in Sources */,
 				A1WIDGET352DFC73650002FB39 /* TrainLiveActivityBundle.swift in Sources */,
