@@ -9,7 +9,7 @@ Replace with (data_source, hour_of_day, day_of_week, departure_time) to
 match the actual query predicate order and eliminate unnecessary scans
 for high-volume providers like SUBWAY.
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: fdc1bcf576de
 Revises: 4ae83310c010
 Create Date: 2026-03-25T13:34:00Z
 
@@ -18,7 +18,7 @@ Create Date: 2026-03-25T13:34:00Z
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "a1b2c3d4e5f6"
+revision = "fdc1bcf576de"
 down_revision = "4ae83310c010"
 branch_labels = None
 depends_on = None

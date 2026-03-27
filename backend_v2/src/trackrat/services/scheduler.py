@@ -2644,7 +2644,7 @@ class SchedulerService:
             )
 
     # All GTFS feed sources — add new systems here
-    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "MBTA")
+    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA")
 
     async def refresh_gtfs_feeds(self) -> None:
         """Refresh GTFS static schedule data for all transit systems.
