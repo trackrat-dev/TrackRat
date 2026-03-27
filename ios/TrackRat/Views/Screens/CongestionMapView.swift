@@ -1667,14 +1667,21 @@ func buildMergedAggregatedOverlays(
 ) -> [SystemCongestionPolyline] {
     guard !segments.isEmpty else { return [] }
 
-    // Index segments by canonical station-pair key for O(1) lookup
+    // Deduplicate bidirectional segments: backend returns both (A,B) and (B,A),
+    // keep the one with more samples (or first seen) per canonical key
     var segmentIndex: [String: CongestionSegment] = [:]
     for segment in segments {
         let key = canonicalSegmentKey(segment.fromStation, segment.toStation, segment.dataSource)
-        segmentIndex[key] = segment
+        if let existing = segmentIndex[key] {
+            if segment.sampleCount > existing.sampleCount {
+                segmentIndex[key] = segment
+            }
+        } else {
+            segmentIndex[key] = segment
+        }
     }
 
-    var usedSegmentIDs = Set<String>()
+    var usedCanonicalKeys = Set<String>()
     var result: [SystemCongestionPolyline] = []
 
     // Walk each route line and find runs of adjacent same-visual segments
@@ -1687,26 +1694,26 @@ func buildMergedAggregatedOverlays(
             let toCode = route.stationCodes[i + 1]
             let lookupKey = canonicalSegmentKey(fromCode, toCode, route.dataSource)
 
-            if let segment = segmentIndex[lookupKey], !usedSegmentIDs.contains(segment.id) {
+            if let segment = segmentIndex[lookupKey], !usedCanonicalKeys.contains(lookupKey) {
                 let vizKey = visualMergeKey(for: segment)
                 if vizKey == currentKey {
                     currentRun.append((segment, fromCode, toCode))
                 } else {
-                    flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedSegmentIDs)
+                    flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedCanonicalKeys)
                     currentRun = [(segment, fromCode, toCode)]
                     currentKey = vizKey
                 }
             } else {
-                flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedSegmentIDs)
+                flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedCanonicalKeys)
                 currentRun = []
                 currentKey = nil
             }
         }
-        flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedSegmentIDs)
+        flushRun(&currentRun, isDimmed: isDimmed, into: &result, used: &usedCanonicalKeys)
     }
 
     // Handle segments not matched to any route line (rendered as individual overlays)
-    for segment in segments where !usedSegmentIDs.contains(segment.id) {
+    for (canonicalKey, segment) in segmentIndex where !usedCanonicalKeys.contains(canonicalKey) {
         if let overlay = createSingleSegmentOverlay(segment, isDimmed: isDimmed) {
             result.append(overlay)
         }
@@ -1740,7 +1747,9 @@ private func flushRun(
     guard !run.isEmpty else { return }
     if let overlay = createMergedOverlay(from: run, isDimmed: isDimmed) {
         result.append(overlay)
-        for item in run { used.insert(item.segment.id) }
+        for item in run {
+            used.insert(canonicalSegmentKey(item.fromCode, item.toCode, item.segment.dataSource))
+        }
     }
     run = []
 }
@@ -1811,8 +1820,9 @@ class OutlinedPolylineRenderer: MKPolylineRenderer {
     var borderWidth: CGFloat = 1.5
 
     override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
-        // Round caps/joins for smooth endpoints and transitions
-        lineCap = .round
+        // Butt caps prevent the wider border stroke from protruding beyond the fill at endpoints.
+        // Round joins keep bends smooth along curves.
+        lineCap = .butt
         lineJoin = .round
 
         let originalColor = strokeColor
