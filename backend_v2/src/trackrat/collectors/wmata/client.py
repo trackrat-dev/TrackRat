@@ -5,7 +5,7 @@ Fetches real-time train predictions, positions, and service incidents
 from the official WMATA developer API.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -218,7 +218,7 @@ class WMATAClient:
         )
         return incidents
 
-    def _parse_prediction(self, train: dict) -> WMATAPrediction | None:
+    def _parse_prediction(self, train: dict[str, Any]) -> WMATAPrediction | None:
         """Parse a single prediction from the API response."""
         location_code = train.get("LocationCode", "")
         line = train.get("Line", "")
@@ -265,7 +265,9 @@ class WMATAClient:
 
         return WMATAPrediction(
             location_code=location_code,
-            location_name=train.get("LocationName", WMATA_STATION_NAMES.get(location_code, location_code)),
+            location_name=train.get(
+                "LocationName", WMATA_STATION_NAMES.get(location_code, location_code)
+            ),
             destination_code=train.get("DestinationCode") or None,
             destination_name=destination_name,
             line=line,
@@ -276,7 +278,7 @@ class WMATAClient:
             group=train.get("Group", "1"),
         )
 
-    def _parse_position(self, pos: dict) -> WMATATrainPosition | None:
+    def _parse_position(self, pos: dict[str, Any]) -> WMATATrainPosition | None:
         """Parse a single train position from the API response."""
         train_id = pos.get("TrainId", "")
         service_type = pos.get("ServiceType", "Unknown")
@@ -301,7 +303,7 @@ class WMATAClient:
             service_type=service_type,
         )
 
-    def _parse_incident(self, inc: dict) -> WMATAIncident | None:
+    def _parse_incident(self, inc: dict[str, Any]) -> WMATAIncident | None:
         """Parse a single incident from the API response."""
         incident_id = inc.get("IncidentID", "")
         if not incident_id:
@@ -309,11 +311,7 @@ class WMATAClient:
 
         # Parse LinesAffected: "RD; BL; " -> ["RD", "BL"]
         lines_str = inc.get("LinesAffected", "")
-        lines = [
-            line.strip()
-            for line in lines_str.split(";")
-            if line.strip()
-        ]
+        lines = [line.strip() for line in lines_str.split(";") if line.strip()]
 
         # Parse date
         date_str = inc.get("DateUpdated", "")

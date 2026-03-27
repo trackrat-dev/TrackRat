@@ -14,7 +14,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -26,9 +26,7 @@ from trackrat.collectors.wmata.client import (
 from trackrat.config.stations import get_station_name
 from trackrat.config.stations.wmata import (
     DEFAULT_MINUTES_PER_SEGMENT,
-    WMATA_ROUTE_STOPS,
     WMATA_STATION_NAMES,
-    WMATA_TERMINUS_STATIONS,
     get_wmata_route_and_stops,
     get_wmata_route_info,
     infer_wmata_origin,
@@ -37,7 +35,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
-from trackrat.utils.time import normalize_to_et, now_et
+from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
@@ -77,8 +75,14 @@ class WMATACollector:
 
             settings = get_settings()
             if not settings.wmata_api_key:
-                logger.warning("wmata_collection_skipped", reason="no API key configured")
-                return {"data_source": "WMATA", "error": "no API key", "arrivals_fetched": 0}
+                logger.warning(
+                    "wmata_collection_skipped", reason="no API key configured"
+                )
+                return {
+                    "data_source": "WMATA",
+                    "error": "no API key",
+                    "arrivals_fetched": 0,
+                }
             self.client = WMATAClient(api_key=settings.wmata_api_key)
             self._owns_client = True
 
@@ -164,40 +168,52 @@ class WMATACollector:
         """
         assert self.client is not None
 
-        async with with_train_lock(
-            session, journey.train_id, journey.journey_date, journey.data_source
-        ):
-            try:
-                predictions = await self.client.get_all_predictions()
-            except Exception as e:
-                logger.warning(
-                    "wmata_jit_api_failed",
-                    train_id=journey.train_id,
-                    error=str(e),
-                )
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                if journey.api_error_count >= 3:
-                    journey.is_expired = True
-                return
+        await with_train_lock(
+            journey.train_id or "",
+            str(journey.journey_date),
+            self._collect_journey_details_locked,
+            session,
+            journey,
+        )
 
-            # Load stops
-            stops_result = await session.execute(
-                select(JourneyStop)
-                .where(JourneyStop.journey_id == journey.id)
-                .order_by(JourneyStop.stop_sequence)
+    async def _collect_journey_details_locked(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> None:
+        """Inner JIT update logic, called under train lock."""
+        assert self.client is not None
+
+        try:
+            predictions = await self.client.get_all_predictions()
+        except Exception as e:
+            logger.warning(
+                "wmata_jit_api_failed",
+                train_id=journey.train_id,
+                error=str(e),
             )
-            stops = list(stops_result.scalars().all())
-            if not stops:
-                return
+            journey.api_error_count = (journey.api_error_count or 0) + 1
+            if journey.api_error_count >= 3:
+                journey.is_expired = True
+            return
 
-            # Filter predictions relevant to this journey
-            relevant = [
-                p for p in predictions
-                if p.line == journey.line_code
-                and p.destination_code == journey.terminal_station_code
-            ]
+        # Load stops
+        stops_result = await session.execute(
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = list(stops_result.scalars().all())
+        if not stops:
+            return
 
-            self._update_stops_from_predictions(journey, stops, relevant)
+        # Filter predictions relevant to this journey
+        relevant = [
+            p
+            for p in predictions
+            if p.line == journey.line_code
+            and p.destination_code == journey.terminal_station_code
+        ]
+
+        self._update_stops_from_predictions(journey, stops, relevant)
 
     # =========================================================================
     # PHASE 1: DISCOVERY
@@ -227,7 +243,9 @@ class WMATACollector:
         # Strategy: for each (line, destination_code, group), take the prediction
         # with the LARGEST minutes value at any station — that's the train
         # farthest from its destination, giving us the best origin estimate.
-        train_groups: dict[tuple[str, str, str], list[WMATAPrediction]] = defaultdict(list)
+        train_groups: dict[tuple[str, str, str], list[WMATAPrediction]] = defaultdict(
+            list
+        )
 
         for pred in predictions:
             if pred.minutes is None:
@@ -272,9 +290,7 @@ class WMATACollector:
             origin_departure = farthest_arrival - timedelta(minutes=travel_to_farthest)
 
             # Generate synthetic train ID
-            train_id = _generate_wmata_train_id(
-                line, dest_code, origin_departure
-            )
+            train_id = _generate_wmata_train_id(line, dest_code, origin_departure)
 
             # === DEDUPLICATION ===
             # Check 1: exact train_id + date + source
@@ -292,8 +308,12 @@ class WMATACollector:
                 continue
 
             # Check 2: fuzzy match — same line, destination, within time window
-            time_window_start = origin_departure - timedelta(minutes=DEDUP_TIME_WINDOW_MINUTES)
-            time_window_end = origin_departure + timedelta(minutes=DEDUP_TIME_WINDOW_MINUTES)
+            time_window_start = origin_departure - timedelta(
+                minutes=DEDUP_TIME_WINDOW_MINUTES
+            )
+            time_window_end = origin_departure + timedelta(
+                minutes=DEDUP_TIME_WINDOW_MINUTES
+            )
             fuzzy_match = await session.execute(
                 select(TrainJourney.id)
                 .where(
@@ -424,8 +444,7 @@ class WMATACollector:
 
         # Load all active WMATA journeys for today
         result = await session.execute(
-            select(TrainJourney)
-            .where(
+            select(TrainJourney).where(
                 TrainJourney.data_source == "WMATA",
                 TrainJourney.journey_date == today,
                 TrainJourney.is_completed == False,  # noqa: E712
@@ -439,14 +458,17 @@ class WMATACollector:
             return {"updated": 0, "completed": 0}
 
         # Index predictions by (line, destination_code) for fast lookup
-        pred_by_line_dest: dict[tuple[str, str | None], list[WMATAPrediction]] = defaultdict(list)
+        pred_by_line_dest: dict[tuple[str, str | None], list[WMATAPrediction]] = (
+            defaultdict(list)
+        )
         for pred in predictions:
             pred_by_line_dest[(pred.line, pred.destination_code)].append(pred)
 
         for journey in journeys:
             # Get matching predictions
+            line_code = journey.line_code or ""
             matching_preds = pred_by_line_dest.get(
-                (journey.line_code, journey.terminal_station_code), []
+                (line_code, journey.terminal_station_code), []
             )
 
             # Load stops
@@ -476,7 +498,7 @@ class WMATACollector:
                 # Trigger analytics on completion
                 try:
                     analyzer = TransitAnalyzer()
-                    await analyzer.analyze_journey(session, journey, stops)
+                    await analyzer.analyze_journey(session, journey)
                 except Exception as e:
                     logger.warning(
                         "wmata_journey_analysis_failed",
@@ -533,13 +555,17 @@ class WMATACollector:
                 last_departed_idx = idx
                 continue
 
-            station_preds = preds_by_station.get(stop.station_code, [])
+            station_preds = preds_by_station.get(stop.station_code or "", [])
 
             # Find best matching prediction for this stop
             best_pred = self._find_best_prediction(stop, station_preds)
 
             if best_pred is not None:
-                if best_pred.is_arriving or best_pred.is_boarding or best_pred.minutes == 0:
+                if (
+                    best_pred.is_arriving
+                    or best_pred.is_boarding
+                    or best_pred.minutes == 0
+                ):
                     # Train is at or past this station
                     stop.has_departed_station = True
                     stop.actual_arrival = now
@@ -562,7 +588,9 @@ class WMATACollector:
                     # Only if a later stop already has a prediction or is departed
                     should_infer = False
                     for later_stop in stops[idx + 1 :]:
-                        later_preds = preds_by_station.get(later_stop.station_code, [])
+                        later_preds = preds_by_station.get(
+                            later_stop.station_code or "", []
+                        )
                         if later_stop.has_departed_station or later_preds:
                             should_infer = True
                             break
@@ -585,7 +613,9 @@ class WMATACollector:
                     stop.has_departed_station = True
                     stop.actual_arrival = stop.actual_arrival or sched or now
                     stop.actual_departure = stop.actual_departure or sched or now
-                    stop.departure_source = stop.departure_source or "inferred_sequential"
+                    stop.departure_source = (
+                        stop.departure_source or "inferred_sequential"
+                    )
                     stop.arrival_source = stop.arrival_source or "inferred_sequential"
                     any_updated = True
 
@@ -629,7 +659,9 @@ class WMATACollector:
         # Also consider ARR/BRD predictions
         for pred in station_preds:
             if pred.is_arriving or pred.is_boarding:
-                if sched and now >= sched - timedelta(minutes=DEDUP_TIME_WINDOW_MINUTES):
+                if sched and now >= sched - timedelta(
+                    minutes=DEDUP_TIME_WINDOW_MINUTES
+                ):
                     return pred
 
         return best
@@ -643,9 +675,7 @@ class WMATACollector:
         """Create or replace journey snapshot."""
         # Delete existing snapshots for this journey
         await session.execute(
-            delete(JourneySnapshot).where(
-                JourneySnapshot.journey_id == journey.id
-            )
+            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
         )
 
         completed_stops = sum(1 for s in stops if s.has_departed_station)
