@@ -336,7 +336,6 @@ struct CongestionMapKitView: UIViewRepresentable {
                 if let renderer = mapView.renderer(for: polyline) as? MKPolylineRenderer,
                    let segment = polyline.segment {
                     renderer.strokeColor = context.coordinator.colorForSegment(segment)
-                    renderer.lineWidth = context.coordinator.lineWidthForSegment(segment)
                     renderer.setNeedsDisplay()
                 }
             }
@@ -372,7 +371,8 @@ struct CongestionMapKitView: UIViewRepresentable {
             for segment in sortedSegments {
                 if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
                    let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                    let coordinates = [fromCoords, toCoords]
+                    // Use GTFS shape data for smooth curves, fall back to straight line
+                    let coordinates = RouteShapes.coordinates(from: segment.fromStation, to: segment.toStation) ?? [fromCoords, toCoords]
                     let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
                     polyline.segment = segment
                     newOverlays.append(polyline)
@@ -472,32 +472,16 @@ struct CongestionMapKitView: UIViewRepresentable {
             return color
         }
 
-        func lineWidthForSegment(_ segment: CongestionSegment) -> CGFloat {
-            guard highlightMode != .off else { return 0 }
-            switch segment.preferredHighlightMode {
-            case .health:
-                // Fall back to delay-based width when no frequency baseline exists yet
-                guard let factor = segment.frequencyFactor else {
-                    return getCongestionLineWidth(segment.congestionFactor)
-                }
-                if factor >= 0.9 { return 5 }
-                else if factor >= 0.7 { return 7 }
-                else if factor >= 0.5 { return 8 }
-                else { return 9 }
-            case .delays, .off: return getCongestionLineWidth(segment.congestionFactor)
-            }
-        }
-
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? CongestionPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
+                let renderer = OutlinedPolylineRenderer(polyline: polyline)
                 if let segment = polyline.segment {
                     renderer.strokeColor = colorForSegment(segment)
-                    renderer.lineWidth = lineWidthForSegment(segment)
+                    renderer.lineWidth = 6.0
                 } else {
                     renderer.strokeColor = UIColor.gray
-                    renderer.lineWidth = 5
+                    renderer.lineWidth = 6.0
                 }
                 renderer.alpha = 0.8
                 return renderer
@@ -571,18 +555,6 @@ struct CongestionMapKitView: UIViewRepresentable {
         }
         
         // MARK: - Helper Methods
-        private func getCongestionLineWidth(_ factor: Double) -> CGFloat {
-            if factor < 1.05 {
-                return 5
-            } else if factor < 1.25 {
-                return 7
-            } else if factor < 2.0 {
-                return 9
-            } else {
-                return 11
-            }
-        }
-
         private func getUIColor(for congestionFactor: Double) -> UIColor {
             CongestionColors.color(forCongestionFactor: congestionFactor)
         }

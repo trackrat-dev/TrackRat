@@ -2787,6 +2787,11 @@ def get_canonical_segments(
     If the segment spans multiple stations (A→C), expands it to
     canonical pairs [(A, B), (B, C)] using route topology.
 
+    When multiple routes contain the same segment, prefers the route
+    with the fewest intermediate stations (shortest expansion). This
+    prevents e.g. Raritan Valley NP→EZ from being misattributed to
+    NEC's NP→NA→NZ→EZ path through Newark Airport.
+
     If no matching route is found, returns the original segment as-is.
 
     Args:
@@ -2798,16 +2803,31 @@ def get_canonical_segments(
     Returns:
         List of (from_station, to_station) tuples representing canonical segments
     """
-    route = find_route_for_segment(data_source, from_station, to_station, line_code)
+    # If line_code is provided, use direct lookup first
+    if line_code:
+        route = get_route_by_line_code(data_source, line_code)
+        if route and route.contains_segment(from_station, to_station):
+            canonical = route.expand_to_canonical_segments(from_station, to_station)
+            if canonical:
+                return canonical
 
-    if route is None:
-        # No matching route - return segment as-is
-        return [(from_station, to_station)]
+    # Find the route with the fewest intermediate stations (shortest expansion).
+    # This ensures skip-stop segments are attributed to the correct line.
+    best_canonical: list[tuple[str, str]] | None = None
+    for route in get_routes_for_data_source(data_source):
+        if not route.contains_segment(from_station, to_station):
+            continue
+        canonical = route.expand_to_canonical_segments(from_station, to_station)
+        if canonical is None:
+            continue
+        if best_canonical is None or len(canonical) < len(best_canonical):
+            best_canonical = canonical
+            # Can't do better than a direct consecutive pair
+            if len(canonical) == 1:
+                break
 
-    canonical = route.expand_to_canonical_segments(from_station, to_station)
+    if best_canonical is not None:
+        return best_canonical
 
-    if canonical is None or len(canonical) == 0:
-        # Shouldn't happen if route.contains_segment was true, but handle gracefully
-        return [(from_station, to_station)]
-
-    return canonical
+    # No matching route - return segment as-is
+    return [(from_station, to_station)]
