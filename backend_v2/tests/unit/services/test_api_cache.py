@@ -260,11 +260,11 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should compute for 14 default parameter combinations
-                assert mock_compute.call_count == 14
+                # Should compute for 15 default parameter combinations
+                assert mock_compute.call_count == 15
 
                 # Should store each computed response
-                assert mock_store.call_count == 14
+                assert mock_store.call_count == 15
 
                 # Verify the parameter combinations
                 expected_params = [
@@ -364,16 +364,16 @@ class TestApiCacheService:
         ) as mock_compute:
             mock_compute.side_effect = [
                 Exception("Computation failed"),
-            ] + [{"data": f"response{i}"} for i in range(2, 15)]
+            ] + [{"data": f"response{i}"} for i in range(2, 16)]
 
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should try to compute all 14
-                assert mock_compute.call_count == 14
+                # Should try to compute all 15
+                assert mock_compute.call_count == 15
 
-                # Should only store the 13 successful ones
-                assert mock_store.call_count == 13
+                # Should only store the 14 successful ones
+                assert mock_store.call_count == 14
 
     @pytest.mark.asyncio
     async def test_compute_congestion_response(self, cache_service, mock_db):
