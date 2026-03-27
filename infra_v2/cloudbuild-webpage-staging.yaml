@@ -12,7 +12,7 @@ steps:
     id: 'install'
     dir: 'webpage_v2'
     entrypoint: 'npm'
-    args: ['ci', '--silent']
+    args: ['ci']
 
   # Build with staging API URL
   - name: 'node:22'
