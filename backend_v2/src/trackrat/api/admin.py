@@ -29,6 +29,7 @@ from trackrat.models.database import (
 from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.request_stats import get_request_stats
+from trackrat.utils.system_stats import get_system_stats
 from trackrat.utils.time import now_et
 
 router = APIRouter(tags=["admin"])
@@ -212,6 +213,59 @@ def _build_filter_links(
     )
 
 
+def _render_system_section(system_stats: dict[str, Any]) -> str:
+    """Render the system metrics section for the HTML page."""
+    if not system_stats:
+        return ""
+
+    rows = ""
+    disk = system_stats.get("disk")
+    if disk:
+        pct = disk["usage_percent"]
+        cls = "ok" if pct < 80 else ("warn" if pct < 90 else "err")
+        rows += (
+            f"<tr><td>Disk</td>"
+            f"<td class='num {cls}'>{pct}%</td>"
+            f"<td class='num'>{disk['used_gb']} / {disk['total_gb']} GB</td>"
+            f"<td class='num'>{disk['free_gb']} GB free</td></tr>"
+        )
+
+    memory = system_stats.get("memory")
+    if memory:
+        pct = memory["usage_percent"]
+        cls = "ok" if pct < 80 else ("warn" if pct < 90 else "err")
+        rows += (
+            f"<tr><td>Memory</td>"
+            f"<td class='num {cls}'>{pct}%</td>"
+            f"<td class='num'>{memory['used_gb']} / {memory['total_gb']} GB</td>"
+            f"<td class='num'>{memory['available_gb']} GB avail</td></tr>"
+        )
+
+    cpu = system_stats.get("cpu")
+    if cpu:
+        rows += (
+            f"<tr><td>CPU Load</td>"
+            f"<td class='num'>{cpu['load_1m']}</td>"
+            f"<td class='num'>{cpu['load_5m']}</td>"
+            f"<td class='num'>{cpu['load_15m']}</td></tr>"
+        )
+
+    if not rows:
+        return ""
+
+    # Header row adapts to what's available
+    header = "<tr><th>Metric</th><th class='num'>Usage</th><th class='num'>Used / Total</th><th class='num'>Detail</th></tr>"
+    if cpu and not disk and not memory:
+        header = "<tr><th>Metric</th><th class='num'>1m</th><th class='num'>5m</th><th class='num'>15m</th></tr>"
+
+    return f"""
+<h2>System</h2>
+<table>
+{header}
+{rows}
+</table>"""
+
+
 def _render_html(
     request_stats: dict[str, Any],
     db_stats: dict[str, Any],
@@ -220,6 +274,7 @@ def _render_html(
     *,
     hours: int | None = None,
     ios_only: bool = False,
+    system_stats: dict[str, Any] | None = None,
 ) -> str:
     """Render the stats page as self-contained HTML."""
     now = now_et()
@@ -443,6 +498,7 @@ def _render_html(
 {provider_rows if provider_rows else "<tr><td colspan='5'>No data</td></tr>"}
 </table>
 {ip_section}
+{_render_system_section(system_stats or {}) }
 </div>
 </div>
 
@@ -473,6 +529,7 @@ async def stats_page(
     request_data = get_request_stats().snapshot(hours=hours, ios_only=ios_only)
     db_data = await _db_stats(db)
     scheduler_jobs = _scheduler_stats()
+    system_data = get_system_stats()
     html = _render_html(
         request_data,
         db_data,
@@ -480,6 +537,7 @@ async def stats_page(
         settings,
         hours=hours,
         ios_only=ios_only,
+        system_stats=system_data,
     )
     return HTMLResponse(content=html)
 
@@ -514,8 +572,9 @@ async def stats_json(
     }
     request_data["route_searches"] = route_searches
 
-    # Include scheduler jobs (JSON parity with HTML)
+    # Include scheduler jobs and system metrics (JSON parity with HTML)
     request_data["scheduler_jobs"] = scheduler_jobs
+    request_data["system"] = get_system_stats()
 
     train_detail_views = {
         f"{entry['train_id']} ({get_station_name(entry['from'])} -> {get_station_name(entry['to'])})": entry[

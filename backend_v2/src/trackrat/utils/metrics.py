@@ -11,7 +11,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import Counter, Gauge, Histogram
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -60,6 +60,46 @@ train_validation_runs = Counter(
     "Total validation runs",
     ["status"],  # success or failure
 )
+
+
+# System resource gauges
+system_disk_usage_percent = Gauge(
+    "system_disk_usage_percent",
+    "Disk usage percentage",
+)
+
+system_disk_free_bytes = Gauge(
+    "system_disk_free_bytes",
+    "Disk free space in bytes",
+)
+
+system_memory_usage_percent = Gauge(
+    "system_memory_usage_percent",
+    "Memory usage percentage",
+)
+
+system_cpu_load_1m = Gauge(
+    "system_cpu_load_1m",
+    "CPU load average (1 minute)",
+)
+
+
+def update_system_metrics() -> None:
+    """Update system resource Prometheus gauges from /proc and shutil."""
+    from trackrat.utils.system_stats import get_cpu_load, get_disk_usage, get_memory_usage
+
+    disk = get_disk_usage("/")
+    if disk:
+        system_disk_usage_percent.set(disk["usage_percent"])
+        system_disk_free_bytes.set(disk["free_gb"] * 1024**3)
+
+    memory = get_memory_usage()
+    if memory:
+        system_memory_usage_percent.set(memory["usage_percent"])
+
+    cpu = get_cpu_load()
+    if cpu:
+        system_cpu_load_1m.set(cpu["load_1m"])
 
 
 def track_api_call(

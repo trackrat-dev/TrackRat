@@ -317,6 +317,9 @@ if settings.enable_metrics:
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
+        from trackrat.utils.metrics import update_system_metrics
+
+        update_system_metrics()
         return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
