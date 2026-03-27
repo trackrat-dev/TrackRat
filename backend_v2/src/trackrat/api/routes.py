@@ -56,7 +56,8 @@ async def get_route_history(
         ..., min_length=1, max_length=10, description="Destination station code"
     ),
     data_source: str = Query(
-        ..., description="Data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)"
+        ...,
+        description="Data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)",
     ),
     days: int = Query(30, ge=1, le=365, description="Number of days of history"),
     hours: int | None = Query(
@@ -98,7 +99,19 @@ async def get_route_history(
     )
 
     # Validate data_source
-    valid_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "MBTA"]
+    valid_sources = [
+        "NJT",
+        "AMTRAK",
+        "PATH",
+        "PATCO",
+        "LIRR",
+        "MNR",
+        "SUBWAY",
+        "METRA",
+        "WMATA",
+        "BART",
+        "MBTA",
+    ]
     if data_source not in valid_sources:
         raise HTTPException(
             status_code=400,
@@ -694,7 +707,7 @@ async def get_route_congestion(
                 status_code=503,
                 detail="Congestion data is temporarily unavailable. Please retry shortly.",
                 headers={"Retry-After": "60"},
-            )
+            ) from None
         raise
 
     # Filter out segments containing "SAN" station code - collision between

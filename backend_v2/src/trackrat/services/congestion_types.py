@@ -19,7 +19,7 @@ FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
 
 # Data sources where frequency/service health is more meaningful than delay stats.
 # Mirrors iOS TrainSystem.preferredHighlightMode == .health
-FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO", "WMATA"}
+FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO", "WMATA", "BART"}
 
 
 def get_congestion_level(congestion_factor: float) -> str:
