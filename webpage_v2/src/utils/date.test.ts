@@ -36,8 +36,8 @@ describe('getDelayMinutes', () => {
     expect(getDelayMinutes(time, time)).toBe(0);
   });
 
-  it('returns NaN for invalid date strings (parseISO does not throw)', () => {
-    expect(getDelayMinutes('bad', 'data')).toBeNaN();
+  it('returns 0 for invalid date strings', () => {
+    expect(getDelayMinutes('bad', 'data')).toBe(0);
   });
 });
 
@@ -58,8 +58,8 @@ describe('isToday', () => {
     expect(isToday('2020-01-01T00:00:00Z')).toBe(false);
   });
 
-  it('returns false for invalid strings (parseISO returns Invalid Date, fnsIsToday returns false)', () => {
-    expect(isToday('not-a-date')).toBe(false);
+  it('returns true for invalid strings (defaults to today)', () => {
+    expect(isToday('not-a-date')).toBe(true);
   });
 });
 

@@ -21,7 +21,7 @@ export function RouteStatusPage() {
 
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
-  const dataSource = fromStation?.system || 'NJT';
+  const dataSource = fromStation?.system || toStation?.system || 'NJT';
 
   useEffect(() => {
     if (!from || !to) return;

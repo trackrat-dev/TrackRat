@@ -8,7 +8,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-class APIService {
+export class APIService {
   private cache = new Map<string, CacheEntry<unknown>>();
 
   private async fetch<T>(url: string, useCache = true): Promise<T> {
