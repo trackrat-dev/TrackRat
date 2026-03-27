@@ -17,7 +17,7 @@ enum RouteShapes {
     /// The returned array includes the from and to station coordinates.
     static func coordinates(from fromStation: String, to toStation: String) -> [CLLocationCoordinate2D]? {
         let key = fromStation < toStation ? "\(fromStation)-\(toStation)" : "\(toStation)-\(fromStation)"
-        guard let rawPoints = shapeData[key] else { return nil }
+        guard let rawPoints = shapeData[key], rawPoints.count >= 4, rawPoints.count.isMultiple(of: 2) else { return nil }
         let points = stride(from: 0, to: rawPoints.count, by: 2).map {
             CLLocationCoordinate2D(latitude: rawPoints[$0], longitude: rawPoints[$0 + 1])
         }
