@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from trackrat.config.stations.metra import METRA_ROUTE_STATIONS, METRA_ROUTES
+
 
 @dataclass(frozen=True)
 class Route:
@@ -2630,6 +2632,124 @@ SUBWAY_Z = Route(
 )
 
 
+# =============================================================================
+# METRA (Chicago) — 11 lines + 3 branch variants = 14 routes
+# Station sequences imported from config/stations/metra.py to avoid duplication
+# =============================================================================
+
+METRA_BNSF = Route(
+    id="metra-bnsf",
+    name=METRA_ROUTES["BNSF"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-BNSF"}),
+    stations=METRA_ROUTE_STATIONS["BNSF"],
+)
+
+METRA_HC = Route(
+    id="metra-hc",
+    name=METRA_ROUTES["HC"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-HC"}),
+    stations=METRA_ROUTE_STATIONS["HC"],
+)
+
+METRA_MD_N = Route(
+    id="metra-md-n",
+    name=METRA_ROUTES["MD-N"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-MD-N"}),
+    stations=METRA_ROUTE_STATIONS["MD-N"],
+)
+
+METRA_MD_W = Route(
+    id="metra-md-w",
+    name=METRA_ROUTES["MD-W"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-MD-W"}),
+    stations=METRA_ROUTE_STATIONS["MD-W"],
+)
+
+METRA_NCS = Route(
+    id="metra-ncs",
+    name=METRA_ROUTES["NCS"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-NCS"}),
+    stations=METRA_ROUTE_STATIONS["NCS"],
+)
+
+METRA_SWS = Route(
+    id="metra-sws",
+    name=METRA_ROUTES["SWS"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-SWS"}),
+    stations=METRA_ROUTE_STATIONS["SWS"],
+)
+
+METRA_UP_N = Route(
+    id="metra-up-n",
+    name=METRA_ROUTES["UP-N"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-UP-N"}),
+    stations=METRA_ROUTE_STATIONS["UP-N"],
+)
+
+METRA_UP_NW = Route(
+    id="metra-up-nw",
+    name=METRA_ROUTES["UP-NW"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-UP-NW"}),
+    stations=METRA_ROUTE_STATIONS["UP-NW"],
+)
+
+METRA_UP_NW_MCHENRY = Route(
+    id="metra-up-nw-mchenry",
+    name="Union Pacific Northwest (McHenry)",
+    data_source="METRA",
+    line_codes=frozenset({"METRA-UP-NW"}),
+    stations=METRA_ROUTE_STATIONS["UP-NW-MCHENRY"],
+)
+
+METRA_UP_W = Route(
+    id="metra-up-w",
+    name=METRA_ROUTES["UP-W"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-UP-W"}),
+    stations=METRA_ROUTE_STATIONS["UP-W"],
+)
+
+METRA_RI = Route(
+    id="metra-ri",
+    name=METRA_ROUTES["RI"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-RI"}),
+    stations=METRA_ROUTE_STATIONS["RI"],
+)
+
+METRA_ME = Route(
+    id="metra-me",
+    name=METRA_ROUTES["ME"][1],
+    data_source="METRA",
+    line_codes=frozenset({"METRA-ME"}),
+    stations=METRA_ROUTE_STATIONS["ME"],
+)
+
+METRA_ME_BI = Route(
+    id="metra-me-bi",
+    name="Metra Electric (Blue Island)",
+    data_source="METRA",
+    line_codes=frozenset({"METRA-ME"}),
+    stations=METRA_ROUTE_STATIONS["ME-BI"],
+)
+
+METRA_ME_SC = Route(
+    id="metra-me-sc",
+    name="Metra Electric (South Chicago)",
+    data_source="METRA",
+    line_codes=frozenset({"METRA-ME"}),
+    stations=METRA_ROUTE_STATIONS["ME-SC"],
+)
+
+
 ALL_ROUTES: tuple[Route, ...] = (
     # NJT
     NJT_NORTHEAST_CORRIDOR,
@@ -2728,6 +2848,21 @@ ALL_ROUTES: tuple[Route, ...] = (
     SUBWAY_W,
     SUBWAY_SI,
     SUBWAY_Z,
+    # Metra
+    METRA_BNSF,
+    METRA_HC,
+    METRA_MD_N,
+    METRA_MD_W,
+    METRA_NCS,
+    METRA_SWS,
+    METRA_UP_N,
+    METRA_UP_NW,
+    METRA_UP_NW_MCHENRY,
+    METRA_UP_W,
+    METRA_RI,
+    METRA_ME,
+    METRA_ME_BI,
+    METRA_ME_SC,
 )
 
 # Lookup indexes for fast access

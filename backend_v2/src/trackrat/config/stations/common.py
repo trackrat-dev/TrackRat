@@ -12,6 +12,11 @@ from trackrat.config.stations.lirr import (
     LIRR_GTFS_STOP_TO_INTERNAL_MAP,
     LIRR_STATION_NAMES,
 )
+from trackrat.config.stations.metra import (
+    METRA_GTFS_STOP_TO_INTERNAL_MAP,
+    METRA_STATION_COORDINATES,
+    METRA_STATION_NAMES,
+)
 from trackrat.config.stations.mnr import (
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
     MNR_STATION_NAMES,
@@ -45,6 +50,7 @@ STATION_NAMES: dict[str, str] = {
     **LIRR_STATION_NAMES,
     **MNR_STATION_NAMES,
     **SUBWAY_STATION_NAMES,
+    **METRA_STATION_NAMES,
 }
 
 
@@ -74,6 +80,7 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     {"NHV", "MNHV"},  # New Haven
     {"STS", "MNSS"},  # New Haven-State St
     {"NP", "PNK"},  # Newark Penn Station / Newark PATH
+    {"CHI", "CUS"},  # Chicago Union Station (Amtrak CHI / Metra CUS)
     *SUBWAY_STATION_COMPLEXES,
     # PATH ↔ Subway cross-system equivalences (must be after SUBWAY_STATION_COMPLEXES
     # so the larger group overwrites the subway-only group for shared codes)
@@ -1147,6 +1154,10 @@ STATION_COORDINATES = {
 for _code, (_lat, _lon) in SUBWAY_STATION_COORDINATES.items():
     STATION_COORDINATES[_code] = {"lat": _lat, "lon": _lon}
 
+# Metra coordinates (from GTFS static)
+for _code, _coords in METRA_STATION_COORDINATES.items():
+    STATION_COORDINATES[_code] = _coords
+
 
 def get_station_coordinates(code: str) -> dict[str, float] | None:
     """Get station coordinates for mapping.
@@ -1228,6 +1239,10 @@ def map_gtfs_stop_to_station_code(
     if data_source == "MNR":
         # Metro-North uses numeric stop_id from MTA GTFS
         return MNR_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+    if data_source == "METRA":
+        # Metra uses descriptive stop_ids that are our internal codes
+        return METRA_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
 
     if data_source == "SUBWAY":
         # NYC Subway stop IDs have N/S directional suffix

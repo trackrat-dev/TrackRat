@@ -46,6 +46,7 @@ const transitSystems = [
   { name: 'NYC Subway', beta: true },
   { name: 'PATCO' },
   { name: 'PATH' },
+  { name: 'Metra', beta: true },
 ];
 
 function IOSBanner() {

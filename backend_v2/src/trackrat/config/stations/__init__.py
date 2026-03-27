@@ -75,6 +75,19 @@ __all__ = [
     "MNR_STATION_NAMES",
     "get_mnr_route_info",
     "map_mnr_gtfs_stop",
+    # Metra
+    "INTERNAL_TO_METRA_GTFS_STOP_MAP",
+    "METRA_ALERTS_FEED_URL",
+    "METRA_DISCOVERY_STATIONS",
+    "METRA_DOWNTOWN_TERMINALS",
+    "METRA_GTFS_RT_FEED_URL",
+    "METRA_GTFS_STOP_TO_INTERNAL_MAP",
+    "METRA_LINE_TERMINAL",
+    "METRA_ROUTE_STATIONS",
+    "METRA_ROUTES",
+    "METRA_STATION_NAMES",
+    "get_metra_route_info",
+    "map_metra_gtfs_stop",
     # Common
     "STATION_COORDINATES",
     "STATION_EQUIVALENCE_GROUPS",
@@ -116,6 +129,22 @@ from trackrat.config.stations.common import (
     get_station_coordinates,
     get_station_name,
     map_gtfs_stop_to_station_code,
+)
+
+# Metra
+from trackrat.config.stations.metra import (
+    INTERNAL_TO_METRA_GTFS_STOP_MAP,
+    METRA_ALERTS_FEED_URL,
+    METRA_DISCOVERY_STATIONS,
+    METRA_DOWNTOWN_TERMINALS,
+    METRA_GTFS_RT_FEED_URL,
+    METRA_GTFS_STOP_TO_INTERNAL_MAP,
+    METRA_LINE_TERMINAL,
+    METRA_ROUTE_STATIONS,
+    METRA_ROUTES,
+    METRA_STATION_NAMES,
+    get_metra_route_info,
+    map_metra_gtfs_stop,
 )
 
 # LIRR

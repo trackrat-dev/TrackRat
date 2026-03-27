@@ -12,6 +12,34 @@ from dateutil import parser as date_parser
 # Eastern Time Zone
 ET = pytz.timezone("America/New_York")
 
+# Central Time Zone (for Chicago Metra)
+CT = pytz.timezone("America/Chicago")
+
+# Provider timezone mapping — used by collectors to determine local "today"
+PROVIDER_TIMEZONE: dict[str, pytz.BaseTzInfo] = {
+    "NJT": ET,
+    "AMTRAK": ET,
+    "PATH": ET,
+    "PATCO": ET,
+    "LIRR": ET,
+    "MNR": ET,
+    "SUBWAY": ET,
+    "METRA": CT,
+}
+
+
+def now_for_provider(data_source: str) -> datetime:
+    """Get current time in the local timezone for a given transit provider.
+
+    Args:
+        data_source: Provider identifier (e.g., "LIRR", "METRA")
+
+    Returns:
+        Timezone-aware datetime in the provider's local timezone
+    """
+    tz = PROVIDER_TIMEZONE.get(data_source, ET)
+    return datetime.now(tz)
+
 # Timezone-aware min/max constants for safe datetime comparisons
 # Note: year 9999 causes OverflowError in pytz, use 2099/1900 as safe bounds
 # These should be used instead of datetime.min/datetime.max when comparing

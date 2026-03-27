@@ -260,11 +260,11 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should compute for 13 default parameter combinations
-                assert mock_compute.call_count == 13
+                # Should compute for 14 default parameter combinations
+                assert mock_compute.call_count == 14
 
                 # Should store each computed response
-                assert mock_store.call_count == 13
+                assert mock_store.call_count == 14
 
                 # Verify the parameter combinations
                 expected_params = [
@@ -329,6 +329,11 @@ class TestApiCacheService:
                         "data_source": "PATCO",
                     },
                     {
+                        "time_window_hours": 2,
+                        "max_per_segment": 100,
+                        "data_source": "METRA",
+                    },
+                    {
                         "time_window_hours": 3,
                         "max_per_segment": 100,
                         "data_source": "NJT",
@@ -354,16 +359,16 @@ class TestApiCacheService:
         ) as mock_compute:
             mock_compute.side_effect = [
                 Exception("Computation failed"),
-            ] + [{"data": f"response{i}"} for i in range(2, 14)]
+            ] + [{"data": f"response{i}"} for i in range(2, 15)]
 
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should try to compute all 13
-                assert mock_compute.call_count == 13
+                # Should try to compute all 14
+                assert mock_compute.call_count == 14
 
-                # Should only store the 12 successful ones
-                assert mock_store.call_count == 12
+                # Should only store the 13 successful ones
+                assert mock_store.call_count == 13
 
     @pytest.mark.asyncio
     async def test_compute_congestion_response(self, cache_service, mock_db):

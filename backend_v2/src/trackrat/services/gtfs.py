@@ -57,6 +57,7 @@ GTFS_FEED_URLS = {
     "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
+    "METRA": "https://schedules.metrarail.com/gtfs/schedule.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -71,6 +72,7 @@ DEFAULT_LINE_COLORS = {
     "LIRR": "#0039A6",  # LIRR blue (MTA blue)
     "MNR": "#0039A6",  # Metro-North blue (MTA blue)
     "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
+    "METRA": "#00558A",  # Metra blue
 }
 
 # NJT GTFS route_short_name to line code mapping
@@ -181,6 +183,8 @@ def _strip_source_prefix(train_id: str, source: str) -> str:
         return train_id[1:]
     if source == "MNR" and train_id.startswith("M") and train_id[1:].isdigit():
         return train_id[1:]
+    if source == "METRA" and train_id.startswith("MT") and train_id[2:].isdigit():
+        return train_id[2:]
     if source == "SUBWAY" and train_id.startswith("S"):
         dash_idx = train_id.find("-")
         if dash_idx != -1:
@@ -1213,7 +1217,7 @@ class GTFSService:
         departures: list[TrainDeparture] = []
 
         # All known GTFS data sources
-        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA"]
 
         # Filter to requested sources if specified
         sources_to_query = (
@@ -1641,7 +1645,7 @@ class GTFSService:
             _strip_source_prefix(train_id, data_source) if data_source else train_id
         )
 
-        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY"]
+        all_sources = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA"]
         sources_to_search = [data_source] if data_source else all_sources
 
         # Cache service_ids per source to avoid repeated queries
