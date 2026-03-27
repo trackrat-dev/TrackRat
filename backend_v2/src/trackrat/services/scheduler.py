@@ -27,6 +27,7 @@ from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
+from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.alert_evaluator import (
@@ -187,6 +188,16 @@ class SchedulerService:
             ),
             id="mnr_collection",
             name="MNR Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        self.scheduler.add_job(
+            self.run_wmata_collection,
+            trigger=IntervalTrigger(minutes=3, jitter=30),
+            id="wmata_collection",
+            name="WMATA Collection",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=120,
@@ -402,6 +413,7 @@ class SchedulerService:
             ("mnr_collection", self.run_mnr_collection),
             ("subway_collection", self.run_subway_collection),
             ("metra_collection", self.run_metra_collection),
+            ("wmata_collection", self.run_wmata_collection),
         ]
         for name, collector in collectors:
             logger.info("startup_collector_launch", collector=name)
@@ -778,6 +790,52 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("metra_collection_skipped_still_fresh")
+
+    async def run_wmata_collection(self) -> None:
+        """Run unified WMATA collection (discovery + journey updates)."""
+        task_id = f"wmata_collection_{now_et().isoformat()}"
+
+        async def do_wmata_collection_work() -> dict[str, Any]:
+            """The actual WMATA collection work, wrapped for freshness checking."""
+            try:
+                logger.info("starting_wmata_collection")
+
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                collector = WMATACollector()
+                try:
+                    result = await collector.run()
+
+                    logger.info(
+                        "wmata_collection_completed",
+                        arrivals_fetched=result.get("arrivals_fetched", 0),
+                        new_journeys=result.get("new_journeys", 0),
+                        updated=result.get("updated", 0),
+                        completed=result.get("completed", 0),
+                    )
+                    return result
+                finally:
+                    if collector.client:
+                        await collector.client.close()
+
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            # 3 minute interval, use 90% = 162 seconds safe interval
+            safe_interval = calculate_safe_interval(3)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="wmata_collection",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_wmata_collection_work,
+            )
+
+            if not executed:
+                logger.debug("wmata_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -2468,7 +2526,7 @@ class SchedulerService:
             )
 
     # All GTFS feed sources — add new systems here
-    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA")
+    GTFS_SOURCES = ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA")
 
     async def refresh_gtfs_feeds(self) -> None:
         """Refresh GTFS static schedule data for all transit systems.

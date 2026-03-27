@@ -4,6 +4,7 @@ Service alerts collector.
 Fetches service alerts from multiple sources:
 - MTA (SUBWAY, LIRR, MNR): GTFS-RT service alert feeds
 - NJT: NJ Transit getStationMSG API
+- WMATA: WMATA Rail Incidents API
 
 Upserts into the service_alerts table. Supports alert types:
 - planned_work: scheduled track work, reroutes, suspensions
@@ -335,6 +336,53 @@ async def fetch_and_parse_njt_alerts() -> list[ParsedAlert]:
     return alerts
 
 
+async def _fetch_and_parse_wmata_alerts() -> list[ParsedAlert] | None:
+    """Fetch WMATA rail incidents and parse into ParsedAlert objects.
+
+    Returns None if no API key is configured (WMATA is optional).
+    """
+    from trackrat.collectors.wmata.client import WMATAClient
+    from trackrat.settings import get_settings
+
+    settings = get_settings()
+    if not settings.wmata_api_key:
+        return None
+
+    async with WMATAClient(api_key=settings.wmata_api_key) as client:
+        incidents = await client.get_incidents()
+
+    alerts = []
+    for incident in incidents:
+        # Map WMATA IncidentType to our alert_type
+        # "Delay" and "Alert" are the common types; treat both as real-time alerts
+        alert_type = "alert"
+
+        alerts.append(
+            ParsedAlert(
+                alert_id=f"WMATA-{incident.incident_id}",
+                alert_type=alert_type,
+                affected_route_ids=incident.lines_affected,
+                header_text=incident.description[:200] if incident.description else "",
+                description_text=incident.description,
+                active_periods=[
+                    {
+                        "start": int(incident.date_updated.timestamp())
+                        if incident.date_updated
+                        else None,
+                        "end": None,
+                    }
+                ],
+            )
+        )
+
+    logger.info(
+        "Parsed %d WMATA service alerts from %d incidents",
+        len(alerts),
+        len(incidents),
+    )
+    return alerts
+
+
 async def upsert_service_alerts(
     session: AsyncSession, alerts: list[ParsedAlert], data_source: str
 ) -> dict[str, int]:
@@ -469,6 +517,27 @@ async def collect_service_alerts() -> dict[str, Any]:
                 exc_info=True,
             )
             all_stats["NJT"] = {"error": str(e)}
+
+        # WMATA feed (Rail Incidents API)
+        try:
+            wmata_alerts = await _fetch_and_parse_wmata_alerts()
+            if wmata_alerts is not None:
+                async with session.begin_nested():
+                    stats = await upsert_service_alerts(
+                        session, wmata_alerts, "WMATA"
+                    )
+                all_stats["WMATA"] = {
+                    "total_parsed": len(wmata_alerts),
+                    **stats,
+                }
+                logger.info("Service alerts collected for WMATA: %s", stats)
+        except Exception as e:
+            logger.error(
+                "Error collecting WMATA service alerts: %s",
+                e,
+                exc_info=True,
+            )
+            all_stats["WMATA"] = {"error": str(e)}
 
         await session.commit()
 

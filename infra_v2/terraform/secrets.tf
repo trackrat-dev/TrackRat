@@ -8,6 +8,7 @@
 #   - trackrat-apns-key-id: APNS Key ID
 #   - trackrat-apns-bundle-id: APNS Bundle ID
 #   - trackrat-apns-auth-key: APNS Auth Key (P8 content)
+#   - trackrat-wmata-api-key: WMATA developer API key
 
 data "google_secret_manager_secret" "db_password" {
   secret_id  = "trackrat-db-password"
@@ -39,6 +40,11 @@ data "google_secret_manager_secret" "apns_auth_key" {
   depends_on = [google_project_service.apis]
 }
 
+data "google_secret_manager_secret" "wmata_api_key" {
+  secret_id  = "trackrat-wmata-api-key"
+  depends_on = [google_project_service.apis]
+}
+
 # Service account for TrackRat VMs
 resource "google_service_account" "trackrat" {
   account_id   = "trackrat-${var.environment}"
@@ -55,6 +61,12 @@ resource "google_secret_manager_secret_iam_member" "db_password" {
 
 resource "google_secret_manager_secret_iam_member" "njt_api_token" {
   secret_id = data.google_secret_manager_secret.njt_api_token.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.trackrat.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "wmata_api_key" {
+  secret_id = data.google_secret_manager_secret.wmata_api_key.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.trackrat.email}"
 }

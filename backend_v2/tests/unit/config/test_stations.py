@@ -448,8 +448,17 @@ class TestNJTStationCoordinates:
         """No two distinct stations should share identical coordinates.
 
         Exception: Secaucus variants (SE/SC/TS) share the same location.
+        Exception: WMATA transfer stations share coordinates (same physical station, different platforms).
         """
         secaucus_codes = {"SE", "SC", "TS"}
+        # WMATA transfer stations: dual platform codes at the same physical station
+        from trackrat.config.stations import WMATA_TRANSFER_STATIONS
+
+        wmata_transfer_codes: set[str] = set()
+        for a, b in WMATA_TRANSFER_STATIONS:
+            wmata_transfer_codes.add(a)
+            wmata_transfer_codes.add(b)
+
         coord_to_codes: dict[tuple[float, float], list[str]] = {}
         for code, coords in STATION_COORDINATES.items():
             key = (coords["lat"], coords["lon"])
@@ -466,7 +475,11 @@ class TestNJTStationCoordinates:
                 non_secaucus_non_subway = [
                     c for c in non_secaucus if not c.startswith("S") or len(c) <= 2
                 ]
-                assert len(non_secaucus_non_subway) <= 1, (
+                # Allow WMATA transfer stations to share coordinates
+                non_exempt = [
+                    c for c in non_secaucus_non_subway if c not in wmata_transfer_codes
+                ]
+                assert len(non_exempt) <= 1, (
                     f"Stations {codes} share coordinates {coord}: "
                     f"{[STATION_NAMES.get(c, '???') for c in codes]}"
                 )
@@ -1041,3 +1054,109 @@ class TestMNRGTFSStopMapping:
             assert (
                 back_to_gtfs == gtfs_id
             ), f"Round-trip failed: GTFS '{gtfs_id}' -> '{internal}' -> '{back_to_gtfs}'"
+
+
+class TestWMATAStations:
+    """Test suite for WMATA station configuration."""
+
+    def test_wmata_station_names_not_empty(self):
+        """WMATA station names dict should have entries."""
+        from trackrat.config.stations import WMATA_STATION_NAMES
+
+        assert len(WMATA_STATION_NAMES) > 90, (
+            f"Expected 90+ WMATA stations, got {len(WMATA_STATION_NAMES)}"
+        )
+
+    def test_wmata_station_names_in_global(self):
+        """All WMATA stations should be in the global STATION_NAMES dict."""
+        from trackrat.config.stations import WMATA_STATION_NAMES
+
+        for code, name in WMATA_STATION_NAMES.items():
+            assert code in STATION_NAMES, (
+                f"WMATA station {code} ({name}) not in STATION_NAMES"
+            )
+
+    def test_wmata_station_coordinates(self):
+        """All WMATA stations should have coordinates in the DC area."""
+        from trackrat.config.stations import WMATA_STATION_NAMES
+
+        for code in WMATA_STATION_NAMES:
+            coords = STATION_COORDINATES.get(code)
+            assert coords is not None, f"WMATA station {code} missing coordinates"
+            assert 38.0 < coords["lat"] < 40.0, (
+                f"WMATA station {code} lat {coords['lat']} out of DC area range"
+            )
+            assert -78.0 < coords["lon"] < -76.0, (
+                f"WMATA station {code} lon {coords['lon']} out of DC area range"
+            )
+
+    def test_wmata_routes_defined(self):
+        """All 6 WMATA lines should be defined."""
+        from trackrat.config.stations import WMATA_ROUTES
+
+        expected_lines = {"RD", "OR", "SV", "BL", "YL", "GR"}
+        assert set(WMATA_ROUTES.keys()) == expected_lines
+
+    def test_wmata_route_stops_all_valid(self):
+        """All station codes in route stops should exist in WMATA_STATION_NAMES."""
+        from trackrat.config.stations import WMATA_ROUTE_STOPS, WMATA_STATION_NAMES
+
+        for line, stops in WMATA_ROUTE_STOPS.items():
+            assert len(stops) > 0, f"Route {line} has no stops"
+            for code in stops:
+                assert code in WMATA_STATION_NAMES, (
+                    f"Station {code} in route {line} not in WMATA_STATION_NAMES"
+                )
+
+    def test_wmata_transfer_station_equivalences(self):
+        """Transfer stations should be in STATION_EQUIVALENTS."""
+        from trackrat.config.stations import WMATA_TRANSFER_STATIONS
+
+        for code_a, code_b in WMATA_TRANSFER_STATIONS:
+            group = STATION_EQUIVALENTS.get(code_a)
+            assert group is not None, (
+                f"Transfer station {code_a} not in STATION_EQUIVALENTS"
+            )
+            assert code_b in group, (
+                f"Transfer station {code_b} not in equivalence group for {code_a}: {group}"
+            )
+
+    def test_wmata_api_to_internal_identity(self):
+        """WMATA API codes should map to themselves (identity mapping)."""
+        from trackrat.config.stations import WMATA_API_TO_INTERNAL_MAP
+
+        for code in ["A01", "B01", "C05", "D03", "E10", "F11", "K08", "N12"]:
+            assert WMATA_API_TO_INTERNAL_MAP.get(code) == code
+
+    def test_wmata_gtfs_stop_mapping(self):
+        """WMATA station codes should map correctly via map_gtfs_stop_to_station_code."""
+        for code in ["A01", "B03", "C07", "E10"]:
+            result = map_gtfs_stop_to_station_code(code, "", "WMATA")
+            assert result == code, (
+                f"WMATA GTFS mapping for {code} returned {result}, expected {code}"
+            )
+
+    def test_wmata_route_and_stops_lookup(self):
+        """get_wmata_route_and_stops should find routes correctly."""
+        from trackrat.config.stations import get_wmata_route_and_stops
+
+        # Red line: Shady Grove to Glenmont
+        result = get_wmata_route_and_stops("A15", "B11", "RD")
+        assert result is not None, "Should find Red Line route A15->B11"
+        line_code, stops = result
+        assert line_code == "RD"
+        assert stops[0] == "A15"
+        assert stops[-1] == "B11"
+        assert "A01" in stops  # Metro Center is on Red Line
+
+    def test_wmata_infer_origin(self):
+        """infer_wmata_origin should return opposite terminus."""
+        from trackrat.config.stations import infer_wmata_origin
+
+        # Train heading to Glenmont should originate from Shady Grove
+        origin = infer_wmata_origin("RD", "B11")
+        assert origin == "A15", f"Expected A15, got {origin}"
+
+        # Train heading to Shady Grove should originate from Glenmont
+        origin = infer_wmata_origin("RD", "A15")
+        assert origin == "B11", f"Expected B11, got {origin}"

@@ -58,6 +58,7 @@ GTFS_FEED_URLS = {
     "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
     "METRA": "https://schedules.metrarail.com/gtfs/schedule.zip",
+    "WMATA": "https://api.wmata.com/gtfs/rail-gtfs-static.zip",
 }
 
 # Minimum hours between feed downloads (rate limiting)
@@ -73,6 +74,7 @@ DEFAULT_LINE_COLORS = {
     "MNR": "#0039A6",  # Metro-North blue (MTA blue)
     "SUBWAY": "#0039A6",  # NYC Subway blue (MTA blue)
     "METRA": "#00558A",  # Metra blue
+    "WMATA": "#004E8C",  # WMATA blue
 }
 
 # NJT GTFS route_short_name to line code mapping
@@ -266,8 +268,20 @@ class GTFSService:
 
         try:
             # Download the GTFS zip file
+            # WMATA requires API key header for GTFS feed access
+            headers: dict[str, str] = {}
+            if data_source == "WMATA":
+                from trackrat.settings import get_settings
+
+                wmata_key = get_settings().wmata_api_key
+                if wmata_key:
+                    headers["api_key"] = wmata_key
+                else:
+                    logger.warning("WMATA GTFS download skipped: no API key configured")
+                    return False
+
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(url, follow_redirects=True)
+                response = await client.get(url, headers=headers, follow_redirects=True)
                 response.raise_for_status()
                 zip_data = response.content
 
@@ -1217,7 +1231,7 @@ class GTFSService:
         departures: list[TrainDeparture] = []
 
         # All known GTFS data sources
-        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA"]
+        all_source_names = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA"]
 
         # Filter to requested sources if specified
         sources_to_query = (
@@ -1449,6 +1463,22 @@ class GTFSService:
                         f"#{route_color}"
                         if route_color
                         else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
+                    )
+            elif data_source == "WMATA":
+                from trackrat.config.stations import get_wmata_route_info
+
+                wmata_route_info = get_wmata_route_info(gtfs_route_id)
+                if wmata_route_info:
+                    line_code, line_name, line_color = wmata_route_info
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    line_code = route_short or "WMATA"
+                    line_name = route_long or route_short or "DC Metro"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#004E8C")
                     )
             else:
                 # For NJT, map GTFS route_short_name to API line codes for deduplication

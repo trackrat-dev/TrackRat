@@ -326,6 +326,11 @@ class TestApiCacheService:
                     {
                         "time_window_hours": 2,
                         "max_per_segment": 100,
+                        "data_source": "WMATA",
+                    },
+                    {
+                        "time_window_hours": 2,
+                        "max_per_segment": 100,
                         "data_source": "PATCO",
                     },
                     {

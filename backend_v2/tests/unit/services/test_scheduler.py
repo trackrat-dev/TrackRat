@@ -95,6 +95,7 @@ class TestSchedulerService:
                 ("mnr_collection", IntervalTrigger, {"minutes": 4}),
                 ("subway_collection", IntervalTrigger, {"minutes": 4}),
                 ("metra_collection", IntervalTrigger, {"minutes": 4}),
+                ("wmata_collection", IntervalTrigger, {"minutes": 3}),
                 ("journey_update_check", IntervalTrigger, {"minutes": 5}),
                 ("live_activity_updates", IntervalTrigger, {"minutes": 1}),
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),

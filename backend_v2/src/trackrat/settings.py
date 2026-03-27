@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     )
     njt_api_token: str = Field(default="", description="NJ Transit API token")
 
+    # WMATA API
+    wmata_api_key: str = Field(default="", description="WMATA developer API key")
+
     @field_validator("njt_api_token", mode="before")
     @classmethod
     def load_njt_token_from_file(cls, v: str) -> str:

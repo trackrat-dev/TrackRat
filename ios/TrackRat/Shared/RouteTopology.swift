@@ -39,7 +39,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes + wmataRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -768,6 +768,47 @@ struct RouteTopology {
             stationCodes: ["SM23", "SM22", "SM21", "SM20", "SM19", "SM18", "SM16", "SM11", "SJ30", "SJ28", "SJ27", "SJ24", "SJ23", "SJ21", "SJ20", "SJ17", "SJ15", "SJ14", "SJ12", "SG06", "SG05"]
         ),
 
+    ]
+
+    // MARK: - WMATA (DC Metro) Routes
+
+    static let wmataRoutes: [RouteLine] = [
+        RouteLine(
+            id: "wmata-red",
+            name: "Red Line",
+            dataSource: "WMATA",
+            stationCodes: ["A15", "A14", "A13", "A12", "A11", "A10", "A09", "A08", "A07", "A06", "A05", "A04", "A03", "A02", "A01", "B35", "B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "B09", "B10", "B11"]
+        ),
+        RouteLine(
+            id: "wmata-orange",
+            name: "Orange Line",
+            dataSource: "WMATA",
+            stationCodes: ["K08", "K07", "K06", "K05", "K04", "K03", "K02", "K01", "C05", "C04", "C03", "C02", "C01", "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "D09", "D10", "D11", "D12", "D13"]
+        ),
+        RouteLine(
+            id: "wmata-silver",
+            name: "Silver Line",
+            dataSource: "WMATA",
+            stationCodes: ["N12", "N11", "N10", "N09", "N08", "N07", "N06", "N04", "N03", "N02", "N01", "K05", "K04", "K03", "K02", "K01", "C05", "C04", "C03", "C02", "C01", "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "G01", "G02", "G03", "G04", "G05"]
+        ),
+        RouteLine(
+            id: "wmata-blue",
+            name: "Blue Line",
+            dataSource: "WMATA",
+            stationCodes: ["J03", "J02", "C13", "C12", "C11", "C10", "C09", "C08", "C07", "C06", "C05", "C04", "C03", "C02", "C01", "D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "G01", "G02", "G03", "G04", "G05"]
+        ),
+        RouteLine(
+            id: "wmata-yellow",
+            name: "Yellow Line",
+            dataSource: "WMATA",
+            stationCodes: ["C15", "C14", "C13", "C12", "C11", "C10", "C09", "C08", "C07", "F03", "F02", "F01", "E01", "E02", "E03", "E04", "E05", "E06"]
+        ),
+        RouteLine(
+            id: "wmata-green",
+            name: "Green Line",
+            dataSource: "WMATA",
+            stationCodes: ["F11", "F10", "F09", "F08", "F07", "F06", "F05", "F04", "F03", "F02", "F01", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08", "E09", "E10"]
+        ),
     ]
 
     // MARK: - Station Expansion
