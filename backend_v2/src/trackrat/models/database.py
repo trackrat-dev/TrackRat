@@ -692,7 +692,7 @@ class GTFSRoute(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     data_source = Column(String(10), nullable=False)
     route_id = Column(String(50), nullable=False)  # GTFS route_id
-    route_short_name = Column(String(20))  # Line code (e.g., "NEC", "MOBO")
+    route_short_name = Column(String(50))  # Line code (e.g., "NEC", "MOBO")
     route_long_name = Column(String(200))  # Full name
     route_color = Column(String(6))  # Hex color without #
 

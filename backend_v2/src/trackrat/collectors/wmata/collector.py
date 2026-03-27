@@ -694,6 +694,7 @@ class WMATACollector:
             train_status=status,
             completed_stops=completed_stops,
             total_stops=total_stops,
+            raw_stop_list_data={},
         )
         session.add(snapshot)
 
