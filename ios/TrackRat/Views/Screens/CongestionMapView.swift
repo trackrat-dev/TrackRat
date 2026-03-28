@@ -1815,6 +1815,7 @@ private func createSingleSegmentOverlay(_ segment: CongestionSegment, isDimmed: 
 
 /// Draws a dark border stroke behind the colored fill stroke for better contrast on any map background.
 /// The border uses a darkened version of the stroke color for a cohesive look.
+/// At low zoom levels, the border fades out to prevent overlapping borders from compounding into dark blobs.
 class OutlinedPolylineRenderer: MKPolylineRenderer {
     /// Width of the border around each side of the stroke. Total rendered width = lineWidth + 2 * borderWidth.
     var borderWidth: CGFloat = 1.5
@@ -1825,19 +1826,31 @@ class OutlinedPolylineRenderer: MKPolylineRenderer {
         lineCap = .butt
         lineJoin = .round
 
+        // Scale border with zoom: road width gives a stable reference across zoom levels.
+        // At low zoom, overlapping segment borders compound into dark blobs — fade them out.
+        let roadWidth = MKRoadWidthAtZoomScale(zoomScale)
+        let borderFactor = min(1.0, max(0.0, (roadWidth - 2.0) / 8.0))
+        let effectiveBorderWidth = borderWidth * CGFloat(borderFactor)
+
+        guard effectiveBorderWidth > 0.25 else {
+            // At low zoom, skip the border entirely — just draw the fill
+            super.draw(mapRect, zoomScale: zoomScale, in: context)
+            return
+        }
+
         let originalColor = strokeColor
         let originalWidth = lineWidth
         let originalAlpha = alpha
 
-        // Draw border: darkened version of the stroke color
+        // Draw border: darkened version of the stroke color with reduced opacity to limit compounding
         var hue: CGFloat = 0, sat: CGFloat = 0, bri: CGFloat = 0, a: CGFloat = 0
         if let color = originalColor, color.getHue(&hue, saturation: &sat, brightness: &bri, alpha: &a) {
-            strokeColor = UIColor(hue: hue, saturation: sat, brightness: bri * 0.4, alpha: a)
+            strokeColor = UIColor(hue: hue, saturation: sat, brightness: bri * 0.5, alpha: a)
         } else {
-            strokeColor = UIColor.black.withAlphaComponent(0.5)
+            strokeColor = UIColor.black.withAlphaComponent(0.4)
         }
-        lineWidth = originalWidth + borderWidth * 2
-        alpha = originalAlpha
+        lineWidth = originalWidth + effectiveBorderWidth * 2
+        alpha = originalAlpha * CGFloat(borderFactor)
         super.draw(mapRect, zoomScale: zoomScale, in: context)
 
         // Draw fill on top
