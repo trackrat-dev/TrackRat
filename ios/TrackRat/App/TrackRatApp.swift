@@ -53,6 +53,8 @@ struct TrackRatApp: App {
                     }
                     // Refresh subscription status in case user cancelled in Settings
                     SubscriptionService.shared.refreshOnForeground()
+                    // Re-sync route alert subscriptions if stale (e.g. after server DB restore)
+                    AlertSubscriptionService.shared.syncIfNeeded()
                 case .inactive:
                     print("📱 Scene Phase Inactive")
                 case .background:
