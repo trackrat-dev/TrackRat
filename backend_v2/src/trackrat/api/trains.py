@@ -4,6 +4,7 @@ Train API endpoints for TrackRat V2.
 Implements the V2 API design documented in backend_v2/CLAUDE.md.
 """
 
+import asyncio
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -321,13 +322,14 @@ async def get_train_details(
     if include_predictions:
         try:
             forecaster = DirectArrivalForecaster()
-            # Pass user's origin station to the forecaster for smarter predictions
-            await forecaster.add_predictions_to_stops(
-                db, journey, stops, user_origin=from_station
+            # Timeout prevents slow DB queries from blocking the entire response.
+            # Predictions are optional enrichment — safe to skip on timeout.
+            await asyncio.wait_for(
+                forecaster.add_predictions_to_stops(
+                    db, journey, stops, user_origin=from_station
+                ),
+                timeout=5.0,
             )
-
-            # Note: The forecaster now handles the user's origin intelligently,
-            # using scheduled times when the train hasn't reached it yet
 
             logger.info(
                 "added_arrival_predictions",
@@ -335,6 +337,12 @@ async def get_train_details(
                 stops_with_predictions=sum(
                     1 for s in stops if s.predicted_arrival is not None
                 ),
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "prediction_timeout",
+                train_id=journey.train_id,
+                data_source=journey.data_source,
             )
         except Exception as e:
             # Log error but don't fail the request

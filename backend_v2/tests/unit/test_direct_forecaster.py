@@ -5,6 +5,7 @@ Tests the DirectArrivalForecaster which calculates segment times directly
 from recent journeys without intermediate storage.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
@@ -617,3 +618,40 @@ class TestDirectArrivalForecaster:
             f"Expected ~13 min delay at PH but got {predicted_delay_ph:.1f}min. "
             f"Delay not propagated through chain."
         )
+
+    @pytest.mark.asyncio
+    async def test_forecaster_timeout_degrades_gracefully(
+        self, mock_journey, sample_stops
+    ):
+        """Test that asyncio.wait_for timeout skips predictions without error.
+
+        The trains.py endpoint wraps the forecaster in asyncio.wait_for(timeout=5.0).
+        When the forecaster DB query hangs, the TimeoutError should be caught and
+        the response should still return without predictions. This test verifies
+        the timeout pattern works correctly with the forecaster's async interface.
+        """
+        slow_forecaster = DirectArrivalForecaster()
+
+        # Simulate a slow DB query by making add_predictions_to_stops hang
+        original_method = slow_forecaster.add_predictions_to_stops
+
+        async def slow_predictions(*args, **kwargs):
+            await asyncio.sleep(10)  # Simulate 10s DB hang
+            return await original_method(*args, **kwargs)
+
+        slow_forecaster.add_predictions_to_stops = slow_predictions
+
+        # Verify the timeout fires and raises TimeoutError
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                slow_forecaster.add_predictions_to_stops(
+                    AsyncMock(spec=AsyncSession), mock_journey, sample_stops
+                ),
+                timeout=0.1,  # 100ms timeout for fast test
+            )
+
+        # Verify stops were NOT modified (predictions not added)
+        for stop in sample_stops:
+            assert stop.predicted_arrival is None, (
+                f"Stop {stop.station.code} should not have predictions after timeout"
+            )
