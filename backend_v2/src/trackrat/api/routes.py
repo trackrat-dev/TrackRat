@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import and_, exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -622,7 +623,7 @@ async def _calculate_baseline_train_count(
         return None
 
 
-@router.get("/congestion", response_model=CongestionMapResponse)
+@router.get("/congestion")
 @handle_errors
 async def get_route_congestion(
     time_window_hours: int = Query(1, ge=1, le=24, description="Hours to look back"),
@@ -634,73 +635,90 @@ async def get_route_congestion(
     ),
     data_source: str | None = Query(
         None,
-        description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)",
+        description="Filter by single data source (NJT, AMTRAK, PATH, etc). Mutually exclusive with systems.",
+    ),
+    systems: str | None = Query(
+        None,
+        description="Comma-separated list of systems to include (e.g. NJT,PATH,AMTRAK). "
+        "Omit for all systems. Mutually exclusive with data_source.",
     ),
     force_refresh: bool = Query(False, description="Force bypass cache and recompute"),
     db: AsyncSession = Depends(get_db),
-) -> CongestionMapResponse:
+) -> Response:
     """Get network congestion levels based on recent train performance.
 
     Analyzes train journeys within a lookback window (minimum 2 hours) and returns
     per-segment congestion factors, aggregated congestion levels, and live train
     positions. Results are cached for 10 minutes.
+
+    Use ``systems`` to request a subset of providers (e.g. ``systems=NJT,PATH``).
+    When omitted, all systems are returned by merging per-provider caches.
+    The legacy ``data_source`` parameter still works for single-provider requests.
     """
 
     # Enforce minimum 2-hour window for meaningful congestion data across all systems
     effective_time_window = max(time_window_hours, 2)
 
-    # Cache key uses effective values so precomputed entries match
-    cache_params = {
-        "time_window_hours": effective_time_window,
-        "max_per_segment": max_per_segment,
-        "data_source": data_source,
-    }
+    # Parse systems parameter
+    requested_systems: list[str] | None = None
+    if systems:
+        requested_systems = [s.strip().upper() for s in systems.split(",") if s.strip()]
+    elif data_source:
+        # Legacy single data_source is equivalent to systems=<data_source>
+        requested_systems = [data_source.upper()]
 
-    # Try to serve from cache first (unless force_refresh is requested)
+    # --- Cache lookup ---
     if not force_refresh:
-        from trackrat.services.api_cache import ApiCacheService
-
         cache_service = ApiCacheService()
-        cached_response = await cache_service.get_cached_response(
-            db=db,
-            endpoint="/api/v2/routes/congestion",
-            params=cache_params,
-        )
 
-        if cached_response:
-            try:
-                # Return cached response directly - it's already in the correct format
-                return CongestionMapResponse(**cached_response)
-            except (TypeError, ValueError) as e:
-                logger.warning(
-                    "cache_deserialization_failed",
-                    endpoint="/api/v2/routes/congestion",
-                    params=cache_params,
-                    error=str(e),
-                    error_type=type(e).__name__,
+        if requested_systems and len(requested_systems) == 1:
+            # Single-provider: direct cache lookup (fast path)
+            cache_params = {
+                "time_window_hours": effective_time_window,
+                "max_per_segment": max_per_segment,
+                "data_source": requested_systems[0],
+            }
+            cached = await cache_service.get_cached_response(
+                db, "/api/v2/routes/congestion", cache_params
+            )
+            if cached:
+                return Response(
+                    content=json_mod.dumps(cached),
+                    media_type="application/json",
                 )
-                # Invalidate corrupted cache entry
-                await cache_service.invalidate_cache_entry(
-                    db,
-                    "/api/v2/routes/congestion",
-                    cache_params,
+
+        else:
+            # Multi-provider or all: merge per-provider caches
+            from trackrat.services.api_cache import CONGESTION_PROVIDERS
+
+            merge_systems = requested_systems or CONGESTION_PROVIDERS
+            merged = await cache_service.merge_congestion_from_provider_caches(
+                db, merge_systems, effective_time_window, max_per_segment
+            )
+            if merged:
+                return Response(
+                    content=json_mod.dumps(merged),
+                    media_type="application/json",
                 )
+
+    # --- Cache miss: compute directly ---
+    # For single-provider requests, query that provider.
+    # For multi/all, use data_source=None which queries everything.
+    query_data_source = requested_systems[0] if (requested_systems and len(requested_systems) == 1) else None
 
     analyzer = CongestionAnalyzer()
     try:
         aggregated_segments, journeys, individual_segments = (
             await analyzer.get_network_congestion_with_trains(
-                db, effective_time_window, max_per_segment, data_source
+                db, effective_time_window, max_per_segment, query_data_source
             )
         )
     except Exception as e:
-        # Statement timeout or other DB error on live computation path.
-        # The precompute job will populate the cache on next run.
         error_name = type(e).__name__
         if "QueryCanceled" in error_name or "statement timeout" in str(e).lower():
             logger.warning(
                 "congestion_query_timeout",
-                data_source=data_source,
+                data_source=query_data_source,
                 time_window_hours=effective_time_window,
             )
             raise HTTPException(
@@ -710,9 +728,7 @@ async def get_route_congestion(
             ) from None
         raise
 
-    # Filter out segments containing "SAN" station code - collision between
-    # San Diego Santa Fe Depot (Pacific Surfliner) and Sanford, FL (Silver Service)
-    # causes cross-country lines on the map. TODO: Proper disambiguation in Amtrak collector.
+    # Filter out SAN station code collision (Amtrak disambiguation TODO)
     aggregated_segments = [
         s
         for s in aggregated_segments
@@ -724,24 +740,31 @@ async def get_route_congestion(
         if s.from_station != "SAN" and s.to_station != "SAN"
     ]
 
+    # If multi-system was requested but we queried all, filter to requested systems
+    if requested_systems and len(requested_systems) > 1:
+        systems_set = set(requested_systems)
+        aggregated_segments = [
+            s for s in aggregated_segments if s.data_source in systems_set
+        ]
+        individual_segments = [
+            s for s in individual_segments if s.data_source in systems_set
+        ]
+        journeys = [j for j in journeys if j.data_source in systems_set]
+
     # Extract train positions from journeys
     departure_service = DepartureService()
     train_positions = []
 
     for journey in journeys:
-        # Skip cancelled trains
         if journey.is_cancelled:
             continue
 
-        # Calculate train position
         position = departure_service._calculate_train_position(journey)
 
-        # Get journey progress if available
         journey_percent = None
         if journey.progress:
             journey_percent = journey.progress.journey_percent
 
-        # Create train location data
         location_data = TrainLocationData(
             train_id=journey.train_id,
             line=journey.line_code,
@@ -752,11 +775,6 @@ async def get_route_congestion(
             between_stations=position.between_stations,
             journey_percent=journey_percent,
         )
-
-        # Add GPS data for Amtrak trains if available
-        # TODO: This will need to be fetched from Amtrak API snapshot data
-        # For now, we'll just include the station-based position
-
         train_positions.append(location_data)
 
     # Convert aggregated segments to API models
@@ -776,7 +794,6 @@ async def get_route_congestion(
             current_average_minutes=segment.avg_transit_minutes,
             cancellation_count=segment.cancellation_count,
             cancellation_rate=segment.cancellation_rate,
-            # Frequency/health metrics
             train_count=segment.train_count,
             baseline_train_count=segment.baseline_train_count,
             frequency_factor=segment.frequency_factor,
@@ -797,55 +814,42 @@ async def get_route_congestion(
             "total_aggregated_segments": len(aggregated_api_segments),
             "congestion_levels": {
                 "normal": len(
-                    [
-                        s
-                        for s in aggregated_api_segments
-                        if s.congestion_level == "normal"
-                    ]
+                    [s for s in aggregated_api_segments if s.congestion_level == "normal"]
                 ),
                 "moderate": len(
-                    [
-                        s
-                        for s in aggregated_api_segments
-                        if s.congestion_level == "moderate"
-                    ]
+                    [s for s in aggregated_api_segments if s.congestion_level == "moderate"]
                 ),
                 "heavy": len(
-                    [
-                        s
-                        for s in aggregated_api_segments
-                        if s.congestion_level == "heavy"
-                    ]
+                    [s for s in aggregated_api_segments if s.congestion_level == "heavy"]
                 ),
                 "severe": len(
-                    [
-                        s
-                        for s in aggregated_api_segments
-                        if s.congestion_level == "severe"
-                    ]
+                    [s for s in aggregated_api_segments if s.congestion_level == "severe"]
                 ),
             },
             "total_trains": len(train_positions),
         },
     )
+    response_dict = response.model_dump(mode="json")
 
-    # Store in cache for future requests (also update cache on force_refresh)
+    # Store in cache for future requests
     try:
-        from trackrat.services.api_cache import ApiCacheService
-
+        cache_params = {
+            "time_window_hours": effective_time_window,
+            "max_per_segment": max_per_segment,
+            "data_source": query_data_source,
+        }
         cache_service = ApiCacheService()
         await cache_service.store_cached_response(
             db=db,
             endpoint="/api/v2/routes/congestion",
             params=cache_params,
-            response=response.model_dump(mode="json"),
-            ttl_seconds=600,  # 10 minutes (longer than 15-min refresh to avoid gaps)
+            response=response_dict,
+            ttl_seconds=600,
         )
     except Exception as e:
-        # Don't let cache storage failure affect the API response
         logger.warning("cache_storage_failed", error=str(e))
 
-    return response
+    return Response(content=json_mod.dumps(response_dict), media_type="application/json")
 
 
 @router.get(

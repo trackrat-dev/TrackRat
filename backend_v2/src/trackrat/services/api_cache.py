@@ -23,6 +23,20 @@ from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
+# Providers that have per-provider congestion cache entries pre-computed.
+# Keep in sync with the param_sets in precompute_congestion_responses().
+CONGESTION_PROVIDERS = [
+    "NJT",
+    "PATH",
+    "AMTRAK",
+    "LIRR",
+    "MNR",
+    "SUBWAY",
+    "WMATA",
+    "PATCO",
+    "METRA",
+]
+
 
 class ApiCacheService:
     """Service for pre-computing and caching expensive API responses."""
@@ -97,6 +111,86 @@ class ApiCacheService:
             )
         return deleted
 
+    async def merge_congestion_from_provider_caches(
+        self,
+        db: AsyncSession,
+        systems: list[str],
+        time_window_hours: int,
+        max_per_segment: int,
+    ) -> dict[str, Any] | None:
+        """Assemble a multi-system congestion response by merging per-provider cached entries.
+
+        Returns the merged response dict, or None if any requested system is missing
+        from the cache (caller should fall back to direct computation).
+        """
+        merged_individual: list[dict[str, Any]] = []
+        merged_aggregated: list[dict[str, Any]] = []
+        merged_positions: list[dict[str, Any]] = []
+        oldest_generated_at: str | None = None
+
+        for system in systems:
+            provider_params = {
+                "time_window_hours": time_window_hours,
+                "max_per_segment": max_per_segment,
+                "data_source": system,
+            }
+            cached = await self.get_cached_response(
+                db, "/api/v2/routes/congestion", provider_params
+            )
+            if cached is None:
+                logger.debug(
+                    "merge_cache_miss",
+                    missing_system=system,
+                    time_window_hours=time_window_hours,
+                    max_per_segment=max_per_segment,
+                )
+                return None
+
+            merged_individual.extend(cached.get("individual_segments", []))
+            merged_aggregated.extend(cached.get("aggregated_segments", []))
+            merged_positions.extend(cached.get("train_positions", []))
+
+            gen_at = cached.get("generated_at")
+            if gen_at and (oldest_generated_at is None or gen_at < oldest_generated_at):
+                oldest_generated_at = gen_at
+
+        # Build merged metadata
+        congestion_levels: dict[str, int] = {
+            "normal": 0,
+            "moderate": 0,
+            "heavy": 0,
+            "severe": 0,
+        }
+        for seg in merged_aggregated:
+            level = seg.get("congestion_level", "normal")
+            if level in congestion_levels:
+                congestion_levels[level] += 1
+
+        merged_response = {
+            "individual_segments": merged_individual,
+            "aggregated_segments": merged_aggregated,
+            "train_positions": merged_positions,
+            "generated_at": oldest_generated_at or now_et().isoformat(),
+            "time_window_hours": time_window_hours,
+            "max_per_segment": max_per_segment,
+            "metadata": {
+                "total_individual_segments": len(merged_individual),
+                "total_aggregated_segments": len(merged_aggregated),
+                "congestion_levels": congestion_levels,
+                "total_trains": len(merged_positions),
+                "merged_from_systems": systems,
+            },
+        }
+
+        logger.info(
+            "congestion_cache_merged",
+            systems=systems,
+            aggregated_count=len(merged_aggregated),
+            train_count=len(merged_positions),
+        )
+
+        return merged_response
+
     async def store_cached_response(
         self,
         db: AsyncSession,
@@ -145,30 +239,22 @@ class ApiCacheService:
     async def precompute_congestion_responses(self, db: AsyncSession) -> None:
         """Pre-compute congestion responses for common parameter combinations used by iOS app."""
 
-        # Parameter combinations based on iOS app usage analysis
-        # Cache keys use effective time window (minimum 2h enforced by API endpoint)
-        param_sets: list[dict[str, Any]] = [
-            # iOS summary mode (default): timeWindowHours=1 -> effective 2, maxPerSegment=0
-            {"time_window_hours": 2, "max_per_segment": 0, "data_source": None},
-            # iOS trains mode: timeWindowHours=1 -> effective 2, maxPerSegment=100
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": None},
-            # Longer window views
-            {"time_window_hours": 3, "max_per_segment": 100, "data_source": None},
-            {"time_window_hours": 3, "max_per_segment": 0, "data_source": None},
-            # Per-provider filtering (iOS RouteStatusView uses timeWindowHours=1 -> effective 2, maxPerSegment=100)
-            {"time_window_hours": 2, "max_per_segment": 0, "data_source": "NJT"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "NJT"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "PATH"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "AMTRAK"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "LIRR"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "MNR"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "SUBWAY"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "WMATA"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "PATCO"},
-            {"time_window_hours": 2, "max_per_segment": 100, "data_source": "METRA"},
-            # Longer window views with NJT
-            {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"},
-        ]
+        # Per-provider cache entries only. "All systems" requests are assembled
+        # by merging per-provider caches at query time (see merge_congestion_from_provider_caches),
+        # which avoids the expensive unfiltered SQL queries.
+        param_sets: list[dict[str, Any]] = []
+        for provider in CONGESTION_PROVIDERS:
+            # Both summary (maxPerSegment=0) and trains (maxPerSegment=100) modes
+            param_sets.append(
+                {"time_window_hours": 2, "max_per_segment": 0, "data_source": provider}
+            )
+            param_sets.append(
+                {"time_window_hours": 2, "max_per_segment": 100, "data_source": provider}
+            )
+        # Longer window views for NJT (commonly used)
+        param_sets.append(
+            {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"}
+        )
 
         logger.info("precomputing_congestion_responses", param_count=len(param_sets))
 
