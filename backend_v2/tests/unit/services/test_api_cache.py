@@ -714,14 +714,22 @@ class TestMergeCongestionFromProviderCaches:
             "metadata": {},
         }
 
-    def _make_cache_row(self, cache_service, provider: str, time_window_hours: int = 2, max_per_segment: int = 100) -> Mock:
+    def _make_cache_row(
+        self,
+        cache_service,
+        provider: str,
+        time_window_hours: int = 2,
+        max_per_segment: int = 100,
+    ) -> Mock:
         """Build a mock CachedApiResponse DB row for a provider."""
         row = Mock(spec=CachedApiResponse)
-        row.params_hash = cache_service._hash_params({
-            "time_window_hours": time_window_hours,
-            "max_per_segment": max_per_segment,
-            "data_source": provider,
-        })
+        row.params_hash = cache_service._hash_params(
+            {
+                "time_window_hours": time_window_hours,
+                "max_per_segment": max_per_segment,
+                "data_source": provider,
+            }
+        )
         row.response = self._make_provider_response(provider)
         return row
 
@@ -852,9 +860,9 @@ class TestMergeCongestionFromProviderCaches:
         )
 
         # Verify the batch query was called with the correct hash
-        expected_hash = cache_service._hash_params({
-            "time_window_hours": 3, "max_per_segment": 0, "data_source": "NJT"
-        })
+        expected_hash = cache_service._hash_params(
+            {"time_window_hours": 3, "max_per_segment": 0, "data_source": "NJT"}
+        )
         # Inspect the WHERE clause — the hash should appear in the IN list
         call_args = mock_db.execute.call_args
         assert call_args is not None, "db.execute should have been called"

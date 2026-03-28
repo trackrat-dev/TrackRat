@@ -863,7 +863,7 @@ class CongestionDataViewModel: ObservableObject {
         do {
             let trainSystem = TrainSystem(rawValue: train.dataSource)
             let systems: Set<TrainSystem>? = trainSystem.map { Set([$0]) }
-            let response = try await apiService.fetchCongestionData(timeWindowHours: 1, systems: systems)
+            let response = try await apiService.fetchCongestionData(timeWindowHours: 2, systems: systems)
             congestionData = response
             lastUpdated = Date()
             

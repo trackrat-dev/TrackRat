@@ -13,7 +13,7 @@ struct CongestionMapView: View {
     @State private var routeStatusContext: RouteStatusContext?
     @State private var selectedIndividualSegment: IndividualJourneySegment?
     @State private var showingFilters = false
-    @State private var timeWindow = 1
+    @State private var timeWindow = 2
     @State private var selectedDataSource: String = "All"
     @State private var showingLayers = false
     @State private var showingPaywall = false
@@ -410,7 +410,7 @@ struct CongestionMapView: View {
         guard !segmentsWithData.isEmpty else { return nil }
 
         let headways = segmentsWithData.compactMap {
-            $0.currentHeadwayMinutes(timeWindowHours: timeWindow)
+            $0.currentHeadwayMinutes(timeWindowHours: viewModel.lastTimeWindowHours)
         }
         guard !headways.isEmpty else { return nil }
 
@@ -531,7 +531,7 @@ class CongestionMapViewModel: ObservableObject {
     @Published var routeStations: [MapStation] = []  // Stations from route topology
     @Published var isLoading = false
     @Published var error: String?
-    @Published var lastTimeWindowHours: Int = 1  // Track fetched time window for headway calc
+    @Published var lastTimeWindowHours: Int = 2  // Track effective time window for headway calc (backend min is 2)
 
     // MARK: - Internal State
     private var allAggregatedSegments: [CongestionSegment] = []
@@ -576,7 +576,7 @@ class CongestionMapViewModel: ObservableObject {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Self.refreshInterval, repeats: true) { [weak self] _ in
             Task { [weak self] in
                 await self?.fetchCongestionData(
-                    timeWindowHours: self?.lastTimeWindowHours ?? 1,
+                    timeWindowHours: self?.lastTimeWindowHours ?? 2,
                     dataSource: self?.lastDataSource,
                     systems: self?.lastSystems
                 )
@@ -684,7 +684,7 @@ class CongestionMapViewModel: ObservableObject {
         }
     }
     
-    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 1, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async {
+    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 2, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async {
         // Only fetch if we don't already have data and we're not currently loading
         guard allAggregatedSegments.isEmpty && !isLoading else {
             print("🚦 Skipping congestion data fetch - already have data or loading")
@@ -694,7 +694,7 @@ class CongestionMapViewModel: ObservableObject {
         await fetchCongestionData(timeWindowHours: timeWindowHours, dataSource: dataSource, systems: systems)
     }
     
-    func fetchCongestionData(timeWindowHours: Int = 1, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async {
+    func fetchCongestionData(timeWindowHours: Int = 2, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async {
         // Prevent duplicate fetches if already loading
         guard !isLoading else {
             print("🚦 Skipping duplicate fetch - already loading")
@@ -704,7 +704,7 @@ class CongestionMapViewModel: ObservableObject {
         print("🚦 Starting congestion data fetch (timeWindow: \(timeWindowHours), dataSource: \(dataSource ?? "All"), systems: \(systems?.map(\.rawValue).sorted().joined(separator: ",") ?? "nil"))")
         isLoading = true
         error = nil
-        lastTimeWindowHours = timeWindowHours
+        lastTimeWindowHours = timeWindowHours  // Will be updated from response below
         lastDataSource = dataSource
         lastSystems = systems
 
@@ -725,6 +725,9 @@ class CongestionMapViewModel: ObservableObject {
                 systems: systems
             )
             
+            // Use the effective time window from the backend (may differ from requested, e.g. min 2h)
+            lastTimeWindowHours = response.timeWindowHours
+
             print("🚦 API response received: \(response.aggregatedSegments.count) aggregated, \(response.individualSegments.count) individual segments")
 
             // Debug: Print first few segments to see what we're getting
@@ -1008,7 +1011,7 @@ struct FilterSheet: View {
             Form {
                 Section("Time Window") {
                     Picker("Hours", selection: $timeWindow) {
-                        Text("1 hour").tag(1)
+                        Text("2 hours").tag(2)
                         Text("3 hours").tag(3)
                         Text("6 hours").tag(6)
                         Text("12 hours").tag(12)

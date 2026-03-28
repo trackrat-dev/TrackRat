@@ -652,7 +652,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 1, systems: Set<TrainSystem>? = nil) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 2, systems: Set<TrainSystem>? = nil) async throws -> CongestionMapResponse {
         return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil, systems: systems)
     }
     
@@ -856,7 +856,7 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 1, maxPerSegment: Int = 100, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 2, maxPerSegment: Int = 100, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async throws -> CongestionMapResponse {
         var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         components.queryItems = [
             URLQueryItem(name: "time_window_hours", value: String(timeWindowHours)),

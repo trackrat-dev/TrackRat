@@ -622,6 +622,122 @@ async def _calculate_baseline_train_count(
         return None
 
 
+async def _compute_and_cache_single_provider(
+    db: AsyncSession,
+    data_source: str,
+    time_window_hours: int,
+    max_per_segment: int,
+) -> None:
+    """Compute congestion for a single provider and store it in the cache.
+
+    Used by the multi-provider cache miss path to populate per-provider cache
+    entries so the merge path can assemble them on retry.
+    """
+    analyzer = CongestionAnalyzer()
+    aggregated_segments, journeys, individual_segments = (
+        await analyzer.get_network_congestion_with_trains(
+            db, time_window_hours, max_per_segment, data_source
+        )
+    )
+
+    # Filter out SAN station code collision
+    aggregated_segments = [
+        s
+        for s in aggregated_segments
+        if s.from_station != "SAN" and s.to_station != "SAN"
+    ]
+    individual_segments = [
+        s
+        for s in individual_segments
+        if s.from_station != "SAN" and s.to_station != "SAN"
+    ]
+
+    # Build train positions
+    departure_service = DepartureService()
+    train_positions = []
+    for journey in journeys:
+        if journey.is_cancelled:
+            continue
+        position = departure_service._calculate_train_position(journey)
+        journey_percent = None
+        if journey.progress:
+            journey_percent = journey.progress.journey_percent
+        train_positions.append(
+            TrainLocationData(
+                train_id=journey.train_id,
+                line=journey.line_code,
+                data_source=journey.data_source,
+                last_departed_station=position.last_departed_station_code,
+                at_station=position.at_station_code,
+                next_station=position.next_station_code,
+                between_stations=position.between_stations,
+                journey_percent=journey_percent,
+            )
+        )
+
+    # Build API segment models
+    aggregated_api_segments = [
+        SegmentCongestionModel(
+            from_station=s.from_station,
+            to_station=s.to_station,
+            from_station_name=get_station_name(s.from_station),
+            to_station_name=get_station_name(s.to_station),
+            data_source=s.data_source,
+            congestion_level=s.congestion_level,
+            congestion_factor=s.congestion_factor,
+            average_delay_minutes=s.average_delay_minutes,
+            sample_count=s.sample_count,
+            baseline_minutes=s.baseline_minutes,
+            current_average_minutes=s.avg_transit_minutes,
+            cancellation_count=s.cancellation_count,
+            cancellation_rate=s.cancellation_rate,
+            train_count=s.train_count,
+            baseline_train_count=s.baseline_train_count,
+            frequency_factor=s.frequency_factor,
+            frequency_level=s.frequency_level,
+        )
+        for s in aggregated_segments
+    ]
+
+    response = CongestionMapResponse(
+        individual_segments=individual_segments,
+        aggregated_segments=aggregated_api_segments,
+        train_positions=train_positions,
+        generated_at=now_et(),
+        time_window_hours=time_window_hours,
+        max_per_segment=max_per_segment,
+        metadata={
+            "total_individual_segments": len(individual_segments),
+            "total_aggregated_segments": len(aggregated_api_segments),
+            "congestion_levels": {
+                level: sum(
+                    1 for s in aggregated_api_segments if s.congestion_level == level
+                )
+                for level in ("normal", "moderate", "heavy", "severe")
+            },
+            "total_trains": len(train_positions),
+        },
+    )
+    response_dict = response.model_dump(mode="json")
+
+    cache_service = ApiCacheService()
+    cache_params = {
+        "time_window_hours": time_window_hours,
+        "max_per_segment": max_per_segment,
+        "data_source": data_source,
+    }
+    try:
+        await cache_service.store_cached_response(
+            db=db,
+            endpoint="/api/v2/routes/congestion",
+            params=cache_params,
+            response=response_dict,
+            ttl_seconds=600,
+        )
+    except Exception as e:
+        logger.warning("cache_storage_failed", data_source=data_source, error=str(e))
+
+
 @router.get("/congestion")
 @handle_errors
 async def get_route_congestion(
@@ -702,7 +818,47 @@ async def get_route_congestion(
 
     # --- Cache miss: compute directly ---
     # For single-provider requests, query that provider.
-    # For multi/all, use data_source=None which queries everything.
+    # For multi/all, query each provider individually so each gets cached.
+    if requested_systems and len(requested_systems) > 1:
+        # Multi-provider miss: compute each provider individually so each gets
+        # cached, then re-merge.  This avoids the expensive all-provider query
+        # and ensures the cache is populated for future requests.
+        cache_service = ApiCacheService()
+        for system in requested_systems:
+            try:
+                await _compute_and_cache_single_provider(
+                    db, system, effective_time_window, max_per_segment
+                )
+            except Exception as e:
+                error_name = type(e).__name__
+                if (
+                    "QueryCanceled" in error_name
+                    or "statement timeout" in str(e).lower()
+                ):
+                    logger.warning(
+                        "congestion_query_timeout",
+                        data_source=system,
+                        time_window_hours=effective_time_window,
+                    )
+                    continue  # Skip this provider, try others
+                raise
+
+        # Re-merge from the freshly-populated caches
+        merged = await cache_service.merge_congestion_from_provider_caches(
+            db, requested_systems, effective_time_window, max_per_segment
+        )
+        if merged:
+            return Response(
+                content=json_mod.dumps(merged),
+                media_type="application/json",
+            )
+        # All providers failed — return 503
+        raise HTTPException(
+            status_code=503,
+            detail="Congestion data is temporarily unavailable. Please retry shortly.",
+            headers={"Retry-After": "60"},
+        )
+
     query_data_source = (
         requested_systems[0]
         if (requested_systems and len(requested_systems) == 1)
@@ -742,17 +898,6 @@ async def get_route_congestion(
         for s in individual_segments
         if s.from_station != "SAN" and s.to_station != "SAN"
     ]
-
-    # If multi-system was requested but we queried all, filter to requested systems
-    if requested_systems and len(requested_systems) > 1:
-        systems_set = set(requested_systems)
-        aggregated_segments = [
-            s for s in aggregated_segments if s.data_source in systems_set
-        ]
-        individual_segments = [
-            s for s in individual_segments if s.data_source in systems_set
-        ]
-        journeys = [j for j in journeys if j.data_source in systems_set]
 
     # Extract train positions from journeys
     departure_service = DepartureService()
