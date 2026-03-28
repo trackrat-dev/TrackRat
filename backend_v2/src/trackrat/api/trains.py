@@ -282,13 +282,18 @@ async def get_train_details(
 
     if not journey:
         # For today's trains: try GTFS fallback for scheduled-only trains
-        # (trains that appear in departure listing but haven't been discovered yet)
-        gtfs_service = GTFSService()
-        gtfs_details = await gtfs_service.get_train_details(
-            db, train_id, date, data_source=data_source
-        )
-        if gtfs_details:
-            return TrainDetailsResponse(train=gtfs_details)
+        # (trains that appear in departure listing but haven't been discovered yet).
+        # Guard with try/except: the session may be in a dirty state if JIT
+        # refresh failed and rollback couldn't fully recover it.
+        try:
+            gtfs_service = GTFSService()
+            gtfs_details = await gtfs_service.get_train_details(
+                db, train_id, date, data_source=data_source
+            )
+            if gtfs_details:
+                return TrainDetailsResponse(train=gtfs_details)
+        except Exception:
+            pass
         raise HTTPException(
             status_code=404, detail=f"Train {train_id} not found for date {date}"
         )
