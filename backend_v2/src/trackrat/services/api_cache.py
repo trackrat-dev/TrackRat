@@ -154,13 +154,16 @@ class ApiCacheService:
         # Index results by params_hash
         hit_hashes: set[str] = set()
         for row in cached_rows:
-            system = hash_to_system.get(row.params_hash)
-            if not system or not row.response:
+            ph = row.params_hash
+            if not ph or not row.response:
                 continue
-            hit_hashes.add(row.params_hash)
+            matched_system = hash_to_system.get(ph)
+            if not matched_system:
+                continue
+            hit_hashes.add(ph)
             cached = row.response
 
-            merged_systems.append(system)
+            merged_systems.append(matched_system)
             merged_individual.extend(cached.get("individual_segments", []))
             merged_aggregated.extend(cached.get("aggregated_segments", []))
             merged_positions.extend(cached.get("train_positions", []))
