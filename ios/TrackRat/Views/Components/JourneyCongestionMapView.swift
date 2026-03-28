@@ -475,7 +475,7 @@ struct CongestionMapKitView: UIViewRepresentable {
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let polyline = overlay as? CongestionPolyline {
-                let renderer = OutlinedPolylineRenderer(polyline: polyline)
+                let renderer = MKPolylineRenderer(polyline: polyline)
                 if let segment = polyline.segment {
                     renderer.strokeColor = colorForSegment(segment)
                     renderer.lineWidth = 6.0
