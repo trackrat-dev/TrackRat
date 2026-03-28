@@ -976,9 +976,7 @@ class TestArrivalSourceFiltering:
             f"{result['average_delay_minutes']}m"
         )
 
-    async def test_null_arrival_source_included_in_otp(
-        self, db_session: AsyncSession
-    ):
+    async def test_null_arrival_source_included_in_otp(self, db_session: AsyncSession):
         """Historical data with NULL arrival_source should be included in OTP.
 
         The arrival_source column was added March 2026. Pre-existing data has

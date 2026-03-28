@@ -652,6 +652,6 @@ class TestDirectArrivalForecaster:
 
         # Verify stops were NOT modified (predictions not added)
         for stop in sample_stops:
-            assert stop.predicted_arrival is None, (
-                f"Stop {stop.station.code} should not have predictions after timeout"
-            )
+            assert (
+                stop.predicted_arrival is None
+            ), f"Stop {stop.station.code} should not have predictions after timeout"

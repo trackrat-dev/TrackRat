@@ -703,7 +703,11 @@ async def get_route_congestion(
     # --- Cache miss: compute directly ---
     # For single-provider requests, query that provider.
     # For multi/all, use data_source=None which queries everything.
-    query_data_source = requested_systems[0] if (requested_systems and len(requested_systems) == 1) else None
+    query_data_source = (
+        requested_systems[0]
+        if (requested_systems and len(requested_systems) == 1)
+        else None
+    )
 
     analyzer = CongestionAnalyzer()
     try:
@@ -813,16 +817,32 @@ async def get_route_congestion(
             "total_aggregated_segments": len(aggregated_api_segments),
             "congestion_levels": {
                 "normal": len(
-                    [s for s in aggregated_api_segments if s.congestion_level == "normal"]
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "normal"
+                    ]
                 ),
                 "moderate": len(
-                    [s for s in aggregated_api_segments if s.congestion_level == "moderate"]
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "moderate"
+                    ]
                 ),
                 "heavy": len(
-                    [s for s in aggregated_api_segments if s.congestion_level == "heavy"]
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "heavy"
+                    ]
                 ),
                 "severe": len(
-                    [s for s in aggregated_api_segments if s.congestion_level == "severe"]
+                    [
+                        s
+                        for s in aggregated_api_segments
+                        if s.congestion_level == "severe"
+                    ]
                 ),
             },
             "total_trains": len(train_positions),
@@ -830,25 +850,29 @@ async def get_route_congestion(
     )
     response_dict = response.model_dump(mode="json")
 
-    # Store in cache for future requests
-    try:
-        cache_params = {
-            "time_window_hours": effective_time_window,
-            "max_per_segment": max_per_segment,
-            "data_source": query_data_source,
-        }
-        cache_service = ApiCacheService()
-        await cache_service.store_cached_response(
-            db=db,
-            endpoint="/api/v2/routes/congestion",
-            params=cache_params,
-            response=response_dict,
-            ttl_seconds=600,
-        )
-    except Exception as e:
-        logger.warning("cache_storage_failed", error=str(e))
+    # Store in cache for future requests (skip for multi-provider;
+    # those are assembled from per-provider caches by the merge path)
+    if query_data_source is not None:
+        try:
+            cache_params = {
+                "time_window_hours": effective_time_window,
+                "max_per_segment": max_per_segment,
+                "data_source": query_data_source,
+            }
+            cache_service = ApiCacheService()
+            await cache_service.store_cached_response(
+                db=db,
+                endpoint="/api/v2/routes/congestion",
+                params=cache_params,
+                response=response_dict,
+                ttl_seconds=600,
+            )
+        except Exception as e:
+            logger.warning("cache_storage_failed", error=str(e))
 
-    return Response(content=json_mod.dumps(response_dict), media_type="application/json")
+    return Response(
+        content=json_mod.dumps(response_dict), media_type="application/json"
+    )
 
 
 @router.get(

@@ -272,22 +272,34 @@ class TestApiCacheService:
                 expected_params = []
                 for provider in CONGESTION_PROVIDERS:
                     expected_params.append(
-                        {"time_window_hours": 2, "max_per_segment": 0, "data_source": provider}
+                        {
+                            "time_window_hours": 2,
+                            "max_per_segment": 0,
+                            "data_source": provider,
+                        }
                     )
                     expected_params.append(
-                        {"time_window_hours": 2, "max_per_segment": 100, "data_source": provider}
+                        {
+                            "time_window_hours": 2,
+                            "max_per_segment": 100,
+                            "data_source": provider,
+                        }
                     )
                 expected_params.append(
-                    {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"}
+                    {
+                        "time_window_hours": 3,
+                        "max_per_segment": 100,
+                        "data_source": "NJT",
+                    }
                 )
 
                 # No all-sources (data_source=None) entries should exist
                 for i, expected_param in enumerate(expected_params):
                     actual_params = mock_compute.call_args_list[i][0][1]
                     assert actual_params == expected_param
-                    assert actual_params["data_source"] is not None, (
-                        f"param set {i} has data_source=None — all-sources queries should not be pre-computed"
-                    )
+                    assert (
+                        actual_params["data_source"] is not None
+                    ), f"param set {i} has data_source=None — all-sources queries should not be pre-computed"
 
                     store_call = mock_store.call_args_list[i]
                     assert store_call.kwargs["endpoint"] == "/api/v2/routes/congestion"
@@ -690,9 +702,7 @@ class TestMergeCongestionFromProviderCaches:
                     "congestion_factor": 1.0,
                 }
             ],
-            "train_positions": [
-                {"train_id": f"{provider}_1", "data_source": provider}
-            ],
+            "train_positions": [{"train_id": f"{provider}_1", "data_source": provider}],
             "generated_at": "2025-01-01T12:00:00-05:00",
             "time_window_hours": 2,
             "max_per_segment": 100,
@@ -797,7 +807,9 @@ class TestMergeCongestionFromProviderCaches:
     @pytest.mark.asyncio
     async def test_merge_passes_correct_cache_params(self, cache_service, mock_db):
         """Merge should look up each provider with the correct cache key structure."""
-        with patch.object(cache_service, "get_cached_response", return_value=None) as mock_get:
+        with patch.object(
+            cache_service, "get_cached_response", return_value=None
+        ) as mock_get:
             await cache_service.merge_congestion_from_provider_caches(
                 mock_db, ["NJT"], time_window_hours=3, max_per_segment=0
             )

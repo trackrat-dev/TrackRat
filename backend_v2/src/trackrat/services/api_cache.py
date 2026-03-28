@@ -35,6 +35,8 @@ CONGESTION_PROVIDERS = [
     "WMATA",
     "PATCO",
     "METRA",
+    "BART",
+    "MBTA",
 ]
 
 
@@ -249,7 +251,11 @@ class ApiCacheService:
                 {"time_window_hours": 2, "max_per_segment": 0, "data_source": provider}
             )
             param_sets.append(
-                {"time_window_hours": 2, "max_per_segment": 100, "data_source": provider}
+                {
+                    "time_window_hours": 2,
+                    "max_per_segment": 100,
+                    "data_source": provider,
+                }
             )
         # Longer window views for NJT (commonly used)
         param_sets.append(

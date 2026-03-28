@@ -14,9 +14,13 @@ const SYSTEM_LABELS: Record<string, string> = {
   LIRR: 'LIRR',
   MNR: 'Metro-North',
   SUBWAY: 'NYC Subway',
+  WMATA: 'Washington Metro',
+  METRA: 'Metra',
+  BART: 'BART',
+  MBTA: 'MBTA',
 };
 
-const SYSTEM_ORDER = ['NJT', 'AMTRAK', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'PATCO'];
+const SYSTEM_ORDER = ['NJT', 'AMTRAK', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'PATCO', 'WMATA', 'METRA', 'BART', 'MBTA'];
 
 function getCongestionColor(level: CongestionLevel): string {
   switch (level) {

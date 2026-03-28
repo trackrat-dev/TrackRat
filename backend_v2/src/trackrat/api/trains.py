@@ -338,7 +338,7 @@ async def get_train_details(
                     1 for s in stops if s.predicted_arrival is not None
                 ),
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "prediction_timeout",
                 train_id=journey.train_id,
