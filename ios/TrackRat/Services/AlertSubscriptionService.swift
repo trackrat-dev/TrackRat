@@ -8,6 +8,10 @@ final class AlertSubscriptionService: ObservableObject {
 
     private let deviceIdKey = "AlertSubscription.deviceId"
     private let subscriptionsKey = "AlertSubscription.subscriptions"
+    private let lastSyncDateKey = "AlertSubscription.lastSyncDate"
+
+    /// Minimum interval between automatic foreground syncs (6 hours).
+    private let foregroundSyncInterval: TimeInterval = 6 * 60 * 60
 
     /// Stable device identifier for this installation.
     var deviceId: String {
@@ -95,12 +99,22 @@ final class AlertSubscriptionService: ObservableObject {
         }
     }
 
+    /// Throttled sync for app-foreground events. Only syncs if subscriptions exist
+    /// and enough time has passed since the last successful sync.
+    func syncIfNeeded() {
+        guard !subscriptions.isEmpty else { return }
+        let lastSync = UserDefaults.standard.object(forKey: lastSyncDateKey) as? Date ?? .distantPast
+        guard Date().timeIntervalSince(lastSync) >= foregroundSyncInterval else { return }
+        syncIfPossible()
+    }
+
     func syncWithBackend(apnsToken: String) async {
         do {
             _ = try await APIService.shared.registerDevice(
                 deviceId: deviceId, apnsToken: apnsToken
             )
             try await APIService.shared.syncAlertSubscriptions(deviceId: deviceId, subscriptions: subscriptions)
+            UserDefaults.standard.set(Date(), forKey: lastSyncDateKey)
         } catch {
             print("Alert subscription sync failed: \(error)")
         }
