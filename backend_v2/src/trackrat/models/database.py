@@ -724,7 +724,7 @@ class GTFSTrip(Base):
     )
     service_id = Column(String(50), nullable=False)  # Links to calendar
     trip_headsign = Column(String(100))  # Destination name
-    train_id = Column(String(20))  # Extracted train number if available
+    train_id = Column(String(50))  # Extracted train number if available
     direction_id = Column(Integer)  # 0=outbound, 1=inbound
 
     # Relationships
