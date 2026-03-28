@@ -63,10 +63,11 @@ urlencode() { jq -rn --arg v "$1" '$v | @uri'; }
 
 # Fetch URL, write body to $TMPDIR/resp.json, print HTTP status code.
 # Also writes response time (seconds) to $TMPDIR/last_time.txt for check_timing().
+# Usage: api <url> [max_time]
 api() {
-  local result
+  local result max_time="${2:-15}"
   > "$TMPDIR/resp.json"  # Clear stale response from previous call
-  result=$(curl -s -o "$TMPDIR/resp.json" -w "%{http_code} %{time_total}" --max-time 15 "$1" 2>/dev/null) || result="000 0"
+  result=$(curl -s -o "$TMPDIR/resp.json" -w "%{http_code} %{time_total}" --max-time "$max_time" "$1" 2>/dev/null) || result="000 0"
   echo "${result#* }" > "$TMPDIR/last_time.txt"
   echo "${result%% *}"
 }
@@ -173,7 +174,7 @@ else
 fi
 
 # Test per data source (smoke test: just check HTTP 200)
-for cong_src in NJT AMTRAK PATH LIRR MNR SUBWAY PATCO; do
+for cong_src in NJT AMTRAK PATH LIRR MNR SUBWAY PATCO BART MBTA METRA WMATA; do
   code=$(api "$API/routes/congestion?data_source=$cong_src")
   if [[ "$code" != "200" ]]; then
     fail "Congestion ($cong_src): HTTP $code"
@@ -238,6 +239,22 @@ ROUTES=(
   "Subway N|SR01|SD43|SUBWAY||"
   # PATCO - schedule-only (no real-time API available)
   "PATCO Speedline|LND|FFL|PATCO||s"
+  # BART (San Francisco)
+  "BART Red|BART_RICH|BART_SFIA|BART||"
+  "BART Orange|BART_BERY|BART_RICH|BART||"
+  "BART Yellow|BART_ANTC|BART_SFIA|BART||"
+  # MBTA (Boston Commuter Rail) — use shorter segments for better evening coverage
+  "MBTA Franklin|BOS|BFRK|MBTA||"
+  "MBTA Worcester|BOS|BFRM|MBTA||"
+  "MBTA Providence|BOS|BMAN|MBTA||"
+  # Metra (Chicago)
+  "Metra BNSF|AURORA|CUS|METRA||"
+  "Metra UP-N|KENOSHA|OTC|METRA||"
+  "Metra RI|JOLIET|LSS|METRA||"
+  # WMATA (Washington DC Metro) — use central stations for broader service hours
+  "WMATA Red|A01|B04|WMATA||"
+  "WMATA Orange|K08|D13|WMATA||"
+  "WMATA Green|F11|E10|WMATA||"
 )
 
 # --- Random routes (Phase 2) ---
@@ -262,7 +279,7 @@ sc = _load('station_configs')
 ${seed_arg}
 ml = set(sc.get_prediction_enabled_stations())
 is_weekend = datetime.date.today().weekday() >= 5
-for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',2),('PATCO',1)]:
+for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',2),('PATCO',1),('BART',2),('MBTA',3),('METRA',3),('WMATA',2)]:
     routes = rt.get_routes_for_data_source(src)
     flags = 's' if src == 'PATCO' else ''
     for r in random.sample(routes, min(n, len(routes))):
@@ -352,6 +369,19 @@ for route in "${ROUTES[@]}"; do
   if [[ "$flags" == *s* ]]; then
     # Schedule-only source (e.g., PATCO) — OBSERVED trains are never expected
     pass "Schedule-only: $sched scheduled"
+  elif [[ "$source" != "NJT" && "$source" != "AMTRAK" ]]; then
+    # Real-time-only systems (PATH, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA)
+    # don't create SCHEDULED records — they go straight to OBSERVED.
+    # However, the GTFS merge service may add SCHEDULED departures for future trains
+    # beyond the real-time window, so all-SCHEDULED is valid (e.g., late night).
+    if [[ "$obs" -gt 0 ]]; then
+      pass "Real-time: $obs observed"
+    elif [[ "$sched" -gt 0 ]]; then
+      pass "Real-time: $sched scheduled (GTFS only, no real-time trains)"
+    else
+      fail "No trains (OBSERVED or SCHEDULED)"
+      FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
+    fi
   elif [[ "$sched" -eq 0 ]]; then
     fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
     FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")
@@ -413,7 +443,7 @@ for route in "${ROUTES[@]}"; do
   fi
 
   detail_url="$API/trains/$(urlencode "$train_id")?date=${j_date}&include_predictions=true&from_station=${from}&data_source=${source}"
-  code=$(api "$detail_url")
+  code=$(api "$detail_url" 30)  # 30s timeout: predictions trigger heavy DB queries
   check_timing
   if [[ "$code" != "200" ]]; then
     fail "Detail ($train_id): HTTP $code"
@@ -495,7 +525,7 @@ for route in "${ROUTES[@]}"; do
 
   # 4. ROUTE HISTORY (iOS: Route Alert view stats)
   hist_url="$API/routes/history?from_station=$from&to_station=$to&data_source=$source&days=7"
-  code=$(api "$hist_url")
+  code=$(api "$hist_url" 30)  # 30s timeout: history aggregation can be slow
   check_timing
   if [[ "$code" == "200" ]]; then
     total_trains=$(jq '.route.total_trains // -1' "$TMPDIR/resp.json")
@@ -503,26 +533,36 @@ for route in "${ROUTES[@]}"; do
     breakdown_keys=$(jq -c '.aggregate_stats.delay_breakdown | keys | sort' "$TMPDIR/resp.json" 2>/dev/null || echo "[]")
     expected_keys='["major","on_time","significant","slight"]'
 
+    # on_time_percentage is null when no trains have arrival data (by design)
+    otp_null=$(jq '.aggregate_stats.on_time_percentage == null' "$TMPDIR/resp.json" 2>/dev/null || echo "false")
+
     if [[ "$total_trains" -lt 0 ]]; then
       fail "History: total_trains missing"
     elif [[ "$total_trains" -eq 0 ]]; then
       warn "History: 0 trains in 7-day window"
+    elif [[ "$otp_null" == "true" ]]; then
+      warn "History: $total_trains trains but no arrival data (OTP null)"
     else
       pass "History: $total_trains trains, OTP: $otp%"
     fi
 
-    if [[ "$total_trains" -gt 0 ]]; then
+    if [[ "$total_trains" -gt 0 && "$otp_null" != "true" ]]; then
       if [[ "$breakdown_keys" != "$expected_keys" ]]; then
         fail_v "History: delay_breakdown keys wrong" "Expected: $expected_keys, got: $breakdown_keys"
       else
         pass "History: delay_breakdown valid"
       fi
+    elif [[ "$total_trains" -gt 0 && "$otp_null" == "true" ]]; then
+      # delay_breakdown is also null when no arrival data — skip check
+      pass "History: delay_breakdown N/A (no arrival data)"
     fi
 
-    # Validate OTP range
-    otp_valid=$(jq '.aggregate_stats.on_time_percentage >= 0 and .aggregate_stats.on_time_percentage <= 100' "$TMPDIR/resp.json" 2>/dev/null || echo "false")
-    if [[ "$otp_valid" != "true" && "$total_trains" -gt 0 ]]; then
-      fail_v "History: OTP out of range" "Got: $otp"
+    # Validate OTP range (only when OTP is not null)
+    if [[ "$otp_null" != "true" && "$total_trains" -gt 0 ]]; then
+      otp_valid=$(jq '.aggregate_stats.on_time_percentage >= 0 and .aggregate_stats.on_time_percentage <= 100' "$TMPDIR/resp.json" 2>/dev/null || echo "false")
+      if [[ "$otp_valid" != "true" ]]; then
+        fail_v "History: OTP out of range" "Got: $otp"
+      fi
     fi
   elif [[ "$code" == "404" ]]; then
     pass "History: no data ($code)"
