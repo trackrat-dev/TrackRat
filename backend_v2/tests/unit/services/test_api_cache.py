@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import CachedApiResponse
-from trackrat.services.api_cache import ApiCacheService
+from trackrat.services.api_cache import CONGESTION_PROVIDERS, ApiCacheService
 
 
 class TestApiCacheService:
@@ -245,8 +245,11 @@ class TestApiCacheService:
 
     @pytest.mark.asyncio
     async def test_precompute_congestion_responses(self, cache_service, mock_db):
-        """Test pre-computation of congestion responses."""
-        # Mock the compute method to return a simple response
+        """Test pre-computation of congestion responses.
+
+        Only per-provider entries are pre-computed (no all-sources queries).
+        9 providers x 2 modes (summary + trains) + 1 NJT/3hr = 19 param sets.
+        """
         mock_response = {
             "aggregated_segments": [],
             "individual_segments": [],
@@ -260,120 +263,53 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should compute for 15 default parameter combinations
-                assert mock_compute.call_count == 15
+                # 9 providers x 2 modes + 1 NJT/3hr = 19
+                expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
+                assert mock_compute.call_count == expected_count
+                assert mock_store.call_count == expected_count
 
-                # Should store each computed response
-                assert mock_store.call_count == 15
+                # Build expected params: each provider gets max_per_segment=0 and 100
+                expected_params = []
+                for provider in CONGESTION_PROVIDERS:
+                    expected_params.append(
+                        {"time_window_hours": 2, "max_per_segment": 0, "data_source": provider}
+                    )
+                    expected_params.append(
+                        {"time_window_hours": 2, "max_per_segment": 100, "data_source": provider}
+                    )
+                expected_params.append(
+                    {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"}
+                )
 
-                # Verify the parameter combinations
-                expected_params = [
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 0,
-                        "data_source": None,
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": None,
-                    },
-                    {
-                        "time_window_hours": 3,
-                        "max_per_segment": 100,
-                        "data_source": None,
-                    },
-                    {
-                        "time_window_hours": 3,
-                        "max_per_segment": 0,
-                        "data_source": None,
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 0,
-                        "data_source": "NJT",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "NJT",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "PATH",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "AMTRAK",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "LIRR",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "MNR",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "SUBWAY",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "WMATA",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "PATCO",
-                    },
-                    {
-                        "time_window_hours": 2,
-                        "max_per_segment": 100,
-                        "data_source": "METRA",
-                    },
-                    {
-                        "time_window_hours": 3,
-                        "max_per_segment": 100,
-                        "data_source": "NJT",
-                    },
-                ]
-
+                # No all-sources (data_source=None) entries should exist
                 for i, expected_param in enumerate(expected_params):
                     actual_params = mock_compute.call_args_list[i][0][1]
                     assert actual_params == expected_param
+                    assert actual_params["data_source"] is not None, (
+                        f"param set {i} has data_source=None — all-sources queries should not be pre-computed"
+                    )
 
-                    # Verify store was called with correct endpoint and TTL
                     store_call = mock_store.call_args_list[i]
                     assert store_call.kwargs["endpoint"] == "/api/v2/routes/congestion"
                     assert store_call.kwargs["params"] == expected_param
-                    assert store_call.kwargs["ttl_seconds"] == 600  # 10 minutes
+                    assert store_call.kwargs["ttl_seconds"] == 600
 
     @pytest.mark.asyncio
     async def test_precompute_handles_computation_errors(self, cache_service, mock_db):
         """Test that pre-computation continues even if some computations fail."""
-        # Make compute fail on first call, succeed on others
+        expected_count = len(CONGESTION_PROVIDERS) * 2 + 1  # 19
         with patch.object(
             cache_service, "_compute_congestion_response"
         ) as mock_compute:
             mock_compute.side_effect = [
                 Exception("Computation failed"),
-            ] + [{"data": f"response{i}"} for i in range(2, 16)]
+            ] + [{"data": f"response{i}"} for i in range(2, expected_count + 1)]
 
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # Should try to compute all 15
-                assert mock_compute.call_count == 15
-
-                # Should only store the 14 successful ones
-                assert mock_store.call_count == 14
+                assert mock_compute.call_count == expected_count
+                assert mock_store.call_count == expected_count - 1
 
     @pytest.mark.asyncio
     async def test_compute_congestion_response(self, cache_service, mock_db):
@@ -718,6 +654,160 @@ class TestApiCacheService:
 
         assert len(result["departures"]) == 2
         assert result["metadata"]["to_station"] is None
+
+
+class TestMergeCongestionFromProviderCaches:
+    """Tests for assembling multi-system congestion responses from per-provider caches."""
+
+    @pytest.fixture
+    def mock_db(self):
+        db = AsyncMock(spec=AsyncSession)
+        db.execute = AsyncMock()
+        db.commit = AsyncMock()
+        return db
+
+    @pytest.fixture
+    def cache_service(self):
+        return ApiCacheService()
+
+    def _make_provider_response(self, provider: str) -> dict:
+        """Build a minimal but complete cached congestion response for a single provider."""
+        return {
+            "individual_segments": [
+                {
+                    "from_station": f"{provider}_A",
+                    "to_station": f"{provider}_B",
+                    "data_source": provider,
+                    "congestion_factor": 1.0,
+                }
+            ],
+            "aggregated_segments": [
+                {
+                    "from_station": f"{provider}_A",
+                    "to_station": f"{provider}_B",
+                    "data_source": provider,
+                    "congestion_level": "normal",
+                    "congestion_factor": 1.0,
+                }
+            ],
+            "train_positions": [
+                {"train_id": f"{provider}_1", "data_source": provider}
+            ],
+            "generated_at": "2025-01-01T12:00:00-05:00",
+            "time_window_hours": 2,
+            "max_per_segment": 100,
+            "metadata": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_merge_two_providers(self, cache_service, mock_db):
+        """Merging NJT + PATH should concatenate segments and positions from both."""
+        njt_resp = self._make_provider_response("NJT")
+        path_resp = self._make_provider_response("PATH")
+
+        with patch.object(cache_service, "get_cached_response") as mock_get:
+            mock_get.side_effect = [njt_resp, path_resp]
+
+            result = await cache_service.merge_congestion_from_provider_caches(
+                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+            )
+
+        assert result is not None
+        assert len(result["individual_segments"]) == 2
+        assert len(result["aggregated_segments"]) == 2
+        assert len(result["train_positions"]) == 2
+        assert result["metadata"]["merged_from_systems"] == ["NJT", "PATH"]
+        assert result["metadata"]["total_trains"] == 2
+        assert result["time_window_hours"] == 2
+        assert result["max_per_segment"] == 100
+
+        # Verify data sources present
+        sources = {s["data_source"] for s in result["aggregated_segments"]}
+        assert sources == {"NJT", "PATH"}
+
+    @pytest.mark.asyncio
+    async def test_merge_returns_none_on_cache_miss(self, cache_service, mock_db):
+        """If any provider is missing from cache, merge returns None (caller falls back)."""
+        njt_resp = self._make_provider_response("NJT")
+
+        with patch.object(cache_service, "get_cached_response") as mock_get:
+            # NJT hits, PATH misses
+            mock_get.side_effect = [njt_resp, None]
+
+            result = await cache_service.merge_congestion_from_provider_caches(
+                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_merge_all_providers(self, cache_service, mock_db):
+        """Merging all CONGESTION_PROVIDERS should produce combined response."""
+        responses = [self._make_provider_response(p) for p in CONGESTION_PROVIDERS]
+
+        with patch.object(cache_service, "get_cached_response") as mock_get:
+            mock_get.side_effect = responses
+
+            result = await cache_service.merge_congestion_from_provider_caches(
+                mock_db, CONGESTION_PROVIDERS, time_window_hours=2, max_per_segment=100
+            )
+
+        assert result is not None
+        assert len(result["individual_segments"]) == len(CONGESTION_PROVIDERS)
+        assert len(result["aggregated_segments"]) == len(CONGESTION_PROVIDERS)
+        assert len(result["train_positions"]) == len(CONGESTION_PROVIDERS)
+
+    @pytest.mark.asyncio
+    async def test_merge_uses_oldest_generated_at(self, cache_service, mock_db):
+        """The merged response should use the oldest generated_at from providers."""
+        resp_old = self._make_provider_response("NJT")
+        resp_old["generated_at"] = "2025-01-01T11:50:00-05:00"
+        resp_new = self._make_provider_response("PATH")
+        resp_new["generated_at"] = "2025-01-01T12:00:00-05:00"
+
+        with patch.object(cache_service, "get_cached_response") as mock_get:
+            mock_get.side_effect = [resp_old, resp_new]
+
+            result = await cache_service.merge_congestion_from_provider_caches(
+                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+            )
+
+        assert result is not None
+        assert result["generated_at"] == "2025-01-01T11:50:00-05:00"
+
+    @pytest.mark.asyncio
+    async def test_merge_metadata_congestion_levels(self, cache_service, mock_db):
+        """Merged metadata should tally congestion levels across all providers."""
+        njt_resp = self._make_provider_response("NJT")
+        njt_resp["aggregated_segments"][0]["congestion_level"] = "heavy"
+        path_resp = self._make_provider_response("PATH")
+        path_resp["aggregated_segments"][0]["congestion_level"] = "normal"
+
+        with patch.object(cache_service, "get_cached_response") as mock_get:
+            mock_get.side_effect = [njt_resp, path_resp]
+
+            result = await cache_service.merge_congestion_from_provider_caches(
+                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+            )
+
+        assert result["metadata"]["congestion_levels"]["heavy"] == 1
+        assert result["metadata"]["congestion_levels"]["normal"] == 1
+        assert result["metadata"]["congestion_levels"]["moderate"] == 0
+
+    @pytest.mark.asyncio
+    async def test_merge_passes_correct_cache_params(self, cache_service, mock_db):
+        """Merge should look up each provider with the correct cache key structure."""
+        with patch.object(cache_service, "get_cached_response", return_value=None) as mock_get:
+            await cache_service.merge_congestion_from_provider_caches(
+                mock_db, ["NJT"], time_window_hours=3, max_per_segment=0
+            )
+
+            # Should call with provider-specific params
+            mock_get.assert_called_once_with(
+                mock_db,
+                "/api/v2/routes/congestion",
+                {"time_window_hours": 3, "max_per_segment": 0, "data_source": "NJT"},
+            )
 
 
 class TestApiCacheIntegration:
