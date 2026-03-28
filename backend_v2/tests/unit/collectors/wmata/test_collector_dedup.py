@@ -94,7 +94,15 @@ def _common_patches(now=None, origin="B11", route_stops=None, route_info=None):
         patch(f"{_PATCH_BASE}.infer_wmata_origin", return_value=origin),
         patch(f"{_PATCH_BASE}.get_wmata_route_and_stops", return_value=route_stops),
         patch(f"{_PATCH_BASE}.get_wmata_route_info", return_value=route_info),
-        patch(f"{_PATCH_BASE}.WMATA_STATION_NAMES", {"A15": "Shady Grove", "B11": "Glenmont", "J03": "Largo", "C13": "Pentagon"}),
+        patch(
+            f"{_PATCH_BASE}.WMATA_STATION_NAMES",
+            {
+                "A15": "Shady Grove",
+                "B11": "Glenmont",
+                "J03": "Largo",
+                "C13": "Pentagon",
+            },
+        ),
     )
 
 
@@ -140,7 +148,8 @@ class TestExactMatchDedup:
         # Find the TrainJourney among all added objects
         # (collector also adds JourneyStop and JourneySnapshot objects)
         added_journeys = [
-            call.args[0] for call in session.add.call_args_list
+            call.args[0]
+            for call in session.add.call_args_list
             if isinstance(call.args[0], TrainJourney)
         ]
         assert len(added_journeys) == 1
@@ -162,7 +171,7 @@ class TestFuzzyMatchDedup:
         session.execute = AsyncMock(
             side_effect=[
                 _mock_execute_result(has_match=False),  # exact: miss
-                _mock_execute_result(has_match=True),   # fuzzy: hit
+                _mock_execute_result(has_match=True),  # fuzzy: hit
             ]
         )
 
@@ -197,7 +206,9 @@ class TestFuzzyMatchDedup:
         # Fuzzy match: simulate multiple rows by verifying .scalars().first() is called
         fuzzy_result = Mock()
         fuzzy_result.scalar_one_or_none = Mock(
-            side_effect=Exception("scalar_one_or_none should NOT be called on fuzzy result")
+            side_effect=Exception(
+                "scalar_one_or_none should NOT be called on fuzzy result"
+            )
         )
         mock_scalars = Mock()
         mock_scalars.first.return_value = 42  # some journey id
@@ -231,8 +242,12 @@ class TestFuzzyMatchDedup:
             ]
         )
 
-        pred_rd = _make_prediction(line="RD", destination_code="A15", minutes=10, group="1")
-        pred_bl = _make_prediction(line="BL", destination_code="A15", minutes=10, group="2")
+        pred_rd = _make_prediction(
+            line="RD", destination_code="A15", minutes=10, group="1"
+        )
+        pred_bl = _make_prediction(
+            line="BL", destination_code="A15", minutes=10, group="2"
+        )
 
         patches = _common_patches()
 
@@ -276,15 +291,18 @@ class TestGenerateWMATATrainId:
         """Two times within same rounded minute produce identical IDs."""
         dt1 = datetime(2026, 3, 28, 10, 5, 10)
         dt2 = datetime(2026, 3, 28, 10, 5, 20)
-        assert _generate_wmata_train_id("BL", "J03", dt1) == \
-               _generate_wmata_train_id("BL", "J03", dt2)
+        assert _generate_wmata_train_id("BL", "J03", dt1) == _generate_wmata_train_id(
+            "BL", "J03", dt2
+        )
 
     def test_different_lines_different_ids(self):
         dt = datetime(2026, 3, 28, 10, 0, 0)
-        assert _generate_wmata_train_id("RD", "A15", dt) != \
-               _generate_wmata_train_id("BL", "A15", dt)
+        assert _generate_wmata_train_id("RD", "A15", dt) != _generate_wmata_train_id(
+            "BL", "A15", dt
+        )
 
     def test_different_destinations_different_ids(self):
         dt = datetime(2026, 3, 28, 10, 0, 0)
-        assert _generate_wmata_train_id("RD", "A15", dt) != \
-               _generate_wmata_train_id("RD", "B11", dt)
+        assert _generate_wmata_train_id("RD", "A15", dt) != _generate_wmata_train_id(
+            "RD", "B11", dt
+        )
