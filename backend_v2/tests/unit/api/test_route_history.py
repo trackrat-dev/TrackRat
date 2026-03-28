@@ -976,13 +976,15 @@ class TestArrivalSourceFiltering:
             f"{result['average_delay_minutes']}m"
         )
 
-    async def test_null_arrival_source_excluded_from_otp(
+    async def test_null_arrival_source_included_in_otp(
         self, db_session: AsyncSession
     ):
-        """Historical data with NULL arrival_source should be excluded from OTP.
+        """Historical data with NULL arrival_source should be included in OTP.
 
-        This ensures a safe ramp-up: old data without the field populated
-        doesn't inflate OTP while new data with proper tagging accumulates.
+        The arrival_source column was added March 2026. Pre-existing data has
+        NULL arrival_source. Only 'scheduled_fallback' arrivals should be
+        excluded — NULL means the data predates the column and is valid
+        historical performance data.
         """
         await _create_journey(
             db_session,
@@ -1007,13 +1009,11 @@ class TestArrivalSourceFiltering:
 
         result = await _run_stats(db_session)
 
-        # Train has actual_arrival but NULL arrival_source -> excluded from OTP.
-        # With no api_observed arrivals, the endpoint returns None (not 0.0)
-        # to avoid misleading "0% on-time" displays.
-        assert result["on_time_percentage"] is None, (
-            f"Expected None (no api_observed arrivals), got "
-            f"{result['on_time_percentage']}. NULL arrival_source should "
-            "be excluded from OTP, yielding null metrics."
+        # Train has actual_arrival with NULL arrival_source -> included in OTP.
+        # This train arrived on time, so OTP should be 100%.
+        assert result["on_time_percentage"] == 100.0, (
+            f"Expected 100.0 (NULL arrival_source is pre-migration data "
+            f"and should be included), got {result['on_time_percentage']}."
         )
 
 
