@@ -633,11 +633,12 @@ enum CodableValue: Codable {
     case string(String)
     case double(Double)
     case bool(Bool)
+    case array([CodableValue])
     case dictionary([String: CodableValue])
-    
+
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        
+
         if let intValue = try? container.decode(Int.self) {
             self = .int(intValue)
         } else if let stringValue = try? container.decode(String.self) {
@@ -646,13 +647,15 @@ enum CodableValue: Codable {
             self = .double(doubleValue)
         } else if let boolValue = try? container.decode(Bool.self) {
             self = .bool(boolValue)
+        } else if let arrayValue = try? container.decode([CodableValue].self) {
+            self = .array(arrayValue)
         } else if let dictValue = try? container.decode([String: CodableValue].self) {
             self = .dictionary(dictValue)
         } else {
             throw DecodingError.typeMismatch(CodableValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Unsupported type"))
         }
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
@@ -664,18 +667,20 @@ enum CodableValue: Codable {
             try container.encode(value)
         case .bool(let value):
             try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
         case .dictionary(let value):
             try container.encode(value)
         }
     }
-    
+
     var intValue: Int? {
         if case .int(let value) = self {
             return value
         }
         return nil
     }
-    
+
     var stringValue: String? {
         if case .string(let value) = self {
             return value
