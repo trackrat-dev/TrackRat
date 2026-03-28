@@ -122,13 +122,14 @@ class ApiCacheService:
     ) -> dict[str, Any] | None:
         """Assemble a multi-system congestion response by merging per-provider cached entries.
 
-        Returns the merged response dict, or None if any requested system is missing
-        from the cache (caller should fall back to direct computation).
+        Skips providers whose cache entry is missing or expired and merges whatever
+        is available.  Returns None only when *no* provider had a cache hit.
         """
         merged_individual: list[dict[str, Any]] = []
         merged_aggregated: list[dict[str, Any]] = []
         merged_positions: list[dict[str, Any]] = []
         oldest_generated_at: str | None = None
+        merged_systems: list[str] = []
 
         for system in systems:
             provider_params = {
@@ -146,8 +147,9 @@ class ApiCacheService:
                     time_window_hours=time_window_hours,
                     max_per_segment=max_per_segment,
                 )
-                return None
+                continue
 
+            merged_systems.append(system)
             merged_individual.extend(cached.get("individual_segments", []))
             merged_aggregated.extend(cached.get("aggregated_segments", []))
             merged_positions.extend(cached.get("train_positions", []))
@@ -155,6 +157,9 @@ class ApiCacheService:
             gen_at = cached.get("generated_at")
             if gen_at and (oldest_generated_at is None or gen_at < oldest_generated_at):
                 oldest_generated_at = gen_at
+
+        if not merged_systems:
+            return None
 
         # Build merged metadata
         congestion_levels: dict[str, int] = {
@@ -180,13 +185,13 @@ class ApiCacheService:
                 "total_aggregated_segments": len(merged_aggregated),
                 "congestion_levels": congestion_levels,
                 "total_trains": len(merged_positions),
-                "merged_from_systems": systems,
+                "merged_from_systems": merged_systems,
             },
         }
 
         logger.info(
             "congestion_cache_merged",
-            systems=systems,
+            systems=merged_systems,
             aggregated_count=len(merged_aggregated),
             train_count=len(merged_positions),
         )

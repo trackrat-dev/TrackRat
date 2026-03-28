@@ -736,13 +736,28 @@ class TestMergeCongestionFromProviderCaches:
         assert sources == {"NJT", "PATH"}
 
     @pytest.mark.asyncio
-    async def test_merge_returns_none_on_cache_miss(self, cache_service, mock_db):
-        """If any provider is missing from cache, merge returns None (caller falls back)."""
+    async def test_merge_skips_missing_provider(self, cache_service, mock_db):
+        """If a provider is missing from cache, merge skips it and returns available data."""
         njt_resp = self._make_provider_response("NJT")
 
         with patch.object(cache_service, "get_cached_response") as mock_get:
             # NJT hits, PATH misses
             mock_get.side_effect = [njt_resp, None]
+
+            result = await cache_service.merge_congestion_from_provider_caches(
+                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+            )
+
+        assert result is not None
+        assert len(result["individual_segments"]) == 1
+        assert result["individual_segments"][0]["data_source"] == "NJT"
+        assert result["metadata"]["merged_from_systems"] == ["NJT"]
+
+    @pytest.mark.asyncio
+    async def test_merge_returns_none_when_all_miss(self, cache_service, mock_db):
+        """If all providers are missing from cache, merge returns None."""
+        with patch.object(cache_service, "get_cached_response") as mock_get:
+            mock_get.return_value = None
 
             result = await cache_service.merge_congestion_from_provider_caches(
                 mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
