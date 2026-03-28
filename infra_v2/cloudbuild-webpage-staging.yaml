@@ -14,6 +14,14 @@ steps:
     entrypoint: 'npm'
     args: ['ci']
 
+  # Run tests
+  - name: 'node:22'
+    id: 'test'
+    dir: 'webpage_v2'
+    entrypoint: 'npm'
+    args: ['test']
+    waitFor: ['install']
+
   # Build with staging API URL
   - name: 'node:22'
     id: 'build'
@@ -22,7 +30,7 @@ steps:
     args: ['run', 'build']
     env:
       - 'VITE_API_BASE_URL=${_API_BASE_URL}'
-    waitFor: ['install']
+    waitFor: ['test']
 
   # Sync build output to staging GCS bucket
   - name: 'gcr.io/cloud-builders/gsutil'

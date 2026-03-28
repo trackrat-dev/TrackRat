@@ -1,4 +1,4 @@
-import { DeparturesResponse, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse } from '../types';
+import { TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -8,7 +8,7 @@ interface CacheEntry<T> {
   timestamp: number;
 }
 
-class APIService {
+export class APIService {
   private cache = new Map<string, CacheEntry<unknown>>();
 
   private async fetch<T>(url: string, useCache = true): Promise<T> {
@@ -48,11 +48,6 @@ class APIService {
     }
   }
 
-  async getDepartures(from: string, to: string, limit = 100): Promise<DeparturesResponse> {
-    const url = `${BASE_URL}/trains/departures?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}`;
-    return this.fetch<DeparturesResponse>(url);
-  }
-
   async getTrainDetails(trainId: string, date?: string): Promise<TrainDetailsResponse> {
     const dateParam = date || new Date().toISOString().split('T')[0];
     const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}?date=${dateParam}`;
@@ -60,8 +55,9 @@ class APIService {
     return this.fetch<TrainDetailsResponse>(url, false);
   }
 
-  async searchTrips(from: string, to: string, limit = 50): Promise<TripSearchResponse> {
-    const url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
+  async searchTrips(from: string, to: string, limit = 50, date?: string): Promise<TripSearchResponse> {
+    let url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
+    if (date) url += `&date=${encodeURIComponent(date)}`;
     return this.fetch<TripSearchResponse>(url, false); // Don't cache — 30s polling needs fresh data
   }
 
@@ -87,6 +83,87 @@ class APIService {
       // Fail silently - predictions are optional
       console.warn('Failed to fetch platform predictions:', error);
       return null;
+    }
+  }
+
+  async getDelayForecast(
+    trainId: string,
+    stationCode: string,
+    journeyDate: string
+  ): Promise<DelayForecastResponse | null> {
+    try {
+      const url = `${BASE_URL}/predictions/delay?train_id=${encodeURIComponent(trainId)}&station_code=${encodeURIComponent(stationCode)}&journey_date=${encodeURIComponent(journeyDate)}`;
+      return await this.fetch<DelayForecastResponse>(url, false);
+    } catch {
+      // Fail silently - delay predictions are optional
+      return null;
+    }
+  }
+
+  async getSupportedStations(): Promise<SupportedStationsResponse> {
+    const url = `${BASE_URL}/predictions/supported-stations`;
+    return this.fetch<SupportedStationsResponse>(url);
+  }
+
+  async getTrainHistory(trainId: string, days = 365, fromStation?: string, toStation?: string): Promise<TrainHistoryResponse | null> {
+    try {
+      const params = new URLSearchParams({ days: days.toString() });
+      if (fromStation) params.set('from_station', fromStation);
+      if (toStation) params.set('to_station', toStation);
+      const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}/history?${params.toString()}`;
+      return await this.fetch<TrainHistoryResponse>(url);
+    } catch {
+      return null;
+    }
+  }
+
+  async getRouteHistory(from: string, to: string, dataSource: string, days = 30): Promise<RouteHistoryResponse | null> {
+    try {
+      const params = new URLSearchParams({
+        from_station: from,
+        to_station: to,
+        data_source: dataSource,
+        days: days.toString(),
+      });
+      const url = `${BASE_URL}/routes/history?${params.toString()}`;
+      return await this.fetch<RouteHistoryResponse>(url);
+    } catch {
+      return null;
+    }
+  }
+
+  async getCongestion(): Promise<CongestionResponse> {
+    const url = `${BASE_URL}/routes/congestion`;
+    return this.fetch<CongestionResponse>(url);
+  }
+
+  async getNetworkSummary(): Promise<OperationsSummaryResponse | null> {
+    try {
+      const url = `${BASE_URL}/routes/summary?scope=network`;
+      return await this.fetch<OperationsSummaryResponse>(url);
+    } catch {
+      return null;
+    }
+  }
+
+  async getServiceAlerts(dataSource?: string, alertType?: string): Promise<ServiceAlertsResponse> {
+    const params = new URLSearchParams();
+    if (dataSource) params.set('data_source', dataSource);
+    if (alertType) params.set('alert_type', alertType);
+    const query = params.toString();
+    const url = `${BASE_URL}/alerts/service${query ? `?${query}` : ''}`;
+    return this.fetch<ServiceAlertsResponse>(url);
+  }
+
+  async submitFeedback(feedback: FeedbackRequest): Promise<void> {
+    const url = `${BASE_URL}/feedback`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(feedback),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to submit feedback: ${response.status}`);
     }
   }
 

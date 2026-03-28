@@ -24,7 +24,8 @@ export function getDelayMinutes(scheduled?: string, actual?: string): number {
     const scheduledDate = parseISO(scheduled);
     const actualDate = parseISO(actual);
     const diffMs = actualDate.getTime() - scheduledDate.getTime();
-    return Math.round(diffMs / 60000);
+    const result = Math.round(diffMs / 60000);
+    return Number.isNaN(result) ? 0 : result;
   } catch {
     return 0;
   }
@@ -37,9 +38,11 @@ export function getTodayDateString(): string {
 
 export function isToday(dateString: string): boolean {
   try {
-    return fnsIsToday(parseISO(dateString));
+    const date = parseISO(dateString);
+    if (Number.isNaN(date.getTime())) return true; // default to "today" if parsing fails
+    return fnsIsToday(date);
   } catch {
-    return true; // default to "today" if parsing fails
+    return true;
   }
 }
 

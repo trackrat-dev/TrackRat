@@ -20,6 +20,6 @@ export function getStatusBadgeClass(status: string): string {
     case 'arrived':
       return `${baseClass} bg-success/20 text-success`;
     default:
-      return `${baseClass} bg-white/10 text-white`;
+      return `${baseClass} bg-text-muted/15 text-text-secondary`;
   }
 }

@@ -20,6 +20,15 @@ export function Navigation() {
           <span className="text-xs md:text-sm font-medium">Departures</span>
         </Link>
         <Link
+          to="/status"
+          className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 py-2 rounded-lg transition-colors ${
+            isActive('/status') ? 'text-accent font-semibold' : 'text-text-secondary hover:text-text-primary'
+          }`}
+        >
+          <span className="text-xl">📊</span>
+          <span className="text-xs md:text-sm font-medium">Status</span>
+        </Link>
+        <Link
           to="/favorites"
           className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 py-2 rounded-lg transition-colors ${
             isActive('/favorites') ? 'text-accent font-semibold' : 'text-text-secondary hover:text-text-primary'

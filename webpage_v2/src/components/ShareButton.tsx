@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { share, ShareData, isShareSupported } from '../utils/share';
 
 interface ShareButtonProps {
@@ -8,13 +8,21 @@ interface ShareButtonProps {
 
 export function ShareButton({ shareData, className = '' }: ShareButtonProps) {
   const [showFeedback, setShowFeedback] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const handleShare = async () => {
     const success = await share(shareData);
 
     if (success) {
       setShowFeedback(true);
-      setTimeout(() => setShowFeedback(false), 2000);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => setShowFeedback(false), 2000);
     }
   };
 
