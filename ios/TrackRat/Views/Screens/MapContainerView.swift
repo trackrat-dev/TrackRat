@@ -750,6 +750,7 @@ struct MapContainerView: View {
 // MARK: - Map Controls View
 // This view appears when user taps "View Live Traffic" from the menu
 struct CongestionMapControlsView: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var mapViewModel: CongestionMapViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showingFilters = false
