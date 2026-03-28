@@ -328,7 +328,7 @@ class WMATACollector:
                 )
                 .with_for_update(skip_locked=True)
             )
-            if fuzzy_match.scalar_one_or_none() is not None:
+            if fuzzy_match.scalars().first() is not None:
                 skipped_existing += 1
                 continue
 
