@@ -131,23 +131,34 @@ class ApiCacheService:
         oldest_generated_at: str | None = None
         merged_systems: list[str] = []
 
+        # Batch-fetch all provider caches in a single query instead of N sequential lookups
+        hash_to_system: dict[str, str] = {}
         for system in systems:
             provider_params = {
                 "time_window_hours": time_window_hours,
                 "max_per_segment": max_per_segment,
                 "data_source": system,
             }
-            cached = await self.get_cached_response(
-                db, "/api/v2/routes/congestion", provider_params
+            hash_to_system[self._hash_params(provider_params)] = system
+
+        stmt = select(CachedApiResponse).where(
+            and_(
+                CachedApiResponse.endpoint == "/api/v2/routes/congestion",
+                CachedApiResponse.params_hash.in_(list(hash_to_system.keys())),
+                CachedApiResponse.expires_at > now_et(),
             )
-            if cached is None:
-                logger.debug(
-                    "merge_cache_miss",
-                    missing_system=system,
-                    time_window_hours=time_window_hours,
-                    max_per_segment=max_per_segment,
-                )
+        )
+        result = await db.execute(stmt)
+        cached_rows = result.scalars().all()
+
+        # Index results by params_hash
+        hit_hashes: set[str] = set()
+        for row in cached_rows:
+            system = hash_to_system.get(row.params_hash)
+            if not system or not row.response:
                 continue
+            hit_hashes.add(row.params_hash)
+            cached = row.response
 
             merged_systems.append(system)
             merged_individual.extend(cached.get("individual_segments", []))
@@ -157,6 +168,16 @@ class ApiCacheService:
             gen_at = cached.get("generated_at")
             if gen_at and (oldest_generated_at is None or gen_at < oldest_generated_at):
                 oldest_generated_at = gen_at
+
+        # Log misses
+        for h, system in hash_to_system.items():
+            if h not in hit_hashes:
+                logger.debug(
+                    "merge_cache_miss",
+                    missing_system=system,
+                    time_window_hours=time_window_hours,
+                    max_per_segment=max_per_segment,
+                )
 
         if not merged_systems:
             return None
@@ -276,13 +297,13 @@ class ApiCacheService:
                 # Compute the response using existing logic
                 response_dict = await self._compute_congestion_response(db, params)
 
-                # Store in cache with 10-minute TTL (longer than 15-min refresh to avoid gaps)
+                # Store in cache with 20-minute TTL (comfortably covers 15-min refresh + jitter)
                 await self.store_cached_response(
                     db=db,
                     endpoint="/api/v2/routes/congestion",
                     params=params,
                     response=response_dict,
-                    ttl_seconds=600,  # 10 minutes
+                    ttl_seconds=1200,  # 20 minutes
                 )
 
                 logger.info(

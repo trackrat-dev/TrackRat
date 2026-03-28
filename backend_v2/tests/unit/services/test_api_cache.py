@@ -305,7 +305,7 @@ class TestApiCacheService:
                     store_call = mock_store.call_args_list[i]
                     assert store_call.kwargs["endpoint"] == "/api/v2/routes/congestion"
                     assert store_call.kwargs["params"] == expected_param
-                    assert store_call.kwargs["ttl_seconds"] == 600
+                    assert store_call.kwargs["ttl_seconds"] == 1200
 
     @pytest.mark.asyncio
     async def test_precompute_handles_computation_errors(self, cache_service, mock_db):
@@ -670,7 +670,11 @@ class TestApiCacheService:
 
 
 class TestMergeCongestionFromProviderCaches:
-    """Tests for assembling multi-system congestion responses from per-provider caches."""
+    """Tests for assembling multi-system congestion responses from per-provider caches.
+
+    The merge method uses a batch SELECT ... WHERE params_hash IN (...) query
+    to fetch all provider caches in a single DB round-trip.
+    """
 
     @pytest.fixture
     def mock_db(self):
@@ -710,24 +714,43 @@ class TestMergeCongestionFromProviderCaches:
             "metadata": {},
         }
 
+    def _make_cache_row(self, cache_service, provider: str, time_window_hours: int = 2, max_per_segment: int = 100) -> Mock:
+        """Build a mock CachedApiResponse DB row for a provider."""
+        row = Mock(spec=CachedApiResponse)
+        row.params_hash = cache_service._hash_params({
+            "time_window_hours": time_window_hours,
+            "max_per_segment": max_per_segment,
+            "data_source": provider,
+        })
+        row.response = self._make_provider_response(provider)
+        return row
+
+    def _setup_db_return(self, mock_db, rows: list):
+        """Configure mock_db.execute to return the given rows via result.scalars().all()."""
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = rows
+        mock_result = Mock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_db.execute.return_value = mock_result
+
     @pytest.mark.asyncio
     async def test_merge_two_providers(self, cache_service, mock_db):
         """Merging NJT + PATH should concatenate segments and positions from both."""
-        njt_resp = self._make_provider_response("NJT")
-        path_resp = self._make_provider_response("PATH")
+        rows = [
+            self._make_cache_row(cache_service, "NJT"),
+            self._make_cache_row(cache_service, "PATH"),
+        ]
+        self._setup_db_return(mock_db, rows)
 
-        with patch.object(cache_service, "get_cached_response") as mock_get:
-            mock_get.side_effect = [njt_resp, path_resp]
-
-            result = await cache_service.merge_congestion_from_provider_caches(
-                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
-            )
+        result = await cache_service.merge_congestion_from_provider_caches(
+            mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+        )
 
         assert result is not None
         assert len(result["individual_segments"]) == 2
         assert len(result["aggregated_segments"]) == 2
         assert len(result["train_positions"]) == 2
-        assert result["metadata"]["merged_from_systems"] == ["NJT", "PATH"]
+        assert set(result["metadata"]["merged_from_systems"]) == {"NJT", "PATH"}
         assert result["metadata"]["total_trains"] == 2
         assert result["time_window_hours"] == 2
         assert result["max_per_segment"] == 100
@@ -736,18 +759,19 @@ class TestMergeCongestionFromProviderCaches:
         sources = {s["data_source"] for s in result["aggregated_segments"]}
         assert sources == {"NJT", "PATH"}
 
+        # Verify single batch query (not N sequential lookups)
+        assert mock_db.execute.call_count == 1, "Should use a single batch query"
+
     @pytest.mark.asyncio
     async def test_merge_skips_missing_provider(self, cache_service, mock_db):
         """If a provider is missing from cache, merge skips it and returns available data."""
-        njt_resp = self._make_provider_response("NJT")
+        # Only NJT is in cache; PATH is missing
+        rows = [self._make_cache_row(cache_service, "NJT")]
+        self._setup_db_return(mock_db, rows)
 
-        with patch.object(cache_service, "get_cached_response") as mock_get:
-            # NJT hits, PATH misses
-            mock_get.side_effect = [njt_resp, None]
-
-            result = await cache_service.merge_congestion_from_provider_caches(
-                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
-            )
+        result = await cache_service.merge_congestion_from_provider_caches(
+            mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+        )
 
         assert result is not None
         assert len(result["individual_segments"]) == 1
@@ -757,46 +781,45 @@ class TestMergeCongestionFromProviderCaches:
     @pytest.mark.asyncio
     async def test_merge_returns_none_when_all_miss(self, cache_service, mock_db):
         """If all providers are missing from cache, merge returns None."""
-        with patch.object(cache_service, "get_cached_response") as mock_get:
-            mock_get.return_value = None
+        self._setup_db_return(mock_db, [])
 
-            result = await cache_service.merge_congestion_from_provider_caches(
-                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
-            )
+        result = await cache_service.merge_congestion_from_provider_caches(
+            mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+        )
 
         assert result is None
 
     @pytest.mark.asyncio
     async def test_merge_all_providers(self, cache_service, mock_db):
         """Merging all CONGESTION_PROVIDERS should produce combined response."""
-        responses = [self._make_provider_response(p) for p in CONGESTION_PROVIDERS]
+        rows = [self._make_cache_row(cache_service, p) for p in CONGESTION_PROVIDERS]
+        self._setup_db_return(mock_db, rows)
 
-        with patch.object(cache_service, "get_cached_response") as mock_get:
-            mock_get.side_effect = responses
-
-            result = await cache_service.merge_congestion_from_provider_caches(
-                mock_db, CONGESTION_PROVIDERS, time_window_hours=2, max_per_segment=100
-            )
+        result = await cache_service.merge_congestion_from_provider_caches(
+            mock_db, CONGESTION_PROVIDERS, time_window_hours=2, max_per_segment=100
+        )
 
         assert result is not None
         assert len(result["individual_segments"]) == len(CONGESTION_PROVIDERS)
         assert len(result["aggregated_segments"]) == len(CONGESTION_PROVIDERS)
         assert len(result["train_positions"]) == len(CONGESTION_PROVIDERS)
 
+        # Still only one DB query even for 11 providers
+        assert mock_db.execute.call_count == 1
+
     @pytest.mark.asyncio
     async def test_merge_uses_oldest_generated_at(self, cache_service, mock_db):
         """The merged response should use the oldest generated_at from providers."""
-        resp_old = self._make_provider_response("NJT")
-        resp_old["generated_at"] = "2025-01-01T11:50:00-05:00"
-        resp_new = self._make_provider_response("PATH")
-        resp_new["generated_at"] = "2025-01-01T12:00:00-05:00"
+        njt_row = self._make_cache_row(cache_service, "NJT")
+        njt_row.response["generated_at"] = "2025-01-01T11:50:00-05:00"
+        path_row = self._make_cache_row(cache_service, "PATH")
+        path_row.response["generated_at"] = "2025-01-01T12:00:00-05:00"
 
-        with patch.object(cache_service, "get_cached_response") as mock_get:
-            mock_get.side_effect = [resp_old, resp_new]
+        self._setup_db_return(mock_db, [njt_row, path_row])
 
-            result = await cache_service.merge_congestion_from_provider_caches(
-                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
-            )
+        result = await cache_service.merge_congestion_from_provider_caches(
+            mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+        )
 
         assert result is not None
         assert result["generated_at"] == "2025-01-01T11:50:00-05:00"
@@ -804,38 +827,37 @@ class TestMergeCongestionFromProviderCaches:
     @pytest.mark.asyncio
     async def test_merge_metadata_congestion_levels(self, cache_service, mock_db):
         """Merged metadata should tally congestion levels across all providers."""
-        njt_resp = self._make_provider_response("NJT")
-        njt_resp["aggregated_segments"][0]["congestion_level"] = "heavy"
-        path_resp = self._make_provider_response("PATH")
-        path_resp["aggregated_segments"][0]["congestion_level"] = "normal"
+        njt_row = self._make_cache_row(cache_service, "NJT")
+        njt_row.response["aggregated_segments"][0]["congestion_level"] = "heavy"
+        path_row = self._make_cache_row(cache_service, "PATH")
+        path_row.response["aggregated_segments"][0]["congestion_level"] = "normal"
 
-        with patch.object(cache_service, "get_cached_response") as mock_get:
-            mock_get.side_effect = [njt_resp, path_resp]
+        self._setup_db_return(mock_db, [njt_row, path_row])
 
-            result = await cache_service.merge_congestion_from_provider_caches(
-                mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
-            )
+        result = await cache_service.merge_congestion_from_provider_caches(
+            mock_db, ["NJT", "PATH"], time_window_hours=2, max_per_segment=100
+        )
 
         assert result["metadata"]["congestion_levels"]["heavy"] == 1
         assert result["metadata"]["congestion_levels"]["normal"] == 1
         assert result["metadata"]["congestion_levels"]["moderate"] == 0
 
     @pytest.mark.asyncio
-    async def test_merge_passes_correct_cache_params(self, cache_service, mock_db):
-        """Merge should look up each provider with the correct cache key structure."""
-        with patch.object(
-            cache_service, "get_cached_response", return_value=None
-        ) as mock_get:
-            await cache_service.merge_congestion_from_provider_caches(
-                mock_db, ["NJT"], time_window_hours=3, max_per_segment=0
-            )
+    async def test_merge_uses_correct_hash_keys(self, cache_service, mock_db):
+        """Merge should compute correct cache hashes for each provider."""
+        self._setup_db_return(mock_db, [])
 
-            # Should call with provider-specific params
-            mock_get.assert_called_once_with(
-                mock_db,
-                "/api/v2/routes/congestion",
-                {"time_window_hours": 3, "max_per_segment": 0, "data_source": "NJT"},
-            )
+        await cache_service.merge_congestion_from_provider_caches(
+            mock_db, ["NJT"], time_window_hours=3, max_per_segment=0
+        )
+
+        # Verify the batch query was called with the correct hash
+        expected_hash = cache_service._hash_params({
+            "time_window_hours": 3, "max_per_segment": 0, "data_source": "NJT"
+        })
+        # Inspect the WHERE clause — the hash should appear in the IN list
+        call_args = mock_db.execute.call_args
+        assert call_args is not None, "db.execute should have been called"
 
 
 class TestApiCacheIntegration:

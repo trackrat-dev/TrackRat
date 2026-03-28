@@ -249,14 +249,15 @@ struct MapContainerView: View {
         .task {
             // Load congestion data when map container appears, but don't block UI
             // Use detached task to prevent UI lag during origin station selection
+            let systems = appState.selectedSystems
             Task.detached(priority: .utility) { [weak mapViewModel] in
-                await mapViewModel?.fetchCongestionDataIfNeeded()
+                await mapViewModel?.fetchCongestionDataIfNeeded(systems: systems)
             }
             mapViewModel.startAutoRefresh()
         }
         .onAppear {
             // Sync AppState settings to ViewModel on appear
-            mapViewModel.setSelectedSystems(appState.selectedSystems)
+            mapViewModel.setSelectedSystems(appState.selectedSystems, refetch: false)
             mapViewModel.highlightMode = appState.mapHighlightMode
             mapViewModel.showStations = appState.showMapStations
         }
@@ -866,10 +867,17 @@ struct CongestionMapControlsView: View {
                 selectedDataSource: $selectedDataSource,
                 onApply: {
                     Task {
-                        await mapViewModel.fetchCongestionData(
-                            timeWindowHours: timeWindow,
-                            dataSource: selectedDataSource == "All" ? nil : selectedDataSource
-                        )
+                        if selectedDataSource == "All" {
+                            await mapViewModel.fetchCongestionData(
+                                timeWindowHours: timeWindow,
+                                systems: appState.selectedSystems
+                            )
+                        } else {
+                            await mapViewModel.fetchCongestionData(
+                                timeWindowHours: timeWindow,
+                                dataSource: selectedDataSource
+                            )
+                        }
                     }
                 }
             )
