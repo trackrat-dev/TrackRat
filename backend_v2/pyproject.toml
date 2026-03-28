@@ -16,7 +16,7 @@ pydantic = "^2.12.5"
 pydantic-settings = "^2.13.1"
 
 # Database
-sqlalchemy = "^2.0.46"
+sqlalchemy = "^2.0.48"
 alembic = "^1.18.4"
 asyncpg = "^0.31.0"
 psycopg2-binary = "^2.9.11"  # For Alembic migrations (sync driver)
@@ -58,7 +58,7 @@ pytest-cov = "^7.1.0"
 mypy = "1.19.1"  # Pinned to avoid CI/local version mismatches
 types-python-dateutil = "^2.9.0"
 types-pytz = "^2026.1"
-sqlalchemy = {extras = ["mypy"], version = "^2.0.46"}
+sqlalchemy = {extras = ["mypy"], version = "^2.0.48"}
 
 # Code Quality
 black = "^26.3.1"
