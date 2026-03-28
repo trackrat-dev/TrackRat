@@ -248,7 +248,7 @@ class TestApiCacheService:
         """Test pre-computation of congestion responses.
 
         Only per-provider entries are pre-computed (no all-sources queries).
-        9 providers x 2 modes (summary + trains) + 1 NJT/3hr = 19 param sets.
+        N providers x 2 time windows (1h, 2h) x 2 modes (summary + trains) + 1 NJT/3hr.
         """
         mock_response = {
             "aggregated_segments": [],
@@ -263,28 +263,30 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # 9 providers x 2 modes + 1 NJT/3hr = 19
-                expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
+                # N providers x 2 time windows x 2 modes + 1 NJT/3hr
+                expected_count = len(CONGESTION_PROVIDERS) * 4 + 1
                 assert mock_compute.call_count == expected_count
                 assert mock_store.call_count == expected_count
 
-                # Build expected params: each provider gets max_per_segment=0 and 100
+                # Build expected params: each provider gets tw=1 and tw=2,
+                # each with max_per_segment=0 and 100
                 expected_params = []
                 for provider in CONGESTION_PROVIDERS:
-                    expected_params.append(
-                        {
-                            "time_window_hours": 2,
-                            "max_per_segment": 0,
-                            "data_source": provider,
-                        }
-                    )
-                    expected_params.append(
-                        {
-                            "time_window_hours": 2,
-                            "max_per_segment": 100,
-                            "data_source": provider,
-                        }
-                    )
+                    for tw in [1, 2]:
+                        expected_params.append(
+                            {
+                                "time_window_hours": tw,
+                                "max_per_segment": 0,
+                                "data_source": provider,
+                            }
+                        )
+                        expected_params.append(
+                            {
+                                "time_window_hours": tw,
+                                "max_per_segment": 100,
+                                "data_source": provider,
+                            }
+                        )
                 expected_params.append(
                     {
                         "time_window_hours": 3,
@@ -309,7 +311,7 @@ class TestApiCacheService:
     @pytest.mark.asyncio
     async def test_precompute_handles_computation_errors(self, cache_service, mock_db):
         """Test that pre-computation continues even if some computations fail."""
-        expected_count = len(CONGESTION_PROVIDERS) * 2 + 1  # 19
+        expected_count = len(CONGESTION_PROVIDERS) * 4 + 1
         with patch.object(
             cache_service, "_compute_congestion_response"
         ) as mock_compute:
