@@ -362,12 +362,11 @@ async def _calculate_route_stats_sql(
             WHERE js.station_code = ANY(:to_codes)
               AND js.actual_arrival IS NOT NULL
               AND js.scheduled_arrival IS NOT NULL
-              -- NOTE: Historical stops (before ~March 2026) may have NULL
-              -- arrival_source due to a removed backfill migration
-              -- (f7a8b9c0d1e2). Those stops are excluded from OTP stats.
-              -- New data is populated correctly going forward.
-              AND (js.arrival_source = 'api_observed'
-                   OR (tj.is_completed = true AND js.arrival_source IS NOT NULL))
+              -- Exclude scheduled_fallback arrivals — they always show 0 delay
+              -- (actual == scheduled) and inflate on-time percentages.
+              -- Allow NULL arrival_source (historical stops before ~March 2026)
+              -- to contribute, consistent with trains.py and summary.py.
+              AND COALESCE(js.arrival_source, 'unknown') != 'scheduled_fallback'
             ORDER BY js.journey_id, js.stop_sequence ASC
         ),
         origin_stops AS (
