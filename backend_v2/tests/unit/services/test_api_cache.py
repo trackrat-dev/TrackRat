@@ -248,7 +248,8 @@ class TestApiCacheService:
         """Test pre-computation of congestion responses.
 
         Only per-provider entries are pre-computed (no all-sources queries).
-        9 providers x 2 modes (summary + trains) + 1 NJT/3hr = 19 param sets.
+        N providers x 2 modes (summary + trains) + 1 NJT/3hr.
+        The endpoint enforces min 2-hour window, so only tw=2 is cached.
         """
         mock_response = {
             "aggregated_segments": [],
@@ -263,7 +264,7 @@ class TestApiCacheService:
             with patch.object(cache_service, "store_cached_response") as mock_store:
                 await cache_service.precompute_congestion_responses(mock_db)
 
-                # 9 providers x 2 modes + 1 NJT/3hr = 19
+                # N providers x 2 modes + 1 NJT/3hr
                 expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
                 assert mock_compute.call_count == expected_count
                 assert mock_store.call_count == expected_count
@@ -309,7 +310,7 @@ class TestApiCacheService:
     @pytest.mark.asyncio
     async def test_precompute_handles_computation_errors(self, cache_service, mock_db):
         """Test that pre-computation continues even if some computations fail."""
-        expected_count = len(CONGESTION_PROVIDERS) * 2 + 1  # 19
+        expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
         with patch.object(
             cache_service, "_compute_congestion_response"
         ) as mock_compute:

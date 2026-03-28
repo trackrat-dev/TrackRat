@@ -251,7 +251,9 @@ class ApiCacheService:
         # which avoids the expensive unfiltered SQL queries.
         param_sets: list[dict[str, Any]] = []
         for provider in CONGESTION_PROVIDERS:
-            # Both summary (maxPerSegment=0) and trains (maxPerSegment=100) modes
+            # Both summary (maxPerSegment=0) and trains (maxPerSegment=100) modes.
+            # The congestion endpoint enforces min 2-hour window (max(requested, 2)),
+            # so time_window_hours=2 covers all requests of 1 or 2.
             param_sets.append(
                 {"time_window_hours": 2, "max_per_segment": 0, "data_source": provider}
             )
