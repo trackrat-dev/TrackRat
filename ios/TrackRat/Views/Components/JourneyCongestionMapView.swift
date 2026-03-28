@@ -128,7 +128,9 @@ class JourneyCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1)
+            let trainSystem = TrainSystem(rawValue: train.dataSource)
+            let systems: Set<TrainSystem>? = trainSystem.map { Set([$0]) }
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1, systems: systems)
             
             // Use train's actual data source for filtering
             let expectedDataSource = train.dataSource
@@ -918,7 +920,9 @@ class EmbeddedCongestionViewModel: ObservableObject {
         
         do {
             // Fetch congestion data using existing API
-            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1)
+            let trainSystem = TrainSystem(rawValue: train.dataSource)
+            let systems: Set<TrainSystem>? = trainSystem.map { Set([$0]) }
+            let congestionData = try await APIService.shared.fetchCongestionData(timeWindowHours: 1, systems: systems)
             
             // Use train's actual data source for filtering
             let expectedDataSource = train.dataSource

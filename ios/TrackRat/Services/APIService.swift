@@ -652,8 +652,8 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 1) async throws -> CongestionMapResponse {
-        return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil)
+    func fetchCongestionData(timeWindowHours: Int = 1, systems: Set<TrainSystem>? = nil) async throws -> CongestionMapResponse {
+        return try await fetchCongestionData(timeWindowHours: timeWindowHours, maxPerSegment: 100, dataSource: nil, systems: systems)
     }
     
     // MARK: - Push Notification Registration
@@ -856,14 +856,17 @@ final class APIService: ObservableObject {
     
     // MARK: - Congestion Data
     
-    func fetchCongestionData(timeWindowHours: Int = 1, maxPerSegment: Int = 100, dataSource: String? = nil) async throws -> CongestionMapResponse {
+    func fetchCongestionData(timeWindowHours: Int = 1, maxPerSegment: Int = 100, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async throws -> CongestionMapResponse {
         var components = URLComponents(string: "\(baseURL)/v2/routes/congestion")!
         components.queryItems = [
             URLQueryItem(name: "time_window_hours", value: String(timeWindowHours)),
             URLQueryItem(name: "max_per_segment", value: String(maxPerSegment))
         ]
-        
-        if let dataSource = dataSource {
+
+        if let systems = systems, !systems.isEmpty {
+            // Use the newer multi-system parameter for server-side filtering
+            components.queryItems?.append(URLQueryItem(name: "systems", value: systems.commaSeparated))
+        } else if let dataSource = dataSource {
             components.queryItems?.append(URLQueryItem(name: "data_source", value: dataSource))
         }
         

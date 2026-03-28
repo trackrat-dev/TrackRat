@@ -151,10 +151,17 @@ struct CongestionMapView: View {
                 selectedDataSource: $selectedDataSource,
                 onApply: {
                     Task {
-                        await viewModel.fetchCongestionData(
-                            timeWindowHours: timeWindow,
-                            dataSource: selectedDataSource == "All" ? nil : selectedDataSource
-                        )
+                        if selectedDataSource == "All" {
+                            await viewModel.fetchCongestionData(
+                                timeWindowHours: timeWindow,
+                                systems: appState.selectedSystems
+                            )
+                        } else {
+                            await viewModel.fetchCongestionData(
+                                timeWindowHours: timeWindow,
+                                dataSource: selectedDataSource
+                            )
+                        }
                     }
                 }
             )
@@ -177,7 +184,8 @@ struct CongestionMapView: View {
             PaywallView(context: .trainSystems)
         }
         .task {
-            await viewModel.fetchCongestionData()
+            viewModel.setSelectedSystems(appState.selectedSystems, refetch: false)
+            await viewModel.fetchCongestionData(systems: appState.selectedSystems)
             viewModel.startAutoRefresh()
         }
         .onChange(of: appState.selectedSystems) { _, newSystems in
@@ -262,7 +270,7 @@ struct CongestionMapView: View {
                 // Reload congestion data when turning on (from off state)
                 if wasOff && viewModel.highlightMode != .off {
                     Task {
-                        await viewModel.fetchCongestionData()
+                        await viewModel.fetchCongestionData(systems: appState.selectedSystems)
                     }
                 }
             }
@@ -547,6 +555,7 @@ class CongestionMapViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var lastFetchDate: Date?
     private var lastDataSource: String?
+    private var lastSystems: Set<TrainSystem>?
 
     init() {
         // Don't start loading data immediately - wait for explicit trigger
@@ -568,7 +577,8 @@ class CongestionMapViewModel: ObservableObject {
             Task { [weak self] in
                 await self?.fetchCongestionData(
                     timeWindowHours: self?.lastTimeWindowHours ?? 1,
-                    dataSource: self?.lastDataSource
+                    dataSource: self?.lastDataSource,
+                    systems: self?.lastSystems
                 )
             }
         }
@@ -587,7 +597,8 @@ class CongestionMapViewModel: ObservableObject {
             Task {
                 await fetchCongestionData(
                     timeWindowHours: lastTimeWindowHours,
-                    dataSource: lastDataSource
+                    dataSource: lastDataSource,
+                    systems: lastSystems
                 )
             }
         }
@@ -607,20 +618,31 @@ class CongestionMapViewModel: ObservableObject {
         print("🗺️ Loaded \(allRouteStations.count) route topology stations, \(routeStations.count) visible with current systems")
     }
 
-    /// Updates the selected systems filter and reapplies all filtering
-    func setSelectedSystems(_ systems: Set<TrainSystem>) {
+    /// Updates the selected systems filter, re-fetches from server, and reapplies filtering
+    func setSelectedSystems(_ systems: Set<TrainSystem>, refetch: Bool = true) {
         let changed = systems != selectedSystems
         selectedSystems = systems
         guard changed else { return }
         print("🚦 Selected systems updated: \(systems.map(\.rawValue).sorted().joined(separator: ", "))")
 
-        // Refilter route stations
+        // Refilter route stations immediately (client-side, instant)
         routeStations = allRouteStations.filter { station in
             Stations.isStationVisible(station.code, withSystems: selectedSystems)
         }
 
-        // Reapply all filters
+        // Apply client-side filter immediately for fast visual update
         applyDisplayModeFilter()
+
+        // Re-fetch from server with new system filter (skip during initial setup)
+        if refetch {
+            Task {
+                await fetchCongestionData(
+                    timeWindowHours: lastTimeWindowHours,
+                    dataSource: lastDataSource,
+                    systems: systems
+                )
+            }
+        }
     }
 
     private func observeLiveActivityState() {
@@ -662,28 +684,29 @@ class CongestionMapViewModel: ObservableObject {
         }
     }
     
-    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 1, dataSource: String? = nil) async {
+    func fetchCongestionDataIfNeeded(timeWindowHours: Int = 1, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async {
         // Only fetch if we don't already have data and we're not currently loading
         guard allAggregatedSegments.isEmpty && !isLoading else {
             print("🚦 Skipping congestion data fetch - already have data or loading")
             return
         }
-        
-        await fetchCongestionData(timeWindowHours: timeWindowHours, dataSource: dataSource)
+
+        await fetchCongestionData(timeWindowHours: timeWindowHours, dataSource: dataSource, systems: systems)
     }
     
-    func fetchCongestionData(timeWindowHours: Int = 1, dataSource: String? = nil) async {
+    func fetchCongestionData(timeWindowHours: Int = 1, dataSource: String? = nil, systems: Set<TrainSystem>? = nil) async {
         // Prevent duplicate fetches if already loading
         guard !isLoading else {
             print("🚦 Skipping duplicate fetch - already loading")
             return
         }
-        
-        print("🚦 Starting congestion data fetch (timeWindow: \(timeWindowHours), dataSource: \(dataSource ?? "All"))")
+
+        print("🚦 Starting congestion data fetch (timeWindow: \(timeWindowHours), dataSource: \(dataSource ?? "All"), systems: \(systems?.map(\.rawValue).sorted().joined(separator: ",") ?? "nil"))")
         isLoading = true
         error = nil
         lastTimeWindowHours = timeWindowHours
         lastDataSource = dataSource
+        lastSystems = systems
 
         do {
             // Determine maxPerSegment based on detail mode (fetch individual trains only if showing)
@@ -698,7 +721,8 @@ class CongestionMapViewModel: ObservableObject {
             let response = try await APIService.shared.fetchCongestionData(
                 timeWindowHours: timeWindowHours,
                 maxPerSegment: maxPerSegment,
-                dataSource: dataSource
+                dataSource: dataSource,
+                systems: systems
             )
             
             print("🚦 API response received: \(response.aggregatedSegments.count) aggregated, \(response.individualSegments.count) individual segments")
