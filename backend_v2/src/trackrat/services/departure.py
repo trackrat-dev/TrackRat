@@ -904,9 +904,15 @@ class DepartureService:
                         TrainJourney.is_cancelled.is_not(True),
                     )
                 )
-                # Eagerly load stops to prevent greenlet errors during
-                # commit's cascade="all, delete-orphan" orphan check
-                .options(selectinload(TrainJourney.stops))
+                # Eagerly load all delete-orphan collections to prevent
+                # greenlet_spawn errors during flush orphan checks
+                .options(
+                    selectinload(TrainJourney.stops),
+                    selectinload(TrainJourney.snapshots),
+                    selectinload(TrainJourney.segment_times),
+                    selectinload(TrainJourney.dwell_times),
+                    selectinload(TrainJourney.progress_snapshots),
+                )
                 .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())
@@ -970,7 +976,8 @@ class DepartureService:
                         logger.warning(
                             "stale_train_refresh_failed",
                             train_id=journey.train_id,
-                            error=str(e),
+                            error=str(e) or repr(e),
+                            error_type=type(e).__name__,
                         )
 
                 await db.commit()
@@ -983,7 +990,10 @@ class DepartureService:
 
         except Exception as e:
             logger.error(
-                "station_refresh_failed", station_code=station_code, error=str(e)
+                "station_refresh_failed",
+                station_code=station_code,
+                error=str(e) or repr(e),
+                error_type=type(e).__name__,
             )
             try:
                 await db.rollback()
@@ -1332,5 +1342,6 @@ async def _background_refresh_station(
         logger.warning(
             "background_jit_refresh_failed",
             station_code=station_code,
-            error=str(e),
+            error=str(e) or repr(e),
+            error_type=type(e).__name__,
         )
