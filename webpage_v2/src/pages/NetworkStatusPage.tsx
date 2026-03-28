@@ -85,7 +85,7 @@ export function NetworkStatusPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const systemGroups = useMemo(() => {
+  const { systemGroups, orderedSystems } = useMemo(() => {
     const groups: Record<string, SegmentCongestion[]> = {};
     for (const seg of segments) {
       if (!groups[seg.data_source]) groups[seg.data_source] = [];
@@ -95,7 +95,12 @@ export function NetworkStatusPage() {
     for (const key of Object.keys(groups)) {
       groups[key].sort((a, b) => b.average_delay_minutes - a.average_delay_minutes);
     }
-    return groups;
+    // Show known systems in preferred order, then any others alphabetically
+    const knownSystems = SYSTEM_ORDER.filter(sys => groups[sys]);
+    const otherSystems = Object.keys(groups)
+      .filter(sys => !SYSTEM_ORDER.includes(sys))
+      .sort();
+    return { systemGroups: groups, orderedSystems: [...knownSystems, ...otherSystems] };
   }, [segments]);
 
   if (loading && segments.length === 0) return <LoadingSpinner />;
@@ -122,7 +127,7 @@ export function NetworkStatusPage() {
 
       {/* System list */}
       <div className="space-y-3">
-        {SYSTEM_ORDER.filter(sys => systemGroups[sys]).map(system => {
+        {orderedSystems.map(system => {
           const segs = systemGroups[system];
           const status = getSystemStatus(segs);
           const delayedCount = segs.filter(s => s.congestion_level !== 'normal').length;
@@ -133,6 +138,7 @@ export function NetworkStatusPage() {
               <button
                 onClick={() => setExpandedSystem(isExpanded ? null : system)}
                 className="w-full p-4 flex items-center justify-between text-left"
+                aria-expanded={isExpanded}
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${getCongestionBg(status)} border-2 ${status === 'normal' ? 'border-success' : status === 'moderate' ? 'border-warning' : 'border-error'}`} />

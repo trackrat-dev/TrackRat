@@ -45,6 +45,7 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
   if (!stats) return null;
 
   const onTimePct = Math.round(stats.on_time_percentage);
+  const onTimeColor = onTimePct >= 80 ? 'text-success' : onTimePct >= 60 ? 'text-warning' : 'text-error';
   const avgDelay = stats.average_delay_minutes.toFixed(1);
   const cancellationRate = stats.cancellation_rate.toFixed(1);
   const sortedTracks = Object.entries(trackDistribution).sort((a, b) => b[1] - a[1]);
@@ -54,6 +55,7 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full p-4 flex items-center justify-between text-left"
+        aria-expanded={expanded}
       >
         <div>
           <h4 className="text-sm font-semibold text-text-primary">Historical Performance</h4>
@@ -62,7 +64,7 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`text-lg font-bold ${onTimePct >= 80 ? 'text-success' : onTimePct >= 60 ? 'text-warning' : 'text-error'}`}>
+          <span className={`text-lg font-bold ${onTimeColor}`}>
             {onTimePct}%
           </span>
           <span className="text-text-muted text-xs">{expanded ? '▲' : '▼'}</span>
@@ -74,7 +76,7 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
           {/* Key metrics */}
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
-              <div className={`text-lg font-bold ${onTimePct >= 80 ? 'text-success' : onTimePct >= 60 ? 'text-warning' : 'text-error'}`}>
+              <div className={`text-lg font-bold ${onTimeColor}`}>
                 {onTimePct}%
               </div>
               <div className="text-xs text-text-muted">On time</div>

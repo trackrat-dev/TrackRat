@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiService } from '../services/api';
 import { ServiceAlert } from '../types';
 
@@ -34,6 +34,9 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
   const [alerts, setAlerts] = useState<ServiceAlert[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // Stabilize routeIds reference for useEffect dependency
+  const routeIdsKey = useMemo(() => routeIds?.sort().join(',') ?? '', [routeIds]);
+
   useEffect(() => {
     // Only fetch for MTA systems that have service alerts
     const mtaSystems = ['SUBWAY', 'LIRR', 'MNR'];
@@ -52,7 +55,7 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
         setAlerts(filtered);
       })
       .catch(() => {}); // Fail silently
-  }, [dataSource, routeIds?.join(',')]);
+  }, [dataSource, routeIdsKey]);
 
   if (alerts.length === 0) return null;
 
@@ -76,6 +79,7 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
             <button
               onClick={() => setExpandedId(isExpanded ? null : alert.alert_id)}
               className="w-full flex items-start gap-3 p-3 text-left"
+              aria-expanded={isExpanded}
             >
               <span className={`${style.icon} text-lg leading-none mt-0.5`}>
                 {alert.alert_type === 'alert' ? '!' : alert.alert_type === 'elevator' ? '⬆' : '⚠'}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { apiService } from '../services/api';
 
 interface FeedbackModalProps {
@@ -10,6 +10,13 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +33,7 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
         device_model: navigator.userAgent.slice(0, 100),
       });
       setSubmitted(true);
-      setTimeout(onClose, 2000);
+      timeoutRef.current = setTimeout(onClose, 2000);
     } catch {
       setError('Failed to send feedback. Please try again.');
     } finally {

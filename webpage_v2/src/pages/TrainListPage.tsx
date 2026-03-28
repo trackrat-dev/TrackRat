@@ -176,6 +176,7 @@ export function TrainListPage() {
         <button
           onClick={() => setSummaryExpanded(!summaryExpanded)}
           className="w-full mb-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4 text-left transition-all hover:bg-surface"
+          aria-expanded={summaryExpanded}
         >
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium text-text-primary">{summary.headline}</div>

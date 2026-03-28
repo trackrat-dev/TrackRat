@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { LandingPage } from './pages/LandingPage';
 import { TripSelectionPage } from './pages/TripSelectionPage';
@@ -10,6 +11,7 @@ import { NetworkStatusPage } from './pages/NetworkStatusPage';
 
 function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter basename="/">
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -24,6 +26,7 @@ function App() {
         <Route path="*" element={<Navigate to="/departures" replace />} />
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
