@@ -78,6 +78,9 @@ class Settings(BaseSettings):
                 break
         return v
 
+    # Metra API
+    metra_api_token: str = Field(default="", description="Metra GTFS-RT API token")
+
     # MBTA API
     mbta_api_key: str = Field(default="", description="MBTA API key")
 

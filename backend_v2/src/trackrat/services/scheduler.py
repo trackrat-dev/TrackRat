@@ -80,6 +80,7 @@ class SchedulerService:
         self.njt_client: NJTransitClient | None = None
         self.jit_service: JustInTimeUpdateService | None = None
         self._running_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._startup_tasks: set[asyncio.Task[Any]] = set()
         self._sync_engine: Any = None  # Lazily created sync engine for NJT
         self._njt_collection_semaphore = asyncio.Semaphore(
             10
@@ -462,12 +463,22 @@ class SchedulerService:
         ]
         for name, collector in collectors:
             logger.info("startup_collector_launch", collector=name)
-            asyncio.create_task(collector())
+            task = asyncio.create_task(collector(), name=f"startup_{name}")
+            task.add_done_callback(self._log_task_exception)
+            task.add_done_callback(self._startup_tasks.discard)
+            self._startup_tasks.add(task)
             await asyncio.sleep(10)
 
     async def stop(self) -> None:
         """Stop the scheduler and cleanup."""
         logger.info("stopping_scheduler_service")
+
+        # Cancel any startup tasks still running
+        for task in self._startup_tasks:
+            if not task.done():
+                logger.info("cancelling_task", task_id=task.get_name())
+                task.cancel()
+        self._startup_tasks.clear()
 
         # Cancel any running tasks
         for task_id, task in self._running_tasks.items():
