@@ -904,9 +904,16 @@ class DepartureService:
                         TrainJourney.is_cancelled.is_not(True),
                     )
                 )
-                # Eagerly load stops to prevent greenlet errors during
-                # commit's cascade="all, delete-orphan" orphan check
-                .options(selectinload(TrainJourney.stops))
+                # Eagerly load all delete-orphan collections to prevent
+                # greenlet_spawn errors during flush/commit orphan checks.
+                # Must match the selectinloads in refresh_journey below.
+                .options(
+                    selectinload(TrainJourney.stops),
+                    selectinload(TrainJourney.snapshots),
+                    selectinload(TrainJourney.segment_times),
+                    selectinload(TrainJourney.dwell_times),
+                    selectinload(TrainJourney.progress_snapshots),
+                )
                 .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())

@@ -341,7 +341,10 @@ class JustInTimeUpdateService:
                 try:
                     await session.rollback()
                 except Exception:
-                    pass
+                    # Session is unrecoverable after a failed rollback -- any
+                    # further use would raise "flushed transaction was not
+                    # rolled back before reuse".  Return None immediately.
+                    return None
                 # Re-query journey since rollback expires all ORM objects.
                 # Without this, accessing journey.stops would trigger a lazy load
                 # that fails with raise_on_sql.

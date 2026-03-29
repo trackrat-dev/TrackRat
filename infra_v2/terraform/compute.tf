@@ -167,6 +167,8 @@ resource "google_compute_instance_template" "trackrat" {
         --secret=trackrat-apns-auth-key --project="$PROJECT_ID" 2>/dev/null)
       WMATA_API_KEY=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-wmata-api-key --project="$PROJECT_ID" 2>/dev/null)
+      METRA_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
+        --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null)
       echo "Secrets fetched successfully"
 
       # ===========================================
@@ -209,6 +211,7 @@ APNS_BUNDLE_ID=$APNS_BUNDLE_ID
 APNS_AUTH_KEY_PATH=/app/certs/apns_auth_key.p8
 APNS_ENVIRONMENT=prod
 TRACKRAT_WMATA_API_KEY=$WMATA_API_KEY
+TRACKRAT_METRA_API_TOKEN=$METRA_API_TOKEN
 TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO
 ENVEOF
