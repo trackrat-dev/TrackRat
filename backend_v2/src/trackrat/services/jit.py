@@ -333,7 +333,7 @@ class JustInTimeUpdateService:
                     "failed_to_refresh_journey",
                     train_id=train_id,
                     journey_id=journey.id,
-                    error=str(e),
+                    error=str(e) or repr(e),
                     error_type=type(e).__name__,
                 )
                 # Clear session error state (e.g., PendingRollbackError from failed

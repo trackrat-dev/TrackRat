@@ -218,7 +218,8 @@ async def run_with_freshness_check(
             logger.error(
                 "task_execution_failed",
                 task=task_name,
-                error=str(e) or type(e).__name__,
+                error=str(e) or repr(e),
+                error_type=type(e).__name__,
                 instance=instance_id,
                 exc_info=True,
             )
@@ -231,7 +232,8 @@ async def run_with_freshness_check(
         logger.error(
             "task_freshness_check_error",
             task=task_name,
-            error=str(e) or type(e).__name__,
+            error=str(e) or repr(e),
+            error_type=type(e).__name__,
             instance=instance_id,
         )
         # If we can't check freshness, don't run the task (fail safe)
