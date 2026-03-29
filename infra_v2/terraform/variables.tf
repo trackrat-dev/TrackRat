@@ -51,6 +51,12 @@ variable "snapshot_retention_days" {
   default     = 35
 }
 
+variable "enable_metra" {
+  description = "Enable Metra GTFS-RT integration (requires trackrat-metra-api-token secret in Secret Manager)"
+  type        = bool
+  default     = false
+}
+
 variable "alert_email" {
   description = "Email address for uptime monitoring alerts"
   type        = string

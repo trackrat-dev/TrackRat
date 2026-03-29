@@ -47,6 +47,7 @@ data "google_secret_manager_secret" "wmata_api_key" {
 }
 
 data "google_secret_manager_secret" "metra_api_token" {
+  count      = var.enable_metra ? 1 : 0
   secret_id  = "trackrat-metra-api-token"
   depends_on = [google_project_service.apis]
 }
@@ -78,7 +79,8 @@ resource "google_secret_manager_secret_iam_member" "wmata_api_key" {
 }
 
 resource "google_secret_manager_secret_iam_member" "metra_api_token" {
-  secret_id = data.google_secret_manager_secret.metra_api_token.secret_id
+  count     = var.enable_metra ? 1 : 0
+  secret_id = data.google_secret_manager_secret.metra_api_token[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.trackrat.email}"
 }
