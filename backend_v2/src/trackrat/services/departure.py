@@ -35,7 +35,7 @@ from trackrat.utils.time import (
     parse_njt_time,
     safe_datetime_subtract,
 )
-from trackrat.utils.train import get_effective_observation_type
+from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
 
 logger = get_logger(__name__)
 
@@ -792,25 +792,24 @@ class DepartureService:
                         if not train_id:
                             continue
 
-                        # Check if this is an Amtrak train appearing in NJT station data
-                        is_amtrak = train_id.startswith("A") and train_id[1:].isdigit()
-
                         journey = journeys_by_id.get(train_id)
                         if not journey:
-                            # Train in NJT schedule API without a journey record —
-                            # expected for undiscovered or cancelled trains
-                            if not is_amtrak:
+                            # Cross-reference track data for Amtrak trains
+                            if is_amtrak_train(train_id):
+                                track = train_data.get("TRACK")
+                                if track:
+                                    from trackrat.collectors.njt.discovery import (
+                                        apply_amtrak_track_from_njt,
+                                    )
+                                    await apply_amtrak_track_from_njt(
+                                        db, train_id, station_code, track,
+                                        source="njt_jit",
+                                    )
+                            else:
                                 logger.debug(
                                     "journey_not_found_during_station_refresh",
                                     train_id=train_id,
                                     station_code=station_code,
-                                )
-                            else:
-                                logger.debug(
-                                    "amtrak_train_in_njt_station",
-                                    train_id=train_id,
-                                    station_code=station_code,
-                                    reason="Amtrak trains appear in NJT stations but are tracked separately",
                                 )
                             continue
 
