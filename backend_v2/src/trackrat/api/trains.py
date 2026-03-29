@@ -81,7 +81,7 @@ async def get_departures(
     ),
     data_sources: str | None = Query(
         None,
-        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,METRA,WMATA,MBTA. Default: all",
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
     ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
@@ -89,7 +89,7 @@ async def get_departures(
     """Get upcoming train departures from a station, optionally filtered by destination.
 
     Returns cached results for default time parameters. For future dates, falls back
-    to GTFS static schedule data. Supports filtering by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, MBTA).
+    to GTFS static schedule data. Supports filtering by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA).
     """
     logger.info(
         "get_departures_request",

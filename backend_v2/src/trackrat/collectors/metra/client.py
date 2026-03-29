@@ -6,7 +6,6 @@ Follows the same pattern as the LIRR client.
 """
 
 import logging
-import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -52,14 +51,19 @@ class MetraClient:
     Requires TRACKRAT_METRA_API_TOKEN environment variable.
     """
 
-    def __init__(self, timeout: float = 30.0) -> None:
+    def __init__(self, api_token: str = "", timeout: float = 30.0) -> None:
         """Initialize Metra client.
 
         Args:
+            api_token: Metra API token. If empty, reads from settings.
             timeout: HTTP request timeout in seconds
         """
         self.timeout = timeout
-        self._api_token = os.environ.get("TRACKRAT_METRA_API_TOKEN", "")
+        if not api_token:
+            from trackrat.settings import get_settings
+
+            api_token = get_settings().metra_api_token
+        self._api_token = api_token
         self._session: httpx.AsyncClient | None = None
         self._cache: list[MetraArrival] | None = None
         self._cache_time: datetime | None = None
