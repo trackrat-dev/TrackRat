@@ -89,6 +89,7 @@ class TestSchedulerService:
             # Verify all jobs were added
             expected_jobs = [
                 ("njt_train_discovery", IntervalTrigger, {"minutes": 30}),
+                ("ny_penn_track_discovery", IntervalTrigger, {"minutes": 8}),
                 ("amtrak_train_discovery", IntervalTrigger, {"minutes": 30}),
                 ("path_collection", IntervalTrigger, {"minutes": 4}),
                 ("lirr_collection", IntervalTrigger, {"minutes": 4}),
