@@ -438,7 +438,10 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     track = train_data.get("TRACK")
                     if track:
                         await apply_amtrak_track_from_njt(
-                            session, train_id, station_code, track,
+                            session,
+                            train_id,
+                            station_code,
+                            track,
                             source="njt_discovery",
                         )
                     continue

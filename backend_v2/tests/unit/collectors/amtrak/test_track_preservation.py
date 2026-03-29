@@ -305,9 +305,7 @@ class TestCollectJourneyDetailsTrackPreservation:
 
         # Mock the client to return the test train data
         mock_client = AsyncMock()
-        mock_client.get_all_trains = AsyncMock(
-            return_value={"57": [train_data]}
-        )
+        mock_client.get_all_trains = AsyncMock(return_value={"57": [train_data]})
         collector.client = mock_client
 
         await collector.collect_journey_details(mock_session, journey)

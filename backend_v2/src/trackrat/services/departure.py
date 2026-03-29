@@ -801,8 +801,12 @@ class DepartureService:
                                     from trackrat.collectors.njt.discovery import (
                                         apply_amtrak_track_from_njt,
                                     )
+
                                     await apply_amtrak_track_from_njt(
-                                        db, train_id, station_code, track,
+                                        db,
+                                        train_id,
+                                        station_code,
+                                        track,
                                         source="njt_jit",
                                     )
                             else:

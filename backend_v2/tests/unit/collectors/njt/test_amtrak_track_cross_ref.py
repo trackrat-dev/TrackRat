@@ -234,9 +234,7 @@ class TestApplyAmtrakTrackFromNjt:
         await apply_amtrak_track_from_njt(
             session, "A2150", "NY", "8", source="njt_discovery"
         )
-        await apply_amtrak_track_from_njt(
-            session, "A2150", "NY", "8", source="njt_jit"
-        )
+        await apply_amtrak_track_from_njt(session, "A2150", "NY", "8", source="njt_jit")
 
 
 class TestDiscoveryAmtrakCrossReference:
@@ -348,9 +346,7 @@ class TestDiscoveryAmtrakCrossReference:
             ) as mock_parse_time:
                 mock_parse_time.return_value = datetime(2026, 3, 29, 17, 30)
 
-                with patch(
-                    "trackrat.collectors.njt.discovery.now_et"
-                ) as mock_now:
+                with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
                     mock_now.return_value = datetime(2026, 3, 29, 16, 0)
 
                     result = await collector.process_discovered_trains(
@@ -406,9 +402,7 @@ class TestDiscoveryAmtrakCrossReference:
             ) as mock_parse_time:
                 mock_parse_time.return_value = datetime(2026, 3, 29, 17, 30)
 
-                with patch(
-                    "trackrat.collectors.njt.discovery.now_et"
-                ) as mock_now:
+                with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
                     mock_now.return_value = datetime(2026, 3, 29, 16, 0)
 
                     result = await collector.process_discovered_trains(
