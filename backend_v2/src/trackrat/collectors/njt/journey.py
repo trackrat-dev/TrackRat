@@ -1379,6 +1379,14 @@ class JourneyCollector(BaseJourneyCollector):
             # Update track if available - but don't overwrite existing track from discovery
             if stop_data.TRACK:
                 sanitized_track = sanitize_track(stop_data.TRACK)
+                if sanitized_track and sanitized_track != stop.track:
+                    logger.info(
+                        "track_changed",
+                        train_id=journey.train_id,
+                        station_code=stop.station_code,
+                        old_track=stop.track,
+                        new_track=sanitized_track,
+                    )
                 if sanitized_track:
                     stop.track = sanitized_track
                     if not stop.track_assigned_at:

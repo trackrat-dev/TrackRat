@@ -127,7 +127,28 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
         if existing_stop:
             # Update existing stop with new data
+            existing_track = getattr(existing_stop, "track", None)
             for field, value in stop_data.items():
+                # Preserve existing track when API returns None
+                if field == "track" and value is None and existing_track:
+                    logger.debug(
+                        "preserving_existing_track",
+                        journey_id=journey_id,
+                        station_code=station_code,
+                        track=existing_track,
+                    )
+                    continue
+                # Log track changes for diagnostics
+                if field == "track" and value != existing_track:
+                    logger.info(
+                        "track_changed",
+                        journey_id=journey_id,
+                        station_code=station_code,
+                        old_track=existing_track,
+                        new_track=value,
+                    )
+                    if value and not getattr(existing_stop, "track_assigned_at", None):
+                        existing_stop.track_assigned_at = now_et()
                 setattr(existing_stop, field, value)
             existing_stop.updated_at = now_et()
             return existing_stop
@@ -629,6 +650,28 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             if existing_stop:
                 # Update existing stop
                 for field, value in stop_data.items():
+                    # Preserve existing track when API returns None
+                    if field == "track" and value is None and existing_stop.track:
+                        logger.debug(
+                            "preserving_existing_track",
+                            train_id=journey.train_id,
+                            station_code=internal_code,
+                            track=existing_stop.track,
+                        )
+                        continue
+                    # Log track changes for diagnostics
+                    if field == "track" and value != getattr(
+                        existing_stop, "track", None
+                    ):
+                        logger.info(
+                            "track_changed",
+                            train_id=journey.train_id,
+                            station_code=internal_code,
+                            old_track=existing_stop.track,
+                            new_track=value,
+                        )
+                        if value and not existing_stop.track_assigned_at:
+                            existing_stop.track_assigned_at = now_et()
                     setattr(existing_stop, field, value)
                 existing_stop.updated_at = now_et()
                 tracked_stops.append(existing_stop)
