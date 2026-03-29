@@ -60,8 +60,9 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 # Web
 cd webpage_v2
-npm run build                        # TypeScript compile + build check
-# Note: No automated tests yet (MVP phase)
+npm run build                        # TypeScript compile + Vite build
+npm test                             # Run all tests (Vitest + React Testing Library)
+npm run test:watch                   # Watch mode for development
 ```
 
 **Staging Validation:**
@@ -103,7 +104,7 @@ The E2E script prints response bodies on HTTP errors and flags slow responses (>
 **Ground Truth Validation:**
 
 Compares TrackRat departures against raw transit provider APIs to verify data quality.
-Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY.
+Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA.
 
 ```bash
 cd backend_v2
@@ -126,6 +127,9 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider MNR --verbose
 # SUBWAY (no auth needed)
 poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbose
 
+# WMATA (needs token via TRACKRAT_WMATA_API_KEY or WMATA_API_KEY env var)
+poetry run python3 ../scripts/ground-truth-validate.py --provider WMATA --verbose
+
 # All providers at once
 poetry run python3 ../scripts/ground-truth-validate.py --all --verbose
 ```
@@ -135,6 +139,8 @@ Default target is staging; pass a URL as first positional arg for production.
 
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
 or `.njt-token` file (gitignored) in the repo root. Priority: TRACKRAT_NJT_API_TOKEN > NJT_TOKEN > .njt-token file.
+
+The WMATA API key can be set via `TRACKRAT_WMATA_API_KEY` or `WMATA_API_KEY` env var.
 
 **Server Usage Report:**
 
@@ -206,6 +212,26 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Uses MTA's official GTFS-RT feeds with shared logic from `mta_common.py`
 - Station complexes aggregated via `STATION_EQUIVALENTS` mapping
 - Full trip_id used as train ID (not truncated)
+
+**Backend Data Collection (BART / MBTA - Unified GTFS-RT):**
+- Single unified collector per system runs every 4 minutes
+- Uses official GTFS-RT protobuf feeds (no auth required for BART; no auth for MBTA)
+- Shared logic from `mta_common.py` (stop merging, departure inference, completion detection)
+- BART does not use origin inference (too many terminals per line); MBTA does
+- GTFS static schedules backfill stops that GTFS-RT omits
+
+**Backend Data Collection (Metra - Unified GTFS-RT):**
+- Single collector runs every 4 minutes using official Metra GTFS-RT feed
+- Requires `TRACKRAT_METRA_API_TOKEN` env var for API authentication
+- Uses Central Time (only non-Eastern-Time collector)
+- Shared logic from `mta_common.py`
+
+**Backend Data Collection (WMATA / DC Metro - REST API):**
+- Single collector runs every 3 minutes via WMATA developer REST API (JSON, not GTFS-RT)
+- Requires `TRACKRAT_WMATA_API_KEY` env var for API authentication
+- Two-phase: discovery groups predictions by line/destination, updates match to existing journeys
+- Train IDs are synthetic: `WMATA_{line}_{dest}_{timestamp}`
+- Stop times are estimated using per-segment defaults (no scheduled times from WMATA)
 
 **Backend Data Collection (PATCO - Schedule-only):**
 - Uses GTFS static schedules from SEPTA feed
@@ -432,21 +458,30 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend services: `backend_v2/src/trackrat/services/`
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway, service_alerts, mta_common, mta_extensions)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata, service_alerts, mta_common, mta_extensions)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
-- Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize)
+- Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
+- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py)
 - Backend tests: `backend_v2/tests/`
-- iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`
+- iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
+- iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`
 - iOS services: `ios/TrackRat/Services/`
 - iOS models: `ios/TrackRat/Models/`
+- iOS shared: `ios/TrackRat/Shared/` (LiveActivityModels, Stations, RouteTopology, etc.)
+- iOS utilities: `ios/TrackRat/Utilities/` (Extensions, Logger)
+- iOS theme: `ios/TrackRat/Theme/` (TrackRatTheme)
+- iOS Live Activity: `ios/TrainLiveActivityExtension/`
 - iOS tests: `ios/TrackRatTests/`
+- Android app: `android/` (Jetpack Compose + Hilt + Retrofit)
 - Web pages: `webpage_v2/src/pages/`
 - Web components: `webpage_v2/src/components/`
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
+- Web tests: `webpage_v2/src/` (colocated `*.test.ts` files, Vitest + React Testing Library)
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
 - Infrastructure Terraform: `infra_v2/terraform/`
 - Infrastructure Cloud Build: `infra_v2/cloudbuild*.yaml`
+- Universal links: `universal-links-deployment/` (Apple App Site Association via GCS)
 
 ## Common API Endpoints
 

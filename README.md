@@ -6,7 +6,7 @@
 [![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
-TrackRat tracks trains across seven transit systems in real time, predicts platform assignments using ML, and forecasts delays — all from a unified interface. It runs on iOS (SwiftUI + Live Activities), the web (React + TypeScript), and a Python backend that does the heavy lifting.
+TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments using ML, and forecasts delays — all from a unified interface. It runs on iOS (SwiftUI + Live Activities), Android (Jetpack Compose), the web (React + TypeScript), and a Python backend that does the heavy lifting.
 
 ## Supported Transit Systems
 
@@ -18,6 +18,10 @@ TrackRat tracks trains across seven transit systems in real time, predicts platf
 | LIRR | All branches | MTA GTFS-RT | Yes |
 | Metro-North | All branches | MTA GTFS-RT | Yes |
 | NYC Subway | 36 routes, 472 stations | MTA GTFS-RT | Yes |
+| WMATA (DC Metro) | All 6 lines, 98 stations | WMATA REST API | Yes |
+| BART | All lines | BART GTFS-RT | Yes |
+| MBTA | Commuter Rail | MBTA GTFS-RT | Yes |
+| Metra | All lines (Chicago) | Metra GTFS-RT | Yes |
 | PATCO | Lindenwold–15th St | GTFS Static | Schedule only |
 
 ## What It Does
@@ -29,7 +33,7 @@ TrackRat tracks trains across seven transit systems in real time, predicts platf
 - **Route Alerts** — Push notifications for delays, cancellations, and service changes on subscribed routes, with customizable schedules, thresholds, and per-type toggles
 - **Service Alerts** — MTA planned work and service change notifications for Subway, LIRR, and Metro-North
 - **Congestion Maps** — Live network congestion monitoring
-- **1,000+ Stations** across the Northeast Corridor
+- **1,500+ Stations** across the US
 
 ## Architecture
 
@@ -38,14 +42,14 @@ TrackRat tracks trains across seven transit systems in real time, predicts platf
 │   Data Sources   │     │     Backend      │     │    Frontends    │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • NJ Transit    │────▶│ • FastAPI        │────▶│ • iOS App       │
-│ • Amtrak        │     │ • APScheduler    │     │ • Web App       │
-│ • PATH          │     │ • ML Predictions │     │ • Live Activity │
-│ • PATCO         │     │ • PostgreSQL     │     └─────────────────┘
-│ • LIRR          │     └─────────────────┘
-│ • Metro-North   │             │
-│ • NYC Subway    │     ┌───────▼────────┐
-└─────────────────┘     │   GCP Infra    │
-                        │ • GCE (MIG)   │
+│ • Amtrak        │     │ • APScheduler    │     │ • Android App   │
+│ • PATH / PATCO  │     │ • ML Predictions │     │ • Web App       │
+│ • LIRR / MNR    │     │ • PostgreSQL     │     │ • Live Activity │
+│ • NYC Subway    │     └─────────────────┘     └─────────────────┘
+│ • WMATA (DC)    │             │
+│ • BART / MBTA   │     ┌───────▼────────┐
+│ • Metra         │     │   GCP Infra    │
+└─────────────────┘     │ • GCE (MIG)   │
                         │ • PostgreSQL   │
                         │ • Monitoring   │
                         └────────────────┘
@@ -55,8 +59,10 @@ Each transit system uses a collection pattern suited to its data source:
 
 - **NJ Transit / Amtrak** — Multi-phase pipeline: Schedule Generation → Discovery → Collection → JIT Updates → Validation
 - **PATH** — Unified collector every 4 minutes via native API, discovers trains at all 13 stations
-- **LIRR / Metro-North** — Unified GTFS-RT collector every 4 minutes with static schedule backfill
+- **LIRR / Metro-North / BART / MBTA** — Unified GTFS-RT collector every 4 minutes with static schedule backfill
 - **NYC Subway** — Unified GTFS-RT collector processing 8 feeds covering 36 routes and 472 stations
+- **Metra** — Unified GTFS-RT collector every 4 minutes (Central Time, requires API token)
+- **WMATA** — REST API collector every 3 minutes with synthetic train IDs and estimated stop times
 - **PATCO** — GTFS static schedules (no real-time API available)
 
 ## Getting Started
@@ -110,6 +116,8 @@ open TrackRat.xcodeproj
 |----------|----------|-------------|
 | `TRACKRAT_DATABASE_URL` | Yes | PostgreSQL connection string |
 | `TRACKRAT_NJT_API_TOKEN` | Yes | NJ Transit API token ([register here](https://raildata.njtransit.com)) |
+| `TRACKRAT_WMATA_API_KEY` | No | WMATA developer API key (for DC Metro) |
+| `TRACKRAT_METRA_API_TOKEN` | No | Metra GTFS-RT API token (for Chicago) |
 | `APNS_TEAM_ID` | No | Apple Developer Team ID (for Live Activities) |
 | `APNS_KEY_ID` | No | Apple Push Notification key ID |
 | `APNS_AUTH_KEY_PATH` | No | Path to `.p8` auth key file |
@@ -123,7 +131,7 @@ TrackRat/
 ├── backend_v2/          # Python FastAPI backend
 │   ├── src/trackrat/
 │   │   ├── api/         # API endpoints (FastAPI routers)
-│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, service_alerts, mta_common)
+│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata)
 │   │   ├── config/      # Station configs, route topology, platform mappings
 │   │   ├── models/      # SQLAlchemy + Pydantic models
 │   │   ├── services/    # Business logic, ML predictions, scheduling
@@ -131,15 +139,16 @@ TrackRat/
 │   └── tests/           # pytest tests
 ├── ios/                 # Swift/SwiftUI iOS app
 │   └── TrackRat/
-│       ├── Views/       # Screens and components
+│       ├── Views/       # Screens, components, paywall
 │       ├── Services/    # API, subscriptions, live activities
-│       └── Models/      # Data models
+│       ├── Models/      # Data models
+│       └── Shared/      # Cross-target shared code
+├── android/             # Kotlin/Jetpack Compose Android app
 ├── webpage_v2/          # React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── pages/       # Route pages
 │       ├── components/  # Shared UI components
 │       └── store/       # Zustand state management
-├── trackrat.net/        # Landing page (static HTML)
 └── infra_v2/terraform/  # GCP infrastructure (Terraform)
 ```
 
@@ -157,7 +166,8 @@ xcodebuild test -scheme TrackRat -destination 'platform=iOS Simulator,name=iPhon
 
 # Web
 cd webpage_v2
-npm run build                        # TypeScript compile + build check
+npm test                             # Run all tests (Vitest)
+npm run build                        # TypeScript compile + Vite build
 ```
 
 ## API
@@ -173,6 +183,7 @@ GET  /api/v2/predictions/delay              # Delay/cancellation forecasts
 POST /api/v2/devices/register              # Register device for push notifications
 PUT  /api/v2/alerts/subscriptions          # Sync route alert subscriptions
 GET  /api/v2/alerts/service                # MTA service alerts (planned work, delays)
+GET  /api/v2/trips/search                  # Multi-leg trip search with transfers
 POST /api/v2/feedback                      # Submit user feedback
 GET  /admin/stats                           # Server usage statistics (HTML)
 GET  /admin/stats.json                      # Server usage statistics (JSON)
@@ -188,9 +199,10 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 ### Areas Where Help Is Wanted
 
-- Adding new transit systems (SEPTA, NJ Light Rail, and beyond)
+- Adding new transit systems (SEPTA, NJ Light Rail, Caltrain, and beyond)
 - Improving test coverage
-- Web app features (PWA, charts, maps)
+- Android app development
+- Web app features (maps, charts, offline improvements)
 - Accessibility improvements
 
 ## License
@@ -203,7 +215,6 @@ Copyright 2025-2026 Andrew Martin
 
 - **iOS App:** [App Store](https://apps.apple.com/us/app/trackrat/id6746423610)
 - **Web App:** [trackrat.net](https://trackrat.net)
-- **Landing Page:** [trackrat.net](https://trackrat.net)
 - **Feedback:** [trackrat.nolt.io](https://trackrat.nolt.io)
 - **YouTube:** [@TrackRat-App](https://www.youtube.com/@TrackRat-App/shorts)
 - **Contact:** trackrat@andymartin.cc

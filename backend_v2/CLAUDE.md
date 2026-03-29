@@ -2,9 +2,9 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** February 2026
+**Last Updated:** March 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
-**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
+**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
-- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway data sources with extensible architecture
+- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA data sources with extensible architecture
 - **Prediction Features**: Track predictions, arrival forecasting, delay/cancellation forecasting, and congestion analysis
 - **API Response Caching**: Intelligent caching system for performance optimization
 
@@ -47,12 +47,12 @@ The V2 backend eliminates the complexity of V1 by:
 │ • PATCO (GTFS)  │     │ • Predictions   │     │ • Live Activities│
 │ • LIRR (GTFS-RT)│     │ • GTFS Feed     │     └─────────────────┘
 │ • MNR (GTFS-RT) │     │ • API Caching   │
-│ • Subway(GTFS-RT)│     │ • Route Alerts  │
-└─────────────────┘     │ • Analytics     │
-                        │ • Validation    │
-                        └────────┬────────┘
-                                 │
-                        ┌────────▼────────┐
+│ • Subway(GTFS-RT)│    │ • Route Alerts  │
+│ • BART (GTFS-RT)│     │ • Analytics     │
+│ • MBTA (GTFS-RT)│     │ • Validation    │
+│ • Metra(GTFS-RT)│     └────────┬────────┘
+│ • WMATA (REST)  │              │
+└─────────────────┘     ┌────────▼────────┐
                         │   PostgreSQL    │
                         │ • Train Data    │
                         │ • ML Models     │
@@ -100,7 +100,7 @@ The V2 backend eliminates the complexity of V1 by:
 train_journeys (
     id, train_id, journey_date, line_code, line_name, line_color,
     destination, origin_station_code, terminal_station_code,
-    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR/SUBWAY), observation_type (OBSERVED/SCHEDULED),
+    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR/SUBWAY/BART/MBTA/METRA/WMATA), observation_type (OBSERVED/SCHEDULED),
     scheduled_departure, scheduled_arrival, actual_departure, actual_arrival,
     has_complete_journey, stops_count, is_cancelled, is_completed,
     api_error_count, is_expired, discovery_track, discovery_station_code
@@ -199,10 +199,11 @@ GET /predictions/track?station_code=NY&train_id=1234&journey_date=2024-01-01  # 
 GET /predictions/delay?train_id=1234&station_code=NY&journey_date=2024-01-01  # Delay/cancellation forecast
 GET /predictions/supported-stations                   # Stations with predictions
 
-# Route Alerts
+# Route Alerts & Service Alerts
 POST /devices/register                               # Register APNS device token
 PUT  /alerts/subscriptions                           # Sync route alert subscriptions
 GET  /alerts/subscriptions/{device_id}               # Get current alert subscriptions
+GET  /alerts/service                                 # MTA service alerts (planned work, delays)
 
 # Validation
 GET /validation/status                               # Validation status and recent results
@@ -244,6 +245,10 @@ The APScheduler runs in-process and handles:
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
 - **Every 4 min**: Metro-North collection (unified, MTA GTFS-RT)
 - **Every 4 min**: NYC Subway collection (8 GTFS-RT feeds, 36 routes)
+- **Every 4 min**: BART collection (unified, GTFS-RT)
+- **Every 4 min**: MBTA Commuter Rail collection (unified, GTFS-RT)
+- **Every 4 min**: Metra collection (unified, GTFS-RT, requires API token)
+- **Every 3 min**: WMATA/DC Metro collection (REST API, requires API key)
 - **Every 5 min**: Journey update checks for active trains
 - **Every 15 min**: Individual journey collection updates
 - **Every 15 min**: API cache pre-computation for congestion endpoints
@@ -330,6 +335,10 @@ The system now includes comprehensive transit time analysis:
    - LIRR collector in `collectors/lirr/` (collector.py, client.py)
    - Metro-North collector in `collectors/mnr/` (collector.py, client.py)
    - NYC Subway collector in `collectors/subway/` (collector.py, client.py)
+   - BART collector in `collectors/bart/` (collector.py, client.py)
+   - MBTA collector in `collectors/mbta/` (collector.py, client.py)
+   - Metra collector in `collectors/metra/` (collector.py, client.py)
+   - WMATA collector in `collectors/wmata/` (collector.py, client.py)
    - MTA shared logic in `collectors/mta_common.py` and `collectors/mta_extensions.py`
    - Base classes in `collectors/base.py`
    - Test with data in `tests/unit/collectors/`
@@ -374,6 +383,14 @@ TRACKRAT_NJT_API_URL=https://raildata.njtransit.com/api
 
 # Note: Amtrak uses public API - no authentication required
 # Amtrak data collected from https://api-v3.amtraker.com/v3/trains
+
+# WMATA (DC Metro) API
+TRACKRAT_WMATA_API_KEY=your_wmata_developer_api_key
+
+# Metra GTFS-RT API
+TRACKRAT_METRA_API_TOKEN=your_metra_api_token
+
+# Note: BART and MBTA use public GTFS-RT feeds - no authentication required
 
 # Database Configuration (defaults to PostgreSQL)
 TRACKRAT_DATABASE_URL=postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
@@ -604,7 +621,7 @@ asyncio.run(check_tasks())
 
 1. **Enhanced Track Prediction Models**: Improved ML models with occupancy detection
 2. **WebSocket Support**: Real-time updates for clients
-3. **Additional Transit Systems**: SEPTA regional rail, NJ Light Rail
+3. **Additional Transit Systems**: SEPTA regional rail, NJ Light Rail, Caltrain
 4. **Advanced Analytics**: Enhanced journey pattern analysis
 5. **GraphQL API**: More efficient client queries
 
