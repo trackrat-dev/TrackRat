@@ -51,9 +51,7 @@ class MetraClient:
     Requires TRACKRAT_METRA_API_TOKEN environment variable.
     """
 
-    def __init__(
-        self, api_token: str | None = None, timeout: float = 30.0
-    ) -> None:
+    def __init__(self, api_token: str | None = None, timeout: float = 30.0) -> None:
         """Initialize Metra client.
 
         Args:
