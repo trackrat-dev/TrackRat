@@ -168,7 +168,7 @@ resource "google_compute_instance_template" "trackrat" {
       WMATA_API_KEY=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-wmata-api-key --project="$PROJECT_ID" 2>/dev/null)
       METRA_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
-        --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null)
+        --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null) || true
       echo "Secrets fetched successfully"
 
       # ===========================================
