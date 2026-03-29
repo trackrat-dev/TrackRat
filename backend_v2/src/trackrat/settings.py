@@ -93,6 +93,12 @@ class Settings(BaseSettings):
     discovery_interval_minutes: int = Field(
         default=30, description="Interval between discovery runs (minutes)", ge=1
     )
+    ny_penn_track_discovery_interval_minutes: int = Field(
+        default=8,
+        description="Interval for NY Penn track discovery (minutes). "
+        "More frequent than full discovery to capture Amtrak track assignments.",
+        ge=1,
+    )
     journey_update_interval_minutes: int = Field(
         default=15, description="Interval between journey updates (minutes)", ge=1
     )
