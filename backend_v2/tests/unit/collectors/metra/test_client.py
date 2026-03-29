@@ -88,14 +88,12 @@ class TestMetraClient:
     @pytest.fixture
     def client(self):
         """Create a MetraClient instance with a test token."""
-        with patch.dict("os.environ", {"TRACKRAT_METRA_API_TOKEN": "test_token"}):
-            return MetraClient(timeout=10.0)
+        return MetraClient(api_token="test_token", timeout=10.0)
 
     @pytest.fixture
     def client_no_token(self):
         """Create a MetraClient instance without an API token."""
-        with patch.dict("os.environ", {}, clear=True):
-            return MetraClient(timeout=10.0)
+        return MetraClient(api_token="", timeout=10.0)
 
     def test_initialization_with_token(self, client):
         """Test client initializes with correct defaults when token is set."""

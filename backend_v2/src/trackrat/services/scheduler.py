@@ -473,6 +473,13 @@ class SchedulerService:
         """Stop the scheduler and cleanup."""
         logger.info("stopping_scheduler_service")
 
+        # Cancel any startup tasks still running
+        for task in self._startup_tasks:
+            if not task.done():
+                logger.info("cancelling_task", task_id=task.get_name())
+                task.cancel()
+        self._startup_tasks.clear()
+
         # Cancel any running tasks
         for task_id, task in self._running_tasks.items():
             if not task.done():

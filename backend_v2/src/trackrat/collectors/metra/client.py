@@ -51,15 +51,17 @@ class MetraClient:
     Requires TRACKRAT_METRA_API_TOKEN environment variable.
     """
 
-    def __init__(self, api_token: str = "", timeout: float = 30.0) -> None:
+    def __init__(
+        self, api_token: str | None = None, timeout: float = 30.0
+    ) -> None:
         """Initialize Metra client.
 
         Args:
-            api_token: Metra API token. If empty, reads from settings.
+            api_token: Metra API token. If None, reads from settings.
             timeout: HTTP request timeout in seconds
         """
         self.timeout = timeout
-        if not api_token:
+        if api_token is None:
             from trackrat.settings import get_settings
 
             api_token = get_settings().metra_api_token
