@@ -805,6 +805,13 @@ class DepartureService:
                                         db, train_id, station_code, track,
                                         source="njt_jit",
                                     )
+                                else:
+                                    logger.debug(
+                                        "amtrak_in_njt_jit_no_track",
+                                        train_id=train_id,
+                                        station_code=station_code,
+                                        track_value=repr(track),
+                                    )
                             else:
                                 logger.debug(
                                     "journey_not_found_during_station_refresh",

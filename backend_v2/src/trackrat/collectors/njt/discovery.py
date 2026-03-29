@@ -441,6 +441,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                             session, train_id, station_code, track,
                             source="njt_discovery",
                         )
+                    else:
+                        logger.debug(
+                            "amtrak_in_njt_no_track",
+                            train_id=train_id,
+                            station_code=station_code,
+                            track_value=repr(track),
+                        )
                     continue
 
                 # Parse scheduled departure time
