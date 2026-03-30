@@ -113,7 +113,7 @@ NATIONWIDE_STATIONS = {
     "LNS": "East Lansing",
     "LPE": "Lapeer",
     "MKA": "Mitchell Airport",
-    "PNT": "Pontiac",
+    "PNT": "Pontiac MI",
     "POG": "Portage",
     "PTH": "Port Huron",
     "ROY": "Royal Oak",

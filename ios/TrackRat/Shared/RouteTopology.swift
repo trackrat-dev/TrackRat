@@ -113,7 +113,7 @@ struct RouteTopology {
             id: "njt-port-jervis",
             name: "Port Jervis Line",
             dataSource: "NJT",
-            stationCodes: ["SF", "XG", "TC", "RM", "CW", "CB", "OS", "PO"]
+            stationCodes: ["SF", "XG", "TC", "RM", "MD", "CW", "CB", "OS", "PO"]
         ),
 
         // Pascack Valley Line
