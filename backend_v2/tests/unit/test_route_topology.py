@@ -1417,7 +1417,7 @@ class TestAmtrakLincolnService:
         """CHI→STL should expand via Lincoln (10 stations = 9 hops),
         shorter than Texas Eagle which also has CHI→STL."""
         canonical = get_canonical_segments("AMTRAK", "CHI", "STL")
-        # Lincoln: CHI→SMT→JOL→PON→BNL→LCN→SPI→CRV→ALN→STL (9 segments)
+        # Lincoln: CHI→SMT→JOL→PNT→BNL→LCN→SPI→CRV→ALN→STL (9 segments)
         # Texas Eagle: CHI→STL direct (1 segment in current topology)
         # get_canonical_segments picks shortest = Texas Eagle (1 hop)
         # Actually Texas Eagle has CHI,STL adjacent so it's 1 hop
@@ -1479,7 +1479,7 @@ class TestAmtrakWolverine:
             "JXN",
             "ARB",
             "DER",
-            "PON",
+            "PNT",
         )
 
 
