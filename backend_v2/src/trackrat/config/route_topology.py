@@ -316,7 +316,7 @@ NJT_PORT_JERVIS = Route(
     name="Port Jervis Line",
     data_source="NJT",
     line_codes=frozenset({"PJ"}),
-    stations=("SF", "XG", "TC", "RM", "CW", "CB", "OS", "PO"),
+    stations=("SF", "XG", "TC", "RM", "MD", "CW", "CB", "OS", "PO"),
 )
 
 NJT_PASCACK_VALLEY = Route(
