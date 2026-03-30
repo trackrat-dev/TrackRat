@@ -12,7 +12,10 @@ from typing import Any
 
 from structlog import get_logger
 
-from trackrat.config.route_topology import get_canonical_segments, get_routes_for_data_source
+from trackrat.config.route_topology import (
+    get_canonical_segments,
+    get_routes_for_data_source,
+)
 from trackrat.services.congestion_types import (
     SegmentCongestion,
     get_congestion_level,

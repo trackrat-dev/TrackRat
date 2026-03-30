@@ -138,9 +138,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     all_train_ids.append(train_id)
                     if is_amtrak_train(train_id):
                         track = train_data.get("TRACK", "")
-                        amtrak_train_ids.append(
-                            f"{train_id}[track={track or 'none'}]"
-                        )
+                        amtrak_train_ids.append(f"{train_id}[track={track or 'none'}]")
 
             # Process discovered trains (creates/updates journey records)
             new_train_ids = await self.process_discovered_trains(

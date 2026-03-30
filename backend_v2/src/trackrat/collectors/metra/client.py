@@ -212,7 +212,9 @@ class MetraClient:
             return arrivals
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error fetching Metra GTFS-RT feed: {e.response.status_code}")
+            logger.error(
+                f"HTTP error fetching Metra GTFS-RT feed: {e.response.status_code}"
+            )
             return self._cache or []
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching Metra GTFS-RT feed: {type(e).__name__}")

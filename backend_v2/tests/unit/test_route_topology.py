@@ -1065,37 +1065,29 @@ class TestStationEquivalenceResolution:
     def test_resolve_ts_to_se_for_njt(self):
         """TS (Secaucus Lower Lvl) should resolve to SE (Secaucus Upper Lvl)."""
         resolved = _resolve_to_topology_code("TS", "NJT")
-        assert resolved == "SE", (
-            f"TS should resolve to SE for NJT, got: {resolved}"
-        )
+        assert resolved == "SE", f"TS should resolve to SE for NJT, got: {resolved}"
 
     def test_resolve_sc_to_se_for_njt(self):
         """SC (Secaucus Concourse) should resolve to SE (Secaucus Upper Lvl)."""
         resolved = _resolve_to_topology_code("SC", "NJT")
-        assert resolved == "SE", (
-            f"SC should resolve to SE for NJT, got: {resolved}"
-        )
+        assert resolved == "SE", f"SC should resolve to SE for NJT, got: {resolved}"
 
     def test_se_stays_se(self):
         """SE (Secaucus Upper Lvl) is already the topology code, no change."""
         resolved = _resolve_to_topology_code("SE", "NJT")
-        assert resolved == "SE", (
-            f"SE should stay SE for NJT, got: {resolved}"
-        )
+        assert resolved == "SE", f"SE should stay SE for NJT, got: {resolved}"
 
     def test_non_equivalent_code_unchanged(self):
         """Station codes without equivalences pass through unchanged."""
         resolved = _resolve_to_topology_code("NY", "NJT")
-        assert resolved == "NY", (
-            f"NY should stay NY (no equivalence), got: {resolved}"
-        )
+        assert resolved == "NY", f"NY should stay NY (no equivalence), got: {resolved}"
 
     def test_unknown_code_unchanged(self):
         """Completely unknown station codes pass through unchanged."""
         resolved = _resolve_to_topology_code("ZZZZZ", "NJT")
-        assert resolved == "ZZZZZ", (
-            f"Unknown code should pass through unchanged, got: {resolved}"
-        )
+        assert (
+            resolved == "ZZZZZ"
+        ), f"Unknown code should pass through unchanged, got: {resolved}"
 
     def test_canonical_segments_ts_to_pq_expands(self):
         """TS→PQ (Secaucus Lower Lvl → Pearl River) should expand via Pascack Valley.
@@ -1110,49 +1102,45 @@ class TestStationEquivalenceResolution:
             f"but got: {canonical}"
         )
         # First segment should start from SE (resolved from TS)
-        assert canonical[0][0] == "SE", (
-            f"First segment should start from SE, got: {canonical[0][0]}"
-        )
+        assert (
+            canonical[0][0] == "SE"
+        ), f"First segment should start from SE, got: {canonical[0][0]}"
         # Last segment should end at PQ
-        assert canonical[-1][1] == "PQ", (
-            f"Last segment should end at PQ, got: {canonical[-1][1]}"
-        )
+        assert (
+            canonical[-1][1] == "PQ"
+        ), f"Last segment should end at PQ, got: {canonical[-1][1]}"
         # Should have 14 hops: SE→WR, WR→TE, ..., ZM→PQ
-        assert len(canonical) == 14, (
-            f"TS→PQ should expand to 14 hops on Pascack Valley, got {len(canonical)}: {canonical}"
-        )
+        assert (
+            len(canonical) == 14
+        ), f"TS→PQ should expand to 14 hops on Pascack Valley, got {len(canonical)}: {canonical}"
 
     def test_canonical_segments_sc_to_ny_expands(self):
         """SC→NY (Secaucus Concourse → NY Penn) should expand via NEC."""
         canonical = get_canonical_segments("NJT", "SC", "NY")
-        assert len(canonical) > 0, (
-            f"SC→NY should expand, got: {canonical}"
-        )
+        assert len(canonical) > 0, f"SC→NY should expand, got: {canonical}"
         # Should resolve SC to SE, then expand SE→NY (which is 1 hop on NEC)
-        assert canonical == [("SE", "NY")] or canonical == [("NY", "SE")], (
-            f"SC→NY should resolve to the SE→NY segment, got: {canonical}"
-        )
+        assert canonical == [("SE", "NY")] or canonical == [
+            ("NY", "SE")
+        ], f"SC→NY should resolve to the SE→NY segment, got: {canonical}"
 
     def test_newark_equivalence_np_pnk(self):
         """PNK (Newark PATH) should resolve to NP (Newark Penn Station) for NJT."""
         resolved = _resolve_to_topology_code("PNK", "NJT")
-        assert resolved == "NP", (
-            f"PNK should resolve to NP for NJT, got: {resolved}"
-        )
+        assert resolved == "NP", f"PNK should resolve to NP for NJT, got: {resolved}"
 
     def test_amtrak_jsp_resolves_to_jes(self):
         """JSP (Jesup alias) should resolve to JES (in Amtrak coastal route)."""
         resolved = _resolve_to_topology_code("JSP", "AMTRAK")
-        assert resolved == "JES", (
-            f"JSP should resolve to JES for AMTRAK, got: {resolved}"
-        )
+        assert (
+            resolved == "JES"
+        ), f"JSP should resolve to JES for AMTRAK, got: {resolved}"
 
     def test_amtrak_ssm_resolves_to_sel(self):
         """SSM (Selma alias) should resolve to SEL (in Amtrak southeast route)."""
         resolved = _resolve_to_topology_code("SSM", "AMTRAK")
-        assert resolved == "SEL", (
-            f"SSM should resolve to SEL for AMTRAK, got: {resolved}"
-        )
+        assert (
+            resolved == "SEL"
+        ), f"SSM should resolve to SEL for AMTRAK, got: {resolved}"
 
     def test_njt_nf_resolves_to_phn(self):
         """NF (NJT North Philadelphia) should resolve to PHN (Amtrak code).
@@ -1161,9 +1149,9 @@ class TestStationEquivalenceResolution:
         resolution directly. But it's correct for the equivalence system.
         """
         resolved = _resolve_to_topology_code("NF", "AMTRAK")
-        assert resolved == "PHN", (
-            f"NF should resolve to PHN for AMTRAK, got: {resolved}"
-        )
+        assert (
+            resolved == "PHN"
+        ), f"NF should resolve to PHN for AMTRAK, got: {resolved}"
 
 
 class TestLirrNhpInTopology:
@@ -1179,18 +1167,18 @@ class TestLirrNhpInTopology:
                 assert "NHP" in stations, "NHP missing from Oyster Bay route"
                 nhp_idx = stations.index("NHP")
                 mav_idx = stations.index("MAV")
-                assert nhp_idx < mav_idx, (
-                    f"NHP should come before MAV, got NHP at {nhp_idx}, MAV at {mav_idx}"
-                )
+                assert (
+                    nhp_idx < mav_idx
+                ), f"NHP should come before MAV, got NHP at {nhp_idx}, MAV at {mav_idx}"
                 return
         assert False, "Oyster Bay route not found"
 
     def test_nhp_segment_expansion(self):
         """NHP→LMIN should expand to NHP→MAV, MAV→LMIN."""
         canonical = get_canonical_segments("LIRR", "NHP", "LMIN")
-        assert len(canonical) == 2, (
-            f"NHP→LMIN should expand to 2 segments, got: {canonical}"
-        )
+        assert (
+            len(canonical) == 2
+        ), f"NHP→LMIN should expand to 2 segments, got: {canonical}"
         assert canonical == [("NHP", "MAV"), ("MAV", "LMIN")]
 
 
@@ -1208,16 +1196,16 @@ class TestSubwayALeffertsBranch:
                 break
         assert lefferts_route is not None, "Subway A Lefferts route not found"
         for code in ("SA63", "SA64", "SA65"):
-            assert code in lefferts_route._station_set, (
-                f"{code} missing from Lefferts route"
-            )
+            assert (
+                code in lefferts_route._station_set
+            ), f"{code} missing from Lefferts route"
 
     def test_lefferts_segment_expansion(self):
         """SA61→SA65 should expand to 3 segments via Lefferts branch."""
         canonical = get_canonical_segments("SUBWAY", "SA61", "SA65")
-        assert len(canonical) == 3, (
-            f"SA61→SA65 should expand to 3 segments, got: {canonical}"
-        )
+        assert (
+            len(canonical) == 3
+        ), f"SA61→SA65 should expand to 3 segments, got: {canonical}"
         assert canonical == [
             ("SA61", "SA63"),
             ("SA63", "SA64"),
@@ -1271,9 +1259,9 @@ class TestAmtrakNECExpanded:
 
     def test_nec_total_station_count(self):
         """NEC should now have 27 stations (was 24, added RTE, ABE, NCR)."""
-        assert len(AMTRAK_NEC.stations) == 27, (
-            f"Expected 27 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
-        )
+        assert (
+            len(AMTRAK_NEC.stations) == 27
+        ), f"Expected 27 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
 
 
 class TestAmtrakEmpireServiceExpanded:
@@ -1302,16 +1290,16 @@ class TestAmtrakSurflinerExpanded:
 
     def test_surfliner_station_count(self):
         """Surfliner should have 22 stations."""
-        assert len(AMTRAK_SURFLINER.stations) == 22, (
-            f"Expected 22, got {len(AMTRAK_SURFLINER.stations)}: {AMTRAK_SURFLINER.stations}"
-        )
+        assert (
+            len(AMTRAK_SURFLINER.stations) == 22
+        ), f"Expected 22, got {len(AMTRAK_SURFLINER.stations)}: {AMTRAK_SURFLINER.stations}"
 
     def test_surfliner_key_stations_present(self):
         """Key stations should be in the expanded route."""
         for code in ("SLO", "SBA", "OXN", "BUR", "LAX", "ANA", "SNA", "OSD", "OLT"):
-            assert code in AMTRAK_SURFLINER._station_set, (
-                f"{code} missing from Surfliner"
-            )
+            assert (
+                code in AMTRAK_SURFLINER._station_set
+            ), f"{code} missing from Surfliner"
 
     def test_surfliner_lax_to_sna_expansion(self):
         """LAX→SNA should expand through intermediate stations."""
@@ -1336,16 +1324,14 @@ class TestAmtrakCascadesExpanded:
 
     def test_cascades_station_count(self):
         """Cascades should have 14 stations."""
-        assert len(AMTRAK_CASCADES.stations) == 14, (
-            f"Expected 14, got {len(AMTRAK_CASCADES.stations)}: {AMTRAK_CASCADES.stations}"
-        )
+        assert (
+            len(AMTRAK_CASCADES.stations) == 14
+        ), f"Expected 14, got {len(AMTRAK_CASCADES.stations)}: {AMTRAK_CASCADES.stations}"
 
     def test_cascades_key_stations_present(self):
         """Key stations should be in the expanded route."""
         for code in ("VAN", "BEL", "SEA", "TUK", "TAC", "PDX", "SLM", "EUG"):
-            assert code in AMTRAK_CASCADES._station_set, (
-                f"{code} missing from Cascades"
-            )
+            assert code in AMTRAK_CASCADES._station_set, f"{code} missing from Cascades"
 
     def test_cascades_sea_to_tac_expansion(self):
         """SEA→TAC: Starlight has them adjacent (1 hop), which is shorter
@@ -1360,12 +1346,12 @@ class TestAmtrakCascadesExpanded:
     def test_cascades_geographic_order(self):
         """TAC should be between TUK and OLW; ORC between PDX and SLM."""
         stations = AMTRAK_CASCADES.stations
-        assert stations.index("TUK") < stations.index("TAC") < stations.index("OLW"), (
-            f"TAC should be between TUK and OLW: {stations}"
-        )
-        assert stations.index("PDX") < stations.index("ORC") < stations.index("SLM"), (
-            f"ORC should be between PDX and SLM: {stations}"
-        )
+        assert (
+            stations.index("TUK") < stations.index("TAC") < stations.index("OLW")
+        ), f"TAC should be between TUK and OLW: {stations}"
+        assert (
+            stations.index("PDX") < stations.index("ORC") < stations.index("SLM")
+        ), f"ORC should be between PDX and SLM: {stations}"
 
 
 class TestAmtrakCapitolCorridor:
@@ -1406,7 +1392,9 @@ class TestAmtrakHiawatha:
         """CHI→MKE: Empire Builder has them adjacent (1 hop), shortest wins.
         Test a Hiawatha-only pair: GLN→MKE (3 hops)."""
         canonical = get_canonical_segments("AMTRAK", "CHI", "MKE")
-        assert len(canonical) == 1, f"Expected 1 segment (Empire Builder), got: {canonical}"
+        assert (
+            len(canonical) == 1
+        ), f"Expected 1 segment (Empire Builder), got: {canonical}"
         # Test pair unique to Hiawatha
         canonical_gln = get_canonical_segments("AMTRAK", "GLN", "MKE")
         assert len(canonical_gln) == 3, f"Expected 3 segments, got: {canonical_gln}"
@@ -1434,7 +1422,9 @@ class TestAmtrakLincolnService:
         # get_canonical_segments picks shortest = Texas Eagle (1 hop)
         # Actually Texas Eagle has CHI,STL adjacent so it's 1 hop
         # Lincoln has 9 hops. Shortest wins = 1 hop from Texas Eagle.
-        assert len(canonical) == 1, f"Expected 1 segment (Texas Eagle), got: {canonical}"
+        assert (
+            len(canonical) == 1
+        ), f"Expected 1 segment (Texas Eagle), got: {canonical}"
 
 
 class TestAmtrakSanJoaquins:
@@ -1450,12 +1440,21 @@ class TestAmtrakSanJoaquins:
 
     def test_sac_branch_stations(self):
         assert AMTRAK_SAN_JOAQUINS_SAC.stations == (
-            "SAC", "SKT", "LOD", "MCD", "HNF", "BFD",
+            "SAC",
+            "SKT",
+            "LOD",
+            "MCD",
+            "HNF",
+            "BFD",
         )
 
     def test_oak_branch_stations(self):
         assert AMTRAK_SAN_JOAQUINS_OAK.stations == (
-            "OKJ", "SKN", "MCD", "HNF", "BFD",
+            "OKJ",
+            "SKN",
+            "MCD",
+            "HNF",
+            "BFD",
         )
 
     def test_shared_segment_mcd_to_bfd(self):
@@ -1474,7 +1473,13 @@ class TestAmtrakWolverine:
 
     def test_wolverine_stations(self):
         assert AMTRAK_WOLVERINE.stations == (
-            "CHI", "KAL", "BTL", "JXN", "ARB", "DER", "PON",
+            "CHI",
+            "KAL",
+            "BTL",
+            "JXN",
+            "ARB",
+            "DER",
+            "PON",
         )
 
 
@@ -1532,9 +1537,7 @@ class TestAmtrakNewRoutesDataSource:
         amtrak_routes = get_routes_for_data_source("AMTRAK")
         amtrak_ids = {r.id for r in amtrak_routes}
         for route_id in new_route_ids:
-            assert route_id in amtrak_ids, (
-                f"{route_id} not found in AMTRAK routes"
-            )
+            assert route_id in amtrak_ids, f"{route_id} not found in AMTRAK routes"
 
     def test_all_new_routes_have_am_line_code(self):
         new_routes = [
@@ -1548,6 +1551,6 @@ class TestAmtrakNewRoutesDataSource:
             AMTRAK_PIEDMONT,
         ]
         for route in new_routes:
-            assert route.line_codes == frozenset({"AM"}), (
-                f"{route.id} has wrong line_codes: {route.line_codes}"
-            )
+            assert route.line_codes == frozenset(
+                {"AM"}
+            ), f"{route.id} has wrong line_codes: {route.line_codes}"

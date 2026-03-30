@@ -34,7 +34,7 @@ const _STATIONS_RAW: any[] = [
   { code: 'CH', name: 'South Amboy', coordinates: { lat: 40.484308, lon: -74.28014 }, system: 'NJT' },
   { code: 'AM', name: 'Aberdeen-Matawan', coordinates: { lat: 40.420161, lon: -74.223702 }, system: 'NJT' },
   { code: 'HZ', name: 'Hazlet', coordinates: { lat: 40.415385, lon: -74.190393 }, system: 'NJT' },
-  { code: 'MI', name: 'Middletown', coordinates: { lat: 40.38978, lon: -74.116131 }, system: 'NJT' },
+  { code: 'MI', name: 'Middletown NJ', coordinates: { lat: 40.38978, lon: -74.116131 }, system: 'NJT' },
   { code: 'RB', name: 'Red Bank', coordinates: { lat: 40.348284, lon: -74.074538 }, system: 'NJT' },
   { code: 'LS', name: 'Little Silver', coordinates: { lat: 40.326715, lon: -74.041054 }, system: 'NJT' },
   { code: 'MK', name: 'Monmouth Park', coordinates: { lat: 40.3086, lon: -74.0253 }, system: 'NJT' },

@@ -806,7 +806,7 @@ AMTRAK_WOLVERINE = Route(
     name="Wolverine",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("CHI", "KAL", "BTL", "JXN", "ARB", "DER", "PON"),
+    stations=("CHI", "KAL", "BTL", "JXN", "ARB", "DER", "PNT"),
 )
 
 AMTRAK_DOWNEASTER = Route(

@@ -44,7 +44,7 @@ object Stations {
         "CH" to Station("CH", "South Amboy", LatLng(40.48490168, -74.2804993)),
         "AM" to Station("AM", "Aberdeen-Matawan", LatLng(40.419773943, -74.22209923)),
         "HZ" to Station("HZ", "Hazlet", LatLng(40.41515409, -74.190629424)),
-        "MI" to Station("MI", "Middletown", LatLng(40.39082051, -74.116794)),
+        "MI" to Station("MI", "Middletown NJ", LatLng(40.39082051, -74.116794)),
         "RB" to Station("RB", "Red Bank", LatLng(40.348271404, -74.074151249)),
         "LS" to Station("LS", "Little Silver", LatLng(40.32654188, -74.040546829)),
         "MK" to Station("MK", "Monmouth Park", LatLng(40.3086, -74.0253)),

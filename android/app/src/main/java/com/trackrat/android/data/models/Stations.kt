@@ -75,7 +75,7 @@ object Stations {
         Station("CH", "South Amboy"),
         Station("AM", "Aberdeen-Matawan"),
         Station("HZ", "Hazlet"),
-        Station("MI", "Middletown"),
+        Station("MI", "Middletown NJ"),
         Station("RB", "Red Bank"),
         Station("LS", "Little Silver"),
         Station("MK", "Monmouth Park"),

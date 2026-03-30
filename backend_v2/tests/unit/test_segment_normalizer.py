@@ -604,13 +604,13 @@ class TestEquivalenceResolutionInNormalization:
             f"{[(s.from_station, s.to_station) for s in result]}"
         )
         # First segment should start from SE (the resolved topology code)
-        assert result[0].from_station == "SE", (
-            f"First expanded segment should start from SE, got {result[0].from_station}"
-        )
+        assert (
+            result[0].from_station == "SE"
+        ), f"First expanded segment should start from SE, got {result[0].from_station}"
         # Last segment should end at PQ
-        assert result[-1].to_station == "PQ", (
-            f"Last expanded segment should end at PQ, got {result[-1].to_station}"
-        )
+        assert (
+            result[-1].to_station == "PQ"
+        ), f"Last expanded segment should end at PQ, got {result[-1].to_station}"
         # All segments should carry the original data source
         for seg in result:
             assert seg.data_source == "NJT"
