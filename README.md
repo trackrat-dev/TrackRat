@@ -6,7 +6,7 @@
 [![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
 
-TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments using ML, and forecasts delays — all from a unified interface. It runs on iOS (SwiftUI + Live Activities), Android (Jetpack Compose), the web (React + TypeScript), and a Python backend that does the heavy lifting.
+TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments using ML, and forecasts delays — all from a unified interface. It runs on iOS (SwiftUI + Live Activities), the web (React + TypeScript), and a Python backend that does the heavy lifting.
 
 ## Supported Transit Systems
 
@@ -42,10 +42,10 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 │   Data Sources   │     │     Backend      │     │    Frontends    │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • NJ Transit    │────▶│ • FastAPI        │────▶│ • iOS App       │
-│ • Amtrak        │     │ • APScheduler    │     │ • Android App   │
-│ • PATH / PATCO  │     │ • ML Predictions │     │ • Web App       │
-│ • LIRR / MNR    │     │ • PostgreSQL     │     │ • Live Activity │
-│ • NYC Subway    │     └─────────────────┘     └─────────────────┘
+│ • Amtrak        │     │ • APScheduler    │     │ • Web App       │
+│ • PATH / PATCO  │     │ • ML Predictions │     │ • Live Activity │
+│ • LIRR / MNR    │     │ • PostgreSQL     │     └─────────────────┘
+│ • NYC Subway    │     └─────────────────┘
 │ • WMATA (DC)    │             │
 │ • BART / MBTA   │     ┌───────▼────────┐
 │ • Metra         │     │   GCP Infra    │
@@ -143,7 +143,6 @@ TrackRat/
 │       ├── Services/    # API, subscriptions, live activities
 │       ├── Models/      # Data models
 │       └── Shared/      # Cross-target shared code
-├── android/             # Kotlin/Jetpack Compose Android app
 ├── webpage_v2/          # React + TypeScript + Vite + Tailwind
 │   └── src/
 │       ├── pages/       # Route pages
@@ -201,7 +200,6 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 - Adding new transit systems (SEPTA, NJ Light Rail, Caltrain, and beyond)
 - Improving test coverage
-- Android app development
 - Web app features (maps, charts, offline improvements)
 - Accessibility improvements
 

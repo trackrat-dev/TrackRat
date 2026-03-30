@@ -25,10 +25,6 @@ ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/andy.xcuserdatad/UserInter
 *.tfplan
 tfplan
 
-# Ocuroot local state and cache
-.ocuroot/
-.ocuroot-store
-
 # Sentry CLI configuration (contains auth tokens)
 .sentryclirc
 

@@ -7,7 +7,6 @@
 TrackRat is an open-source transit tracking framework (Apache 2.0) with:
 - **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
-- **Android**: Kotlin (Jetpack Compose + Hilt + Retrofit) in `android/`
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
 - **Backend docs**: See `backend_v2/CLAUDE.md` for detailed backend architecture
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
@@ -472,7 +471,6 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - iOS theme: `ios/TrackRat/Theme/` (TrackRatTheme)
 - iOS Live Activity: `ios/TrainLiveActivityExtension/`
 - iOS tests: `ios/TrackRatTests/`
-- Android app: `android/` (Jetpack Compose + Hilt + Retrofit)
 - Web pages: `webpage_v2/src/pages/`
 - Web components: `webpage_v2/src/components/`
 - Web services: `webpage_v2/src/services/`
