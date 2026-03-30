@@ -7,13 +7,12 @@ segments (A→C) are properly attributed to all intermediate
 canonical segments (A→B, B→C).
 """
 
-import math
 from collections import defaultdict
 from typing import Any
 
 from structlog import get_logger
 
-from trackrat.config.route_topology import get_canonical_segments
+from trackrat.config.route_topology import get_canonical_segments, get_routes_for_data_source
 from trackrat.services.congestion_types import (
     SegmentCongestion,
     get_congestion_level,
@@ -22,46 +21,38 @@ from trackrat.services.congestion_types import (
 
 logger = get_logger(__name__)
 
-# Maximum distance (km) for segments with no matching route, by data source.
-# Segments beyond this threshold are dropped as anomalous — typically caused
-# by sparse GTFS-RT stop lists creating phantom cross-branch connections.
-_MAX_UNMATCHED_SEGMENT_KM: dict[str, float] = {
-    "SUBWAY": 5.0,
+# Data sources where segments must match a known route topology.
+# Unmatched segments (not found in any route) are dropped as anomalous —
+# typically caused by sparse GTFS-RT stop lists creating phantom
+# cross-branch connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W).
+# All GTFS-RT systems with branching routes are included as a defensive
+# measure — SUBWAY and BART are highest risk due to dense route overlap.
+_REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
+    "SUBWAY",
+    "BART",
+    "LIRR",
+    "MNR",
+    "MBTA",
+    "METRA",
 }
 
 
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance between two points in km."""
-    r = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    return r * 2 * math.asin(math.sqrt(a))
-
-
 def _is_segment_anomalous(from_station: str, to_station: str, data_source: str) -> bool:
-    """Check if an unmatched segment spans an unreasonable geographic distance."""
-    max_km = _MAX_UNMATCHED_SEGMENT_KM.get(data_source)
-    if max_km is None:
-        return False
-    from trackrat.config.stations import get_station_coordinates
+    """Check if an unmatched segment is anomalous.
 
-    from_coords = get_station_coordinates(from_station)
-    to_coords = get_station_coordinates(to_station)
-    if not from_coords or not to_coords:
+    For data sources in _REQUIRE_ROUTE_MATCH_SOURCES, checks whether both
+    stations appear on the same route. Segments where no route contains both
+    stations are anomalous — typically phantom cross-branch connections from
+    sparse GTFS-RT data (e.g., 96 St Q → Astoria-Ditmars Blvd N/W).
+
+    Segments that ARE on a route (even if already canonical) pass through.
+    """
+    if data_source not in _REQUIRE_ROUTE_MATCH_SOURCES:
         return False
-    dist = _haversine_km(
-        from_coords["lat"],
-        from_coords["lon"],
-        to_coords["lat"],
-        to_coords["lon"],
-    )
-    return dist > max_km
+    for route in get_routes_for_data_source(data_source):
+        if route.contains_segment(from_station, to_station):
+            return False
+    return True
 
 
 def normalize_aggregated_segments(
@@ -105,7 +96,7 @@ def normalize_aggregated_segments(
             segment.from_station,
             segment.to_station,
         ):
-            # Segment is already canonical or no route found — check distance
+            # Segment is already canonical or no route found — check route match
             if _is_segment_anomalous(
                 segment.from_station, segment.to_station, segment.data_source
             ):
@@ -301,7 +292,7 @@ def normalize_individual_segments(
             segment.from_station,
             segment.to_station,
         ):
-            # Segment is already canonical or no route found — check distance
+            # Segment is already canonical or no route found — check route match
             if _is_segment_anomalous(
                 segment.from_station, segment.to_station, segment.data_source
             ):
