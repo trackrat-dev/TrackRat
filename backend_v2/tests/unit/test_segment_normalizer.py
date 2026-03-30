@@ -570,3 +570,83 @@ class TestAnomalousSegmentFiltering:
         assert (
             len(result) == 0
         ), f"Anomalous segment SQ05->SR01 should be filtered out, got {len(result)} segments"
+
+
+class TestEquivalenceResolutionInNormalization:
+    """Test that station equivalences are resolved during segment normalization.
+
+    Reproduces the actual bug: a train at Secaucus Lower Lvl (TS) heading to
+    Pearl River (PQ) appeared as a single long congestion line instead of being
+    decomposed into individual station hops via the Pascack Valley route.
+    """
+
+    def test_aggregated_ts_to_pq_expands_via_equivalence(self):
+        """TS→PQ should expand to 14 Pascack Valley hops after resolving TS→SE."""
+        raw = [
+            SegmentCongestion(
+                from_station="TS",
+                to_station="PQ",
+                data_source="NJT",
+                congestion_factor=1.05,
+                congestion_level="normal",
+                avg_transit_minutes=45.0,
+                baseline_minutes=43.0,
+                sample_count=1,
+                average_delay_minutes=2.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+        assert len(result) == 14, (
+            f"TS→PQ should expand to 14 segments via Pascack Valley "
+            f"(SE→WR, WR→TE, ..., ZM→PQ), got {len(result)}: "
+            f"{[(s.from_station, s.to_station) for s in result]}"
+        )
+        # First segment should start from SE (the resolved topology code)
+        assert result[0].from_station == "SE", (
+            f"First expanded segment should start from SE, got {result[0].from_station}"
+        )
+        # Last segment should end at PQ
+        assert result[-1].to_station == "PQ", (
+            f"Last expanded segment should end at PQ, got {result[-1].to_station}"
+        )
+        # All segments should carry the original data source
+        for seg in result:
+            assert seg.data_source == "NJT"
+
+    def test_individual_ts_to_pq_expands_via_equivalence(self):
+        """Individual segment TS→PQ should also expand via equivalence."""
+        base_time = datetime(2026, 3, 30, 12, 0, 0)
+        raw = [
+            IndividualJourneySegment(
+                journey_id="1",
+                train_id="1234",
+                from_station="TS",
+                to_station="PQ",
+                from_station_name="Secaucus Lower Lvl",
+                to_station_name="Pearl River",
+                data_source="NJT",
+                scheduled_departure=base_time,
+                actual_departure=base_time,
+                scheduled_arrival=base_time,
+                actual_arrival=base_time,
+                scheduled_minutes=45.0,
+                actual_minutes=47.0,
+                delay_minutes=2.0,
+                congestion_factor=1.05,
+                congestion_level="normal",
+                is_cancelled=False,
+                journey_date=date(2026, 3, 30),
+            )
+        ]
+        result = normalize_individual_segments(raw)
+        assert len(result) == 14, (
+            f"Individual TS→PQ should expand to 14 segments, "
+            f"got {len(result)}: {[(s.from_station, s.to_station) for s in result]}"
+        )
+        # All segments should have the same journey/train info
+        for seg in result:
+            assert seg.journey_id == "1"
+            assert seg.train_id == "1234"
+            assert seg.data_source == "NJT"

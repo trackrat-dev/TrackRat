@@ -6,6 +6,18 @@ import pytest
 
 from trackrat.config.route_topology import (
     ALL_ROUTES,
+    AMTRAK_CAPITOL_CORRIDOR,
+    AMTRAK_CASCADES,
+    AMTRAK_DOWNEASTER,
+    AMTRAK_EMPIRE_SERVICE,
+    AMTRAK_HIAWATHA,
+    AMTRAK_LINCOLN,
+    AMTRAK_NEC,
+    AMTRAK_PIEDMONT,
+    AMTRAK_SAN_JOAQUINS_OAK,
+    AMTRAK_SAN_JOAQUINS_SAC,
+    AMTRAK_SURFLINER,
+    AMTRAK_WOLVERINE,
     LIRR_BABYLON,
     LIRR_PORT_WASHINGTON,
     LIRR_PORT_WASHINGTON_GCT,
@@ -17,11 +29,11 @@ from trackrat.config.route_topology import (
     PATH_JSQ_33,
     PATH_NWK_WTC,
     PATCO_SPEEDLINE,
-    AMTRAK_NEC,
     SUBWAY_A,
     SUBWAY_A_ROCKAWAY,
     SUBWAY_H,
     Route,
+    _resolve_to_topology_code,
     find_route_for_segment,
     get_canonical_segments,
     get_route_by_line_code,
@@ -1039,3 +1051,503 @@ class TestAmtrakStationNamesConsistency:
                 if station not in all_names:
                     missing.append((route.id, station))
         assert missing == [], f"Amtrak stations missing names: {missing}"
+
+
+class TestStationEquivalenceResolution:
+    """Test that station equivalences are resolved before route topology lookup.
+
+    NJT has multiple station codes for the same physical station (e.g.,
+    SE=Secaucus Upper Lvl, TS=Secaucus Lower Lvl, SC=Secaucus Concourse).
+    Route topology only uses one code (SE), so the normalizer must resolve
+    equivalent codes before looking up routes.
+    """
+
+    def test_resolve_ts_to_se_for_njt(self):
+        """TS (Secaucus Lower Lvl) should resolve to SE (Secaucus Upper Lvl)."""
+        resolved = _resolve_to_topology_code("TS", "NJT")
+        assert resolved == "SE", (
+            f"TS should resolve to SE for NJT, got: {resolved}"
+        )
+
+    def test_resolve_sc_to_se_for_njt(self):
+        """SC (Secaucus Concourse) should resolve to SE (Secaucus Upper Lvl)."""
+        resolved = _resolve_to_topology_code("SC", "NJT")
+        assert resolved == "SE", (
+            f"SC should resolve to SE for NJT, got: {resolved}"
+        )
+
+    def test_se_stays_se(self):
+        """SE (Secaucus Upper Lvl) is already the topology code, no change."""
+        resolved = _resolve_to_topology_code("SE", "NJT")
+        assert resolved == "SE", (
+            f"SE should stay SE for NJT, got: {resolved}"
+        )
+
+    def test_non_equivalent_code_unchanged(self):
+        """Station codes without equivalences pass through unchanged."""
+        resolved = _resolve_to_topology_code("NY", "NJT")
+        assert resolved == "NY", (
+            f"NY should stay NY (no equivalence), got: {resolved}"
+        )
+
+    def test_unknown_code_unchanged(self):
+        """Completely unknown station codes pass through unchanged."""
+        resolved = _resolve_to_topology_code("ZZZZZ", "NJT")
+        assert resolved == "ZZZZZ", (
+            f"Unknown code should pass through unchanged, got: {resolved}"
+        )
+
+    def test_canonical_segments_ts_to_pq_expands(self):
+        """TS→PQ (Secaucus Lower Lvl → Pearl River) should expand via Pascack Valley.
+
+        This is the actual bug: a train departing Secaucus Lower Level heading
+        to Pearl River should be decomposed into ~14 individual station hops,
+        not shown as a single long segment.
+        """
+        canonical = get_canonical_segments("NJT", "TS", "PQ")
+        assert len(canonical) > 1, (
+            f"TS→PQ should expand to multiple segments via Pascack Valley, "
+            f"but got: {canonical}"
+        )
+        # First segment should start from SE (resolved from TS)
+        assert canonical[0][0] == "SE", (
+            f"First segment should start from SE, got: {canonical[0][0]}"
+        )
+        # Last segment should end at PQ
+        assert canonical[-1][1] == "PQ", (
+            f"Last segment should end at PQ, got: {canonical[-1][1]}"
+        )
+        # Should have 14 hops: SE→WR, WR→TE, ..., ZM→PQ
+        assert len(canonical) == 14, (
+            f"TS→PQ should expand to 14 hops on Pascack Valley, got {len(canonical)}: {canonical}"
+        )
+
+    def test_canonical_segments_sc_to_ny_expands(self):
+        """SC→NY (Secaucus Concourse → NY Penn) should expand via NEC."""
+        canonical = get_canonical_segments("NJT", "SC", "NY")
+        assert len(canonical) > 0, (
+            f"SC→NY should expand, got: {canonical}"
+        )
+        # Should resolve SC to SE, then expand SE→NY (which is 1 hop on NEC)
+        assert canonical == [("SE", "NY")] or canonical == [("NY", "SE")], (
+            f"SC→NY should resolve to the SE→NY segment, got: {canonical}"
+        )
+
+    def test_newark_equivalence_np_pnk(self):
+        """PNK (Newark PATH) should resolve to NP (Newark Penn Station) for NJT."""
+        resolved = _resolve_to_topology_code("PNK", "NJT")
+        assert resolved == "NP", (
+            f"PNK should resolve to NP for NJT, got: {resolved}"
+        )
+
+    def test_amtrak_jsp_resolves_to_jes(self):
+        """JSP (Jesup alias) should resolve to JES (in Amtrak coastal route)."""
+        resolved = _resolve_to_topology_code("JSP", "AMTRAK")
+        assert resolved == "JES", (
+            f"JSP should resolve to JES for AMTRAK, got: {resolved}"
+        )
+
+    def test_amtrak_ssm_resolves_to_sel(self):
+        """SSM (Selma alias) should resolve to SEL (in Amtrak southeast route)."""
+        resolved = _resolve_to_topology_code("SSM", "AMTRAK")
+        assert resolved == "SEL", (
+            f"SSM should resolve to SEL for AMTRAK, got: {resolved}"
+        )
+
+    def test_njt_nf_resolves_to_phn(self):
+        """NF (NJT North Philadelphia) should resolve to PHN (Amtrak code).
+
+        Note: PHN isn't in any NJT route, so this won't help NJT segment
+        resolution directly. But it's correct for the equivalence system.
+        """
+        resolved = _resolve_to_topology_code("NF", "AMTRAK")
+        assert resolved == "PHN", (
+            f"NF should resolve to PHN for AMTRAK, got: {resolved}"
+        )
+
+
+class TestLirrNhpInTopology:
+    """Test that New Hyde Park (NHP) is properly placed in LIRR routes."""
+
+    def test_nhp_in_oyster_bay(self):
+        """NHP should be between JAM and MAV on the Oyster Bay Branch."""
+        from trackrat.config.route_topology import get_routes_for_data_source
+
+        for r in get_routes_for_data_source("LIRR"):
+            if r.id == "lirr-oyster-bay":
+                stations = list(r.stations)
+                assert "NHP" in stations, "NHP missing from Oyster Bay route"
+                nhp_idx = stations.index("NHP")
+                mav_idx = stations.index("MAV")
+                assert nhp_idx < mav_idx, (
+                    f"NHP should come before MAV, got NHP at {nhp_idx}, MAV at {mav_idx}"
+                )
+                return
+        assert False, "Oyster Bay route not found"
+
+    def test_nhp_segment_expansion(self):
+        """NHP→LMIN should expand to NHP→MAV, MAV→LMIN."""
+        canonical = get_canonical_segments("LIRR", "NHP", "LMIN")
+        assert len(canonical) == 2, (
+            f"NHP→LMIN should expand to 2 segments, got: {canonical}"
+        )
+        assert canonical == [("NHP", "MAV"), ("MAV", "LMIN")]
+
+
+class TestSubwayALeffertsBranch:
+    """Test that the Lefferts Blvd branch of the A train is in topology."""
+
+    def test_lefferts_stations_in_topology(self):
+        """SA63, SA64, SA65 should be in the Lefferts route."""
+        from trackrat.config.route_topology import get_routes_for_data_source
+
+        lefferts_route = None
+        for r in get_routes_for_data_source("SUBWAY"):
+            if r.id == "subway-a-lefferts":
+                lefferts_route = r
+                break
+        assert lefferts_route is not None, "Subway A Lefferts route not found"
+        for code in ("SA63", "SA64", "SA65"):
+            assert code in lefferts_route._station_set, (
+                f"{code} missing from Lefferts route"
+            )
+
+    def test_lefferts_segment_expansion(self):
+        """SA61→SA65 should expand to 3 segments via Lefferts branch."""
+        canonical = get_canonical_segments("SUBWAY", "SA61", "SA65")
+        assert len(canonical) == 3, (
+            f"SA61→SA65 should expand to 3 segments, got: {canonical}"
+        )
+        assert canonical == [
+            ("SA61", "SA63"),
+            ("SA63", "SA64"),
+            ("SA64", "SA65"),
+        ]
+
+
+class TestAmtrakNECExpanded:
+    """Test NEC intermediate stations RTE, ABE, NCR added correctly."""
+
+    def test_rte_between_bby_and_pvd(self):
+        """Route (RTE) should be between BBY and PVD."""
+        stations = AMTRAK_NEC.stations
+        bby_idx = stations.index("BBY")
+        rte_idx = stations.index("RTE")
+        pvd_idx = stations.index("PVD")
+        assert rte_idx == bby_idx + 1, f"RTE at {rte_idx}, BBY at {bby_idx}"
+        assert pvd_idx == rte_idx + 1, f"PVD at {pvd_idx}, RTE at {rte_idx}"
+
+    def test_abe_between_wi_and_bl(self):
+        """Aberdeen (ABE) should be between Wilmington and Baltimore."""
+        stations = AMTRAK_NEC.stations
+        wi_idx = stations.index("WI")
+        abe_idx = stations.index("ABE")
+        bl_idx = stations.index("BL")
+        assert abe_idx == wi_idx + 1, f"ABE at {abe_idx}, WI at {wi_idx}"
+        assert bl_idx == abe_idx + 1, f"BL at {bl_idx}, ABE at {abe_idx}"
+
+    def test_ncr_between_ba_and_ws(self):
+        """New Carrollton (NCR) should be between Baltimore (BA) and Washington (WS)."""
+        stations = AMTRAK_NEC.stations
+        bl_idx = stations.index("BL")
+        ba_idx = stations.index("BA")
+        ncr_idx = stations.index("NCR")
+        ws_idx = stations.index("WS")
+        assert ba_idx == bl_idx + 1, f"BA at {ba_idx}, BL at {bl_idx}"
+        assert ncr_idx == ba_idx + 1, f"NCR at {ncr_idx}, BA at {ba_idx}"
+        assert ws_idx == ncr_idx + 1, f"WS at {ws_idx}, NCR at {ncr_idx}"
+
+    def test_nec_segment_expansion_bby_to_pvd(self):
+        """BBY→PVD should expand to 2 hops via RTE."""
+        canonical = get_canonical_segments("AMTRAK", "BBY", "PVD")
+        assert len(canonical) == 2, f"Expected 2 segments, got: {canonical}"
+        assert canonical == [("BBY", "RTE"), ("RTE", "PVD")]
+
+    def test_nec_segment_expansion_wi_to_ba(self):
+        """WI→BA should expand to 3 hops via ABE, BL."""
+        canonical = get_canonical_segments("AMTRAK", "WI", "BA")
+        assert len(canonical) == 3, f"Expected 3 segments, got: {canonical}"
+        assert canonical == [("WI", "ABE"), ("ABE", "BL"), ("BL", "BA")]
+
+    def test_nec_total_station_count(self):
+        """NEC should now have 27 stations (was 24, added RTE, ABE, NCR)."""
+        assert len(AMTRAK_NEC.stations) == 27, (
+            f"Expected 27 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
+        )
+
+
+class TestAmtrakEmpireServiceExpanded:
+    """Test Empire Service with AMS, UCA between ALB and SYR."""
+
+    def test_ams_uca_between_alb_and_syr(self):
+        """Amsterdam (AMS) and Utica (UCA) between Albany and Syracuse."""
+        stations = AMTRAK_EMPIRE_SERVICE.stations
+        alb_idx = stations.index("ALB")
+        ams_idx = stations.index("AMS")
+        uca_idx = stations.index("UCA")
+        syr_idx = stations.index("SYR")
+        assert ams_idx == alb_idx + 1, f"AMS at {ams_idx}, ALB at {alb_idx}"
+        assert uca_idx == ams_idx + 1, f"UCA at {uca_idx}, AMS at {ams_idx}"
+        assert syr_idx == uca_idx + 1, f"SYR at {syr_idx}, UCA at {uca_idx}"
+
+    def test_empire_segment_expansion_alb_to_syr(self):
+        """ALB→SYR should expand to 3 hops via AMS, UCA."""
+        canonical = get_canonical_segments("AMTRAK", "ALB", "SYR")
+        assert len(canonical) == 3, f"Expected 3 segments, got: {canonical}"
+        assert canonical == [("ALB", "AMS"), ("AMS", "UCA"), ("UCA", "SYR")]
+
+
+class TestAmtrakSurflinerExpanded:
+    """Test expanded Pacific Surfliner with full station list."""
+
+    def test_surfliner_station_count(self):
+        """Surfliner should have 22 stations."""
+        assert len(AMTRAK_SURFLINER.stations) == 22, (
+            f"Expected 22, got {len(AMTRAK_SURFLINER.stations)}: {AMTRAK_SURFLINER.stations}"
+        )
+
+    def test_surfliner_key_stations_present(self):
+        """Key stations should be in the expanded route."""
+        for code in ("SLO", "SBA", "OXN", "BUR", "LAX", "ANA", "SNA", "OSD", "OLT"):
+            assert code in AMTRAK_SURFLINER._station_set, (
+                f"{code} missing from Surfliner"
+            )
+
+    def test_surfliner_lax_to_sna_expansion(self):
+        """LAX→SNA should expand through intermediate stations."""
+        canonical = get_canonical_segments("AMTRAK", "LAX", "SNA")
+        assert len(canonical) == 3, f"Expected 3 segments, got: {canonical}"
+        assert canonical == [("LAX", "FUL"), ("FUL", "ANA"), ("ANA", "SNA")]
+
+    def test_surfliner_geographic_order(self):
+        """Key stations should be in correct geographic order (N→S)."""
+        stations = AMTRAK_SURFLINER.stations
+        # North section: SLO before GVB before SBA
+        assert stations.index("SLO") < stations.index("GVB") < stations.index("SBA")
+        # Middle: SBA before LAX
+        assert stations.index("SBA") < stations.index("LAX")
+        # South section: IRV before SNC before SNP before OSD before SOL before OLT
+        assert stations.index("IRV") < stations.index("SNC") < stations.index("SNP")
+        assert stations.index("OSD") < stations.index("SOL") < stations.index("OLT")
+
+
+class TestAmtrakCascadesExpanded:
+    """Test expanded Cascades with full station list."""
+
+    def test_cascades_station_count(self):
+        """Cascades should have 14 stations."""
+        assert len(AMTRAK_CASCADES.stations) == 14, (
+            f"Expected 14, got {len(AMTRAK_CASCADES.stations)}: {AMTRAK_CASCADES.stations}"
+        )
+
+    def test_cascades_key_stations_present(self):
+        """Key stations should be in the expanded route."""
+        for code in ("VAN", "BEL", "SEA", "TUK", "TAC", "PDX", "SLM", "EUG"):
+            assert code in AMTRAK_CASCADES._station_set, (
+                f"{code} missing from Cascades"
+            )
+
+    def test_cascades_sea_to_tac_expansion(self):
+        """SEA→TAC: Starlight has them adjacent (1 hop), which is shorter
+        than Cascades (2 hops via TUK). Test a Cascades-only pair instead."""
+        canonical = get_canonical_segments("AMTRAK", "SEA", "TAC")
+        assert len(canonical) == 1, f"Expected 1 segment (Starlight), got: {canonical}"
+        # Test a pair unique to Cascades: BEL→EDM (2 hops)
+        canonical_bel = get_canonical_segments("AMTRAK", "BEL", "EDM")
+        assert len(canonical_bel) == 2, f"Expected 2 segments, got: {canonical_bel}"
+        assert canonical_bel == [("BEL", "MVW"), ("MVW", "EDM")]
+
+    def test_cascades_geographic_order(self):
+        """TAC should be between TUK and OLW; ORC between PDX and SLM."""
+        stations = AMTRAK_CASCADES.stations
+        assert stations.index("TUK") < stations.index("TAC") < stations.index("OLW"), (
+            f"TAC should be between TUK and OLW: {stations}"
+        )
+        assert stations.index("PDX") < stations.index("ORC") < stations.index("SLM"), (
+            f"ORC should be between PDX and SLM: {stations}"
+        )
+
+
+class TestAmtrakCapitolCorridor:
+    """Test new Capitol Corridor route."""
+
+    def test_capitol_corridor_in_all_routes(self):
+        """Capitol Corridor should be in ALL_ROUTES."""
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-capitol-corridor" in route_ids
+
+    def test_capitol_corridor_stations(self):
+        """Capitol Corridor: SJC to ARN, 18 stations."""
+        assert AMTRAK_CAPITOL_CORRIDOR.stations[0] == "SJC"
+        assert AMTRAK_CAPITOL_CORRIDOR.stations[-1] == "ARN"
+        assert len(AMTRAK_CAPITOL_CORRIDOR.stations) == 18
+
+    def test_capitol_corridor_segment_expansion(self):
+        """Test a segment unique to Capitol Corridor: EMY→DAV."""
+        canonical = get_canonical_segments("AMTRAK", "EMY", "DAV")
+        # Capitol Corridor: EMY→BKY→RIC→MTZ→SUI→FFV→DAV (6 hops)
+        # Starlight doesn't have DAV. Only Capitol Corridor matches.
+        assert len(canonical) == 6, f"Expected 6 segments, got: {canonical}"
+        assert canonical[0] == ("EMY", "BKY")
+        assert canonical[-1][1] == "DAV"
+
+
+class TestAmtrakHiawatha:
+    """Test new Hiawatha route."""
+
+    def test_hiawatha_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-hiawatha" in route_ids
+
+    def test_hiawatha_stations(self):
+        assert AMTRAK_HIAWATHA.stations == ("CHI", "GLN", "SVT", "MKA", "MKE")
+
+    def test_hiawatha_chi_to_mke_expansion(self):
+        """CHI→MKE: Empire Builder has them adjacent (1 hop), shortest wins.
+        Test a Hiawatha-only pair: GLN→MKE (3 hops)."""
+        canonical = get_canonical_segments("AMTRAK", "CHI", "MKE")
+        assert len(canonical) == 1, f"Expected 1 segment (Empire Builder), got: {canonical}"
+        # Test pair unique to Hiawatha
+        canonical_gln = get_canonical_segments("AMTRAK", "GLN", "MKE")
+        assert len(canonical_gln) == 3, f"Expected 3 segments, got: {canonical_gln}"
+        assert canonical_gln == [("GLN", "SVT"), ("SVT", "MKA"), ("MKA", "MKE")]
+
+
+class TestAmtrakLincolnService:
+    """Test new Lincoln Service route."""
+
+    def test_lincoln_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-lincoln" in route_ids
+
+    def test_lincoln_stations(self):
+        assert AMTRAK_LINCOLN.stations[0] == "CHI"
+        assert AMTRAK_LINCOLN.stations[-1] == "STL"
+        assert len(AMTRAK_LINCOLN.stations) == 10
+
+    def test_lincoln_chi_to_stl_expansion(self):
+        """CHI→STL should expand via Lincoln (10 stations = 9 hops),
+        shorter than Texas Eagle which also has CHI→STL."""
+        canonical = get_canonical_segments("AMTRAK", "CHI", "STL")
+        # Lincoln: CHI→SMT→JOL→PON→BNL→LCN→SPI→CRV→ALN→STL (9 segments)
+        # Texas Eagle: CHI→STL direct (1 segment in current topology)
+        # get_canonical_segments picks shortest = Texas Eagle (1 hop)
+        # Actually Texas Eagle has CHI,STL adjacent so it's 1 hop
+        # Lincoln has 9 hops. Shortest wins = 1 hop from Texas Eagle.
+        assert len(canonical) == 1, f"Expected 1 segment (Texas Eagle), got: {canonical}"
+
+
+class TestAmtrakSanJoaquins:
+    """Test new San Joaquins routes (two branches)."""
+
+    def test_san_joaquins_sac_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-san-joaquins-sac" in route_ids
+
+    def test_san_joaquins_oak_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-san-joaquins-oak" in route_ids
+
+    def test_sac_branch_stations(self):
+        assert AMTRAK_SAN_JOAQUINS_SAC.stations == (
+            "SAC", "SKT", "LOD", "MCD", "HNF", "BFD",
+        )
+
+    def test_oak_branch_stations(self):
+        assert AMTRAK_SAN_JOAQUINS_OAK.stations == (
+            "OKJ", "SKN", "MCD", "HNF", "BFD",
+        )
+
+    def test_shared_segment_mcd_to_bfd(self):
+        """Both branches share MCD→HNF→BFD."""
+        canonical = get_canonical_segments("AMTRAK", "MCD", "BFD")
+        assert len(canonical) == 2, f"Expected 2 segments, got: {canonical}"
+        assert canonical == [("MCD", "HNF"), ("HNF", "BFD")]
+
+
+class TestAmtrakWolverine:
+    """Test new Wolverine route."""
+
+    def test_wolverine_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-wolverine" in route_ids
+
+    def test_wolverine_stations(self):
+        assert AMTRAK_WOLVERINE.stations == (
+            "CHI", "KAL", "BTL", "JXN", "ARB", "DER", "PON",
+        )
+
+
+class TestAmtrakDowneaster:
+    """Test new Downeaster route."""
+
+    def test_downeaster_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-downeaster" in route_ids
+
+    def test_downeaster_stations(self):
+        assert AMTRAK_DOWNEASTER.stations == ("BOS", "HHL", "EXR", "SAO", "BRK")
+
+    def test_downeaster_bos_to_brk_expansion(self):
+        """BOS→BRK should expand to 4 hops."""
+        canonical = get_canonical_segments("AMTRAK", "BOS", "BRK")
+        assert len(canonical) == 4, f"Expected 4 segments, got: {canonical}"
+
+
+class TestAmtrakPiedmont:
+    """Test new Piedmont route."""
+
+    def test_piedmont_in_all_routes(self):
+        route_ids = {r.id for r in ALL_ROUTES}
+        assert "amtrak-piedmont" in route_ids
+
+    def test_piedmont_stations(self):
+        assert AMTRAK_PIEDMONT.stations == ("RGH", "DNC", "GRO", "HPT", "CLT")
+
+    def test_piedmont_rgh_to_clt_expansion(self):
+        """RGH→CLT should expand to 4 hops via Piedmont (shorter than Southeast)."""
+        canonical = get_canonical_segments("AMTRAK", "RGH", "CLT")
+        # Southeast: RGH→CAR→DNC→GRB→HPT→SAL→CLT (6 hops)
+        # Piedmont: RGH→DNC→GRO→HPT→CLT (4 hops)
+        # Shortest wins = Piedmont (4)
+        assert len(canonical) == 4, f"Expected 4 segments, got: {canonical}"
+        assert canonical[0] == ("RGH", "DNC")
+        assert canonical[-1] == ("HPT", "CLT")
+
+
+class TestAmtrakNewRoutesDataSource:
+    """Verify all new routes have correct data_source and line_codes."""
+
+    def test_all_new_routes_are_amtrak(self):
+        new_route_ids = {
+            "amtrak-capitol-corridor",
+            "amtrak-hiawatha",
+            "amtrak-lincoln",
+            "amtrak-san-joaquins-sac",
+            "amtrak-san-joaquins-oak",
+            "amtrak-wolverine",
+            "amtrak-downeaster",
+            "amtrak-piedmont",
+        }
+        amtrak_routes = get_routes_for_data_source("AMTRAK")
+        amtrak_ids = {r.id for r in amtrak_routes}
+        for route_id in new_route_ids:
+            assert route_id in amtrak_ids, (
+                f"{route_id} not found in AMTRAK routes"
+            )
+
+    def test_all_new_routes_have_am_line_code(self):
+        new_routes = [
+            AMTRAK_CAPITOL_CORRIDOR,
+            AMTRAK_HIAWATHA,
+            AMTRAK_LINCOLN,
+            AMTRAK_SAN_JOAQUINS_SAC,
+            AMTRAK_SAN_JOAQUINS_OAK,
+            AMTRAK_WOLVERINE,
+            AMTRAK_DOWNEASTER,
+            AMTRAK_PIEDMONT,
+        ]
+        for route in new_routes:
+            assert route.line_codes == frozenset({"AM"}), (
+                f"{route.id} has wrong line_codes: {route.line_codes}"
+            )

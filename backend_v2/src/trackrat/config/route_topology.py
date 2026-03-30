@@ -453,6 +453,7 @@ AMTRAK_NEC = Route(
     stations=(
         "BOS",
         "BBY",
+        "RTE",
         "PVD",
         "KIN",
         "WLY",
@@ -472,8 +473,10 @@ AMTRAK_NEC = Route(
         "PHN",
         "PH",
         "WI",
+        "ABE",
         "BL",
         "BA",
+        "NCR",
         "WS",
     ),
 )
@@ -668,7 +671,30 @@ AMTRAK_SURFLINER = Route(
     name="Pacific Surfliner",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("OLT", "OSD", "SNA", "FUL", "LAX", "SBA", "SLO"),
+    stations=(
+        "SLO",
+        "GVB",
+        "LPS",
+        "GTA",
+        "SBA",
+        "VEC",
+        "OXN",
+        "CML",
+        "MPK",
+        "SIM",
+        "BUR",
+        "VNC",
+        "LAX",
+        "FUL",
+        "ANA",
+        "SNA",
+        "IRV",
+        "SNC",
+        "SNP",
+        "OSD",
+        "SOL",
+        "OLT",
+    ),
 )
 
 AMTRAK_CASCADES = Route(
@@ -676,7 +702,22 @@ AMTRAK_CASCADES = Route(
     name="Cascades",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("EUG", "SLM", "PDX", "TAC", "SEA"),
+    stations=(
+        "VAN",
+        "BEL",
+        "MVW",
+        "EDM",
+        "SEA",
+        "TUK",
+        "TAC",
+        "OLW",
+        "CTL",
+        "KEL",
+        "PDX",
+        "ORC",
+        "SLM",
+        "EUG",
+    ),
 )
 
 AMTRAK_EMPIRE_SERVICE = Route(
@@ -693,10 +734,95 @@ AMTRAK_EMPIRE_SERVICE = Route(
         "HUD",
         "SDY",
         "ALB",
+        "AMS",
+        "UCA",
         "SYR",
         "ROC",
         "BUF",
     ),
+)
+
+AMTRAK_CAPITOL_CORRIDOR = Route(
+    id="amtrak-capitol-corridor",
+    name="Capitol Corridor",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        "SJC",
+        "SCC",
+        "GAC",
+        "FMT",
+        "HAY",
+        "OAC",
+        "OKJ",
+        "EMY",
+        "BKY",
+        "RIC",
+        "MTZ",
+        "SUI",
+        "FFV",
+        "DAV",
+        "SAC",
+        "RSV",
+        "RLN",
+        "ARN",
+    ),
+)
+
+AMTRAK_HIAWATHA = Route(
+    id="amtrak-hiawatha",
+    name="Hiawatha",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("CHI", "GLN", "SVT", "MKA", "MKE"),
+)
+
+AMTRAK_LINCOLN = Route(
+    id="amtrak-lincoln",
+    name="Lincoln Service",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("CHI", "SMT", "JOL", "PON", "BNL", "LCN", "SPI", "CRV", "ALN", "STL"),
+)
+
+AMTRAK_SAN_JOAQUINS_SAC = Route(
+    id="amtrak-san-joaquins-sac",
+    name="San Joaquins (Sacramento)",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("SAC", "SKT", "LOD", "MCD", "HNF", "BFD"),
+)
+
+AMTRAK_SAN_JOAQUINS_OAK = Route(
+    id="amtrak-san-joaquins-oak",
+    name="San Joaquins (Oakland)",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("OKJ", "SKN", "MCD", "HNF", "BFD"),
+)
+
+AMTRAK_WOLVERINE = Route(
+    id="amtrak-wolverine",
+    name="Wolverine",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("CHI", "KAL", "BTL", "JXN", "ARB", "DER", "PON"),
+)
+
+AMTRAK_DOWNEASTER = Route(
+    id="amtrak-downeaster",
+    name="Downeaster",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("BOS", "HHL", "EXR", "SAO", "BRK"),
+)
+
+AMTRAK_PIEDMONT = Route(
+    id="amtrak-piedmont",
+    name="Piedmont",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("RGH", "DNC", "GRO", "HPT", "CLT"),
 )
 
 # =============================================================================
@@ -772,6 +898,7 @@ LIRR_OYSTER_BAY = Route(
         "FHL",
         "KGN",
         "JAM",
+        "NHP",
         "MAV",
         "LMIN",
         "EWN",
@@ -798,6 +925,7 @@ LIRR_RONKONKOMA = Route(
         "FHL",
         "KGN",
         "JAM",
+        "NHP",
         "MAV",
         "LMIN",
         "CPL",
@@ -987,6 +1115,7 @@ LIRR_PORT_JEFFERSON = Route(
         "FHL",
         "KGN",
         "JAM",
+        "NHP",
         "MAV",
         "LMIN",
         "LHVL",
@@ -1048,6 +1177,7 @@ LIRR_GREENPORT = Route(
         "FHL",
         "KGN",
         "JAM",
+        "NHP",
         "MAV",
         "LMIN",
         "CPL",
@@ -1846,6 +1976,69 @@ SUBWAY_A_ROCKAWAY = Route(
         "SH03",
         "SH02",
         "SH01",
+        "SA61",
+        "SA60",
+        "SA59",
+        "SA57",
+        "SA55",
+        "SA54",
+        "SA53",
+        "SA52",
+        "SA51",
+        "SA50",
+        "SA49",
+        "SA48",
+        "SA47",
+        "SA46",
+        "SA45",
+        "SA44",
+        "SA43",
+        "SA42",
+        "SA41",
+        "SA40",
+        "SA38",
+        "SA36",
+        "SA34",
+        "SA33",
+        "SA32",
+        "SA31",
+        "SA30",
+        "SA28",
+        "SA27",
+        "SA25",
+        "SA24",
+        "SA22",
+        "SA21",
+        "SA20",
+        "SA19",
+        "SA18",
+        "SA17",
+        "SA16",
+        "SA15",
+        "SA14",
+        "SA12",
+        "SA11",
+        "SA10",
+        "SA09",
+        "SA07",
+        "SA06",
+        "SA05",
+        "SA03",
+        "SA02",
+    ),
+)
+
+# A train Lefferts Blvd branch - diverges from the main A line at Rockaway Blvd
+# (SA61). Without this route, segments SA61→SA63→SA64→SA65 are unresolved.
+SUBWAY_A_LEFFERTS = Route(
+    id="subway-a-lefferts",
+    name="A 8 Avenue Express (Lefferts Blvd)",
+    data_source="SUBWAY",
+    line_codes=frozenset({"A"}),
+    stations=(
+        "SA65",
+        "SA64",
+        "SA63",
         "SA61",
         "SA60",
         "SA59",
@@ -3538,6 +3731,14 @@ ALL_ROUTES: tuple[Route, ...] = (
     AMTRAK_SURFLINER,
     AMTRAK_CASCADES,
     AMTRAK_EMPIRE_SERVICE,
+    AMTRAK_CAPITOL_CORRIDOR,
+    AMTRAK_HIAWATHA,
+    AMTRAK_LINCOLN,
+    AMTRAK_SAN_JOAQUINS_SAC,
+    AMTRAK_SAN_JOAQUINS_OAK,
+    AMTRAK_WOLVERINE,
+    AMTRAK_DOWNEASTER,
+    AMTRAK_PIEDMONT,
     # LIRR
     LIRR_BABYLON,
     LIRR_HEMPSTEAD,
@@ -3572,6 +3773,7 @@ ALL_ROUTES: tuple[Route, ...] = (
     SUBWAY_7,
     SUBWAY_7_EXPRESS,
     SUBWAY_A_ROCKAWAY,
+    SUBWAY_A_LEFFERTS,
     SUBWAY_A,
     SUBWAY_B,
     SUBWAY_C,
@@ -3686,6 +3888,34 @@ def find_route_for_segment(
     return None
 
 
+def _resolve_to_topology_code(station_code: str, data_source: str) -> str:
+    """Resolve a station code to the code used in route topology via equivalences.
+
+    For example, TS (Secaucus Lower Lvl) resolves to SE (Secaucus Upper Lvl)
+    because SE is the code used in route definitions.
+    """
+    from trackrat.config.stations.common import STATION_EQUIVALENTS
+
+    group = STATION_EQUIVALENTS.get(station_code)
+    if not group:
+        return station_code
+
+    # If the original code already exists in a route, keep it
+    routes = get_routes_for_data_source(data_source)
+    for route in routes:
+        if station_code in route._station_set:
+            return station_code
+
+    # Only resolve to an equivalent if the original is not in any route
+    for code in group:
+        if code == station_code:
+            continue
+        for route in routes:
+            if code in route._station_set:
+                return code
+    return station_code
+
+
 def get_canonical_segments(
     data_source: str,
     from_station: str,
@@ -3703,6 +3933,10 @@ def get_canonical_segments(
     prevents e.g. Raritan Valley NP→EZ from being misattributed to
     NEC's NP→NA→NZ→EZ path through Newark Airport.
 
+    Station codes are resolved through equivalence groups before lookup,
+    so e.g. TS (Secaucus Lower Lvl) is treated as SE (Secaucus Upper Lvl)
+    which appears in route definitions.
+
     If no matching route is found, returns the original segment as-is.
 
     Args:
@@ -3714,11 +3948,15 @@ def get_canonical_segments(
     Returns:
         List of (from_station, to_station) tuples representing canonical segments
     """
+    # Resolve station codes to the canonical codes used in route topology
+    resolved_from = _resolve_to_topology_code(from_station, data_source)
+    resolved_to = _resolve_to_topology_code(to_station, data_source)
+
     # If line_code is provided, use direct lookup first
     if line_code:
         route = get_route_by_line_code(data_source, line_code)
-        if route and route.contains_segment(from_station, to_station):
-            canonical = route.expand_to_canonical_segments(from_station, to_station)
+        if route and route.contains_segment(resolved_from, resolved_to):
+            canonical = route.expand_to_canonical_segments(resolved_from, resolved_to)
             if canonical:
                 return canonical
 
@@ -3726,9 +3964,9 @@ def get_canonical_segments(
     # This ensures skip-stop segments are attributed to the correct line.
     best_canonical: list[tuple[str, str]] | None = None
     for route in get_routes_for_data_source(data_source):
-        if not route.contains_segment(from_station, to_station):
+        if not route.contains_segment(resolved_from, resolved_to):
             continue
-        canonical = route.expand_to_canonical_segments(from_station, to_station)
+        canonical = route.expand_to_canonical_segments(resolved_from, resolved_to)
         if canonical is None:
             continue
         if best_canonical is None or len(canonical) < len(best_canonical):
