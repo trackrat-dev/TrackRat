@@ -113,6 +113,7 @@ object Stations {
         "XG" to Station("XG", "Sloatsburg", LatLng(41.1568, -74.1937)),
         "TC" to Station("TC", "Tuxedo", LatLng(41.1970, -74.1885)),
         "RM" to Station("RM", "Harriman", LatLng(41.3098, -74.1526)),
+        "MD" to Station("MD", "Middletown NY", LatLng(41.4459, -74.4222)),
         "CW" to Station("CW", "Salisbury Mills-Cornwall", LatLng(41.436533265, -74.101601729)),
         "CB" to Station("CB", "Campbell Hall", LatLng(41.4446, -74.2452)),
         "OS" to Station("OS", "Otisville", LatLng(41.4783, -74.5336)),

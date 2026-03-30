@@ -63,8 +63,8 @@ extension Stations {
         "Montvale", "Pearl River", "Nanuet", "Spring Valley",
         
         // Port Jervis Line
-        "Sloatsburg", "Tuxedo", "Harriman", "Salisbury Mills-Cornwall",
-        "Campbell Hall", "Otisville", "Port Jervis",
+        "Sloatsburg", "Tuxedo", "Harriman", "Middletown NY",
+        "Salisbury Mills-Cornwall", "Campbell Hall", "Otisville", "Port Jervis",
         
         // Atlantic City Line
         "Pennsauken", "Cherry Hill", "Lindenwold NJT", "Atco",
@@ -1009,6 +1009,7 @@ extension Stations {
         "Sloatsburg": "XG",
         "Tuxedo": "TC",
         "Harriman": "RM",
+        "Middletown NY": "MD",
         "Campbell Hall": "CB",
         "Salisbury Mills-Cornwall": "CW",
         "Otisville": "OS",

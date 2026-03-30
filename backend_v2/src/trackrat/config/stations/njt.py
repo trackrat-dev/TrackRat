@@ -85,8 +85,9 @@ NJT_STATION_NAMES: dict[str, str] = {
     "MA": "Madison",
     "MB": "Millburn",
     "MC": "Bay Street",
+    "MD": "Middletown NY",
     "MH": "Murray Hill",
-    "MI": "Middletown",
+    "MI": "Middletown NJ",
     "MK": "Monmouth Park",
     "ML": "Mountain Lakes",
     "MP": "Metropark",
@@ -265,6 +266,7 @@ NJT_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
     "83": "MP",  # METROPARK
     "84": "MU",  # METUCHEN
     "85": "MI",  # MIDDLETOWN NJ
+    "86": "MD",  # MIDDLETOWN NY (Port Jervis Line)
     "87": "MB",  # MILLBURN
     "88": "GO",  # MILLINGTON
     "89": "HS",  # MONTCLAIR HEIGHTS

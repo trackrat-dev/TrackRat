@@ -330,6 +330,7 @@ STATION_COORDINATES = {
     "XG": {"lat": 41.157138, "lon": -74.191307},  # Sloatsburg, NY
     "TC": {"lat": 41.194208, "lon": -74.18446},  # Tuxedo, NY
     "RM": {"lat": 41.293354, "lon": -74.13987},  # Harriman, NY
+    "MD": {"lat": 41.4459, "lon": -74.4222},  # Middletown, NY
     "CW": {"lat": 41.437073, "lon": -74.101871},  # Salisbury Mills-Cornwall, NY
     "CB": {"lat": 41.450917, "lon": -74.266554},  # Campbell Hall, NY
     "OS": {"lat": 41.471784, "lon": -74.529212},  # Otisville, NY
