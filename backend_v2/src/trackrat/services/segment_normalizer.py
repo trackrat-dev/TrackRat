@@ -7,7 +7,6 @@ segments (A→C) are properly attributed to all intermediate
 canonical segments (A→B, B→C).
 """
 
-import math
 from collections import defaultdict
 from typing import Any
 
@@ -26,21 +25,16 @@ logger = get_logger(__name__)
 # Unmatched segments (not found in any route) are dropped as anomalous —
 # typically caused by sparse GTFS-RT stop lists creating phantom
 # cross-branch connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W).
-_REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {"SUBWAY"}
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Great-circle distance between two points in km."""
-    r = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(math.radians(lat1))
-        * math.cos(math.radians(lat2))
-        * math.sin(dlon / 2) ** 2
-    )
-    return r * 2 * math.asin(math.sqrt(a))
+# All GTFS-RT systems with branching routes are included as a defensive
+# measure — SUBWAY and BART are highest risk due to dense route overlap.
+_REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
+    "SUBWAY",
+    "BART",
+    "LIRR",
+    "MNR",
+    "MBTA",
+    "METRA",
+}
 
 
 def _is_segment_anomalous(from_station: str, to_station: str, data_source: str) -> bool:

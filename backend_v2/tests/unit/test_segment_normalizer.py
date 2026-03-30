@@ -4,12 +4,9 @@ Unit tests for the segment normalizer service.
 
 from datetime import date, datetime
 
-import pytest
-
 from trackrat.models.api import IndividualJourneySegment
 from trackrat.services.congestion_types import SegmentCongestion
 from trackrat.services.segment_normalizer import (
-    _haversine_km,
     _is_segment_anomalous,
     normalize_aggregated_segments,
     normalize_individual_segments,
@@ -414,41 +411,12 @@ class TestNormalizeIndividualSegments:
             assert seg.to_station_name is not None
 
 
-class TestHaversineKm:
-    """Test the haversine distance helper function."""
-
-    def test_same_point_returns_zero(self):
-        """Test that distance between same point is zero."""
-        assert _haversine_km(40.75, -73.99, 40.75, -73.99) == 0.0
-
-    def test_known_distance_nyc_subway(self):
-        """Test haversine against known NYC subway station distances.
-
-        Penn Station (SA28) to Times Square (SA30) is approximately 0.7 km.
-        """
-        # SA28 (34 St-Penn Station): 40.752287, -73.993391
-        # SA30 (59 St-Columbus Circle): 40.768247, -73.981929
-        dist = _haversine_km(40.752287, -73.993391, 40.768247, -73.981929)
-        assert (
-            1.0 < dist < 3.0
-        ), f"Penn Station to Columbus Circle should be ~2 km, got {dist:.2f}"
-
-    def test_cross_branch_distance_large(self):
-        """Test that distance between SA28 (Penn Station) and SH15 (Rockaway Park) is large.
-
-        This is the anomalous segment that caused the original bug — ~25 km.
-        """
-        # SA28: 40.752287, -73.993391  SH15: 40.580903, -73.835592
-        dist = _haversine_km(40.752287, -73.993391, 40.580903, -73.835592)
-        assert dist > 20.0, f"SA28 to SH15 should be >20 km, got {dist:.2f}"
-
-
 class TestIsSegmentAnomalous:
     """Test the anomalous segment detection function.
 
-    Anomaly detection for SUBWAY checks whether both stations appear on the
-    same route topology. Segments not on any route are anomalous (phantom
-    cross-branch connections from sparse GTFS-RT data).
+    Anomaly detection for GTFS-RT systems checks whether both stations appear
+    on the same route topology. Segments not on any route are anomalous
+    (phantom cross-branch connections from sparse GTFS-RT data).
     """
 
     def test_normal_subway_segment_not_anomalous(self):
@@ -460,13 +428,12 @@ class TestIsSegmentAnomalous:
         """
         assert not _is_segment_anomalous("SH04", "SH12", "SUBWAY")
 
-    def test_cross_branch_subway_segment_anomalous(self):
-        """Test that a cross-branch subway segment with no shared route is flagged.
+    def test_same_route_subway_segment_not_anomalous(self):
+        """Test that a skip-stop segment on a known route is not flagged.
 
         SA28 (Penn Station, A/C/E) and SH15 (Rockaway Park, A/S) are both
-        on the A line route, so this is NOT anomalous.
+        on the A line route.
         """
-        # SA28 and SH15 share SUBWAY_A_ROCKAWAY route
         assert not _is_segment_anomalous("SA28", "SH15", "SUBWAY")
 
     def test_96st_to_astoria_ditmars_anomalous(self):
@@ -478,14 +445,48 @@ class TestIsSegmentAnomalous:
         """
         assert _is_segment_anomalous("SQ05", "SR01", "SUBWAY")
 
+    def test_bart_cross_branch_anomalous(self):
+        """Test that BART cross-branch segments are flagged.
+
+        BART_PLZA (El Cerrito Plaza, Red/Orange) and BART_WCRK (Walnut Creek,
+        Yellow) are on different branches with no shared route.
+        """
+        assert _is_segment_anomalous("BART_PLZA", "BART_WCRK", "BART")
+
+    def test_bart_same_route_not_anomalous(self):
+        """Test that BART segments on a shared route are not flagged.
+
+        BART_12TH and BART_19TH are adjacent on multiple BART routes.
+        """
+        assert not _is_segment_anomalous("BART_12TH", "BART_19TH", "BART")
+
+    def test_lirr_cross_branch_anomalous(self):
+        """Test that LIRR cross-branch segments are flagged.
+
+        LHT (Long Beach) and QVG (Queens Village) are on different branches.
+        """
+        assert _is_segment_anomalous("LHT", "QVG", "LIRR")
+
+    def test_lirr_same_route_not_anomalous(self):
+        """Test that LIRR segments on a shared route are not flagged."""
+        assert not _is_segment_anomalous("NY", "WDD", "LIRR")
+
     def test_njt_segments_not_checked(self):
-        """Test that NJT segments are not subject to route-match filtering."""
+        """Test that NJT segments are not subject to route-match filtering.
+
+        NJT uses complete API stop lists, not sparse GTFS-RT data.
+        """
         assert not _is_segment_anomalous("NY", "LB", "NJT")
 
-    def test_non_subway_source_not_checked(self):
-        """Test that non-SUBWAY sources are not subject to route-match filtering."""
+    def test_non_gtfsrt_sources_not_checked(self):
+        """Test that non-GTFS-RT sources are not subject to route-match filtering.
+
+        PATH and WMATA use complete route topology for stop creation.
+        Amtrak and NJT use full API stop lists.
+        """
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "PATH")
-        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "LIRR")
+        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "WMATA")
+        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "AMTRAK")
 
 
 class TestAnomalousSegmentFiltering:
