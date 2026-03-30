@@ -20,7 +20,7 @@ const features = [
     image: `${BASE}images/1.webp`,
   },
   {
-    title: 'All your trains, one screen',
+    title: 'All your train systems, one screen',
     description:
       'NJ Transit, Amtrak, PATH, LIRR, Metro-North — browse combined schedules for any route.',
     image: `${BASE}images/2.webp`,
@@ -44,6 +44,7 @@ const unifiedFeature = {
   images: [
     `${BASE}images/mtn.webp`,
     `${BASE}images/5.webp`,
+    `${BASE}images/subway.webp`,
     `${BASE}images/lirr.webp`,
   ],
 };
@@ -229,15 +230,12 @@ export function LandingPage() {
               </li>
             </ul>
           </div>
-          <div className="shrink-0">
-            <div className="w-64 md:w-72 bg-surface/80 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-8 text-center shadow-lg">
-              <svg className="w-16 h-16 mx-auto mb-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0" />
-              </svg>
-              <p className="text-text-primary font-semibold text-lg">Route Alerts</p>
-              <p className="text-text-muted text-sm mt-1">Available on iOS</p>
-            </div>
-          </div>
+          <img
+            src={`${BASE}images/alerts.webp`}
+            alt="Route Alerts"
+            className="w-64 md:w-72 rounded-2xl shadow-lg shrink-0"
+            loading="lazy"
+          />
         </div>
       </section>
 
@@ -248,13 +246,13 @@ export function LandingPage() {
             {unifiedFeature.title}
           </h2>
         </div>
-        <div className="flex justify-center gap-3 md:gap-6">
+        <div className="flex justify-center gap-2 md:gap-4">
           {unifiedFeature.images.map((src) => (
             <img
               key={src}
               src={src}
               alt={unifiedFeature.title}
-              className="w-44 md:w-56 rounded-2xl shadow-lg"
+              className="w-36 md:w-48 rounded-2xl shadow-lg"
               loading="lazy"
             />
           ))}
