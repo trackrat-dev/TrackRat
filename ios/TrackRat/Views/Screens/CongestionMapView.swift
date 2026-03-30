@@ -17,6 +17,7 @@ struct CongestionMapView: View {
     @State private var selectedDataSource: String = "All"
     @State private var showingLayers = false
     @State private var showingPaywall = false
+    @State private var hasSetInitialRegion = false
 
     var body: some View {
         ZStack {
@@ -206,8 +207,11 @@ struct CongestionMapView: View {
             viewModel.setSelectedSystems(appState.selectedSystems)
             viewModel.highlightMode = appState.mapHighlightMode
             viewModel.showStations = appState.showMapStations
-            // Set initial region based on selected systems
-            region = appState.selectedSystems.combinedMapRegion
+            // Set initial region based on selected systems (only on first appear)
+            if !hasSetInitialRegion {
+                region = appState.selectedSystems.combinedMapRegion
+                hasSetInitialRegion = true
+            }
         }
         .onDisappear {
             viewModel.stopAutoRefresh()
