@@ -99,6 +99,9 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     {"STS", "MNSS"},  # New Haven-State St
     {"NP", "PNK"},  # Newark Penn Station / Newark PATH
     {"SE", "TS", "SC"},  # Secaucus Upper Lvl / Lower Lvl / Concourse
+    {"NF", "PHN"},  # North Philadelphia (NJT NF / Amtrak PHN)
+    {"JES", "JSP"},  # Jesup, GA (Amtrak aliases)
+    {"SEL", "SSM"},  # Selma-Smithfield / Selma (Amtrak aliases)
     {"CHI", "CUS"},  # Chicago Union Station (Amtrak CHI / Metra CUS)
     *SUBWAY_STATION_COMPLEXES,
     # PATH ↔ Subway cross-system equivalences (must be after SUBWAY_STATION_COMPLEXES

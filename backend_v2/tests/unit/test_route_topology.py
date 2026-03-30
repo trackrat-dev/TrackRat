@@ -1128,3 +1128,87 @@ class TestStationEquivalenceResolution:
         assert resolved == "NP", (
             f"PNK should resolve to NP for NJT, got: {resolved}"
         )
+
+    def test_amtrak_jsp_resolves_to_jes(self):
+        """JSP (Jesup alias) should resolve to JES (in Amtrak coastal route)."""
+        resolved = _resolve_to_topology_code("JSP", "AMTRAK")
+        assert resolved == "JES", (
+            f"JSP should resolve to JES for AMTRAK, got: {resolved}"
+        )
+
+    def test_amtrak_ssm_resolves_to_sel(self):
+        """SSM (Selma alias) should resolve to SEL (in Amtrak southeast route)."""
+        resolved = _resolve_to_topology_code("SSM", "AMTRAK")
+        assert resolved == "SEL", (
+            f"SSM should resolve to SEL for AMTRAK, got: {resolved}"
+        )
+
+    def test_njt_nf_resolves_to_phn(self):
+        """NF (NJT North Philadelphia) should resolve to PHN (Amtrak code).
+
+        Note: PHN isn't in any NJT route, so this won't help NJT segment
+        resolution directly. But it's correct for the equivalence system.
+        """
+        resolved = _resolve_to_topology_code("NF", "AMTRAK")
+        assert resolved == "PHN", (
+            f"NF should resolve to PHN for AMTRAK, got: {resolved}"
+        )
+
+
+class TestLirrNhpInTopology:
+    """Test that New Hyde Park (NHP) is properly placed in LIRR routes."""
+
+    def test_nhp_in_oyster_bay(self):
+        """NHP should be between JAM and MAV on the Oyster Bay Branch."""
+        from trackrat.config.route_topology import get_routes_for_data_source
+
+        for r in get_routes_for_data_source("LIRR"):
+            if r.id == "lirr-oyster-bay":
+                stations = list(r.stations)
+                assert "NHP" in stations, "NHP missing from Oyster Bay route"
+                nhp_idx = stations.index("NHP")
+                mav_idx = stations.index("MAV")
+                assert nhp_idx < mav_idx, (
+                    f"NHP should come before MAV, got NHP at {nhp_idx}, MAV at {mav_idx}"
+                )
+                return
+        assert False, "Oyster Bay route not found"
+
+    def test_nhp_segment_expansion(self):
+        """NHP→LMIN should expand to NHP→MAV, MAV→LMIN."""
+        canonical = get_canonical_segments("LIRR", "NHP", "LMIN")
+        assert len(canonical) == 2, (
+            f"NHP→LMIN should expand to 2 segments, got: {canonical}"
+        )
+        assert canonical == [("NHP", "MAV"), ("MAV", "LMIN")]
+
+
+class TestSubwayALeffertsBranch:
+    """Test that the Lefferts Blvd branch of the A train is in topology."""
+
+    def test_lefferts_stations_in_topology(self):
+        """SA63, SA64, SA65 should be in the Lefferts route."""
+        from trackrat.config.route_topology import get_routes_for_data_source
+
+        lefferts_route = None
+        for r in get_routes_for_data_source("SUBWAY"):
+            if r.id == "subway-a-lefferts":
+                lefferts_route = r
+                break
+        assert lefferts_route is not None, "Subway A Lefferts route not found"
+        for code in ("SA63", "SA64", "SA65"):
+            assert code in lefferts_route._station_set, (
+                f"{code} missing from Lefferts route"
+            )
+
+    def test_lefferts_segment_expansion(self):
+        """SA61→SA65 should expand to 3 segments via Lefferts branch."""
+        canonical = get_canonical_segments("SUBWAY", "SA61", "SA65")
+        assert len(canonical) == 3, (
+            f"SA61→SA65 should expand to 3 segments, got: {canonical}"
+        )
+        assert canonical == [
+            ("SA61", "SA63"),
+            ("SA63", "SA64"),
+            ("SA64", "SA65"),
+        ]
