@@ -453,6 +453,7 @@ AMTRAK_NEC = Route(
     stations=(
         "BOS",
         "BBY",
+        "RTE",
         "PVD",
         "KIN",
         "WLY",
@@ -472,8 +473,10 @@ AMTRAK_NEC = Route(
         "PHN",
         "PH",
         "WI",
+        "ABE",
         "BL",
         "BA",
+        "NCR",
         "WS",
     ),
 )
@@ -668,7 +671,30 @@ AMTRAK_SURFLINER = Route(
     name="Pacific Surfliner",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("OLT", "OSD", "SNA", "FUL", "LAX", "SBA", "SLO"),
+    stations=(
+        "SLO",
+        "GTA",
+        "LPS",
+        "SBA",
+        "GVB",
+        "VEC",
+        "OXN",
+        "CML",
+        "MPK",
+        "SIM",
+        "BUR",
+        "VNC",
+        "LAX",
+        "FUL",
+        "ANA",
+        "SNA",
+        "IRV",
+        "SNP",
+        "SNC",
+        "SOL",
+        "OSD",
+        "OLT",
+    ),
 )
 
 AMTRAK_CASCADES = Route(
@@ -676,7 +702,22 @@ AMTRAK_CASCADES = Route(
     name="Cascades",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("EUG", "SLM", "PDX", "TAC", "SEA"),
+    stations=(
+        "VAN",
+        "BEL",
+        "MVW",
+        "EDM",
+        "SEA",
+        "TUK",
+        "OLW",
+        "CTL",
+        "KEL",
+        "ORC",
+        "TAC",
+        "PDX",
+        "SLM",
+        "EUG",
+    ),
 )
 
 AMTRAK_EMPIRE_SERVICE = Route(
@@ -693,10 +734,95 @@ AMTRAK_EMPIRE_SERVICE = Route(
         "HUD",
         "SDY",
         "ALB",
+        "AMS",
+        "UCA",
         "SYR",
         "ROC",
         "BUF",
     ),
+)
+
+AMTRAK_CAPITOL_CORRIDOR = Route(
+    id="amtrak-capitol-corridor",
+    name="Capitol Corridor",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        "SJC",
+        "SCC",
+        "GAC",
+        "FMT",
+        "HAY",
+        "OAC",
+        "OKJ",
+        "EMY",
+        "BKY",
+        "RIC",
+        "MTZ",
+        "SUI",
+        "FFV",
+        "DAV",
+        "SAC",
+        "RSV",
+        "RLN",
+        "ARN",
+    ),
+)
+
+AMTRAK_HIAWATHA = Route(
+    id="amtrak-hiawatha",
+    name="Hiawatha",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("CHI", "GLN", "SVT", "MKA", "MKE"),
+)
+
+AMTRAK_LINCOLN = Route(
+    id="amtrak-lincoln",
+    name="Lincoln Service",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("CHI", "SMT", "JOL", "PON", "BNL", "LCN", "SPI", "CRV", "ALN", "STL"),
+)
+
+AMTRAK_SAN_JOAQUINS_SAC = Route(
+    id="amtrak-san-joaquins-sac",
+    name="San Joaquins (Sacramento)",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("SAC", "SKT", "LOD", "MCD", "HNF", "BFD"),
+)
+
+AMTRAK_SAN_JOAQUINS_OAK = Route(
+    id="amtrak-san-joaquins-oak",
+    name="San Joaquins (Oakland)",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("OKJ", "SKN", "MCD", "HNF", "BFD"),
+)
+
+AMTRAK_WOLVERINE = Route(
+    id="amtrak-wolverine",
+    name="Wolverine",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("CHI", "KAL", "BTL", "JXN", "ARB", "DER", "PON"),
+)
+
+AMTRAK_DOWNEASTER = Route(
+    id="amtrak-downeaster",
+    name="Downeaster",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("BOS", "HHL", "EXR", "SAO", "BRK"),
+)
+
+AMTRAK_PIEDMONT = Route(
+    id="amtrak-piedmont",
+    name="Piedmont",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=("RGH", "DNC", "GRO", "HPT", "CLT"),
 )
 
 # =============================================================================
@@ -3605,6 +3731,14 @@ ALL_ROUTES: tuple[Route, ...] = (
     AMTRAK_SURFLINER,
     AMTRAK_CASCADES,
     AMTRAK_EMPIRE_SERVICE,
+    AMTRAK_CAPITOL_CORRIDOR,
+    AMTRAK_HIAWATHA,
+    AMTRAK_LINCOLN,
+    AMTRAK_SAN_JOAQUINS_SAC,
+    AMTRAK_SAN_JOAQUINS_OAK,
+    AMTRAK_WOLVERINE,
+    AMTRAK_DOWNEASTER,
+    AMTRAK_PIEDMONT,
     # LIRR
     LIRR_BABYLON,
     LIRR_HEMPSTEAD,
