@@ -794,29 +794,7 @@ class DepartureService:
 
                         journey = journeys_by_id.get(train_id)
                         if not journey:
-                            # Cross-reference track data for Amtrak trains
-                            if is_amtrak_train(train_id):
-                                track = train_data.get("TRACK")
-                                if track:
-                                    from trackrat.collectors.njt.discovery import (
-                                        apply_amtrak_track_from_njt,
-                                    )
-
-                                    await apply_amtrak_track_from_njt(
-                                        db,
-                                        train_id,
-                                        station_code,
-                                        track,
-                                        source="njt_jit",
-                                    )
-                                else:
-                                    logger.info(
-                                        "amtrak_in_njt_jit_no_track",
-                                        train_id=train_id,
-                                        station_code=station_code,
-                                        track_value=repr(track),
-                                    )
-                            else:
+                            if not is_amtrak_train(train_id):
                                 logger.debug(
                                     "journey_not_found_during_station_refresh",
                                     train_id=train_id,

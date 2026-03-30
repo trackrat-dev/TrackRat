@@ -6,8 +6,6 @@ the Amtrak API returns an empty platform field on subsequent collection cycles.
 
 This was a production bug where tracks were briefly visible then wiped out
 because _upsert_journey_stop blindly overwrote all fields including track=None.
-
-See: https://github.com/bokonon1/trackrat/issues/XXX
 """
 
 import pytest

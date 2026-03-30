@@ -145,21 +145,6 @@ class SchedulerService:
             misfire_grace_time=300,  # 5 minute grace period
         )
 
-        # Schedule frequent NY Penn discovery for Amtrak track cross-referencing
-        self.scheduler.add_job(
-            self.run_ny_penn_track_discovery,
-            trigger=IntervalTrigger(
-                minutes=self.settings.ny_penn_track_discovery_interval_minutes,
-                start_date=now + timedelta(minutes=3),
-                jitter=30,
-            ),
-            id="ny_penn_track_discovery",
-            name="NY Penn Track Discovery",
-            replace_existing=True,
-            max_instances=1,
-            misfire_grace_time=120,
-        )
-
         # Schedule Amtrak discovery job - staggered 5min from NJT
         self.scheduler.add_job(
             self.run_amtrak_discovery,
@@ -561,41 +546,6 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("njt_discovery_skipped_still_fresh")
-
-    async def run_ny_penn_track_discovery(self) -> None:
-        """Run NJT discovery for NY Penn only to capture Amtrak track assignments.
-
-        NJT's getTrainSchedule API returns track data for Amtrak trains at NY Penn.
-        This runs more frequently than full discovery to reduce the latency between
-        a real-world track assignment and it appearing in the app.
-        """
-
-        async def do_ny_penn_work() -> None:
-            if not self.njt_client:
-                raise RuntimeError(
-                    "NJTransitClient not initialized - call start() first"
-                )
-            collector = TrainDiscoveryCollector(self.njt_client)
-            async with get_session() as session:
-                result = await collector.discover_station_trains(session, "NY")
-            logger.info(
-                "ny_penn_track_discovery_completed",
-                trains_discovered=result.get("trains_discovered", 0),
-                new_trains=result.get("new_trains", 0),
-            )
-
-        async with get_session() as db:
-            safe_interval = calculate_safe_interval(
-                self.settings.ny_penn_track_discovery_interval_minutes
-            )
-            executed = await run_with_freshness_check(
-                db=db,
-                task_name="ny_penn_track_discovery",
-                minimum_interval_seconds=safe_interval,
-                task_func=do_ny_penn_work,
-            )
-            if not executed:
-                logger.debug("ny_penn_track_discovery_skipped_still_fresh")
 
     async def run_amtrak_discovery(self) -> None:
         """Run Amtrak train discovery for trains serving NYP."""
