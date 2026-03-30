@@ -214,10 +214,16 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
 
             # Track ALL train IDs for batch collection
             all_train_ids = []
+            amtrak_train_ids = []
             for train_data in trains_data:
                 train_id = train_data.get("TRAIN_ID", "").strip()
                 if train_id:
                     all_train_ids.append(train_id)
+                    if is_amtrak_train(train_id):
+                        track = train_data.get("TRACK", "")
+                        amtrak_train_ids.append(
+                            f"{train_id}[track={track or 'none'}]"
+                        )
 
             # Process discovered trains (creates/updates journey records)
             new_train_ids = await self.process_discovered_trains(
@@ -239,6 +245,8 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 station_code=station_code,
                 trains_discovered=len(trains_data),
                 new_trains=len(new_train_ids),
+                amtrak_trains=len(amtrak_train_ids),
+                amtrak_detail=amtrak_train_ids if amtrak_train_ids else None,
                 duration_ms=duration_ms,
             )
 
