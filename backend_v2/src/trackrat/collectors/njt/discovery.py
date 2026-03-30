@@ -25,89 +25,6 @@ from trackrat.utils.train import is_amtrak_train
 logger = get_logger(__name__)
 
 
-async def apply_amtrak_track_from_njt(
-    session: AsyncSession,
-    train_id: str,
-    station_code: str,
-    raw_track: str,
-    source: str = "njt_discovery",
-) -> bool:
-    """Cross-reference Amtrak track data from NJT station API responses.
-
-    NJT's getTrainSchedule API returns track assignments for all trains at
-    shared stations (e.g., NY Penn), including Amtrak trains. This function
-    applies that track data to the corresponding Amtrak journey stop.
-
-    Only updates existing stops — does not create new stops or journeys.
-
-    Args:
-        session: Database session
-        train_id: Amtrak train ID as it appears in NJT data (e.g., "A2150")
-        station_code: Internal station code (e.g., "NY")
-        raw_track: Raw track value from NJT API
-        source: Logging tag for where this was called from
-
-    Returns:
-        True if a track was updated, False otherwise
-    """
-    sanitized = sanitize_track(raw_track)
-    if not sanitized:
-        return False
-
-    # Look up the Amtrak journey for today
-    journey = await session.scalar(
-        select(TrainJourney).where(
-            TrainJourney.train_id == train_id,
-            TrainJourney.journey_date == now_et().date(),
-            TrainJourney.data_source == "AMTRAK",
-        )
-    )
-    if not journey:
-        logger.debug(
-            "amtrak_cross_ref_no_journey",
-            train_id=train_id,
-            station_code=station_code,
-            source=source,
-        )
-        return False
-
-    # Look up the existing stop
-    stop = await session.scalar(
-        select(JourneyStop).where(
-            JourneyStop.journey_id == journey.id,
-            JourneyStop.station_code == station_code,
-        )
-    )
-    if not stop:
-        logger.debug(
-            "amtrak_cross_ref_no_stop",
-            train_id=train_id,
-            station_code=station_code,
-            journey_id=journey.id,
-            source=source,
-        )
-        return False
-
-    # Don't overwrite if already set to the same value
-    if stop.track == sanitized:
-        return False
-
-    old_track = stop.track
-    stop.track = sanitized
-    if not stop.track_assigned_at:
-        stop.track_assigned_at = now_et()
-
-    logger.info(
-        "amtrak_track_from_njt",
-        train_id=train_id,
-        station_code=station_code,
-        old_track=old_track,
-        new_track=sanitized,
-        source=source,
-    )
-    return True
-
-
 class TrainDiscoveryCollector(BaseDiscoveryCollector):
     """Discovers active trains from station schedules."""
 
@@ -433,21 +350,8 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                 if not train_id:
                     continue
 
-                # Skip Amtrak trains but cross-reference track data first
+                # Skip Amtrak trains (format: A + digits)
                 if is_amtrak_train(train_id):
-                    track = train_data.get("TRACK")
-                    if track:
-                        await apply_amtrak_track_from_njt(
-                            session, train_id, station_code, track,
-                            source="njt_discovery",
-                        )
-                    else:
-                        logger.info(
-                            "amtrak_in_njt_no_track",
-                            train_id=train_id,
-                            station_code=station_code,
-                            track_value=repr(track),
-                        )
                     continue
 
                 # Parse scheduled departure time
