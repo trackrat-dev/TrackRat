@@ -209,6 +209,8 @@ def build_complete_stops(
                     "scheduled_departure": static_stop["departure_time"],
                     "actual_arrival": arr.arrival_time,
                     "actual_departure": arr.departure_time,
+                    "updated_arrival": arr.arrival_time,
+                    "updated_departure": arr.departure_time,
                     "track": arr.track,
                     "has_departed": False,
                 }
@@ -226,6 +228,8 @@ def build_complete_stops(
                     "scheduled_departure": static_stop["departure_time"],
                     "actual_arrival": None,
                     "actual_departure": None,
+                    "updated_arrival": None,
+                    "updated_departure": None,
                     "track": None,
                     "has_departed": already_passed,
                 }
@@ -244,6 +248,8 @@ def build_complete_stops(
                 "scheduled_departure": (arr.departure_time or arr.arrival_time) - delay,
                 "actual_arrival": arr.arrival_time,
                 "actual_departure": arr.departure_time,
+                "updated_arrival": arr.arrival_time,
+                "updated_departure": arr.departure_time,
                 "track": arr.track,
                 "has_departed": False,
             }

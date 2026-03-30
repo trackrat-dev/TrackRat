@@ -326,6 +326,8 @@ class BARTCollector:
                         scheduled_departure=stop_data["scheduled_departure"],
                         actual_arrival=stop_data["actual_arrival"],
                         actual_departure=stop_data["actual_departure"],
+                        updated_arrival=stop_data["updated_arrival"],
+                        updated_departure=stop_data["updated_departure"],
                         track=stop_data["track"],
                         has_departed_station=stop_data["has_departed"],
                         arrival_source=(
@@ -356,6 +358,8 @@ class BARTCollector:
                         ),
                         actual_arrival=arr.arrival_time,
                         actual_departure=arr.departure_time,
+                        updated_arrival=arr.arrival_time,
+                        updated_departure=arr.departure_time,
                         track=None,
                         has_departed_station=False,
                         arrival_source="api_observed",
@@ -395,9 +399,11 @@ class BARTCollector:
 
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
+                    existing_stop.updated_arrival = arr.arrival_time
                     existing_stop.arrival_source = "api_observed"
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
+                        existing_stop.updated_departure = arr.departure_time
 
             # Update departure status and journey metadata
             now = now_et()
@@ -496,9 +502,11 @@ class BARTCollector:
 
             if stop:
                 stop.actual_arrival = arr.arrival_time
+                stop.updated_arrival = arr.arrival_time
                 stop.arrival_source = "api_observed"
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
+                    stop.updated_departure = arr.departure_time
 
         # Update journey-level times
         first_stop = min(best_trip, key=lambda a: a.arrival_time)
