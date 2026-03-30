@@ -3900,8 +3900,13 @@ def _resolve_to_topology_code(station_code: str, data_source: str) -> str:
     if not group:
         return station_code
 
-    # Check which code in the equivalence group appears in any route
+    # If the original code already exists in a route, keep it
     routes = get_routes_for_data_source(data_source)
+    for route in routes:
+        if station_code in route._station_set:
+            return station_code
+
+    # Only resolve to an equivalent if the original is not in any route
     for code in group:
         if code == station_code:
             continue
