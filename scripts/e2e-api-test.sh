@@ -412,6 +412,24 @@ for route in "${ROUTES[@]}"; do
     pass "Required fields present"
   fi
 
+  # OBSERVED trains should have real-time times (updated_time or actual_time)
+  stale=$(jq '[.departures[] | select(
+    .observation_type == "OBSERVED" and
+    .departure.updated_time == null and
+    .departure.actual_time == null
+  )] | length' "$TMPDIR/dep.json")
+  obs_total=$(jq '[.departures[] | select(.observation_type == "OBSERVED")] | length' "$TMPDIR/dep.json")
+  if [[ "$stale" -gt 0 ]]; then
+    sample=$(jq -c '[.departures[] | select(
+      .observation_type == "OBSERVED" and
+      .departure.updated_time == null and
+      .departure.actual_time == null
+    )][0] | {train_id, data_source, scheduled: .departure.scheduled_time}' "$TMPDIR/dep.json")
+    fail_v "$stale/$obs_total OBSERVED departures missing real-time times (updated_time and actual_time both null)" "$sample"
+  elif [[ "$obs_total" -gt 0 ]]; then
+    pass "OBSERVED departures have real-time times ($obs_total checked)"
+  fi
+
   # Line color hex format
   bad=$(jq '[.departures[].line.color // "" | select(. != "" and (test("^#[0-9A-Fa-f]{6}$") | not))] | length' "$TMPDIR/dep.json")
   if [[ "$bad" -gt 0 ]]; then
