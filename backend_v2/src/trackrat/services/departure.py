@@ -810,7 +810,7 @@ class DepartureService:
                                         source="njt_jit",
                                     )
                                 else:
-                                    logger.debug(
+                                    logger.info(
                                         "amtrak_in_njt_jit_no_track",
                                         train_id=train_id,
                                         station_code=station_code,

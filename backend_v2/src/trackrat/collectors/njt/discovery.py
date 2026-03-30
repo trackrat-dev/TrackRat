@@ -445,7 +445,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                             source="njt_discovery",
                         )
                     else:
-                        logger.debug(
+                        logger.info(
                             "amtrak_in_njt_no_track",
                             train_id=train_id,
                             station_code=station_code,
