@@ -1316,9 +1316,19 @@ class TestAmtrakSurflinerExpanded:
     def test_surfliner_lax_to_sna_expansion(self):
         """LAX→SNA should expand through intermediate stations."""
         canonical = get_canonical_segments("AMTRAK", "LAX", "SNA")
-        assert len(canonical) > 1, f"Expected multi-hop, got: {canonical}"
-        # LAX→FUL→ANA→SNA
+        assert len(canonical) == 3, f"Expected 3 segments, got: {canonical}"
         assert canonical == [("LAX", "FUL"), ("FUL", "ANA"), ("ANA", "SNA")]
+
+    def test_surfliner_geographic_order(self):
+        """Key stations should be in correct geographic order (N→S)."""
+        stations = AMTRAK_SURFLINER.stations
+        # North section: SLO before GVB before SBA
+        assert stations.index("SLO") < stations.index("GVB") < stations.index("SBA")
+        # Middle: SBA before LAX
+        assert stations.index("SBA") < stations.index("LAX")
+        # South section: IRV before SNC before SNP before OSD before SOL before OLT
+        assert stations.index("IRV") < stations.index("SNC") < stations.index("SNP")
+        assert stations.index("OSD") < stations.index("SOL") < stations.index("OLT")
 
 
 class TestAmtrakCascadesExpanded:
@@ -1339,14 +1349,23 @@ class TestAmtrakCascadesExpanded:
 
     def test_cascades_sea_to_tac_expansion(self):
         """SEA→TAC: Starlight has them adjacent (1 hop), which is shorter
-        than Cascades (6 hops). Test a Cascades-only pair instead."""
-        # SEA→TAC is 1 hop via Starlight (shortest wins)
+        than Cascades (2 hops via TUK). Test a Cascades-only pair instead."""
         canonical = get_canonical_segments("AMTRAK", "SEA", "TAC")
         assert len(canonical) == 1, f"Expected 1 segment (Starlight), got: {canonical}"
-        # Test a pair unique to Cascades: BEL→EDM (3 hops)
+        # Test a pair unique to Cascades: BEL→EDM (2 hops)
         canonical_bel = get_canonical_segments("AMTRAK", "BEL", "EDM")
         assert len(canonical_bel) == 2, f"Expected 2 segments, got: {canonical_bel}"
         assert canonical_bel == [("BEL", "MVW"), ("MVW", "EDM")]
+
+    def test_cascades_geographic_order(self):
+        """TAC should be between TUK and OLW; ORC between PDX and SLM."""
+        stations = AMTRAK_CASCADES.stations
+        assert stations.index("TUK") < stations.index("TAC") < stations.index("OLW"), (
+            f"TAC should be between TUK and OLW: {stations}"
+        )
+        assert stations.index("PDX") < stations.index("ORC") < stations.index("SLM"), (
+            f"ORC should be between PDX and SLM: {stations}"
+        )
 
 
 class TestAmtrakCapitolCorridor:
