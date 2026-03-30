@@ -59,6 +59,7 @@ struct MapContainerView: View {
     @StateObject private var mapRegionVM = MapRegionViewModel()
     @State private var routeStatusContext: RouteStatusContext?
     @State private var selectedIndividualSegment: IndividualJourneySegment?
+    @State private var hasSetInitialRegion = false
     @ObservedObject private var liveActivityService = LiveActivityService.shared
     @ObservedObject private var ratSenseService = RatSenseService.shared
     @ObservedObject private var feedbackService = JourneyFeedbackService.shared
@@ -329,10 +330,13 @@ struct MapContainerView: View {
             print("🗺️ MapContainer: selectedDetent = \(selectedDetent)")
             print("🗺️ MapContainer: Map already initialized by view model - Center: \(mapRegionVM.mapRegion.center.latitude), \(mapRegionVM.mapRegion.center.longitude), Span: \(mapRegionVM.mapRegion.span.latitudeDelta)°")
 
-            // If user has no home/work stations, use selected systems region instead of NY↔NP fallback
-            if RatSenseService.shared.getHomeStation() == nil && RatSenseService.shared.getWorkStation() == nil {
-                mapRegionVM.mapRegion = appState.selectedSystems.combinedMapRegion.adjustedForBottomSheet()
-                print("🗺️ MapContainer: No home/work stations — using selected systems region")
+            // If user has no home/work stations, use selected systems region instead of NY↔NP fallback (only on first appear)
+            if !hasSetInitialRegion {
+                if RatSenseService.shared.getHomeStation() == nil && RatSenseService.shared.getWorkStation() == nil {
+                    mapRegionVM.mapRegion = appState.selectedSystems.combinedMapRegion.adjustedForBottomSheet()
+                    print("🗺️ MapContainer: No home/work stations — using selected systems region")
+                }
+                hasSetInitialRegion = true
             }
 
             // Check for active Live Activity first
