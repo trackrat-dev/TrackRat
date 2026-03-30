@@ -979,19 +979,28 @@ struct RouteTopology {
 
     /// Returns all station codes (inclusive) between two stations on a matching route.
     /// Handles both forward and reverse direction. Returns nil if no route contains both stations.
+    /// Picks the route with the fewest intermediate stations to avoid cross-route contamination
+    /// (e.g., local stops inserted when following an express train).
     static func getIntermediateStations(from: String, to: String, dataSource: String) -> [String]? {
+        var bestResult: [String]?
+        var bestDistance = Int.max
+
         for route in allRoutes where route.dataSource == dataSource {
             guard let fromIndex = route.stationCodes.firstIndex(of: from),
                   let toIndex = route.stationCodes.firstIndex(of: to) else {
                 continue
             }
-            if fromIndex <= toIndex {
-                return Array(route.stationCodes[fromIndex...toIndex])
-            } else {
-                return Array(route.stationCodes[toIndex...fromIndex].reversed())
+            let distance = abs(toIndex - fromIndex)
+            if distance < bestDistance {
+                bestDistance = distance
+                if fromIndex <= toIndex {
+                    bestResult = Array(route.stationCodes[fromIndex...toIndex])
+                } else {
+                    bestResult = Array(route.stationCodes[toIndex...fromIndex].reversed())
+                }
             }
         }
-        return nil
+        return bestResult
     }
 
     /// Expands a list of station codes to include all intermediate stations from route topology.
