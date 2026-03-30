@@ -96,7 +96,7 @@ def normalize_aggregated_segments(
             segment.from_station,
             segment.to_station,
         ):
-            # Segment is already canonical or no route found — check distance
+            # Segment is already canonical or no route found — check route match
             if _is_segment_anomalous(
                 segment.from_station, segment.to_station, segment.data_source
             ):
@@ -292,7 +292,7 @@ def normalize_individual_segments(
             segment.from_station,
             segment.to_station,
         ):
-            # Segment is already canonical or no route found — check distance
+            # Segment is already canonical or no route found — check route match
             if _is_segment_anomalous(
                 segment.from_station, segment.to_station, segment.data_source
             ):

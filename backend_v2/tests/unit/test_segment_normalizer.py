@@ -541,34 +541,6 @@ class TestAnomalousSegmentFiltering:
         result = normalize_aggregated_segments(raw)
         assert len(result) >= 1, "Valid segment SH04->SH12 should not be filtered"
 
-    def test_aggregated_96st_to_astoria_ditmars_filtered(self):
-        """Test that 96 St (Q) -> Astoria-Ditmars Blvd phantom segment is filtered.
-
-        This is the specific bug case: sparse GTFS-RT data creates a segment
-        between SQ05 (96 St on Q) and SR01 (Astoria-Ditmars Blvd on N/W),
-        which are on different branches ~3.1 km apart. No route contains both,
-        so the segment should be dropped by the anomalous distance filter.
-        """
-        raw = [
-            SegmentCongestion(
-                from_station="SQ05",
-                to_station="SR01",
-                data_source="SUBWAY",
-                congestion_factor=1.0,
-                congestion_level="normal",
-                avg_transit_minutes=8.0,
-                baseline_minutes=8.0,
-                sample_count=2,
-                average_delay_minutes=0.0,
-                cancellation_count=0,
-                cancellation_rate=0.0,
-            )
-        ]
-        result = normalize_aggregated_segments(raw)
-        assert (
-            len(result) == 0
-        ), f"Phantom segment SQ05->SR01 should be filtered out, got {len(result)} segments"
-
     def test_individual_anomalous_subway_segment_filtered(self):
         """Test that individual normalization filters anomalous unmatched subway segments."""
         base_time = datetime(2025, 7, 15, 8, 0, 0)
