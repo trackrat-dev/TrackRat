@@ -6,8 +6,35 @@ import { getStationByCode } from '../data/stations';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
+import { UpcomingTrains } from '../components/UpcomingTrains';
 
-type Period = '7' | '30' | '90';
+type Period = '1h' | '6h' | '24h' | '7d' | '30d' | '90d';
+
+const PERIODS: { value: Period; label: string }[] = [
+  { value: '1h', label: '1h' },
+  { value: '6h', label: '6h' },
+  { value: '24h', label: '24h' },
+  { value: '7d', label: '7d' },
+  { value: '30d', label: '30d' },
+  { value: '90d', label: '90d' },
+];
+
+function periodToApiParams(period: Period): { days?: number; hours?: number } {
+  switch (period) {
+    case '1h': return { hours: 1 };
+    case '6h': return { hours: 6 };
+    case '24h': return { hours: 24 };
+    case '7d': return { days: 7 };
+    case '30d': return { days: 30 };
+    case '90d': return { days: 90 };
+  }
+}
+
+function periodLabel(period: Period): string {
+  const p = periodToApiParams(period);
+  if (p.hours) return `${p.hours} hour${p.hours > 1 ? 's' : ''}`;
+  return `${p.days} days`;
+}
 
 export function RouteStatusPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
@@ -15,7 +42,7 @@ export function RouteStatusPage() {
 
   const [history, setHistory] = useState<RouteHistoryResponse | null>(null);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
-  const [period, setPeriod] = useState<Period>('30');
+  const [period, setPeriod] = useState<Period>('24h');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +56,9 @@ export function RouteStatusPage() {
     setLoading(true);
     setError(null);
 
+    const { days, hours } = periodToApiParams(period);
     Promise.all([
-      apiService.getRouteHistory(from, to, dataSource, Number(period)),
+      apiService.getRouteHistory(from, to, dataSource, days, hours),
       apiService.getRouteSummary(from, to),
     ])
       .then(([historyRes, summaryRes]) => {
@@ -78,19 +106,22 @@ export function RouteStatusPage() {
         </div>
       )}
 
+      {/* Upcoming trains */}
+      <UpcomingTrains from={from} to={to} />
+
       {/* Period selector */}
-      <div className="flex gap-2 mb-4">
-        {(['7', '30', '90'] as Period[]).map(p => (
+      <div className="flex gap-1.5 mb-4">
+        {PERIODS.map(p => (
           <button
-            key={p}
-            onClick={() => setPeriod(p)}
-            className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
-              period === p
+            key={p.value}
+            onClick={() => setPeriod(p.value)}
+            className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-colors ${
+              period === p.value
                 ? 'bg-accent text-white'
                 : 'bg-surface/50 border border-text-muted/20 text-text-secondary hover:bg-surface'
             }`}
           >
-            {p}d
+            {p.label}
           </button>
         ))}
       </div>
@@ -171,7 +202,7 @@ export function RouteStatusPage() {
 
           {/* Data info */}
           <div className="text-xs text-text-muted text-center mt-2">
-            {history?.route.total_trains} trains over {period} days
+            {history?.route.total_trains} trains over {periodLabel(period)}
           </div>
         </div>
       ) : (

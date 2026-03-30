@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Station, TripPair, FavoriteStation } from '../types';
+import { Station, TripPair, FavoriteStation, TransitSystem } from '../types';
 import { storageService } from '../services/storage';
 
 interface AppState {
@@ -10,6 +10,7 @@ interface AppState {
   // User Preferences
   recentTrips: TripPair[];
   favoriteStations: FavoriteStation[];
+  preferredSystems: TransitSystem[];
 
   // Actions
   setDeparture: (station: Station | null) => void;
@@ -24,6 +25,10 @@ interface AppState {
   addFavorite: (station: Station) => void;
   removeFavorite: (stationId: string) => void;
   loadFavorites: () => void;
+
+  // System Preferences
+  toggleSystem: (system: TransitSystem) => void;
+  loadPreferredSystems: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -32,6 +37,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedDestination: null,
   recentTrips: [],
   favoriteStations: [],
+  preferredSystems: [],
 
   // Actions
   setDeparture: (station) => {
@@ -103,5 +109,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   loadFavorites: () => {
     const favorites = storageService.getFavoriteStations();
     set({ favoriteStations: favorites });
+  },
+
+  // System Preferences
+  toggleSystem: (system) => {
+    const current = get().preferredSystems;
+    const updated = current.includes(system)
+      ? current.filter(s => s !== system)
+      : [...current, system];
+    set({ preferredSystems: updated });
+    storageService.savePreferredSystems(updated);
+  },
+
+  loadPreferredSystems: () => {
+    const systems = storageService.getPreferredSystems();
+    set({ preferredSystems: systems });
   },
 }));

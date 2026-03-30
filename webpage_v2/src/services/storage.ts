@@ -1,8 +1,9 @@
-import { TripPair, FavoriteStation } from '../types';
+import { TripPair, FavoriteStation, TransitSystem } from '../types';
 
 const RECENT_TRIPS_KEY = 'trackrat:recentTrips';
 const FAVORITES_KEY = 'trackrat:favorites';
 const LAST_ROUTE_KEY = 'trackrat:lastRoute';
+const SYSTEMS_KEY = 'trackrat:systems';
 
 const MAX_RECENT_TRIPS = 10;
 
@@ -103,6 +104,20 @@ class StorageService {
 
   saveLastRoute(from: { code: string; name: string }, to: { code: string; name: string }): void {
     localStorage.setItem(LAST_ROUTE_KEY, JSON.stringify({ from, to }));
+  }
+
+  // Preferred Transit Systems
+  getPreferredSystems(): TransitSystem[] {
+    try {
+      const data = localStorage.getItem(SYSTEMS_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  savePreferredSystems(systems: TransitSystem[]): void {
+    localStorage.setItem(SYSTEMS_KEY, JSON.stringify(systems));
   }
 }
 

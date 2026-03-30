@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Station } from '../types';
-import { searchStations, getGroupedPrimaryStations } from '../data/stations';
+import { searchStations, getGroupedPrimaryStations, SYSTEM_ORDER, SYSTEM_NAMES } from '../data/stations';
+import { useAppStore } from '../store/appStore';
 
 interface StationPickerProps {
   title: string;
@@ -11,22 +12,36 @@ interface StationPickerProps {
 export function StationPicker({ title, onSelect, onClose }: StationPickerProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Station[]>([]);
+  const { preferredSystems, toggleSystem, loadPreferredSystems } = useAppStore();
+
+  useEffect(() => {
+    loadPreferredSystems();
+  }, [loadPreferredSystems]);
+
+  const activeFilter = preferredSystems.length > 0 ? preferredSystems : undefined;
 
   const handleSearch = (value: string) => {
     setQuery(value);
     if (value.trim()) {
-      setResults(searchStations(value));
+      setResults(searchStations(value, activeFilter));
     } else {
       setResults([]);
     }
   };
+
+  // Re-run search when filter changes
+  useEffect(() => {
+    if (query.trim()) {
+      setResults(searchStations(query, activeFilter));
+    }
+  }, [preferredSystems]);
 
   const handleSelect = (station: Station) => {
     onSelect(station);
     onClose();
   };
 
-  const groupedStations = getGroupedPrimaryStations();
+  const groupedStations = getGroupedPrimaryStations(activeFilter);
   const isSearching = query.trim().length > 0;
 
   return (
@@ -49,8 +64,27 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search stations..."
             autoFocus
-            className="w-full px-4 py-3 bg-background border border-text-muted/30 rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
+            className="w-full px-4 py-3 bg-background border border-text-muted/30 rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent mb-3"
           />
+          {/* System filter chips */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
+            {SYSTEM_ORDER.map(system => {
+              const active = preferredSystems.includes(system);
+              return (
+                <button
+                  key={system}
+                  onClick={() => toggleSystem(system)}
+                  className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                    active
+                      ? 'bg-accent text-white'
+                      : 'bg-surface/80 border border-text-muted/20 text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {SYSTEM_NAMES[system]}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">

@@ -8,6 +8,7 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { TrainCard } from '../components/TrainCard';
 import { TransferTripCard } from '../components/TransferTripCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
+import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { getStationByCode } from '../data/stations';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
 
@@ -183,7 +184,18 @@ export function TrainListPage() {
             <span className="text-text-muted text-xs ml-2">{summaryExpanded ? '▲' : '▼'}</span>
           </div>
           {summaryExpanded && (
-            <div className="mt-3 text-sm text-text-muted whitespace-pre-line">{summary.body}</div>
+            <>
+              <div className="mt-3 text-sm text-text-muted whitespace-pre-line">{summary.body}</div>
+              {summary.metrics && (
+                <TrainDistributionChart
+                  trainsByCategory={summary.metrics.trains_by_category}
+                  trainsByHeadway={summary.metrics.trains_by_headway}
+                  dataSource={fromStation?.system}
+                  from={from}
+                  to={to}
+                />
+              )}
+            </>
           )}
         </button>
       )}
