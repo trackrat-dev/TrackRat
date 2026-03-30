@@ -22,6 +22,7 @@ from trackrat.config.route_topology import (
     SUBWAY_A_ROCKAWAY,
     SUBWAY_H,
     Route,
+    _resolve_to_topology_code,
     find_route_for_segment,
     get_canonical_segments,
     get_route_by_line_code,
@@ -1039,3 +1040,91 @@ class TestAmtrakStationNamesConsistency:
                 if station not in all_names:
                     missing.append((route.id, station))
         assert missing == [], f"Amtrak stations missing names: {missing}"
+
+
+class TestStationEquivalenceResolution:
+    """Test that station equivalences are resolved before route topology lookup.
+
+    NJT has multiple station codes for the same physical station (e.g.,
+    SE=Secaucus Upper Lvl, TS=Secaucus Lower Lvl, SC=Secaucus Concourse).
+    Route topology only uses one code (SE), so the normalizer must resolve
+    equivalent codes before looking up routes.
+    """
+
+    def test_resolve_ts_to_se_for_njt(self):
+        """TS (Secaucus Lower Lvl) should resolve to SE (Secaucus Upper Lvl)."""
+        resolved = _resolve_to_topology_code("TS", "NJT")
+        assert resolved == "SE", (
+            f"TS should resolve to SE for NJT, got: {resolved}"
+        )
+
+    def test_resolve_sc_to_se_for_njt(self):
+        """SC (Secaucus Concourse) should resolve to SE (Secaucus Upper Lvl)."""
+        resolved = _resolve_to_topology_code("SC", "NJT")
+        assert resolved == "SE", (
+            f"SC should resolve to SE for NJT, got: {resolved}"
+        )
+
+    def test_se_stays_se(self):
+        """SE (Secaucus Upper Lvl) is already the topology code, no change."""
+        resolved = _resolve_to_topology_code("SE", "NJT")
+        assert resolved == "SE", (
+            f"SE should stay SE for NJT, got: {resolved}"
+        )
+
+    def test_non_equivalent_code_unchanged(self):
+        """Station codes without equivalences pass through unchanged."""
+        resolved = _resolve_to_topology_code("NY", "NJT")
+        assert resolved == "NY", (
+            f"NY should stay NY (no equivalence), got: {resolved}"
+        )
+
+    def test_unknown_code_unchanged(self):
+        """Completely unknown station codes pass through unchanged."""
+        resolved = _resolve_to_topology_code("ZZZZZ", "NJT")
+        assert resolved == "ZZZZZ", (
+            f"Unknown code should pass through unchanged, got: {resolved}"
+        )
+
+    def test_canonical_segments_ts_to_pq_expands(self):
+        """TS→PQ (Secaucus Lower Lvl → Pearl River) should expand via Pascack Valley.
+
+        This is the actual bug: a train departing Secaucus Lower Level heading
+        to Pearl River should be decomposed into ~14 individual station hops,
+        not shown as a single long segment.
+        """
+        canonical = get_canonical_segments("NJT", "TS", "PQ")
+        assert len(canonical) > 1, (
+            f"TS→PQ should expand to multiple segments via Pascack Valley, "
+            f"but got: {canonical}"
+        )
+        # First segment should start from SE (resolved from TS)
+        assert canonical[0][0] == "SE", (
+            f"First segment should start from SE, got: {canonical[0][0]}"
+        )
+        # Last segment should end at PQ
+        assert canonical[-1][1] == "PQ", (
+            f"Last segment should end at PQ, got: {canonical[-1][1]}"
+        )
+        # Should have 14 hops: SE→WR, WR→TE, ..., ZM→PQ
+        assert len(canonical) == 14, (
+            f"TS→PQ should expand to 14 hops on Pascack Valley, got {len(canonical)}: {canonical}"
+        )
+
+    def test_canonical_segments_sc_to_ny_expands(self):
+        """SC→NY (Secaucus Concourse → NY Penn) should expand via NEC."""
+        canonical = get_canonical_segments("NJT", "SC", "NY")
+        assert len(canonical) > 0, (
+            f"SC→NY should expand, got: {canonical}"
+        )
+        # Should resolve SC to SE, then expand SE→NY (which is 1 hop on NEC)
+        assert canonical == [("SE", "NY")] or canonical == [("NY", "SE")], (
+            f"SC→NY should resolve to the SE→NY segment, got: {canonical}"
+        )
+
+    def test_newark_equivalence_np_pnk(self):
+        """PNK (Newark PATH) should resolve to NP (Newark Penn Station) for NJT."""
+        resolved = _resolve_to_topology_code("PNK", "NJT")
+        assert resolved == "NP", (
+            f"PNK should resolve to NP for NJT, got: {resolved}"
+        )

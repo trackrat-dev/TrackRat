@@ -3686,6 +3686,29 @@ def find_route_for_segment(
     return None
 
 
+def _resolve_to_topology_code(station_code: str, data_source: str) -> str:
+    """Resolve a station code to the code used in route topology via equivalences.
+
+    For example, TS (Secaucus Lower Lvl) resolves to SE (Secaucus Upper Lvl)
+    because SE is the code used in route definitions.
+    """
+    from trackrat.config.stations.common import STATION_EQUIVALENTS
+
+    group = STATION_EQUIVALENTS.get(station_code)
+    if not group:
+        return station_code
+
+    # Check which code in the equivalence group appears in any route
+    routes = get_routes_for_data_source(data_source)
+    for code in group:
+        if code == station_code:
+            continue
+        for route in routes:
+            if code in route._station_set:
+                return code
+    return station_code
+
+
 def get_canonical_segments(
     data_source: str,
     from_station: str,
@@ -3703,6 +3726,10 @@ def get_canonical_segments(
     prevents e.g. Raritan Valley NP→EZ from being misattributed to
     NEC's NP→NA→NZ→EZ path through Newark Airport.
 
+    Station codes are resolved through equivalence groups before lookup,
+    so e.g. TS (Secaucus Lower Lvl) is treated as SE (Secaucus Upper Lvl)
+    which appears in route definitions.
+
     If no matching route is found, returns the original segment as-is.
 
     Args:
@@ -3714,11 +3741,15 @@ def get_canonical_segments(
     Returns:
         List of (from_station, to_station) tuples representing canonical segments
     """
+    # Resolve station codes to the canonical codes used in route topology
+    resolved_from = _resolve_to_topology_code(from_station, data_source)
+    resolved_to = _resolve_to_topology_code(to_station, data_source)
+
     # If line_code is provided, use direct lookup first
     if line_code:
         route = get_route_by_line_code(data_source, line_code)
-        if route and route.contains_segment(from_station, to_station):
-            canonical = route.expand_to_canonical_segments(from_station, to_station)
+        if route and route.contains_segment(resolved_from, resolved_to):
+            canonical = route.expand_to_canonical_segments(resolved_from, resolved_to)
             if canonical:
                 return canonical
 
@@ -3726,9 +3757,9 @@ def get_canonical_segments(
     # This ensures skip-stop segments are attributed to the correct line.
     best_canonical: list[tuple[str, str]] | None = None
     for route in get_routes_for_data_source(data_source):
-        if not route.contains_segment(from_station, to_station):
+        if not route.contains_segment(resolved_from, resolved_to):
             continue
-        canonical = route.expand_to_canonical_segments(from_station, to_station)
+        canonical = route.expand_to_canonical_segments(resolved_from, resolved_to)
         if canonical is None:
             continue
         if best_canonical is None or len(canonical) < len(best_canonical):
