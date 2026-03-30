@@ -139,6 +139,22 @@ export interface DataFreshness {
 
 // Operations Summary Types
 
+export interface TrainDelaySummary {
+  train_id: string;
+  delay_minutes: number;
+  category: 'on_time' | 'slight_delay' | 'delayed' | 'cancelled';
+  scheduled_departure: string;
+}
+
+export interface SummaryMetrics {
+  on_time_percentage: number | null;
+  average_delay_minutes: number | null;
+  cancellation_count: number | null;
+  train_count: number | null;
+  trains_by_category: Record<string, TrainDelaySummary[]> | null;
+  trains_by_headway: Record<string, TrainDelaySummary[]> | null;
+}
+
 export interface OperationsSummaryResponse {
   headline: string;
   body: string;
@@ -146,6 +162,7 @@ export interface OperationsSummaryResponse {
   time_window_minutes: number;
   data_freshness_seconds: number;
   generated_at: string;
+  metrics: SummaryMetrics | null;
 }
 
 // Track Prediction Types

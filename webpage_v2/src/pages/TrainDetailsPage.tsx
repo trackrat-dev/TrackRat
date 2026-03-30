@@ -10,6 +10,7 @@ import { ShareButton } from '../components/ShareButton';
 import { DelayForecastCard } from '../components/DelayForecastCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { HistoricalPerformance } from '../components/HistoricalPerformance';
+import { SimilarTrainsPanel } from '../components/SimilarTrainsPanel';
 import { getTodayDateString, formatTimeAgo, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
 
@@ -230,6 +231,16 @@ export function TrainDetailsPage() {
             journeyDate={train.journey_date}
           />
         </div>
+      )}
+
+      {/* Similar trains panel — only before departure from user's origin */}
+      {from && to && !predictionStop?.has_departed_station && (
+        <SimilarTrainsPanel
+          trainId={train.train_id}
+          from={from.toUpperCase()}
+          to={to.toUpperCase()}
+          dataSource={train.data_source}
+        />
       )}
 
       <h3 className="text-xl font-semibold mb-4 text-text-primary">Stops</h3>

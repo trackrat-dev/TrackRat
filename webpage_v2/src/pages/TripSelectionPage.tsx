@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
 import { getStationByCode } from '../data/stations';
+import { storageService } from '../services/storage';
 
 export function TripSelectionPage() {
   const navigate = useNavigate();
@@ -83,12 +84,11 @@ export function TripSelectionPage() {
               <button
                 key={trip.id}
                 onClick={() => {
-                  const from = getStationByCode(trip.departureCode);
-                  const to = getStationByCode(trip.destinationCode);
-                  if (from && to) {
-                    setDeparture(from);
-                    setDestination(to);
-                  }
+                  storageService.saveLastRoute(
+                    { code: trip.departureCode, name: trip.departureName },
+                    { code: trip.destinationCode, name: trip.destinationName }
+                  );
+                  navigate(`/trains/${trip.departureCode}/${trip.destinationCode}`);
                 }}
                 className="w-full bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4 text-left hover:bg-surface transition-all"
               >

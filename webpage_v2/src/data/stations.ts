@@ -1637,19 +1637,22 @@ export function getStationByCode(code: string): Station | undefined {
   return STATIONS.find(s => s.code === code);
 }
 
-export function searchStations(query: string): Station[] {
+export function searchStations(query: string, systems?: TransitSystem[]): Station[] {
   if (!query) return [];
   const q = query.toLowerCase();
+  const hasFilter = systems && systems.length > 0;
   return STATIONS
     .filter(s =>
-      s.name.toLowerCase().includes(q) ||
-      s.code.toLowerCase().includes(q)
+      (s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)) &&
+      (!hasFilter || (s.system && systems!.includes(s.system)))
     )
     .slice(0, 15);
 }
 
-export function getGroupedPrimaryStations(): { system: TransitSystem; name: string; stations: Station[] }[] {
-  return SYSTEM_ORDER.map(system => ({
+export function getGroupedPrimaryStations(systems?: TransitSystem[]): { system: TransitSystem; name: string; stations: Station[] }[] {
+  const hasFilter = systems && systems.length > 0;
+  const order = hasFilter ? SYSTEM_ORDER.filter(s => systems!.includes(s)) : SYSTEM_ORDER;
+  return order.map(system => ({
     system,
     name: SYSTEM_NAMES[system],
     stations: PRIMARY_STATIONS[system]

@@ -117,14 +117,27 @@ export class APIService {
     }
   }
 
-  async getRouteHistory(from: string, to: string, dataSource: string, days = 30): Promise<RouteHistoryResponse | null> {
+  async getTrainSummary(trainId: string, from: string, to: string): Promise<OperationsSummaryResponse | null> {
+    try {
+      const url = `${BASE_URL}/routes/summary?scope=train&train_id=${encodeURIComponent(trainId)}&from_station=${encodeURIComponent(from)}&to_station=${encodeURIComponent(to)}`;
+      return await this.fetch<OperationsSummaryResponse>(url);
+    } catch {
+      return null;
+    }
+  }
+
+  async getRouteHistory(from: string, to: string, dataSource: string, days = 30, hours?: number): Promise<RouteHistoryResponse | null> {
     try {
       const params = new URLSearchParams({
         from_station: from,
         to_station: to,
         data_source: dataSource,
-        days: days.toString(),
       });
+      if (hours !== undefined) {
+        params.set('hours', hours.toString());
+      } else {
+        params.set('days', days.toString());
+      }
       const url = `${BASE_URL}/routes/history?${params.toString()}`;
       return await this.fetch<RouteHistoryResponse>(url);
     } catch {
