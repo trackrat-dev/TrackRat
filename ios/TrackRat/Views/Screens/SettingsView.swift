@@ -67,6 +67,7 @@ struct SettingsView: View {
                         .foregroundColor(appState.selectedSystems.isEmpty ? .gray : .white)
                         .frame(minWidth: 44, minHeight: 44)
                 }
+                .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
@@ -184,6 +185,7 @@ struct SettingsSection: View {
                             .foregroundColor(isEditingTrainSystems && appState.selectedSystems.isEmpty ? .gray : .orange)
                     }
                 }
+                .buttonStyle(.plain)
                 .padding()
 
                 if isEditingTrainSystems {
@@ -281,6 +283,7 @@ struct SettingsSection: View {
                             .foregroundColor(.orange)
                     }
                 }
+                .buttonStyle(.plain)
                 .padding()
 
                 if isEditingRouteAlerts {
@@ -331,6 +334,7 @@ struct SettingsSection: View {
                             Spacer()
                         }
                     }
+                    .buttonStyle(.plain)
                     .padding()
                 } else {
                     if !alertService.subscriptions.isEmpty {
@@ -382,6 +386,7 @@ struct SettingsSection: View {
                             .foregroundColor(.orange)
                     }
                 }
+                .buttonStyle(.plain)
                 .padding()
 
                 if isEditingFavorites {
@@ -469,6 +474,7 @@ struct SettingsSection: View {
                                 Spacer()
                             }
                         }
+                        .buttonStyle(.plain)
                         .padding()
                     }
                 } else {
@@ -950,6 +956,7 @@ struct ProUserCard: View {
                         .font(.caption.weight(.medium))
                         .foregroundColor(.orange)
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding()
@@ -1056,6 +1063,7 @@ struct TripStatsSection: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 4)

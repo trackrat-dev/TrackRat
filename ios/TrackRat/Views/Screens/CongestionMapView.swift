@@ -97,6 +97,7 @@ struct CongestionMapView: View {
                                     }
                                 }
                         }
+                        .buttonStyle(.plain)
 
                         // Filter button
                         Button {
@@ -112,6 +113,7 @@ struct CongestionMapView: View {
                                         .fill(.ultraThinMaterial)
                                 )
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
