@@ -515,7 +515,7 @@ extension Stations {
         "MRB": CLLocationCoordinate2D(latitude: 39.4587, longitude: -77.9610),  // Martinsburg
         "MSA": CLLocationCoordinate2D(latitude: 39.3301, longitude: -76.4214),  // Martin Airport
         "MYS": CLLocationCoordinate2D(latitude: 41.3509, longitude: -71.9631),  // Mystic
-        "NRK": CLLocationCoordinate2D(latitude: 39.6697, longitude: -75.7535),  // Newark
+        "NRK": CLLocationCoordinate2D(latitude: 39.6697, longitude: -75.7535),  // Newark, DE
         "NRO": CLLocationCoordinate2D(latitude: 40.9115, longitude: -73.7843),  // New Rochelle
         "OTN": CLLocationCoordinate2D(latitude: 39.0871, longitude: -76.7064),  // Odenton
         "PAR": CLLocationCoordinate2D(latitude: 39.9592, longitude: -75.9221),  // Parkesburg
