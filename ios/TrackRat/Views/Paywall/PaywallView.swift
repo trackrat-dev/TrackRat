@@ -46,6 +46,7 @@ struct PaywallView: View {
                                 .font(.title2)
                                 .foregroundColor(.white.opacity(0.6))
                         }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal)
 
@@ -215,6 +216,7 @@ struct PaywallView: View {
                                 .foregroundColor(.white.opacity(0.6))
                         }
                     }
+                    .buttonStyle(.plain)
                     .disabled(isRestoring)
 
                     // Restore message feedback

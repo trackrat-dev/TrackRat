@@ -334,6 +334,7 @@ struct SettingsSection: View {
                             Spacer()
                         }
                     }
+                    .buttonStyle(.plain)
                     .padding()
                 } else {
                     if !alertService.subscriptions.isEmpty {
@@ -473,6 +474,7 @@ struct SettingsSection: View {
                                 Spacer()
                             }
                         }
+                        .buttonStyle(.plain)
                         .padding()
                     }
                 } else {
@@ -954,6 +956,7 @@ struct ProUserCard: View {
                         .font(.caption.weight(.medium))
                         .foregroundColor(.orange)
                 }
+                .buttonStyle(.plain)
             }
         }
         .padding()
@@ -1060,6 +1063,7 @@ struct TripStatsSection: View {
                                 .font(.caption)
                                 .foregroundColor(.orange)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 4)

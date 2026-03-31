@@ -105,6 +105,7 @@ private struct DateRow: View {
             .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .listRowBackground(
             isSelected
                 ? Color.white.opacity(0.1)

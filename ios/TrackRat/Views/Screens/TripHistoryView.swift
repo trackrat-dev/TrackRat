@@ -48,6 +48,7 @@ struct TripHistoryView: View {
                         .foregroundColor(.white)
                         .frame(minWidth: 44, minHeight: 44)
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 8)
