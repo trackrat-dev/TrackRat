@@ -355,8 +355,16 @@ class DepartureService:
                     name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    updated_time=from_stop.updated_departure
-                    or from_stop.updated_arrival,
+                    # Use max() to pick the live delayed estimate over
+                    # the scheduled time. At NJT intermediate stops, updated_departure
+                    # holds the original schedule (DEP_TIME) while updated_arrival
+                    # holds the live estimate (TIME). Plain `or` would short-circuit
+                    # to the scheduled value, hiding delays.
+                    updated_time=(
+                        max(from_stop.updated_departure, from_stop.updated_arrival)
+                        if from_stop.updated_departure and from_stop.updated_arrival
+                        else from_stop.updated_departure or from_stop.updated_arrival
+                    ),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
                 ),

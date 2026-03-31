@@ -1032,11 +1032,19 @@ class JourneyCollector(BaseJourneyCollector):
                 # Reset complete journey flag so future validations are more lenient
                 journey.has_complete_journey = False
 
-            # CRITICAL FIX: Always update scheduled departure from actual first stop
-            # This corrects discovery departure time errors
-            if first_stop.DEP_TIME:
+            # Update scheduled departure from immutable schedule fields.
+            # At origin: TIME = original schedule, DEP_TIME = actual departure.
+            # SCHED_DEP_DATE is the most reliable source; TIME is the fallback.
+            # DEP_TIME is the actual departure and should NOT be used here.
+            sched_dep_candidate = None
+            if first_stop.SCHED_DEP_DATE:
+                sched_dep_candidate = parse_njt_time(first_stop.SCHED_DEP_DATE)
+            elif first_stop.TIME:
+                sched_dep_candidate = parse_njt_time(first_stop.TIME)
+
+            if sched_dep_candidate:
                 old_departure = journey.scheduled_departure
-                journey.scheduled_departure = parse_njt_time(first_stop.DEP_TIME)
+                journey.scheduled_departure = sched_dep_candidate
 
                 if old_departure and old_departure != journey.scheduled_departure:
                     logger.info(
@@ -1054,9 +1062,19 @@ class JourneyCollector(BaseJourneyCollector):
             # Update terminal station (last stop)
             journey.terminal_station_code = last_stop.STATION_2CHAR
 
-            # Always update scheduled arrival from actual last stop
-            if last_stop.TIME:
-                journey.scheduled_arrival = parse_njt_time(last_stop.TIME)
+            # Update scheduled arrival from immutable schedule fields.
+            # SCHED_DEP_DATE is reliably immutable; SCHED_ARR_DATE can be
+            # updated by NJT during delays, so only use it as a fallback.
+            # TIME is a live estimate at terminal stops — never use it here.
+            # Only set if not already populated (preserves schedule-collector values).
+            if journey.scheduled_arrival is None:
+                sched_arr_candidate = None
+                if last_stop.SCHED_DEP_DATE:
+                    sched_arr_candidate = parse_njt_time(last_stop.SCHED_DEP_DATE)
+                elif last_stop.SCHED_ARR_DATE:
+                    sched_arr_candidate = parse_njt_time(last_stop.SCHED_ARR_DATE)
+                if sched_arr_candidate:
+                    journey.scheduled_arrival = sched_arr_candidate
 
         # Mark as having complete journey data
         journey.has_complete_journey = True
@@ -1171,10 +1189,10 @@ class JourneyCollector(BaseJourneyCollector):
                 parse_njt_time(stop_data.DEP_TIME) if stop_data.DEP_TIME else None
             )
 
-            # Parse immutable schedule fields if available.
-            # SCHED_ARR_DATE / SCHED_DEP_DATE are the true original schedule
-            # times, unlike TIME/DEP_TIME which have inverted semantics and
-            # live-updating behavior.
+            # Parse schedule fields from API.
+            # SCHED_DEP_DATE is reliably immutable across collection cycles.
+            # SCHED_ARR_DATE is NOT always immutable — NJT updates it with live
+            # estimates during delays, so we validate it before trusting it.
             sched_arr = (
                 parse_njt_time(stop_data.SCHED_ARR_DATE)
                 if stop_data.SCHED_ARR_DATE
@@ -1185,6 +1203,19 @@ class JourneyCollector(BaseJourneyCollector):
                 if stop_data.SCHED_DEP_DATE
                 else None
             )
+
+            # Validate SCHED_ARR_DATE: at any stop, scheduled arrival must be
+            # <= scheduled departure (train arrives, then departs). If arrival
+            # is after departure, NJT has overwritten it with a delayed estimate.
+            if sched_arr and sched_dep and sched_arr > sched_dep:
+                logger.debug(
+                    "discarding_corrupted_sched_arr_date",
+                    train_id=journey.train_id,
+                    station=stop_data.STATION_2CHAR,
+                    sched_arr=sched_arr.isoformat(),
+                    sched_dep=sched_dep.isoformat(),
+                )
+                sched_arr = None
 
             # Determine if this is the origin station
             # Use journey's origin_station_code for reliable detection
@@ -1303,9 +1334,13 @@ class JourneyCollector(BaseJourneyCollector):
             elif stop_data.DEPARTED == "YES":
                 # Use normalized actual_departure which handles origin vs intermediate
                 # At origin: DEP_TIME (actual departure), at intermediate: TIME (actual)
-                stop.actual_departure = (
-                    normalized["actual_departure"] or stop.scheduled_departure
-                )
+                # Freeze after first capture — NJT may revise TIME in later cycles,
+                # but the value captured when the train was at/near the stop is most
+                # accurate. Consistent with actual_arrival freeze logic below.
+                if stop.actual_departure is None:
+                    stop.actual_departure = (
+                        normalized["actual_departure"] or stop.scheduled_departure
+                    )
                 stop.has_departed_station = True
                 stop.departure_source = "api_explicit"
 
