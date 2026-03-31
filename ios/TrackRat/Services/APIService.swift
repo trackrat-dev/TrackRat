@@ -547,6 +547,7 @@ final class APIService: ObservableObject {
             
             struct AggregateStats: Decodable {
                 let onTimePercentage: Double?
+                let onTimeSource: String?
                 let averageDelayMinutes: Double?
                 let averageDepartureDelayMinutes: Double?
                 let cancellationRate: Double
@@ -555,6 +556,7 @@ final class APIService: ObservableObject {
 
                 private enum CodingKeys: String, CodingKey {
                     case onTimePercentage = "on_time_percentage"
+                    case onTimeSource = "on_time_source"
                     case averageDelayMinutes = "average_delay_minutes"
                     case averageDepartureDelayMinutes = "average_departure_delay_minutes"
                     case cancellationRate = "cancellation_rate"
@@ -566,6 +568,7 @@ final class APIService: ObservableObject {
             struct HighlightedTrainStats: Decodable {
                 let trainId: String
                 let onTimePercentage: Double?
+                let onTimeSource: String?
                 let averageDelayMinutes: Double?
                 let averageDepartureDelayMinutes: Double?
                 let delayBreakdown: DelayBreakdown?
@@ -574,6 +577,7 @@ final class APIService: ObservableObject {
                 private enum CodingKeys: String, CodingKey {
                     case trainId = "train_id"
                     case onTimePercentage = "on_time_percentage"
+                    case onTimeSource = "on_time_source"
                     case averageDelayMinutes = "average_delay_minutes"
                     case averageDepartureDelayMinutes = "average_departure_delay_minutes"
                     case delayBreakdown = "delay_breakdown"
@@ -621,6 +625,7 @@ final class APIService: ObservableObject {
             ),
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: response.aggregateStats.onTimePercentage,
+                onTimeSource: response.aggregateStats.onTimeSource,
                 averageDelayMinutes: response.aggregateStats.averageDelayMinutes,
                 averageDepartureDelayMinutes: response.aggregateStats.averageDepartureDelayMinutes ?? 0,
                 cancellationRate: response.aggregateStats.cancellationRate,
@@ -635,6 +640,7 @@ final class APIService: ObservableObject {
             highlightedTrain: response.highlightedTrain.map { highlighted in
                 RouteHistoricalData.Stats(
                     onTimePercentage: highlighted.onTimePercentage,
+                    onTimeSource: highlighted.onTimeSource,
                     averageDelayMinutes: highlighted.averageDelayMinutes,
                     averageDepartureDelayMinutes: highlighted.averageDepartureDelayMinutes ?? 0,
                     cancellationRate: 0.0, // Not provided for individual trains

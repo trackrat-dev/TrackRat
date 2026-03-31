@@ -135,7 +135,7 @@ export function RouteStatusPage() {
           {/* Key metrics */}
           <div className="grid grid-cols-3 gap-3">
             <MetricCard
-              label="On time"
+              label={stats.on_time_source === 'departure' ? 'Dep on time' : 'On time'}
               value={stats.on_time_percentage != null ? `${Math.round(stats.on_time_percentage)}%` : 'N/A'}
               color={stats.on_time_percentage != null && stats.on_time_percentage >= 80 ? 'success' : stats.on_time_percentage != null && stats.on_time_percentage >= 60 ? 'warning' : 'error'}
             />

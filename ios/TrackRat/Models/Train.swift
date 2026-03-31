@@ -1013,6 +1013,7 @@ struct RouteHistoricalData {
     
     struct Stats {
         let onTimePercentage: Double?
+        let onTimeSource: String?  // "arrival" or "departure"
         let averageDelayMinutes: Double?
         let averageDepartureDelayMinutes: Double
         let cancellationRate: Double

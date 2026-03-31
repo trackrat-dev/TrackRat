@@ -568,6 +568,8 @@ struct RouteStatusView: View {
         let stats = history.aggregateStats
         let onTimeValue = stats.onTimePercentage.map { "\(Int($0))%" } ?? "N/A"
         let onTimeColor = onTimePercentageColor(stats.onTimePercentage)
+        // Show "Dep On Time" when falling back to departure-based metric
+        let onTimeLabel = stats.onTimeSource == "departure" ? "Dep On Time" : "On Time"
 
         let mode = dataSource.flatMap { TrainSystem(rawValue: $0)?.preferredHighlightMode } ?? preferredMode
 
@@ -593,7 +595,7 @@ struct RouteStatusView: View {
         } else {
             // Delay-focused stats for commuter/intercity rail
             HStack(spacing: 12) {
-                statCard(title: "On Time", value: onTimeValue, color: onTimeColor)
+                statCard(title: onTimeLabel, value: onTimeValue, color: onTimeColor)
                 statCard(
                     title: "Cancelled",
                     value: "\(Int(stats.cancellationRate))%",

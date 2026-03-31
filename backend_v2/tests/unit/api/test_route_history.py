@@ -108,9 +108,10 @@ class TestCalculateRouteStatsEmpty:
 
         assert result["total_journeys"] == 0
         assert result["on_time_percentage"] is None, (
-            "on_time_percentage should be None when no arrival data exists, "
+            "on_time_percentage should be None when no data exists, "
             "not 0.0 which would misleadingly suggest all trains are late"
         )
+        assert result["on_time_source"] is None
         assert (
             result["average_delay_minutes"] is None
         ), "average_delay_minutes should be None when no arrival data exists"
@@ -118,7 +119,7 @@ class TestCalculateRouteStatsEmpty:
         assert result["cancellation_rate"] == 0.0
         assert (
             result["delay_breakdown"] is None
-        ), "delay_breakdown should be None when no arrival data exists"
+        ), "delay_breakdown should be None when no data exists"
         assert result["track_usage"] == {}
 
 
@@ -671,19 +672,21 @@ class TestNoArrivalDataReturnsNull:
         assert result["total_journeys"] == 2
         assert result["cancellation_rate"] == 50.0
 
-        # Arrival-based metrics must be None, not 0
-        assert result["on_time_percentage"] is None, (
-            f"on_time_percentage should be None when no trains have arrival data, "
-            f"got {result['on_time_percentage']}. Showing 0% misleads users into "
-            "thinking all trains are late when there's simply no data yet."
+        # No arrival data exists, but departure data does → departure-based fallback
+        assert result["on_time_percentage"] is not None, (
+            "on_time_percentage should fall back to departure-based when no "
+            "arrival data exists but departure data is available"
+        )
+        assert result["on_time_source"] == "departure", (
+            f"on_time_source should be 'departure' when using fallback, "
+            f"got {result['on_time_source']}"
         )
         assert result["average_delay_minutes"] is None, (
             f"average_delay_minutes should be None when no trains have arrival data, "
             f"got {result['average_delay_minutes']}. Showing 0m misleads users."
         )
-        assert result["delay_breakdown"] is None, (
-            f"delay_breakdown should be None when no arrival data exists, "
-            f"got {result['delay_breakdown']}."
+        assert result["delay_breakdown"] is not None, (
+            "delay_breakdown should fall back to departure-based categories"
         )
 
         # Departure delay should still work (in-progress train has actual_departure)
@@ -719,6 +722,7 @@ class TestNoArrivalDataReturnsNull:
         assert result["total_journeys"] == 3
         assert result["cancellation_rate"] == 100.0
         assert result["on_time_percentage"] is None
+        assert result["on_time_source"] is None
         assert result["average_delay_minutes"] is None
         assert result["delay_breakdown"] is None
 
@@ -1467,4 +1471,341 @@ class TestLineCodesFilter:
         assert one_result["on_time_percentage"] == pytest.approx(100.0, abs=1), (
             f"Expected 100% on-time for line 1 (on time), "
             f"got {one_result['on_time_percentage']}"
+        )
+
+
+@pytest.mark.asyncio
+class TestOnTimeSourceFallback:
+    """Verify on_time_source correctly indicates arrival vs departure fallback.
+
+    When arrival data is available (actual_arrival + non-fallback arrival_source),
+    on_time_source should be 'arrival'. When only departure data exists (common
+    during disruptions when trains haven't completed), it should fall back to
+    'departure'. This prevents N/A on-time during the exact periods when the
+    metric matters most.
+    """
+
+    async def test_arrival_based_on_time_source(self, db_session: AsyncSession):
+        """Train with arrival data → on_time_source='arrival'."""
+        await _create_journey(
+            db_session,
+            train_id="completed_train",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=3),
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["on_time_source"] == "arrival", (
+            f"Expected 'arrival' source for completed train, got {result['on_time_source']}"
+        )
+        assert result["on_time_percentage"] == pytest.approx(100.0, abs=1), (
+            "3-minute arrival delay should be on-time (threshold is 5 min)"
+        )
+
+    async def test_departure_fallback_when_no_arrival_data(
+        self, db_session: AsyncSession
+    ):
+        """Train departed but not arrived → on_time_source='departure'."""
+        await _create_journey(
+            db_session,
+            train_id="in_transit_train",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME + timedelta(minutes=12),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["on_time_source"] == "departure", (
+            f"Expected 'departure' fallback for in-transit train, "
+            f"got {result['on_time_source']}"
+        )
+        assert result["on_time_percentage"] == pytest.approx(0.0, abs=1), (
+            "12-minute departure delay should NOT be on-time (threshold is 5 min)"
+        )
+        assert result["delay_breakdown"] is not None, (
+            "delay_breakdown should use departure-based categories as fallback"
+        )
+        assert result["delay_breakdown"]["slight"] == 100, (
+            "12-minute delay should be in 'slight' category (5-15 min)"
+        )
+
+    async def test_departure_fallback_multiple_trains_during_disruption(
+        self, db_session: AsyncSession
+    ):
+        """Multiple delayed trains, none arrived yet → departure-based stats.
+
+        Simulates a disruption scenario where trains are running very late
+        and haven't reached their destination.
+        """
+        delays_minutes = [0, 8, 20, 45]  # on-time, slight, significant, major
+        for i, delay in enumerate(delays_minutes):
+            await _create_journey(
+                db_session,
+                train_id=f"disrupted_{i}",
+                stops=[
+                    {
+                        "station_code": "NY",
+                        "stop_sequence": 0,
+                        "scheduled_departure": BASE_TIME + timedelta(minutes=i * 15),
+                        "actual_departure": BASE_TIME
+                        + timedelta(minutes=i * 15 + delay),
+                    },
+                    {
+                        "station_code": "TR",
+                        "stop_sequence": 1,
+                        "scheduled_arrival": BASE_TIME
+                        + timedelta(hours=1, minutes=i * 15),
+                        "actual_arrival": None,
+                    },
+                ],
+            )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["on_time_source"] == "departure"
+        assert result["on_time_percentage"] == pytest.approx(25.0, abs=1), (
+            f"1 of 4 trains departed on time = 25%, got {result['on_time_percentage']}"
+        )
+        assert result["delay_breakdown"]["on_time"] == 25
+        assert result["delay_breakdown"]["slight"] == 25
+        assert result["delay_breakdown"]["significant"] == 25
+        assert result["delay_breakdown"]["major"] == 25
+
+    async def test_arrival_preferred_over_departure_when_both_available(
+        self, db_session: AsyncSession
+    ):
+        """When both arrival and departure data exist, arrival is preferred."""
+        await _create_journey(
+            db_session,
+            train_id="full_data_train",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME + timedelta(minutes=10),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1, minutes=2),
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["on_time_source"] == "arrival", (
+            "Should prefer arrival-based when both are available"
+        )
+        # Arrival: 2 min late = on-time; Departure: 10 min late = NOT on-time
+        # If using departure, this would be 0%. Using arrival, it's 100%.
+        assert result["on_time_percentage"] == pytest.approx(100.0, abs=1), (
+            "Arrival delay of 2 min is on-time, verifies arrival is used not departure"
+        )
+
+    async def test_scheduled_fallback_arrivals_excluded_triggers_departure_fallback(
+        self, db_session: AsyncSession
+    ):
+        """Trains with scheduled_fallback arrival_source should trigger departure fallback.
+
+        This is common for NJT trains that expire: the collector sets
+        actual_arrival = scheduled_arrival with arrival_source='scheduled_fallback'.
+        These are excluded from arrival stats, so departure should be used.
+        """
+        await _create_journey(
+            db_session,
+            train_id="expired_train",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME + timedelta(minutes=7),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1),
+                    "arrival_source": "scheduled_fallback",
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["on_time_source"] == "departure", (
+            "scheduled_fallback arrivals are excluded, should fall back to departure"
+        )
+        assert result["on_time_percentage"] is not None, (
+            "on_time_percentage should not be N/A when departure data is available"
+        )
+
+
+@pytest.mark.asyncio
+class TestCancelledTrainsWithoutDestinationStops:
+    """Verify cancelled trains are counted even without full stop lists.
+
+    When NJT trains are scheduled but never observed in real-time, they're
+    reconciled as cancelled. If stop backfill failed, they only have an origin
+    stop (no destination stop). Previously these were invisible to stats,
+    causing cancellation_rate to underreport during disruptions.
+    """
+
+    async def test_cancelled_train_with_only_origin_stop_counts(
+        self, db_session: AsyncSession
+    ):
+        """Cancelled SCHEDULED train with only origin stop should be counted."""
+        # Normal train with both stops
+        await _create_journey(
+            db_session,
+            train_id="running_train",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": BASE_TIME + timedelta(hours=1),
+                    "actual_arrival": BASE_TIME + timedelta(hours=1),
+                },
+            ],
+        )
+        # Cancelled train with only origin stop (stop backfill failed).
+        # terminal_station_code is always set from schedule data even when
+        # journey_stops are incomplete.
+        cancelled_journey = TrainJourney(
+            train_id="cancelled_no_dest",
+            journey_date=BASE_DATE,
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            observation_type="SCHEDULED",
+            scheduled_departure=BASE_TIME + timedelta(minutes=30),
+            is_cancelled=True,
+            cancellation_reason="Not observed in real-time feed",
+            has_complete_journey=False,
+            stops_count=1,
+        )
+        db_session.add(cancelled_journey)
+        await db_session.flush()
+        db_session.add(
+            JourneyStop(
+                journey_id=cancelled_journey.id,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=None,
+                scheduled_departure=BASE_TIME + timedelta(minutes=30),
+            )
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["total_journeys"] == 2, (
+            f"Expected 2 journeys (1 running + 1 cancelled with origin-only), "
+            f"got {result['total_journeys']}"
+        )
+        assert result["cancellation_rate"] == pytest.approx(50.0, abs=1), (
+            f"Expected 50% cancellation (1 of 2), got {result['cancellation_rate']}. "
+            "Cancelled trains without destination stops must still be counted."
+        )
+
+    async def test_cancelled_train_with_full_stops_still_counts(
+        self, db_session: AsyncSession
+    ):
+        """Cancelled train with both origin and destination stops (normal case)."""
+        await _create_journey(
+            db_session,
+            train_id="cancelled_full",
+            stops=[
+                {"station_code": "NY", "stop_sequence": 0},
+                {"station_code": "TR", "stop_sequence": 1},
+            ],
+            is_cancelled=True,
+        )
+        await db_session.commit()
+
+        result = await _run_stats(db_session)
+
+        assert result["total_journeys"] == 1
+        assert result["cancellation_rate"] == 100.0
+
+    async def test_cancelled_origin_only_does_not_match_wrong_route(
+        self, db_session: AsyncSession
+    ):
+        """Cancelled train with only origin stop at a DIFFERENT station should NOT match."""
+        cancelled_journey = TrainJourney(
+            train_id="cancelled_other_route",
+            journey_date=BASE_DATE,
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NB",
+            terminal_station_code="TR",
+            data_source="NJT",
+            observation_type="SCHEDULED",
+            scheduled_departure=BASE_TIME,
+            is_cancelled=True,
+            has_complete_journey=False,
+            stops_count=1,
+        )
+        db_session.add(cancelled_journey)
+        await db_session.flush()
+        db_session.add(
+            JourneyStop(
+                journey_id=cancelled_journey.id,
+                station_code="NB",  # New Brunswick, not NY
+                station_name="New Brunswick",
+                stop_sequence=None,
+                scheduled_departure=BASE_TIME,
+            )
+        )
+        await db_session.commit()
+
+        # Searching NY→TR should NOT find this NB-originating cancelled train
+        result = await _run_stats(db_session)
+
+        assert result["total_journeys"] == 0, (
+            f"Cancelled train from NB should not match NY→TR route, "
+            f"got {result['total_journeys']} journeys"
         )
