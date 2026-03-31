@@ -84,11 +84,16 @@ export function TripSelectionPage() {
               <button
                 key={trip.id}
                 onClick={() => {
-                  storageService.saveLastRoute(
-                    { code: trip.departureCode, name: trip.departureName },
-                    { code: trip.destinationCode, name: trip.destinationName }
-                  );
-                  navigate(`/trains/${trip.departureCode}/${trip.destinationCode}`);
+                  const url = `/trains/${trip.departureCode}/${trip.destinationCode}`;
+                  try {
+                    storageService.saveLastRoute(
+                      { code: trip.departureCode, name: trip.departureName },
+                      { code: trip.destinationCode, name: trip.destinationName }
+                    );
+                  } catch {
+                    // localStorage may be full or disabled; navigate anyway
+                  }
+                  navigate(url);
                 }}
                 className="w-full bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4 text-left hover:bg-surface transition-all"
               >

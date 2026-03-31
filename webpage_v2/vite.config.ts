@@ -54,7 +54,7 @@ export default defineConfig({
             }
           }
         ],
-        navigateFallback: null // Don't fallback to index.html for API routes
+        navigateFallback: '/index.html' // Serve index.html for SPA client-side routes
       },
       devOptions: {
         enabled: true // Enable PWA in development for testing
