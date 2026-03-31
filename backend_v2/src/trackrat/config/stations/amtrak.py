@@ -272,12 +272,12 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "JST": "Johnstown",
     "LAB": "Latrobe",
     "LEW": "Lewistown",
-    "MDS": "Madison",
-    "MID": "Middletown",
+    "MDS": "Madison, CT",
+    "MID": "Middletown, CT",
     "MRB": "Martinsburg",
     "MSA": "Martin Airport",
     "MYS": "Mystic",
-    "NRK": "Newark",
+    "NRK": "Newark, DE",
     "NRO": "New Rochelle",
     "OTN": "Odenton",
     "PAO": "Paoli",
@@ -889,12 +889,12 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "JST": "JST",  # Johnstown
     "LAB": "LAB",  # Latrobe
     "LEW": "LEW",  # Lewistown
-    "MDS": "MDS",  # Madison
-    "MID": "MID",  # Middletown
+    "MDS": "MDS",  # Madison, CT
+    "MID": "MID",  # Middletown, CT
     "MRB": "MRB",  # Martinsburg
     "MSA": "MSA",  # Martin Airport
     "MYS": "MYS",  # Mystic
-    "NRK": "NRK",  # Newark
+    "NRK": "NRK",  # Newark, DE
     "NRO": "NRO",  # New Rochelle
     "OTN": "OTN",  # Odenton
     "PAO": "PAO",  # Paoli
@@ -1498,12 +1498,12 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "JST": "JST",  # Johnstown
     "LAB": "LAB",  # Latrobe
     "LEW": "LEW",  # Lewistown
-    "MDS": "MDS",  # Madison
-    "MID": "MID",  # Middletown
+    "MDS": "MDS",  # Madison, CT
+    "MID": "MID",  # Middletown, CT
     "MRB": "MRB",  # Martinsburg
     "MSA": "MSA",  # Martin Airport
     "MYS": "MYS",  # Mystic
-    "NRK": "NRK",  # Newark
+    "NRK": "NRK",  # Newark, DE
     "NRO": "NRO",  # New Rochelle
     "OTN": "OTN",  # Odenton
     "PAO": "PAO",  # Paoli

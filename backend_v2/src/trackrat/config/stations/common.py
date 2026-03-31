@@ -607,12 +607,12 @@ STATION_COORDINATES = {
     "JST": {"lat": 40.3297, "lon": -78.9220},  # Johnstown
     "LAB": {"lat": 40.3174, "lon": -79.3851},  # Latrobe
     "LEW": {"lat": 40.5883, "lon": -77.5800},  # Lewistown
-    "MDS": {"lat": 41.2836, "lon": -72.5994},  # Madison
-    "MID": {"lat": 40.1957, "lon": -76.7365},  # Middletown
+    "MDS": {"lat": 41.2836, "lon": -72.5994},  # Madison, CT
+    "MID": {"lat": 40.1957, "lon": -76.7365},  # Middletown, CT
     "MRB": {"lat": 39.4587, "lon": -77.9610},  # Martinsburg
     "MSA": {"lat": 39.3301, "lon": -76.4214},  # Martin Airport
     "MYS": {"lat": 41.3509, "lon": -71.9631},  # Mystic
-    "NRK": {"lat": 39.6697, "lon": -75.7535},  # Newark
+    "NRK": {"lat": 39.6697, "lon": -75.7535},  # Newark, DE
     "NRO": {"lat": 40.9115, "lon": -73.7843},  # New Rochelle
     "OTN": {"lat": 39.0871, "lon": -76.7064},  # Odenton
     "PAO": {"lat": 40.0428, "lon": -75.4838},  # Paoli
