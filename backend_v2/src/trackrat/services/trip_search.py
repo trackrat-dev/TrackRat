@@ -8,6 +8,7 @@ real-time departures at transfer points between transit systems.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,9 @@ from trackrat.config.transfer_points import (
     get_systems_serving_station,
     get_transfer_points,
 )
+from trackrat.db.engine import get_session
 from trackrat.models.api import (
+    DeparturesResponse,
     SimpleStationInfo,
     StationInfo,
     TrainDeparture,
@@ -259,57 +262,98 @@ async def search_trips(
     if not transfer_points:
         return _empty_response(from_station, to_station, "no_transfer_points")
 
-    # Query departures for each transfer point
-    transfer_trips: list[TripOption] = []
-    queries_made = 0
-    transfer_points_checked = 0
-
+    # Prepare transfer point queries — orient each transfer point up front
+    # Limit to MAX_TRANSFER_QUERIES / 2 transfer points (each needs 2 queries)
+    max_transfer_points = MAX_TRANSFER_QUERIES // 2
+    oriented_transfers: list[tuple[TransferPoint, str, str, str, str]] = []
     for tp in transfer_points:
-        if queries_made >= MAX_TRANSFER_QUERIES:
+        if len(oriented_transfers) >= max_transfer_points:
             break
-        transfer_points_checked += 1
-
         alight_station, alight_system, board_station, board_system = _orient_transfer(
             tp, from_systems, to_systems, from_station, to_station
         )
-
-        # Leg 1: from_station -> alight_station (system of from_station)
-        leg1_response = await departure_service.get_departures(
-            db=db,
-            from_station=from_station,
-            to_station=alight_station,
-            date=search_date,
-            time_from=time_from,
-            time_to=time_to,
-            limit=20,  # Get enough candidates for matching
-            hide_departed=hide_departed,
-            data_sources=[alight_system],
-            skip_individual_refresh=True,
+        oriented_transfers.append(
+            (tp, alight_station, alight_system, board_station, board_system)
         )
-        queries_made += 1
 
-        if not leg1_response.departures:
+    transfer_points_checked = len(oriented_transfers)
+
+    # Fire all leg queries in parallel using separate DB sessions.
+    # Each transfer point needs leg1 (origin -> transfer) and leg2 (transfer -> dest).
+    # Using separate sessions is required because AsyncSession is not concurrency-safe.
+    async def _query_leg(
+        leg_from: str,
+        leg_to: str,
+        leg_date: date | None,
+        leg_time_from: datetime | None,
+        leg_time_to: datetime | None,
+        leg_hide_departed: bool,
+        leg_data_sources: list[str],
+    ) -> DeparturesResponse:
+        async with get_session() as leg_db:
+            return await departure_service.get_departures(
+                db=leg_db,
+                from_station=leg_from,
+                to_station=leg_to,
+                date=leg_date,
+                time_from=leg_time_from,
+                time_to=leg_time_to,
+                limit=20,
+                hide_departed=leg_hide_departed,
+                data_sources=leg_data_sources,
+                skip_individual_refresh=True,
+                skip_gtfs_merge=True,
+            )
+
+    # Build all tasks: for each transfer point, leg1 and leg2
+    leg_tasks: list[tuple[int, str]] = []  # (transfer_idx, "leg1"|"leg2")
+    coros = []
+    for i, (tp, alight_station, alight_system, board_station, board_system) in enumerate(
+        oriented_transfers
+    ):
+        # Leg 1: from_station -> alight_station
+        coros.append(
+            _query_leg(
+                from_station, alight_station, search_date,
+                time_from, time_to, hide_departed, [alight_system],
+            )
+        )
+        leg_tasks.append((i, "leg1"))
+
+        # Leg 2: board_station -> to_station
+        # No time_from/time_to — leg 1 may arrive after original window
+        coros.append(
+            _query_leg(
+                board_station, to_station, search_date,
+                None, None, False, [board_system],
+            )
+        )
+        leg_tasks.append((i, "leg2"))
+
+    # Execute all leg queries concurrently
+    results = await asyncio.gather(*coros, return_exceptions=True)
+
+    # Group results by transfer point index
+    leg_responses: dict[int, dict[str, DeparturesResponse]] = {}
+    for (idx, leg_name), result in zip(leg_tasks, results):
+        if isinstance(result, Exception):
+            logger.warning("transfer_leg_query_failed", transfer_idx=idx, leg=leg_name, error=str(result))
             continue
+        leg_responses.setdefault(idx, {})[leg_name] = result
 
-        # Leg 2: board_station -> to_station (system of to_station)
-        # Don't pass time_from/time_to — leg 1 may arrive after the user's original
-        # time window, so we need all future departures. The connection matching
-        # loop below filters by earliest_leg2/latest_leg2 correctly.
-        leg2_response = await departure_service.get_departures(
-            db=db,
-            from_station=board_station,
-            to_station=to_station,
-            date=search_date,
-            time_from=None,
-            time_to=None,
-            limit=20,
-            hide_departed=False,  # Don't hide — we need future departures to match
-            data_sources=[board_system],
-            skip_individual_refresh=True,
-        )
-        queries_made += 1
+    queries_made = len([r for r in results if not isinstance(r, Exception)])
 
-        if not leg2_response.departures:
+    # Match connections from parallel results
+    transfer_trips: list[TripOption] = []
+    for i, (tp, alight_station, alight_system, board_station, board_system) in enumerate(
+        oriented_transfers
+    ):
+        responses = leg_responses.get(i, {})
+        leg1_response = responses.get("leg1")
+        leg2_response = responses.get("leg2")
+        if not leg1_response or not leg1_response.departures:
+            continue
+        if not leg2_response or not leg2_response.departures:
             continue
 
         # Match connections: leg1 arrival + transfer time <= leg2 departure
