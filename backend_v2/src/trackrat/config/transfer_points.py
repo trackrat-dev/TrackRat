@@ -220,7 +220,8 @@ for _tp in TRANSFER_POINTS:
         _TRANSFERS_BY_SYSTEM_PAIR[(_tp.system_b, _tp.system_a)].append(_tp)
     # Index by station code
     _TRANSFERS_BY_STATION[_tp.station_a].append(_tp)
-    _TRANSFERS_BY_STATION[_tp.station_b].append(_tp)
+    if _tp.station_a != _tp.station_b:
+        _TRANSFERS_BY_STATION[_tp.station_b].append(_tp)
 
 
 def get_transfer_points(system_a: str, system_b: str) -> list[TransferPoint]:
