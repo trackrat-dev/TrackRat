@@ -1,0 +1,108 @@
+"""
+Train-related utility functions for TrackRat V2.
+"""
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.orm.base import NO_VALUE
+
+if TYPE_CHECKING:
+    from trackrat.models.database import TrainJourney
+
+
+def _stops_loaded(journey: "TrainJourney") -> bool:
+    """Check if the stops relationship is eagerly loaded (safe to access in sync context).
+
+    Accessing a lazy-loaded relationship in a sync function within an async
+    SQLAlchemy session triggers MissingGreenlet. This helper uses SQLAlchemy's
+    instance inspection to check whether stops were eagerly loaded (via
+    selectinload/joinedload) without triggering a lazy load.
+    """
+    state = sa_inspect(journey, raiseerr=False)
+    if state is None:
+        return False
+    return state.attrs.stops.loaded_value is not NO_VALUE
+
+
+def get_effective_observation_type(journey: "TrainJourney") -> str:
+    """
+    Get the effective observation type for display.
+
+    For SCHEDULED trains from systems without real-time discovery (e.g. PATCO),
+    we upgrade to OBSERVED if the origin departure time has passed and a stop
+    has actually departed. This prevents showing "Scheduled" for trains that
+    are running but lack real-time confirmation.
+
+    For NJT, SCHEDULED trains that were never observed should NOT be promoted
+    — they are likely cancelled. The reconciliation job will eventually mark
+    them as such. Other real-time systems still auto-promote because they
+    either don't create SCHEDULED records (PATH, LIRR, MNR) or rely on
+    auto-promotion for pattern-scheduled trains (Amtrak).
+
+    Args:
+        journey: The train journey record
+
+    Returns:
+        "OBSERVED" or "SCHEDULED"
+    """
+    from trackrat.utils.time import now_et
+
+    if journey.observation_type != "SCHEDULED":
+        return journey.observation_type or "OBSERVED"
+
+    # For NJT, don't promote SCHEDULED trains that have no evidence of
+    # actually running. NJT has a reconciliation job that marks unobserved
+    # trains as cancelled. Other real-time systems (Amtrak, PATH, LIRR, MNR)
+    # either don't create SCHEDULED records or rely on auto-promotion for
+    # pattern-scheduled trains that haven't been discovered yet.
+    if journey.data_source == "NJT":
+        return "SCHEDULED"
+
+    # For schedule-only systems (PATCO): promote if departure time has passed.
+    # Guard against lazy-load in sync context — if stops weren't eagerly loaded,
+    # fall back to SCHEDULED rather than triggering MissingGreenlet.
+    if not _stops_loaded(journey) or not journey.stops:
+        return "SCHEDULED"
+
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    first_stop = sorted_stops[0]
+
+    origin_departure = first_stop.scheduled_departure or first_stop.scheduled_arrival
+    if origin_departure and origin_departure <= now_et():
+        return "OBSERVED"
+
+    return "SCHEDULED"
+
+
+def is_amtrak_train(train_id: str) -> bool:
+    """Determine if a train ID is for an Amtrak train.
+
+    Amtrak trains follow the pattern: A + digits (e.g., A153, A2290)
+
+    Args:
+        train_id: The train identifier
+
+    Returns:
+        True if this is an Amtrak train ID
+    """
+    if not train_id or len(train_id) < 2:
+        return False
+
+    return train_id.startswith("A") and train_id[1:].isdigit()
+
+
+def get_train_data_source(train_id: str) -> str:
+    """Get the data source for a train based on its ID.
+
+    Note: This function can only distinguish Amtrak trains (A-prefixed) from NJT.
+    PATH, PATCO, LIRR, and MNR trains must be identified by their database
+    data_source field, not by train_id pattern alone.
+
+    Args:
+        train_id: The train identifier
+
+    Returns:
+        Data source: "AMTRAK" or "NJT" (default fallback)
+    """
+    return "AMTRAK" if is_amtrak_train(train_id) else "NJT"

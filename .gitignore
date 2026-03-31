@@ -1,0 +1,44 @@
+backend/data
+backend_v2/trackrat_v2.db-shm
+backend_v2/trackrat_v2.db-wal
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+infra/environments/prod/.terraform/
+infra/environments/prod/.terraform.lock.hcl
+infra/environments/staging/.terraform/
+infra/environments/staging/.terraform.lock.hcl
+infra/environments/dev/.terraform/
+infra/environments/dev/.terraform.lock.hcl
+
+# Xcode user data
+ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/
+ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/**
+ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/andy.xcuserdatad/UserInterfaceState.xcuserstate
+
+# Deployment configuration (contains environment-specific settings)
+#.deploy/*.env
+.deploy/local.config
+
+# Terraform plans
+*.tfplan
+tfplan
+
+# Sentry CLI configuration (contains auth tokens)
+.sentryclirc
+
+# Environment files and secrets
+.env
+*.p8
+certs/
+env.sh
+.njt-token
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/

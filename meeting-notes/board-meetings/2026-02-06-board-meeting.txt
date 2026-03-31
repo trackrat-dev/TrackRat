@@ -1,0 +1,199 @@
+TrackRat Board Meeting Minutes
+Date: February 6, 2026
+Location: CLI
+Present: Andy Martin (Chairman of the Board), Claude (CEO)
+
+========================================================================
+CALL TO ORDER
+========================================================================
+
+Meeting called to order by the Chairman.
+
+========================================================================
+AGENDA ITEMS & DISCUSSION
+========================================================================
+
+1. CEO REPORT: STATE OF THE COMPANY
+------------------------------------------------------------------------
+
+Current product status:
+- iOS v2.4: Full-featured, App Store live. Flagship platform.
+- Backend: Production on GCP Cloud Run. FastAPI + PostgreSQL. Solid.
+- Web: Minimal MVP on GitHub Pages. Not converting visitors.
+- Android: Experimental, broken core features. Not on Play Store.
+- LIRR/Metro-North: Working in development branch (PR #368).
+
+Metrics:
+- 5.0 stars, 7 ratings on App Store (6 months post-launch)
+- $2.99/month Pro subscription
+- 250+ stations covered
+- ~215 commits in January 2026
+- Solo developer: Andrew Martin
+
+Assessment: The product is technically superior but has near-zero brand
+awareness. This is a distribution crisis, not a product crisis.
+
+2. COMPETITIVE LANDSCAPE
+------------------------------------------------------------------------
+
+Key players: Clever Commute ($50/yr, historical predictions),
+NJ Tracks, NJ Transit Official (no predictions), Transit App.
+
+TrackRat differentiators: ML predictions (not historical), multi-system
+coverage (NJT + Amtrak + PATH + PATCO), Live Activities, $2.99 price.
+
+IMPORTANT BOARD DIRECTION: Clever Commute is NOT a competitor. The
+board's vision is to make TrackRat open source and encourage the entire
+sector to benefit from the codebase and feature set.
+
+Risk noted: NJ Transit has historically been adversarial toward
+third-party apps (changed API feed to block Clever Commute in the past).
+
+3. HONEST ASSESSMENT
+------------------------------------------------------------------------
+
+Strengths:
+- Technically superior ML predictions
+- Only app unifying NJT + Amtrak + PATH + PATCO
+- Aggressive pricing (94% cheaper than Clever Commute)
+- Live Activities (unique in market)
+- Production-grade backend infrastructure
+- High development velocity
+
+Weaknesses:
+- 7 ratings in 6 months (near-zero organic discovery)
+- No Android (excluding ~45% of market)
+- Web app too minimal to convert visitors
+- No community presence (zero Reddit, no press)
+- Basic landing page (no video, no testimonials, no social proof)
+- No ASO strategy
+- No usage analytics
+
+Core diagnosis: Product was built first, go-to-market was skipped.
+
+4. STRATEGIC PLAN (APPROVED)
+------------------------------------------------------------------------
+
+PHASE 1: Fix the Funnel (Week 1)
+- Redesign trackrat.net with open-source mission framing
+- App Store Optimization (keywords, screenshots, subtitle, description)
+- Prepare repo for open source (issue #339, license, README, CONTRIBUTING.md)
+- Move Android to separate private repo
+- Merge PR #368 (LIRR + Metro-North) before going public
+
+PHASE 2: Open Source Launch & Growth (Week 2)
+- Make repo public
+- Reddit posts (r/NJTransit, r/nycrail, r/newjersey, r/opensource)
+- Show HN post ("Open-source ML-powered transit predictions, built by vibe coding")
+- Content marketing begins (transit data posts, short-form video)
+- Community & partnership outreach (transit advocacy, developer community)
+- Sharing deep links and referral mechanism ship
+- Press outreach (open source + vibe coding narrative)
+
+PHASE 3: Product Improvements (Weeks 2-6)
+- PWA/web app enhancement (manifest, service worker, push notifications)
+- Usage analytics integration (TelemetryDeck or similar, privacy-respecting)
+
+PHASE 4: Monetization Optimization (Weeks 8-12)
+- Pricing analysis (requires analytics baseline)
+- Premium feature expansion (Commute Score, widgets, route alerts)
+- API access tiers for developer community
+
+PHASE 5: Platform & Framework Expansion (Weeks 10+)
+- Contributor onboarding documentation ("Add a Transit System" guide)
+- Additional transit systems (community-driven)
+- Framework vs. app branding considerations
+
+PHASE 6: Sustainability (Ongoing)
+- Technical debt (test coverage, linting, cache strategy, Dependabot alerts)
+- Infrastructure cost management
+- Public governance model
+
+NOT ON ROADMAP:
+- Apple Watch app
+- GraphQL
+- WebSocket (polling is adequate)
+- Multi-language support
+- Expansion beyond transit
+
+========================================================================
+KEY DECISIONS
+========================================================================
+
+1. VISION: TrackRat is an open-source, general-purpose transit tracking
+   framework. Not narrowly targeting NJ Transit. The goal is to grow
+   the project, the community, and the broader transit data ecosystem.
+
+2. COMPETITORS: No competitive framing. Encourage other apps to take
+   from our codebase. Open source to boost the entire sector.
+
+3. PRICING: Keep $2.99/month Pro subscription. No changes now.
+
+4. LICENSE: Board approved Apache 2.0 in principle. However, repo
+   currently has GPL v3. License change needs further discussion —
+   GPL v3 copyleft conflicts with the vision of letting proprietary
+   apps freely use our code. ACTION ITEM: Resolve before going public.
+
+5. ANDROID: Exclude from public repo. Move to separate private repo.
+   Still experimental.
+
+6. LIRR/METRO-NORTH: Merge PR #368 before open-source launch.
+   Six transit systems at launch strengthens the framework narrative.
+
+7. COSTS: Ignore infrastructure costs for now. Revisit at scale.
+
+8. OPEN SOURCE TIMELINE: Target next week (week of Feb 9, 2026).
+
+9. TRANSPARENCY: Board proceedings and internal governance processes
+   will be made public. This is an experiment in vibe coding and
+   open governance.
+
+========================================================================
+ACTION ITEMS
+========================================================================
+
+CEO (Claude) — Code:
+[ ] Review and merge PR #368 (LIRR + Metro-North)
+[ ] Move Android to separate private repo
+[ ] Complete issue #339 checklist (secrets audit, CORS, env docs)
+[ ] Add LICENSE file (Apache 2.0, pending final confirmation)
+[ ] Write README.md for open-source launch
+[ ] Write CONTRIBUTING.md
+[ ] Clean up repo for public visibility
+[ ] Redesign trackrat.net (open-source mission, hero video, App Store badge)
+[ ] Add App Store smart banner meta tag
+[ ] Add structured data (JSON-LD) for SEO
+[ ] Build sharing deep links
+[ ] PWA manifest + service worker (Phase 3)
+[ ] Analytics integration (Phase 3)
+
+Chairman (Andy) — Non-code:
+[ ] Take 6-8 high-quality iPhone screenshots
+[ ] Record 30-second screen recording of core flow
+[ ] Gather 2-3 user testimonials
+[ ] Update App Store keywords, subtitle, description
+[ ] Upload new App Store screenshots with text overlays
+[ ] Create App Store Preview video (30 seconds)
+[ ] Draft Reddit post for r/NJTransit
+[ ] Draft Show HN post
+[ ] Prepare content marketing posts (transit data insights)
+[ ] Contact transit advocacy groups
+[ ] Make repo public (when readiness confirmed)
+
+Joint:
+[ ] Resolve license question (GPL v3 vs Apache 2.0)
+[ ] Create GitHub issues for all action items (next step)
+
+========================================================================
+NEXT MEETING
+========================================================================
+
+To be scheduled after open-source launch to assess initial reception
+and adjust strategy.
+
+========================================================================
+ADJOURNMENT
+========================================================================
+
+Motion to approve strategic plan: Passed unanimously (1-0).
+Meeting adjourned.

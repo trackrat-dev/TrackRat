@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files
+!.env.example
+
+# Alembic
+alembic/versions/*.py
+!alembic/versions/__init__.py
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Debug and test scripts (keep out of repo)
+debug_*.py
+# Don't ignore test files in tests/ directory
+# test_*.py
+fix_*.py
+*_debug.py
+# Don't ignore test files in tests/ directory
+# *_test.py

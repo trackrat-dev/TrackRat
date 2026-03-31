@@ -1,0 +1,180 @@
+TrackRat Board Meeting Minutes
+Date: March 19, 2026
+Location: CLI
+Present: Andy Martin (Chairman of the Board), Claude (CEO)
+
+========================================================================
+CALL TO ORDER
+========================================================================
+
+Meeting called to order by the Chairman. Second board meeting; first was
+February 6, 2026.
+
+========================================================================
+CEO REPORT
+========================================================================
+
+931 commits since the February 6 meeting. The board had approved a
+6-phase strategic plan with an open-source launch targeted for the week
+of February 9. The marketing and open-source launch were intentionally
+deprioritized to build two major unplanned features: NYC Subway support
+and route alerts.
+
+Key developments since February 6:
+
+Transit System Expansion:
+- NYC Subway launched: 36 routes, 472 stations, GTFS-RT feeds, beta
+  label removed. Shares MTA common module with LIRR/Metro-North.
+- NJ Transit service alerts added via getStationMSG API.
+- LIRR / Metro-North merged and live (PR #368, board-approved).
+- TrackRat now covers 8 transit systems: NJT, Amtrak, PATH, PATCO,
+  LIRR, Metro-North, NYC Subway, plus NJT service alerts.
+
+Monetization:
+- Price increased from $2.99 to $4.99/month.
+- Freemium model implemented: free users limited to 1 train system
+  and 1 route alert. Multiple paywall bypass bugs fixed.
+- Paywall view redesigned, PRO badges removed from system selection.
+
+Route Alerts & Notifications:
+- Planned work notifications (MTA service alerts).
+- Morning digest notifications.
+- Alert settings UX overhaul (inline labels, reordering, per-line
+  filtering, customizable time windows).
+- NJT service alerts integration.
+
+Predictions:
+- Stop-level delay forecasting (predict delays at boarding station).
+- Track predictions expanded to LIRR and Metro-North.
+- Track predictions removed from paywall (free for all users).
+- Renamed ML references to prediction-agnostic terminology.
+
+iOS UX:
+- Onboarding redesigned: single-select transit system, confetti.
+- Auto-focus search field in station picker.
+- Interactive congestion map with tap-to-navigate.
+- Favorites prioritized in search results.
+- Headway display for frequency-based systems (subway).
+
+Infrastructure:
+- Fixed staging disk-full crash loop.
+- Fixed migration blocking staging startup.
+- Backend moved from Cloud Run to GCE (Managed Instance Groups).
+
+Web:
+- Landing page updated (subway, open-source emphasis, video, FAQ).
+- Web app feature parity improvements.
+- Deploy script added.
+
+Open Source Prep (all code items complete):
+- License changed from GPL v3 to Apache 2.0.
+- Secrets audit and cleanup.
+- README rewrite.
+- CONTRIBUTING.md added.
+- Repo cleaned for public visibility.
+
+Outstanding CEO items not yet completed:
+- JSON-LD structured data for SEO.
+- Sharing deep links.
+- PWA manifest + service worker.
+- Analytics integration.
+- Move Android to separate private repo.
+
+========================================================================
+METRICS
+========================================================================
+
+- App Store: ~20 downloads per week (organic, no marketing).
+- 1 paying subscriber at $4.99/month.
+- 8 transit systems live.
+- No marketing activity since launch.
+
+Board assessment: Real traction for zero marketing. Steady organic
+downloads indicate the App Store listing is working at a baseline level
+even without ASO optimization.
+
+========================================================================
+STRATEGIC DISCUSSION
+========================================================================
+
+The board agreed that deprioritizing the launch to build subway and
+route alerts was the correct decision. The product is now in a
+significantly stronger position:
+
+- 8 transit systems (vs. 6 at last meeting) strengthens the framework
+  narrative.
+- Route alerts are a sticky feature driving daily engagement and Pro
+  conversions.
+- Freemium model lets new users try before paying, important for
+  inbound traffic from Reddit/HN.
+- $4.99 price point captures more revenue per subscriber.
+
+However, the distribution problem diagnosed in February remains
+unchanged. The board agreed that further feature development should not
+delay the launch. The product is more than ready.
+
+========================================================================
+KEY DECISIONS
+========================================================================
+
+1. MAKE REPO PUBLIC THIS WEEK. No remaining code blockers.
+
+2. LAUNCH SEQUENCE APPROVED:
+   - Pre-step: Record 3 demo videos (see below).
+   - Days 1-2: Update App Store (screenshots, keywords, description
+     reflecting 8 systems and route alerts).
+   - Day 3: Make repo public.
+   - Days 4-5: Reddit posts (r/NJTransit, r/nycrail, r/newjersey,
+     r/opensource).
+   - Days 6-7: Show HN post.
+
+3. DEMO VIDEOS (3 total):
+   Video 1: Route Alerts — subscribe to a route, receive morning
+   digest notification, receive real-time delay/planned work
+   notification.
+   Video 2: Multimodal Trip — subway to NJ Transit trip, showcasing
+   all 8 transit systems.
+   Video 3: Onboarding-to-Features — full flow from app open through
+   first departure, naturally incorporating Live Activities, track
+   predictions, and the interactive congestion map.
+
+4. DEFER: PWA, analytics, sharing deep links, Android repo split,
+   JSON-LD. None of these should block launch.
+
+5. FREEMIUM TIER UNCHANGED: 1 system + 1 alert for free users.
+   Revisit after launch traffic provides usage data.
+
+6. TRACK PREDICTIONS REMAIN FREE. They are a key differentiator
+   visible to free users that drives Pro upgrades.
+
+7. CEO.MD REFRESH: Update to reflect current state (8 systems,
+   freemium, $4.99, subway, route alerts).
+
+========================================================================
+ACTION ITEMS
+========================================================================
+
+Chairman (Andy):
+[ ] Record 3 demo videos (route alerts, multimodal trip, onboarding)
+[ ] Update App Store screenshots, keywords, subtitle, description
+[ ] Make repo public
+[ ] Reddit posts (r/NJTransit, r/nycrail, r/newjersey, r/opensource)
+[ ] Show HN post
+
+CEO (Claude):
+[ ] Update CEO.md to reflect current state
+[ ] Support launch as needed (landing page updates, bug fixes, etc.)
+
+========================================================================
+NEXT MEETING
+========================================================================
+
+To be scheduled approximately 1 week after Reddit/HN posts go out,
+to assess initial reception and decide next moves.
+
+========================================================================
+ADJOURNMENT
+========================================================================
+
+Motion to approve launch plan: Passed unanimously (1-0).
+Meeting adjourned.

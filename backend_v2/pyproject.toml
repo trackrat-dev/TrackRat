@@ -1,0 +1,129 @@
+[tool.poetry]
+name = "trackrat-v2"
+version = "2.0.0"
+description = "TrackRat V2 Backend - Simplified train tracking system"
+authors = ["TrackRat Team"]
+readme = "README.md"
+packages = [{include = "trackrat", from = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# Web Framework
+fastapi = "^0.135.2"
+uvicorn = {extras = ["standard"], version = "^0.42.0"}
+pydantic = "^2.12.5"
+pydantic-settings = "^2.13.1"
+
+# Database
+sqlalchemy = "^2.0.48"
+alembic = "^1.18.4"
+asyncpg = "^0.31.0"
+psycopg2-binary = "^2.9.11"  # For Alembic migrations (sync driver)
+
+# HTTP Client
+httpx = {extras = ["http2"], version = "^0.28.1"}
+
+# GTFS Realtime (for LIRR)
+gtfs-realtime-bindings = "^2.0.0"
+
+# Task Scheduling
+apscheduler = "^3.11.2"
+
+# Utilities
+python-dateutil = "^2.8.2"
+pytz = "^2026.1"
+structlog = "^25.5.0"
+
+# Monitoring
+prometheus-client = "^0.24.1"
+
+# Apple Push Notifications
+pyjwt = {extras = ["crypto"], version = "^2.12.1"}
+
+# Google Cloud Storage (for database backups)
+google-cloud-storage = "^3.10.1"
+greenlet = "^3.3.2"
+
+# Utilities
+python-dotenv = "^1.2.2"
+
+[tool.poetry.group.dev.dependencies]
+# Testing
+pytest = "^9.0.2"
+pytest-asyncio = "^1.0.0"
+pytest-cov = "^7.1.0"
+
+# Type Checking
+mypy = "1.19.1"  # Pinned to avoid CI/local version mismatches
+types-python-dateutil = "^2.9.0"
+types-pytz = "^2026.1"
+sqlalchemy = {extras = ["mypy"], version = "^2.0.48"}
+
+# Code Quality
+black = "^26.3.1"
+ruff = "^0.15.6"
+types-cachetools = "^6.2.0.20251022"
+aiosqlite = "^0.22.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_no_return = true
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+
+[[tool.mypy.overrides]]
+module = "apscheduler.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "google.transit.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "google.protobuf.*"
+ignore_missing_imports = true
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501", # line too long (handled by black)
+    "B008", # do not perform function calls in argument defaults
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["src/trackrat"]
+omit = ["*/tests/*", "*/migrations/*"]
