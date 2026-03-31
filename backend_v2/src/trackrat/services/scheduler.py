@@ -1964,12 +1964,26 @@ class SchedulerService:
 
                         journey.origin_station_code = first_stop.STATION_2CHAR
                         journey.terminal_station_code = last_stop.STATION_2CHAR
-                        if first_stop.DEP_TIME:
+                        # Use immutable schedule fields for scheduled times.
+                        # At origin: DEP_TIME = actual departure, TIME = schedule.
+                        # At terminal: TIME = live estimate, SCHED_DEP_DATE = schedule.
+                        if first_stop.SCHED_DEP_DATE:
                             journey.scheduled_departure = parse_njt_time(
-                                first_stop.DEP_TIME
+                                first_stop.SCHED_DEP_DATE
                             )
-                        if last_stop.TIME:
-                            journey.scheduled_arrival = parse_njt_time(last_stop.TIME)
+                        elif first_stop.TIME:
+                            journey.scheduled_departure = parse_njt_time(
+                                first_stop.TIME
+                            )
+                        if journey.scheduled_arrival is None:
+                            if last_stop.SCHED_DEP_DATE:
+                                journey.scheduled_arrival = parse_njt_time(
+                                    last_stop.SCHED_DEP_DATE
+                                )
+                            elif last_stop.SCHED_ARR_DATE:
+                                journey.scheduled_arrival = parse_njt_time(
+                                    last_stop.SCHED_ARR_DATE
+                                )
 
                     # Delete existing stops
                     session.execute(
@@ -1978,10 +1992,35 @@ class SchedulerService:
 
                     # Create new stops
                     for idx, stop_data in enumerate(train_data.STOPS):
-                        scheduled_arrival = (
+                        # Prefer immutable SCHED_*_DATE fields for scheduled times.
+                        # TIME/DEP_TIME have inverted semantics at origin vs intermediate
+                        # and TIME is a live estimate at intermediate stops.
+                        sched_arr = (
+                            parse_njt_time(stop_data.SCHED_ARR_DATE)
+                            if stop_data.SCHED_ARR_DATE
+                            else None
+                        )
+                        sched_dep = (
+                            parse_njt_time(stop_data.SCHED_DEP_DATE)
+                            if stop_data.SCHED_DEP_DATE
+                            else None
+                        )
+                        # Validate: arrival must be <= departure at same stop
+                        if sched_arr and sched_dep and sched_arr > sched_dep:
+                            sched_arr = None
+
+                        scheduled_arrival = sched_arr
+                        scheduled_departure = sched_dep or (
+                            parse_njt_time(stop_data.DEP_TIME)
+                            if stop_data.DEP_TIME
+                            else None
+                        )
+
+                        # Parse live times for actual values
+                        time_field = (
                             parse_njt_time(stop_data.TIME) if stop_data.TIME else None
                         )
-                        scheduled_departure = (
+                        dep_time_field = (
                             parse_njt_time(stop_data.DEP_TIME)
                             if stop_data.DEP_TIME
                             else None
@@ -1991,8 +2030,12 @@ class SchedulerService:
                         actual_arrival = None
                         actual_departure = None
                         if stop_data.DEPARTED == "YES" and not is_stop_cancelled:
-                            actual_arrival = scheduled_arrival
-                            actual_departure = scheduled_departure
+                            # At origin: DEP_TIME = actual, at intermediate: TIME = actual
+                            is_origin = idx == 0
+                            actual_departure = (
+                                dep_time_field if is_origin else time_field
+                            ) or scheduled_departure
+                            actual_arrival = time_field
 
                         stop = JourneyStop(
                             journey_id=journey.id,

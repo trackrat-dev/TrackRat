@@ -830,8 +830,10 @@ class DepartureService:
                             journey.has_complete_journey = True
                             journey.stops_count = len(stops_data)
 
-                            # Update origin/terminal/scheduled_departure from stops
-                            # This fixes journeys discovered at intermediate stations
+                            # Update origin/terminal/scheduled times from stops.
+                            # Use immutable schedule fields (SCHED_*_DATE) over
+                            # TIME/DEP_TIME which have inverted semantics and
+                            # live-updating behavior at intermediate stops.
                             first_stop = stops_data[0]
                             last_stop = stops_data[-1]
 
@@ -839,10 +841,17 @@ class DepartureService:
                                 journey.origin_station_code = first_station
                             if last_station := last_stop.get("STATION_2CHAR"):
                                 journey.terminal_station_code = last_station
-                            if first_dep := first_stop.get("DEP_TIME"):
-                                journey.scheduled_departure = parse_njt_time(first_dep)
-                            if last_arr := last_stop.get("TIME"):
-                                journey.scheduled_arrival = parse_njt_time(last_arr)
+
+                            # At origin: SCHED_DEP_DATE or TIME (schedule)
+                            sched_dep = first_stop.get("SCHED_DEP_DATE") or first_stop.get("TIME")
+                            if sched_dep:
+                                journey.scheduled_departure = parse_njt_time(sched_dep)
+
+                            # At terminal: SCHED_DEP_DATE (immutable), only if not already set
+                            if journey.scheduled_arrival is None:
+                                sched_arr = last_stop.get("SCHED_DEP_DATE") or last_stop.get("SCHED_ARR_DATE")
+                                if sched_arr:
+                                    journey.scheduled_arrival = parse_njt_time(sched_arr)
 
                         logger.debug(
                             "journey_updated_from_schedule",
@@ -1056,12 +1065,27 @@ class DepartureService:
 
             assert stop is not None  # Just inserted or fetched by unique key
 
-            # Update stop data from schedule
-            if arrival_time_str := stop_data.get("TIME"):
-                stop.scheduled_arrival = parse_njt_time(arrival_time_str)
+            # Update scheduled times from immutable SCHED_*_DATE fields.
+            # Only set if not already populated (preserves schedule-collector values).
+            # TIME/DEP_TIME have inverted semantics at origin vs intermediate and
+            # TIME is a live estimate at intermediate stops — not suitable for scheduled.
+            if stop.scheduled_arrival is None:
+                sched_arr_str = stop_data.get("SCHED_ARR_DATE")
+                sched_dep_str = stop_data.get("SCHED_DEP_DATE")
+                sched_arr = parse_njt_time(sched_arr_str) if sched_arr_str else None
+                sched_dep = parse_njt_time(sched_dep_str) if sched_dep_str else None
+                # Validate: arrival must be <= departure (reject NJT delay corruption)
+                if sched_arr and sched_dep and sched_arr > sched_dep:
+                    sched_arr = None
+                if sched_arr:
+                    stop.scheduled_arrival = sched_arr
 
-            if departure_time_str := stop_data.get("DEP_TIME"):
-                stop.scheduled_departure = parse_njt_time(departure_time_str)
+            if stop.scheduled_departure is None:
+                sched_dep_str = stop_data.get("SCHED_DEP_DATE")
+                if sched_dep_str:
+                    stop.scheduled_departure = parse_njt_time(sched_dep_str)
+                elif dep_time_str := stop_data.get("DEP_TIME"):
+                    stop.scheduled_departure = parse_njt_time(dep_time_str)
 
             # Update departure status with time validation
             departed = (stop_data.get("DEPARTED") or "").upper() or None
