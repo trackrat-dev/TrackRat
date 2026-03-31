@@ -26,11 +26,13 @@ logger = get_logger(__name__)
 
 # Data sources where segments must match a known route topology.
 # Unmatched segments (not found in any route) are dropped as anomalous —
-# typically caused by sparse GTFS-RT stop lists creating phantom
-# cross-branch connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W).
-# All GTFS-RT systems with branching routes are included as a defensive
-# measure — SUBWAY and BART are highest risk due to dense route overlap.
+# typically caused by sparse stop lists creating phantom long-distance
+# connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W for subway,
+# or NYP → BTN for Amtrak trains with missing intermediate stops).
+# AMTRAK included because sparse API responses can create segments spanning
+# hundreds of miles when intermediate stops lack actual times.
 _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
+    "AMTRAK",
     "SUBWAY",
     "BART",
     "LIRR",

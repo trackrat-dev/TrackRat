@@ -825,6 +825,123 @@ AMTRAK_PIEDMONT = Route(
     stations=("RGH", "DNC", "GRO", "HPT", "CLT"),
 )
 
+AMTRAK_VERMONTER = Route(
+    id="amtrak-vermonter",
+    name="Vermonter",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        # NEC trunk (WS→NY→NHV) handled by AMTRAK_NEC;
+        # Vermonter-specific routing starts at NHV inland branch.
+        "NHV",
+        "BRP",
+        "HFD",
+        "WNL",
+        "SPG",
+        "NHT",
+        "GFD",
+        "BRA",
+        "BLF",
+        "CLA",
+        "WND",
+        "WRJ",
+        "RPH",
+        "MPR",
+        "WAB",
+        "ESX",
+        "BTN",
+    ),
+)
+
+AMTRAK_ETHAN_ALLEN = Route(
+    id="amtrak-ethan-allen",
+    name="Ethan Allen Express",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        "NY",
+        "YNY",
+        "CRT",
+        "POU",
+        "RHI",
+        "HUD",
+        "SDY",
+        "ALB",
+        "SAR",
+        "FED",
+        "WHL",
+        "CNV",
+        "RUD",
+    ),
+)
+
+AMTRAK_ADIRONDACK = Route(
+    id="amtrak-adirondack",
+    name="Adirondack",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        "NY",
+        "YNY",
+        "CRT",
+        "POU",
+        "RHI",
+        "HUD",
+        "SDY",
+        "ALB",
+        "SAR",
+        "FED",
+        "WHL",
+        "FTC",
+        "POH",
+        "PLB",
+        "RSP",
+        "MTR",
+    ),
+)
+
+AMTRAK_PALMETTO = Route(
+    id="amtrak-palmetto",
+    name="Palmetto",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        # NEC trunk (NY→WS) handled by AMTRAK_NEC;
+        # Palmetto extends Southeast corridor to Savannah.
+        # Overlaps with AMTRAK_SOUTHEAST (WS→CLT) and AMTRAK_COASTAL (DIL→JAX)
+        # but provides the full WS→SAV path for trains skipping branches.
+        "WS",
+        "ALX",
+        "RVR",
+        "PTB",
+        "RMT",
+        "WLN",
+        "SEL",
+        "RGH",
+        "FLO",
+        "CHS",
+        "SAV",
+    ),
+)
+
+AMTRAK_CARDINAL = Route(
+    id="amtrak-cardinal",
+    name="Cardinal",
+    data_source="AMTRAK",
+    line_codes=frozenset({"AM"}),
+    stations=(
+        # NEC trunk (NY→WS) handled by AMTRAK_NEC;
+        # Cardinal-specific routing from WS westward.
+        "WS",
+        "CVS",
+        "STA",
+        "HIN",
+        "CIN",
+        "IND",
+        "CHI",
+    ),
+)
+
 # =============================================================================
 # LIRR ROUTES
 # =============================================================================
@@ -3739,6 +3856,11 @@ ALL_ROUTES: tuple[Route, ...] = (
     AMTRAK_WOLVERINE,
     AMTRAK_DOWNEASTER,
     AMTRAK_PIEDMONT,
+    AMTRAK_VERMONTER,
+    AMTRAK_ETHAN_ALLEN,
+    AMTRAK_ADIRONDACK,
+    AMTRAK_PALMETTO,
+    AMTRAK_CARDINAL,
     # LIRR
     LIRR_BABYLON,
     LIRR_HEMPSTEAD,

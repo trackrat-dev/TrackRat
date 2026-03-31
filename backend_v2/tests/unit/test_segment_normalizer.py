@@ -479,14 +479,27 @@ class TestIsSegmentAnomalous:
         assert not _is_segment_anomalous("NY", "LB", "NJT")
 
     def test_non_gtfsrt_sources_not_checked(self):
-        """Test that non-GTFS-RT sources are not subject to route-match filtering.
+        """Test that non-GTFS-RT sources without branching are not subject to route-match filtering.
 
         PATH and WMATA use complete route topology for stop creation.
-        Amtrak and NJT use full API stop lists.
         """
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "PATH")
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "WMATA")
-        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "AMTRAK")
+
+    def test_amtrak_unknown_stations_are_anomalous(self):
+        """Test that AMTRAK segments with unknown stations are flagged as anomalous.
+
+        Amtrak API can return sparse stop lists creating phantom long-distance
+        segments (e.g., NYP→BTN with missing intermediate stops).
+        """
+        assert _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "AMTRAK")
+
+    def test_amtrak_valid_segment_not_anomalous(self):
+        """Test that AMTRAK segments on known routes pass through."""
+        # NEC segment: NY→TR is on the NEC route
+        assert not _is_segment_anomalous("NY", "TR", "AMTRAK")
+        # Vermonter segment: SPG→BRA is on the Vermonter route
+        assert not _is_segment_anomalous("SPG", "BRA", "AMTRAK")
 
 
 class TestAnomalousSegmentFiltering:
