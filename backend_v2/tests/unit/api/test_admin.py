@@ -50,9 +50,9 @@ class TestAdminStatsPage:
         assert "TESTING" in html
 
     def test_contains_auto_refresh(self, client):
-        """Stats page has auto-refresh meta tag."""
+        """Stats page has JavaScript auto-refresh."""
         response = client.get("/admin/stats")
-        assert 'http-equiv="refresh"' in response.text
+        assert "setInterval(refresh" in response.text
 
     def test_contains_unique_ip_count(self, client):
         """Stats page shows unique IP count in header."""
