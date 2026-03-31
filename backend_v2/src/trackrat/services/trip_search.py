@@ -8,6 +8,7 @@ real-time departures at transfer points between transit systems.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,12 +17,15 @@ from structlog import get_logger
 from trackrat.config.stations import get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
-    get_intra_subway_transfers,
+    get_intra_system_transfers,
+    get_station_lines,
     get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
 )
+from trackrat.db.engine import get_session
 from trackrat.models.api import (
+    DeparturesResponse,
     SimpleStationInfo,
     StationInfo,
     TrainDeparture,
@@ -90,6 +94,20 @@ def _make_direct_trip(dep: TrainDeparture) -> TripOption | None:
     )
 
 
+def _filter_unreasonable_durations(trips: list[TripOption]) -> list[TripOption]:
+    """Remove trips that are disproportionately longer than the fastest option.
+
+    Keeps alternatives within 2x the fastest duration or +20 min, whichever is
+    more generous.  The +20 min floor prevents over-aggressive filtering on short
+    trips (e.g. a 12-min trip wouldn't exclude a 22-min alternative).
+    """
+    if not trips:
+        return trips
+    min_dur = min(t.total_duration_minutes for t in trips)
+    max_reasonable = max(min_dur * 2.0, min_dur + 20)
+    return [t for t in trips if t.total_duration_minutes <= max_reasonable]
+
+
 def _find_relevant_transfer_points(
     from_systems: set[str],
     to_systems: set[str],
@@ -118,32 +136,36 @@ def _find_relevant_transfer_points(
                     seen.add(key)
                     transfers.append(tp)
 
-    # Intra-subway transfers: find complexes connecting origin's lines to dest's lines.
+    # Intra-system transfers: find junction points connecting origin's lines to
+    # dest's lines within the same system. Works for SUBWAY (complexes),
+    # PATH (junction at Journal Sq), BART (branching lines), etc.
     # We don't skip when lines overlap — even if origin and dest share a line,
     # direct service may not cover the segment, so a transfer via a different
     # line can still be the best (or only) option.
-    if (
-        "SUBWAY" in from_systems
-        and "SUBWAY" in to_systems
-        and from_station
-        and to_station
-    ):
-        origin_lines = get_subway_lines_at_station(from_station)
-        dest_lines = get_subway_lines_at_station(to_station)
-        if origin_lines and dest_lines:
-            for tp in get_intra_subway_transfers():
-                # One side must share lines with origin, other with destination
-                a_has_origin = bool(tp.lines_a & origin_lines)
-                b_has_origin = bool(tp.lines_b & origin_lines)
-                a_has_dest = bool(tp.lines_a & dest_lines)
-                b_has_dest = bool(tp.lines_b & dest_lines)
-                if (a_has_origin and b_has_dest) or (b_has_origin and a_has_dest):
-                    key = frozenset(
-                        {(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)}
-                    )
-                    if key not in seen:
-                        seen.add(key)
-                        transfers.append(tp)
+    if from_station and to_station:
+        common_systems = from_systems & to_systems
+        for system in common_systems:
+            origin_lines = get_station_lines(from_station, system)
+            dest_lines = get_station_lines(to_station, system)
+            if origin_lines and dest_lines:
+                for tp in get_intra_system_transfers(system):
+                    # One side must share lines with origin, other with dest
+                    a_has_origin = bool(tp.lines_a & origin_lines)
+                    b_has_origin = bool(tp.lines_b & origin_lines)
+                    a_has_dest = bool(tp.lines_a & dest_lines)
+                    b_has_dest = bool(tp.lines_b & dest_lines)
+                    if (a_has_origin and b_has_dest) or (
+                        b_has_origin and a_has_dest
+                    ):
+                        key = frozenset(
+                            {
+                                (tp.station_a, tp.system_a),
+                                (tp.station_b, tp.system_b),
+                            }
+                        )
+                        if key not in seen:
+                            seen.add(key)
+                            transfers.append(tp)
 
     return transfers
 
@@ -163,9 +185,9 @@ def _orient_transfer(
     For intra-subway transfers (system_a == system_b), uses line overlap
     with origin/destination to determine orientation.
     """
-    # Intra-subway: orient by line overlap with origin/destination
+    # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
-        origin_lines = get_subway_lines_at_station(from_station)
+        origin_lines = get_station_lines(from_station, tp.system_a)
         if tp.lines_a & origin_lines:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
@@ -249,6 +271,13 @@ async def search_trips(
     from_systems = get_systems_serving_station(from_station)
     to_systems = get_systems_serving_station(to_station)
 
+    # Restrict to user-enabled systems so transfer search doesn't
+    # propose routes through systems the user hasn't selected.
+    if data_sources:
+        allowed = set(data_sources)
+        from_systems = from_systems & allowed
+        to_systems = to_systems & allowed
+
     if not from_systems or not to_systems:
         return _empty_response(from_station, to_station, "no_systems")
 
@@ -259,58 +288,123 @@ async def search_trips(
     if not transfer_points:
         return _empty_response(from_station, to_station, "no_transfer_points")
 
-    # Query departures for each transfer point
-    transfer_trips: list[TripOption] = []
-    queries_made = 0
-    transfer_points_checked = 0
-
+    # Prepare transfer point queries — orient each transfer point up front
+    # Limit to MAX_TRANSFER_QUERIES / 2 transfer points (each needs 2 queries)
+    max_transfer_points = MAX_TRANSFER_QUERIES // 2
+    oriented_transfers: list[tuple[TransferPoint, str, str, str, str]] = []
     for tp in transfer_points:
-        if queries_made >= MAX_TRANSFER_QUERIES:
+        if len(oriented_transfers) >= max_transfer_points:
             break
-        transfer_points_checked += 1
-
         alight_station, alight_system, board_station, board_system = _orient_transfer(
             tp, from_systems, to_systems, from_station, to_station
         )
-
-        # Leg 1: from_station -> alight_station (system of from_station)
-        leg1_response = await departure_service.get_departures(
-            db=db,
-            from_station=from_station,
-            to_station=alight_station,
-            date=search_date,
-            time_from=time_from,
-            time_to=time_to,
-            limit=20,  # Get enough candidates for matching
-            hide_departed=hide_departed,
-            data_sources=[alight_system],
-            skip_individual_refresh=True,
+        oriented_transfers.append(
+            (tp, alight_station, alight_system, board_station, board_system)
         )
-        queries_made += 1
 
-        if not leg1_response.departures:
+    transfer_points_checked = len(oriented_transfers)
+
+    # Fire all leg queries in parallel using separate DB sessions.
+    # Each transfer point needs leg1 (origin -> transfer) and leg2 (transfer -> dest).
+    # Using separate sessions is required because AsyncSession is not concurrency-safe.
+    #
+    async def _query_leg(
+        leg_from: str,
+        leg_to: str,
+        leg_date: date | None,
+        leg_time_from: datetime | None,
+        leg_time_to: datetime | None,
+        leg_hide_departed: bool,
+        leg_data_sources: list[str],
+    ) -> DeparturesResponse:
+        async with get_session() as leg_db:
+            return await departure_service.get_departures(
+                db=leg_db,
+                from_station=leg_from,
+                to_station=leg_to,
+                date=leg_date,
+                time_from=leg_time_from,
+                time_to=leg_time_to,
+                limit=20,
+                hide_departed=leg_hide_departed,
+                data_sources=leg_data_sources,
+                skip_individual_refresh=True,
+            )
+
+    # Build all tasks: for each transfer point, leg1 and leg2
+    leg_tasks: list[tuple[int, str]] = []  # (transfer_idx, "leg1"|"leg2")
+    coros = []
+    for i, (
+        _tp,
+        alight_station,
+        alight_system,
+        board_station,
+        board_system,
+    ) in enumerate(oriented_transfers):
+        # Leg 1: from_station -> alight_station
+        coros.append(
+            _query_leg(
+                from_station,
+                alight_station,
+                search_date,
+                time_from,
+                time_to,
+                hide_departed,
+                [alight_system],
+            )
+        )
+        leg_tasks.append((i, "leg1"))
+
+        # Leg 2: board_station -> to_station
+        # No time_from/time_to — leg 1 may arrive after original window.
+        # hide_departed=True to avoid stale OBSERVED trains from hours ago
+        # that would never match leg 1's arrival time.
+        coros.append(
+            _query_leg(
+                board_station,
+                to_station,
+                search_date,
+                None,
+                None,
+                True,
+                [board_system],
+            )
+        )
+        leg_tasks.append((i, "leg2"))
+
+    # Execute all leg queries concurrently
+    results = await asyncio.gather(*coros, return_exceptions=True)
+
+    # Group results by transfer point index
+    leg_responses: dict[int, dict[str, DeparturesResponse]] = {}
+    for (idx, leg_name), result in zip(leg_tasks, results, strict=False):
+        if isinstance(result, BaseException):
+            logger.warning(
+                "transfer_leg_query_failed",
+                transfer_idx=idx,
+                leg=leg_name,
+                error=str(result),
+            )
             continue
+        leg_responses.setdefault(idx, {})[leg_name] = result
 
-        # Leg 2: board_station -> to_station (system of to_station)
-        # Start leg 2 from the earliest leg 1 departure time so that the
-        # limited result set (20 departures) covers the connection window
-        # instead of being consumed by old, irrelevant departures.
-        leg2_time_from = _get_best_time(leg1_response.departures[0].departure)
-        leg2_response = await departure_service.get_departures(
-            db=db,
-            from_station=board_station,
-            to_station=to_station,
-            date=search_date,
-            time_from=leg2_time_from,
-            time_to=None,
-            limit=20,
-            hide_departed=False,  # Don't hide — we need future departures to match
-            data_sources=[board_system],
-            skip_individual_refresh=True,
-        )
-        queries_made += 1
+    queries_made = len([r for r in results if not isinstance(r, BaseException)])
 
-        if not leg2_response.departures:
+    # Match connections from parallel results
+    transfer_trips: list[TripOption] = []
+    for i, (
+        tp,
+        alight_station,
+        _alight_system,
+        board_station,
+        _board_system,
+    ) in enumerate(oriented_transfers):
+        responses = leg_responses.get(i, {})
+        leg1_response = responses.get("leg1")
+        leg2_response = responses.get("leg2")
+        if not leg1_response or not leg1_response.departures:
+            continue
+        if not leg2_response or not leg2_response.departures:
             continue
 
         # Match connections: leg1 arrival + transfer time <= leg2 departure
@@ -377,6 +471,8 @@ async def search_trips(
                 )
                 transfer_trips.append(trip)
                 break  # Only take the first matching leg2 for this leg1
+
+    transfer_trips = _filter_unreasonable_durations(transfer_trips)
 
     # Sort by departure time, then total duration
     transfer_trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))
