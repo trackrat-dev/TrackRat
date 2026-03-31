@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
@@ -11,6 +11,8 @@ import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { getStationByCode } from '../data/stations';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
+
+const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ default: m.RouteMap })));
 
 /** Convert a direct TripOption (1 leg) to a Train for the existing TrainCard */
 function tripLegToTrain(trip: TripOption): Train {
@@ -170,6 +172,17 @@ export function TrainListPage() {
       {/* Service alerts for MTA systems */}
       {fromStation.system && (
         <ServiceAlertBanner dataSource={fromStation.system} />
+      )}
+
+      {/* Route map (lazy-loaded) */}
+      {fromStation && toStation && (
+        <Suspense fallback={null}>
+          <RouteMap
+            fromStation={fromStation}
+            toStation={toStation}
+            lineColor={trains[0]?.line.color}
+          />
+        </Suspense>
       )}
 
       {/* Route summary (direct routes only) */}
