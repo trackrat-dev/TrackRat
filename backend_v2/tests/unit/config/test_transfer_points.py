@@ -15,6 +15,8 @@ from trackrat.config.transfer_points import (
     WALK_THRESHOLD_METERS,
     TransferPoint,
     _haversine_meters,
+    get_intra_subway_transfers,
+    get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
     get_transfers_from_station,
@@ -45,15 +47,32 @@ class TestTransferPointGeneration:
     def test_total_count_reasonable(self):
         """Should find a meaningful number of transfers (not 0, not thousands)."""
         assert (
-            30 < len(TRANSFER_POINTS) < 200
-        ), f"Expected 30-200 transfer points, got {len(TRANSFER_POINTS)}"
+            30 < len(TRANSFER_POINTS) < 500
+        ), f"Expected 30-500 transfer points, got {len(TRANSFER_POINTS)}"
 
-    def test_all_transfers_are_cross_system(self):
-        """Every transfer must connect different systems."""
-        for tp in TRANSFER_POINTS:
-            assert tp.system_a != tp.system_b, (
-                f"Same-system transfer found: {tp.station_a}/{tp.system_a} "
-                f"<-> {tp.station_b}/{tp.system_b}"
+    def test_cross_system_transfers_exist(self):
+        """Cross-system transfers must exist."""
+        cross = [tp for tp in TRANSFER_POINTS if tp.system_a != tp.system_b]
+        assert len(cross) > 0, "No cross-system transfers found"
+
+    def test_intra_subway_transfers_exist(self):
+        """Intra-subway transfers must exist at station complexes."""
+        intra = [
+            tp for tp in TRANSFER_POINTS
+            if tp.system_a == "SUBWAY" and tp.system_b == "SUBWAY"
+        ]
+        assert len(intra) > 0, "No intra-subway transfers found"
+        # All intra-subway should be same-station (within a complex)
+        for tp in intra:
+            assert tp.same_station, (
+                f"Intra-subway transfer {tp.station_a} <-> {tp.station_b} "
+                f"should be same_station"
+            )
+            assert tp.lines_a, f"Intra-subway {tp.station_a} missing lines_a"
+            assert tp.lines_b, f"Intra-subway {tp.station_b} missing lines_b"
+            assert tp.lines_a != tp.lines_b, (
+                f"Intra-subway {tp.station_a} <-> {tp.station_b} "
+                f"should connect different line groups"
             )
 
     def test_walk_minutes_at_least_minimum(self):
@@ -262,3 +281,113 @@ class TestTransferPointProperties:
         )
         assert tp.station_a_name == "New York Penn Station"
         assert tp.station_b_name == "33rd Street"
+
+    def test_lines_default_empty(self):
+        """lines_a and lines_b default to empty frozensets."""
+        tp = TransferPoint(
+            station_a="NY", system_a="NJT", station_b="P33", system_b="PATH",
+            walk_meters=0.0, walk_minutes=5, same_station=False,
+        )
+        assert tp.lines_a == frozenset()
+        assert tp.lines_b == frozenset()
+
+
+class TestIntraSubwayTransfers:
+    """Test intra-subway transfer point generation and lookup."""
+
+    def test_union_sq_transfer_exists(self):
+        """Union Sq should have L <-> 4/5/6 transfer."""
+        intra = get_intra_subway_transfers()
+        union_sq = [
+            tp for tp in intra
+            if {"SL03", "S635"} <= {tp.station_a, tp.station_b}
+        ]
+        assert len(union_sq) == 1, (
+            f"Expected 1 Union Sq L<->4/5/6 transfer, got {len(union_sq)}"
+        )
+        tp = union_sq[0]
+        # One side should have L, other should have 4/5
+        all_lines = tp.lines_a | tp.lines_b
+        assert "L" in all_lines, "Union Sq transfer should include L line"
+        assert "4" in all_lines, "Union Sq transfer should include 4 line"
+
+    def test_times_sq_transfer_exists(self):
+        """Times Sq should have transfers between its many line groups."""
+        intra = get_intra_subway_transfers()
+        # Times Sq complex: S127, S725, SA27, SR16, S902
+        times_sq_codes = {"S127", "S725", "SA27", "SR16", "S902"}
+        times_sq = [
+            tp for tp in intra
+            if tp.station_a in times_sq_codes and tp.station_b in times_sq_codes
+        ]
+        assert len(times_sq) > 0, "Times Sq should have intra-subway transfers"
+
+    def test_fulton_st_transfer_exists(self):
+        """Fulton St should have transfers across its complex (2/3 + 4/5 + A/C + J/Z)."""
+        intra = get_intra_subway_transfers()
+        fulton_codes = {"S229", "S418", "SA38", "SM22"}
+        fulton = [
+            tp for tp in intra
+            if tp.station_a in fulton_codes and tp.station_b in fulton_codes
+        ]
+        assert len(fulton) > 0, "Fulton St should have intra-subway transfers"
+
+    def test_no_same_line_transfers(self):
+        """Intra-subway transfers should never connect the same line group."""
+        intra = get_intra_subway_transfers()
+        for tp in intra:
+            assert tp.lines_a != tp.lines_b, (
+                f"Same-line transfer found: {tp.station_a} ({tp.lines_a}) "
+                f"<-> {tp.station_b} ({tp.lines_b})"
+            )
+
+    def test_intra_subway_indexed_correctly(self):
+        """get_intra_subway_transfers should return same-system SUBWAY pairs."""
+        intra = get_intra_subway_transfers()
+        for tp in intra:
+            assert tp.system_a == "SUBWAY"
+            assert tp.system_b == "SUBWAY"
+
+    def test_no_duplicates_in_intra_subway(self):
+        """No duplicate pairs in intra-subway transfers."""
+        intra = get_intra_subway_transfers()
+        seen: set[frozenset[str]] = set()
+        for tp in intra:
+            key = frozenset({tp.station_a, tp.station_b})
+            assert key not in seen, (
+                f"Duplicate intra-subway: {tp.station_a} <-> {tp.station_b}"
+            )
+            seen.add(key)
+
+
+class TestGetSubwayLinesAtStation:
+    """Test subway line lookup with equivalence expansion."""
+
+    def test_metropolitan_av_has_g_and_l(self):
+        """Metropolitan Av (SG29) is in complex with Lorimer St (SL10) on L."""
+        lines = get_subway_lines_at_station("SG29")
+        assert "G" in lines, "SG29 should be on G line"
+        assert "L" in lines, "SG29 equivalent SL10 should bring in L line"
+
+    def test_wall_st_4_5(self):
+        """Wall St (S419) should be on the 4 and 5 lines."""
+        lines = get_subway_lines_at_station("S419")
+        assert "4" in lines
+        assert "5" in lines
+
+    def test_union_sq_all_lines(self):
+        """14 St-Union Sq (S635) should include 4/5/6 + L + N/Q/R/W via equivalences."""
+        lines = get_subway_lines_at_station("S635")
+        assert "4" in lines
+        assert "L" in lines, "S635 is equivalent to SL03 which is on L"
+        assert "N" in lines, "S635 is equivalent to SR20 which is on N/Q/R/W"
+
+    def test_unknown_station_returns_empty(self):
+        """Unknown station returns empty frozenset."""
+        lines = get_subway_lines_at_station("ZZZZZ")
+        assert lines == frozenset()
+
+    def test_non_subway_station_returns_empty(self):
+        """Non-subway station (NJT) returns empty frozenset."""
+        lines = get_subway_lines_at_station("NY")
+        assert lines == frozenset()

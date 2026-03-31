@@ -633,6 +633,69 @@ for route in "${ROUTES[@]}"; do
   IDX=$((IDX + 1))
 done
 
+# --- Trip Search (cross-system and intra-subway transfers) ---
+
+echo -e "${BOLD}Trip Search API...${NC}"
+
+# Cross-system: NJT Newark Penn -> PATH World Trade Center
+TRIP_LABEL="NJT->PATH (NP->PWC)"
+echo -e "  $TRIP_LABEL"
+code=$(curl -s -o "$TMPDIR/trip.json" -w "%{http_code}" "$API/trips/search?from=NP&to=PWC&hide_departed=true&limit=5" 2>/dev/null)
+if [[ "$code" == "200" ]]; then
+  count=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip.json')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
+  search_type=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip.json')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
+  if [[ "$count" -gt 0 ]]; then
+    pass "$TRIP_LABEL: $count trips ($search_type)"
+  else
+    warn "$TRIP_LABEL: 0 trips returned ($search_type) — may be off-hours"
+  fi
+else
+  fail "$TRIP_LABEL: HTTP $code"
+  FAILED_ROUTES+=("Trip search $TRIP_LABEL: HTTP $code")
+fi
+
+# Intra-subway: Metropolitan Av (G/L) -> Wall St (4/5)
+TRIP_LABEL="SUBWAY G/L->4/5 (SG29->S419)"
+echo -e "  $TRIP_LABEL"
+code=$(curl -s -o "$TMPDIR/trip2.json" -w "%{http_code}" "$API/trips/search?from=SG29&to=S419&hide_departed=true&limit=5" 2>/dev/null)
+if [[ "$code" == "200" ]]; then
+  count=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip2.json')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
+  search_type=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip2.json')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
+  if [[ "$count" -gt 0 ]]; then
+    # Verify it's a transfer trip (not direct — G and 4/5 don't share tracks)
+    is_direct=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip2.json')); print(d['trips'][0].get('is_direct', True))" 2>/dev/null || echo "true")
+    if [[ "$is_direct" == "False" ]]; then
+      pass "$TRIP_LABEL: $count transfer trips ($search_type)"
+    else
+      warn "$TRIP_LABEL: $count trips but marked direct (unexpected)"
+    fi
+  else
+    warn "$TRIP_LABEL: 0 trips returned ($search_type) — subway may be off-hours"
+  fi
+else
+  fail "$TRIP_LABEL: HTTP $code"
+  FAILED_ROUTES+=("Trip search $TRIP_LABEL: HTTP $code")
+fi
+
+# Intra-subway: same line should return direct (not transfer)
+TRIP_LABEL="SUBWAY same-line (S635->S419)"
+echo -e "  $TRIP_LABEL"
+code=$(curl -s -o "$TMPDIR/trip3.json" -w "%{http_code}" "$API/trips/search?from=S635&to=S419&hide_departed=true&limit=5" 2>/dev/null)
+if [[ "$code" == "200" ]]; then
+  count=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip3.json')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
+  search_type=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip3.json')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
+  if [[ "$count" -gt 0 ]]; then
+    pass "$TRIP_LABEL: $count trips ($search_type)"
+  else
+    warn "$TRIP_LABEL: 0 trips ($search_type) — may be off-hours"
+  fi
+else
+  fail "$TRIP_LABEL: HTTP $code"
+  FAILED_ROUTES+=("Trip search $TRIP_LABEL: HTTP $code")
+fi
+
+echo ""
+
 # --- Summary ---
 
 echo -e "${BOLD}========== SUMMARY ==========${NC}"

@@ -16,6 +16,8 @@ from structlog import get_logger
 from trackrat.config.stations import get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
+    get_intra_subway_transfers,
+    get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
 )
@@ -89,11 +91,21 @@ def _make_direct_trip(dep: TrainDeparture) -> TripOption | None:
 
 
 def _find_relevant_transfer_points(
-    from_systems: set[str], to_systems: set[str]
+    from_systems: set[str],
+    to_systems: set[str],
+    from_station: str = "",
+    to_station: str = "",
 ) -> list[TransferPoint]:
-    """Find transfer points connecting from-systems to to-systems."""
+    """Find transfer points connecting from-systems to to-systems.
+
+    For cross-system pairs (e.g., NJT→PATH), returns all transfer points.
+    For intra-subway (both SUBWAY), filters to complexes where one side
+    shares lines with the origin and the other shares lines with the destination.
+    """
     transfers: list[TransferPoint] = []
     seen: set[frozenset[tuple[str, str]]] = set()
+
+    # Cross-system transfers (existing logic)
     for sys_from in from_systems:
         for sys_to in to_systems:
             if sys_from == sys_to:
@@ -105,17 +117,53 @@ def _find_relevant_transfer_points(
                 if key not in seen:
                     seen.add(key)
                     transfers.append(tp)
+
+    # Intra-subway transfers: find complexes connecting origin's lines to dest's lines
+    if "SUBWAY" in from_systems and "SUBWAY" in to_systems and from_station and to_station:
+        origin_lines = get_subway_lines_at_station(from_station)
+        dest_lines = get_subway_lines_at_station(to_station)
+        if origin_lines and dest_lines and not origin_lines & dest_lines:
+            # Origin and dest are on different subway lines — look for transfer complexes
+            for tp in get_intra_subway_transfers():
+                # One side must share lines with origin, other with destination
+                a_has_origin = bool(tp.lines_a & origin_lines)
+                b_has_origin = bool(tp.lines_b & origin_lines)
+                a_has_dest = bool(tp.lines_a & dest_lines)
+                b_has_dest = bool(tp.lines_b & dest_lines)
+                if (a_has_origin and b_has_dest) or (b_has_origin and a_has_dest):
+                    key = frozenset(
+                        {(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)}
+                    )
+                    if key not in seen:
+                        seen.add(key)
+                        transfers.append(tp)
+
     return transfers
 
 
 def _orient_transfer(
-    tp: TransferPoint, from_systems: set[str], to_systems: set[str]
+    tp: TransferPoint,
+    from_systems: set[str],
+    to_systems: set[str],
+    from_station: str = "",
+    to_station: str = "",
 ) -> tuple[str, str, str, str]:
     """Orient a transfer point: returns (alight_station, alight_system, board_station, board_system).
 
     The alight station is on the from-side system (where you get off leg 1).
     The board station is on the to-side system (where you board leg 2).
+
+    For intra-subway transfers (system_a == system_b), uses line overlap
+    with origin/destination to determine orientation.
     """
+    # Intra-subway: orient by line overlap with origin/destination
+    if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
+        origin_lines = get_subway_lines_at_station(from_station)
+        if tp.lines_a & origin_lines:
+            return tp.station_a, tp.system_a, tp.station_b, tp.system_b
+        return tp.station_b, tp.system_b, tp.station_a, tp.system_a
+
+    # Cross-system: orient by system membership (existing logic)
     if tp.system_a in from_systems and tp.system_b in to_systems:
         return tp.station_a, tp.system_a, tp.station_b, tp.system_b
     elif tp.system_b in from_systems and tp.system_a in to_systems:
@@ -197,9 +245,10 @@ async def search_trips(
     if not from_systems or not to_systems:
         return _empty_response(from_station, to_station, "no_systems")
 
-    # Find transfer points between systems that DON'T both serve origin and destination.
-    # (If systems share both stations, direct service exists but has no trains right now.)
-    transfer_points = _find_relevant_transfer_points(from_systems, to_systems)
+    # Find transfer points between systems (cross-system and intra-subway).
+    transfer_points = _find_relevant_transfer_points(
+        from_systems, to_systems, from_station, to_station
+    )
     if not transfer_points:
         return _empty_response(from_station, to_station, "no_transfer_points")
 
@@ -214,7 +263,7 @@ async def search_trips(
         transfer_points_checked += 1
 
         alight_station, alight_system, board_station, board_system = _orient_transfer(
-            tp, from_systems, to_systems
+            tp, from_systems, to_systems, from_station, to_station
         )
 
         # Leg 1: from_station -> alight_station (system of from_station)

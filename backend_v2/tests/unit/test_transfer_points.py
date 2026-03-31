@@ -64,13 +64,22 @@ class TestTransferPointGeneration:
         """Transfer points should be auto-generated from station data."""
         assert len(TRANSFER_POINTS) > 0, "No transfer points were generated"
 
-    def test_all_transfer_points_have_different_systems(self):
-        """Every transfer point must connect different transit systems."""
-        for tp in TRANSFER_POINTS:
-            assert tp.system_a != tp.system_b, (
-                f"Transfer {tp.station_a}({tp.system_a}) <-> {tp.station_b}({tp.system_b}) "
-                f"connects same system"
-            )
+    def test_cross_system_transfers_exist(self):
+        """Cross-system transfer points must exist."""
+        cross = [tp for tp in TRANSFER_POINTS if tp.system_a != tp.system_b]
+        assert len(cross) > 0, "No cross-system transfers found"
+
+    def test_intra_subway_transfers_have_line_metadata(self):
+        """Intra-subway transfers must have lines_a and lines_b populated."""
+        intra = [
+            tp for tp in TRANSFER_POINTS
+            if tp.system_a == tp.system_b == "SUBWAY"
+        ]
+        assert len(intra) > 0, "No intra-subway transfers found"
+        for tp in intra:
+            assert tp.lines_a, f"{tp.station_a} missing lines_a"
+            assert tp.lines_b, f"{tp.station_b} missing lines_b"
+            assert tp.lines_a != tp.lines_b
 
     def test_same_station_transfers_have_zero_walk_meters(self):
         """Same-station transfers should have 0 walk distance."""
@@ -140,9 +149,14 @@ class TestTransferPointLookup:
         ba = get_transfer_points("AMTRAK", "NJT")
         assert len(ab) == len(ba), "Bidirectional lookup should return same count"
 
-    def test_get_transfer_points_same_system_empty(self):
-        """Same system should return no transfer points."""
+    def test_get_transfer_points_same_non_subway_system_empty(self):
+        """Same non-subway system should return no transfer points."""
         assert get_transfer_points("NJT", "NJT") == []
+
+    def test_get_transfer_points_subway_subway_has_results(self):
+        """SUBWAY <-> SUBWAY should return intra-subway transfer points."""
+        tps = get_transfer_points("SUBWAY", "SUBWAY")
+        assert len(tps) > 0, "Expected SUBWAY intra-transfers"
 
     def test_get_transfers_from_station_ny(self):
         """NY Penn should have transfers to multiple systems."""

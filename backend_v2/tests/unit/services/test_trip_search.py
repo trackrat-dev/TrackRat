@@ -204,7 +204,7 @@ class TestFindRelevantTransferPoints:
         hoboken_found = any("HB" in pair and "PHO" in pair for pair in station_pairs)
         assert hoboken_found, "Should find Hoboken NJT <-> PATH transfer"
 
-    def test_same_system_returns_empty(self):
+    def test_same_non_subway_system_returns_empty(self):
         transfers = _find_relevant_transfer_points({"NJT"}, {"NJT"})
         assert len(transfers) == 0
 
@@ -381,3 +381,106 @@ class TestTripOptionModel:
         assert data["transfers"][0]["same_station"] is False
         assert data["legs"][0]["data_source"] == "NJT"
         assert data["legs"][1]["data_source"] == "PATH"
+
+
+class TestIntraSubwayTransferPoints:
+    """Test finding intra-subway transfer points for line changes."""
+
+    def test_metropolitan_av_to_wall_st_finds_transfers(self):
+        """G/L at Metropolitan Av → 4/5 at Wall St should find transfer points."""
+        transfers = _find_relevant_transfer_points(
+            {"SUBWAY"}, {"SUBWAY"}, from_station="SG29", to_station="S419"
+        )
+        assert len(transfers) > 0, (
+            "Should find transfer points for Metropolitan Av (G/L) → Wall St (4/5)"
+        )
+        # Union Sq (SL03 <-> S635) should be among them
+        station_pairs = {frozenset({tp.station_a, tp.station_b}) for tp in transfers}
+        assert frozenset({"SL03", "S635"}) in station_pairs, (
+            "Union Sq (L <-> 4/5/6) should be a transfer point for this route"
+        )
+
+    def test_same_line_returns_empty(self):
+        """Stations on the same line should not trigger intra-subway transfers."""
+        # Two stations on the G line
+        transfers = _find_relevant_transfer_points(
+            {"SUBWAY"}, {"SUBWAY"}, from_station="SG29", to_station="SG22"
+        )
+        assert len(transfers) == 0, (
+            "Same-line (G→G) should not produce intra-subway transfers"
+        )
+
+    def test_without_station_codes_returns_empty(self):
+        """Intra-subway needs station codes to determine lines; without them, no results."""
+        transfers = _find_relevant_transfer_points({"SUBWAY"}, {"SUBWAY"})
+        assert len(transfers) == 0
+
+    def test_cross_system_still_works(self):
+        """Cross-system transfers should still work alongside intra-subway."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"PATH"}, from_station="NP", to_station="PWC"
+        )
+        assert len(transfers) > 0, "Cross-system NJT→PATH should still work"
+
+    def test_no_duplicate_transfer_points(self):
+        """No duplicates in intra-subway results."""
+        transfers = _find_relevant_transfer_points(
+            {"SUBWAY"}, {"SUBWAY"}, from_station="SG29", to_station="S419"
+        )
+        keys = [
+            frozenset({(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)})
+            for tp in transfers
+        ]
+        assert len(keys) == len(set(keys)), "Duplicate transfers found"
+
+
+class TestIntraSubwayOrientTransfer:
+    """Test transfer point orientation for intra-subway routing."""
+
+    def test_orient_l_to_4_5_at_union_sq(self):
+        """For G/L origin → 4/5 dest, L side should be alight, 4/5 side should be board."""
+        from trackrat.config.transfer_points import get_intra_subway_transfers
+
+        # Find Union Sq L <-> 4/5/6 transfer
+        union_sq = None
+        for tp in get_intra_subway_transfers():
+            if {tp.station_a, tp.station_b} == {"SL03", "S635"}:
+                union_sq = tp
+                break
+        assert union_sq is not None, "Union Sq L<->4/5/6 transfer not found"
+
+        alight, alight_sys, board, board_sys = _orient_transfer(
+            union_sq,
+            from_systems={"SUBWAY"},
+            to_systems={"SUBWAY"},
+            from_station="SG29",  # Metropolitan Av (G/L)
+            to_station="S419",    # Wall St (4/5)
+        )
+        # SG29 is equivalent to SL10 (L line), so origin has L line
+        # Alight at L platform (SL03), board at 4/5/6 platform (S635)
+        assert alight == "SL03", f"Should alight at L platform SL03, got {alight}"
+        assert board == "S635", f"Should board at 4/5 platform S635, got {board}"
+        assert alight_sys == "SUBWAY"
+        assert board_sys == "SUBWAY"
+
+    def test_orient_reverse_direction(self):
+        """For 4/5 origin → L dest, orientation should reverse."""
+        from trackrat.config.transfer_points import get_intra_subway_transfers
+
+        union_sq = None
+        for tp in get_intra_subway_transfers():
+            if {tp.station_a, tp.station_b} == {"SL03", "S635"}:
+                union_sq = tp
+                break
+        assert union_sq is not None
+
+        alight, alight_sys, board, board_sys = _orient_transfer(
+            union_sq,
+            from_systems={"SUBWAY"},
+            to_systems={"SUBWAY"},
+            from_station="S419",  # Wall St (4/5) as origin
+            to_station="SG29",    # Metropolitan Av (G/L) as dest
+        )
+        # Origin has 4/5 lines, so alight at 4/5/6 platform (S635)
+        assert alight == "S635", f"Should alight at 4/5 platform S635, got {alight}"
+        assert board == "SL03", f"Should board at L platform SL03, got {board}"

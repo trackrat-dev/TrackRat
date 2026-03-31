@@ -5,6 +5,7 @@ close enough for a passenger to walk between. They are discovered by:
 1. Shared station codes (e.g., NY used by NJT, Amtrak, and LIRR)
 2. Existing STATION_EQUIVALENCE_GROUPS (e.g., Amtrak NRO <-> MNR MNRC)
 3. Coordinate proximity (stations within WALK_THRESHOLD_METERS of each other)
+4. Intra-subway complexes where different subway lines meet (e.g., Union Sq L + 4/5/6)
 """
 
 from __future__ import annotations
@@ -17,8 +18,10 @@ from trackrat.config.route_topology import ALL_ROUTES
 from trackrat.config.stations.common import (
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
+    STATION_EQUIVALENTS,
     get_station_name,
 )
+from trackrat.config.stations.subway import SUBWAY_STATION_COMPLEXES
 
 # Maximum walking distance in meters to consider a transfer viable
 WALK_THRESHOLD_METERS = 400
@@ -54,6 +57,9 @@ class TransferPoint:
     walk_meters: float  # 0 for same-station transfers
     walk_minutes: int  # estimated walking + buffer time
     same_station: bool  # same physical station (shared code or equivalence)
+    # Subway line codes at each side (non-empty only for intra-subway transfers)
+    lines_a: frozenset[str] = frozenset()
+    lines_b: frozenset[str] = frozenset()
 
     @property
     def station_a_name(self) -> str:
@@ -84,6 +90,19 @@ def _build_station_to_systems() -> dict[str, set[str]]:
 _STATION_SYSTEMS: dict[str, set[str]] = _build_station_to_systems()
 
 
+def _build_subway_station_lines() -> dict[str, frozenset[str]]:
+    """Map each subway station code to the set of subway line codes serving it."""
+    station_lines: dict[str, set[str]] = defaultdict(set)
+    for route in ALL_ROUTES:
+        if route.data_source == "SUBWAY":
+            for station_code in route.stations:
+                station_lines[station_code].update(route.line_codes)
+    return {k: frozenset(v) for k, v in station_lines.items()}
+
+
+_SUBWAY_STATION_LINES: dict[str, frozenset[str]] = _build_subway_station_lines()
+
+
 def _generate_transfer_points() -> tuple[TransferPoint, ...]:
     """Auto-generate all transfer points from station data.
 
@@ -103,6 +122,8 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
         sys_b: str,
         walk_m: float,
         same: bool,
+        lines_a: frozenset[str] = frozenset(),
+        lines_b: frozenset[str] = frozenset(),
     ) -> None:
         key = frozenset({(code_a, sys_a), (code_b, sys_b)})
         if key not in seen:
@@ -116,6 +137,8 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
                     walk_meters=walk_m,
                     walk_minutes=_estimate_walk_minutes(walk_m),
                     same_station=same,
+                    lines_a=lines_a,
+                    lines_b=lines_b,
                 )
             )
 
@@ -160,6 +183,24 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
             if dist <= WALK_THRESHOLD_METERS:
                 _add(code_a, sys_a, code_b, sys_b, dist, False)
 
+    # --- Source 4: Intra-subway transfers at station complexes ---
+    # At each subway complex, pair platform codes serving different line groups.
+    # The departure service already expands station equivalences, so these
+    # transfer points enable line-change connections within the subway system.
+    for complex_stations in SUBWAY_STATION_COMPLEXES:
+        codes_with_lines: list[tuple[str, frozenset[str]]] = []
+        for code in complex_stations:
+            lines = _SUBWAY_STATION_LINES.get(code)
+            if lines and code in station_systems and "SUBWAY" in station_systems[code]:
+                codes_with_lines.append((code, lines))
+        for i, (code_a, lines_a) in enumerate(codes_with_lines):
+            for code_b, lines_b in codes_with_lines[i + 1 :]:
+                if lines_a != lines_b:  # Different line groups = valid transfer
+                    _add(
+                        code_a, "SUBWAY", code_b, "SUBWAY", 0.0, True,
+                        lines_a=lines_a, lines_b=lines_b,
+                    )
+
     return tuple(sorted(transfers, key=lambda t: (t.system_a, t.system_b, t.station_a)))
 
 
@@ -175,7 +216,8 @@ _TRANSFERS_BY_STATION: dict[str, list[TransferPoint]] = defaultdict(list)
 for _tp in TRANSFER_POINTS:
     # Index by both orderings of the system pair
     _TRANSFERS_BY_SYSTEM_PAIR[(_tp.system_a, _tp.system_b)].append(_tp)
-    _TRANSFERS_BY_SYSTEM_PAIR[(_tp.system_b, _tp.system_a)].append(_tp)
+    if _tp.system_a != _tp.system_b:
+        _TRANSFERS_BY_SYSTEM_PAIR[(_tp.system_b, _tp.system_a)].append(_tp)
     # Index by station code
     _TRANSFERS_BY_STATION[_tp.station_a].append(_tp)
     _TRANSFERS_BY_STATION[_tp.station_b].append(_tp)
@@ -194,3 +236,24 @@ def get_transfers_from_station(station_code: str) -> list[TransferPoint]:
 def get_systems_serving_station(station_code: str) -> set[str]:
     """Get all transit systems that serve a station code."""
     return _STATION_SYSTEMS.get(station_code, set())
+
+
+def get_subway_lines_at_station(station_code: str) -> frozenset[str]:
+    """Get all subway line codes at a station, including equivalent stations.
+
+    Expands station equivalences so that e.g. SG29 (G at Metropolitan Av)
+    also returns L lines from its equivalent SL10 (Lorimer St).
+    """
+    lines: set[str] = set()
+    group = STATION_EQUIVALENTS.get(station_code)
+    codes = sorted(group) if group else [station_code]
+    for code in codes:
+        code_lines = _SUBWAY_STATION_LINES.get(code)
+        if code_lines:
+            lines.update(code_lines)
+    return frozenset(lines)
+
+
+def get_intra_subway_transfers() -> list[TransferPoint]:
+    """Get all intra-subway transfer points (same system, different lines)."""
+    return _TRANSFERS_BY_SYSTEM_PAIR.get(("SUBWAY", "SUBWAY"), [])
