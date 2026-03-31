@@ -16,13 +16,13 @@ const features = [
   {
     title: 'See delays at a glance',
     description:
-      'Color-coded status for every train. Know instantly if your train is on time, delayed, or cancelled.',
+      'Color-coded status for every train. Know instantly if trains are on time, delayed, or cancelled.',
     image: `${BASE}images/1.webp`,
   },
   {
-    title: 'All your train systems, one screen',
+    title: 'All your options on one screen',
     description:
-      'NJ Transit, Amtrak, PATH, LIRR, Metro-North — browse combined schedules for any route.',
+      'NJ Transit, Amtrak, etc — browse combined schedules for any route.',
     image: `${BASE}images/2.webp`,
   },
   {
@@ -57,10 +57,10 @@ const transitSystems = [
   { name: 'LIRR', region: 'New York' },
   { name: 'Metro-North', region: 'New York' },
   { name: 'NYC Subway', region: 'New York' },
-  { name: 'DC Metro', region: 'DC' },
-  { name: 'MBTA Commuter Rail', region: 'Boston' },
-  { name: 'Metra', region: 'Chicago' },
-  { name: 'BART', region: 'Bay Area' },
+  { name: 'DC Metro (beta)', region: 'DC' },
+  { name: 'MBTA Commuter Rail (beta)', region: 'Boston' },
+  { name: 'Metra (beta)', region: 'Chicago' },
+  { name: 'BART (beta)', region: 'Bay Area' },
 ];
 
 function IOSBanner() {
@@ -123,12 +123,10 @@ export function LandingPage() {
           className="w-24 h-24 rounded-[22px] mx-auto mb-6 shadow-lg"
         />
         <h1 className="text-4xl md:text-5xl font-bold mb-4 text-text-primary">
-          Your commute, under control
+          TrackRat: Your commute, under control
         </h1>
         <p className="text-lg md:text-xl text-text-secondary mb-8 max-w-xl mx-auto leading-relaxed">
-          Real-time departures, track predictions, delay alerts, and Live
-          Activities — across 11 transit systems in the Northeast, New York,
-          Chicago, the Bay Area, and DC.
+          Open source, real-time train tracking for NJ Transit, Amtrak, the Subway, PATH, LIRR, Metro-North, and more!
         </p>
         <a
           href={APP_STORE_URL}
