@@ -54,5 +54,5 @@ variable "snapshot_retention_days" {
 variable "alert_email" {
   description = "Email address for uptime monitoring alerts"
   type        = string
-  default     = "andymartin11@gmail.com"
+  default     = "trackrat@andymartin.cc"
 }

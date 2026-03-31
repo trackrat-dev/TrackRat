@@ -21,8 +21,9 @@ android {
             useSupportLibrary = true
         }
 
-        // Google Maps API key
-        manifestPlaceholders["mapsApiKey"] = "AIzaSyB4M3XKsAmRzG_KZJwFaN-068hJmT8BiXE"
+        // Google Maps API key - set in local.properties (not checked into source control)
+        // maps.apiKey=YOUR_GOOGLE_MAPS_API_KEY
+        manifestPlaceholders["mapsApiKey"] = project.findProperty("maps.apiKey") as String? ?: ""
     }
 
     buildTypes {
