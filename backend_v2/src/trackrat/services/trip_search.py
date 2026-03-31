@@ -292,15 +292,16 @@ async def search_trips(
             continue
 
         # Leg 2: board_station -> to_station (system of to_station)
-        # Don't pass time_from/time_to — leg 1 may arrive after the user's original
-        # time window, so we need all future departures. The connection matching
-        # loop below filters by earliest_leg2/latest_leg2 correctly.
+        # Start leg 2 from the earliest leg 1 departure time so that the
+        # limited result set (20 departures) covers the connection window
+        # instead of being consumed by old, irrelevant departures.
+        leg2_time_from = _get_best_time(leg1_response.departures[0].departure)
         leg2_response = await departure_service.get_departures(
             db=db,
             from_station=board_station,
             to_station=to_station,
             date=search_date,
-            time_from=None,
+            time_from=leg2_time_from,
             time_to=None,
             limit=20,
             hide_departed=False,  # Don't hide — we need future departures to match
