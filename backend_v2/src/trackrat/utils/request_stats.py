@@ -47,11 +47,16 @@ class RequestStats:
     _records: deque[RequestRecord] = field(
         default_factory=lambda: deque(maxlen=_MAX_RECORDS)
     )
-    route_search_results: dict[tuple[str, str], list[int]] = field(default_factory=dict)
-    train_detail_views: Counter[tuple[str, str, str]] = field(
-        default_factory=Counter
-    )  # (train_id, from_station, to_station)
+    # (from, to) -> list of (timestamp, train_count) tuples
+    route_search_results: dict[tuple[str, str], list[tuple[float, int]]] = field(
+        default_factory=dict
+    )
+    # list of (timestamp, train_id, from, to) tuples
+    train_detail_views: list[tuple[float, str, str, str]] = field(
+        default_factory=list
+    )
     _MAX_LATENCY_SAMPLES: int = 500
+    _MAX_DETAIL_VIEWS: int = 10_000
 
     def record_request(
         self,
@@ -91,21 +96,28 @@ class RequestStats:
     ) -> None:
         """Record the number of trains returned for a departure search."""
         key = (from_station, to_station)
+        now = time.time()
         with self._lock:
             samples = self.route_search_results.setdefault(key, [])
             # Keep last 500 samples per route to bound memory
             if len(samples) < self._MAX_LATENCY_SAMPLES:
-                samples.append(count)
+                samples.append((now, count))
             else:
                 idx = random.randint(0, len(samples) - 1)
-                samples[idx] = count
+                samples[idx] = (now, count)
 
     def record_train_detail_view(
         self, train_id: str, from_station: str, to_station: str
     ) -> None:
         """Record a train detail page view with user's origin/destination."""
+        now = time.time()
         with self._lock:
-            self.train_detail_views[(train_id, from_station, to_station)] += 1
+            self.train_detail_views.append((now, train_id, from_station, to_station))
+            # Bound memory
+            if len(self.train_detail_views) > self._MAX_DETAIL_VIEWS:
+                self.train_detail_views = self.train_detail_views[
+                    -self._MAX_DETAIL_VIEWS :
+                ]
 
     def snapshot(
         self,
@@ -174,14 +186,43 @@ class RequestStats:
                 "max": s[-1],
             }
 
-        # Compute per-route search result stats
+        # Compute per-route search result stats (time-filtered)
         route_search_stats: dict[tuple[str, str], dict[str, float]] = {}
-        for key, rss in self.route_search_results.items():
-            if rss:
-                route_search_stats[key] = {
-                    "avg_trains": sum(rss) / len(rss),
-                    "empty_count": rss.count(0),
-                }
+        with self._lock:
+            for key, samples in self.route_search_results.items():
+                filtered = [
+                    count for ts, count in samples if ts >= cutoff
+                ]
+                if filtered:
+                    route_search_stats[key] = {
+                        "avg_trains": sum(filtered) / len(filtered),
+                        "empty_count": filtered.count(0),
+                    }
+
+        # Compute train detail views (time-filtered)
+        detail_view_counter: Counter[tuple[str, str, str]] = Counter()
+        with self._lock:
+            for ts, train_id, from_s, to_s in self.train_detail_views:
+                if ts >= cutoff:
+                    detail_view_counter[(train_id, from_s, to_s)] += 1
+
+        # Compute req/min over last 5 minutes
+        five_min_ago = now - 300
+        recent_count = sum(1 for r in records if r.timestamp >= five_min_ago)
+        req_per_min = round(recent_count / 5, 1) if recent_count > 0 else 0
+
+        # Compute request rate sparkline: requests per 5-min bucket (last 12)
+        current_bucket = int(now // _TREND_BUCKET_SECONDS) * _TREND_BUCKET_SECONDS
+        rate_buckets = [
+            current_bucket - i * _TREND_BUCKET_SECONDS for i in range(11, -1, -1)
+        ]
+        rate_sparkline: list[int] = []
+        for b in rate_buckets:
+            count_in_bucket = sum(
+                len(durations)
+                for durations in trend_buckets.get(b, {}).values()
+            )
+            rate_sparkline.append(count_in_bucket)
 
         # Compute latency trends: last 12 buckets per path, sorted by time
         latency_trend = _compute_latency_trends(trend_buckets, now)
@@ -208,12 +249,28 @@ class RequestStats:
                     "to": k[2],
                     "count": v,
                 }
-                for k, v in self.train_detail_views.most_common(20)
+                for k, v in detail_view_counter.most_common(20)
             ],
             "latency": latency_stats,
             "latency_trend": latency_trend,
             "unique_ips": len(ip_set),
             "requests_by_ip": dict(by_ip.most_common()),
+            "req_per_min": req_per_min,
+            "rate_sparkline": rate_sparkline,
+            "recent_errors": [
+                {
+                    "timestamp": r.timestamp,
+                    "path": r.path_template,
+                    "status": r.status_code,
+                    "client": r.client_label,
+                    "client_ip": r.client_ip,
+                }
+                for r in sorted(
+                    (r for r in records if r.status_code >= 500),
+                    key=lambda r: r.timestamp,
+                    reverse=True,
+                )[:20]
+            ],
         }
 
         if hours:

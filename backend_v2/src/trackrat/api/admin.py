@@ -44,6 +44,8 @@ async def _db_stats(db: AsyncSession) -> dict[str, Any]:
     alert_count = 0
     live_activity_count = 0
 
+    db_error: str | None = None
+
     try:
         provider_stmt = (
             select(
@@ -87,11 +89,16 @@ async def _db_stats(db: AsyncSession) -> dict[str, Any]:
                     if row.last_update
                     else None
                 ),
+                "last_update_display": (
+                    row.last_update.strftime("%H:%M ET")
+                    if row.last_update
+                    else None
+                ),
             }
             for row in provider_result
         ]
-    except Exception:
-        pass  # providers stays empty
+    except Exception as exc:
+        db_error = f"Provider query failed: {type(exc).__name__}"
 
     try:
         device_count = (
@@ -107,14 +114,15 @@ async def _db_stats(db: AsyncSession) -> dict[str, Any]:
                 )
             )
         ).scalar() or 0
-    except Exception:
-        pass  # counts stay 0
+    except Exception as exc:
+        db_error = db_error or f"Device query failed: {type(exc).__name__}"
 
     return {
         "providers": providers,
         "device_count": device_count,
         "alert_subscription_count": alert_count,
         "live_activity_count": live_activity_count,
+        "db_error": db_error,
     }
 
 
@@ -285,6 +293,40 @@ def _render_html(
     window_desc = f"last {hours}h" if hours else "since restart"
     ios_desc = " (iOS only)" if ios_only else ""
 
+    # -- Request rate sparkline --
+    req_per_min = request_stats.get("req_per_min", 0)
+    rate_sparkline = request_stats.get("rate_sparkline", [])
+    sparkline_html = ""
+    if rate_sparkline:
+        max_rate = max(rate_sparkline) or 1
+        bars = []
+        for val in rate_sparkline:
+            if val == 0:
+                bars.append("<span class='spark-bar spark-bar-empty'></span>")
+            else:
+                height = max(2, int(20 * val / max_rate))
+                bars.append(
+                    f"<span class='spark-bar' style='height:{height}px'></span>"
+                )
+        sparkline_html = (
+            f"<span class='spark-container'>{''.join(bars)}</span>"
+        )
+
+    # -- Error rate --
+    total_reqs = request_stats["total_requests"]
+    error_5xx = sum(
+        v
+        for k, v in request_stats["requests_by_status"].items()
+        if k >= 500
+    )
+    error_rate = (error_5xx / total_reqs * 100) if total_reqs > 0 else 0
+    if error_5xx > 0:
+        error_badge = (
+            f"<span class='badge err'>{error_5xx} errors ({error_rate:.1f}%)</span>"
+        )
+    else:
+        error_badge = "<span class='badge ok'>0 errors</span>"
+
     # -- Filter controls --
     filter_html = _build_filter_links(hours, ios_only)
 
@@ -293,10 +335,13 @@ def _render_html(
     <div class="header">
         <h1>TrackRat Server Stats</h1>
         <div class="meta">
-            {settings.environment.upper()} &middot; Uptime: {uptime} &middot;
+            <span class="env-badge">{settings.environment.upper()}</span>
+            Uptime: {uptime} &middot;
             {now.strftime('%Y-%m-%d %H:%M:%S ET')} &middot;
             {request_stats['total_requests']} requests {window_desc}{ios_desc} &middot;
-            {unique_ips} unique IPs
+            {unique_ips} unique IPs &middot;
+            {req_per_min} req/min {sparkline_html} &middot;
+            {error_badge}
         </div>
     </div>"""
 
@@ -310,12 +355,15 @@ def _render_html(
     endpoint_rows = ""
     for path, count in list(request_stats["requests_by_path"].items())[:15]:
         lat = request_stats["latency"].get(path)
-        lat_str = (
-            f"{_format_duration(lat['avg'] * 1000)} avg / "
-            f"{_format_duration(lat['p95'] * 1000)} p95"
-            if lat
-            else "-"
-        )
+        if lat:
+            p95_ms = lat["p95"] * 1000
+            p95_cls = "ok" if p95_ms < 1000 else ("warn" if p95_ms < 3000 else "err")
+            lat_str = (
+                f"{_format_duration(lat['avg'] * 1000)} avg / "
+                f"<span class='{p95_cls}'>{_format_duration(p95_ms)} p95</span>"
+            )
+        else:
+            lat_str = "-"
         trend_html = _render_latency_trend(latency_trend.get(path, []))
         endpoint_rows += (
             f"<tr><td><code>{_esc(path)}</code></td>"
@@ -361,19 +409,34 @@ def _render_html(
             f"<td class='num'>{entry['count']}</td></tr>"
         )
 
+    # -- DB error banner --
+    db_error_html = ""
+    if db_stats.get("db_error"):
+        db_error_html = (
+            f"<div class='alert-banner err'>"
+            f"&#9888; Database: {_esc(db_stats['db_error'])}</div>"
+        )
+
     # -- Providers --
     provider_rows = ""
     for p in db_stats["providers"]:
         fresh_cls = ""
         if p["freshness_min"] is not None:
+            # Tighter thresholds: most collectors run every 3-4 min
             fresh_cls = (
                 "ok"
-                if p["freshness_min"] < 10
-                else ("warn" if p["freshness_min"] < 30 else "err")
+                if p["freshness_min"] < 6
+                else ("warn" if p["freshness_min"] < 15 else "err")
             )
-        fresh_str = (
-            f"{p['freshness_min']}m ago" if p["freshness_min"] is not None else "never"
-        )
+        if p["freshness_min"] is not None:
+            # Show relative + absolute time
+            last_ts = p.get("last_update_display", "")
+            fresh_str = (
+                f"{p['freshness_min']}m ago"
+                + (f" ({last_ts})" if last_ts else "")
+            )
+        else:
+            fresh_str = "never"
         provider_rows += (
             f"<tr><td><strong>{_esc(p['source'])}</strong></td>"
             f"<td class='num'>{p['active']}</td>"
@@ -381,6 +444,28 @@ def _render_html(
             f"<td class='num'>{p['cancelled']}</td>"
             f"<td class='num {fresh_cls}'>{fresh_str}</td></tr>"
         )
+
+    # -- Provider health summary --
+    providers = db_stats["providers"]
+    if providers:
+        total_providers = len(providers)
+        stale_providers = sum(
+            1
+            for p in providers
+            if p["freshness_min"] is not None and p["freshness_min"] >= 15
+        )
+        healthy = total_providers - stale_providers
+        if stale_providers == 0:
+            provider_summary = (
+                f"<span class='ok'>{healthy}/{total_providers} providers healthy</span>"
+            )
+        else:
+            provider_summary = (
+                f"<span class='warn'>{healthy}/{total_providers} healthy, "
+                f"{stale_providers} stale</span>"
+            )
+    else:
+        provider_summary = "<span class='err'>No provider data</span>"
 
     # -- Registrations --
     reg_line = (
@@ -419,103 +504,242 @@ def _render_html(
 {ip_rows}
 </table>"""
 
+    # -- Recent errors --
+    recent_errors = request_stats.get("recent_errors", [])
+    error_section = ""
+    if recent_errors:
+        from datetime import UTC, datetime
+
+        error_rows = ""
+        for err in recent_errors:
+            ts = datetime.fromtimestamp(err["timestamp"], tz=UTC)
+            ts_str = ts.strftime("%H:%M:%S")
+            error_rows += (
+                f"<tr>"
+                f"<td class='num'>{ts_str}</td>"
+                f"<td class='err'>{err['status']}</td>"
+                f"<td><code>{_esc(err['path'])}</code></td>"
+                f"<td>{_esc(err['client'])}</td>"
+                f"<td><code>{_esc(err['client_ip'])}</code></td>"
+                f"</tr>"
+            )
+        error_section = f"""
+<h2 class="err">Recent Errors ({len(recent_errors)})</h2>
+<table>
+<tr><th class="num">Time (UTC)</th><th>Status</th><th>Path</th><th>Client</th><th>IP</th></tr>
+{error_rows}
+</table>"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="60">
 <title>TrackRat Stats - {settings.environment}</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-         background: #0d1117; color: #c9d1d9; padding: 20px; line-height: 1.5; }}
-  .header {{ margin-bottom: 16px; }}
-  h1 {{ color: #58a6ff; font-size: 1.4em; }}
-  .meta {{ color: #8b949e; font-size: 0.85em; margin-top: 4px; }}
-  .filters {{ font-size: 0.85em; margin-bottom: 16px; padding: 8px 0; border-bottom: 1px solid #21262d; }}
-  .filter-link {{ color: #58a6ff; text-decoration: none; }}
-  .filter-link:hover {{ text-decoration: underline; }}
-  .filter-active {{ color: #c9d1d9; font-weight: bold; text-decoration: none; }}
-  h2 {{ color: #58a6ff; font-size: 1.05em; margin: 20px 0 8px; border-bottom: 1px solid #21262d; padding-bottom: 4px; }}
-  table {{ border-collapse: collapse; width: 100%; margin-bottom: 16px; }}
-  th, td {{ text-align: left; padding: 4px 12px 4px 0; font-size: 0.85em; }}
-  th {{ color: #8b949e; font-weight: normal; border-bottom: 1px solid #21262d; }}
-  td {{ border-bottom: 1px solid #161b22; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #0d1117; color: #c9d1d9; line-height: 1.5; }}
+  .container {{ max-width: 1280px; margin: 0 auto; padding: 24px 32px; }}
+  .header {{ margin-bottom: 20px; }}
+  h1 {{ color: #e6edf3; font-size: 1.5em; font-weight: 600; }}
+  .meta {{ color: #8b949e; font-size: 0.85em; margin-top: 6px; display: flex;
+           flex-wrap: wrap; align-items: center; gap: 4px; }}
+  .env-badge {{ display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 0.75em;
+               font-weight: 600; letter-spacing: 0.5px; background: #1f6feb22; color: #58a6ff;
+               border: 1px solid #1f6feb44; }}
+  .badge {{ display: inline-block; padding: 1px 8px; border-radius: 12px; font-size: 0.8em;
+           font-weight: 500; }}
+  .badge.ok {{ background: #23863522; border: 1px solid #23863544; }}
+  .badge.err {{ background: #da363322; border: 1px solid #da363344; }}
+  .alert-banner {{ padding: 8px 12px; border-radius: 6px; margin-bottom: 12px;
+                  font-size: 0.85em; background: #da363318; border: 1px solid #da363344; }}
+  .filters {{ font-size: 0.85em; margin-bottom: 20px; padding: 10px 0;
+             border-bottom: 1px solid #21262d; }}
+  .filter-link {{ color: #58a6ff; text-decoration: none; padding: 2px 6px;
+                 border-radius: 4px; }}
+  .filter-link:hover {{ background: #1f6feb22; text-decoration: none; }}
+  .filter-active {{ color: #e6edf3; font-weight: 600; text-decoration: none;
+                   padding: 2px 6px; border-radius: 4px; background: #1f6feb33; }}
+  .card {{ background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+          padding: 16px; margin-bottom: 16px; }}
+  .card h2 {{ margin: 0 0 12px; border: none; padding: 0; }}
+  h2 {{ color: #e6edf3; font-size: 0.95em; font-weight: 600; margin: 20px 0 8px;
+       border-bottom: 1px solid #21262d; padding-bottom: 4px; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th, td {{ text-align: left; padding: 6px 12px 6px 0; font-size: 0.85em; }}
+  th {{ color: #8b949e; font-weight: 500; font-size: 0.8em; text-transform: uppercase;
+       letter-spacing: 0.3px; border-bottom: 1px solid #21262d; }}
+  td {{ border-bottom: 1px solid #161b2288; }}
   .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
   code {{ color: #79c0ff; font-size: 0.85em; }}
   .ok {{ color: #3fb950; }}
   .warn {{ color: #d29922; }}
   .err {{ color: #f85149; }}
+  .summary-bar {{ display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }}
+  .summary-item {{ background: #161b22; border: 1px solid #21262d; border-radius: 8px;
+                  padding: 12px 16px; flex: 1; min-width: 140px; }}
+  .summary-item .label {{ font-size: 0.75em; color: #8b949e; text-transform: uppercase;
+                         letter-spacing: 0.5px; margin-bottom: 2px; }}
+  .summary-item .value {{ font-size: 1.2em; font-weight: 600; color: #e6edf3;
+                         font-variant-numeric: tabular-nums; }}
   .status-line {{ font-size: 0.85em; margin-bottom: 12px; }}
-  .reg-line {{ font-size: 0.85em; color: #8b949e; margin-bottom: 12px; }}
-  .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 0 32px; }}
-  @media (max-width: 800px) {{ .grid {{ grid-template-columns: 1fr; }} }}
-  .footer {{ margin-top: 24px; color: #484f58; font-size: 0.75em; text-align: center; }}
-  .trend-container {{ display: inline-flex; align-items: flex-end; gap: 1px; height: 16px; vertical-align: middle; margin-left: 6px; }}
+  .reg-line {{ font-size: 0.85em; color: #8b949e; margin-bottom: 16px; }}
+  .grid {{ display: grid; grid-template-columns: 3fr 2fr; gap: 16px; }}
+  @media (max-width: 900px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+  .footer {{ margin-top: 24px; padding-top: 16px; border-top: 1px solid #21262d;
+            color: #484f58; font-size: 0.75em; text-align: center; }}
+  .trend-container {{ display: inline-flex; align-items: flex-end; gap: 1px;
+                     height: 16px; vertical-align: middle; margin-left: 6px; }}
   .trend-bar {{ display: inline-block; width: 4px; border-radius: 1px; }}
   .trend-bar-empty {{ height: 2px; background: #21262d; }}
+  .spark-container {{ display: inline-flex; align-items: flex-end; gap: 1px;
+                     height: 20px; vertical-align: middle; margin-left: 4px; }}
+  .spark-bar {{ display: inline-block; width: 6px; border-radius: 1px; background: #58a6ff; }}
+  .spark-bar-empty {{ height: 2px; background: #21262d; }}
+  .collapsible {{ cursor: pointer; user-select: none; }}
+  .collapsible::before {{ content: '\\25B6'; display: inline-block; margin-right: 6px;
+                         font-size: 0.7em; transition: transform 0.2s; }}
+  .collapsible.open::before {{ transform: rotate(90deg); }}
+  .collapsible-content {{ display: none; }}
+  .collapsible-content.open {{ display: block; }}
+  .refresh-indicator {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                       background: #3fb950; margin-left: 8px; vertical-align: middle;
+                       transition: opacity 0.3s; }}
+  .refresh-indicator.updating {{ animation: pulse 0.6s ease-in-out; }}
+  @keyframes pulse {{ 0%,100% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} }}
 </style>
 </head>
 <body>
+<div class="container" id="stats-content">
 {header}
 {filter_html}
 
-<div class="status-line">Status codes: {status_line}</div>
-<div class="reg-line">{reg_line}</div>
+{db_error_html}
+{error_section}
+
+<div class="summary-bar">
+  <div class="summary-item">
+    <div class="label">Status Codes</div>
+    <div class="value" style="font-size:0.85em">{status_line}</div>
+  </div>
+  <div class="summary-item">
+    <div class="label">Providers</div>
+    <div class="value" style="font-size:0.85em">{provider_summary}</div>
+  </div>
+  <div class="summary-item">
+    <div class="label">Registrations</div>
+    <div class="value" style="font-size:0.85em">{reg_line}</div>
+  </div>
+</div>
 
 <div class="grid">
 <div>
+<div class="card">
 <h2>Traffic by Endpoint</h2>
 <table>
 <tr><th>Path</th><th class="num">Hits</th><th class="num">Latency</th><th>Trend</th></tr>
 {endpoint_rows if endpoint_rows else "<tr><td colspan='4'>No requests yet</td></tr>"}
 </table>
+</div>
 
+<div class="card">
 <h2>Popular Route Searches</h2>
 <table>
 <tr><th>From</th><th>To</th><th class="num">Searches</th><th class="num">Avg Trains</th><th class="num">Empty</th></tr>
 {route_rows if route_rows else "<tr><td colspan='5'>No searches yet</td></tr>"}
 </table>
+</div>
 
+<div class="card">
 <h2>Popular Train Details</h2>
 <table>
 <tr><th>Train ID</th><th>From</th><th>To</th><th class="num">Views</th></tr>
 {train_detail_rows if train_detail_rows else "<tr><td colspan='4'>No views yet</td></tr>"}
 </table>
 </div>
+</div>
 
 <div>
+<div class="card">
 <h2>Clients</h2>
 <table>
 <tr><th>Client</th><th class="num">Requests</th></tr>
 {client_rows if client_rows else "<tr><td colspan='2'>No requests yet</td></tr>"}
 </table>
+</div>
 
+<div class="card">
 <h2>Providers (Today)</h2>
 <table>
 <tr><th>Source</th><th class="num">Active</th><th class="num">Today</th><th class="num">Cancelled</th><th class="num">Freshness</th></tr>
 {provider_rows if provider_rows else "<tr><td colspan='5'>No data</td></tr>"}
 </table>
+</div>
 {ip_section}
+<div class="card">
 {_render_system_section(system_stats or {}) }
 </div>
 </div>
+</div>
 
-<h2>Scheduler Jobs</h2>
+<div class="card" style="margin-top:4px">
+<h2 class="collapsible" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')">
+Scheduler Jobs ({len(scheduler_jobs)})
+</h2>
+<div class="collapsible-content">
 <table>
 <tr><th>Job</th><th>Next Run</th><th>Pending</th></tr>
 {sched_rows if sched_rows else "<tr><td colspan='3'>Scheduler not available</td></tr>"}
 </table>
+</div>
+</div>
 
-<div class="footer">Auto-refreshes every 60s. In-memory stats reset on server restart.</div>
+<div class="footer">
+  Auto-refreshes every 30s<span class="refresh-indicator" id="refresh-dot"></span>
+  &middot; In-memory stats reset on server restart.
+</div>
+</div>
+
+<script>
+(function() {{
+  const REFRESH_MS = 30000;
+  const url = window.location.href;
+  const dot = document.getElementById('refresh-dot');
+
+  async function refresh() {{
+    try {{
+      dot.classList.add('updating');
+      const resp = await fetch(url, {{ headers: {{ 'Accept': 'text/html' }} }});
+      if (!resp.ok) return;
+      const html = await resp.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const newContent = doc.getElementById('stats-content');
+      if (newContent) {{
+        const container = document.getElementById('stats-content');
+        container.innerHTML = newContent.innerHTML;
+      }}
+    }} catch (e) {{
+      // Network error — skip this cycle
+    }} finally {{
+      const newDot = document.getElementById('refresh-dot');
+      if (newDot) newDot.classList.remove('updating');
+    }}
+  }}
+
+  setInterval(refresh, REFRESH_MS);
+}})();
+</script>
 </body>
 </html>"""
 
 
 def _esc(text: str) -> str:
-    """Minimal HTML escaping."""
-    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    """HTML escaping for safe insertion into HTML content and attributes."""
+    from html import escape
+
+    return escape(str(text))
 
 
 @router.get("/admin/stats", response_class=HTMLResponse)
