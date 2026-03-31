@@ -13,9 +13,16 @@ export function Layout() {
           <h1 className="text-2xl font-bold">
             <Link
               to="/"
-              className="bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
             >
-              TrackRat
+              <img
+                src="/icon.png"
+                alt="TrackRat"
+                className="w-8 h-8 rounded-lg"
+              />
+              <span className="bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent">
+                TrackRat
+              </span>
             </Link>
           </h1>
           <div className="flex items-center gap-3">

@@ -36,7 +36,7 @@ export function TripSelectionPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6 text-center text-text-primary">Plan Your Trip</h2>
+      <h2 className="text-2xl font-bold mb-6 text-center text-text-primary">Where would you like to go?</h2>
 
       {/* Station Selection */}
       <div className="space-y-4 mb-8">
@@ -46,7 +46,7 @@ export function TripSelectionPage() {
         >
           <div className="text-sm text-text-muted mb-1">From</div>
           <div className="text-lg font-semibold text-text-primary">
-            {selectedDeparture ? selectedDeparture.name : 'Select departure station'}
+            {selectedDeparture ? selectedDeparture.name : 'Choose a station'}
           </div>
           {selectedDeparture && (
             <div className="text-sm text-text-muted mt-1">{selectedDeparture.code}</div>
@@ -59,7 +59,7 @@ export function TripSelectionPage() {
         >
           <div className="text-sm text-text-muted mb-1">To</div>
           <div className="text-lg font-semibold text-text-primary">
-            {selectedDestination ? selectedDestination.name : 'Select destination station'}
+            {selectedDestination ? selectedDestination.name : 'Choose a station'}
           </div>
           {selectedDestination && (
             <div className="text-sm text-text-muted mt-1">{selectedDestination.code}</div>
@@ -141,7 +141,7 @@ export function TripSelectionPage() {
       {/* Pickers */}
       {showDeparturePicker && (
         <StationPicker
-          title="Select Departure Station"
+          title="Where are you leaving from?"
           onSelect={(station) => {
             setDeparture(station);
             setShowDeparturePicker(false);
@@ -152,7 +152,7 @@ export function TripSelectionPage() {
 
       {showDestinationPicker && (
         <StationPicker
-          title="Select Destination Station"
+          title="Where are you headed?"
           onSelect={(station) => {
             setDestination(station);
             setShowDestinationPicker(false);
