@@ -35,7 +35,6 @@ enum PremiumFeature: String, CaseIterable {
 enum PaywallContext {
     case trainSystems
     case routeAlerts
-    case pennStationGuide
     case generic
 }
 

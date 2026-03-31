@@ -1624,38 +1624,26 @@ enum TrackLabelPosition {
 // MARK: - Penn Station Waiting Link
 struct PennStationWaitingLink: View {
     let isAmtrak: Bool
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @State private var showingGuide = false
-    @State private var showingPaywall = false
 
     var body: some View {
         HStack {
             Spacer()
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if subscriptionService.isPro {
-                    showingGuide = true
-                } else {
-                    showingPaywall = true
-                }
+                showingGuide = true
             }) {
-                HStack(spacing: 3) {
-                    if !subscriptionService.isPro {
-                        Image(systemName: "lock.fill")
-                            .font(.caption2)
-                    }
-                    Text("where should I wait?")
-                        .font(TrackRatTheme.Typography.caption)
-                        .fontWeight(.medium)
-                        .textProtected()
-                }
-                .foregroundColor(.white)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.black.opacity(0.9))
-                )
+                Text("where should I wait?")
+                    .font(TrackRatTheme.Typography.caption)
+                    .fontWeight(.medium)
+                    .textProtected()
+                    .foregroundColor(.white)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 20)
+                            .fill(Color.black.opacity(0.9))
+                    )
             }
             .buttonStyle(.plain)
             Spacer()
@@ -1663,11 +1651,6 @@ struct PennStationWaitingLink: View {
         .padding(.top, 8)
         .sheet(isPresented: $showingGuide) {
             PennStationGuideView(isAmtrak: isAmtrak)
-        }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .pennStationGuide)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
         }
     }
 }
