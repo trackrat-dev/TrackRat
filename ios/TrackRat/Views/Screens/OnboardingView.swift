@@ -17,6 +17,7 @@ struct OnboardingView: View {
     @State private var isCompletingOnboarding = false
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
+    @State private var showBetaSystems = false
     @State private var showingPaywall = false
     @State private var showConfetti = false
     @State private var welcomeTextScale: CGFloat = 0.8
@@ -161,7 +162,11 @@ struct OnboardingView: View {
 
             // System selection cards
             VStack(spacing: 12) {
-                ForEach(TrainSystem.allCases.sorted { $0.displayName < $1.displayName }, id: \.self) { system in
+                let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
+                let mainSystems = sortedSystems.filter { !$0.isBeta }
+                let betaSystems = sortedSystems.filter { $0.isBeta }
+
+                ForEach(mainSystems, id: \.self) { system in
                     SystemSelectionCard(
                         system: system,
                         isSelected: false,
@@ -176,6 +181,41 @@ struct OnboardingView: View {
                         }
                     )
                 }
+
+                // Collapsible beta systems section
+                DisclosureGroup(isExpanded: $showBetaSystems) {
+                    ForEach(betaSystems, id: \.self) { system in
+                        SystemSelectionCard(
+                            system: system,
+                            isSelected: false,
+                            showCheckmark: false,
+                            onTap: {
+                                appState.selectSystem(system)
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                                withAnimation(.easeInOut(duration: 0.3)) {
+                                    showSystemSelection = false
+                                }
+                            }
+                        )
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("Additional Systems")
+                            .font(.headline)
+                            .foregroundColor(.white.opacity(0.7))
+                        Text("beta")
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(.orange.opacity(0.2))
+                            )
+                    }
+                }
+                .tint(.white.opacity(0.5))
             }
             .padding(.horizontal, 20)
 
