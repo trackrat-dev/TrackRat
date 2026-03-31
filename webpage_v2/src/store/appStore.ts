@@ -44,10 +44,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedDeparture: station });
     const dest = get().selectedDestination;
     if (station && dest) {
-      storageService.saveLastRoute(
-        { code: station.code, name: station.name },
-        { code: dest.code, name: dest.name }
-      );
+      try {
+        storageService.saveLastRoute(
+          { code: station.code, name: station.name },
+          { code: dest.code, name: dest.name }
+        );
+      } catch { /* localStorage may be unavailable */ }
     }
   },
 
@@ -55,10 +57,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedDestination: station });
     const dep = get().selectedDeparture;
     if (dep && station) {
-      storageService.saveLastRoute(
-        { code: dep.code, name: dep.name },
-        { code: station.code, name: station.name }
-      );
+      try {
+        storageService.saveLastRoute(
+          { code: dep.code, name: dep.name },
+          { code: station.code, name: station.name }
+        );
+      } catch { /* localStorage may be unavailable */ }
     }
   },
 
@@ -78,12 +82,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Recent Trips
   addRecentTrip: (from, to) => {
-    storageService.saveRecentTrip({
-      departureCode: from.code,
-      departureName: from.name,
-      destinationCode: to.code,
-      destinationName: to.name,
-    });
+    try {
+      storageService.saveRecentTrip({
+        departureCode: from.code,
+        departureName: from.name,
+        destinationCode: to.code,
+        destinationName: to.name,
+      });
+    } catch { /* localStorage may be unavailable */ }
     get().loadRecentTrips();
   },
 
