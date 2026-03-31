@@ -232,6 +232,7 @@ async def compute_route_history(
             highlighted_train_data = HighlightedTrain(
                 train_id=highlight_train,
                 on_time_percentage=highlighted_stats["on_time_percentage"],
+                on_time_source=highlighted_stats["on_time_source"],
                 average_delay_minutes=highlighted_stats["average_delay_minutes"],
                 average_departure_delay_minutes=highlighted_stats[
                     "average_departure_delay_minutes"
@@ -262,6 +263,7 @@ async def compute_route_history(
         ),
         aggregate_stats=AggregateStats(
             on_time_percentage=aggregate_stats["on_time_percentage"],
+            on_time_source=aggregate_stats["on_time_source"],
             average_delay_minutes=aggregate_stats["average_delay_minutes"],
             average_departure_delay_minutes=aggregate_stats[
                 "average_departure_delay_minutes"
@@ -295,6 +297,7 @@ async def _calculate_route_stats_sql(
     empty_stats: dict[str, Any] = {
         "total_journeys": 0,
         "on_time_percentage": None,
+        "on_time_source": None,
         "average_delay_minutes": None,
         "average_departure_delay_minutes": 0.0,
         "cancellation_rate": 0.0,
@@ -321,6 +324,10 @@ async def _calculate_route_stats_sql(
         line_filter = "AND tj.line_code = ANY(:line_codes)"
 
     # Build the route_journeys CTE SQL (reused by stats and track queries)
+    # Non-cancelled trains require stops at both origin AND destination.
+    # Cancelled trains only require an origin stop — they never completed the
+    # journey so requiring a destination stop would silently exclude them,
+    # causing cancellation_rate to underreport (shows 0% during disruptions).
     route_journeys_cte = f"""
         SELECT tj.id AS journey_id, tj.is_cancelled
         FROM train_journeys tj
@@ -329,17 +336,43 @@ async def _calculate_route_stats_sql(
           AND tj.journey_date <= :end_date
           {train_filter}
           {line_filter}
-          AND EXISTS (
-              SELECT 1 FROM journey_stops fs
-              WHERE fs.journey_id = tj.id
-                AND fs.station_code = ANY(:from_codes)
-                AND EXISTS (
-                    SELECT 1 FROM journey_stops ts
-                    WHERE ts.journey_id = tj.id
-                      AND ts.station_code = ANY(:to_codes)
-                      AND ts.stop_sequence > fs.stop_sequence
-                      {dest_time_filter}
-                )
+          AND (
+              -- Non-cancelled: require stops at both origin and destination
+              (NOT tj.is_cancelled AND EXISTS (
+                  SELECT 1 FROM journey_stops fs
+                  WHERE fs.journey_id = tj.id
+                    AND fs.station_code = ANY(:from_codes)
+                    AND EXISTS (
+                        SELECT 1 FROM journey_stops ts
+                        WHERE ts.journey_id = tj.id
+                          AND ts.station_code = ANY(:to_codes)
+                          AND ts.stop_sequence > fs.stop_sequence
+                          {dest_time_filter}
+                    )
+              ))
+              OR
+              -- Cancelled: require origin stop OR full journey covering both stations
+              (tj.is_cancelled AND (
+                  EXISTS (
+                      SELECT 1 FROM journey_stops fs
+                      WHERE fs.journey_id = tj.id
+                        AND fs.station_code = ANY(:from_codes)
+                        AND EXISTS (
+                            SELECT 1 FROM journey_stops ts
+                            WHERE ts.journey_id = tj.id
+                              AND ts.station_code = ANY(:to_codes)
+                              AND ts.stop_sequence > fs.stop_sequence
+                        )
+                  )
+                  OR
+                  -- Cancelled trains without full stop list but with origin stop
+                  -- (e.g. reconciled SCHEDULED trains where stop backfill failed)
+                  (NOT tj.has_complete_journey AND EXISTS (
+                      SELECT 1 FROM journey_stops fs
+                      WHERE fs.journey_id = tj.id
+                        AND fs.station_code = ANY(:from_codes)
+                  ))
+              ))
           )
         ORDER BY tj.journey_date DESC
         LIMIT 5000
@@ -415,7 +448,27 @@ async def _calculate_route_stats_sql(
                 AVG(GREATEST(os.departure_delay_minutes, 0))
                     FILTER (WHERE NOT rj.is_cancelled
                             AND os.departure_delay_minutes IS NOT NULL)
-                    AS avg_departure_delay
+                    AS avg_departure_delay,
+                -- Departure-based on-time (fallback when arrival data unavailable)
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND os.departure_delay_minutes IS NOT NULL)
+                    AS with_departure_data_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND os.departure_delay_minutes IS NOT NULL
+                    AND os.departure_delay_minutes <= 5)
+                    AS dep_on_time_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND os.departure_delay_minutes IS NOT NULL
+                    AND os.departure_delay_minutes > 5 AND os.departure_delay_minutes <= 15)
+                    AS dep_slight_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND os.departure_delay_minutes IS NOT NULL
+                    AND os.departure_delay_minutes > 15 AND os.departure_delay_minutes <= 30)
+                    AS dep_significant_count,
+                COUNT(*) FILTER (WHERE NOT rj.is_cancelled
+                    AND os.departure_delay_minutes IS NOT NULL
+                    AND os.departure_delay_minutes > 30)
+                    AS dep_major_count
             FROM route_journeys rj
             LEFT JOIN destination_stops ds ON ds.journey_id = rj.journey_id
             LEFT JOIN origin_stops os ON os.journey_id = rj.journey_id
@@ -462,6 +515,8 @@ async def _calculate_route_stats_sql(
     cancelled_count = row["cancelled_count"]
     with_arrival_data = row["with_arrival_data_count"]
     on_time_count = row["on_time_count"]
+    with_departure_data = row["with_departure_data_count"]
+    dep_on_time_count = row["dep_on_time_count"]
     avg_arrival = (
         float(row["avg_arrival_delay"])
         if row["avg_arrival_delay"] is not None
@@ -469,16 +524,31 @@ async def _calculate_route_stats_sql(
     )
     avg_departure = float(row["avg_departure_delay"] or 0)
 
-    # Calculate delay breakdown percentages using trains with arrival data as denominator
-    # Return None when no arrival data exists to distinguish "no data" from "0% on-time"
+    # Determine on-time percentage and source.
+    # Prefer arrival-based (more accurate), fall back to departure-based when
+    # arrival data is unavailable (common during disruptions when trains haven't
+    # completed their journey or arrivals used scheduled_fallback).
     if with_arrival_data > 0:
+        on_time_percentage: float | None = on_time_count / with_arrival_data * 100
+        on_time_source = "arrival"
         delay_breakdown: dict[str, int] | None = {
             "on_time": round(on_time_count / with_arrival_data * 100),
             "slight": round(row["slight_count"] / with_arrival_data * 100),
             "significant": round(row["significant_count"] / with_arrival_data * 100),
             "major": round(row["major_count"] / with_arrival_data * 100),
         }
+    elif with_departure_data > 0:
+        on_time_percentage = dep_on_time_count / with_departure_data * 100
+        on_time_source = "departure"
+        delay_breakdown = {
+            "on_time": round(dep_on_time_count / with_departure_data * 100),
+            "slight": round(row["dep_slight_count"] / with_departure_data * 100),
+            "significant": round(row["dep_significant_count"] / with_departure_data * 100),
+            "major": round(row["dep_major_count"] / with_departure_data * 100),
+        }
     else:
+        on_time_percentage = None
+        on_time_source = None
         delay_breakdown = None
 
     # Extract track usage from the JSON aggregate in the combined query
@@ -496,9 +566,8 @@ async def _calculate_route_stats_sql(
 
     return {
         "total_journeys": total_journeys,
-        "on_time_percentage": (
-            (on_time_count / with_arrival_data * 100) if with_arrival_data > 0 else None
-        ),
+        "on_time_percentage": on_time_percentage,
+        "on_time_source": on_time_source,
         "average_delay_minutes": avg_arrival,
         "average_departure_delay_minutes": avg_departure,
         "cancellation_rate": (

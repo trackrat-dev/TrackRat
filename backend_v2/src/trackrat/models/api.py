@@ -506,7 +506,15 @@ class AggregateStats(BaseModel):
         None,
         ge=0.0,
         le=100.0,
-        description="Null when no arrival data available for non-cancelled trains",
+        description="Null when no delay data available for non-cancelled trains",
+    )
+    on_time_source: Literal["arrival", "departure"] | None = Field(
+        None,
+        description=(
+            "'arrival' when based on destination arrival delay (preferred), "
+            "'departure' when based on origin departure delay (fallback during disruptions), "
+            "null when no data available"
+        ),
     )
     average_delay_minutes: float | None = Field(
         None,
@@ -519,7 +527,7 @@ class AggregateStats(BaseModel):
     cancellation_rate: float = Field(..., ge=0.0, le=100.0)
     delay_breakdown: DelayBreakdown | None = Field(
         None,
-        description="Null when no arrival data available for non-cancelled trains",
+        description="Null when no delay data available for non-cancelled trains",
     )
     track_usage_at_origin: dict[str, int] = Field(
         default_factory=dict, description="Track number to usage percentage mapping"
@@ -531,6 +539,7 @@ class HighlightedTrain(BaseModel):
 
     train_id: str
     on_time_percentage: float | None = Field(None, ge=0.0, le=100.0)
+    on_time_source: Literal["arrival", "departure"] | None = None
     average_delay_minutes: float | None = Field(None, ge=0.0)
     average_departure_delay_minutes: float = Field(
         0.0, ge=0.0, description="Average departure delay at origin in minutes"
