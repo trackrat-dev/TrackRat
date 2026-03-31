@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -n \"$GCP_SA_KEY_JSON\" && mkdir -p /root/.config/gcloud && echo \"$GCP_SA_KEY_JSON\" > /root/.config/gcloud/service-account.json; true"
+          }
+        ]
+      }
+    ]
+  }
+}

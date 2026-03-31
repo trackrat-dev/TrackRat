@@ -1,0 +1,69 @@
+# TrackRat Webpage Staging Deployment
+# Triggered by push to 'main' branch (path filter: webpage_v2/**)
+# Builds the React app pointing at staging API, deploys to staging GCS bucket
+
+substitutions:
+  _WEBPAGE_BUCKET: trackrat-webpage-staging
+  _API_BASE_URL: 'https://staging.apiv2.trackrat.net/api/v2'
+
+steps:
+  # Install dependencies
+  - name: 'node:22'
+    id: 'install'
+    dir: 'webpage_v2'
+    entrypoint: 'npm'
+    args: ['ci']
+
+  # Run tests
+  - name: 'node:22'
+    id: 'test'
+    dir: 'webpage_v2'
+    entrypoint: 'npm'
+    args: ['test']
+    waitFor: ['install']
+
+  # Build with staging API URL
+  - name: 'node:22'
+    id: 'build'
+    dir: 'webpage_v2'
+    entrypoint: 'npm'
+    args: ['run', 'build']
+    env:
+      - 'VITE_API_BASE_URL=${_API_BASE_URL}'
+    waitFor: ['test']
+
+  # Sync build output to staging GCS bucket
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'sync'
+    args: ['-m', 'rsync', '-r', '-d', 'webpage_v2/dist', 'gs://${_WEBPAGE_BUCKET}']
+    waitFor: ['build']
+
+  # Set no-cache on HTML and service worker files
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'cache-html'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
+          "gs://${_WEBPAGE_BUCKET}/index.html"
+        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
+          "gs://${_WEBPAGE_BUCKET}/sw.js" 2>/dev/null || true
+        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
+          "gs://${_WEBPAGE_BUCKET}/registerSW.js" 2>/dev/null || true
+    waitFor: ['sync']
+
+  # Set long cache on hashed assets
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'cache-assets'
+    args: ['-m', 'setmeta', '-h', 'Cache-Control:public, max-age=31536000, immutable',
+           'gs://${_WEBPAGE_BUCKET}/assets/**']
+    waitFor: ['sync']
+
+tags:
+  - 'trackrat'
+  - 'webpage'
+  - 'staging'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

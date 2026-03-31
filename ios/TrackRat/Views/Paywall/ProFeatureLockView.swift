@@ -1,0 +1,82 @@
+import SwiftUI
+import UIKit
+
+/// A full-width upgrade prompt card
+struct UpgradePromptCard: View {
+    var headline: String? = nil
+    var subtext: String? = nil
+    @Binding var showingPaywall: Bool
+
+    var body: some View {
+        Button {
+            showingPaywall = true
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } label: {
+            VStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.orange)
+                    Text("TrackRat Pro")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Text("Learn More")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundColor(.white)
+
+                        Image(systemName: "arrow.right")
+                            .font(.subheadline)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(.orange)
+                    )
+                }
+
+                if let headline, !headline.isEmpty {
+                    Text(headline)
+                        .font(.title3.bold())
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let subtext, !subtext.isEmpty {
+                    Text(subtext)
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(
+                        LinearGradient(
+                            colors: [.orange.opacity(0.2), .orange.opacity(0.05)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(.orange.opacity(0.3), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+#Preview("UpgradePromptCard") {
+    UpgradePromptCard(
+        subtext: "Support continued development and unlock premium features.",
+        showingPaywall: .constant(false)
+    )
+    .padding()
+    .background(Color.black)
+}
