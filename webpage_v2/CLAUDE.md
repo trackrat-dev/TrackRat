@@ -236,7 +236,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
 - **No Push Notifications** - Browser notifications not implemented
-- **No Maps** - No Leaflet/Mapbox integration (list-based network status instead)
+- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Dark Matter tiles, no API key)
 - **No Backend Auth** - Stateless, no user accounts
 
 ### Intentional Simplifications
@@ -385,7 +385,7 @@ npm run test:watch  # Watch mode for development
 | **Notifications** | APNs/FCM push | None |
 | **Live Activities** | WidgetKit/Widgets | None |
 | **Offline Mode** | Core Data cache | PWA service worker (Workbox) |
-| **Maps** | MapKit/Google Maps | None |
+| **Maps** | MapKit/Google Maps | MapLibre GL (inline route map) |
 | **Background Refresh** | Yes | No |
 | **Install** | App Store | PWA install prompt |
 | **Auth** | Potential | None |

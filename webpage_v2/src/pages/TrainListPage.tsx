@@ -10,6 +10,7 @@ import { TransferTripCard } from '../components/TransferTripCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { getStationByCode } from '../data/stations';
+import { RouteMap } from '../components/RouteMap';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
 
 /** Convert a direct TripOption (1 leg) to a Train for the existing TrainCard */
@@ -170,6 +171,15 @@ export function TrainListPage() {
       {/* Service alerts for MTA systems */}
       {fromStation.system && (
         <ServiceAlertBanner dataSource={fromStation.system} />
+      )}
+
+      {/* Route map */}
+      {fromStation && toStation && (
+        <RouteMap
+          fromStation={fromStation}
+          toStation={toStation}
+          lineColor={trains[0]?.line.color}
+        />
       )}
 
       {/* Route summary (direct routes only) */}
