@@ -1707,7 +1707,9 @@ class TestCancelledTrainsWithoutDestinationStops:
                 },
             ],
         )
-        # Cancelled train with only origin stop (stop backfill failed)
+        # Cancelled train with only origin stop (stop backfill failed).
+        # terminal_station_code is always set from schedule data even when
+        # journey_stops are incomplete.
         cancelled_journey = TrainJourney(
             train_id="cancelled_no_dest",
             journey_date=BASE_DATE,
@@ -1715,7 +1717,7 @@ class TestCancelledTrainsWithoutDestinationStops:
             line_name="Northeast Corridor",
             destination="Trenton",
             origin_station_code="NY",
-            terminal_station_code=None,
+            terminal_station_code="TR",
             data_source="NJT",
             observation_type="SCHEDULED",
             scheduled_departure=BASE_TIME + timedelta(minutes=30),
@@ -1779,6 +1781,7 @@ class TestCancelledTrainsWithoutDestinationStops:
             line_name="Northeast Corridor",
             destination="Trenton",
             origin_station_code="NB",
+            terminal_station_code="TR",
             data_source="NJT",
             observation_type="SCHEDULED",
             scheduled_departure=BASE_TIME,
