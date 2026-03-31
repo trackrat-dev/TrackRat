@@ -118,12 +118,14 @@ def _find_relevant_transfer_points(
                     seen.add(key)
                     transfers.append(tp)
 
-    # Intra-subway transfers: find complexes connecting origin's lines to dest's lines
+    # Intra-subway transfers: find complexes connecting origin's lines to dest's lines.
+    # We don't skip when lines overlap — even if origin and dest share a line,
+    # direct service may not cover the segment, so a transfer via a different
+    # line can still be the best (or only) option.
     if "SUBWAY" in from_systems and "SUBWAY" in to_systems and from_station and to_station:
         origin_lines = get_subway_lines_at_station(from_station)
         dest_lines = get_subway_lines_at_station(to_station)
-        if origin_lines and dest_lines and not origin_lines & dest_lines:
-            # Origin and dest are on different subway lines — look for transfer complexes
+        if origin_lines and dest_lines:
             for tp in get_intra_subway_transfers():
                 # One side must share lines with origin, other with destination
                 a_has_origin = bool(tp.lines_a & origin_lines)

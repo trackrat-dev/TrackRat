@@ -400,14 +400,28 @@ class TestIntraSubwayTransferPoints:
             "Union Sq (L <-> 4/5/6) should be a transfer point for this route"
         )
 
-    def test_same_line_returns_empty(self):
-        """Stations on the same line should not trigger intra-subway transfers."""
-        # Two stations on the G line
+    def test_pure_same_line_returns_empty(self):
+        """Stations on ONLY the same line (no equivalences) should find no transfers."""
+        # SG35 and SG34 are both purely G-line, no station complex equivalences
+        transfers = _find_relevant_transfer_points(
+            {"SUBWAY"}, {"SUBWAY"}, from_station="SG35", to_station="SG34"
+        )
+        assert len(transfers) == 0, (
+            "Pure same-line (G→G) should not produce intra-subway transfers"
+        )
+
+    def test_overlapping_lines_still_finds_transfers(self):
+        """Stations sharing a line but having other lines should find transfers for non-shared lines.
+
+        SG29 (Metropolitan Av) has lines {G, L} via equivalence with SL10.
+        SG22 (Court Sq) has lines {G, 7, E, ...} via equivalence with S719/SF09.
+        They share G, but transfers connecting L to 7/E/M should still be found.
+        """
         transfers = _find_relevant_transfer_points(
             {"SUBWAY"}, {"SUBWAY"}, from_station="SG29", to_station="SG22"
         )
-        assert len(transfers) == 0, (
-            "Same-line (G→G) should not produce intra-subway transfers"
+        assert len(transfers) > 0, (
+            "Overlapping lines with other non-shared lines should find transfers"
         )
 
     def test_without_station_codes_returns_empty(self):
