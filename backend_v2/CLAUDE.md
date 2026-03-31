@@ -42,10 +42,10 @@ The V2 backend eliminates the complexity of V1 by:
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │ Transit APIs    │────▶│  Backend V2     │────▶│  Client Apps    │
 │ • NJ Transit    │     │ • Discovery     │     │ • iOS App       │
-│ • Amtrak        │     │ • Schedule Gen  │     │ • Web App       │
-│ • PATH          │     │ • JIT Updates   │     │ • Live Activities│
-│ • PATCO (GTFS)  │     │ • Predictions   │     └─────────────────┘
-│ • LIRR (GTFS-RT)│     │ • GTFS Feed     │
+│ • Amtrak        │     │ • Schedule Gen  │     │ • Android App   │
+│ • PATH          │     │ • JIT Updates   │     │ • Web App       │
+│ • PATCO (GTFS)  │     │ • Predictions   │     │ • Live Activities│
+│ • LIRR (GTFS-RT)│     │ • GTFS Feed     │     └─────────────────┘
 │ • MNR (GTFS-RT) │     │ • API Caching   │
 │ • Subway(GTFS-RT)│    │ • Route Alerts  │
 │ • BART (GTFS-RT)│     │ • Analytics     │
