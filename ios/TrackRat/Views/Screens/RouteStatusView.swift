@@ -577,7 +577,7 @@ struct RouteStatusView: View {
             // Frequency-focused stats for rapid transit (PATH, Subway, PATCO)
             HStack(spacing: 12) {
                 statCard(
-                    title: "",
+                    title: "Frequency",
                     value: formatHeadway(totalTrains: total, hours: hours),
                     color: freqColor
                 )
@@ -602,7 +602,7 @@ struct RouteStatusView: View {
                     color: stats.cancellationRate <= 5 ? .green : .red
                 )
                 statCard(
-                    title: "",
+                    title: "Frequency",
                     value: formatFrequency(totalTrains: total, hours: hours),
                     color: freqColor
                 )
