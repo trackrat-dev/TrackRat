@@ -45,6 +45,30 @@ BACKEND_SRC = os.path.join(SCRIPT_DIR, "..", "backend_v2", "src")
 sys.path.insert(0, BACKEND_SRC)
 
 from trackrat.config.stations import map_gtfs_stop_to_station_code  # noqa: E402
+from trackrat.config.route_topology import ALL_ROUTES  # noqa: E402
+
+# Build a mapping from equivalent station codes to the canonical code used
+# in route topology. E.g., "TS" -> "SE" because route definitions use "SE"
+# for Secaucus. Without this, shape data keyed by GTFS-derived codes (like
+# "TS" for Secaucus Lower Level) is inaccessible to the iOS renderer which
+# looks up segments using topology codes.
+_TOPOLOGY_CODES: set[str] = set()
+for _route in ALL_ROUTES:
+    _TOPOLOGY_CODES.update(_route.stations)
+
+try:
+    from trackrat.config.stations.common import STATION_EQUIVALENTS
+
+    SHAPE_CODE_REMAP: dict[str, str] = {}
+    for code, group in STATION_EQUIVALENTS.items():
+        if code in _TOPOLOGY_CODES:
+            continue
+        # Find the canonical code from this equivalence group that IS in topology
+        canonical = next((c for c in group if c in _TOPOLOGY_CODES), None)
+        if canonical:
+            SHAPE_CODE_REMAP[code] = canonical
+except ImportError:
+    SHAPE_CODE_REMAP = {}
 
 
 @dataclass
@@ -240,12 +264,13 @@ def extract_segment_shapes(
         if len(shape_points) < 2:
             continue
 
-        # Map GTFS stop IDs to our station codes
+        # Map GTFS stop IDs to our station codes (with equivalence remapping)
         mapped_stops: list[tuple[str, str]] = []  # (our_code, gtfs_stop_id)
         for _, gtfs_stop_id in ordered_stops:
             stop_name = stop_names.get(gtfs_stop_id, "")
             our_code = map_gtfs_stop_to_station_code(gtfs_stop_id, stop_name, provider)
             if our_code:
+                our_code = SHAPE_CODE_REMAP.get(our_code, our_code)
                 mapped_stops.append((our_code, gtfs_stop_id))
 
         if len(mapped_stops) < 2:
