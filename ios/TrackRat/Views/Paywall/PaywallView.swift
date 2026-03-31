@@ -347,7 +347,7 @@ struct PaywallView: View {
         guard monthlyTotal > 0 else { return nil }
         let savingsPercent = Int(((monthlyTotal - yearlyTotal) / monthlyTotal * 100).rounded())
         guard savingsPercent > 0 else { return nil }
-        return "Save \(savingsPercent)%"
+        return "2 months free!"
     }
 
     private func purchase() async {
