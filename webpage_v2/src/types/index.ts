@@ -259,6 +259,7 @@ export interface DelayBreakdown {
 
 export interface AggregateStats {
   on_time_percentage: number | null;
+  on_time_source: 'arrival' | 'departure' | null;
   average_delay_minutes: number | null;
   average_departure_delay_minutes: number;
   cancellation_rate: number;
@@ -278,6 +279,7 @@ export interface RouteHistoryResponse {
   highlighted_train: {
     train_id: string;
     on_time_percentage: number | null;
+    on_time_source: 'arrival' | 'departure' | null;
     average_delay_minutes: number | null;
     average_departure_delay_minutes: number;
     delay_breakdown: DelayBreakdown | null;

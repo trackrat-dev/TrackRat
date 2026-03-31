@@ -305,14 +305,20 @@ async def _calculate_route_stats_sql(
         "track_usage": {},
     }
 
-    # Build the time filter clause for destination stop arrival
-    # Filter by when trains ARRIVED at destination, not when they departed origin.
-    # This ensures "last hour" stats reflect trains with actual arrival data.
+    # Build time filter clauses for sub-day windows (hours parameter).
+    # dest_time_filter: filters by arrival at destination (used for non-cancelled trains).
+    # origin_time_filter: filters by departure at origin (used for cancelled trains
+    # without destination stops, since they never arrived anywhere).
     dest_time_filter = ""
+    origin_time_filter = ""
     if cutoff_time:
         dest_time_filter = """
             AND COALESCE(ts.actual_arrival, ts.scheduled_arrival) >= :cutoff_time
             AND COALESCE(ts.actual_arrival, ts.scheduled_arrival) <= :now_time
+        """
+        origin_time_filter = """
+            AND COALESCE(fs.actual_departure, fs.scheduled_departure) >= :cutoff_time
+            AND COALESCE(fs.actual_departure, fs.scheduled_departure) <= :now_time
         """
 
     train_filter = ""
@@ -362,15 +368,19 @@ async def _calculate_route_stats_sql(
                             WHERE ts.journey_id = tj.id
                               AND ts.station_code = ANY(:to_codes)
                               AND ts.stop_sequence > fs.stop_sequence
+                              {dest_time_filter}
                         )
                   )
                   OR
                   -- Cancelled trains without full stop list but with origin stop
-                  -- (e.g. reconciled SCHEDULED trains where stop backfill failed)
+                  -- (e.g. reconciled SCHEDULED trains where stop backfill failed).
+                  -- Uses origin departure time for sub-day filtering since there's
+                  -- no destination stop to filter on.
                   (NOT tj.has_complete_journey AND EXISTS (
                       SELECT 1 FROM journey_stops fs
                       WHERE fs.journey_id = tj.id
                         AND fs.station_code = ANY(:from_codes)
+                        {origin_time_filter}
                   ))
               ))
           )
