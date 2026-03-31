@@ -67,6 +67,7 @@ struct SettingsView: View {
                         .foregroundColor(appState.selectedSystems.isEmpty ? .gray : .white)
                         .frame(minWidth: 44, minHeight: 44)
                 }
+                .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
@@ -184,6 +185,7 @@ struct SettingsSection: View {
                             .foregroundColor(isEditingTrainSystems && appState.selectedSystems.isEmpty ? .gray : .orange)
                     }
                 }
+                .buttonStyle(.plain)
                 .padding()
 
                 if isEditingTrainSystems {
@@ -281,6 +283,7 @@ struct SettingsSection: View {
                             .foregroundColor(.orange)
                     }
                 }
+                .buttonStyle(.plain)
                 .padding()
 
                 if isEditingRouteAlerts {
@@ -382,6 +385,7 @@ struct SettingsSection: View {
                             .foregroundColor(.orange)
                     }
                 }
+                .buttonStyle(.plain)
                 .padding()
 
                 if isEditingFavorites {
