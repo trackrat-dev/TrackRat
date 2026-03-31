@@ -3,6 +3,8 @@ import Map, { Source, Layer, Marker, NavigationControl } from 'react-map-gl/mapl
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Station } from '../types';
+import { getStationByCode } from '../data/stations';
+import { getIntermediateStations } from '../data/routeTopology';
 
 const DARK_TILES = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -14,11 +16,34 @@ interface RouteMapProps {
   lineColor?: string;
 }
 
-function getBounds(from: Station, to: Station): [[number, number], [number, number]] {
+interface StopCoord {
+  code: string;
+  name: string;
+  lon: number;
+  lat: number;
+}
+
+/** Build the ordered list of all stops (from, intermediates, to) with coordinates. */
+function buildRouteStops(from: Station, to: Station): StopCoord[] {
   const fromCoords = from.coordinates!;
   const toCoords = to.coordinates!;
-  const lats = [fromCoords.lat, toCoords.lat];
-  const lons = [fromCoords.lon, toCoords.lon];
+  const stops: StopCoord[] = [{ code: from.code, name: from.name, lon: fromCoords.lon, lat: fromCoords.lat }];
+
+  const intermediateCodes = getIntermediateStations(from.code, to.code, from.system);
+  for (const code of intermediateCodes) {
+    const station = getStationByCode(code);
+    if (station?.coordinates) {
+      stops.push({ code, name: station.name, lon: station.coordinates.lon, lat: station.coordinates.lat });
+    }
+  }
+
+  stops.push({ code: to.code, name: to.name, lon: toCoords.lon, lat: toCoords.lat });
+  return stops;
+}
+
+function getBounds(stops: StopCoord[]): [[number, number], [number, number]] {
+  const lats = stops.map((s) => s.lat);
+  const lons = stops.map((s) => s.lon);
   return [
     [Math.min(...lons), Math.min(...lats)],
     [Math.max(...lons), Math.max(...lats)],
@@ -36,7 +61,9 @@ export function RouteMap({ fromStation, toStation, lineColor }: RouteMapProps) {
 
   const color = lineColor || ROUTE_LINE_COLOR;
 
-  const bounds = useMemo(() => getBounds(fromStation, toStation), [fromStation, toStation]);
+  const stops = useMemo(() => buildRouteStops(fromStation, toStation), [fromStation, toStation]);
+  const intermediateStops = stops.slice(1, -1);
+  const bounds = useMemo(() => getBounds(stops), [stops]);
 
   const routeGeoJSON = useMemo(
     () => ({
@@ -44,13 +71,10 @@ export function RouteMap({ fromStation, toStation, lineColor }: RouteMapProps) {
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: [
-          [fromCoords.lon, fromCoords.lat],
-          [toCoords.lon, toCoords.lat],
-        ],
+        coordinates: stops.map((s) => [s.lon, s.lat]),
       },
     }),
-    [fromCoords, toCoords],
+    [stops],
   );
 
   const toggleExpand = useCallback(() => setIsExpanded((v) => !v), []);
@@ -95,6 +119,17 @@ export function RouteMap({ fromStation, toStation, lineColor }: RouteMapProps) {
               }}
             />
           </Source>
+
+          {/* Intermediate stop markers */}
+          {intermediateStops.map((stop) => (
+            <Marker key={stop.code} longitude={stop.lon} latitude={stop.lat}>
+              <div
+                className="w-2 h-2 rounded-full border border-white/60"
+                style={{ backgroundColor: color, opacity: 0.7 }}
+                title={stop.name}
+              />
+            </Marker>
+          ))}
 
           {/* From station marker */}
           <Marker longitude={fromCoords.lon} latitude={fromCoords.lat}>
