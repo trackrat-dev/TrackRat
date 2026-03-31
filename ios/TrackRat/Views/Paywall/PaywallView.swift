@@ -340,13 +340,11 @@ struct PaywallView: View {
         return "\(trialPrefix)\(product.displayPrice)\(periodLabel)"
     }
 
-    /// Calculate the monthly equivalent price for a yearly product and the savings percentage vs monthly
+    /// Show savings badge if yearly plan is cheaper than 12× monthly
     private func yearlySavingsText(yearly: Product, monthly: Product) -> String? {
         let yearlyTotal = NSDecimalNumber(decimal: yearly.price).doubleValue
         let monthlyTotal = NSDecimalNumber(decimal: monthly.price).doubleValue * 12
-        guard monthlyTotal > 0 else { return nil }
-        let savingsPercent = Int(((monthlyTotal - yearlyTotal) / monthlyTotal * 100).rounded())
-        guard savingsPercent > 0 else { return nil }
+        guard monthlyTotal > 0, yearlyTotal < monthlyTotal else { return nil }
         return "2 months free!"
     }
 
