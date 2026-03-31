@@ -211,8 +211,12 @@ class StopDetails(BaseModel):
     stop_sequence: int = Field(..., ge=0)
     scheduled_arrival: datetime | None = None
     scheduled_departure: datetime | None = None
-    updated_arrival: datetime | None = None
-    updated_departure: datetime | None = None
+    updated_arrival: datetime | None = (
+        None  # See database.py JourneyStop for NJT semantic caveat
+    )
+    updated_departure: datetime | None = (
+        None  # See database.py JourneyStop for NJT semantic caveat
+    )
     actual_arrival: datetime | None = None
     actual_departure: datetime | None = None
     track: str | None = None

@@ -195,6 +195,14 @@ bash scripts/create-and-restore-db-then-train-model.sh
 4. JIT Updates (on-demand) - refreshes stale data (>60s)
 5. Validation (hourly) - ensures coverage
 
+> **⚠️ NJT `updated_arrival` / `updated_departure` semantic mismatch:**
+> On `JourneyStop`, these fields are raw NJT API passthroughs with *inverted* meanings
+> depending on stop type. At **intermediate stops**, `updated_departure` = original schedule
+> (DEP_TIME) while `updated_arrival` = live delayed estimate (TIME). Consumers must use
+> `max(updated_departure, updated_arrival)` to get the true delayed time. For all other
+> providers (Amtrak, GTFS-RT, PATH, WMATA), both fields are genuine live estimates and
+> the `max()` is harmless. See `database.py` JourneyStop model for the authoritative docs.
+
 **Backend Data Collection (PATH - Unified):**
 - Single collector runs every 4 minutes using native RidePATH API
 - Discovers trains at all 13 stations (not just terminus)

@@ -1317,8 +1317,17 @@ class JourneyCollector(BaseJourneyCollector):
                     )
                 stop.stop_sequence = sequence
 
-            # Update "updated" times for backward compatibility (deprecated fields)
-            # These use raw API fields for legacy compatibility
+            # Raw NJT API time fields — NOT true "updated estimates" at all stops.
+            #
+            # NJT's TIME and DEP_TIME have INVERTED semantics by stop type:
+            #   Origin:       TIME = scheduled arrival (meaningless), DEP_TIME = actual departure
+            #   Intermediate: TIME = live estimate (delayed),        DEP_TIME = original schedule
+            #   Terminal:     TIME = live estimate (delayed),        DEP_TIME = not provided
+            #
+            # At intermediate stops, updated_departure (DEP_TIME = schedule) is typically
+            # EARLIER than updated_arrival (TIME = delayed estimate). Consumers must use
+            # max(updated_departure, updated_arrival) to get the true delayed time.
+            # See departure.py DepartureService and the model definition in database.py.
             stop.updated_arrival = time_field
             stop.updated_departure = dep_time_field
 
@@ -1523,9 +1532,10 @@ class JourneyCollector(BaseJourneyCollector):
                     time = stop.scheduled_arrival
                 else:
                     # Only scheduled_departure available (origin station case)
-                    # Also consider updated_departure (raw DEP_TIME from API) to handle
-                    # corrupted origin data where scheduled_departure (from TIME) is wrong.
-                    # This matches the min() logic in update_journey_stops().
+                    # Also consider updated_departure (raw DEP_TIME from NJT API).
+                    # At origin stops, DEP_TIME is the actual departure while TIME is
+                    # the scheduled arrival (often wrong). Use min() to pick the
+                    # earlier/correct value. See database.py JourneyStop for full docs.
                     assert (
                         stop.scheduled_departure is not None
                     )  # Guaranteed by outer if

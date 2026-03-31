@@ -106,9 +106,15 @@ train_journeys (
     api_error_count, is_expired, discovery_track, discovery_station_code
 
 -- Individual stops with times and tracks
+-- NOTE: updated_arrival / updated_departure have INVERTED semantics for NJT.
+-- For most providers these are live estimates. For NJT intermediate stops,
+-- updated_departure = original schedule, updated_arrival = live estimate.
+-- Consumers must use max(updated_departure, updated_arrival) for NJT departures.
+-- See database.py JourneyStop model for full documentation.
 journey_stops (
     journey_id, station_code, stop_sequence,
     scheduled_departure, scheduled_arrival,
+    updated_departure, updated_arrival,
     actual_departure, actual_arrival,
     track, status
 )

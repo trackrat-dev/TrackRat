@@ -355,11 +355,13 @@ class DepartureService:
                     name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # Use max() to pick the live delayed estimate over
-                    # the scheduled time. At NJT intermediate stops, updated_departure
-                    # holds the original schedule (DEP_TIME) while updated_arrival
-                    # holds the live estimate (TIME). Plain `or` would short-circuit
-                    # to the scheduled value, hiding delays.
+                    # IMPORTANT: max() is required here due to NJT's inverted semantics.
+                    # At NJT intermediate stops, updated_departure = original schedule
+                    # (DEP_TIME) while updated_arrival = live delayed estimate (TIME).
+                    # The schedule is typically earlier, so plain `or` would return it
+                    # and hide delays. max() ensures we surface the delayed time.
+                    # For non-NJT providers, both fields are live estimates so max()
+                    # is harmless. See database.py JourneyStop model for full docs.
                     updated_time=(
                         max(from_stop.updated_departure, from_stop.updated_arrival)
                         if from_stop.updated_departure and from_stop.updated_arrival

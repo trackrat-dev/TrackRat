@@ -161,7 +161,20 @@ class JourneyStop(Base):
     scheduled_arrival = Column(DateTime(timezone=True))
     scheduled_departure = Column(DateTime(timezone=True))
 
-    # Updated times (current best estimate)
+    # Updated times — raw real-time values from the transit provider API.
+    #
+    # WARNING — NJT SEMANTIC MISMATCH:
+    # For most providers (Amtrak, GTFS-RT systems, PATH, WMATA), these are
+    # genuine live estimates (i.e., "current best guess for arrival/departure").
+    # For NJT, these are raw API field passthroughs with INVERTED semantics:
+    #   - updated_arrival  = NJT TIME field     (live estimate at intermediate stops,
+    #                                            but scheduled arrival at origin)
+    #   - updated_departure = NJT DEP_TIME field (original schedule at intermediate stops,
+    #                                             but actual departure at origin)
+    # This means at NJT intermediate stops, updated_departure is typically EARLIER
+    # than updated_arrival (schedule vs delayed estimate). Consumers must use
+    # max(updated_departure, updated_arrival) to get the true delayed estimate.
+    # See departure.py DepartureService for the canonical handling pattern.
     updated_arrival = Column(DateTime(timezone=True))
     updated_departure = Column(DateTime(timezone=True))
 
