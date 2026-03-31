@@ -45,6 +45,30 @@ BACKEND_SRC = os.path.join(SCRIPT_DIR, "..", "backend_v2", "src")
 sys.path.insert(0, BACKEND_SRC)
 
 from trackrat.config.stations import map_gtfs_stop_to_station_code  # noqa: E402
+from trackrat.config.route_topology import ALL_ROUTES  # noqa: E402
+
+# Build a mapping from equivalent station codes to the canonical code used
+# in route topology. E.g., "TS" -> "SE" because route definitions use "SE"
+# for Secaucus. Without this, shape data keyed by GTFS-derived codes (like
+# "TS" for Secaucus Lower Level) is inaccessible to the iOS renderer which
+# looks up segments using topology codes.
+_TOPOLOGY_CODES: set[str] = set()
+for _route in ALL_ROUTES:
+    _TOPOLOGY_CODES.update(_route.stations)
+
+try:
+    from trackrat.config.stations.common import STATION_EQUIVALENTS
+
+    SHAPE_CODE_REMAP: dict[str, str] = {}
+    for code, group in STATION_EQUIVALENTS.items():
+        if code in _TOPOLOGY_CODES:
+            continue
+        # Find the canonical code from this equivalence group that IS in topology
+        canonical = next((c for c in group if c in _TOPOLOGY_CODES), None)
+        if canonical:
+            SHAPE_CODE_REMAP[code] = canonical
+except ImportError:
+    SHAPE_CODE_REMAP = {}
 
 
 @dataclass
@@ -240,12 +264,13 @@ def extract_segment_shapes(
         if len(shape_points) < 2:
             continue
 
-        # Map GTFS stop IDs to our station codes
+        # Map GTFS stop IDs to our station codes (with equivalence remapping)
         mapped_stops: list[tuple[str, str]] = []  # (our_code, gtfs_stop_id)
         for _, gtfs_stop_id in ordered_stops:
             stop_name = stop_names.get(gtfs_stop_id, "")
             our_code = map_gtfs_stop_to_station_code(gtfs_stop_id, stop_name, provider)
             if our_code:
+                our_code = SHAPE_CODE_REMAP.get(our_code, our_code)
                 mapped_stops.append((our_code, gtfs_stop_id))
 
         if len(mapped_stops) < 2:
@@ -282,6 +307,13 @@ def extract_segment_shapes(
                 ]
                 segment_pts.reverse()
 
+            # Normalize direction: points must go from alphabetically-first
+            # station to alphabetically-second, matching the canonical key.
+            # Without this, the iOS polyline merger concatenates backwards
+            # segments, causing visual artifacts (squiggling / doubling back).
+            if from_code > to_code:
+                segment_pts.reverse()
+
             # Keep the version with the most points (most detail)
             if key not in segment_shapes or len(segment_pts) > len(
                 segment_shapes[key]
@@ -315,6 +347,49 @@ def simplify_shapes(
     return result
 
 
+def validate_direction(
+    all_shapes: dict[str, dict[str, list[tuple[float, float]]]],
+) -> int:
+    """
+    Validate that shape data direction matches canonical key order.
+
+    For each segment key "A-B" (A < B alphabetically), the first coordinate
+    should be closer to station A and the last coordinate closer to station B.
+    Returns the number of violations found.
+    """
+    from trackrat.config.stations import get_station_coordinates
+
+    violations = 0
+    for provider, shapes in all_shapes.items():
+        for key, points in shapes.items():
+            if len(points) < 2:
+                continue
+            parts = key.split("-")
+            if len(parts) != 2:
+                continue
+            code_a, code_b = parts
+            coord_a = get_station_coordinates(code_a)
+            coord_b = get_station_coordinates(code_b)
+            if not coord_a or not coord_b:
+                continue
+
+            first_pt = points[0]
+            last_pt = points[-1]
+
+            # Distance from first point to station A vs station B
+            dist_first_to_a = haversine_m(first_pt[0], first_pt[1], coord_a["lat"], coord_a["lon"])
+            dist_first_to_b = haversine_m(first_pt[0], first_pt[1], coord_b["lat"], coord_b["lon"])
+            dist_last_to_a = haversine_m(last_pt[0], last_pt[1], coord_a["lat"], coord_a["lon"])
+            dist_last_to_b = haversine_m(last_pt[0], last_pt[1], coord_b["lat"], coord_b["lon"])
+
+            # First point should be closer to A, last point closer to B
+            if dist_first_to_b < dist_first_to_a and dist_last_to_a < dist_last_to_b:
+                print(f"  ⚠️  REVERSED: {provider} {key} — first point near {code_b}, last near {code_a}")
+                violations += 1
+
+    return violations
+
+
 def generate_swift(
     all_shapes: dict[str, dict[str, list[tuple[float, float]]]],
     output_path: str,
@@ -346,7 +421,7 @@ def generate_swift(
         "    /// The returned array includes the from and to station coordinates.",
         "    static func coordinates(from fromStation: String, to toStation: String) -> [CLLocationCoordinate2D]? {",
         '        let key = fromStation < toStation ? "\\(fromStation)-\\(toStation)" : "\\(toStation)-\\(fromStation)"',
-        "        guard let rawPoints = shapeData[key] else { return nil }",
+        "        guard let rawPoints = shapeData[key], rawPoints.count >= 4, rawPoints.count.isMultiple(of: 2) else { return nil }",
         "        let points = stride(from: 0, to: rawPoints.count, by: 2).map {",
         "            CLLocationCoordinate2D(latitude: rawPoints[$0], longitude: rawPoints[$0 + 1])",
         "        }",
@@ -454,6 +529,15 @@ def main():
         print(f"  {len(simplified)} segments after simplification (straight lines removed)")
 
         all_shapes[provider] = simplified
+
+    # Validate direction consistency
+    print("\nValidating shape directions...")
+    violations = validate_direction(all_shapes)
+    if violations:
+        print(f"\n❌ {violations} segments with reversed direction detected!")
+        print("This indicates a bug in extract_segment_shapes direction normalization.")
+    else:
+        print("✅ All segments have correct direction")
 
     # Generate Swift file
     swift_path = os.path.join(args.output_dir, "RouteShapes.swift")
