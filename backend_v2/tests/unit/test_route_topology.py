@@ -1389,16 +1389,22 @@ class TestAmtrakHiawatha:
         assert AMTRAK_HIAWATHA.stations == ("CHI", "GLN", "SVT", "MKA", "MKE")
 
     def test_hiawatha_chi_to_mke_expansion(self):
-        """CHI→MKE: Empire Builder has them adjacent (1 hop), shortest wins.
-        Test a Hiawatha-only pair: GLN→MKE (3 hops)."""
+        """CHI→MKE: Empire Builder now has CHI→GLN→MKE (2 hops), shortest wins.
+        Test a Hiawatha-only pair: GLN→MKE (3 hops via SVT, MKA)."""
         canonical = get_canonical_segments("AMTRAK", "CHI", "MKE")
         assert (
-            len(canonical) == 1
-        ), f"Expected 1 segment (Empire Builder), got: {canonical}"
-        # Test pair unique to Hiawatha
+            len(canonical) == 2
+        ), f"Expected 2 segments (Empire Builder via GLN), got: {canonical}"
+        assert canonical == [("CHI", "GLN"), ("GLN", "MKE")]
+        # GLN→MKE: Empire Builder has them adjacent (1 hop), shortest wins.
+        # Hiawatha has GLN→SVT→MKA→MKE (3 hops) but Empire Builder wins.
         canonical_gln = get_canonical_segments("AMTRAK", "GLN", "MKE")
-        assert len(canonical_gln) == 3, f"Expected 3 segments, got: {canonical_gln}"
-        assert canonical_gln == [("GLN", "SVT"), ("SVT", "MKA"), ("MKA", "MKE")]
+        assert len(canonical_gln) == 1, f"Expected 1 segment (Empire Builder), got: {canonical_gln}"
+        assert canonical_gln == [("GLN", "MKE")]
+        # Test pair unique to Hiawatha: SVT→MKA
+        canonical_svt = get_canonical_segments("AMTRAK", "SVT", "MKA")
+        assert len(canonical_svt) == 1, f"Expected 1 segment, got: {canonical_svt}"
+        assert canonical_svt == [("SVT", "MKA")]
 
 
 class TestAmtrakLincolnService:
@@ -1474,11 +1480,16 @@ class TestAmtrakWolverine:
     def test_wolverine_stations(self):
         assert AMTRAK_WOLVERINE.stations == (
             "CHI",
+            "NLS",
+            "DOA",
             "KAL",
             "BTL",
+            "ALI",
             "JXN",
             "ARB",
             "DER",
+            "ROY",
+            "TRM",
             "PNT",
         )
 
@@ -1491,12 +1502,21 @@ class TestAmtrakDowneaster:
         assert "amtrak-downeaster" in route_ids
 
     def test_downeaster_stations(self):
-        assert AMTRAK_DOWNEASTER.stations == ("BOS", "HHL", "EXR", "SAO", "BRK")
+        assert AMTRAK_DOWNEASTER.stations == (
+            "BOS",
+            "HHL",
+            "EXR",
+            "DOV",
+            "SAO",
+            "POR",
+            "FRE",
+            "BRK",
+        )
 
     def test_downeaster_bos_to_brk_expansion(self):
-        """BOS→BRK should expand to 4 hops."""
+        """BOS→BRK should expand to 7 hops."""
         canonical = get_canonical_segments("AMTRAK", "BOS", "BRK")
-        assert len(canonical) == 4, f"Expected 4 segments, got: {canonical}"
+        assert len(canonical) == 7, f"Expected 7 segments, got: {canonical}"
 
 
 class TestAmtrakPiedmont:
