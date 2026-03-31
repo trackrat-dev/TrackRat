@@ -685,9 +685,9 @@ class TestNoArrivalDataReturnsNull:
             f"average_delay_minutes should be None when no trains have arrival data, "
             f"got {result['average_delay_minutes']}. Showing 0m misleads users."
         )
-        assert result["delay_breakdown"] is not None, (
-            "delay_breakdown should fall back to departure-based categories"
-        )
+        assert (
+            result["delay_breakdown"] is not None
+        ), "delay_breakdown should fall back to departure-based categories"
 
         # Departure delay should still work (in-progress train has actual_departure)
         assert (
@@ -1509,12 +1509,12 @@ class TestOnTimeSourceFallback:
 
         result = await _run_stats(db_session)
 
-        assert result["on_time_source"] == "arrival", (
-            f"Expected 'arrival' source for completed train, got {result['on_time_source']}"
-        )
-        assert result["on_time_percentage"] == pytest.approx(100.0, abs=1), (
-            "3-minute arrival delay should be on-time (threshold is 5 min)"
-        )
+        assert (
+            result["on_time_source"] == "arrival"
+        ), f"Expected 'arrival' source for completed train, got {result['on_time_source']}"
+        assert result["on_time_percentage"] == pytest.approx(
+            100.0, abs=1
+        ), "3-minute arrival delay should be on-time (threshold is 5 min)"
 
     async def test_departure_fallback_when_no_arrival_data(
         self, db_session: AsyncSession
@@ -1546,15 +1546,15 @@ class TestOnTimeSourceFallback:
             f"Expected 'departure' fallback for in-transit train, "
             f"got {result['on_time_source']}"
         )
-        assert result["on_time_percentage"] == pytest.approx(0.0, abs=1), (
-            "12-minute departure delay should NOT be on-time (threshold is 5 min)"
-        )
-        assert result["delay_breakdown"] is not None, (
-            "delay_breakdown should use departure-based categories as fallback"
-        )
-        assert result["delay_breakdown"]["slight"] == 100, (
-            "12-minute delay should be in 'slight' category (5-15 min)"
-        )
+        assert result["on_time_percentage"] == pytest.approx(
+            0.0, abs=1
+        ), "12-minute departure delay should NOT be on-time (threshold is 5 min)"
+        assert (
+            result["delay_breakdown"] is not None
+        ), "delay_breakdown should use departure-based categories as fallback"
+        assert (
+            result["delay_breakdown"]["slight"] == 100
+        ), "12-minute delay should be in 'slight' category (5-15 min)"
 
     async def test_departure_fallback_multiple_trains_during_disruption(
         self, db_session: AsyncSession
@@ -1591,9 +1591,9 @@ class TestOnTimeSourceFallback:
         result = await _run_stats(db_session)
 
         assert result["on_time_source"] == "departure"
-        assert result["on_time_percentage"] == pytest.approx(25.0, abs=1), (
-            f"1 of 4 trains departed on time = 25%, got {result['on_time_percentage']}"
-        )
+        assert result["on_time_percentage"] == pytest.approx(
+            25.0, abs=1
+        ), f"1 of 4 trains departed on time = 25%, got {result['on_time_percentage']}"
         assert result["delay_breakdown"]["on_time"] == 25
         assert result["delay_breakdown"]["slight"] == 25
         assert result["delay_breakdown"]["significant"] == 25
@@ -1625,14 +1625,14 @@ class TestOnTimeSourceFallback:
 
         result = await _run_stats(db_session)
 
-        assert result["on_time_source"] == "arrival", (
-            "Should prefer arrival-based when both are available"
-        )
+        assert (
+            result["on_time_source"] == "arrival"
+        ), "Should prefer arrival-based when both are available"
         # Arrival: 2 min late = on-time; Departure: 10 min late = NOT on-time
         # If using departure, this would be 0%. Using arrival, it's 100%.
-        assert result["on_time_percentage"] == pytest.approx(100.0, abs=1), (
-            "Arrival delay of 2 min is on-time, verifies arrival is used not departure"
-        )
+        assert result["on_time_percentage"] == pytest.approx(
+            100.0, abs=1
+        ), "Arrival delay of 2 min is on-time, verifies arrival is used not departure"
 
     async def test_scheduled_fallback_arrivals_excluded_triggers_departure_fallback(
         self, db_session: AsyncSession
@@ -1666,12 +1666,12 @@ class TestOnTimeSourceFallback:
 
         result = await _run_stats(db_session)
 
-        assert result["on_time_source"] == "departure", (
-            "scheduled_fallback arrivals are excluded, should fall back to departure"
-        )
-        assert result["on_time_percentage"] is not None, (
-            "on_time_percentage should not be N/A when departure data is available"
-        )
+        assert (
+            result["on_time_source"] == "departure"
+        ), "scheduled_fallback arrivals are excluded, should fall back to departure"
+        assert (
+            result["on_time_percentage"] is not None
+        ), "on_time_percentage should not be N/A when departure data is available"
 
 
 @pytest.mark.asyncio

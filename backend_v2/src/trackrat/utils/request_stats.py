@@ -52,9 +52,7 @@ class RequestStats:
         default_factory=dict
     )
     # list of (timestamp, train_id, from, to) tuples
-    train_detail_views: list[tuple[float, str, str, str]] = field(
-        default_factory=list
-    )
+    train_detail_views: list[tuple[float, str, str, str]] = field(default_factory=list)
     _MAX_LATENCY_SAMPLES: int = 500
     _MAX_DETAIL_VIEWS: int = 10_000
 
@@ -189,10 +187,8 @@ class RequestStats:
         # Compute per-route search result stats (time-filtered)
         route_search_stats: dict[tuple[str, str], dict[str, float]] = {}
         with self._lock:
-            for key, samples in self.route_search_results.items():
-                filtered = [
-                    count for ts, count in samples if ts >= cutoff
-                ]
+            for key, result_samples in self.route_search_results.items():
+                filtered = [count for ts, count in result_samples if ts >= cutoff]
                 if filtered:
                     route_search_stats[key] = {
                         "avg_trains": sum(filtered) / len(filtered),
@@ -219,8 +215,7 @@ class RequestStats:
         rate_sparkline: list[int] = []
         for b in rate_buckets:
             count_in_bucket = sum(
-                len(durations)
-                for durations in trend_buckets.get(b, {}).values()
+                len(durations) for durations in trend_buckets.get(b, {}).values()
             )
             rate_sparkline.append(count_in_bucket)
 

@@ -843,15 +843,21 @@ class DepartureService:
                                 journey.terminal_station_code = last_station
 
                             # At origin: SCHED_DEP_DATE or TIME (schedule)
-                            sched_dep = first_stop.get("SCHED_DEP_DATE") or first_stop.get("TIME")
+                            sched_dep = first_stop.get(
+                                "SCHED_DEP_DATE"
+                            ) or first_stop.get("TIME")
                             if sched_dep:
                                 journey.scheduled_departure = parse_njt_time(sched_dep)
 
                             # At terminal: SCHED_DEP_DATE (immutable), only if not already set
                             if journey.scheduled_arrival is None:
-                                sched_arr = last_stop.get("SCHED_DEP_DATE") or last_stop.get("SCHED_ARR_DATE")
+                                sched_arr = last_stop.get(
+                                    "SCHED_DEP_DATE"
+                                ) or last_stop.get("SCHED_ARR_DATE")
                                 if sched_arr:
-                                    journey.scheduled_arrival = parse_njt_time(sched_arr)
+                                    journey.scheduled_arrival = parse_njt_time(
+                                        sched_arr
+                                    )
 
                         logger.debug(
                             "journey_updated_from_schedule",

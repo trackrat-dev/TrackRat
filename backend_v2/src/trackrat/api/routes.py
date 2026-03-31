@@ -553,7 +553,9 @@ async def _calculate_route_stats_sql(
         delay_breakdown = {
             "on_time": round(dep_on_time_count / with_departure_data * 100),
             "slight": round(row["dep_slight_count"] / with_departure_data * 100),
-            "significant": round(row["dep_significant_count"] / with_departure_data * 100),
+            "significant": round(
+                row["dep_significant_count"] / with_departure_data * 100
+            ),
             "major": round(row["dep_major_count"] / with_departure_data * 100),
         }
     else:

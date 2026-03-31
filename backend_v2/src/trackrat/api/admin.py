@@ -90,9 +90,7 @@ async def _db_stats(db: AsyncSession) -> dict[str, Any]:
                     else None
                 ),
                 "last_update_display": (
-                    row.last_update.strftime("%H:%M ET")
-                    if row.last_update
-                    else None
+                    row.last_update.strftime("%H:%M ET") if row.last_update else None
                 ),
             }
             for row in provider_result
@@ -308,16 +306,12 @@ def _render_html(
                 bars.append(
                     f"<span class='spark-bar' style='height:{height}px'></span>"
                 )
-        sparkline_html = (
-            f"<span class='spark-container'>{''.join(bars)}</span>"
-        )
+        sparkline_html = f"<span class='spark-container'>{''.join(bars)}</span>"
 
     # -- Error rate --
     total_reqs = request_stats["total_requests"]
     error_5xx = sum(
-        v
-        for k, v in request_stats["requests_by_status"].items()
-        if k >= 500
+        v for k, v in request_stats["requests_by_status"].items() if k >= 500
     )
     error_rate = (error_5xx / total_reqs * 100) if total_reqs > 0 else 0
     if error_5xx > 0:
@@ -431,9 +425,8 @@ def _render_html(
         if p["freshness_min"] is not None:
             # Show relative + absolute time
             last_ts = p.get("last_update_display", "")
-            fresh_str = (
-                f"{p['freshness_min']}m ago"
-                + (f" ({last_ts})" if last_ts else "")
+            fresh_str = f"{p['freshness_min']}m ago" + (
+                f" ({last_ts})" if last_ts else ""
             )
         else:
             fresh_str = "never"
