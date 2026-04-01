@@ -758,6 +758,7 @@ final class AppState: ObservableObject {
     @Published var activeTrainRoute: TripPair?  // Route from active Live Activity (persistent blue line)
     @Published var mapDisplayMode: MapDisplayMode = .overallCongestion
     @Published var currentTrain: TrainV2?  // Currently selected train for journey focus
+    @Published var selectedTrip: TripOption?  // Currently selected multi-leg trip for trip details
     
     // Deep link navigation state
     @Published var deepLinkTrainNumber: String? = nil

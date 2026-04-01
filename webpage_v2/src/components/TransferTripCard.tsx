@@ -3,18 +3,15 @@ import { formatTime } from '../utils/date';
 
 interface TransferTripCardProps {
   trip: TripOption;
-  onLegClick: (leg: TripLeg) => void;
+  onClick: () => void;
 }
 
-function LegRow({ leg, onLegClick }: { leg: TripLeg; onLegClick: () => void }) {
+function LegRow({ leg }: { leg: TripLeg }) {
   const departureTime = leg.boarding.actual_time || leg.boarding.updated_time || leg.boarding.scheduled_time;
   const arrivalTime = leg.alighting.actual_time || leg.alighting.updated_time || leg.alighting.scheduled_time;
 
   return (
-    <button
-      onClick={onLegClick}
-      className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-white/5 rounded-lg transition-colors"
-    >
+    <div className="flex items-center gap-3 px-4 py-2">
       <div
         className="w-1 h-9 rounded-full flex-shrink-0"
         style={{ backgroundColor: leg.line.color }}
@@ -37,8 +34,7 @@ function LegRow({ leg, onLegClick }: { leg: TripLeg; onLegClick: () => void }) {
         {' → '}
         {arrivalTime ? formatTime(arrivalTime) : '--:--'}
       </div>
-      <span className="text-text-muted/50 text-xs">›</span>
-    </button>
+    </div>
   );
 }
 
@@ -66,7 +62,7 @@ function TransferIndicator({ transfer }: { transfer: TransferInfo }) {
   );
 }
 
-export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
+export function TransferTripCard({ trip, onClick }: TransferTripCardProps) {
   if (trip.legs.length < 2 || trip.transfers.length < 1) return null;
 
   const durationDisplay = trip.total_duration_minutes < 60
@@ -74,10 +70,13 @@ export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
     : `${Math.floor(trip.total_duration_minutes / 60)}h ${trip.total_duration_minutes % 60}m`;
 
   return (
-    <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl py-3 transition-all">
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl py-3 transition-all hover:bg-surface/90"
+    >
       {trip.legs.map((leg, i) => (
         <div key={leg.train_id}>
-          <LegRow leg={leg} onLegClick={() => onLegClick(leg)} />
+          <LegRow leg={leg} />
           {i < trip.transfers.length && (
             <TransferIndicator transfer={trip.transfers[i]} />
           )}
@@ -93,6 +92,6 @@ export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
           {formatTime(trip.departure_time)} → {formatTime(trip.arrival_time)}
         </span>
       </div>
-    </div>
+    </button>
   );
 }
