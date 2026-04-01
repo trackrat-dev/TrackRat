@@ -249,9 +249,9 @@ private struct LegDetailSection: View {
                 Spacer()
 
                 Button(action: onViewFullTrain) {
-                    Text("Full train →")
+                    Text("View train")
                         .font(.caption)
-                        .foregroundColor(.blue)
+                        .foregroundColor(TrackRatTheme.Colors.accent)
                 }
                 .buttonStyle(.plain)
             }
@@ -352,13 +352,13 @@ private struct TripTransferIndicator: View {
         HStack(spacing: 10) {
             VStack(spacing: 0) {
                 Rectangle()
-                    .fill(Color.black.opacity(0.15))
+                    .fill(Color.white.opacity(0.25))
                     .frame(width: 2, height: 12)
                 Image(systemName: transfer.sameStation ? "arrow.down" : "figure.walk")
                     .font(.caption)
-                    .foregroundColor(.black.opacity(0.4))
+                    .foregroundColor(.white.opacity(0.6))
                 Rectangle()
-                    .fill(Color.black.opacity(0.15))
+                    .fill(Color.white.opacity(0.25))
                     .frame(width: 2, height: 12)
             }
             .frame(width: 24)
@@ -367,15 +367,15 @@ private struct TripTransferIndicator: View {
                 Text("Transfer")
                     .font(.caption)
                     .fontWeight(.medium)
-                    .foregroundColor(.black.opacity(0.6))
+                    .foregroundColor(.white.opacity(0.8))
                 HStack(spacing: 4) {
                     Text(transfer.walkDescription)
                         .font(.caption)
-                        .foregroundColor(.black.opacity(0.45))
+                        .foregroundColor(.white.opacity(0.6))
                     if !transfer.sameStation {
                         Text("to \(transfer.toStation.name)")
                             .font(.caption)
-                            .foregroundColor(.black.opacity(0.35))
+                            .foregroundColor(.white.opacity(0.45))
                     }
                 }
             }
