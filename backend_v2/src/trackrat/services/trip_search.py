@@ -281,6 +281,14 @@ async def search_trips(
     # Fire all leg queries in parallel using separate DB sessions.
     # Each transfer point needs leg1 (origin -> transfer) and leg2 (transfer -> dest).
     # Using separate sessions is required because AsyncSession is not concurrency-safe.
+    #
+    # Performance trade-off: skip_gtfs_merge=True means transfer legs only match
+    # trains already in the real-time feed, not GTFS-scheduled future trains.
+    # This limits the effective search horizon to ~60 minutes for NJT/Amtrak
+    # (since their real-time data only appears 30-60min before departure).
+    # Acceptable because: (a) most transfer searches are for imminent travel,
+    # (b) the direct-service check in Step 1 already uses GTFS data, and
+    # (c) the latency savings (~22 DB queries per leg) are substantial.
     async def _query_leg(
         leg_from: str,
         leg_to: str,
