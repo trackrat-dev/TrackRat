@@ -2121,7 +2121,6 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S232", "S423", "SR28"},  # Borough Hall / Court St
     {"S235", "SD24", "SR31"},  # Atlantic Av-Barclays Ctr
     {"S239", "SS04"},  # Botanic Garden / Franklin Av-Medgar Evers College
-    {"S254", "SL26"},  # Junius St / Livonia Av
     {"S414", "SD11"},  # 161 St-Yankee Stadium
     {"S629", "SB08", "SR11"},  # 59 St / Lexington Av/59 St / Lexington Av/63 St
     {"S630", "SF11"},  # 51 St / Lexington Av/53 St
