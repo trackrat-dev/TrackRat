@@ -729,34 +729,35 @@ trip_bidi() {
   fi
 }
 
-# ── Cross-system transfers ──────────────────────────────────────────
-# NP/PNK are equivalent so PATH may run direct; use "any"
-trip_bidi "NJT/PATH Newark Penn↔WTC"        "NP"   "PWC"  "any"
-# NJT Penn → LIRR (shared NY station code)
+# ── Cross-system multi-leg transfers (requires 2+ trains) ───────────
+# NJT→LIRR: NJT train to NY Penn, walk, LIRR train from NY Penn
 trip_bidi "NJT→LIRR Trenton↔Jamaica"        "TR"   "JAM"  "transfer"
-# Amtrak → LIRR (shared NY station code)
+# Amtrak→LIRR: Amtrak train to NY Penn, walk, LIRR train from NY Penn
 trip_bidi "Amtrak→LIRR WAS↔Jamaica"         "WS"   "JAM"  "transfer"
-# NJT → Amtrak (shared NY station code)
-trip_bidi "NJT→Amtrak Trenton↔WAS"          "TR"   "WS"   "any"
-# NJT → MNR (NJT NY → MNR GCT, may route direct via shared station equivalences)
-trip_bidi "NJT→MNR Trenton↔Stamford"        "TR"   "MSTM" "any"
-# LIRR → MNR (Jamaica→Penn→GCT or via subway)
+# LIRR→MNR: LIRR train to Penn, subway/walk to GCT, MNR train out
 trip_bidi "LIRR→MNR Jamaica↔WhitePlains"    "JAM"  "MWPL" "transfer"
-# PATH → Subway (WTC complex has PATH+Subway equivalences)
+
+# ── Cross-system direct (single train via shared station codes) ─────
+# These test station equivalence resolution, not multi-leg routing
+trip_bidi "NJT/PATH Newark Penn↔WTC"        "NP"   "PWC"  "any"
+trip_bidi "NJT→Amtrak Trenton↔WAS"          "TR"   "WS"   "any"
+trip_bidi "NJT→MNR Trenton↔Stamford"        "TR"   "MSTM" "any"
 trip_bidi "PATH→SUBWAY WTC↔UnionSq"         "PWC"  "S635" "any"
 
-# ── PATH multi-leg ──────────────────────────────────────────────────
-# Newark to 33rd St requires NWK-WTC + HOB-33 or NWK-JSQ-33
+# ── PATH routes ─────────────────────────────────────────────────────
+# Newark↔33rd requires intra-PATH transfer at Journal Sq (not yet supported)
 trip_bidi "PATH Newark↔33rd St"              "PNK"  "P33"  "any"
-# Hoboken to WTC (direct HOB-WTC line exists)
-trip_bidi "PATH Hoboken↔WTC"                 "PHO"  "PWC"  "any"
-# Grove St to 33rd St (mid-route to terminus, may need transfer)
-trip_bidi "PATH Grove St↔33rd St"            "PGR"  "P33"  "any"
+# These are direct (single PATH train serves both stations)
+trip_bidi "PATH Hoboken↔WTC"                 "PHO"  "PWC"  "direct"
+trip_bidi "PATH Grove St↔33rd St"            "PGR"  "P33"  "direct"
 
-# ── Intra-subway transfers (24/7 service — always expect results) ──
-# always_expect=true: subway runs 24/7, 0 trips is always a failure
+# ── Intra-subway multi-leg (24/7 — requires transfer between lines) ─
+# These are genuine multi-leg: two different subway trains connected at
+# a transfer complex. always_expect=true because subway runs 24/7.
+# Different physical stations (true multi-leg transfer)
 trip_bidi "SUBWAY G/L↔4/5 MetroAv↔WallSt"   "SG29" "S419" "transfer" "true"
 trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"    "SL08" "S419" "transfer" "true"
+# Same-complex transfers (different line groups at same station)
 trip_bidi "SUBWAY 4/5/6↔N/R/W UnionSq"       "S635" "SR20" "any"      "true"
 trip_bidi "SUBWAY 7↔A/C/E TimesSq"           "S725" "SA27" "any"      "true"
 trip_bidi "SUBWAY 1/2↔A/B/C/D 59St-Columbus" "S125" "SA24" "any"      "true"
@@ -766,8 +767,7 @@ trip_bidi "SUBWAY A/C/F↔N/R/W JaySt"         "SA41" "SR29" "any"      "true"
 trip_bidi "SUBWAY A/C↔L BroadwayJunction"    "SA51" "SL22" "any"      "true"
 trip_bidi "SUBWAY 7↔G CourtSq"               "S719" "SG22" "any"      "true"
 
-# ── Same-line direct (both directions should always work) ───────────
-# always_expect=true: these are direct trips on 24/7 subway lines
+# ── Same-line direct (single subway train, 24/7) ───────────────────
 trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"       "S635" "S419" "direct"   "true"
 trip_bidi "SUBWAY L UnionSq↔BedfordAv"       "SL03" "SL08" "direct"   "true"
 trip_bidi "SUBWAY A 59St↔CanalSt"            "SA24" "SA34" "direct"   "true"
