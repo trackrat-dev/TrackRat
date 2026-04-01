@@ -17,9 +17,9 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "WNL": "Windsor Locks",
     "ABE": "Aberdeen",
     "NCR": "New Carrollton",
-    "SPG": "Springfield",
+    "SPG": "Springfield, MA",
     "CLA": "Claremont",
-    "DOV": "Dover",
+    "DOV": "Dover, NH",
     "DHM": "Durham-UNH",
     "EXR": "Exeter",
     "HAR": "Harrisburg",
@@ -53,7 +53,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "WPB": "West Palm Beach",
     "DLB": "Delray Beach",
     "FTL": "Fort Lauderdale",
-    "HLW": "Hollywood",
+    "HLW": "Hollywood, FL",
     "MIA": "Miami",
     "ORL": "Orlando",
     "KIS": "Kissimmee",
@@ -62,7 +62,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "PAL": "Palatka",
     "SAN": "Sanford",
     "THU": "Thurmond",
-    "CHS": "Charleston",
+    "CHS": "Charleston, SC",
     "KTR": "Kingstree",
     "FLO": "Florence",
     "DIL": "Dillon",
@@ -77,7 +77,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "SPB": "Spartanburg",
     "GVL": "Greenville",
     "ATL": "Atlanta",
-    "GAI": "Gainesville",
+    "GAI": "Gainesville, GA",
     "TOC": "Toccoa",
     "CSN": "Clemson",
     # Nationwide Amtrak stations
@@ -202,7 +202,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "PSN": "Palm Springs",
     "PTC": "Petaluma",
     "RDD": "Redding",
-    "RIC": "Richmond",
+    "RIC": "Richmond, CA",
     "RIV": "Riverside",
     "RLN": "Rocklin",
     "RSV": "Roseville",
@@ -236,7 +236,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "FLN": "Flint",
     "GLN": "Glenview",
     "HOM": "Holland",
-    "JXN": "Jackson",
+    "JXN": "Jackson, MI",
     "KAL": "Kalamazoo",
     "LNS": "East Lansing",
     "LPE": "Lapeer",
@@ -251,7 +251,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "WDL": "Wisconsin Dells",
     # Mid-Atlantic Amtrak stations
     "ALT": "Altoona",
-    "ARD": "Ardmore",
+    "ARD": "Ardmore, PA",
     "BER": "Berlin",
     "BNF": "Branford",
     "BWE": "Bowie State",
@@ -294,15 +294,15 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "WSB": "Westbrook",
     "YNY": "Yonkers",
     # Midwest Amtrak stations
-    "AKY": "Ashland",
+    "AKY": "Ashland, KY",
     "ALC": "Alliance",
     "ALD": "Alderson",
     "BNL": "Bloomington-Normal",
     "BYN": "Bryan",
     "CDL": "Carbondale",
-    "CEN": "Centralia",
+    "CEN": "Centralia, IL",
     "CHM": "Champaign-Urbana",
-    "CHW": "Charleston",
+    "CHW": "Charleston, WV",
     "COI": "Connersville",
     "CRF": "Crawfordsville",
     "CRV": "Carlinville",
@@ -318,14 +318,14 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "HIN": "Hinton",
     "HMI": "Hammond-Whiting",
     "HMW": "Homewood",
-    "HUN": "Huntington",
+    "HUN": "Huntington, WV",
     "JOL": "Joliet Gateway Center",
     "KAN": "Kannapolis",
     "KEE": "Kewanee",
     "KKI": "Kankakee",
-    "LAF": "Lafayette",
+    "LAF": "Lafayette, IN",
     "LAG": "La Grange",
-    "LCN": "Lincoln",
+    "LCN": "Lincoln, IL",
     "MAT": "Mattoon",
     "MAY": "Maysville",
     "MDT": "Mendota",
@@ -334,7 +334,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "NBU": "New Buffalo",
     "NLS": "Niles",
     "NPV": "Naperville",
-    "PCT": "Princeton",
+    "PCT": "Princeton, IL",
     "PIA": "Peoria",
     "PLO": "Plano",
     "PON": "Pontiac, IL",
@@ -342,22 +342,22 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "REN": "Rensselaer",
     "RTL": "Rantoul",
     "SKY": "Sandusky",
-    "SMT": "Summit",
+    "SMT": "Summit, IL",
     "SOB": "South Bend",
-    "SPI": "Springfield",
+    "SPI": "Springfield, IL",
     "SPM": "South Portsmouth",
     "THN": "Thurmond",
     "WSS": "White Sulphur Springs",
     "WTI": "Waterloo",
     # Mountain West Amtrak stations
     "ACD": "Arcadia Valley",
-    "ADM": "Ardmore",
+    "ADM": "Ardmore, OK",
     "ALN": "Alton",
     "ALP": "Alpine",
     "ARK": "Arkadelphia",
     "BMT": "Beaumont",
     "BRH": "Brookhaven",
-    "BRL": "Burlington",
+    "BRL": "Burlington, IA",
     "CBR": "Cleburne",
     "CRN": "Creston",
     "DDG": "Dodge City",
@@ -370,7 +370,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "GBB": "Galesburg",
     "GCK": "Garden City",
     "GFK": "Grand Forks",
-    "GLE": "Gainesville",
+    "GLE": "Gainesville, TX",
     "GWD": "Greenwood",
     "HAS": "Hastings",
     "HAZ": "Hazlehurst",
@@ -380,7 +380,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "HOP": "Hope",
     "HUT": "Hutchinson",
     "IDP": "Independence",
-    "JAN": "Jackson",
+    "JAN": "Jackson, MS",
     "JEF": "Jefferson City",
     "KIL": "Killeen",
     "KWD": "Kirkwood",
@@ -389,10 +389,10 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "LBO": "Lbo",
     "LCH": "Lake Charles",
     "LEE": "Lee'S Summit",
-    "LFT": "Lafayette",
+    "LFT": "Lafayette, LA",
     "LMR": "Lamar",
-    "LNK": "Lincoln",
-    "LRC": "Lawrence",
+    "LNK": "Lincoln, NE",
+    "LRC": "Lawrence, KS",
     "LSE": "La Crosse",
     "LVW": "Longview",
     "MAC": "Macomb",
@@ -400,7 +400,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "MCG": "Mcgregor",
     "MCK": "Mccook",
     "MHL": "Marshall",
-    "MIN": "Mineola",
+    "MIN": "Mineola, TX",
     "MKS": "Marks",
     "MOT": "Minot",
     "MTP": "Mt. Pleasant",
@@ -430,7 +430,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "TPL": "Temple",
     "TRI": "Trinidad",
     "TXA": "Texarkana",
-    "WAH": "Washington",
+    "WAH": "Washington, MO",
     "WAR": "Warrensburg",
     "WEL": "Wellington",
     "WIC": "Wichita",
@@ -490,12 +490,12 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "WRJ": "White River Junction",
     "WSP": "Westport",
     # Pacific Northwest Amtrak stations
-    "ALY": "Albany",
+    "ALY": "Albany, OR",
     "BEL": "Bellingham",
     "BNG": "Bingen-White Salmon",
     "BRO": "Browning",
     "CMO": "Chemult",
-    "CTL": "Centralia",
+    "CTL": "Centralia, WA",
     "CUT": "Cut Bank",
     "EDM": "Edmonds",
     "EPH": "Ephrata",
@@ -531,12 +531,12 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "CAM": "Camden",
     "DFB": "Deerfield Beach",
     "DNK": "Denmark",
-    "GNS": "Gainesville",
+    "GNS": "Gainesville, FL",
     "GUF": "Gulfport Amtrak Sta",
     "HBG": "Hattiesburg",
-    "HOL": "Hollywood",
+    "HOL": "Hollywood, FL",
     "JSP": "Jesup",
-    "LAK": "Lakeland",
+    "LAK": "Lakeland, FL",
     "LAU": "Laurel",
     "MEI": "Meridian Union",
     "OKE": "Okeechobee",
@@ -554,7 +554,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "YEM": "Yemassee",
     # Southeast Amtrak stations
     "BCV": "Burke Centre",
-    "BNC": "Burlington",
+    "BNC": "Burlington, NC",
     "CLF": "Clifton Forge",
     "CLP": "Culpeper",
     "CYN": "Cary",
@@ -572,8 +572,8 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "SSM": "Selma",
     "STA": "Staunton",
     "SWB": "Swansboro",
-    "WDB": "Woodbridge",
-    "WMN": "Wilmington",
+    "WDB": "Woodbridge, VA",
+    "WMN": "Wilmington, NC",
     # Southwest Amtrak stations
     "BEN": "Benson",
     "DEM": "Deming",
@@ -628,9 +628,9 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "WNL": "WNL",  # Windsor Locks, CT
     "ABE": "ABE",  # Aberdeen, MD
     "NCR": "NCR",  # New Carrollton, MD
-    "SPG": "SPG",  # Springfield, MA
+    "SPG": "SPG",  # Springfield, MA, MA
     "CLA": "CLA",  # Claremont, NH
-    "DOV": "DOV",  # Dover, NH
+    "DOV": "DOV",  # Dover, NH, NH
     "DHM": "DHM",  # Durham-UNH, NH
     "EXR": "EXR",  # Exeter, NH
     "HAR": "HAR",  # Harrisburg, PA
@@ -664,7 +664,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "WPB": "WPB",  # West Palm Beach, FL
     "DLB": "DLB",  # Delray Beach, FL
     "FTL": "FTL",  # Fort Lauderdale, FL
-    "HLW": "HLW",  # Hollywood, FL
+    "HLW": "HLW",  # Hollywood, FL, FL
     "MIA": "MIA",  # Miami, FL
     "ORL": "ORL",  # Orlando, FL
     "KIS": "KIS",  # Kissimmee, FL
@@ -673,7 +673,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "PAL": "PAL",  # Palatka, FL
     "SAN": "SAN",  # Sanford, FL
     "THU": "THU",  # Thurmond, WV
-    "CHS": "CHS",  # Charleston, SC
+    "CHS": "CHS",  # Charleston, SC, SC
     "KTR": "KTR",  # Kingstree, SC
     "FLO": "FLO",  # Florence, SC
     "DIL": "DIL",  # Dillon, SC
@@ -688,7 +688,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SPB": "SPB",  # Spartanburg, SC
     "GVL": "GVL",  # Greenville, SC
     "ATL": "ATL",  # Atlanta, GA
-    "GAI": "GAI",  # Gainesville, GA
+    "GAI": "GAI",  # Gainesville, GA, GA
     "TOC": "TOC",  # Toccoa, GA
     "CSN": "CSN",  # Clemson, SC
     # Nationwide stations (identity mappings)
@@ -820,7 +820,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "PSN": "PSN",  # Palm Springs
     "PTC": "PTC",  # Petaluma
     "RDD": "RDD",  # Redding
-    "RIC": "RIC",  # Richmond
+    "RIC": "RIC",  # Richmond, CA
     "RIV": "RIV",  # Riverside
     "RLN": "RLN",  # Rocklin
     "RSV": "RSV",  # Roseville
@@ -854,7 +854,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "FLN": "FLN",  # Flint
     "GLN": "GLN",  # Glenview
     "HOM": "HOM",  # Holland
-    "JXN": "JXN",  # Jackson
+    "JXN": "JXN",  # Jackson, MI
     "KAL": "KAL",  # Kalamazoo
     "LNS": "LNS",  # East Lansing
     "LPE": "LPE",  # Lapeer
@@ -869,7 +869,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "WDL": "WDL",  # Wisconsin Dells
     # Mid-Atlantic
     "ALT": "ALT",  # Altoona
-    "ARD": "ARD",  # Ardmore
+    "ARD": "ARD",  # Ardmore, PA
     "BER": "BER",  # Berlin
     "BNF": "BNF",  # Branford
     "BWE": "BWE",  # Bowie State
@@ -908,15 +908,15 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "WND": "WND",  # Windsor
     "WSB": "WSB",  # Westbrook
     # Midwest
-    "AKY": "AKY",  # Ashland
+    "AKY": "AKY",  # Ashland, KY
     "ALC": "ALC",  # Alliance
     "ALD": "ALD",  # Alderson
     "BNL": "BNL",  # Bloomington-Normal
     "BYN": "BYN",  # Bryan
     "CDL": "CDL",  # Carbondale
-    "CEN": "CEN",  # Centralia
+    "CEN": "CEN",  # Centralia, IL
     "CHM": "CHM",  # Champaign-Urbana
-    "CHW": "CHW",  # Charleston
+    "CHW": "CHW",  # Charleston, WV
     "COI": "COI",  # Connersville
     "CRF": "CRF",  # Crawfordsville
     "CRV": "CRV",  # Carlinville
@@ -932,14 +932,14 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "HIN": "HIN",  # Hinton
     "HMI": "HMI",  # Hammond-Whiting
     "HMW": "HMW",  # Homewood
-    "HUN": "HUN",  # Huntington
+    "HUN": "HUN",  # Huntington, WV
     "JOL": "JOL",  # Joliet Gateway Center
     "KAN": "KAN",  # Kannapolis
     "KEE": "KEE",  # Kewanee
     "KKI": "KKI",  # Kankakee
-    "LAF": "LAF",  # Lafayette
+    "LAF": "LAF",  # Lafayette, IN
     "LAG": "LAG",  # La Grange
-    "LCN": "LCN",  # Lincoln
+    "LCN": "LCN",  # Lincoln, IL
     "MAT": "MAT",  # Mattoon
     "MAY": "MAY",  # Maysville
     "MDT": "MDT",  # Mendota
@@ -948,7 +948,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "NBU": "NBU",  # New Buffalo
     "NLS": "NLS",  # Niles
     "NPV": "NPV",  # Naperville
-    "PCT": "PCT",  # Princeton
+    "PCT": "PCT",  # Princeton, IL
     "PIA": "PIA",  # Peoria
     "PLO": "PLO",  # Plano
     "PON": "PON",  # Pontiac
@@ -956,22 +956,22 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "REN": "REN",  # Rensselaer
     "RTL": "RTL",  # Rantoul
     "SKY": "SKY",  # Sandusky
-    "SMT": "SMT",  # Summit
+    "SMT": "SMT",  # Summit, IL
     "SOB": "SOB",  # South Bend
-    "SPI": "SPI",  # Springfield
+    "SPI": "SPI",  # Springfield, IL
     "SPM": "SPM",  # South Portsmouth
     "THN": "THN",  # Thurmond
     "WSS": "WSS",  # White Sulphur Springs
     "WTI": "WTI",  # Waterloo
     # Mountain West
     "ACD": "ACD",  # Arcadia Valley
-    "ADM": "ADM",  # Ardmore
+    "ADM": "ADM",  # Ardmore, OK
     "ALN": "ALN",  # Alton
     "ALP": "ALP",  # Alpine
     "ARK": "ARK",  # Arkadelphia
     "BMT": "BMT",  # Beaumont
     "BRH": "BRH",  # Brookhaven
-    "BRL": "BRL",  # Burlington
+    "BRL": "BRL",  # Burlington, IA
     "CBR": "CBR",  # Cleburne
     "CRN": "CRN",  # Creston
     "DDG": "DDG",  # Dodge City
@@ -984,7 +984,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "GBB": "GBB",  # Galesburg
     "GCK": "GCK",  # Garden City
     "GFK": "GFK",  # Grand Forks
-    "GLE": "GLE",  # Gainesville
+    "GLE": "GLE",  # Gainesville, TX
     "GWD": "GWD",  # Greenwood
     "HAS": "HAS",  # Hastings
     "HAZ": "HAZ",  # Hazlehurst
@@ -994,7 +994,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "HOP": "HOP",  # Hope
     "HUT": "HUT",  # Hutchinson
     "IDP": "IDP",  # Independence
-    "JAN": "JAN",  # Jackson
+    "JAN": "JAN",  # Jackson, MS
     "JEF": "JEF",  # Jefferson City
     "KIL": "KIL",  # Killeen
     "KWD": "KWD",  # Kirkwood
@@ -1003,10 +1003,10 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "LBO": "LBO",  # Lbo
     "LCH": "LCH",  # Lake Charles
     "LEE": "LEE",  # Lee'S Summit
-    "LFT": "LFT",  # Lafayette
+    "LFT": "LFT",  # Lafayette, LA
     "LMR": "LMR",  # Lamar
-    "LNK": "LNK",  # Lincoln
-    "LRC": "LRC",  # Lawrence
+    "LNK": "LNK",  # Lincoln, NE
+    "LRC": "LRC",  # Lawrence, KS
     "LSE": "LSE",  # La Crosse
     "LVW": "LVW",  # Longview
     "MAC": "MAC",  # Macomb
@@ -1014,7 +1014,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "MCG": "MCG",  # Mcgregor
     "MCK": "MCK",  # Mccook
     "MHL": "MHL",  # Marshall
-    "MIN": "MIN",  # Mineola
+    "MIN": "MIN",  # Mineola, TX
     "MKS": "MKS",  # Marks
     "MOT": "MOT",  # Minot
     "MTP": "MTP",  # Mt. Pleasant
@@ -1044,7 +1044,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "TPL": "TPL",  # Temple
     "TRI": "TRI",  # Trinidad
     "TXA": "TXA",  # Texarkana
-    "WAH": "WAH",  # Washington
+    "WAH": "WAH",  # Washington, MO
     "WAR": "WAR",  # Warrensburg
     "WEL": "WEL",  # Wellington
     "WIC": "WIC",  # Wichita
@@ -1101,12 +1101,12 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "WRJ": "WRJ",  # White River Junction
     "WSP": "WSP",  # Westport
     # Pacific Northwest
-    "ALY": "ALY",  # Albany
+    "ALY": "ALY",  # Albany, OR
     "BEL": "BEL",  # Bellingham
     "BNG": "BNG",  # Bingen-White Salmon
     "BRO": "BRO",  # Browning
     "CMO": "CMO",  # Chemult
-    "CTL": "CTL",  # Centralia
+    "CTL": "CTL",  # Centralia, WA
     "CUT": "CUT",  # Cut Bank
     "EDM": "EDM",  # Edmonds
     "EPH": "EPH",  # Ephrata
@@ -1142,12 +1142,12 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "CAM": "CAM",  # Camden
     "DFB": "DFB",  # Deerfield Beach
     "DNK": "DNK",  # Denmark
-    "GNS": "GNS",  # Gainesville
+    "GNS": "GNS",  # Gainesville, FL
     "GUF": "GUF",  # Gulfport Amtrak Sta
     "HBG": "HBG",  # Hattiesburg
-    "HOL": "HOL",  # Hollywood
+    "HOL": "HOL",  # Hollywood, FL
     "JSP": "JSP",  # Jesup
-    "LAK": "LAK",  # Lakeland
+    "LAK": "LAK",  # Lakeland, FL
     "LAU": "LAU",  # Laurel
     "MEI": "MEI",  # Meridian Union
     "OKE": "OKE",  # Okeechobee
@@ -1165,7 +1165,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "YEM": "YEM",  # Yemassee
     # Southeast
     "BCV": "BCV",  # Burke Centre
-    "BNC": "BNC",  # Burlington
+    "BNC": "BNC",  # Burlington, NC
     "CLF": "CLF",  # Clifton Forge
     "CLP": "CLP",  # Culpeper
     "CYN": "CYN",  # Cary
@@ -1183,8 +1183,8 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SSM": "SSM",  # Selma
     "STA": "STA",  # Staunton
     "SWB": "SWB",  # Swansboro
-    "WDB": "WDB",  # Woodbridge
-    "WMN": "WMN",  # Wilmington
+    "WDB": "WDB",  # Woodbridge, VA
+    "WMN": "WMN",  # Wilmington, NC
     # Southwest
     "BEN": "BEN",  # Benson
     "DEM": "DEM",  # Deming
@@ -1237,9 +1237,9 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "WNL": "WNL",  # Windsor Locks, CT
     "ABE": "ABE",  # Aberdeen, MD
     "NCR": "NCR",  # New Carrollton, MD
-    "SPG": "SPG",  # Springfield, MA
+    "SPG": "SPG",  # Springfield, MA, MA
     "CLA": "CLA",  # Claremont, NH
-    "DOV": "DOV",  # Dover, NH
+    "DOV": "DOV",  # Dover, NH, NH
     "DHM": "DHM",  # Durham-UNH, NH
     "EXR": "EXR",  # Exeter, NH
     "HAR": "HAR",  # Harrisburg, PA
@@ -1273,7 +1273,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "WPB": "WPB",  # West Palm Beach, FL
     "DLB": "DLB",  # Delray Beach, FL
     "FTL": "FTL",  # Fort Lauderdale, FL
-    "HLW": "HLW",  # Hollywood, FL
+    "HLW": "HLW",  # Hollywood, FL, FL
     "MIA": "MIA",  # Miami, FL
     "ORL": "ORL",  # Orlando, FL
     "KIS": "KIS",  # Kissimmee, FL
@@ -1282,7 +1282,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "PAL": "PAL",  # Palatka, FL
     "SAN": "SAN",  # Sanford, FL
     "THU": "THU",  # Thurmond, WV
-    "CHS": "CHS",  # Charleston, SC
+    "CHS": "CHS",  # Charleston, SC, SC
     "KTR": "KTR",  # Kingstree, SC
     "FLO": "FLO",  # Florence, SC
     "DIL": "DIL",  # Dillon, SC
@@ -1297,7 +1297,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SPB": "SPB",  # Spartanburg, SC
     "GVL": "GVL",  # Greenville, SC
     "ATL": "ATL",  # Atlanta, GA
-    "GAI": "GAI",  # Gainesville, GA
+    "GAI": "GAI",  # Gainesville, GA, GA
     "TOC": "TOC",  # Toccoa, GA
     "CSN": "CSN",  # Clemson, SC
     # Nationwide stations (identity mappings)
@@ -1429,7 +1429,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "PSN": "PSN",  # Palm Springs
     "PTC": "PTC",  # Petaluma
     "RDD": "RDD",  # Redding
-    "RIC": "RIC",  # Richmond
+    "RIC": "RIC",  # Richmond, CA
     "RIV": "RIV",  # Riverside
     "RLN": "RLN",  # Rocklin
     "RSV": "RSV",  # Roseville
@@ -1463,7 +1463,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "FLN": "FLN",  # Flint
     "GLN": "GLN",  # Glenview
     "HOM": "HOM",  # Holland
-    "JXN": "JXN",  # Jackson
+    "JXN": "JXN",  # Jackson, MI
     "KAL": "KAL",  # Kalamazoo
     "LNS": "LNS",  # East Lansing
     "LPE": "LPE",  # Lapeer
@@ -1478,7 +1478,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "WDL": "WDL",  # Wisconsin Dells
     # Mid-Atlantic
     "ALT": "ALT",  # Altoona
-    "ARD": "ARD",  # Ardmore
+    "ARD": "ARD",  # Ardmore, PA
     "BER": "BER",  # Berlin
     "BNF": "BNF",  # Branford
     "BWE": "BWE",  # Bowie State
@@ -1517,15 +1517,15 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "WND": "WND",  # Windsor
     "WSB": "WSB",  # Westbrook
     # Midwest
-    "AKY": "AKY",  # Ashland
+    "AKY": "AKY",  # Ashland, KY
     "ALC": "ALC",  # Alliance
     "ALD": "ALD",  # Alderson
     "BNL": "BNL",  # Bloomington-Normal
     "BYN": "BYN",  # Bryan
     "CDL": "CDL",  # Carbondale
-    "CEN": "CEN",  # Centralia
+    "CEN": "CEN",  # Centralia, IL
     "CHM": "CHM",  # Champaign-Urbana
-    "CHW": "CHW",  # Charleston
+    "CHW": "CHW",  # Charleston, WV
     "COI": "COI",  # Connersville
     "CRF": "CRF",  # Crawfordsville
     "CRV": "CRV",  # Carlinville
@@ -1541,14 +1541,14 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "HIN": "HIN",  # Hinton
     "HMI": "HMI",  # Hammond-Whiting
     "HMW": "HMW",  # Homewood
-    "HUN": "HUN",  # Huntington
+    "HUN": "HUN",  # Huntington, WV
     "JOL": "JOL",  # Joliet Gateway Center
     "KAN": "KAN",  # Kannapolis
     "KEE": "KEE",  # Kewanee
     "KKI": "KKI",  # Kankakee
-    "LAF": "LAF",  # Lafayette
+    "LAF": "LAF",  # Lafayette, IN
     "LAG": "LAG",  # La Grange
-    "LCN": "LCN",  # Lincoln
+    "LCN": "LCN",  # Lincoln, IL
     "MAT": "MAT",  # Mattoon
     "MAY": "MAY",  # Maysville
     "MDT": "MDT",  # Mendota
@@ -1557,7 +1557,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "NBU": "NBU",  # New Buffalo
     "NLS": "NLS",  # Niles
     "NPV": "NPV",  # Naperville
-    "PCT": "PCT",  # Princeton
+    "PCT": "PCT",  # Princeton, IL
     "PIA": "PIA",  # Peoria
     "PLO": "PLO",  # Plano
     "PON": "PON",  # Pontiac
@@ -1565,22 +1565,22 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "REN": "REN",  # Rensselaer
     "RTL": "RTL",  # Rantoul
     "SKY": "SKY",  # Sandusky
-    "SMT": "SMT",  # Summit
+    "SMT": "SMT",  # Summit, IL
     "SOB": "SOB",  # South Bend
-    "SPI": "SPI",  # Springfield
+    "SPI": "SPI",  # Springfield, IL
     "SPM": "SPM",  # South Portsmouth
     "THN": "THN",  # Thurmond
     "WSS": "WSS",  # White Sulphur Springs
     "WTI": "WTI",  # Waterloo
     # Mountain West
     "ACD": "ACD",  # Arcadia Valley
-    "ADM": "ADM",  # Ardmore
+    "ADM": "ADM",  # Ardmore, OK
     "ALN": "ALN",  # Alton
     "ALP": "ALP",  # Alpine
     "ARK": "ARK",  # Arkadelphia
     "BMT": "BMT",  # Beaumont
     "BRH": "BRH",  # Brookhaven
-    "BRL": "BRL",  # Burlington
+    "BRL": "BRL",  # Burlington, IA
     "CBR": "CBR",  # Cleburne
     "CRN": "CRN",  # Creston
     "DDG": "DDG",  # Dodge City
@@ -1593,7 +1593,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "GBB": "GBB",  # Galesburg
     "GCK": "GCK",  # Garden City
     "GFK": "GFK",  # Grand Forks
-    "GLE": "GLE",  # Gainesville
+    "GLE": "GLE",  # Gainesville, TX
     "GWD": "GWD",  # Greenwood
     "HAS": "HAS",  # Hastings
     "HAZ": "HAZ",  # Hazlehurst
@@ -1603,7 +1603,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "HOP": "HOP",  # Hope
     "HUT": "HUT",  # Hutchinson
     "IDP": "IDP",  # Independence
-    "JAN": "JAN",  # Jackson
+    "JAN": "JAN",  # Jackson, MS
     "JEF": "JEF",  # Jefferson City
     "KIL": "KIL",  # Killeen
     "KWD": "KWD",  # Kirkwood
@@ -1612,10 +1612,10 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "LBO": "LBO",  # Lbo
     "LCH": "LCH",  # Lake Charles
     "LEE": "LEE",  # Lee'S Summit
-    "LFT": "LFT",  # Lafayette
+    "LFT": "LFT",  # Lafayette, LA
     "LMR": "LMR",  # Lamar
-    "LNK": "LNK",  # Lincoln
-    "LRC": "LRC",  # Lawrence
+    "LNK": "LNK",  # Lincoln, NE
+    "LRC": "LRC",  # Lawrence, KS
     "LSE": "LSE",  # La Crosse
     "LVW": "LVW",  # Longview
     "MAC": "MAC",  # Macomb
@@ -1623,7 +1623,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "MCG": "MCG",  # Mcgregor
     "MCK": "MCK",  # Mccook
     "MHL": "MHL",  # Marshall
-    "MIN": "MIN",  # Mineola
+    "MIN": "MIN",  # Mineola, TX
     "MKS": "MKS",  # Marks
     "MOT": "MOT",  # Minot
     "MTP": "MTP",  # Mt. Pleasant
@@ -1653,7 +1653,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "TPL": "TPL",  # Temple
     "TRI": "TRI",  # Trinidad
     "TXA": "TXA",  # Texarkana
-    "WAH": "WAH",  # Washington
+    "WAH": "WAH",  # Washington, MO
     "WAR": "WAR",  # Warrensburg
     "WEL": "WEL",  # Wellington
     "WIC": "WIC",  # Wichita
@@ -1710,12 +1710,12 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "WRJ": "WRJ",  # White River Junction
     "WSP": "WSP",  # Westport
     # Pacific Northwest
-    "ALY": "ALY",  # Albany
+    "ALY": "ALY",  # Albany, OR
     "BEL": "BEL",  # Bellingham
     "BNG": "BNG",  # Bingen-White Salmon
     "BRO": "BRO",  # Browning
     "CMO": "CMO",  # Chemult
-    "CTL": "CTL",  # Centralia
+    "CTL": "CTL",  # Centralia, WA
     "CUT": "CUT",  # Cut Bank
     "EDM": "EDM",  # Edmonds
     "EPH": "EPH",  # Ephrata
@@ -1751,12 +1751,12 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "CAM": "CAM",  # Camden
     "DFB": "DFB",  # Deerfield Beach
     "DNK": "DNK",  # Denmark
-    "GNS": "GNS",  # Gainesville
+    "GNS": "GNS",  # Gainesville, FL
     "GUF": "GUF",  # Gulfport Amtrak Sta
     "HBG": "HBG",  # Hattiesburg
-    "HOL": "HOL",  # Hollywood
+    "HOL": "HOL",  # Hollywood, FL
     "JSP": "JSP",  # Jesup
-    "LAK": "LAK",  # Lakeland
+    "LAK": "LAK",  # Lakeland, FL
     "LAU": "LAU",  # Laurel
     "MEI": "MEI",  # Meridian Union
     "OKE": "OKE",  # Okeechobee
@@ -1774,7 +1774,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "YEM": "YEM",  # Yemassee
     # Southeast
     "BCV": "BCV",  # Burke Centre
-    "BNC": "BNC",  # Burlington
+    "BNC": "BNC",  # Burlington, NC
     "CLF": "CLF",  # Clifton Forge
     "CLP": "CLP",  # Culpeper
     "CYN": "CYN",  # Cary
@@ -1792,8 +1792,8 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SSM": "SSM",  # Selma
     "STA": "STA",  # Staunton
     "SWB": "SWB",  # Swansboro
-    "WDB": "WDB",  # Woodbridge
-    "WMN": "WMN",  # Wilmington
+    "WDB": "WDB",  # Woodbridge, VA
+    "WMN": "WMN",  # Wilmington, NC
     # Southwest
     "BEN": "BEN",  # Benson
     "DEM": "DEM",  # Deming
