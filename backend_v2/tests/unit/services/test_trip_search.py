@@ -383,6 +383,62 @@ class TestTripOptionModel:
         assert data["legs"][1]["data_source"] == "PATH"
 
 
+class TestDataSourcesFiltering:
+    """Test that data_sources correctly restricts transfer search systems.
+
+    Newark Penn Station (NP) is served by NJT and AMTRAK.
+    Newark PATH (PNK) is served by PATH.
+    These are linked via a station equivalence group but have separate system sets.
+    The user's data_sources filter should exclude systems from the search.
+    """
+
+    def test_filtering_excludes_njt_when_only_path_subway(self):
+        """NP is served by NJT+AMTRAK. When only PATH+SUBWAY are allowed,
+        NP's systems should be empty after filtering — preventing NJT routes.
+        """
+        all_systems = get_systems_serving_station("NP")
+        assert "NJT" in all_systems, "NP should be served by NJT"
+        assert "AMTRAK" in all_systems, "NP should be served by AMTRAK"
+
+        allowed = {"PATH", "SUBWAY"}
+        filtered = all_systems & allowed
+        assert len(filtered) == 0, "NP should have no allowed systems with PATH+SUBWAY only"
+
+    def test_pnk_kept_when_path_allowed(self):
+        """PNK (Newark PATH) should survive filtering when PATH is allowed."""
+        all_systems = get_systems_serving_station("PNK")
+        assert "PATH" in all_systems, "PNK should be served by PATH"
+
+        allowed = {"PATH", "SUBWAY"}
+        filtered = all_systems & allowed
+        assert "PATH" in filtered
+
+    def test_filtered_systems_produce_no_njt_transfers(self):
+        """With only PATH+SUBWAY enabled, transfer search from PNK to a subway
+        station should not include any NJT legs.
+        """
+        allowed = {"PATH", "SUBWAY"}
+        from_systems = get_systems_serving_station("PNK") & allowed
+        # WTC PATH station connects to subway
+        to_systems = get_systems_serving_station("SA24") & allowed
+
+        assert len(from_systems) > 0, "PNK should have PATH in allowed systems"
+        assert len(to_systems) > 0, "SA24 should have SUBWAY in allowed systems"
+
+        transfers = _find_relevant_transfer_points(from_systems, to_systems)
+        for tp in transfers:
+            assert tp.system_a != "NJT", f"NJT should not appear: {tp}"
+            assert tp.system_b != "NJT", f"NJT should not appear: {tp}"
+            assert tp.system_a != "AMTRAK", f"AMTRAK should not appear: {tp}"
+            assert tp.system_b != "AMTRAK", f"AMTRAK should not appear: {tp}"
+
+    def test_no_filter_includes_all_systems(self):
+        """When data_sources is None (no filter), all systems remain."""
+        all_systems = get_systems_serving_station("NP")
+        assert "NJT" in all_systems
+        assert "AMTRAK" in all_systems
+
+
 class TestIntraSubwayTransferPoints:
     """Test finding intra-subway transfer points for line changes."""
 
