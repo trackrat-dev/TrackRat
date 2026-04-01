@@ -729,34 +729,63 @@ trip_bidi() {
   fi
 }
 
-# ── Cross-system multi-leg transfers (requires 2+ trains) ───────────
-# NJT→LIRR: NJT train to NY Penn, walk, LIRR train from NY Penn
+# ── Inter-system multi-leg transfers (requires 2+ trains) ───────────
+# Each sensible pair of transit systems with a transfer point
+# NJT↔LIRR (via NY Penn)
 trip_bidi "NJT→LIRR Trenton↔Jamaica"        "TR"   "JAM"  "transfer"
-# Amtrak→LIRR: Amtrak train to NY Penn, walk, LIRR train from NY Penn
+# NJT↔MNR (NJT to Penn, walk/subway to GCT, MNR out)
+trip_bidi "NJT→MNR Newark↔WhitePlains"      "NP"   "MWPL" "transfer"
+# NJT↔Subway (via Penn Station complex)
+trip_bidi "NJT→SUBWAY Trenton↔UnionSq"      "TR"   "S635" "transfer"
+# Amtrak↔LIRR (via NY Penn)
 trip_bidi "Amtrak→LIRR WAS↔Jamaica"         "WS"   "JAM"  "transfer"
-# LIRR→MNR: LIRR train to Penn, subway/walk to GCT, MNR train out
+# LIRR↔MNR (Penn→GCT via subway/walk)
 trip_bidi "LIRR→MNR Jamaica↔WhitePlains"    "JAM"  "MWPL" "transfer"
+# LIRR↔Subway (Jamaica↔subway via Penn/Atlantic)
+trip_bidi "LIRR→SUBWAY Jamaica↔WallSt"      "JAM"  "S419" "transfer"
+# MNR↔Subway (GCT complex has MNR+Subway)
+trip_bidi "MNR→SUBWAY Stamford↔UnionSq"     "MSTM" "S635" "transfer"
+# PATH↔NJT (Hoboken PATH ↔ Hoboken NJT, shared station)
+trip_bidi "PATH→NJT WTC↔Trenton"            "PWC"  "TR"   "transfer"
+# PATH↔Subway (via WTC/Fulton or 33rd/Herald Sq complexes)
+trip_bidi "PATH→SUBWAY 33rd↔BroadwayJunction" "P33" "SL22" "transfer"
+# NJT↔PATCO (via Lindenwold: NJT LW ↔ PATCO LND)
+trip_bidi "NJT→PATCO AtlanticCity↔Philadelphia" "AC" "FFL" "transfer"
 
-# ── Cross-system direct (single train via shared station codes) ─────
+# ── Inter-system direct (single train via shared station codes) ─────
 # These test station equivalence resolution, not multi-leg routing
 trip_bidi "NJT/PATH Newark Penn↔WTC"        "NP"   "PWC"  "any"
 trip_bidi "NJT→Amtrak Trenton↔WAS"          "TR"   "WS"   "any"
-trip_bidi "NJT→MNR Trenton↔Stamford"        "TR"   "MSTM" "any"
+trip_bidi "Amtrak→MNR WAS↔Stamford"         "WS"   "MSTM" "any"
 trip_bidi "PATH→SUBWAY WTC↔UnionSq"         "PWC"  "S635" "any"
 
-# ── PATH routes ─────────────────────────────────────────────────────
-# Newark↔33rd requires intra-PATH transfer at Journal Sq (not yet supported)
+# ── Intra-system multi-leg (transfer between routes in same system) ─
+# PATH: Newark↔33rd requires transfer at Journal Sq or Grove St
 trip_bidi "PATH Newark↔33rd St"              "PNK"  "P33"  "any"
-# These are direct (single PATH train serves both stations)
+# LIRR: Babylon branch↔Port Washington branch requires transfer at Jamaica
+trip_bidi "LIRR Babylon↔PortWashington"      "BTA"  "PWS"  "any"
+# NJT: Morris & Essex↔Main Line at Hoboken
+trip_bidi "NJT Gladstone↔Suffern"            "GL"   "SF"   "any"
+# BART: Richmond (Red/Orange)↔Dublin (Blue) requires transfer at MacArthur
+trip_bidi "BART Richmond↔Dublin"             "BART_RICH" "BART_DUBL" "any"
+# BART: Antioch (Yellow)↔Berryessa (Green/Orange) via MacArthur
+trip_bidi "BART Antioch↔OaklandAirport"      "BART_ANTC" "BART_OAKL" "any"
+
+# ── PATH direct (single PATH train serves both stations) ────────────
 trip_bidi "PATH Hoboken↔WTC"                 "PHO"  "PWC"  "direct"
 trip_bidi "PATH Grove St↔33rd St"            "PGR"  "P33"  "direct"
 
 # ── Intra-subway multi-leg (24/7 — requires transfer between lines) ─
-# These are genuine multi-leg: two different subway trains connected at
-# a transfer complex. always_expect=true because subway runs 24/7.
+# always_expect=true because subway runs 24/7.
 # Different physical stations (true multi-leg transfer)
-trip_bidi "SUBWAY G/L↔4/5 MetroAv↔WallSt"   "SG29" "S419" "transfer" "true"
+trip_bidi "SUBWAY G↔4/5 MetroAv↔WallSt"     "SG29" "S419" "transfer" "true"
 trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"    "SL08" "S419" "transfer" "true"
+# Inwood-207St(A) ↔ Coney Island(D/F/N/Q) — requires A↔D/F transfer
+trip_bidi "SUBWAY A↔D Inwood↔ConeyIsland"    "SA02" "SD43" "transfer" "true"
+# Flushing(7) ↔ Astoria(N/W) — no shared stations, requires 7↔N transfer
+trip_bidi "SUBWAY 7↔N Flushing↔Astoria"      "S701" "SR01" "transfer" "true"
+# Pelham Bay(6) ↔ Canarsie(L) — requires 6↔L transfer
+trip_bidi "SUBWAY 6↔L PelhamBay↔Canarsie"    "S601" "SL29" "transfer" "true"
 # Same-complex transfers (different line groups at same station)
 trip_bidi "SUBWAY 4/5/6↔N/R/W UnionSq"       "S635" "SR20" "any"      "true"
 trip_bidi "SUBWAY 7↔A/C/E TimesSq"           "S725" "SA27" "any"      "true"
