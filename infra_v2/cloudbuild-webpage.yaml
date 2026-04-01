@@ -38,7 +38,7 @@ steps:
     args: ['-m', 'rsync', '-r', '-d', 'webpage_v2/dist', 'gs://${_WEBPAGE_BUCKET}']
     waitFor: ['build']
 
-  # Set no-cache on HTML and service worker files
+  # Set no-cache on HTML and service worker files, and Content-Type on AASA
   - name: 'gcr.io/cloud-builders/gsutil'
     id: 'cache-html'
     entrypoint: 'bash'
@@ -51,6 +51,9 @@ steps:
           "gs://${_WEBPAGE_BUCKET}/sw.js" 2>/dev/null || true
         gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
           "gs://${_WEBPAGE_BUCKET}/registerSW.js" 2>/dev/null || true
+        # Apple App Site Association must be served as application/json (no file extension)
+        gsutil setmeta -h "Content-Type:application/json" \
+          "gs://${_WEBPAGE_BUCKET}/.well-known/apple-app-site-association" 2>/dev/null || true
     waitFor: ['sync']
 
   # Set long cache on hashed assets
