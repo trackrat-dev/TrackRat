@@ -15,6 +15,7 @@ enum NavigationDestination: Hashable {
     case trainList(destination: String, departureStationCode: String)
     case trainDetails(trainId: Int)  // Legacy database ID navigation
     case trainDetailsFlexible(trainNumber: String, fromStation: String?, journeyDate: Date?, dataSource: String?)  // New train number navigation with data source for disambiguation
+    case tripDetails
     case advancedConfiguration
     case congestionMap
     case favoriteStations
