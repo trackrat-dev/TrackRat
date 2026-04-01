@@ -537,7 +537,7 @@ STATION_COORDINATES = {
     "PSN": {"lat": 33.8975, "lon": -116.5479},  # Palm Springs
     "PTC": {"lat": 38.2365, "lon": -122.6358},  # Petaluma
     "RDD": {"lat": 40.5836, "lon": -122.3934},  # Redding
-    "RIC": {"lat": 37.9368, "lon": -122.3541},  # Richmond
+    "RIC": {"lat": 37.9368, "lon": -122.3541},  # Richmond, CA
     "RIV": {"lat": 33.9757, "lon": -117.3700},  # Riverside
     "RLN": {"lat": 38.7910, "lon": -121.2373},  # Rocklin
     "RSV": {"lat": 38.7500, "lon": -121.2863},  # Roseville
@@ -571,7 +571,7 @@ STATION_COORDINATES = {
     "FLN": {"lat": 43.0154, "lon": -83.6517},  # Flint
     "GLN": {"lat": 42.0750, "lon": -87.8056},  # Glenview
     "HOM": {"lat": 42.7911, "lon": -86.0966},  # Holland
-    "JXN": {"lat": 42.2481, "lon": -84.3997},  # Jackson
+    "JXN": {"lat": 42.2481, "lon": -84.3997},  # Jackson, MI
     "KAL": {"lat": 42.2953, "lon": -85.5840},  # Kalamazoo
     "LNS": {"lat": 42.7187, "lon": -84.4960},  # East Lansing
     "LPE": {"lat": 43.0495, "lon": -83.3062},  # Lapeer
@@ -586,7 +586,7 @@ STATION_COORDINATES = {
     "WDL": {"lat": 43.6265, "lon": -89.7775},  # Wisconsin Dells
     # Mid-Atlantic Amtrak stations
     "ALT": {"lat": 40.5145, "lon": -78.4016},  # Altoona
-    "ARD": {"lat": 40.0083, "lon": -75.2904},  # Ardmore
+    "ARD": {"lat": 40.0083, "lon": -75.2904},  # Ardmore, PA
     "BER": {"lat": 41.6356, "lon": -72.7653},  # Berlin
     "BNF": {"lat": 41.2745, "lon": -72.8172},  # Branford
     "BWE": {"lat": 39.0178, "lon": -76.7650},  # Bowie State
@@ -607,12 +607,12 @@ STATION_COORDINATES = {
     "JST": {"lat": 40.3297, "lon": -78.9220},  # Johnstown
     "LAB": {"lat": 40.3174, "lon": -79.3851},  # Latrobe
     "LEW": {"lat": 40.5883, "lon": -77.5800},  # Lewistown
-    "MDS": {"lat": 41.2836, "lon": -72.5994},  # Madison
-    "MID": {"lat": 40.1957, "lon": -76.7365},  # Middletown
+    "MDS": {"lat": 41.2836, "lon": -72.5994},  # Madison, CT
+    "MID": {"lat": 40.1957, "lon": -76.7365},  # Middletown, CT
     "MRB": {"lat": 39.4587, "lon": -77.9610},  # Martinsburg
     "MSA": {"lat": 39.3301, "lon": -76.4214},  # Martin Airport
     "MYS": {"lat": 41.3509, "lon": -71.9631},  # Mystic
-    "NRK": {"lat": 39.6697, "lon": -75.7535},  # Newark
+    "NRK": {"lat": 39.6697, "lon": -75.7535},  # Newark, DE
     "NRO": {"lat": 40.9115, "lon": -73.7843},  # New Rochelle
     "OTN": {"lat": 39.0871, "lon": -76.7064},  # Odenton
     "PAO": {"lat": 40.0428, "lon": -75.4838},  # Paoli
@@ -629,15 +629,15 @@ STATION_COORDINATES = {
     "WSB": {"lat": 41.2888, "lon": -72.4480},  # Westbrook
     "YNY": {"lat": 40.9356, "lon": -73.9023},  # Yonkers
     # Midwest Amtrak stations
-    "AKY": {"lat": 38.4809, "lon": -82.6396},  # Ashland
+    "AKY": {"lat": 38.4809, "lon": -82.6396},  # Ashland, KY
     "ALC": {"lat": 40.9213, "lon": -81.0929},  # Alliance
     "ALD": {"lat": 37.7243, "lon": -80.6449},  # Alderson
     "BNL": {"lat": 40.5090, "lon": -88.9843},  # Bloomington-Normal
     "BYN": {"lat": 41.4803, "lon": -84.5518},  # Bryan
     "CDL": {"lat": 37.7242, "lon": -89.2166},  # Carbondale
-    "CEN": {"lat": 38.5275, "lon": -89.1361},  # Centralia
+    "CEN": {"lat": 38.5275, "lon": -89.1361},  # Centralia, IL
     "CHM": {"lat": 40.1158, "lon": -88.2414},  # Champaign-Urbana
-    "CHW": {"lat": 38.3464, "lon": -81.6385},  # Charleston
+    "CHW": {"lat": 38.3464, "lon": -81.6385},  # Charleston, WV
     "COI": {"lat": 39.6460, "lon": -85.1334},  # Connersville
     "CRF": {"lat": 40.0447, "lon": -86.8992},  # Crawfordsville
     "CRV": {"lat": 39.2793, "lon": -89.8893},  # Carlinville
@@ -653,14 +653,14 @@ STATION_COORDINATES = {
     "HIN": {"lat": 37.6750, "lon": -80.8922},  # Hinton
     "HMI": {"lat": 41.6912, "lon": -87.5065},  # Hammond-Whiting
     "HMW": {"lat": 41.5624, "lon": -87.6687},  # Homewood
-    "HUN": {"lat": 38.4158, "lon": -82.4397},  # Huntington
+    "HUN": {"lat": 38.4158, "lon": -82.4397},  # Huntington, WV
     "JOL": {"lat": 41.5246, "lon": -88.0787},  # Joliet Gateway Center
     "KAN": {"lat": 35.4962, "lon": -80.6249},  # Kannapolis
     "KEE": {"lat": 41.2458, "lon": -89.9275},  # Kewanee
     "KKI": {"lat": 41.1193, "lon": -87.8654},  # Kankakee
-    "LAF": {"lat": 40.4193, "lon": -86.8959},  # Lafayette
+    "LAF": {"lat": 40.4193, "lon": -86.8959},  # Lafayette, IN
     "LAG": {"lat": 41.8156, "lon": -87.8715},  # La Grange
-    "LCN": {"lat": 40.1482, "lon": -89.3631},  # Lincoln
+    "LCN": {"lat": 40.1482, "lon": -89.3631},  # Lincoln, IL
     "MAT": {"lat": 39.4827, "lon": -88.3760},  # Mattoon
     "MAY": {"lat": 38.6521, "lon": -83.7711},  # Maysville
     "MDT": {"lat": 41.5496, "lon": -89.1179},  # Mendota
@@ -669,7 +669,7 @@ STATION_COORDINATES = {
     "NBU": {"lat": 41.7967, "lon": -86.7458},  # New Buffalo
     "NLS": {"lat": 41.8374, "lon": -86.2524},  # Niles
     "NPV": {"lat": 41.7795, "lon": -88.1455},  # Naperville
-    "PCT": {"lat": 41.3852, "lon": -89.4668},  # Princeton
+    "PCT": {"lat": 41.3852, "lon": -89.4668},  # Princeton, IL
     "PIA": {"lat": 40.6894, "lon": -89.5936},  # Peoria
     "PLO": {"lat": 41.6624, "lon": -88.5383},  # Plano
     "PON": {"lat": 40.8787, "lon": -88.6372},  # Pontiac
@@ -677,22 +677,22 @@ STATION_COORDINATES = {
     "REN": {"lat": 40.9433, "lon": -87.1551},  # Rensselaer
     "RTL": {"lat": 40.3109, "lon": -88.1591},  # Rantoul
     "SKY": {"lat": 41.4407, "lon": -82.7179},  # Sandusky
-    "SMT": {"lat": 41.7949, "lon": -87.8097},  # Summit
+    "SMT": {"lat": 41.7949, "lon": -87.8097},  # Summit, IL
     "SOB": {"lat": 41.6784, "lon": -86.2873},  # South Bend
-    "SPI": {"lat": 39.8023, "lon": -89.6514},  # Springfield
+    "SPI": {"lat": 39.8023, "lon": -89.6514},  # Springfield, IL
     "SPM": {"lat": 38.7213, "lon": -82.9638},  # South Portsmouth
     "THN": {"lat": 37.9570, "lon": -81.0788},  # Thurmond
     "WSS": {"lat": 37.7864, "lon": -80.3040},  # White Sulphur Springs
     "WTI": {"lat": 41.4318, "lon": -85.0243},  # Waterloo
     # Mountain West Amtrak stations
     "ACD": {"lat": 37.5922, "lon": -90.6244},  # Arcadia Valley
-    "ADM": {"lat": 34.1725, "lon": -97.1255},  # Ardmore
+    "ADM": {"lat": 34.1725, "lon": -97.1255},  # Ardmore, OK
     "ALN": {"lat": 38.9210, "lon": -90.1573},  # Alton
     "ALP": {"lat": 30.3573, "lon": -103.6615},  # Alpine
     "ARK": {"lat": 34.1139, "lon": -93.0533},  # Arkadelphia
     "BMT": {"lat": 30.0765, "lon": -94.1274},  # Beaumont
     "BRH": {"lat": 31.5830, "lon": -90.4411},  # Brookhaven
-    "BRL": {"lat": 40.8058, "lon": -91.1020},  # Burlington
+    "BRL": {"lat": 40.8058, "lon": -91.1020},  # Burlington, IA
     "CBR": {"lat": 32.3497, "lon": -97.3823},  # Cleburne
     "CRN": {"lat": 41.0569, "lon": -94.3616},  # Creston
     "DDG": {"lat": 37.7523, "lon": -100.0170},  # Dodge City
@@ -705,7 +705,7 @@ STATION_COORDINATES = {
     "GBB": {"lat": 40.9447, "lon": -90.3641},  # Galesburg
     "GCK": {"lat": 37.9644, "lon": -100.8733},  # Garden City
     "GFK": {"lat": 47.9175, "lon": -97.1108},  # Grand Forks
-    "GLE": {"lat": 33.6252, "lon": -97.1409},  # Gainesville
+    "GLE": {"lat": 33.6252, "lon": -97.1409},  # Gainesville, TX
     "GWD": {"lat": 33.5172, "lon": -90.1765},  # Greenwood
     "HAS": {"lat": 40.5843, "lon": -98.3875},  # Hastings
     "HAZ": {"lat": 31.8613, "lon": -90.3943},  # Hazlehurst
@@ -715,7 +715,7 @@ STATION_COORDINATES = {
     "HOP": {"lat": 33.6689, "lon": -93.5922},  # Hope
     "HUT": {"lat": 38.0557, "lon": -97.9315},  # Hutchinson
     "IDP": {"lat": 39.0869, "lon": -94.4297},  # Independence
-    "JAN": {"lat": 32.3008, "lon": -90.1909},  # Jackson
+    "JAN": {"lat": 32.3008, "lon": -90.1909},  # Jackson, MS
     "JEF": {"lat": 38.5789, "lon": -92.1699},  # Jefferson City
     "KIL": {"lat": 31.1212, "lon": -97.7286},  # Killeen
     "KWD": {"lat": 38.5811, "lon": -90.4068},  # Kirkwood
@@ -724,10 +724,10 @@ STATION_COORDINATES = {
     "LBO": {"lat": 54.7740, "lon": -101.8481},  # Lbo
     "LCH": {"lat": 30.2381, "lon": -93.2170},  # Lake Charles
     "LEE": {"lat": 38.9126, "lon": -94.3780},  # Lee'S Summit
-    "LFT": {"lat": 30.2265, "lon": -92.0145},  # Lafayette
+    "LFT": {"lat": 30.2265, "lon": -92.0145},  # Lafayette, LA
     "LMR": {"lat": 38.0896, "lon": -102.6186},  # Lamar
-    "LNK": {"lat": 40.8159, "lon": -96.7132},  # Lincoln
-    "LRC": {"lat": 38.9712, "lon": -95.2305},  # Lawrence
+    "LNK": {"lat": 40.8159, "lon": -96.7132},  # Lincoln, NE
+    "LRC": {"lat": 38.9712, "lon": -95.2305},  # Lawrence, KS
     "LSE": {"lat": 43.8332, "lon": -91.2473},  # La Crosse
     "LVW": {"lat": 32.4940, "lon": -94.7283},  # Longview
     "MAC": {"lat": 40.4612, "lon": -90.6709},  # Macomb
@@ -735,7 +735,7 @@ STATION_COORDINATES = {
     "MCG": {"lat": 31.4434, "lon": -97.4048},  # Mcgregor
     "MCK": {"lat": 40.1976, "lon": -100.6258},  # Mccook
     "MHL": {"lat": 32.5515, "lon": -94.3670},  # Marshall
-    "MIN": {"lat": 32.6620, "lon": -95.4891},  # Mineola
+    "MIN": {"lat": 32.6620, "lon": -95.4891},  # Mineola, TX
     "MKS": {"lat": 34.2582, "lon": -90.2723},  # Marks
     "MOT": {"lat": 48.2361, "lon": -101.2986},  # Minot
     "MTP": {"lat": 40.9712, "lon": -91.5508},  # Mt. Pleasant
@@ -765,7 +765,7 @@ STATION_COORDINATES = {
     "TPL": {"lat": 31.0959, "lon": -97.3458},  # Temple
     "TRI": {"lat": 37.1727, "lon": -104.5080},  # Trinidad
     "TXA": {"lat": 33.4201, "lon": -94.0431},  # Texarkana
-    "WAH": {"lat": 38.5615, "lon": -91.0127},  # Washington
+    "WAH": {"lat": 38.5615, "lon": -91.0127},  # Washington, MO
     "WAR": {"lat": 38.7627, "lon": -93.7409},  # Warrensburg
     "WEL": {"lat": 37.2749, "lon": -97.3818},  # Wellington
     "WIC": {"lat": 37.6847, "lon": -97.3341},  # Wichita
@@ -825,12 +825,12 @@ STATION_COORDINATES = {
     "WRJ": {"lat": 43.6478, "lon": -72.3173},  # White River Junction
     "WSP": {"lat": 44.1873, "lon": -73.4518},  # Westport
     # Pacific Northwest Amtrak stations
-    "ALY": {"lat": 44.6305, "lon": -123.1028},  # Albany
+    "ALY": {"lat": 44.6305, "lon": -123.1028},  # Albany, OR
     "BEL": {"lat": 48.7203, "lon": -122.5113},  # Bellingham
     "BNG": {"lat": 45.7150, "lon": -121.4687},  # Bingen-White Salmon
     "BRO": {"lat": 48.5341, "lon": -113.0132},  # Browning
     "CMO": {"lat": 43.2168, "lon": -121.7816},  # Chemult
-    "CTL": {"lat": 46.7175, "lon": -122.9531},  # Centralia
+    "CTL": {"lat": 46.7175, "lon": -122.9531},  # Centralia, WA
     "CUT": {"lat": 48.6384, "lon": -112.3316},  # Cut Bank
     "EDM": {"lat": 47.8111, "lon": -122.3841},  # Edmonds
     "EPH": {"lat": 47.3209, "lon": -119.5493},  # Ephrata
@@ -866,12 +866,12 @@ STATION_COORDINATES = {
     "CAM": {"lat": 34.2482, "lon": -80.6252},  # Camden
     "DFB": {"lat": 26.3171, "lon": -80.1221},  # Deerfield Beach
     "DNK": {"lat": 33.3262, "lon": -81.1436},  # Denmark
-    "GNS": {"lat": 34.2889, "lon": -83.8197},  # Gainesville
+    "GNS": {"lat": 34.2889, "lon": -83.8197},  # Gainesville, FL
     "GUF": {"lat": 30.3690, "lon": -89.0948},  # Gulfport Amtrak Sta
     "HBG": {"lat": 31.3269, "lon": -89.2865},  # Hattiesburg
-    "HOL": {"lat": 26.0116, "lon": -80.1679},  # Hollywood
+    "HOL": {"lat": 26.0116, "lon": -80.1679},  # Hollywood, FL
     "JSP": {"lat": 31.6056, "lon": -81.8822},  # Jesup
-    "LAK": {"lat": 28.0456, "lon": -81.9519},  # Lakeland
+    "LAK": {"lat": 28.0456, "lon": -81.9519},  # Lakeland, FL
     "LAU": {"lat": 31.6922, "lon": -89.1279},  # Laurel
     "MEI": {"lat": 32.3642, "lon": -88.6966},  # Meridian Union
     "OKE": {"lat": 27.2519, "lon": -80.8308},  # Okeechobee
@@ -889,7 +889,7 @@ STATION_COORDINATES = {
     "YEM": {"lat": 32.6883, "lon": -80.8469},  # Yemassee
     # Southeast Amtrak stations
     "BCV": {"lat": 38.7973, "lon": -77.2988},  # Burke Centre
-    "BNC": {"lat": 36.0942, "lon": -79.4345},  # Burlington
+    "BNC": {"lat": 36.0942, "lon": -79.4345},  # Burlington, NC
     "CLF": {"lat": 37.8145, "lon": -79.8274},  # Clifton Forge
     "CLP": {"lat": 38.4724, "lon": -77.9934},  # Culpeper
     "CYN": {"lat": 35.7883, "lon": -78.7822},  # Cary
@@ -907,7 +907,7 @@ STATION_COORDINATES = {
     "SSM": {"lat": 35.5328, "lon": -78.2801},  # Selma
     "STA": {"lat": 38.1476, "lon": -79.0718},  # Staunton
     "SWB": {"lat": 34.6971, "lon": -77.1396},  # Swansboro
-    "WDB": {"lat": 38.6589, "lon": -77.2479},  # Woodbridge
+    "WDB": {"lat": 38.6589, "lon": -77.2479},  # Woodbridge, VA
     "WMN": {"lat": 34.2512, "lon": -77.8749},  # Wilmington
     # Southwest Amtrak stations
     "BEN": {"lat": 31.9688, "lon": -110.2969},  # Benson
