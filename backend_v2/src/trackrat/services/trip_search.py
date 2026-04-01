@@ -249,6 +249,13 @@ async def search_trips(
     from_systems = get_systems_serving_station(from_station)
     to_systems = get_systems_serving_station(to_station)
 
+    # Restrict to user-enabled systems so transfer search doesn't
+    # propose routes through systems the user hasn't selected.
+    if data_sources:
+        allowed = set(data_sources)
+        from_systems = from_systems & allowed
+        to_systems = to_systems & allowed
+
     if not from_systems or not to_systems:
         return _empty_response(from_station, to_station, "no_systems")
 
