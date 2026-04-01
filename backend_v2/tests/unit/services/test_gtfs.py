@@ -238,6 +238,10 @@ class TestRateLimiting:
 class TestActiveServiceIds:
     """Tests for determining active service IDs on a given date."""
 
+    def setup_method(self):
+        """Clear the service ID cache before each test to prevent cross-test pollution."""
+        GTFSService._service_id_cache.clear()
+
     @pytest.mark.asyncio
     async def test_weekday_service(self):
         """Test getting active services for a weekday."""
