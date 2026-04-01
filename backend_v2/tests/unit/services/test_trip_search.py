@@ -402,7 +402,9 @@ class TestDataSourcesFiltering:
 
         allowed = {"PATH", "SUBWAY"}
         filtered = all_systems & allowed
-        assert len(filtered) == 0, "NP should have no allowed systems with PATH+SUBWAY only"
+        assert (
+            len(filtered) == 0
+        ), "NP should have no allowed systems with PATH+SUBWAY only"
 
     def test_pnk_kept_when_path_allowed(self):
         """PNK (Newark PATH) should survive filtering when PATH is allowed."""

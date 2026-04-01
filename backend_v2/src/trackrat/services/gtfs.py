@@ -315,7 +315,8 @@ class GTFSService:
             # Invalidate service ID cache for this data source
             # (calendar data may have changed)
             GTFSService._service_id_cache = {
-                k: v for k, v in GTFSService._service_id_cache.items()
+                k: v
+                for k, v in GTFSService._service_id_cache.items()
                 if k[0] != data_source
             }
 
