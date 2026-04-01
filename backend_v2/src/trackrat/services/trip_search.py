@@ -324,7 +324,7 @@ async def search_trips(
     leg_tasks: list[tuple[int, str]] = []  # (transfer_idx, "leg1"|"leg2")
     coros = []
     for i, (
-        tp,
+        _tp,
         alight_station,
         alight_system,
         board_station,
@@ -364,7 +364,7 @@ async def search_trips(
 
     # Group results by transfer point index
     leg_responses: dict[int, dict[str, DeparturesResponse]] = {}
-    for (idx, leg_name), result in zip(leg_tasks, results):
+    for (idx, leg_name), result in zip(leg_tasks, results, strict=False):
         if isinstance(result, BaseException):
             logger.warning(
                 "transfer_leg_query_failed",
@@ -382,9 +382,9 @@ async def search_trips(
     for i, (
         tp,
         alight_station,
-        alight_system,
+        _alight_system,
         board_station,
-        board_system,
+        _board_system,
     ) in enumerate(oriented_transfers):
         responses = leg_responses.get(i, {})
         leg1_response = responses.get("leg1")
