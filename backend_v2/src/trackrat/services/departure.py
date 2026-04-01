@@ -128,6 +128,7 @@ class DepartureService:
         hide_departed: bool = False,
         data_sources: list[str] | None = None,
         skip_individual_refresh: bool = False,
+        skip_gtfs_merge: bool = False,
     ) -> DeparturesResponse:
         """Get train departures between stations.
 
@@ -421,8 +422,9 @@ class DepartureService:
         )
 
         # For TODAY: merge real-time departures with GTFS schedule for rest of day
-        # This shows trains that haven't entered the real-time feed yet
-        if target_date == today:
+        # This shows trains that haven't entered the real-time feed yet.
+        # Skip for transfer leg queries where GTFS backfill isn't needed.
+        if target_date == today and not skip_gtfs_merge:
             current_time = now_et()
             try:
                 from trackrat.services.gtfs import GTFSService
