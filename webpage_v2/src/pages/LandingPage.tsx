@@ -20,16 +20,22 @@ const features = [
     image: `${BASE}images/1.webp`,
   },
   {
-    title: 'All your options on one screen',
-    description:
-      'NJ Transit, Amtrak, etc — browse combined schedules for any route.',
-    image: `${BASE}images/2.webp`,
-  },
-  {
     title: 'Know your track early',
     description:
       'Track predictions so you can head to the right platform before the board updates.',
     image: `${BASE}images/3.webp`,
+  },
+  {
+    title: 'Never miss a disruption',
+    description:
+      'Set up alerts for your regular routes. Get notified about delays, cancellations, and planned service changes.',
+    image: `${BASE}images/alerts.webp`,
+  },
+  {
+    title: 'All your options on one screen',
+    description:
+      'NJ Transit, Amtrak, etc — browse combined schedules for any route.',
+    image: `${BASE}images/2.webp`,
   },
   {
     title: 'Updates on your Lock Screen',
@@ -199,42 +205,6 @@ export function LandingPage() {
             </div>
           </div>
         ))}
-      </section>
-
-      {/* Route Alerts */}
-      <section className="px-6 py-14 bg-surface/50">
-        <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-8 md:gap-12">
-          <div className="flex-1 text-center md:text-left">
-            <h2 className="text-2xl md:text-3xl font-bold mb-3 text-text-primary">
-              Never miss a disruption
-            </h2>
-            <p className="text-text-secondary text-lg leading-relaxed mb-4">
-              Set up alerts for your regular routes. Get notified about delays,
-              cancellations, and planned service changes — on your schedule,
-              with the thresholds you choose.
-            </p>
-            <ul className="text-text-secondary text-base space-y-2">
-              <li className="flex items-start gap-2">
-                <span className="text-accent font-bold mt-0.5">·</span>
-                <span>Custom delay thresholds and active time windows</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-accent font-bold mt-0.5">·</span>
-                <span>MTA service alerts and planned work notifications</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-accent font-bold mt-0.5">·</span>
-                <span>Cancellation and recovery alerts</span>
-              </li>
-            </ul>
-          </div>
-          <img
-            src={`${BASE}images/alerts.webp`}
-            alt="Route Alerts"
-            className="w-64 md:w-72 rounded-2xl shadow-lg shrink-0"
-            loading="lazy"
-          />
-        </div>
       </section>
 
       {/* Multi-system Showcase */}
