@@ -817,14 +817,13 @@ class GTFSService:
 
         # Cache the result — service IDs are stable for a given date.
         # Evict stale entries for past dates to prevent unbounded growth.
+        # Use pop() instead of dict replacement to avoid clobbering concurrent inserts.
         from trackrat.utils.time import now_et as _now_et
 
         today = _now_et().date()
-        if any(k[1] < today for k in GTFSService._service_id_cache):
-            GTFSService._service_id_cache = {
-                k: v for k, v in GTFSService._service_id_cache.items()
-                if k[1] >= today
-            }
+        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < today]
+        for k in stale_keys:
+            GTFSService._service_id_cache.pop(k, None)
         GTFSService._service_id_cache[cache_key] = active_services
 
         return active_services
