@@ -162,7 +162,7 @@ private struct TripSummaryHeader: View {
                     .font(.subheadline)
                     .foregroundColor(.black.opacity(0.6))
 
-                Text("\(trip.legs.count) trains • \(trip.transfers.count) transfer\(trip.transfers.count > 1 ? "s" : "")")
+                Text("\(trip.legs.count) trains • \(trip.transfers.count) transfer\(trip.transfers.count != 1 ? "s" : "")")
                     .font(.caption)
                     .foregroundColor(.black.opacity(0.5))
             }
@@ -196,15 +196,17 @@ private struct LegDetailSection: View {
     }
 
     private var hasPreviousStops: Bool {
-        guard let stops = train?.stops else { return false }
-        let idx = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, leg.boarding.code) }
-        return idx != nil && idx! > 0
+        guard let stops = train?.stops,
+              let idx = stops.firstIndex(where: { Stations.areEquivalentStations($0.stationCode, leg.boarding.code) })
+        else { return false }
+        return idx > 0
     }
 
     private var hasLaterStops: Bool {
-        guard let stops = train?.stops else { return false }
-        let idx = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, leg.alighting.code) }
-        return idx != nil && idx! < stops.count - 1
+        guard let stops = train?.stops,
+              let idx = stops.firstIndex(where: { Stations.areEquivalentStations($0.stationCode, leg.alighting.code) })
+        else { return false }
+        return idx < stops.count - 1
     }
 
     private var lineColor: Color {
@@ -328,6 +330,12 @@ private struct LegDetailSection: View {
                     }
                 }
                 .padding(.bottom, 12)
+            } else if train == nil && !isLoading {
+                Text("Could not load stops for this leg.")
+                    .foregroundColor(.black.opacity(0.5))
+                    .italic()
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
             }
         }
         .background(Color.white.opacity(0.9))
