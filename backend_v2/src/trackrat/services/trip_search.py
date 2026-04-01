@@ -94,6 +94,20 @@ def _make_direct_trip(dep: TrainDeparture) -> TripOption | None:
     )
 
 
+def _filter_unreasonable_durations(trips: list[TripOption]) -> list[TripOption]:
+    """Remove trips that are disproportionately longer than the fastest option.
+
+    Keeps alternatives within 2x the fastest duration or +20 min, whichever is
+    more generous.  The +20 min floor prevents over-aggressive filtering on short
+    trips (e.g. a 12-min trip wouldn't exclude a 22-min alternative).
+    """
+    if not trips:
+        return trips
+    min_dur = min(t.total_duration_minutes for t in trips)
+    max_reasonable = max(min_dur * 2.0, min_dur + 20)
+    return [t for t in trips if t.total_duration_minutes <= max_reasonable]
+
+
 def _find_relevant_transfer_points(
     from_systems: set[str],
     to_systems: set[str],
@@ -455,6 +469,8 @@ async def search_trips(
                 )
                 transfer_trips.append(trip)
                 break  # Only take the first matching leg2 for this leg1
+
+    transfer_trips = _filter_unreasonable_durations(transfer_trips)
 
     # Sort by departure time, then total duration
     transfer_trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))
