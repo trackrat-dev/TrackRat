@@ -274,9 +274,20 @@ class TestLookupIndexes:
         result = get_transfer_points("PATCO", "LIRR")
         assert result == []
 
-    def test_get_transfer_points_same_non_subway_system_empty(self):
-        """Same non-subway system should return no transfer points."""
-        assert get_transfer_points("NJT", "NJT") == []
+    def test_get_transfer_points_same_non_subway_system_has_intra_transfers(self):
+        """Same non-subway system with branching routes should have intra-system transfers."""
+        # NJT has multiple routes sharing junction stations
+        tps = get_transfer_points("NJT", "NJT")
+        assert len(tps) > 0, "Expected NJT intra-system transfers at junction stations"
+        for tp in tps:
+            assert tp.system_a == "NJT"
+            assert tp.system_b == "NJT"
+            assert tp.lines_a != tp.lines_b
+
+    def test_get_transfer_points_same_system_no_branching_empty(self):
+        """Systems not in _INTRA_TRANSFER_SYSTEMS return no same-system transfers."""
+        assert get_transfer_points("PATCO", "PATCO") == []
+        assert get_transfer_points("WMATA", "WMATA") == []
 
     def test_get_transfer_points_subway_subway_has_results(self):
         """SUBWAY <-> SUBWAY should return intra-subway transfer points."""
