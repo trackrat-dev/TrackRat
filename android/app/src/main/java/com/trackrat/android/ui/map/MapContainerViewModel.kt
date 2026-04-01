@@ -139,15 +139,17 @@ class MapContainerViewModel @Inject constructor(
     fun animateToRoute(from: LatLng, to: LatLng) {
         viewModelScope.launch {
             val region = calculateRegionForRoute(from, to, _sheetPosition.value)
-
-            // Animate camera to new position
-            cameraPositionState.animate(
-                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
-                    region.center,
-                    region.zoom
-                ),
-                durationMs = 250
-            )
+            try {
+                cameraPositionState.animate(
+                    update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                        region.center,
+                        region.zoom
+                    ),
+                    durationMs = 250
+                )
+            } catch (_: Exception) {
+                // User interrupted animation - expected when dragging map during animation
+            }
         }
     }
 
@@ -156,13 +158,17 @@ class MapContainerViewModel @Inject constructor(
      */
     fun resetToDefaultView() {
         viewModelScope.launch {
-            cameraPositionState.animate(
-                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
-                    Stations.DEFAULT_REGION.center,
-                    Stations.DEFAULT_REGION.zoom
-                ),
-                durationMs = 250
-            )
+            try {
+                cameraPositionState.animate(
+                    update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                        Stations.DEFAULT_REGION.center,
+                        Stations.DEFAULT_REGION.zoom
+                    ),
+                    durationMs = 250
+                )
+            } catch (_: Exception) {
+                // User interrupted animation - expected when dragging map during animation
+            }
         }
     }
 

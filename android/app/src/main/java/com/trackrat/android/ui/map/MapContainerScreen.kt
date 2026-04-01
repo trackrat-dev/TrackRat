@@ -42,7 +42,7 @@ import java.time.LocalDate
 fun MapContainerScreen(
     mainNavController: NavHostController,
     deepLinkUri: Uri? = null,
-    viewModel: MapContainerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    viewModel: MapContainerViewModel = hiltViewModel()
 ) {
     // Navigation controller for content within the bottom sheet
     val sheetNavController = rememberNavController()

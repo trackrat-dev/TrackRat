@@ -92,7 +92,7 @@ fun DestinationSelectionScreen(
                     value = searchText,
                     onValueChange = { 
                         searchText = it
-                        viewModel.searchDestinations(it)
+                        viewModel.searchDestinations(it.trim())
                     },
                     placeholder = { 
                         Text(
