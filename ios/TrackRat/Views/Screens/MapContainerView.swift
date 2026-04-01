@@ -411,6 +411,7 @@ struct MapContainerView: View {
             // Back to home - cancel any pending operations
             sheetExpansionTask?.cancel()
             appState.pendingNavigation = nil
+            appState.selectedTrip = nil
             selectedDetent = .fraction(0.50)
             // Note: Map stays static - no resetToDefaultMapView() call
         }

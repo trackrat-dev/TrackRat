@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { TripOption, TripLeg, TrainDetails, TransferInfo } from '../types';
+import { TripOption, TripLeg, TrainDetails } from '../types';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
+import { TransferIndicator } from '../components/TransferTripCard';
 import { formatTime, formatTimeAgo, getTodayDateString } from '../utils/date';
 
 /** Filter stops to the boarding→alighting range for a leg */
@@ -28,34 +29,7 @@ function filterStopsForLeg(
   return { stops, hasPreviousStops: false, hasLaterStops: false };
 }
 
-function TransferIndicator({ transfer }: { transfer: TransferInfo }) {
-  const walkDescription = transfer.same_station
-    ? 'Same station'
-    : transfer.walk_minutes <= 1
-    ? 'Short walk'
-    : `${transfer.walk_minutes} min walk`;
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-4 my-2">
-      <div className="flex flex-col items-center gap-0.5">
-        <div className="w-px h-3 bg-text-muted/30" />
-        <span className="text-text-muted/50 text-sm">
-          {transfer.same_station ? '↓' : '🚶'}
-        </span>
-        <div className="w-px h-3 bg-text-muted/30" />
-      </div>
-      <div>
-        <span className="text-sm font-medium text-text-muted">Transfer</span>
-        <span className="text-sm text-text-muted/70 ml-2">
-          {walkDescription}
-          {!transfer.same_station && ` to ${transfer.to_station.name}`}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function LegDetail({ leg, train, navigate }: { leg: TripLeg; train: TrainDetails | null; navigate: ReturnType<typeof useNavigate> }) {
+function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: TrainDetails | null; loading: boolean; navigate: ReturnType<typeof useNavigate> }) {
   const legStops = useMemo(() => {
     if (!train) return null;
     return filterStopsForLeg(train, leg.boarding.code, leg.alighting.code);
@@ -114,9 +88,13 @@ function LegDetail({ leg, train, navigate }: { leg: TripLeg; train: TrainDetails
       />
 
       {/* Stops */}
-      {!train ? (
+      {train == null && loading ? (
         <div className="mb-4">
           <LoadingSpinner />
+        </div>
+      ) : train == null ? (
+        <div className="mb-4 p-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
+          Could not load stops for this leg.
         </div>
       ) : legStops ? (
         <>
@@ -153,30 +131,23 @@ export function TripDetailsPage() {
 
   const [legDetails, setLegDetails] = useState<(TrainDetails | null)[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // Stable dependency for useEffect — derived before hooks to avoid conditional hook calls
+  // Stable dependency for useEffect
   const legIds = trip?.legs.map(l => l.train_id).join(',') ?? '';
 
   useEffect(() => {
     if (!trip) return;
 
     const fetchAllLegDetails = async () => {
-      try {
-        setError(null);
-        const results = await Promise.all(
-          trip.legs.map(leg =>
-            apiService.getTrainDetails(leg.train_id, getTodayDateString())
-              .then(res => res.train)
-              .catch(() => null)
-          )
-        );
-        setLegDetails(results);
-        setLoading(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load trip details');
-        setLoading(false);
-      }
+      const results = await Promise.all(
+        trip.legs.map(leg =>
+          apiService.getTrainDetails(leg.train_id, getTodayDateString())
+            .then(res => res.train)
+            .catch(() => null)
+        )
+      );
+      setLegDetails(results);
+      setLoading(false);
     };
 
     fetchAllLegDetails();
@@ -222,20 +193,18 @@ export function TripDetailsPage() {
         <div className="flex items-center gap-4 mt-2 text-sm text-text-muted">
           <span>{durationDisplay}</span>
           <span>{formatTime(trip.departure_time)} → {formatTime(trip.arrival_time)}</span>
-          <span>{trip.legs.length} trains • {trip.transfers.length} transfer{trip.transfers.length > 1 ? 's' : ''}</span>
+          <span>{trip.legs.length} trains • {trip.transfers.length} transfer{trip.transfers.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
 
-      {loading && legDetails.every(d => d === null) ? (
+      {loading && legDetails.length === 0 ? (
         <LoadingSpinner />
-      ) : error && legDetails.every(d => d === null) ? (
-        <ErrorMessage message={error} onRetry={() => window.location.reload()} />
       ) : (
         trip.legs.map((leg, i) => (
-          <div key={leg.train_id}>
-            <LegDetail leg={leg} train={legDetails[i] ?? null} navigate={navigate} />
+          <div key={`${leg.train_id}-${i}`}>
+            <LegDetail leg={leg} train={legDetails[i] ?? null} loading={loading} navigate={navigate} />
             {i < trip.transfers.length && (
-              <TransferIndicator transfer={trip.transfers[i]} />
+              <TransferIndicator transfer={trip.transfers[i]} variant="detail" />
             )}
           </div>
         ))
