@@ -646,13 +646,12 @@ echo -e "${BOLD}Trip Search API (bidirectional)...${NC}"
 TRIP_ET_HOUR=$(TZ=America/New_York date +%H)
 
 # Test a single trip search direction.
-# Sets LAST_TRIP_COUNT for the caller; returns 0 on success, 1 on failure.
+# Returns 0 on success, 1 on failure.
 # Usage: trip_test "label" from to expected tmpfile
 #   expected: "transfer" | "direct" | "any"
 trip_test() {
   local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5"
   local code count search_type is_direct legs transfers
-  LAST_TRIP_COUNT=0
 
   code=$(curl -s -o "$tmpfile" -w "%{http_code}" \
     "$API/trips/search?from=$from&to=$to&hide_departed=true&limit=10" 2>/dev/null)
@@ -665,8 +664,6 @@ trip_test() {
 
   count=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
   search_type=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
-  LAST_TRIP_COUNT=$count
-
   if [[ "$count" -eq 0 ]]; then
     if [[ "$TRIP_ET_HOUR" -ge 6 ]]; then
       fail "$label: 0 trips during service hours ($search_type)"
