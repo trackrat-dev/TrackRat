@@ -647,10 +647,11 @@ TRIP_ET_HOUR=$(TZ=America/New_York date +%H)
 
 # Test a single trip search direction.
 # Returns 0 on success, 1 on failure.
-# Usage: trip_test "label" from to expected tmpfile
+# Usage: trip_test "label" from to expected tmpfile [always_expect]
 #   expected: "transfer" | "direct" | "any"
+#   always_expect: "true" to always FAIL on 0 trips (for 24/7 services like subway)
 trip_test() {
-  local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5"
+  local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5" always_expect="${6:-false}"
   local code count search_type is_direct legs transfers
 
   code=$(curl -s -o "$tmpfile" -w "%{http_code}" \
@@ -665,8 +666,8 @@ trip_test() {
   count=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
   search_type=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
   if [[ "$count" -eq 0 ]]; then
-    if [[ "$TRIP_ET_HOUR" -ge 6 ]]; then
-      fail "$label: 0 trips during service hours ($search_type)"
+    if [[ "$always_expect" == "true" || "$TRIP_ET_HOUR" -ge 6 ]]; then
+      fail "$label: 0 trips ($search_type)"
       FAILED_ROUTES+=("Trip search $label: 0 trips ($search_type)")
     else
       warn "$label: 0 trips ($search_type) — late night"
@@ -709,14 +710,15 @@ trip_test() {
 }
 
 # Test A→B and B→A. Flag asymmetry if only one direction works.
-# Usage: trip_bidi "label" from to expected
+# Usage: trip_bidi "label" from to expected [always_expect]
+#   always_expect: "true" to always FAIL on 0 trips (for 24/7 services like subway)
 trip_bidi() {
-  local label="$1" from="$2" to="$3" expected="$4"
+  local label="$1" from="$2" to="$3" expected="$4" always_expect="${5:-false}"
   local fwd_ok=0 rev_ok=0
 
   echo -e "  ${BOLD}$label${NC}"
-  trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" && fwd_ok=1
-  trip_test "  $to → $from" "$to" "$from" "$expected" "$TMPDIR/trip_rev.json" && rev_ok=1
+  trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" "$always_expect" && fwd_ok=1
+  trip_test "  $to → $from" "$to" "$from" "$expected" "$TMPDIR/trip_rev.json" "$always_expect" && rev_ok=1
 
   if [[ "$fwd_ok" -eq 1 && "$rev_ok" -eq 0 ]]; then
     fail "  ASYMMETRY: $from→$to works but $to→$from fails"
@@ -727,17 +729,52 @@ trip_bidi() {
   fi
 }
 
-# Cross-system (NP/PNK are equivalent so PATH runs direct; use "any")
-trip_bidi "NJT/PATH Newark Penn↔WTC"    "NP"   "PWC"  "any"
+# ── Cross-system transfers ──────────────────────────────────────────
+# NP/PNK are equivalent so PATH may run direct; use "any"
+trip_bidi "NJT/PATH Newark Penn↔WTC"        "NP"   "PWC"  "any"
+# NJT Penn → LIRR (shared NY station code)
+trip_bidi "NJT→LIRR Trenton↔Jamaica"        "TR"   "JAM"  "transfer"
+# Amtrak → LIRR (shared NY station code)
+trip_bidi "Amtrak→LIRR WAS↔Jamaica"         "WS"   "JAM"  "transfer"
+# NJT → Amtrak (shared NY station code)
+trip_bidi "NJT→Amtrak Trenton↔WAS"          "TR"   "WS"   "any"
+# NJT → MNR (NJT NY → MNR GCT, may route direct via shared station equivalences)
+trip_bidi "NJT→MNR Trenton↔Stamford"        "TR"   "MSTM" "any"
+# LIRR → MNR (Jamaica→Penn→GCT or via subway)
+trip_bidi "LIRR→MNR Jamaica↔WhitePlains"    "JAM"  "MWPL" "transfer"
+# PATH → Subway (WTC complex has PATH+Subway equivalences)
+trip_bidi "PATH→SUBWAY WTC↔UnionSq"         "PWC"  "S635" "any"
 
-# Intra-subway transfers (different lines requiring a connection)
-trip_bidi "SUBWAY G/L↔4/5 MetroAv↔WallSt" "SG29" "S419" "transfer"
-trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"  "SL08" "S419" "transfer"
+# ── PATH multi-leg ──────────────────────────────────────────────────
+# Newark to 33rd St requires NWK-WTC + HOB-33 or NWK-JSQ-33
+trip_bidi "PATH Newark↔33rd St"              "PNK"  "P33"  "any"
+# Hoboken to WTC (direct HOB-WTC line exists)
+trip_bidi "PATH Hoboken↔WTC"                 "PHO"  "PWC"  "any"
+# Grove St to 33rd St (mid-route to terminus, may need transfer)
+trip_bidi "PATH Grove St↔33rd St"            "PGR"  "P33"  "any"
 
-# Same-line direct (both directions should always work)
-trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"    "S635" "S419" "direct"
-trip_bidi "SUBWAY L UnionSq↔BedfordAv"    "SL03" "SL08" "direct"
-trip_bidi "SUBWAY A 59St↔CanalSt"         "SA24" "SA34" "direct"
+# ── Intra-subway transfers (24/7 service — always expect results) ──
+# always_expect=true: subway runs 24/7, 0 trips is always a failure
+trip_bidi "SUBWAY G/L↔4/5 MetroAv↔WallSt"   "SG29" "S419" "transfer" "true"
+trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"    "SL08" "S419" "transfer" "true"
+trip_bidi "SUBWAY 4/5/6↔N/R/W UnionSq"       "S635" "SR20" "any"      "true"
+trip_bidi "SUBWAY 7↔A/C/E TimesSq"           "S725" "SA27" "any"      "true"
+trip_bidi "SUBWAY 1/2↔A/B/C/D 59St-Columbus" "S125" "SA24" "any"      "true"
+trip_bidi "SUBWAY 2/3↔B/Q AtlanticAv"        "S235" "SD24" "any"      "true"
+trip_bidi "SUBWAY A/C↔2/3 FultonSt"          "SA38" "S229" "any"      "true"
+trip_bidi "SUBWAY A/C/F↔N/R/W JaySt"         "SA41" "SR29" "any"      "true"
+trip_bidi "SUBWAY A/C↔L BroadwayJunction"    "SA51" "SL22" "any"      "true"
+trip_bidi "SUBWAY 7↔G CourtSq"               "S719" "SG22" "any"      "true"
+
+# ── Same-line direct (both directions should always work) ───────────
+# always_expect=true: these are direct trips on 24/7 subway lines
+trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"       "S635" "S419" "direct"   "true"
+trip_bidi "SUBWAY L UnionSq↔BedfordAv"       "SL03" "SL08" "direct"   "true"
+trip_bidi "SUBWAY A 59St↔CanalSt"            "SA24" "SA34" "direct"   "true"
+trip_bidi "SUBWAY 7 Flushing↔HudsonYards"    "S701" "S726" "direct"   "true"
+trip_bidi "SUBWAY F 4Av-9St↔W4St"            "SF23" "SD20" "direct"   "true"
+trip_bidi "SUBWAY 1/2/3 96St↔Chambers"       "S120" "S137" "direct"   "true"
+trip_bidi "SUBWAY G CourtSq↔ChurchAv"        "SG22" "SF27" "direct"   "true"
 
 echo ""
 
