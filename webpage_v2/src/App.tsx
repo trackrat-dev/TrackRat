@@ -5,6 +5,7 @@ import { LandingPage } from './pages/LandingPage';
 import { TripSelectionPage } from './pages/TripSelectionPage';
 import { TrainListPage } from './pages/TrainListPage';
 import { TrainDetailsPage } from './pages/TrainDetailsPage';
+import { TripDetailsPage } from './pages/TripDetailsPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { RouteStatusPage } from './pages/RouteStatusPage';
 import { NetworkStatusPage } from './pages/NetworkStatusPage';
@@ -19,6 +20,7 @@ function App() {
           <Route path="/departures" element={<TripSelectionPage />} />
           <Route path="/trains/:from/:to" element={<TrainListPage />} />
           <Route path="/route/:from/:to" element={<RouteStatusPage />} />
+          <Route path="/trip" element={<TripDetailsPage />} />
           <Route path="/train/:trainId/:from?/:to?" element={<TrainDetailsPage />} />
           <Route path="/status" element={<NetworkStatusPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
