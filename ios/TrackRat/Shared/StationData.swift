@@ -1936,7 +1936,6 @@ extension Stations {
         "Gainesville, FL": "GNS",
         "Gulfport Amtrak Sta": "GUF",
         "Hattiesburg": "HBG",
-        "Hollywood, FL": "HOL",
         "Jesup GA Alt": "JSP",
         "Lakeland, FL Alt": "LAK",
         "Laurel": "LAU",
@@ -3002,10 +3001,11 @@ extension Stations {
             result[code] = name
         }
         // Map equivalent Amtrak codes to the same station name.
-        // These stations are shared between Amtrak and Metro-North but use
-        // different internal codes. The stationCodes dict uses MNR codes;
-        // these entries ensure Amtrak codes also resolve correctly.
+        // These stations are shared between Amtrak routes or between Amtrak
+        // and Metro-North but use different internal codes. The stationCodes
+        // dict uses one code per station; these ensure alternates resolve.
         let amtrakEquivalents: [(amtrakCode: String, mnrCode: String)] = [
+            ("HOL", "HLW"),    // Hollywood, FL (Sunset Limited vs Silver Service)
             ("YNY", "MYON"),   // Yonkers
             ("CRT", "MCRH"),   // Croton-Harmon
             ("POU", "MPOK"),   // Poughkeepsie
