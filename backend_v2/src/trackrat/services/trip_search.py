@@ -350,7 +350,9 @@ async def search_trips(
         leg_tasks.append((i, "leg1"))
 
         # Leg 2: board_station -> to_station
-        # No time_from/time_to — leg 1 may arrive after original window
+        # No time_from/time_to — leg 1 may arrive after original window.
+        # hide_departed=True to avoid stale OBSERVED trains from hours ago
+        # that would never match leg 1's arrival time.
         coros.append(
             _query_leg(
                 board_station,
@@ -358,7 +360,7 @@ async def search_trips(
                 search_date,
                 None,
                 None,
-                False,
+                True,
                 [board_system],
             )
         )
