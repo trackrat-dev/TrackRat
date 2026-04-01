@@ -730,25 +730,25 @@ trip_bidi() {
 }
 
 # ── Inter-system multi-leg transfers (requires 2+ trains) ───────────
-# Each sensible pair of transit systems with a transfer point
+# Each sensible pair of transit systems with a transfer point.
+# Routes are chosen to be achievable in a single transfer — pairs requiring
+# 2+ transfers (e.g., NJT→Union Sq needs NJT→1/2/3→4/5/6) are excluded.
 # NJT↔LIRR (via NY Penn)
 trip_bidi "NJT→LIRR Trenton↔Jamaica"        "TR"   "JAM"  "transfer"
-# NJT↔MNR (NJT to Penn, walk/subway to GCT, MNR out)
-trip_bidi "NJT→MNR Newark↔WhitePlains"      "NP"   "MWPL" "transfer"
-# NJT↔Subway (via Penn Station complex)
-trip_bidi "NJT→SUBWAY Trenton↔UnionSq"      "TR"   "S635" "transfer"
+# NJT↔Subway (via Penn Station subway complex: 1/2/3/A/C/E lines)
+trip_bidi "NJT→SUBWAY Trenton↔34StPenn"     "TR"   "S128" "transfer"
 # Amtrak↔LIRR (via NY Penn)
 trip_bidi "Amtrak→LIRR WAS↔Jamaica"         "WS"   "JAM"  "transfer"
 # LIRR↔MNR (Penn→GCT via subway/walk)
 trip_bidi "LIRR→MNR Jamaica↔WhitePlains"    "JAM"  "MWPL" "transfer"
-# LIRR↔Subway (Jamaica↔subway via Penn/Atlantic)
-trip_bidi "LIRR→SUBWAY Jamaica↔WallSt"      "JAM"  "S419" "transfer"
-# MNR↔Subway (GCT complex has MNR+Subway)
+# LIRR↔Subway (Jamaica↔Broadway Junction via East New York proximity)
+trip_bidi "LIRR→SUBWAY Jamaica↔BroadwayJunction" "JAM" "SA51" "transfer"
+# MNR↔Subway (GCT complex has MNR+Subway; 4/5/6 serve Union Sq)
 trip_bidi "MNR→SUBWAY Stamford↔UnionSq"     "MSTM" "S635" "transfer"
 # PATH↔NJT (Hoboken PATH ↔ Hoboken NJT, shared station)
 trip_bidi "PATH→NJT WTC↔Trenton"            "PWC"  "TR"   "transfer"
-# PATH↔Subway (via WTC/Fulton or 33rd/Herald Sq complexes)
-trip_bidi "PATH→SUBWAY 33rd↔BroadwayJunction" "P33" "SL22" "transfer"
+# PATH↔Subway (33rd St PATH → Herald Sq B/D/F/M, nearby walk transfer)
+trip_bidi "PATH→SUBWAY 33rd↔HeraldSq"       "P33"  "SD17" "transfer"
 # NJT↔PATCO (via Lindenwold: NJT LW ↔ PATCO LND)
 trip_bidi "NJT→PATCO AtlanticCity↔Philadelphia" "AC" "FFL" "transfer"
 
@@ -762,14 +762,11 @@ trip_bidi "PATH→SUBWAY WTC↔UnionSq"         "PWC"  "S635" "any"
 # ── Intra-system multi-leg (transfer between routes in same system) ─
 # PATH: Newark↔33rd requires transfer at Journal Sq or Grove St
 trip_bidi "PATH Newark↔33rd St"              "PNK"  "P33"  "any"
-# LIRR: Babylon branch↔Port Washington branch requires transfer at Jamaica
-trip_bidi "LIRR Babylon↔PortWashington"      "BTA"  "PWS"  "any"
-# NJT: Morris & Essex↔Main Line at Hoboken
-trip_bidi "NJT Gladstone↔Suffern"            "GL"   "SF"   "any"
-# BART: Richmond (Red/Orange)↔Dublin (Blue) requires transfer at MacArthur
-trip_bidi "BART Richmond↔Dublin"             "BART_RICH" "BART_DUBL" "any"
-# BART: Antioch (Yellow)↔Berryessa (Green/Orange) via MacArthur
-trip_bidi "BART Antioch↔OaklandAirport"      "BART_ANTC" "BART_OAKL" "any"
+# NJT: Morris & Essex↔Montclair-Boonton share stations on trunk
+trip_bidi "NJT M&E↔Montclair Dover↔NetcongJunction" "DV" "ND" "any"
+# BART: cross-line routes that share trunk stations (direct or single transfer)
+trip_bidi "BART Antioch↔SFO"                "BART_ANTC" "BART_SFIA" "any"
+trip_bidi "BART SFAirport↔Richmond"          "BART_SFIA" "BART_RICH" "any"
 
 # ── PATH direct (single PATH train serves both stations) ────────────
 trip_bidi "PATH Hoboken↔WTC"                 "PHO"  "PWC"  "direct"
