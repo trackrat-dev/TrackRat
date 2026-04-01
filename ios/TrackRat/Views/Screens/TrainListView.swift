@@ -93,26 +93,46 @@ struct TrainListView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
-            // Action buttons row
-            HStack(spacing: 12) {
-                // Route alerts button
-                if let destinationCode = Stations.getStationCode(destination) {
+            // Action buttons row - hidden for multi-trip transfer searches
+            // where results span multiple routes
+            if !viewModel.isTransferSearch {
+                HStack(spacing: 12) {
+                    // Route alerts button
+                    if let destinationCode = Stations.getStationCode(destination) {
+                        Button {
+                            let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
+                            // For subway, don't set lineId — station pairs are served by multiple lines
+                            // and gtfsRouteIds will infer all relevant lines from the station pair.
+                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
+                            appState.pendingRouteStatus = RouteStatusContext(
+                                dataSource: ds,
+                                lineId: lineId,
+                                fromStationCode: departureStationCode,
+                                toStationCode: destinationCode
+                            )
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bell.badge")
+                                    .font(.subheadline)
+                                Text("Route Alerts")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Schedule picker - Pro feature
                     Button {
-                        let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
-                        // For subway, don't set lineId — station pairs are served by multiple lines
-                        // and gtfsRouteIds will infer all relevant lines from the station pair.
-                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
-                        appState.pendingRouteStatus = RouteStatusContext(
-                            dataSource: ds,
-                            lineId: lineId,
-                            fromStationCode: departureStationCode,
-                            toStationCode: destinationCode
-                        )
+                        showDatePicker = true
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "bell.badge")
+                            Image(systemName: "calendar")
                                 .font(.subheadline)
-                            Text("Route Alerts")
+                            Text("Schedules")
                                 .font(.subheadline)
                         }
                         .foregroundColor(.white.opacity(0.8))
@@ -122,26 +142,9 @@ struct TrainListView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                // Schedule picker - Pro feature
-                Button {
-                    showDatePicker = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar")
-                            .font(.subheadline)
-                        Text("Schedules")
-                            .font(.subheadline)
-                    }
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
 
             // Scrollable content
             ScrollView {
