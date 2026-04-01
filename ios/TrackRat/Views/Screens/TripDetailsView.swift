@@ -30,6 +30,13 @@ struct TripDetailsView: View {
                         // Trip summary header
                         TripSummaryHeader(trip: trip)
 
+                        if viewModel.hasError && !viewModel.isLoading {
+                            ErrorView(message: "Failed to load trip details") {
+                                Task { await viewModel.loadAllLegs(trip: trip) }
+                            }
+                            .padding(.top, 16)
+                        }
+
                         // Legs with transfers
                         ForEach(Array(trip.legs.enumerated()), id: \.element.id) { index, leg in
                             LegDetailSection(
@@ -84,6 +91,7 @@ struct TripDetailsView: View {
 class TripDetailsViewModel: ObservableObject {
     @Published var legTrains: [String: TrainV2] = [:]  // trainId -> TrainV2
     @Published var isLoading = true
+    @Published var hasError = false
     @Published var isViewVisible = false
 
     private let apiService = APIService.shared
@@ -97,7 +105,9 @@ class TripDetailsViewModel: ObservableObject {
 
     func loadAllLegs(trip: TripOption) async {
         isLoading = true
+        hasError = false
         await fetchLegs(trip: trip)
+        hasError = legTrains.isEmpty
         isLoading = false
     }
 
@@ -274,7 +284,7 @@ private struct LegDetailSection: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
-            } else if !displayableStops.isEmpty {
+            } else if let train = train, !displayableStops.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     if hasPreviousStops {
                         HStack {
@@ -297,7 +307,7 @@ private struct LegDetailSection: View {
                             isDeparture: Stations.areEquivalentStations(stop.stationCode, leg.boarding.code),
                             isBoarding: false,
                             boardingTrack: nil,
-                            train: train!,
+                            train: train,
                             departureStationCode: leg.boarding.code,
                             shouldShowJourneyPredictions: false
                         )
