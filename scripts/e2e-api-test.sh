@@ -633,66 +633,114 @@ for route in "${ROUTES[@]}"; do
   IDX=$((IDX + 1))
 done
 
-# --- Trip Search (cross-system and intra-subway transfers) ---
+# --- Trip Search (bidirectional, cross-system, intra-subway) ---
+#
+# Every pair is tested in BOTH directions (A→B and B→A).
+# Directional asymmetry — one direction works but the reverse doesn't —
+# is flagged as a specific FAIL because it signals a code bug, not a data gap.
+# During service hours (6AM–midnight ET), 0 results for known-good pairs
+# is a FAIL, not a WARN.
 
-echo -e "${BOLD}Trip Search API...${NC}"
+echo -e "${BOLD}Trip Search API (bidirectional)...${NC}"
 
-# Cross-system: NJT Newark Penn -> PATH World Trade Center
-TRIP_LABEL="NJT->PATH (NP->PWC)"
-echo -e "  $TRIP_LABEL"
-code=$(curl -s -o "$TMPDIR/trip.json" -w "%{http_code}" "$API/trips/search?from=NP&to=PWC&hide_departed=true&limit=5" 2>/dev/null)
-if [[ "$code" == "200" ]]; then
-  count=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip.json')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
-  search_type=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip.json')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
-  if [[ "$count" -gt 0 ]]; then
-    pass "$TRIP_LABEL: $count trips ($search_type)"
-  else
-    warn "$TRIP_LABEL: 0 trips returned ($search_type) — may be off-hours"
+TRIP_ET_HOUR=$(TZ=America/New_York date +%H)
+
+# Test a single trip search direction.
+# Sets LAST_TRIP_COUNT for the caller; returns 0 on success, 1 on failure.
+# Usage: trip_test "label" from to expected tmpfile
+#   expected: "transfer" | "direct" | "any"
+trip_test() {
+  local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5"
+  local code count search_type is_direct legs transfers
+  LAST_TRIP_COUNT=0
+
+  code=$(curl -s -o "$tmpfile" -w "%{http_code}" \
+    "$API/trips/search?from=$from&to=$to&hide_departed=true&limit=10" 2>/dev/null)
+
+  if [[ "$code" != "200" ]]; then
+    fail "$label: HTTP $code"
+    FAILED_ROUTES+=("Trip search $label: HTTP $code")
+    return 1
   fi
-else
-  fail "$TRIP_LABEL: HTTP $code"
-  FAILED_ROUTES+=("Trip search $TRIP_LABEL: HTTP $code")
-fi
 
-# Intra-subway: Metropolitan Av (G/L) -> Wall St (4/5)
-TRIP_LABEL="SUBWAY G/L->4/5 (SG29->S419)"
-echo -e "  $TRIP_LABEL"
-code=$(curl -s -o "$TMPDIR/trip2.json" -w "%{http_code}" "$API/trips/search?from=SG29&to=S419&hide_departed=true&limit=5" 2>/dev/null)
-if [[ "$code" == "200" ]]; then
-  count=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip2.json')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
-  search_type=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip2.json')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
-  if [[ "$count" -gt 0 ]]; then
-    # Verify it's a transfer trip (not direct — G and 4/5 don't share tracks)
-    is_direct=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip2.json')); print(d['trips'][0].get('is_direct', True))" 2>/dev/null || echo "true")
-    if [[ "$is_direct" == "False" ]]; then
-      pass "$TRIP_LABEL: $count transfer trips ($search_type)"
+  count=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
+  search_type=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
+  LAST_TRIP_COUNT=$count
+
+  if [[ "$count" -eq 0 ]]; then
+    if [[ "$TRIP_ET_HOUR" -ge 6 ]]; then
+      fail "$label: 0 trips during service hours ($search_type)"
+      FAILED_ROUTES+=("Trip search $label: 0 trips ($search_type)")
     else
-      warn "$TRIP_LABEL: $count trips but marked direct (unexpected)"
+      warn "$label: 0 trips ($search_type) — late night"
     fi
-  else
-    warn "$TRIP_LABEL: 0 trips returned ($search_type) — subway may be off-hours"
+    return 1
   fi
-else
-  fail "$TRIP_LABEL: HTTP $code"
-  FAILED_ROUTES+=("Trip search $TRIP_LABEL: HTTP $code")
-fi
 
-# Intra-subway: same line should return direct (not transfer)
-TRIP_LABEL="SUBWAY same-line (S635->S419)"
-echo -e "  $TRIP_LABEL"
-code=$(curl -s -o "$TMPDIR/trip3.json" -w "%{http_code}" "$API/trips/search?from=S635&to=S419&hide_departed=true&limit=5" 2>/dev/null)
-if [[ "$code" == "200" ]]; then
-  count=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip3.json')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
-  search_type=$(python3 -c "import json; d=json.load(open('$TMPDIR/trip3.json')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
-  if [[ "$count" -gt 0 ]]; then
-    pass "$TRIP_LABEL: $count trips ($search_type)"
-  else
-    warn "$TRIP_LABEL: 0 trips ($search_type) — may be off-hours"
+  # Validate expected trip type (direct vs transfer)
+  if [[ "$expected" != "any" ]]; then
+    is_direct=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(d['trips'][0].get('is_direct', True))" 2>/dev/null || echo "True")
+    if [[ "$expected" == "transfer" && "$is_direct" == "True" ]]; then
+      fail "$label: expected transfer but got direct"
+      FAILED_ROUTES+=("Trip search $label: expected transfer, got direct")
+      return 1
+    elif [[ "$expected" == "direct" && "$is_direct" == "False" ]]; then
+      fail "$label: expected direct but got transfer"
+      FAILED_ROUTES+=("Trip search $label: expected direct, got transfer")
+      return 1
+    fi
   fi
-else
-  fail "$TRIP_LABEL: HTTP $code"
-  FAILED_ROUTES+=("Trip search $TRIP_LABEL: HTTP $code")
-fi
+
+  # Transfer trips must have ≥2 legs and transfer info
+  if [[ "$expected" == "transfer" ]]; then
+    legs=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d['trips'][0].get('legs',[])))" 2>/dev/null || echo 0)
+    transfers=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d['trips'][0].get('transfers',[])))" 2>/dev/null || echo 0)
+    if [[ "$legs" -lt 2 ]]; then
+      fail "$label: transfer trip has $legs leg(s), expected ≥2"
+      FAILED_ROUTES+=("Trip search $label: only $legs leg(s)")
+      return 1
+    fi
+    if [[ "$transfers" -lt 1 ]]; then
+      fail "$label: transfer trip missing transfer info"
+      FAILED_ROUTES+=("Trip search $label: no transfer info")
+      return 1
+    fi
+  fi
+
+  pass "$label: $count trips ($search_type)"
+  return 0
+}
+
+# Test A→B and B→A. Flag asymmetry if only one direction works.
+# Usage: trip_bidi "label" from to expected
+trip_bidi() {
+  local label="$1" from="$2" to="$3" expected="$4"
+  local fwd_ok=0 rev_ok=0
+
+  echo -e "  ${BOLD}$label${NC}"
+  trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" && fwd_ok=1
+  trip_test "  $to → $from" "$to" "$from" "$expected" "$TMPDIR/trip_rev.json" && rev_ok=1
+
+  if [[ "$fwd_ok" -eq 1 && "$rev_ok" -eq 0 ]]; then
+    fail "  ASYMMETRY: $from→$to works but $to→$from fails"
+    FAILED_ROUTES+=("Trip asymmetry: $label reverse fails")
+  elif [[ "$fwd_ok" -eq 0 && "$rev_ok" -eq 1 ]]; then
+    fail "  ASYMMETRY: $to→$from works but $from→$to fails"
+    FAILED_ROUTES+=("Trip asymmetry: $label forward fails")
+  fi
+}
+
+# Cross-system (NP/PNK are equivalent so PATH runs direct; use "any")
+trip_bidi "NJT/PATH Newark Penn↔WTC"    "NP"   "PWC"  "any"
+
+# Intra-subway transfers (different lines requiring a connection)
+trip_bidi "SUBWAY G/L↔4/5 MetroAv↔WallSt" "SG29" "S419" "transfer"
+trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"  "SL08" "S419" "transfer"
+
+# Same-line direct (both directions should always work)
+trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"    "S635" "S419" "direct"
+trip_bidi "SUBWAY L UnionSq↔BedfordAv"    "SL03" "SL08" "direct"
+trip_bidi "SUBWAY A 59St↔CanalSt"         "SA24" "SA34" "direct"
 
 echo ""
 
