@@ -323,14 +323,23 @@ async def search_trips(
     # Build all tasks: for each transfer point, leg1 and leg2
     leg_tasks: list[tuple[int, str]] = []  # (transfer_idx, "leg1"|"leg2")
     coros = []
-    for i, (tp, alight_station, alight_system, board_station, board_system) in enumerate(
-        oriented_transfers
-    ):
+    for i, (
+        tp,
+        alight_station,
+        alight_system,
+        board_station,
+        board_system,
+    ) in enumerate(oriented_transfers):
         # Leg 1: from_station -> alight_station
         coros.append(
             _query_leg(
-                from_station, alight_station, search_date,
-                time_from, time_to, hide_departed, [alight_system],
+                from_station,
+                alight_station,
+                search_date,
+                time_from,
+                time_to,
+                hide_departed,
+                [alight_system],
             )
         )
         leg_tasks.append((i, "leg1"))
@@ -339,8 +348,13 @@ async def search_trips(
         # No time_from/time_to — leg 1 may arrive after original window
         coros.append(
             _query_leg(
-                board_station, to_station, search_date,
-                None, None, False, [board_system],
+                board_station,
+                to_station,
+                search_date,
+                None,
+                None,
+                False,
+                [board_system],
             )
         )
         leg_tasks.append((i, "leg2"))
@@ -351,18 +365,27 @@ async def search_trips(
     # Group results by transfer point index
     leg_responses: dict[int, dict[str, DeparturesResponse]] = {}
     for (idx, leg_name), result in zip(leg_tasks, results):
-        if isinstance(result, Exception):
-            logger.warning("transfer_leg_query_failed", transfer_idx=idx, leg=leg_name, error=str(result))
+        if isinstance(result, BaseException):
+            logger.warning(
+                "transfer_leg_query_failed",
+                transfer_idx=idx,
+                leg=leg_name,
+                error=str(result),
+            )
             continue
         leg_responses.setdefault(idx, {})[leg_name] = result
 
-    queries_made = len([r for r in results if not isinstance(r, Exception)])
+    queries_made = len([r for r in results if not isinstance(r, BaseException)])
 
     # Match connections from parallel results
     transfer_trips: list[TripOption] = []
-    for i, (tp, alight_station, alight_system, board_station, board_system) in enumerate(
-        oriented_transfers
-    ):
+    for i, (
+        tp,
+        alight_station,
+        alight_system,
+        board_station,
+        board_system,
+    ) in enumerate(oriented_transfers):
         responses = leg_responses.get(i, {})
         leg1_response = responses.get("leg1")
         leg2_response = responses.get("leg2")
