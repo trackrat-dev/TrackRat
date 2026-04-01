@@ -17,7 +17,8 @@ from structlog import get_logger
 from trackrat.config.stations import get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
-    get_intra_subway_transfers,
+    get_intra_system_transfers,
+    get_station_lines,
     get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
@@ -121,32 +122,36 @@ def _find_relevant_transfer_points(
                     seen.add(key)
                     transfers.append(tp)
 
-    # Intra-subway transfers: find complexes connecting origin's lines to dest's lines.
+    # Intra-system transfers: find junction points connecting origin's lines to
+    # dest's lines within the same system. Works for SUBWAY (complexes),
+    # PATH (junction at Journal Sq), BART (branching lines), etc.
     # We don't skip when lines overlap — even if origin and dest share a line,
     # direct service may not cover the segment, so a transfer via a different
     # line can still be the best (or only) option.
-    if (
-        "SUBWAY" in from_systems
-        and "SUBWAY" in to_systems
-        and from_station
-        and to_station
-    ):
-        origin_lines = get_subway_lines_at_station(from_station)
-        dest_lines = get_subway_lines_at_station(to_station)
-        if origin_lines and dest_lines:
-            for tp in get_intra_subway_transfers():
-                # One side must share lines with origin, other with destination
-                a_has_origin = bool(tp.lines_a & origin_lines)
-                b_has_origin = bool(tp.lines_b & origin_lines)
-                a_has_dest = bool(tp.lines_a & dest_lines)
-                b_has_dest = bool(tp.lines_b & dest_lines)
-                if (a_has_origin and b_has_dest) or (b_has_origin and a_has_dest):
-                    key = frozenset(
-                        {(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)}
-                    )
-                    if key not in seen:
-                        seen.add(key)
-                        transfers.append(tp)
+    if from_station and to_station:
+        common_systems = from_systems & to_systems
+        for system in common_systems:
+            origin_lines = get_station_lines(from_station, system)
+            dest_lines = get_station_lines(to_station, system)
+            if origin_lines and dest_lines:
+                for tp in get_intra_system_transfers(system):
+                    # One side must share lines with origin, other with dest
+                    a_has_origin = bool(tp.lines_a & origin_lines)
+                    b_has_origin = bool(tp.lines_b & origin_lines)
+                    a_has_dest = bool(tp.lines_a & dest_lines)
+                    b_has_dest = bool(tp.lines_b & dest_lines)
+                    if (a_has_origin and b_has_dest) or (
+                        b_has_origin and a_has_dest
+                    ):
+                        key = frozenset(
+                            {
+                                (tp.station_a, tp.system_a),
+                                (tp.station_b, tp.system_b),
+                            }
+                        )
+                        if key not in seen:
+                            seen.add(key)
+                            transfers.append(tp)
 
     return transfers
 
@@ -166,9 +171,9 @@ def _orient_transfer(
     For intra-subway transfers (system_a == system_b), uses line overlap
     with origin/destination to determine orientation.
     """
-    # Intra-subway: orient by line overlap with origin/destination
+    # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
-        origin_lines = get_subway_lines_at_station(from_station)
+        origin_lines = get_station_lines(from_station, tp.system_a)
         if tp.lines_a & origin_lines:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
