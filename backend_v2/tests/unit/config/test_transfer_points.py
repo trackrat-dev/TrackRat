@@ -274,20 +274,22 @@ class TestLookupIndexes:
         result = get_transfer_points("PATCO", "LIRR")
         assert result == []
 
-    def test_get_transfer_points_same_non_subway_system_has_intra_transfers(self):
-        """Same non-subway system with branching routes should have intra-system transfers."""
-        # NJT has multiple routes sharing junction stations
-        tps = get_transfer_points("NJT", "NJT")
-        assert len(tps) > 0, "Expected NJT intra-system transfers at junction stations"
-        for tp in tps:
-            assert tp.system_a == "NJT"
-            assert tp.system_b == "NJT"
-            assert tp.lines_a != tp.lines_b
-
-    def test_get_transfer_points_same_system_no_branching_empty(self):
+    def test_get_transfer_points_same_non_branching_system_empty(self):
         """Systems not in _INTRA_TRANSFER_SYSTEMS return no same-system transfers."""
+        assert get_transfer_points("AMTRAK", "AMTRAK") == []
         assert get_transfer_points("PATCO", "PATCO") == []
         assert get_transfer_points("WMATA", "WMATA") == []
+
+    def test_get_transfer_points_njt_njt_has_junction_transfers(self):
+        """NJT intra-system should return junction transfers (e.g., NE/NC at Newark Penn)."""
+        tps = get_transfer_points("NJT", "NJT")
+        assert len(tps) > 0, "Expected NJT intra-system junction transfers"
+        # All should be same-station, same-system with different line groups
+        for tp in tps:
+            assert tp.system_a == "NJT" and tp.system_b == "NJT"
+            assert tp.station_a == tp.station_b, f"Intra-system junction should be same station, got {tp.station_a} != {tp.station_b}"
+            assert tp.same_station is True
+            assert tp.lines_a != tp.lines_b, f"Junction should connect different line groups at {tp.station_a}"
 
     def test_get_transfer_points_subway_subway_has_results(self):
         """SUBWAY <-> SUBWAY should return intra-subway transfer points."""
