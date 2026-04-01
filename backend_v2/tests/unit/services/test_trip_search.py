@@ -33,6 +33,7 @@ from trackrat.config.transfer_points import get_systems_serving_station
 from trackrat.services.trip_search import (
     _departure_to_leg,
     _empty_response,
+    _filter_unreasonable_durations,
     _find_relevant_transfer_points,
     _get_best_time,
     _make_direct_trip,
@@ -556,3 +557,105 @@ class TestIntraSubwayOrientTransfer:
         # Origin has 4/5 lines, so alight at 4/5/6 platform (S635)
         assert alight == "S635", f"Should alight at 4/5 platform S635, got {alight}"
         assert board == "SL03", f"Should board at L platform SL03, got {board}"
+
+
+def _make_trip_option(
+    departure_offset_min: int = 0,
+    duration_min: int = 30,
+) -> TripOption:
+    """Helper to build a TripOption with specified departure offset and duration."""
+    now = datetime.now(ET)
+    dep_time = now + timedelta(minutes=departure_offset_min)
+    arr_time = dep_time + timedelta(minutes=duration_min)
+    leg = TripLeg(
+        train_id="9999",
+        journey_date=now.date(),
+        line=LineInfo(code="NE", name="Northeast Corridor", color="#000000"),
+        destination="Test",
+        boarding=_make_station_info(code="A", name="A", scheduled=dep_time),
+        alighting=_make_station_info(code="B", name="B", scheduled=arr_time),
+        data_source="NJT",
+        observation_type="OBSERVED",
+        is_cancelled=False,
+        train_position=TrainPosition(),
+    )
+    return TripOption(
+        legs=[leg],
+        transfers=[],
+        departure_time=dep_time,
+        arrival_time=arr_time,
+        total_duration_minutes=duration_min,
+        is_direct=False,
+    )
+
+
+class TestFilterUnreasonableDurations:
+    """Test duration-relative filtering of transfer trips."""
+
+    def test_empty_list_returns_empty(self):
+        assert _filter_unreasonable_durations([]) == []
+
+    def test_single_trip_always_kept(self):
+        trips = [_make_trip_option(duration_min=60)]
+        result = _filter_unreasonable_durations(trips)
+        assert len(result) == 1
+
+    def test_similar_durations_all_kept(self):
+        """Trips within reasonable range of fastest should all be kept."""
+        trips = [
+            _make_trip_option(departure_offset_min=0, duration_min=25),
+            _make_trip_option(departure_offset_min=5, duration_min=30),
+            _make_trip_option(departure_offset_min=10, duration_min=35),
+        ]
+        result = _filter_unreasonable_durations(trips)
+        assert len(result) == 3, f"Expected all 3 trips kept, got {len(result)}"
+
+    def test_much_longer_trip_filtered(self):
+        """A trip taking 2x+ and +20min+ longer than the fastest should be excluded."""
+        trips = [
+            _make_trip_option(departure_offset_min=0, duration_min=25),  # fastest
+            _make_trip_option(departure_offset_min=5, duration_min=30),  # OK
+            _make_trip_option(departure_offset_min=10, duration_min=55),  # 55 > max(50, 45) = 50 → filtered
+        ]
+        result = _filter_unreasonable_durations(trips)
+        durations = [t.total_duration_minutes for t in result]
+        assert 25 in durations, f"Fastest trip (25 min) should be kept, got {durations}"
+        assert 30 in durations, f"30-min trip should be kept, got {durations}"
+        assert 55 not in durations, f"55-min trip should be filtered, got {durations}"
+
+    def test_20min_floor_prevents_aggressive_filter_on_short_trips(self):
+        """For a 10-min fastest trip, 2x=20 but +20=30 is more generous, so 25-min kept."""
+        trips = [
+            _make_trip_option(duration_min=10),  # fastest
+            _make_trip_option(duration_min=25),  # 25 <= max(20, 30) = 30 → kept
+        ]
+        result = _filter_unreasonable_durations(trips)
+        assert len(result) == 2, (
+            f"25-min trip should survive +20 floor (max_reasonable=30), got "
+            f"{[t.total_duration_minutes for t in result]}"
+        )
+
+    def test_2x_rule_dominates_for_long_trips(self):
+        """For a 40-min fastest trip, 2x=80 > +20=60, so 2x rule applies."""
+        trips = [
+            _make_trip_option(duration_min=40),  # fastest
+            _make_trip_option(duration_min=75),  # 75 <= 80 → kept
+            _make_trip_option(duration_min=85),  # 85 > 80 → filtered
+        ]
+        result = _filter_unreasonable_durations(trips)
+        durations = [t.total_duration_minutes for t in result]
+        assert 40 in durations
+        assert 75 in durations, f"75-min trip should be kept (2x=80), got {durations}"
+        assert 85 not in durations, f"85-min trip should be filtered (>80), got {durations}"
+
+    def test_boundary_exactly_at_threshold_kept(self):
+        """A trip exactly at the threshold should be kept (<=, not <)."""
+        trips = [
+            _make_trip_option(duration_min=25),  # fastest, max_reasonable = max(50, 45) = 50
+            _make_trip_option(duration_min=50),  # exactly at threshold
+        ]
+        result = _filter_unreasonable_durations(trips)
+        assert len(result) == 2, (
+            f"Trip at exact threshold (50) should be kept, got "
+            f"{[t.total_duration_minutes for t in result]}"
+        )
