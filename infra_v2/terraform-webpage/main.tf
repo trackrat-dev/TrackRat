@@ -1,39 +1,82 @@
 # TrackRat Webpage Infrastructure
 #
-# Staging webpage: GCS bucket + CDN + LB for staging.trackrat.net
-# Production webpage (trackrat.net): lives in GCP project trackrat-prod,
-# managed separately outside this Terraform config.
+# Standalone Terraform root for webpage infrastructure. Separate from the
+# API backend Terraform (infra_v2/terraform/) because these are shared/global
+# resources that don't vary per environment workspace.
 #
-# Cloud Build triggers for both staging and production webpage deployments.
+# Manages:
+#   - Staging webpage: GCS bucket + CDN + LB for staging.trackrat.net
+#   - Cloud Build triggers for both staging and production webpage deployments
 #
-# NOTE: This config was previously in universal-links-deployment/gcs-simple-setup.tf
-# with its own local Terraform state. If importing existing resources into this
-# workspace, run:
+# Production webpage (trackrat.net) lives in GCP project trackrat-prod,
+# managed separately outside this config.
+#
+# Usage:
+#   cd infra_v2/terraform-webpage
+#   terraform init
+#   terraform plan -var="project_id=trackrat-v2"
+#   terraform apply -var="project_id=trackrat-v2"
+#
+# NOTE: These resources were originally managed by universal-links-deployment/
+# with local Terraform state. To import existing resources:
 #   terraform import google_storage_bucket.webpage_staging trackrat-webpage-staging
 #   terraform import google_storage_bucket_iam_member.staging_public_access \
 #     "trackrat-webpage-staging roles/storage.objectViewer allUsers"
 #   terraform import google_compute_backend_bucket.webpage_staging_backend \
-#     projects/${var.project_id}/global/backendBuckets/trackrat-webpage-staging-backend
+#     projects/trackrat-v2/global/backendBuckets/trackrat-webpage-staging-backend
 #   terraform import google_compute_url_map.webpage_staging \
-#     projects/${var.project_id}/global/urlMaps/trackrat-webpage-staging-map
+#     projects/trackrat-v2/global/urlMaps/trackrat-webpage-staging-map
 #   terraform import google_compute_managed_ssl_certificate.webpage_staging_cert \
-#     projects/${var.project_id}/global/sslCertificates/trackrat-webpage-staging-cert
+#     projects/trackrat-v2/global/sslCertificates/trackrat-webpage-staging-cert
 #   terraform import google_compute_global_address.webpage_staging_ip \
-#     projects/${var.project_id}/global/addresses/trackrat-webpage-staging-ip
+#     projects/trackrat-v2/global/addresses/trackrat-webpage-staging-ip
 #   terraform import google_compute_target_https_proxy.webpage_staging_proxy \
-#     projects/${var.project_id}/global/targetHttpsProxies/trackrat-webpage-staging-https-proxy
+#     projects/trackrat-v2/global/targetHttpsProxies/trackrat-webpage-staging-https-proxy
 #   terraform import google_compute_global_forwarding_rule.webpage_staging_https \
-#     projects/${var.project_id}/global/forwardingRules/trackrat-webpage-staging-https
+#     projects/trackrat-v2/global/forwardingRules/trackrat-webpage-staging-https
 #   terraform import google_compute_url_map.webpage_staging_https_redirect \
-#     projects/${var.project_id}/global/urlMaps/trackrat-webpage-staging-https-redirect
+#     projects/trackrat-v2/global/urlMaps/trackrat-webpage-staging-https-redirect
 #   terraform import google_compute_target_http_proxy.webpage_staging_http_proxy \
-#     projects/${var.project_id}/global/targetHttpProxies/trackrat-webpage-staging-http-proxy
+#     projects/trackrat-v2/global/targetHttpProxies/trackrat-webpage-staging-http-proxy
 #   terraform import google_compute_global_forwarding_rule.webpage_staging_http \
-#     projects/${var.project_id}/global/forwardingRules/trackrat-webpage-staging-http
+#     projects/trackrat-v2/global/forwardingRules/trackrat-webpage-staging-http
 #   terraform import google_cloudbuild_trigger.webpage_staging \
-#     projects/${var.project_id}/locations/us-east4/triggers/trackrat-webpage-staging
+#     projects/trackrat-v2/locations/us-east4/triggers/trackrat-webpage-staging
 #   terraform import google_cloudbuild_trigger.webpage_production \
-#     projects/${var.project_id}/locations/us-east4/triggers/trackrat-webpage-production
+#     projects/trackrat-v2/locations/us-east4/triggers/trackrat-webpage-production
+
+terraform {
+  required_version = ">= 1.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 5.0"
+    }
+  }
+
+  backend "gcs" {
+    bucket = "trackrat-v2-terraform-state"
+    prefix = "terraform/webpage"
+  }
+}
+
+variable "project_id" {
+  description = "Google Cloud Project ID"
+  type        = string
+  default     = "trackrat-v2"
+}
+
+variable "region" {
+  description = "Google Cloud Region"
+  type        = string
+  default     = "us-central1"
+}
+
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
 
 # ============================================
 # Staging webpage infrastructure

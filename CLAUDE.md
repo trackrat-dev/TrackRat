@@ -490,7 +490,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Infrastructure Terraform: `infra_v2/terraform/`
 - Infrastructure Cloud Build: `infra_v2/cloudbuild*.yaml`
 - Universal links (AASA): `webpage_v2/public/.well-known/apple-app-site-association`
-- Webpage infrastructure (Terraform): `infra_v2/terraform/webpage.tf`
+- Webpage infrastructure (Terraform): `infra_v2/terraform-webpage/`
 
 ## Common API Endpoints
 
