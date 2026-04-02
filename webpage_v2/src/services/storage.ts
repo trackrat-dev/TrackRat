@@ -1,4 +1,4 @@
-import { TripDetails, TripHistoryEntry, TripOption, TripPair, FavoriteStation, TransitSystem, Station } from '../types';
+import { TrainDetails, TripHistoryEntry, TripOption, TripPair, FavoriteStation, TransitSystem, Station } from '../types';
 import { buildTrainUrl, buildTripUrl } from '../utils/routes';
 
 const RECENT_TRIPS_KEY = 'trackrat:recentTrips';
@@ -195,7 +195,7 @@ class StorageService {
     }
   }
 
-  saveViewedTrainTrip(train: TripDetails, routeContext?: { fromCode?: string; toCode?: string }): void {
+  saveViewedTrainTrip(train: TrainDetails, routeContext?: { fromCode?: string; toCode?: string }): void {
     const departureCode = routeContext?.fromCode || train.route.origin_code;
     const destinationCode = routeContext?.toCode || train.route.destination_code;
     const departureStop = train.stops.find((stop) => stop.station.code === departureCode);
