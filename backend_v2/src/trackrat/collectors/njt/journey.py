@@ -1970,6 +1970,32 @@ class JourneyCollector(BaseJourneyCollector):
             )
 
         # Check for cancellation (all stops cancelled)
+        #
+        # NJT has THREE known cancellation modes:
+        #
+        # 1. Explicit: All stops get STOP_STATUS="CANCELLED" in the API.
+        #    Detected here — the all-stops-cancelled check below.
+        #
+        # 2. Silent removal (pre-observation): Train disappears from the
+        #    real-time feed before ever being OBSERVED. Detected by
+        #    _reconcile_unobserved_trains() which marks SCHEDULED trains
+        #    as cancelled after 50 minutes.
+        #
+        # 3. Silent removal (post-observation): Train was OBSERVED, then
+        #    disappears (TrainNotFoundError). Detected in
+        #    collect_journey_details() — if no stops departed, the train
+        #    is marked cancelled after 3 consecutive API failures.
+        #
+        # KNOWN GAP: A fourth mode exists where NJT cancels a train but
+        # the API keeps returning stale data indefinitely (no STOP_STATUS
+        # change, no removal). The train appears "frozen" — departed its
+        # origin but never progresses to subsequent stops. This is NOT
+        # currently detected. Observed with train 3930 on 2026-04-02:
+        # departed Trenton, scheduled at Hamilton 08:13, but NJT cancelled
+        # the train while the API continued returning the last-known state.
+        # A staleness heuristic ("no progress for N minutes past next
+        # scheduled stop") was considered but deemed too risky for false
+        # positives on legitimately slow/held trains.
         cancelled_stops = sum(
             1 for stop in stops_data if (stop.STOP_STATUS or "") == "CANCELLED"
         )
