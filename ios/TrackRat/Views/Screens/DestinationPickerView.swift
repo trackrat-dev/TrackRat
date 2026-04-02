@@ -7,13 +7,15 @@ struct DestinationPickerView: View {
     @FocusState private var searchFieldFocused: Bool
     @State private var navigationBarVisible = false
     @State private var searchTask: Task<Void, Never>?
+    @State private var showSettingsForTrainSystems = false
 
-    private var searchResults: [String] {
-        let results = Stations.search(searchText)
-        // Filter out the current departure station — show all systems for cross-system transfers
-        return results.filter { stationName in
-            stationName != appState.selectedDeparture
-        }
+    private var searchResults: (stations: [String], otherSystemStations: [String]) {
+        let grouped = Stations.searchGrouped(searchText, selectedSystems: appState.selectedSystems)
+
+        return (
+            grouped.primary.filter { $0 != appState.selectedDeparture },
+            grouped.other.filter { $0 != appState.selectedDeparture }
+        )
     }
 
     // Favorite stations — always visible, excluding departure station
@@ -96,8 +98,10 @@ struct DestinationPickerView: View {
                                         }
                                     }
                                     .onSubmit {
-                                        if let firstResult = searchResults.first {
+                                        if let firstResult = searchResults.stations.first {
                                             selectDestination(firstResult)
+                                        } else if !searchResults.otherSystemStations.isEmpty {
+                                            showSettingsForTrainSystems = true
                                         }
                                     }
                             }
@@ -118,11 +122,11 @@ struct DestinationPickerView: View {
                         // Search results - take full page when searching
                         if isSearching {
                             let favoriteCodes = Set(favoriteStations.map(\.id))
-                            let favoriteMatches = searchResults.filter { station in
+                            let favoriteMatches = searchResults.stations.filter { station in
                                 guard let code = Stations.getStationCode(station) else { return false }
                                 return favoriteCodes.contains(code)
                             }
-                            let otherMatches = searchResults.filter { station in
+                            let otherMatches = searchResults.stations.filter { station in
                                 guard let code = Stations.getStationCode(station) else { return true }
                                 return !favoriteCodes.contains(code)
                             }
@@ -157,6 +161,25 @@ struct DestinationPickerView: View {
                                     .buttonStyle(.plain)
                                     .padding(.horizontal)
                                 }
+
+                                if !searchResults.otherSystemStations.isEmpty {
+                                    Text("Other systems — edit your train systems to use")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+                                        .padding(.top, 4)
+
+                                    ForEach(searchResults.otherSystemStations, id: \.self) { station in
+                                        Button {
+                                            showSettingsForTrainSystems = true
+                                        } label: {
+                                            otherSystemDestinationSearchRow(station: station)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .padding(.horizontal)
+                                    }
+                                }
                             }
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
@@ -186,6 +209,11 @@ struct DestinationPickerView: View {
         .onAppear {
             // Load favorite stations when view appears
             appState.loadFavoriteStations()
+        }
+        .sheet(isPresented: $showSettingsForTrainSystems) {
+            SettingsView(editTrainSystems: true)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
     
@@ -222,6 +250,47 @@ struct DestinationPickerView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                         .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func otherSystemDestinationSearchRow(station: String) -> some View {
+        HStack {
+            HStack {
+                Text(Stations.displayName(for: station))
+                    .font(.body)
+                    .foregroundColor(.white.opacity(0.7))
+                    .textProtected()
+
+                if let code = Stations.getStationCode(station),
+                   let system = Stations.primarySystem(forStationCode: code) {
+                    SystemBadge(system: system)
+                }
+
+                Spacer()
+            }
+
+            if let code = Stations.getStationCode(station) {
+                StationIconView(
+                    stationCode: code,
+                    isStationFavorited: appState.isStationFavorited(code: code)
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        appState.toggleFavoriteStation(code: code, name: station)
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+                .padding(.leading, 8)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                .fill(TrackRatTheme.Colors.surfaceCard.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
+                        .stroke(TrackRatTheme.Colors.border.opacity(0.6), lineWidth: 1)
                 )
         )
     }

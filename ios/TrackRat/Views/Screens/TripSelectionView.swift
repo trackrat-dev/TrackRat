@@ -196,9 +196,11 @@ struct TripSelectionView: View {
                                 // Native sheet automatically handles expansion when keyboard appears
                             }
                             .onSubmit {
-                                if let firstResult = searchResults.stations.first ?? searchResults.otherSystemStations.first,
+                                if let firstResult = searchResults.stations.first,
                                    let code = Stations.getStationCode(firstResult) {
                                     selectOriginStation(name: firstResult, code: code)
+                                } else if !searchResults.otherSystemStations.isEmpty {
+                                    showSettingsForTrainSystems = true
                                 }
                             }
                         
