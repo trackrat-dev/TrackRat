@@ -114,4 +114,4 @@ The deploy script syncs the `dist/` build output to GCS with appropriate cache h
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](../LICENSE) for details.
+Licensed under the GNU General Public License v3.0. See [LICENSE](../LICENSE) for details.

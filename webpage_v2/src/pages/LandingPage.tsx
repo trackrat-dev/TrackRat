@@ -283,7 +283,7 @@ export function LandingPage() {
           >
             <h3 className="font-semibold text-lg mb-2 text-text-primary">Open Source</h3>
             <p className="text-text-muted text-sm leading-relaxed">
-              TrackRat is open source under Apache 2.0. View the code, report
+              TrackRat is open source under GPLv3. View the code, report
               issues, or contribute.
             </p>
           </a>
@@ -354,7 +354,7 @@ export function LandingPage() {
             .
           </p>
           <p className="text-text-muted text-sm mt-4">
-            &copy; {new Date().getFullYear()} TrackRat · Open Source (Apache 2.0)
+            &copy; {new Date().getFullYear()} TrackRat · Open Source (GPLv3)
           </p>
         </div>
       </footer>
