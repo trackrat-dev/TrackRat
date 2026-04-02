@@ -41,7 +41,6 @@ export async function share(data: ShareData): Promise<boolean> {
       // User cancelled, not an error
       return false;
     }
-    console.error('Share failed:', error);
     return false;
   }
 }
@@ -80,17 +79,23 @@ export function buildTrainShareData(params: {
   const { trainId, origin, destination, from, to, journeyDate, dataSource } = params;
   const basePath = import.meta.env.BASE_URL || '/';
   const normalizedBasePath = basePath === '/' ? '' : basePath.replace(/\/$/, '');
-  const url = `${window.location.origin}${normalizedBasePath}${buildTrainUrl({
+  const routeUrl = buildTrainUrl({
     trainId,
     from,
     to,
     date: journeyDate,
     dataSource,
-  })}`;
+  });
+  const url = new URL(`${normalizedBasePath}${routeUrl}`, window.location.origin);
+
+  // Keep from/to in the query string for shared links so route context survives
+  // even when the canonical path already encodes both stations.
+  if (from) url.searchParams.set('from', from);
+  if (to) url.searchParams.set('to', to);
 
   return {
     title: `Train ${trainId} - TrackRat`,
     text: `Check out Train ${trainId} from ${origin} to ${destination} on TrackRat`,
-    url,
+    url: url.toString(),
   };
 }

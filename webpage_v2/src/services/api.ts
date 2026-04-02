@@ -36,7 +36,7 @@ export class APIService {
       const response = await fetch(url);
 
       if (!response.ok) {
-        throw new APIRequestError(`API Error: ${response.status} ${response.statusText}`, response.status);
+        throw new APIRequestError(`Failed to fetch data: ${response.status} ${response.statusText}`, response.status);
       }
 
       const data = await response.json();
@@ -121,9 +121,8 @@ export class APIService {
     try {
       const url = `${BASE_URL}/predictions/track?station_code=${stationCode}&train_id=${trainId}&journey_date=${journeyDate}`;
       return await this.fetch<PlatformPrediction>(url, false); // Don't cache predictions
-    } catch (error) {
+    } catch {
       // Fail silently - predictions are optional
-      console.warn('Failed to fetch platform predictions:', error);
       return null;
     }
   }

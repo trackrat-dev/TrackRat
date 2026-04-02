@@ -120,7 +120,7 @@ describe('TrainCard', () => {
   it('applies dimmed styling when departed', () => {
     const { container } = renderCard(makeTrain(), { departed: true });
 
-    const button = container.querySelector('button');
-    expect(button?.className).toContain('opacity-60');
+    const card = container.querySelector('[role="button"]');
+    expect(card?.className).toContain('opacity-60');
   });
 });

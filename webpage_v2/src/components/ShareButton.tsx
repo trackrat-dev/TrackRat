@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type MouseEvent } from 'react';
 import { share, ShareData, isShareSupported } from '../utils/share';
 
 interface ShareButtonProps {
@@ -16,7 +16,8 @@ export function ShareButton({ shareData, className = '' }: ShareButtonProps) {
     };
   }, []);
 
-  const handleShare = async () => {
+  const handleShare = async (event?: MouseEvent<HTMLButtonElement>) => {
+    event?.stopPropagation();
     const success = await share(shareData);
 
     if (success) {
@@ -32,6 +33,7 @@ export function ShareButton({ shareData, className = '' }: ShareButtonProps) {
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={handleShare}
         className={`p-2 rounded-lg bg-surface/70 backdrop-blur-xl border border-text-muted/20 hover:border-accent/50 transition-all ${className}`}
         aria-label="Share train"
