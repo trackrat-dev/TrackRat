@@ -794,12 +794,30 @@ class JourneyCollector(BaseJourneyCollector):
                     await self._attempt_completion_on_expiry(session, journey)
 
                 if not journey.is_completed:
-                    journey.is_expired = True
+                    # Check if the train ever departed any stop.
+                    # If no stop departed, the train was cancelled (removed
+                    # from the NJT feed before it ever ran). If at least one
+                    # stop departed, the train ran but we lost API tracking —
+                    # mark as expired instead.
+                    any_departed = await self._has_any_departed_stop(
+                        session, journey
+                    )
+                    if any_departed:
+                        journey.is_expired = True
+                    else:
+                        journey.is_cancelled = True
+                        journey.cancellation_reason = (
+                            "Removed from real-time feed before departure"
+                        )
                 logger.warning(
                     (
-                        "train_marked_expired"
-                        if journey.is_expired
-                        else "train_completed_on_expiry"
+                        "train_marked_cancelled"
+                        if journey.is_cancelled
+                        else (
+                            "train_marked_expired"
+                            if journey.is_expired
+                            else "train_completed_on_expiry"
+                        )
                     ),
                     train_id=journey.train_id,
                     journey_id=journey.id,
@@ -1823,6 +1841,27 @@ class JourneyCollector(BaseJourneyCollector):
         # Run full analysis on completed journey
         transit_analyzer = TransitAnalyzer()
         await transit_analyzer.analyze_journey(session, journey)
+
+    async def _has_any_departed_stop(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> bool:
+        """Check if any stop on this journey has departed.
+
+        Used to distinguish cancelled trains (never ran) from expired trains
+        (ran but disappeared from the API mid-journey).
+        """
+        stmt = (
+            select(JourneyStop.id)
+            .where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.has_departed_station.is_(True),
+                )
+            )
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     async def check_journey_completion(
         self,

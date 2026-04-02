@@ -1765,6 +1765,252 @@ class TestCancelledStopsDepartureInference:
 # ---------------------------------------------------------------------------
 
 
+class TestObservedTrainDisappearanceCancellation:
+    """Test that OBSERVED trains removed from the NJT API (TrainNotFoundError)
+    are marked as cancelled when they never departed any stop, rather than
+    just expired.
+
+    This covers the common NJT cancellation mode where a train is silently
+    removed from the real-time feed instead of having its stops marked
+    STOP_STATUS=CANCELLED.
+    """
+
+    @pytest.mark.asyncio
+    async def test_observed_train_no_departed_stops_marked_cancelled(
+        self, sqlite_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """An OBSERVED train that disappears from the NJT API after 3 failed
+        attempts and has no departed stops should be marked is_cancelled=True
+        (not is_expired=True), because it never ran."""
+        one_hour_ago = now_et() - timedelta(hours=1)
+
+        journey = TrainJourney(
+            train_id="3930",
+            journey_date=now_et().date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="NEW YORK PENN STATION",
+            origin_station_code="HL",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=one_hour_ago,
+            is_cancelled=False,
+            is_expired=False,
+            is_completed=False,
+            api_error_count=2,  # Already failed twice, next will be 3rd
+            has_complete_journey=True,
+            last_updated_at=one_hour_ago,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Add stops — none have departed
+        stops = [
+            JourneyStop(
+                journey_id=journey.id,
+                station_code="TR",
+                station_name="Trenton",
+                stop_sequence=0,
+                scheduled_departure=one_hour_ago,
+                has_departed_station=False,
+            ),
+            JourneyStop(
+                journey_id=journey.id,
+                station_code="HL",
+                station_name="Hamilton",
+                stop_sequence=1,
+                scheduled_departure=one_hour_ago + timedelta(minutes=10),
+                has_departed_station=False,
+            ),
+            JourneyStop(
+                journey_id=journey.id,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=2,
+                scheduled_arrival=one_hour_ago + timedelta(minutes=60),
+                has_departed_station=False,
+            ),
+        ]
+        for stop in stops:
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        # Mock NJT client to raise TrainNotFoundError (train removed from API)
+        from trackrat.collectors.njt.client import TrainNotFoundError
+
+        mock_njt_client.get_train_stop_list.side_effect = TrainNotFoundError(
+            "Train 3930 not found - API returned None"
+        )
+
+        # Call collect_journey_details directly, which handles the error
+        await journey_collector.collect_journey_details(
+            sqlite_session, journey
+        )
+        await sqlite_session.flush()
+        await sqlite_session.refresh(journey)
+
+        assert journey.is_cancelled is True, (
+            f"OBSERVED train with 3 API failures and no departed stops should be "
+            f"marked is_cancelled=True, got is_cancelled={journey.is_cancelled}, "
+            f"is_expired={journey.is_expired}"
+        )
+        assert journey.cancellation_reason is not None, (
+            "Expected a cancellation_reason explaining why the train was cancelled"
+        )
+        assert "real-time feed" in journey.cancellation_reason.lower(), (
+            f"Expected cancellation_reason to mention removal from feed, "
+            f"got {journey.cancellation_reason!r}"
+        )
+        assert journey.is_expired is not True, (
+            "A cancelled train should NOT also be marked expired"
+        )
+        assert journey.api_error_count == 3, (
+            f"Expected api_error_count=3 after 3rd failure, "
+            f"got {journey.api_error_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_observed_train_with_departed_stops_marked_expired(
+        self, sqlite_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """An OBSERVED train that disappears from the NJT API but HAS departed
+        stops should be expired (not cancelled), because it was running and we
+        just lost API tracking."""
+        one_hour_ago = now_et() - timedelta(hours=1)
+
+        journey = TrainJourney(
+            train_id="3932",
+            journey_date=now_et().date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="NEW YORK PENN STATION",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=one_hour_ago,
+            is_cancelled=False,
+            is_expired=False,
+            is_completed=False,
+            api_error_count=2,  # Already failed twice
+            has_complete_journey=True,
+            last_updated_at=one_hour_ago,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Add stops — origin HAS departed, later stops have not
+        stops = [
+            JourneyStop(
+                journey_id=journey.id,
+                station_code="TR",
+                station_name="Trenton",
+                stop_sequence=0,
+                scheduled_departure=one_hour_ago,
+                has_departed_station=True,  # Train departed origin
+                departure_source="api_explicit",
+                actual_departure=one_hour_ago + timedelta(minutes=2),
+            ),
+            JourneyStop(
+                journey_id=journey.id,
+                station_code="HL",
+                station_name="Hamilton",
+                stop_sequence=1,
+                scheduled_departure=one_hour_ago + timedelta(minutes=10),
+                has_departed_station=False,
+            ),
+            JourneyStop(
+                journey_id=journey.id,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=2,
+                scheduled_arrival=one_hour_ago + timedelta(minutes=60),
+                has_departed_station=False,
+            ),
+        ]
+        for stop in stops:
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        from trackrat.collectors.njt.client import TrainNotFoundError
+
+        mock_njt_client.get_train_stop_list.side_effect = TrainNotFoundError(
+            "Train 3932 not found - API returned None"
+        )
+
+        await journey_collector.collect_journey_details(
+            sqlite_session, journey
+        )
+        await sqlite_session.flush()
+        await sqlite_session.refresh(journey)
+
+        # Train that departed but disappeared should NOT be cancelled.
+        # _attempt_completion_on_expiry won't complete it either (penultimate
+        # stop didn't depart), so it should be expired.
+        assert journey.is_cancelled is not True, (
+            f"OBSERVED train with departed stops should NOT be cancelled, "
+            f"got is_cancelled={journey.is_cancelled}"
+        )
+        assert journey.is_expired is True, (
+            f"OBSERVED train with departed stops that disappeared should be "
+            f"expired, got is_expired={journey.is_expired}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_fewer_than_3_failures_does_not_cancel(
+        self, sqlite_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Trains with fewer than 3 TrainNotFoundError failures should NOT be
+        cancelled or expired yet — the API failure may be transient."""
+        one_hour_ago = now_et() - timedelta(hours=1)
+
+        journey = TrainJourney(
+            train_id="3934",
+            journey_date=now_et().date(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="NEW YORK PENN STATION",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=one_hour_ago,
+            is_cancelled=False,
+            is_expired=False,
+            is_completed=False,
+            api_error_count=1,  # Only 1 prior failure; next will be 2nd
+            has_complete_journey=True,
+            last_updated_at=one_hour_ago,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        from trackrat.collectors.njt.client import TrainNotFoundError
+
+        mock_njt_client.get_train_stop_list.side_effect = TrainNotFoundError(
+            "Train 3934 not found"
+        )
+
+        await journey_collector.collect_journey_details(
+            sqlite_session, journey
+        )
+        await sqlite_session.flush()
+        await sqlite_session.refresh(journey)
+
+        assert journey.is_cancelled is not True, (
+            f"Train with only 2 failures should not yet be cancelled, "
+            f"got is_cancelled={journey.is_cancelled}"
+        )
+        assert journey.is_expired is not True, (
+            f"Train with only 2 failures should not yet be expired, "
+            f"got is_expired={journey.is_expired}"
+        )
+        assert journey.api_error_count == 2, (
+            f"Expected api_error_count=2, got {journey.api_error_count}"
+        )
+
+
 class TestTerminalStopArrivalOnCompletion:
     """Test that actual_arrival is propagated to the terminal stop when
     a journey is detected as completed.
