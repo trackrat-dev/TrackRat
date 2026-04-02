@@ -1,4 +1,4 @@
-import { TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse } from '../types';
+import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -6,6 +6,16 @@ const CACHE_DURATION = 120000; // 2 minutes in milliseconds
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
+}
+
+export class APIRequestError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'APIRequestError';
+    this.status = status;
+  }
 }
 
 export class APIService {
@@ -26,7 +36,7 @@ export class APIService {
       const response = await fetch(url);
 
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        throw new APIRequestError(`API Error: ${response.status} ${response.statusText}`, response.status);
       }
 
       const data = await response.json();
@@ -41,18 +51,50 @@ export class APIService {
 
       return data as T;
     } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to fetch data: ${error.message}`);
+      if (error instanceof APIRequestError) {
+        throw error;
       }
-      throw new Error('Failed to fetch data: Unknown error');
+      if (error instanceof Error) {
+        throw new APIRequestError(`Failed to fetch data: ${error.message}`);
+      }
+      throw new APIRequestError('Failed to fetch data: Unknown error');
     }
   }
 
-  async getTrainDetails(trainId: string, date?: string): Promise<TrainDetailsResponse> {
+  async getTrainDetails(
+    trainId: string,
+    date?: string,
+    options?: { dataSource?: string; fromStation?: string }
+  ): Promise<TrainDetailsResponse> {
     const dateParam = date || new Date().toISOString().split('T')[0];
-    const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}?date=${dateParam}`;
+    const searchParams = new URLSearchParams({ date: dateParam });
+    if (options?.dataSource) searchParams.set('data_source', options.dataSource);
+    if (options?.fromStation) searchParams.set('from_station', options.fromStation);
+    const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}?${searchParams.toString()}`;
     // Don't cache train details - always fetch fresh
     return this.fetch<TrainDetailsResponse>(url, false);
+  }
+
+  async findTrainByNumber(
+    trainId: string,
+    options?: { date?: string; dataSource?: string; fromStation?: string }
+  ): Promise<TrainDetails | null> {
+    try {
+      const response = await this.getTrainDetails(
+        trainId,
+        options?.date,
+        {
+          dataSource: options?.dataSource,
+          fromStation: options?.fromStation,
+        }
+      );
+      return response.train;
+    } catch (error) {
+      if (error instanceof APIRequestError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async searchTrips(from: string, to: string, limit = 50, date?: string): Promise<TripSearchResponse> {

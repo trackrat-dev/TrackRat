@@ -11,6 +11,7 @@ import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { getStationByCode } from '../data/stations';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
+import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
 
 const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ default: m.RouteMap })));
 
@@ -130,8 +131,36 @@ export function TrainListPage() {
     );
   }, [transferTrips, trainFilter]);
 
+  const directDataSources = useMemo(
+    () => new Set(trains.map((train) => train.data_source)),
+    [trains]
+  );
+  const allResultDataSources = useMemo(() => {
+    const systems = new Set<string>();
+    trains.forEach((train) => systems.add(train.data_source));
+    transferTrips.forEach((trip) => {
+      trip.legs.forEach((leg) => systems.add(leg.data_source));
+    });
+    return systems;
+  }, [trains, transferTrips]);
+  const directRouteDataSource = directDataSources.size === 1
+    ? trains[0]?.data_source
+    : undefined;
+  const serviceAlertDataSource = allResultDataSources.size === 1
+    ? [...allResultDataSources][0]
+    : undefined;
+
   const isEmpty = filteredTrains.length === 0 && filteredTransferTrips.length === 0;
   const hasResults = trains.length > 0 || transferTrips.length > 0;
+  const routeStatusUrl = useMemo(() => {
+    if (!from || !to) return '/departures';
+
+    return buildRouteStatusUrl({
+      from,
+      to,
+      dataSource: directRouteDataSource,
+    });
+  }, [from, to, directRouteDataSource]);
 
   if (!from || !to || !fromStation || !toStation) {
     return (
@@ -160,18 +189,20 @@ export function TrainListPage() {
               Updated {formatTimeAgo(lastUpdated.toISOString())}
             </span>
           )}
-          <Link
-            to={`/route/${from}/${to}`}
-            className="text-sm text-accent hover:text-accent/80 font-medium"
-          >
-            Route Status →
-          </Link>
+          {directRouteDataSource && !isTransferSearch && (
+            <Link
+              to={routeStatusUrl}
+              className="text-sm text-accent hover:text-accent/80 font-medium"
+            >
+              Route Status →
+            </Link>
+          )}
         </div>
       </div>
 
       {/* Service alerts for MTA systems */}
-      {fromStation.system && (
-        <ServiceAlertBanner dataSource={fromStation.system} />
+      {serviceAlertDataSource && (
+        <ServiceAlertBanner dataSource={serviceAlertDataSource} />
       )}
 
       {/* Route map (lazy-loaded) */}
@@ -203,7 +234,7 @@ export function TrainListPage() {
                 <TrainDistributionChart
                   trainsByCategory={summary.metrics.trains_by_category}
                   trainsByHeadway={summary.metrics.trains_by_headway}
-                  dataSource={fromStation?.system}
+                  dataSource={directRouteDataSource}
                   from={from}
                   to={to}
                 />
@@ -286,7 +317,13 @@ export function TrainListPage() {
             <TrainCard
               key={train.train_id}
               train={train}
-              onClick={() => navigate(`/train/${train.train_id}/${from}/${to}`)}
+              onClick={() => navigate(buildTrainUrl({
+                trainId: train.train_id,
+                from,
+                to,
+                date: train.journey_date,
+                dataSource: train.data_source,
+              }))}
               from={from}
               to={to}
               departed={hasTrainDeparted(train)}
@@ -296,7 +333,7 @@ export function TrainListPage() {
             <TransferTripCard
               key={trip.legs.map(l => l.train_id).join('-')}
               trip={trip}
-              onClick={() => navigate('/trip', { state: { trip } })}
+              onClick={() => navigate(buildTripUrl(trip))}
             />
           ))}
         </div>

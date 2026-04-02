@@ -1,3 +1,5 @@
+import { buildTrainUrl } from './routes';
+
 /**
  * Share utilities using Web Share API with clipboard fallback
  */
@@ -72,19 +74,19 @@ export function buildTrainShareData(params: {
   destination: string;
   from?: string;
   to?: string;
+  journeyDate?: string;
+  dataSource?: string;
 }): ShareData {
-  const { trainId, origin, destination, from, to } = params;
-
-  // Build URL with optional from/to query params
+  const { trainId, origin, destination, from, to, journeyDate, dataSource } = params;
   const basePath = import.meta.env.BASE_URL || '/';
-  let url = `${window.location.origin}${basePath}train/${trainId}`;
-
-  const queryParams: string[] = [];
-  if (from) queryParams.push(`from=${from}`);
-  if (to) queryParams.push(`to=${to}`);
-  if (queryParams.length > 0) {
-    url += `?${queryParams.join('&')}`;
-  }
+  const normalizedBasePath = basePath === '/' ? '' : basePath.replace(/\/$/, '');
+  const url = `${window.location.origin}${normalizedBasePath}${buildTrainUrl({
+    trainId,
+    from,
+    to,
+    date: journeyDate,
+    dataSource,
+  })}`;
 
   return {
     title: `Train ${trainId} - TrackRat`,

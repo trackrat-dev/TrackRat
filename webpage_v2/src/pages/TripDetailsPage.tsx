@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { TripOption, TripLeg, TrainDetails } from '../types';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -7,7 +7,9 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TransferIndicator } from '../components/TransferTripCard';
-import { formatTime, formatTimeAgo, getTodayDateString } from '../utils/date';
+import { formatTime, formatTimeAgo } from '../utils/date';
+import { buildTrainUrl, parseTripParam } from '../utils/routes';
+import { storageService } from '../services/storage';
 
 /** Filter stops to the boarding→alighting range for a leg */
 function filterStopsForLeg(
@@ -66,7 +68,13 @@ function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: Tra
               </span>
             )}
             <button
-              onClick={() => navigate(`/train/${leg.train_id}/${leg.boarding.code}/${leg.alighting.code}`)}
+              onClick={() => navigate(buildTrainUrl({
+                trainId: leg.train_id,
+                from: leg.boarding.code,
+                to: leg.alighting.code,
+                date: leg.journey_date,
+                dataSource: leg.data_source,
+              }))}
               className="text-xs text-accent hover:text-accent/80 font-medium whitespace-nowrap"
             >
               Full train →
@@ -127,21 +135,35 @@ function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: Tra
 export function TripDetailsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const trip = (location.state as { trip?: TripOption })?.trip;
+  const [searchParams] = useSearchParams();
+  const trip = parseTripParam(searchParams.get('trip'))
+    ?? (location.state as { trip?: TripOption } | null)?.trip
+    ?? null;
 
   const [legDetails, setLegDetails] = useState<(TrainDetails | null)[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Stable dependency for useEffect
-  const legIds = trip?.legs.map(l => l.train_id).join(',') ?? '';
+  const legIds = trip?.legs
+    .map(l => `${l.train_id}:${l.journey_date}:${l.data_source}:${l.boarding.code}:${l.alighting.code}`)
+    .join(',') ?? '';
 
   useEffect(() => {
     if (!trip) return;
 
+    storageService.saveViewedTripOption(trip);
+
     const fetchAllLegDetails = async () => {
       const results = await Promise.all(
         trip.legs.map(leg =>
-          apiService.getTrainDetails(leg.train_id, getTodayDateString())
+          apiService.getTrainDetails(
+            leg.train_id,
+            leg.journey_date,
+            {
+              dataSource: leg.data_source,
+              fromStation: leg.boarding.code,
+            }
+          )
             .then(res => res.train)
             .catch(() => null)
         )

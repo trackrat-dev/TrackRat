@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Train, TripOption } from '../types';
 import { apiService } from '../services/api';
 import { formatTime, getDelayMinutes } from '../utils/date';
+import { buildTrainUrl } from '../utils/routes';
 
 interface Props {
   from: string;
@@ -41,7 +42,13 @@ export function UpcomingTrains({ from, to }: Props) {
           return (
             <Link
               key={train.train_id}
-              to={`/train/${encodeURIComponent(train.train_id)}/${from}/${to}`}
+              to={buildTrainUrl({
+                trainId: train.train_id,
+                from,
+                to,
+                date: train.journey_date,
+                dataSource: train.data_source,
+              })}
               className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface/50 transition-colors"
             >
               {/* Line color dot */}

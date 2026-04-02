@@ -130,6 +130,156 @@ describe('Favorite Stations', () => {
   });
 });
 
+describe('Favorite Routes', () => {
+  it('adds and retrieves a favorite route', () => {
+    storageService.saveFavoriteRoute({
+      departureCode: 'NY',
+      departureName: 'New York Penn Station',
+      destinationCode: 'NP',
+      destinationName: 'Newark Penn Station',
+    });
+
+    const routes = storageService.getFavoriteRoutes();
+    expect(routes).toHaveLength(1);
+    expect(routes[0].departureCode).toBe('NY');
+    expect(routes[0].destinationCode).toBe('NP');
+  });
+
+  it('removes a favorite route', () => {
+    storageService.saveFavoriteRoute({
+      departureCode: 'NY',
+      departureName: 'New York Penn Station',
+      destinationCode: 'NP',
+      destinationName: 'Newark Penn Station',
+    });
+
+    storageService.removeFavoriteRoute('NY-NP');
+
+    expect(storageService.getFavoriteRoutes()).toEqual([]);
+  });
+});
+
+describe('Commute Profile', () => {
+  it('stores and retrieves home and work stations', () => {
+    storageService.setHomeStation({ code: 'NY', name: 'New York Penn Station' });
+    storageService.setWorkStation({ code: 'NP', name: 'Newark Penn Station' });
+
+    expect(storageService.getHomeStation()?.code).toBe('NY');
+    expect(storageService.getWorkStation()?.code).toBe('NP');
+  });
+
+  it('clears stored home and work stations', () => {
+    storageService.setHomeStation({ code: 'NY', name: 'New York Penn Station' });
+    storageService.setWorkStation({ code: 'NP', name: 'Newark Penn Station' });
+
+    storageService.setHomeStation(null);
+    storageService.setWorkStation(null);
+
+    expect(storageService.getHomeStation()).toBeNull();
+    expect(storageService.getWorkStation()).toBeNull();
+  });
+});
+
+describe('Trip History', () => {
+  it('stores viewed trains with replay links', () => {
+    storageService.saveViewedTrainTrip({
+      train_id: '3515',
+      journey_date: '2026-04-01',
+      line: { code: 'NEC', name: 'Northeast Corridor', color: '#f60' },
+      route: {
+        origin: 'Trenton',
+        destination: 'New York Penn Station',
+        origin_code: 'TR',
+        destination_code: 'NY',
+      },
+      stops: [
+        {
+          station: { code: 'TR', name: 'Trenton' },
+          stop_sequence: 1,
+          scheduled_departure: '2026-04-01T08:00:00-04:00',
+          has_departed_station: false,
+        },
+        {
+          station: { code: 'NY', name: 'New York Penn Station' },
+          stop_sequence: 2,
+          scheduled_arrival: '2026-04-01T09:00:00-04:00',
+          has_departed_station: false,
+        },
+      ],
+      data_freshness: { last_updated: '2026-04-01T07:55:00-04:00', age_seconds: 0, update_count: 1, collection_method: null },
+      data_source: 'NJT',
+      observation_type: 'OBSERVED',
+      is_cancelled: false,
+      is_completed: false,
+    });
+
+    const history = storageService.getTripHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].href).toContain('/train/3515/TR/NY');
+    expect(history[0].viewedAt).toBeInstanceOf(Date);
+  });
+
+  it('stores viewed transfer trips with replay links', () => {
+    storageService.saveViewedTripOption({
+      legs: [
+        {
+          train_id: '3515',
+          journey_date: '2026-04-01',
+          line: { code: 'NEC', name: 'Northeast Corridor', color: '#f60' },
+          data_source: 'NJT',
+          destination: 'Secaucus',
+          boarding: {
+            code: 'TR',
+            name: 'Trenton',
+            scheduled_time: '2026-04-01T08:00:00-04:00',
+          },
+          alighting: {
+            code: 'SEC',
+            name: 'Secaucus',
+            scheduled_time: '2026-04-01T08:50:00-04:00',
+          },
+          is_cancelled: false,
+        },
+        {
+          train_id: 'A174',
+          journey_date: '2026-04-01',
+          line: { code: 'AMT', name: 'Amtrak', color: '#1f3a93' },
+          data_source: 'AMTRAK',
+          destination: 'New York Penn Station',
+          boarding: {
+            code: 'SEC',
+            name: 'Secaucus',
+            scheduled_time: '2026-04-01T09:00:00-04:00',
+          },
+          alighting: {
+            code: 'NY',
+            name: 'New York Penn Station',
+            scheduled_time: '2026-04-01T09:15:00-04:00',
+          },
+          is_cancelled: false,
+        },
+      ],
+      transfers: [
+        {
+          from_station: { code: 'SEC', name: 'Secaucus' },
+          to_station: { code: 'SEC', name: 'Secaucus' },
+          walk_minutes: 0,
+          same_station: true,
+        },
+      ],
+      departure_time: '2026-04-01T08:00:00-04:00',
+      arrival_time: '2026-04-01T09:15:00-04:00',
+      total_duration_minutes: 75,
+      is_direct: false,
+    });
+
+    const history = storageService.getTripHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].kind).toBe('trip');
+    expect(history[0].href).toContain('/trip?trip=');
+  });
+});
+
 describe('Last Route', () => {
   it('returns null when no last route stored', () => {
     expect(storageService.getLastRoute()).toBeNull();

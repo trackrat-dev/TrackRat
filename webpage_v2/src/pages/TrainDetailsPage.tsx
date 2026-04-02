@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { TrainDetails, StationPredictionSupport } from '../types';
 import { apiService } from '../services/api';
@@ -11,6 +11,7 @@ import { DelayForecastCard } from '../components/DelayForecastCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { HistoricalPerformance } from '../components/HistoricalPerformance';
 import { SimilarTrainsPanel } from '../components/SimilarTrainsPanel';
+import { storageService } from '../services/storage';
 import { getTodayDateString, formatTimeAgo, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
 
@@ -23,18 +24,28 @@ export function TrainDetailsPage() {
   // Path params take priority: /train/123/NY/NP, query params as fallback: /train/123?from=NY&to=NP
   const from = fromPath || searchParams.get('from') || undefined;
   const to = toPath || searchParams.get('to') || undefined;
+  const journeyDate = searchParams.get('date') || undefined;
+  const dataSource = searchParams.get('data_source') || undefined;
 
   const [train, setTrain] = useState<TrainDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [supportedStations, setSupportedStations] = useState<StationPredictionSupport[]>([]);
+  const savedHistoryKeyRef = useRef<string | null>(null);
 
   const fetchTrainDetails = async () => {
     if (!trainId) return;
 
     try {
       setError(null);
-      const response = await apiService.getTrainDetails(trainId, getTodayDateString());
+      const response = await apiService.getTrainDetails(
+        trainId,
+        journeyDate || getTodayDateString(),
+        {
+          dataSource,
+          fromStation: from,
+        }
+      );
       setTrain(response.train);
       setLoading(false);
     } catch (err) {
@@ -49,7 +60,7 @@ export function TrainDetailsPage() {
     // Poll every 30 seconds
     const interval = setInterval(fetchTrainDetails, 30000);
     return () => clearInterval(interval);
-  }, [trainId]);
+  }, [trainId, journeyDate, dataSource]);
 
   // Fetch supported stations for track predictions (once, cached by API service)
   useEffect(() => {
@@ -63,7 +74,13 @@ export function TrainDetailsPage() {
     const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
     if (!isIOS || !trainId) return;
 
-    const deepLinkUrl = `trackrat://train/${trainId}${from ? `?from=${from}` : ''}${to ? `${from ? '&' : '?'}to=${to}` : ''}`;
+    const deepLinkParams = new URLSearchParams();
+    if (journeyDate) deepLinkParams.set('date', journeyDate);
+    if (from) deepLinkParams.set('from', from);
+    if (to) deepLinkParams.set('to', to);
+    if (dataSource) deepLinkParams.set('data_source', dataSource);
+    const deepLinkQuery = deepLinkParams.toString();
+    const deepLinkUrl = `trackrat://train/${trainId}${deepLinkQuery ? `?${deepLinkQuery}` : ''}`;
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = deepLinkUrl;
@@ -80,7 +97,7 @@ export function TrainDetailsPage() {
         document.body.removeChild(iframe);
       }
     };
-  }, [trainId, from, to]);
+  }, [trainId, from, to, journeyDate, dataSource]);
 
   // Filter stops based on user's journey (from/to params)
   // Must be called before early returns to maintain hook order
@@ -120,6 +137,19 @@ export function TrainDetailsPage() {
       hasPreviousStops: false,
       hasLaterStops: false
     };
+  }, [train, from, to]);
+
+  useEffect(() => {
+    if (!train) return;
+
+    const historyKey = `${train.train_id}:${train.journey_date}:${from || train.route.origin_code}:${to || train.route.destination_code}`;
+    if (savedHistoryKeyRef.current === historyKey) return;
+
+    storageService.saveViewedTrainTrip(train, {
+      fromCode: from,
+      toCode: to,
+    });
+    savedHistoryKeyRef.current = historyKey;
   }, [train, from, to]);
 
   if (!trainId) {
@@ -171,6 +201,8 @@ export function TrainDetailsPage() {
                 destination: train.route.destination,
                 from: from,
                 to: to,
+                journeyDate: train.journey_date,
+                dataSource: train.data_source,
               })}
             />
             {train.is_cancelled && (

@@ -63,6 +63,8 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
                 destination: train.destination,
                 from: from,
                 to: to,
+                journeyDate: train.journey_date,
+                dataSource: train.data_source,
               })}
               className="scale-90"
             />

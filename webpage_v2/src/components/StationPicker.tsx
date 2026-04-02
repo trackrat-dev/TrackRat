@@ -69,7 +69,7 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
           {/* System filter chips */}
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
             {SYSTEM_ORDER.map(system => {
-              const active = preferredSystems.includes(system);
+              const active = preferredSystems.length === 0 || preferredSystems.includes(system);
               return (
                 <button
                   key={system}

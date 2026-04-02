@@ -89,6 +89,19 @@ describe('buildTrainShareData', () => {
     expect(result.url).toContain('to=NY');
   });
 
+  it('includes date and data source when provided', () => {
+    const result = buildTrainShareData({
+      trainId: '3515',
+      origin: 'Trenton',
+      destination: 'New York',
+      journeyDate: '2025-03-28',
+      dataSource: 'NJT',
+    });
+
+    expect(result.url).toContain('date=2025-03-28');
+    expect(result.url).toContain('data_source=NJT');
+  });
+
   it('omits query params when from/to not provided', () => {
     const result = buildTrainShareData({
       trainId: '3515',
