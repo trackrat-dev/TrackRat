@@ -91,6 +91,7 @@
 2. **JDK**: Version 11 or higher
 3. **Android SDK**: API 34 (Android 14)
 4. **Git**: For version control
+5. **Maps**: Will need a Google Cloud Account with a configured Maps API Key
 
 ### Initial Setup
 
@@ -114,6 +115,11 @@
    // For physical device on same network
    val BASE_URL = "http://YOUR_LOCAL_IP:8000/api/v2/"
    ```
+   
+4. ** Add Google Maps API Key **
+    - Navigate to local.properties
+    - Add a key `mapsApiKey=`
+    - Set the value equal to your Google Maps SDK API Key
 
 ### Building and Running
 

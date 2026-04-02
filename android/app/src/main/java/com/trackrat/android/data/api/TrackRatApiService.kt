@@ -5,7 +5,6 @@ import com.trackrat.android.data.models.TrainDetailsResponse
 import retrofit2.http.GET
 import retrofit2.http.Path
 import retrofit2.http.Query
-import java.time.LocalDate
 
 interface TrackRatApiService {
 
