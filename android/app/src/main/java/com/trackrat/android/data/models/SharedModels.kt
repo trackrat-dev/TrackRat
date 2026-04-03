@@ -29,8 +29,8 @@ data class TrainPosition(
 @JsonClass(generateAdapter = true)
 data class DepartureFreshness(
     @Json(name = "last_updated") val lastUpdated: ZonedDateTime,
-    @Json(name = "age_seconds") val ageSeconds: Int,
-    @Json(name = "update_count") val updateCount: Int,
+    @Json(name = "age_seconds") val ageSeconds: Int?,
+    @Json(name = "update_count") val updateCount: Int?,
     @Json(name = "collection_method") val collectionMethod: String?
 )
 

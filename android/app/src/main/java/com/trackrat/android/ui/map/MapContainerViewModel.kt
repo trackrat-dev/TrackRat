@@ -13,7 +13,6 @@ import com.google.maps.android.compose.CameraPositionState
 import com.trackrat.android.data.MapRegion
 import com.trackrat.android.data.Stations
 import com.trackrat.android.data.api.TrackRatApiService
-import com.trackrat.android.ui.components.BottomSheetPosition
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,10 +55,6 @@ class MapContainerViewModel @Inject constructor(
     private val apiService: TrackRatApiService
 ) : ViewModel() {
 
-    // Sheet position state
-    private val _sheetPosition = MutableStateFlow(BottomSheetPosition.MEDIUM)
-    val sheetPosition: StateFlow<BottomSheetPosition> = _sheetPosition.asStateFlow()
-
     // Selected route state
     private val _selectedRoute = MutableStateFlow<SelectedRoute?>(null)
     val selectedRoute: StateFlow<SelectedRoute?> = _selectedRoute.asStateFlow()
@@ -86,8 +81,7 @@ class MapContainerViewModel @Inject constructor(
     /**
      * Update sheet position and adjust map center accordingly
      */
-    fun updateSheetPosition(position: BottomSheetPosition) {
-        _sheetPosition.value = position
+    fun updateSheetPosition() {
         // Adjust map center for new sheet position if needed
         // This will be implemented when we add route selection
     }
@@ -138,16 +132,18 @@ class MapContainerViewModel @Inject constructor(
      */
     fun animateToRoute(from: LatLng, to: LatLng) {
         viewModelScope.launch {
-            val region = calculateRegionForRoute(from, to, _sheetPosition.value)
-
-            // Animate camera to new position
-            cameraPositionState.animate(
-                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
-                    region.center,
-                    region.zoom
-                ),
-                durationMs = 250
-            )
+            val region = calculateRegionForRoute(from, to)
+            try {
+                cameraPositionState.animate(
+                    update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                        region.center,
+                        region.zoom
+                    ),
+                    durationMs = 250
+                )
+            } catch (_: Exception) {
+                // User interrupted animation - expected when dragging map during animation
+            }
         }
     }
 
@@ -156,13 +152,17 @@ class MapContainerViewModel @Inject constructor(
      */
     fun resetToDefaultView() {
         viewModelScope.launch {
-            cameraPositionState.animate(
-                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
-                    Stations.DEFAULT_REGION.center,
-                    Stations.DEFAULT_REGION.zoom
-                ),
-                durationMs = 250
-            )
+            try {
+                cameraPositionState.animate(
+                    update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(
+                        Stations.DEFAULT_REGION.center,
+                        Stations.DEFAULT_REGION.zoom
+                    ),
+                    durationMs = 250
+                )
+            } catch (_: Exception) {
+                // User interrupted animation - expected when dragging map during animation
+            }
         }
     }
 
@@ -182,8 +182,7 @@ class MapContainerViewModel @Inject constructor(
      */
     private fun calculateRegionForRoute(
         from: LatLng,
-        to: LatLng,
-        sheetPosition: BottomSheetPosition
+        to: LatLng
     ): MapRegion {
         // Calculate center point
         val centerLat = (from.latitude + to.latitude) / 2
@@ -196,11 +195,8 @@ class MapContainerViewModel @Inject constructor(
         // Use larger of the two deltas, with minimum of 0.3°
         val span = max(max(latDelta, lngDelta), 0.3)
 
-        // Calculate zoom-aware offset (matching iOS logic from lines 484-502)
-        val offset = calculateZoomAwareOffset(sheetPosition, span)
-
         // Adjust center latitude (shift south to keep content visible above sheet)
-        val adjustedCenter = LatLng(centerLat + offset, centerLng)
+        val adjustedCenter = LatLng(centerLat, centerLng)
 
         // Convert span to Google Maps zoom level
         val zoom = getZoomForSpan(span)
@@ -226,18 +222,17 @@ class MapContainerViewModel @Inject constructor(
      * @return Latitude offset in degrees
      */
     private fun calculateZoomAwareOffset(
-        position: BottomSheetPosition,
         span: Double
     ): Double {
-        val baseOffset = when (position) {
-            BottomSheetPosition.MEDIUM -> -0.10
-            BottomSheetPosition.EXPANDED -> -0.38
-        }
+//        val baseOffset = when (position) {
+//            BottomSheetPosition.MEDIUM -> -0.10
+//            BottomSheetPosition.EXPANDED -> -0.38
+//        }
 
         // Scale factor based on zoom level
         val scaleFactor = max(1.0, span / 0.3).coerceAtMost(3.0)
 
-        return baseOffset * scaleFactor
+        return scaleFactor // * baseOffset
     }
 
     /**
@@ -273,15 +268,15 @@ class MapContainerViewModel @Inject constructor(
                     maxPerSegment = 200
                 )
 
-                Log.d(TAG, "Received ${response.individualSegments.size} total segments from API")
+                Log.d(TAG, "Received ${response.aggregatedSegments.size} aggregated segments from API")
 
                 // Track matching statistics
                 var matchedSegments = 0
                 var missingFromStations = mutableSetOf<String>()
                 var missingToStations = mutableSetOf<String>()
 
-                // Convert API segments to polylines with coordinates
-                val polylines = response.individualSegments.mapNotNull { segment ->
+                // Convert aggregated segments to polylines (one per station pair, not per train)
+                val polylines = response.aggregatedSegments.mapNotNull { segment ->
                     val fromCoords = Stations.getCoordinates(segment.fromStation)
                     val toCoords = Stations.getCoordinates(segment.toStation)
 
