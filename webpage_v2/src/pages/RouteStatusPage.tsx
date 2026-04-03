@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { RouteHistoryResponse, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { getStationByCode } from '../data/stations';
@@ -38,6 +38,7 @@ function periodLabel(period: Period): string {
 
 export function RouteStatusPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [history, setHistory] = useState<RouteHistoryResponse | null>(null);
@@ -48,7 +49,7 @@ export function RouteStatusPage() {
 
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
-  const dataSource = fromStation?.system || toStation?.system || 'NJT';
+  const dataSource = searchParams.get('data_source') || fromStation?.system || toStation?.system || 'NJT';
 
   useEffect(() => {
     if (!from || !to) return;
@@ -92,6 +93,9 @@ export function RouteStatusPage() {
         </h2>
         <p className="text-sm text-text-muted text-center mt-1">
           {fromStation.name} → {toStation.name}
+        </p>
+        <p className="text-xs text-text-muted text-center mt-1">
+          {dataSource} route context
         </p>
       </div>
 

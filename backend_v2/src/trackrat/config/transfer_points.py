@@ -6,6 +6,8 @@ close enough for a passenger to walk between. They are discovered by:
 2. Existing STATION_EQUIVALENCE_GROUPS (e.g., Amtrak NRO <-> MNR MNRC)
 3. Coordinate proximity (stations within WALK_THRESHOLD_METERS of each other)
 4. Intra-subway complexes where different subway lines meet (e.g., Union Sq L + 4/5/6)
+5. Intra-system junctions where different routes within the same system share a station
+   (e.g., PATH Journal Sq where NWK-WTC meets JSQ-33)
 """
 
 from __future__ import annotations
@@ -92,15 +94,31 @@ _STATION_SYSTEMS: dict[str, set[str]] = _build_station_to_systems()
 
 def _build_subway_station_lines() -> dict[str, frozenset[str]]:
     """Map each subway station code to the set of subway line codes serving it."""
+    return _build_station_lines_for_system("SUBWAY")
+
+
+def _build_station_lines_for_system(system: str) -> dict[str, frozenset[str]]:
+    """Map each station code to the set of line codes serving it within a system."""
     station_lines: dict[str, set[str]] = defaultdict(set)
     for route in ALL_ROUTES:
-        if route.data_source == "SUBWAY":
+        if route.data_source == system:
             for station_code in route.stations:
                 station_lines[station_code].update(route.line_codes)
     return {k: frozenset(v) for k, v in station_lines.items()}
 
 
 _SUBWAY_STATION_LINES: dict[str, frozenset[str]] = _build_subway_station_lines()
+
+# Systems with branching routes that benefit from intra-system transfers.
+# Excludes SUBWAY (handled separately via SUBWAY_STATION_COMPLEXES) and
+# hub-and-spoke systems where the hub is already a shared station code
+# (MNR→GCT, AMTRAK→NY, PATCO single line, WMATA shared core).
+_INTRA_TRANSFER_SYSTEMS = ("PATH", "BART", "NJT", "LIRR", "MBTA", "METRA")
+
+_SYSTEM_STATION_LINES: dict[str, dict[str, frozenset[str]]] = {
+    system: _build_station_lines_for_system(system)
+    for system in _INTRA_TRANSFER_SYSTEMS
+}
 
 
 def _generate_transfer_points() -> tuple[TransferPoint, ...]:
@@ -207,6 +225,44 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
                         lines_b=lines_b,
                     )
 
+    # --- Source 5: Intra-system junctions for branching route systems ---
+    # At junction stations where different routes within the same system meet,
+    # create transfer points so trip search can route across branches.
+    # E.g., PATH Journal Sq (PJS) where NWK-WTC meets JSQ-33.
+    for system, system_lines in _SYSTEM_STATION_LINES.items():
+        # Find stations served by multiple distinct line-code sets
+        for station_code, lines in system_lines.items():
+            if station_code not in station_systems:
+                continue
+            if system not in station_systems[station_code]:
+                continue
+            # Get all routes through this station
+            route_groups: list[frozenset[str]] = []
+            for route in ALL_ROUTES:
+                if (
+                    route.data_source == system
+                    and station_code in route.stations
+                ):
+                    if route.line_codes not in route_groups:
+                        route_groups.append(route.line_codes)
+            # If station is served by 2+ distinct route groups, it's a junction
+            if len(route_groups) >= 2:
+                # Merge all line codes reachable from each route group
+                # into two sides: routes that share codes vs those that don't
+                for i, codes_a in enumerate(route_groups):
+                    for codes_b in route_groups[i + 1 :]:
+                        # Same station, same system, different route groups
+                        _add(
+                            station_code,
+                            system,
+                            station_code,
+                            system,
+                            0.0,
+                            True,
+                            lines_a=codes_a,
+                            lines_b=codes_b,
+                        )
+
     return tuple(sorted(transfers, key=lambda t: (t.system_a, t.system_b, t.station_a)))
 
 
@@ -261,6 +317,21 @@ def get_subway_lines_at_station(station_code: str) -> frozenset[str]:
     return frozenset(lines)
 
 
+def get_intra_system_transfers(system: str) -> list[TransferPoint]:
+    """Get all intra-system transfer points (same system, different lines)."""
+    return _TRANSFERS_BY_SYSTEM_PAIR.get((system, system), [])
+
+
 def get_intra_subway_transfers() -> list[TransferPoint]:
     """Get all intra-subway transfer points (same system, different lines)."""
-    return _TRANSFERS_BY_SYSTEM_PAIR.get(("SUBWAY", "SUBWAY"), [])
+    return get_intra_system_transfers("SUBWAY")
+
+
+def get_station_lines(station_code: str, system: str) -> frozenset[str]:
+    """Get line codes at a station for a given system.
+
+    For SUBWAY, expands station equivalences. For other systems, direct lookup.
+    """
+    if system == "SUBWAY":
+        return get_subway_lines_at_station(station_code)
+    return _SYSTEM_STATION_LINES.get(system, {}).get(station_code, frozenset())

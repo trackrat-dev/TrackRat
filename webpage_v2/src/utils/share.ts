@@ -1,3 +1,5 @@
+import { buildTrainUrl } from './routes';
+
 /**
  * Share utilities using Web Share API with clipboard fallback
  */
@@ -39,7 +41,6 @@ export async function share(data: ShareData): Promise<boolean> {
       // User cancelled, not an error
       return false;
     }
-    console.error('Share failed:', error);
     return false;
   }
 }
@@ -72,23 +73,29 @@ export function buildTrainShareData(params: {
   destination: string;
   from?: string;
   to?: string;
+  journeyDate?: string;
+  dataSource?: string;
 }): ShareData {
-  const { trainId, origin, destination, from, to } = params;
-
-  // Build URL with optional from/to query params
+  const { trainId, origin, destination, from, to, journeyDate, dataSource } = params;
   const basePath = import.meta.env.BASE_URL || '/';
-  let url = `${window.location.origin}${basePath}train/${trainId}`;
+  const normalizedBasePath = basePath === '/' ? '' : basePath.replace(/\/$/, '');
+  const routeUrl = buildTrainUrl({
+    trainId,
+    from,
+    to,
+    date: journeyDate,
+    dataSource,
+  });
+  const url = new URL(`${normalizedBasePath}${routeUrl}`, window.location.origin);
 
-  const queryParams: string[] = [];
-  if (from) queryParams.push(`from=${from}`);
-  if (to) queryParams.push(`to=${to}`);
-  if (queryParams.length > 0) {
-    url += `?${queryParams.join('&')}`;
-  }
+  // Keep from/to in the query string for shared links so route context survives
+  // even when the canonical path already encodes both stations.
+  if (from) url.searchParams.set('from', from);
+  if (to) url.searchParams.set('to', to);
 
   return {
     title: `Train ${trainId} - TrackRat`,
     text: `Check out Train ${trainId} from ${origin} to ${destination} on TrackRat`,
-    url,
+    url: url.toString(),
   };
 }

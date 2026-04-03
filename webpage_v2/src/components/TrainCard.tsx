@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react';
 import { Train } from '../types';
 import { formatTime, getDelayMinutes } from '../utils/date';
 import { formatDelayText, getStatusBadgeClass } from '../utils/formatting';
@@ -45,8 +46,21 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
       : 'bg-surface/70 backdrop-blur-xl border-text-muted/20 hover:bg-surface',
   ].join(' ');
 
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
   return (
-    <button onClick={onClick} className={cardClasses}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      className={cardClasses}
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <div className={`text-lg font-semibold text-text-primary ${train.is_cancelled ? 'line-through' : ''}`}>
@@ -55,18 +69,18 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           <div className="text-sm text-text-muted">{train.line.name}</div>
         </div>
         <div className="flex items-center gap-2">
-          <div onClick={(e) => e.stopPropagation()}>
-            <ShareButton
-              shareData={buildTrainShareData({
-                trainId: train.train_id,
-                origin: train.departure.name,
-                destination: train.destination,
-                from: from,
-                to: to,
-              })}
-              className="scale-90"
-            />
-          </div>
+          <ShareButton
+            shareData={buildTrainShareData({
+              trainId: train.train_id,
+              origin: train.departure.name,
+              destination: train.destination,
+              from: from,
+              to: to,
+              journeyDate: train.journey_date,
+              dataSource: train.data_source,
+            })}
+            className="scale-90"
+          />
           <span className={getStatusBadgeClass(status)}>
             {status === 'cancelled'
               ? 'Cancelled'
@@ -115,6 +129,6 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           <div className="text-text-muted">{train.data_source}</div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }

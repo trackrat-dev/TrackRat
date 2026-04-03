@@ -17,7 +17,8 @@ from structlog import get_logger
 from trackrat.config.stations import get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
-    get_intra_subway_transfers,
+    get_intra_system_transfers,
+    get_station_lines,
     get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
@@ -93,6 +94,20 @@ def _make_direct_trip(dep: TrainDeparture) -> TripOption | None:
     )
 
 
+def _filter_unreasonable_durations(trips: list[TripOption]) -> list[TripOption]:
+    """Remove trips that are disproportionately longer than the fastest option.
+
+    Keeps alternatives within 2x the fastest duration or +20 min, whichever is
+    more generous.  The +20 min floor prevents over-aggressive filtering on short
+    trips (e.g. a 12-min trip wouldn't exclude a 22-min alternative).
+    """
+    if not trips:
+        return trips
+    min_dur = min(t.total_duration_minutes for t in trips)
+    max_reasonable = max(min_dur * 2.0, min_dur + 20)
+    return [t for t in trips if t.total_duration_minutes <= max_reasonable]
+
+
 def _find_relevant_transfer_points(
     from_systems: set[str],
     to_systems: set[str],
@@ -121,32 +136,36 @@ def _find_relevant_transfer_points(
                     seen.add(key)
                     transfers.append(tp)
 
-    # Intra-subway transfers: find complexes connecting origin's lines to dest's lines.
+    # Intra-system transfers: find junction points connecting origin's lines to
+    # dest's lines within the same system. Works for SUBWAY (complexes),
+    # PATH (junction at Journal Sq), BART (branching lines), etc.
     # We don't skip when lines overlap — even if origin and dest share a line,
     # direct service may not cover the segment, so a transfer via a different
     # line can still be the best (or only) option.
-    if (
-        "SUBWAY" in from_systems
-        and "SUBWAY" in to_systems
-        and from_station
-        and to_station
-    ):
-        origin_lines = get_subway_lines_at_station(from_station)
-        dest_lines = get_subway_lines_at_station(to_station)
-        if origin_lines and dest_lines:
-            for tp in get_intra_subway_transfers():
-                # One side must share lines with origin, other with destination
-                a_has_origin = bool(tp.lines_a & origin_lines)
-                b_has_origin = bool(tp.lines_b & origin_lines)
-                a_has_dest = bool(tp.lines_a & dest_lines)
-                b_has_dest = bool(tp.lines_b & dest_lines)
-                if (a_has_origin and b_has_dest) or (b_has_origin and a_has_dest):
-                    key = frozenset(
-                        {(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)}
-                    )
-                    if key not in seen:
-                        seen.add(key)
-                        transfers.append(tp)
+    if from_station and to_station:
+        common_systems = from_systems & to_systems
+        for system in common_systems:
+            origin_lines = get_station_lines(from_station, system)
+            dest_lines = get_station_lines(to_station, system)
+            if origin_lines and dest_lines:
+                for tp in get_intra_system_transfers(system):
+                    # One side must share lines with origin, other with dest
+                    a_has_origin = bool(tp.lines_a & origin_lines)
+                    b_has_origin = bool(tp.lines_b & origin_lines)
+                    a_has_dest = bool(tp.lines_a & dest_lines)
+                    b_has_dest = bool(tp.lines_b & dest_lines)
+                    if (a_has_origin and b_has_dest) or (
+                        b_has_origin and a_has_dest
+                    ):
+                        key = frozenset(
+                            {
+                                (tp.station_a, tp.system_a),
+                                (tp.station_b, tp.system_b),
+                            }
+                        )
+                        if key not in seen:
+                            seen.add(key)
+                            transfers.append(tp)
 
     return transfers
 
@@ -166,9 +185,9 @@ def _orient_transfer(
     For intra-subway transfers (system_a == system_b), uses line overlap
     with origin/destination to determine orientation.
     """
-    # Intra-subway: orient by line overlap with origin/destination
+    # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
-        origin_lines = get_subway_lines_at_station(from_station)
+        origin_lines = get_station_lines(from_station, tp.system_a)
         if tp.lines_a & origin_lines:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
@@ -289,13 +308,6 @@ async def search_trips(
     # Each transfer point needs leg1 (origin -> transfer) and leg2 (transfer -> dest).
     # Using separate sessions is required because AsyncSession is not concurrency-safe.
     #
-    # Performance trade-off: skip_gtfs_merge=True means transfer legs only match
-    # trains already in the real-time feed, not GTFS-scheduled future trains.
-    # This limits the effective search horizon to ~60 minutes for NJT/Amtrak
-    # (since their real-time data only appears 30-60min before departure).
-    # Acceptable because: (a) most transfer searches are for imminent travel,
-    # (b) the direct-service check in Step 1 already uses GTFS data, and
-    # (c) the latency savings (~22 DB queries per leg) are substantial.
     async def _query_leg(
         leg_from: str,
         leg_to: str,
@@ -317,7 +329,6 @@ async def search_trips(
                 hide_departed=leg_hide_departed,
                 data_sources=leg_data_sources,
                 skip_individual_refresh=True,
-                skip_gtfs_merge=True,
             )
 
     # Build all tasks: for each transfer point, leg1 and leg2
@@ -345,7 +356,9 @@ async def search_trips(
         leg_tasks.append((i, "leg1"))
 
         # Leg 2: board_station -> to_station
-        # No time_from/time_to — leg 1 may arrive after original window
+        # No time_from/time_to — leg 1 may arrive after original window.
+        # hide_departed=True to avoid stale OBSERVED trains from hours ago
+        # that would never match leg 1's arrival time.
         coros.append(
             _query_leg(
                 board_station,
@@ -353,7 +366,7 @@ async def search_trips(
                 search_date,
                 None,
                 None,
-                False,
+                True,
                 [board_system],
             )
         )
@@ -458,6 +471,8 @@ async def search_trips(
                 )
                 transfer_trips.append(trip)
                 break  # Only take the first matching leg2 for this leg1
+
+    transfer_trips = _filter_unreasonable_durations(transfer_trips)
 
     # Sort by departure time, then total duration
     transfer_trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))

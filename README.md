@@ -5,7 +5,7 @@
 [![Webpage](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![App Store](https://img.shields.io/badge/App_Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/trackrat/id6746423610)
 [![Web App (beta)](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net/departures)
-[![License](https://img.shields.io/badge/License-Apache_2.0-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 
 TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments, and forecasts delays — all from a unified interface. It runs on iOS, Android (NOT FINISHED), the web (NOT FINISHED), and the backend is written in Python.
 
@@ -208,7 +208,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+Licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
 
 Copyright 2025-2026 Andrew Martin
 

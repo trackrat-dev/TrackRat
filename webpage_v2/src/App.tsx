@@ -9,6 +9,7 @@ import { TripDetailsPage } from './pages/TripDetailsPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { RouteStatusPage } from './pages/RouteStatusPage';
 import { NetworkStatusPage } from './pages/NetworkStatusPage';
+import { TripHistoryPage } from './pages/TripHistoryPage';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
           <Route path="/train/:trainId/:from?/:to?" element={<TrainDetailsPage />} />
           <Route path="/status" element={<NetworkStatusPage />} />
           <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="/history" element={<TripHistoryPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/departures" replace />} />
       </Routes>

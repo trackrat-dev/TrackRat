@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { APIService } from './api';
+import { APIRequestError, APIService } from './api';
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -29,6 +29,26 @@ describe('getTrainDetails', () => {
 
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/trains/3515?date=2025-01-15')
+    );
+  });
+
+  it('includes data source when provided', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ train: { train_id: '3515' } }));
+
+    await api.getTrainDetails('3515', '2025-01-15', { dataSource: 'NJT' });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('data_source=NJT')
+    );
+  });
+
+  it('includes from station when provided', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ train: { train_id: '3515' } }));
+
+    await api.getTrainDetails('3515', '2025-01-15', { fromStation: 'TR' });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('from_station=TR')
     );
   });
 
@@ -70,6 +90,20 @@ describe('getTrainDetails', () => {
     mockFetch.mockRejectedValue(new TypeError('Network error'));
 
     await expect(api.getTrainDetails('3515')).rejects.toThrow('Failed to fetch data');
+  });
+});
+
+describe('findTrainByNumber', () => {
+  it('returns null on 404 not found', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
+
+    await expect(api.findTrainByNumber('3515')).resolves.toBeNull();
+  });
+
+  it('rethrows non-404 failures', async () => {
+    mockFetch.mockRejectedValue(new APIRequestError('Failed to fetch data: Network error'));
+
+    await expect(api.findTrainByNumber('3515')).rejects.toThrow('Failed to fetch data');
   });
 });
 

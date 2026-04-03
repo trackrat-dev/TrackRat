@@ -9,8 +9,11 @@ interface AppState {
 
   // User Preferences
   recentTrips: TripPair[];
+  favoriteRoutes: TripPair[];
   favoriteStations: FavoriteStation[];
   preferredSystems: TransitSystem[];
+  homeStation: Station | null;
+  workStation: Station | null;
 
   // Actions
   setDeparture: (station: Station | null) => void;
@@ -21,10 +24,20 @@ interface AppState {
   addRecentTrip: (from: Station, to: Station) => void;
   loadRecentTrips: () => void;
 
+  // Favorite Routes
+  addFavoriteRoute: (from: Station, to: Station) => void;
+  removeFavoriteRoute: (routeId: string) => void;
+  loadFavoriteRoutes: () => void;
+
   // Favorites
   addFavorite: (station: Station) => void;
   removeFavorite: (stationId: string) => void;
   loadFavorites: () => void;
+
+  // Commute Profile
+  setHomeStation: (station: Station | null) => void;
+  setWorkStation: (station: Station | null) => void;
+  loadCommuteProfile: () => void;
 
   // System Preferences
   toggleSystem: (system: TransitSystem) => void;
@@ -36,8 +49,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedDeparture: null,
   selectedDestination: null,
   recentTrips: [],
+  favoriteRoutes: [],
   favoriteStations: [],
   preferredSystems: [],
+  homeStation: null,
+  workStation: null,
 
   // Actions
   setDeparture: (station) => {
@@ -98,6 +114,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ recentTrips: trips });
   },
 
+  // Favorite Routes
+  addFavoriteRoute: (from, to) => {
+    storageService.saveFavoriteRoute({
+      departureCode: from.code,
+      departureName: from.name,
+      destinationCode: to.code,
+      destinationName: to.name,
+    });
+    get().loadFavoriteRoutes();
+  },
+
+  removeFavoriteRoute: (routeId) => {
+    storageService.removeFavoriteRoute(routeId);
+    get().loadFavoriteRoutes();
+  },
+
+  loadFavoriteRoutes: () => {
+    const routes = storageService.getFavoriteRoutes();
+    set({ favoriteRoutes: routes });
+  },
+
   // Favorites
   addFavorite: (station) => {
     storageService.addFavoriteStation({
@@ -117,12 +154,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ favoriteStations: favorites });
   },
 
+  // Commute Profile
+  setHomeStation: (station) => {
+    storageService.setHomeStation(station);
+    set({ homeStation: station });
+  },
+
+  setWorkStation: (station) => {
+    storageService.setWorkStation(station);
+    set({ workStation: station });
+  },
+
+  loadCommuteProfile: () => {
+    set({
+      homeStation: storageService.getHomeStation(),
+      workStation: storageService.getWorkStation(),
+    });
+  },
+
   // System Preferences
   toggleSystem: (system) => {
     const current = get().preferredSystems;
-    const updated = current.includes(system)
-      ? current.filter(s => s !== system)
-      : [...current, system];
+    const allSystems: TransitSystem[] = ['NJT', 'AMTRAK', 'PATH', 'PATCO', 'LIRR', 'MNR', 'SUBWAY', 'METRA', 'WMATA', 'BART', 'MBTA'];
+    const baseSystems = current.length === 0 ? allSystems : current;
+    const updated = baseSystems.includes(system)
+      ? baseSystems.filter(s => s !== system)
+      : [...baseSystems, system];
     set({ preferredSystems: updated });
     storageService.savePreferredSystems(updated);
   },

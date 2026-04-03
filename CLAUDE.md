@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-TrackRat is an open-source transit tracking framework (Apache 2.0) with:
+TrackRat is an open-source transit tracking framework (GPLv3) with:
 - **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
 - **Android**: Kotlin (Jetpack Compose + Hilt + Retrofit) in `android/`

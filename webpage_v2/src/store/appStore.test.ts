@@ -13,7 +13,11 @@ beforeEach(() => {
     selectedDeparture: null,
     selectedDestination: null,
     recentTrips: [],
+    favoriteRoutes: [],
     favoriteStations: [],
+    preferredSystems: [],
+    homeStation: null,
+    workStation: null,
   });
 });
 
@@ -144,5 +148,31 @@ describe('favorites', () => {
 
     expect(useAppStore.getState().favoriteStations).toHaveLength(1);
     expect(useAppStore.getState().favoriteStations[0].id).toBe('HB');
+  });
+});
+
+describe('favorite routes and commute profile', () => {
+  it('adds a favorite route and loads it into state', () => {
+    useAppStore.getState().addFavoriteRoute(NY, NP);
+
+    const routes = useAppStore.getState().favoriteRoutes;
+    expect(routes).toHaveLength(1);
+    expect(routes[0].departureCode).toBe('NY');
+    expect(routes[0].destinationCode).toBe('NP');
+  });
+
+  it('stores home and work stations', () => {
+    useAppStore.getState().setHomeStation(NY);
+    useAppStore.getState().setWorkStation(NP);
+
+    expect(useAppStore.getState().homeStation?.code).toBe('NY');
+    expect(useAppStore.getState().workStation?.code).toBe('NP');
+  });
+
+  it('treats empty preferred systems as all-on when toggling a chip', () => {
+    useAppStore.getState().toggleSystem('NJT');
+
+    expect(useAppStore.getState().preferredSystems).not.toContain('NJT');
+    expect(useAppStore.getState().preferredSystems).toContain('AMTRAK');
   });
 });

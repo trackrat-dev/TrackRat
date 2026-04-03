@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { TrainDelaySummary } from '../types';
+import { buildTrainUrl } from '../utils/routes';
 
 const DELAY_CATEGORIES = [
   { key: 'on_time', label: 'On time', color: 'bg-success', textColor: 'text-success' },
@@ -104,9 +105,15 @@ function TrainPill({ train, textColor, from, to }: {
   to?: string;
 }) {
   const label = formatTrainLabel(train.train_id);
-  const href = from && to
-    ? `/train/${encodeURIComponent(train.train_id)}/${from}/${to}`
-    : `/train/${encodeURIComponent(train.train_id)}`;
+  const journeyDate = /^\d{4}-\d{2}-\d{2}/.test(train.scheduled_departure)
+    ? train.scheduled_departure.slice(0, 10)
+    : undefined;
+  const href = buildTrainUrl({
+    trainId: train.train_id,
+    from,
+    to,
+    date: journeyDate,
+  });
 
   return (
     <Link

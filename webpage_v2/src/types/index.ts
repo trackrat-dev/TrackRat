@@ -21,6 +21,25 @@ export interface TripPair {
   lastUsed: Date;
 }
 
+export interface TripHistoryEntry {
+  id: string;
+  kind: 'train' | 'trip';
+  href: string;
+  departureCode: string;
+  departureName: string;
+  destinationCode: string;
+  destinationName: string;
+  lineName: string | null;
+  dataSource: TransitSystem | null;
+  trainId: string | null;
+  journeyDate: string | null;
+  scheduledDeparture: string | null;
+  scheduledArrival: string | null;
+  totalDurationMinutes: number | null;
+  transferCount: number;
+  viewedAt: Date;
+}
+
 export interface FavoriteStation {
   id: string; // Station code
   name: string;

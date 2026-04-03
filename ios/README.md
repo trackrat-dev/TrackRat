@@ -348,7 +348,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 
 ## 📝 License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](../LICENSE) for details.
+Licensed under the GNU General Public License v3.0. See [LICENSE](../LICENSE) for details.
 
 Copyright 2025-2026 Andrew Martin
 
