@@ -19,6 +19,7 @@
 		A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */; };
 		A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FF2DE39F23002F3214 /* TrainListView.swift */; };
 		A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */; };
+		C2E7D99AB1388D3535BAD93F /* TripDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C182D065DE7062F61B8F2446 /* TripDetailsView.swift */; };
 		B8A1C2D3E4F5A6B7C8D9E0F2 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
 		A10E98062DE39F23002F3214 /* DeparturePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E98072DE39F23002F3214 /* DeparturePickerView.swift */; };
 		A10E98DBA82DE39F23002F3214 /* TripSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */; };
@@ -197,6 +198,7 @@
 		A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DestinationPickerView.swift; path = Views/Screens/DestinationPickerView.swift; sourceTree = "<group>"; };
 		A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalDataView.swift; path = Views/Screens/HistoricalDataView.swift; sourceTree = "<group>"; };
 		A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsView.swift; path = Views/Screens/TrainDetailsView.swift; sourceTree = "<group>"; };
+		C182D065DE7062F61B8F2446 /* TripDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripDetailsView.swift; path = Views/Screens/TripDetailsView.swift; sourceTree = "<group>"; };
 		B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PennStationGuideView.swift; path = Views/Screens/PennStationGuideView.swift; sourceTree = "<group>"; };
 		A10E97FF2DE39F23002F3214 /* TrainListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListView.swift; path = Views/Screens/TrainListView.swift; sourceTree = "<group>"; };
 		A10E98072DE39F23002F3214 /* DeparturePickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeparturePickerView.swift; path = Views/Screens/DeparturePickerView.swift; sourceTree = "<group>"; };
@@ -408,6 +410,7 @@
 				A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */,
 				A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */,
 				A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */,
+				C182D065DE7062F61B8F2446 /* TripDetailsView.swift */,
 				B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */,
 				A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */,
 				A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */,
@@ -720,6 +723,7 @@
 				A1AD0D132E106D1B003DA39F /* StationCoordinates.swift in Sources */,
 				A1AD0D152E106D1B003DA39F /* StationDepartures.swift in Sources */,
 				A10E98052DE39F23002F3214 /* TrainDetailsView.swift in Sources */,
+				C2E7D99AB1388D3535BAD93F /* TripDetailsView.swift in Sources */,
 				B8A1C2D3E4F5A6B7C8D9E0F2 /* PennStationGuideView.swift in Sources */,
 				A14A4ABE2E1949A400E13005 /* V2APIModels.swift in Sources */,
 				A12C314D2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */,

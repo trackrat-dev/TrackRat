@@ -1,23 +1,70 @@
-# TrackRat Webpage Infrastructure (staging.trackrat.net)
+# TrackRat Webpage Infrastructure
 #
-# Production webpage (trackrat.net) lives in GCP project trackrat-prod
-# and is managed separately. This config manages only:
-#   - Staging webpage infrastructure (GCS + CDN + LB)
+# Standalone Terraform root for webpage infrastructure. Separate from the
+# API backend Terraform (infra_v2/terraform/) because these are shared/global
+# resources that don't vary per environment workspace.
+#
+# Manages:
+#   - Staging webpage: GCS bucket + CDN + LB for staging.trackrat.net
 #   - Cloud Build triggers for both staging and production webpage deployments
+#
+# Production webpage (trackrat.net) lives in GCP project trackrat-prod,
+# managed separately outside this config.
+#
+# Usage:
+#   cd infra_v2/terraform-webpage
+#   terraform init
+#   terraform plan -var="project_id=trackrat-v2"
+#   terraform apply -var="project_id=trackrat-v2"
+#
+# NOTE: These resources were originally managed by universal-links-deployment/
+# with local Terraform state. To import existing resources:
+#   terraform import google_storage_bucket.webpage_staging trackrat-webpage-staging
+#   terraform import google_storage_bucket_iam_member.staging_public_access \
+#     "trackrat-webpage-staging roles/storage.objectViewer allUsers"
+#   terraform import google_compute_backend_bucket.webpage_staging_backend \
+#     projects/trackrat-v2/global/backendBuckets/trackrat-webpage-staging-backend
+#   terraform import google_compute_url_map.webpage_staging \
+#     projects/trackrat-v2/global/urlMaps/trackrat-webpage-staging-map
+#   terraform import google_compute_managed_ssl_certificate.webpage_staging_cert \
+#     projects/trackrat-v2/global/sslCertificates/trackrat-webpage-staging-cert
+#   terraform import google_compute_global_address.webpage_staging_ip \
+#     projects/trackrat-v2/global/addresses/trackrat-webpage-staging-ip
+#   terraform import google_compute_target_https_proxy.webpage_staging_proxy \
+#     projects/trackrat-v2/global/targetHttpsProxies/trackrat-webpage-staging-https-proxy
+#   terraform import google_compute_global_forwarding_rule.webpage_staging_https \
+#     projects/trackrat-v2/global/forwardingRules/trackrat-webpage-staging-https
+#   terraform import google_compute_url_map.webpage_staging_https_redirect \
+#     projects/trackrat-v2/global/urlMaps/trackrat-webpage-staging-https-redirect
+#   terraform import google_compute_target_http_proxy.webpage_staging_http_proxy \
+#     projects/trackrat-v2/global/targetHttpProxies/trackrat-webpage-staging-http-proxy
+#   terraform import google_compute_global_forwarding_rule.webpage_staging_http \
+#     projects/trackrat-v2/global/forwardingRules/trackrat-webpage-staging-http
+#   terraform import google_cloudbuild_trigger.webpage_staging \
+#     projects/trackrat-v2/locations/us-east4/triggers/trackrat-webpage-staging
+#   terraform import google_cloudbuild_trigger.webpage_production \
+#     projects/trackrat-v2/locations/us-east4/triggers/trackrat-webpage-production
 
 terraform {
+  required_version = ">= 1.0"
+
   required_providers {
     google = {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
   }
+
+  backend "gcs" {
+    bucket = "trackrat-v2-terraform-state"
+    prefix = "terraform/webpage"
+  }
 }
 
-# Variables
 variable "project_id" {
   description = "Google Cloud Project ID"
   type        = string
+  default     = "trackrat-v2"
 }
 
 variable "region" {
@@ -26,7 +73,6 @@ variable "region" {
   default     = "us-central1"
 }
 
-# Configure the Google Cloud Provider
 provider "google" {
   project = var.project_id
   region  = var.region
@@ -140,12 +186,12 @@ resource "google_compute_global_forwarding_rule" "webpage_staging_http" {
 }
 
 # Staging outputs
-output "staging_ip" {
+output "staging_webpage_ip" {
   value       = google_compute_global_address.webpage_staging_ip.address
   description = "Point staging.trackrat.net DNS A record to this IP"
 }
 
-output "staging_bucket_name" {
+output "staging_webpage_bucket" {
   value       = google_storage_bucket.webpage_staging.name
   description = "Staging GCS bucket name"
 }

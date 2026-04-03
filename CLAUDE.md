@@ -489,7 +489,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
 - Infrastructure Terraform: `infra_v2/terraform/`
 - Infrastructure Cloud Build: `infra_v2/cloudbuild*.yaml`
-- Universal links: `universal-links-deployment/` (Apple App Site Association via GCS)
+- Universal links (AASA): `webpage_v2/public/.well-known/apple-app-site-association`
+- Webpage infrastructure (Terraform): `infra_v2/terraform-webpage/`
 
 ## Common API Endpoints
 

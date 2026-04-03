@@ -93,26 +93,46 @@ struct TrainListView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
 
-            // Action buttons row
-            HStack(spacing: 12) {
-                // Route alerts button
-                if let destinationCode = Stations.getStationCode(destination) {
+            // Action buttons row - hidden for multi-trip transfer searches
+            // where results span multiple routes
+            if !viewModel.isTransferSearch {
+                HStack(spacing: 12) {
+                    // Route alerts button
+                    if let destinationCode = Stations.getStationCode(destination) {
+                        Button {
+                            let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
+                            // For subway, don't set lineId — station pairs are served by multiple lines
+                            // and gtfsRouteIds will infer all relevant lines from the station pair.
+                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
+                            appState.pendingRouteStatus = RouteStatusContext(
+                                dataSource: ds,
+                                lineId: lineId,
+                                fromStationCode: departureStationCode,
+                                toStationCode: destinationCode
+                            )
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "bell.badge")
+                                    .font(.subheadline)
+                                Text("Route Alerts")
+                                    .font(.subheadline)
+                            }
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    // Schedule picker - Pro feature
                     Button {
-                        let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
-                        // For subway, don't set lineId — station pairs are served by multiple lines
-                        // and gtfsRouteIds will infer all relevant lines from the station pair.
-                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
-                        appState.pendingRouteStatus = RouteStatusContext(
-                            dataSource: ds,
-                            lineId: lineId,
-                            fromStationCode: departureStationCode,
-                            toStationCode: destinationCode
-                        )
+                        showDatePicker = true
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "bell.badge")
+                            Image(systemName: "calendar")
                                 .font(.subheadline)
-                            Text("Route Alerts")
+                            Text("Schedules")
                                 .font(.subheadline)
                         }
                         .foregroundColor(.white.opacity(0.8))
@@ -122,26 +142,9 @@ struct TrainListView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                // Schedule picker - Pro feature
-                Button {
-                    showDatePicker = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "calendar")
-                            .font(.subheadline)
-                        Text("Schedules")
-                            .font(.subheadline)
-                    }
-                    .foregroundColor(.white.opacity(0.8))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(Capsule().fill(Color.white.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
 
             // Scrollable content
             ScrollView {
@@ -182,27 +185,9 @@ struct TrainListView: View {
                             ForEach(viewModel.transferTrips) { trip in
                                 TransferTripCard(
                                     trip: trip,
-                                    onLegTap: { leg in
-                                        appState.currentTrainId = leg.trainId
-                                        appState.currentTrain = nil
-
-                                        if let destCode = Stations.getStationCode(destination) {
-                                            appState.selectedRoute = TripPair(
-                                                departureCode: departureStationCode,
-                                                departureName: departureName,
-                                                destinationCode: destCode,
-                                                destinationName: destination,
-                                                lastUsed: Date(),
-                                                isFavorite: false
-                                            )
-                                        }
-
-                                        appState.pendingNavigation = .trainDetailsFlexible(
-                                            trainNumber: leg.trainId,
-                                            fromStation: leg.boarding.code,
-                                            journeyDate: leg.journeyDate,
-                                            dataSource: leg.dataSource
-                                        )
+                                    onTap: {
+                                        appState.selectedTrip = trip
+                                        appState.pendingNavigation = .tripDetails
                                     }
                                 )
                             }
@@ -726,7 +711,7 @@ struct TransferSearchBanner: View {
 // MARK: - Transfer Trip Card
 struct TransferTripCard: View {
     let trip: TripOption
-    let onLegTap: (TripLeg) -> Void
+    let onTap: () -> Void
 
     private func timeString(_ date: Date) -> String {
         DateFormatter.easternTimeShort.string(from: date)
@@ -734,9 +719,10 @@ struct TransferTripCard: View {
 
     var body: some View {
         if trip.legs.count >= 2, !trip.transfers.isEmpty {
+            Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(trip.legs.enumerated()), id: \.element.id) { index, leg in
-                    LegRow(leg: leg, label: "\(index + 1)", onTap: { onLegTap(leg) })
+                    LegRow(leg: leg, label: "\(index + 1)")
 
                     if index < trip.transfers.count {
                         let transfer = trip.transfers[index]
@@ -793,6 +779,8 @@ struct TransferTripCard: View {
             .background(Color.white.opacity(0.9))
             .cornerRadius(TrackRatTheme.CornerRadius.lg)
             .trackRatShadow()
+            }
+            .buttonStyle(.plain)
         }
     }
 }
@@ -801,7 +789,6 @@ struct TransferTripCard: View {
 private struct LegRow: View {
     let leg: TripLeg
     let label: String
-    let onTap: () -> Void
 
     private var departureTime: String {
         let time = leg.boarding.updatedTime ?? leg.boarding.scheduledTime
@@ -818,49 +805,42 @@ private struct LegRow: View {
     }
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 10) {
-                // Line color indicator
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(lineColor)
-                    .frame(width: 4, height: 36)
+        HStack(spacing: 10) {
+            // Line color indicator
+            RoundedRectangle(cornerRadius: 2)
+                .fill(lineColor)
+                .frame(width: 4, height: 36)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(leg.line.name)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.black)
-                            .lineLimit(1)
-
-                        if leg.isCancelled {
-                            Text("Cancelled")
-                                .font(.caption2)
-                                .foregroundColor(.red)
-                        }
-                    }
-
-                    Text("\(leg.boarding.name) → \(leg.alighting.name)")
-                        .font(.caption)
-                        .foregroundColor(.black.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(leg.line.name)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.black)
                         .lineLimit(1)
+
+                    if leg.isCancelled {
+                        Text("Cancelled")
+                            .font(.caption2)
+                            .foregroundColor(.red)
+                    }
                 }
 
-                Spacer()
-
-                Text("\(departureTime) → \(arrivalTime)")
+                Text("\(leg.boarding.name) → \(leg.alighting.name)")
                     .font(.caption)
-                    .foregroundColor(.black.opacity(0.6))
-                    .fixedSize(horizontal: true, vertical: false)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundColor(.black.opacity(0.3))
+                    .foregroundColor(.black.opacity(0.5))
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
+
+            Spacer()
+
+            Text("\(departureTime) → \(arrivalTime)")
+                .font(.caption)
+                .foregroundColor(.black.opacity(0.6))
+                .fixedSize(horizontal: true, vertical: false)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
     }
 }
 
@@ -921,7 +901,7 @@ struct NoDirectRouteView: View {
                 .font(.title3.bold())
                 .foregroundColor(.white)
 
-            Text("Trips between **\(fromName)** and **\(toName)** require a transfer. Multi-stop journeys are coming soon!\n\nFor now, search each leg of your trip separately.")
+            Text("We couldn't find a connection between **\(fromName)** and **\(toName)**.\n\nTry searching a different route.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.white.opacity(0.7))
                 .font(.subheadline)

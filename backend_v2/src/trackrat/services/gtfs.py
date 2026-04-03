@@ -221,6 +221,11 @@ def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
 class GTFSService:
     """Service for managing GTFS static schedule data."""
 
+    # In-memory cache for active service IDs. Keyed by (data_source, date).
+    # Service IDs don't change intra-day, so caching eliminates ~2 DB queries
+    # per (source, date) pair on every departure call.
+    _service_id_cache: dict[tuple[str, date], set[str]] = {}
+
     def __init__(self, timeout: float = 120.0):
         """Initialize the GTFS service.
 
@@ -306,6 +311,14 @@ class GTFSService:
             feed_info.error_message = None
 
             await db.commit()
+
+            # Invalidate service ID cache for this data source
+            # (calendar data may have changed)
+            GTFSService._service_id_cache = {
+                k: v
+                for k, v in GTFSService._service_id_cache.items()
+                if k[0] != data_source
+            }
 
             logger.info(
                 "GTFS feed refreshed successfully",
@@ -748,7 +761,13 @@ class GTFSService:
 
         Considers both calendar.txt (weekly patterns) and
         calendar_dates.txt (exceptions/additions).
+        Results are cached in-memory since service IDs don't change intra-day.
         """
+        cache_key = (data_source, target_date)
+        cached = GTFSService._service_id_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         active_services: set[str] = set()
         removed_services: set[str] = set()
 
@@ -796,6 +815,17 @@ class GTFSService:
 
         # Remove services that are explicitly removed on this date
         active_services -= removed_services
+
+        # Cache the result — service IDs are stable for a given date.
+        # Evict stale entries for past dates to prevent unbounded growth.
+        # Use pop() instead of dict replacement to avoid clobbering concurrent inserts.
+        from trackrat.utils.time import now_et as _now_et
+
+        today = _now_et().date()
+        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < today]
+        for k in stale_keys:
+            GTFSService._service_id_cache.pop(k, None)
+        GTFSService._service_id_cache[cache_key] = active_services
 
         return active_services
 

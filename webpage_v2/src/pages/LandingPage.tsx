@@ -123,7 +123,7 @@ export function LandingPage() {
           className="w-24 h-24 rounded-[22px] mx-auto mb-6 shadow-lg"
         />
         <h1 className="text-4xl md:text-5xl font-bold mb-4 text-text-primary">
-          TrackRat: Your commute, under control
+          TrackRat
         </h1>
         <p className="text-lg md:text-xl text-text-secondary mb-8 max-w-xl mx-auto leading-relaxed">
           Open source, real-time train tracking for NJ Transit, Amtrak, the Subway, PATH, LIRR, Metro-North, and more!

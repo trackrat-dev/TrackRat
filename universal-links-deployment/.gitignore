@@ -1,5 +1,0 @@
-
-# Terraform local files
-*.tfstate
-*.tfstate.backup
-*.tfvars

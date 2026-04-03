@@ -94,5 +94,8 @@ else
     gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" "$BUCKET/registerSW.js" 2>/dev/null || true
     gsutil -m setmeta -h "Cache-Control:public, max-age=31536000, immutable" "$BUCKET/assets/**" 2>/dev/null || true
 
+    # Apple App Site Association must be served as application/json (no file extension)
+    gsutil setmeta -h "Content-Type:application/json" "$BUCKET/.well-known/apple-app-site-association" 2>/dev/null || true
+
     echo "✅ Deploy complete ($ENVIRONMENT)"
 fi

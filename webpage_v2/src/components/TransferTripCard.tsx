@@ -3,18 +3,15 @@ import { formatTime } from '../utils/date';
 
 interface TransferTripCardProps {
   trip: TripOption;
-  onLegClick: (leg: TripLeg) => void;
+  onClick: () => void;
 }
 
-function LegRow({ leg, onLegClick }: { leg: TripLeg; onLegClick: () => void }) {
+function LegRow({ leg }: { leg: TripLeg }) {
   const departureTime = leg.boarding.actual_time || leg.boarding.updated_time || leg.boarding.scheduled_time;
   const arrivalTime = leg.alighting.actual_time || leg.alighting.updated_time || leg.alighting.scheduled_time;
 
   return (
-    <button
-      onClick={onLegClick}
-      className="w-full flex items-center gap-3 px-4 py-2 text-left hover:bg-white/5 rounded-lg transition-colors"
-    >
+    <div className="flex items-center gap-3 px-4 py-2">
       <div
         className="w-1 h-9 rounded-full flex-shrink-0"
         style={{ backgroundColor: leg.line.color }}
@@ -37,17 +34,38 @@ function LegRow({ leg, onLegClick }: { leg: TripLeg; onLegClick: () => void }) {
         {' → '}
         {arrivalTime ? formatTime(arrivalTime) : '--:--'}
       </div>
-      <span className="text-text-muted/50 text-xs">›</span>
-    </button>
+    </div>
   );
 }
 
-function TransferIndicator({ transfer }: { transfer: TransferInfo }) {
+/** Shared transfer indicator used in both TransferTripCard and TripDetailsPage */
+export function TransferIndicator({ transfer, variant = 'compact' }: { transfer: TransferInfo; variant?: 'compact' | 'detail' }) {
   const walkDescription = transfer.same_station
     ? 'Same station'
     : transfer.walk_minutes <= 1
     ? 'Short walk'
     : `${transfer.walk_minutes} min walk`;
+
+  if (variant === 'detail') {
+    return (
+      <div className="flex items-center gap-3 px-4 py-4 my-2">
+        <div className="flex flex-col items-center gap-0.5">
+          <div className="w-px h-3 bg-text-muted/30" />
+          <span className="text-text-muted/50 text-sm">
+            {transfer.same_station ? '↓' : '🚶'}
+          </span>
+          <div className="w-px h-3 bg-text-muted/30" />
+        </div>
+        <div>
+          <span className="text-sm font-medium text-text-muted">Transfer</span>
+          <span className="text-sm text-text-muted/70 ml-2">
+            {walkDescription}
+            {!transfer.same_station && ` to ${transfer.to_station.name}`}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2 px-4 py-1">
@@ -66,7 +84,7 @@ function TransferIndicator({ transfer }: { transfer: TransferInfo }) {
   );
 }
 
-export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
+export function TransferTripCard({ trip, onClick }: TransferTripCardProps) {
   if (trip.legs.length < 2 || trip.transfers.length < 1) return null;
 
   const durationDisplay = trip.total_duration_minutes < 60
@@ -74,10 +92,13 @@ export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
     : `${Math.floor(trip.total_duration_minutes / 60)}h ${trip.total_duration_minutes % 60}m`;
 
   return (
-    <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl py-3 transition-all">
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl py-3 transition-all hover:bg-surface/90"
+    >
       {trip.legs.map((leg, i) => (
-        <div key={leg.train_id}>
-          <LegRow leg={leg} onLegClick={() => onLegClick(leg)} />
+        <div key={`${leg.train_id}-${i}`}>
+          <LegRow leg={leg} />
           {i < trip.transfers.length && (
             <TransferIndicator transfer={trip.transfers[i]} />
           )}
@@ -93,6 +114,6 @@ export function TransferTripCard({ trip, onLegClick }: TransferTripCardProps) {
           {formatTime(trip.departure_time)} → {formatTime(trip.arrival_time)}
         </span>
       </div>
-    </div>
+    </button>
   );
 }
