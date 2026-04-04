@@ -3,8 +3,6 @@
     <!-- Production domain configuration -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">trackrat.net</domain>
-        <domain includeSubdomains="true">api.trackrat.net</domain>
-        <domain includeSubdomains="true">prod.api.trackrat.net</domain>
         
         <!-- Enforce HTTPS and use system certificate authorities -->
         <trust-anchors>

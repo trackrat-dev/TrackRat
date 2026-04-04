@@ -159,7 +159,7 @@ fun StationSelectionScreen(
                     onValueChange = { 
                         searchText = it
                         if (!isTrainSearch) {
-                            viewModel.searchStations(it)
+                            viewModel.searchStations(it.trim())
                         }
                     },
                     placeholder = { 

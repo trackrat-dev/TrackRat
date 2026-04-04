@@ -3,9 +3,14 @@ package com.trackrat.android.ui.map
 import android.net.Uri
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -16,8 +21,6 @@ import androidx.navigation.navArgument
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
 import com.trackrat.android.R
-import com.trackrat.android.ui.components.BottomSheetPosition
-import com.trackrat.android.ui.components.DraggableBottomSheet
 import com.trackrat.android.ui.destinationselection.DestinationSelectionScreen
 import com.trackrat.android.ui.stationselection.StationSelectionScreen
 import com.trackrat.android.ui.trainlist.TrainListScreen
@@ -38,11 +41,12 @@ import java.time.LocalDate
  * - TrainListScreen
  * - TrainDetailScreen
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapContainerScreen(
     mainNavController: NavHostController,
     deepLinkUri: Uri? = null,
-    viewModel: MapContainerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    viewModel: MapContainerViewModel = hiltViewModel()
 ) {
     // Navigation controller for content within the bottom sheet
     val sheetNavController = rememberNavController()
@@ -59,6 +63,7 @@ fun MapContainerScreen(
                         sheetNavController.navigate("train_details/$trainNumber/$today")
                     }
                 }
+
                 "journey" -> {
                     // Extract from/to parameters: trackrat://journey?from=NY&to=TR
                     val fromStation = uri.getQueryParameter("from")
@@ -74,18 +79,29 @@ fun MapContainerScreen(
         }
     }
 
-    // Observe sheet position from ViewModel
-    val sheetPosition by viewModel.sheetPosition.collectAsState()
+    // Load congestion data on initial composition
+    LaunchedEffect(Unit) {
+        viewModel.loadCongestionData()
+    }
+
+    BottomSheetScaffold(
+        sheetContent = { StationSelectionContent(mainNavController, sheetNavController, viewModel) },
+        sheetPeekHeight = LocalConfiguration.current.screenHeightDp.dp / 2
+    ) { innerPadding ->
+        MapContent(
+            viewModel,
+            innerPadding
+        )
+    }
+}
+
+@Composable
+fun MapContent(viewModel: MapContainerViewModel, innerPadding: PaddingValues) {
 
     // Observe selected route, congestion data, and selected segment
     val selectedRoute by viewModel.selectedRoute.collectAsState()
     val congestionPolylines by viewModel.congestionPolylines.collectAsState()
     val selectedSegmentId by viewModel.selectedSegmentId.collectAsState()
-
-    // Load congestion data on initial composition
-    LaunchedEffect(Unit) {
-        viewModel.loadCongestionData()
-    }
 
     // Dark mode styling
     val context = LocalContext.current
@@ -100,7 +116,7 @@ fun MapContainerScreen(
         )
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
         // Background: Google Maps
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
@@ -128,7 +144,8 @@ fun MapContainerScreen(
             // Render congestion polylines (below route highlight)
             congestionPolylines.forEach { polyline ->
                 // Create unique ID for this polyline
-                val polylineId = "${polyline.fromLatLng.latitude},${polyline.fromLatLng.longitude}-${polyline.toLatLng.latitude},${polyline.toLatLng.longitude}"
+                val polylineId =
+                    "${polyline.fromLatLng.latitude},${polyline.fromLatLng.longitude}-${polyline.toLatLng.latitude},${polyline.toLatLng.longitude}"
                 val isSelected = selectedSegmentId == polylineId
 
                 Polyline(
@@ -152,125 +169,123 @@ fun MapContainerScreen(
                 )
             }
         }
+    }
+}
 
-        // Foreground: Draggable bottom sheet with navigation
-        DraggableBottomSheet(
-            position = sheetPosition,
-            onPositionChange = { newPosition ->
-                viewModel.updateSheetPosition(newPosition)
-            },
-            isScrollable = true  // Enable gesture coordination with scrollable content
-        ) {
-            // Navigation content within sheet
-            NavHost(
-                navController = sheetNavController,
-                startDestination = "station_selection"
-            ) {
-                // Station Selection (home screen)
-                composable("station_selection") {
-                    StationSelectionScreen(
-                        mapViewModel = viewModel, // Pass shared ViewModel
-                        onNavigateToDestination = { fromStation ->
-                            // Navigate to destination picker
-                            sheetNavController.navigate("destination_selection/$fromStation")
-                        },
-                        onNavigateToTrainDetail = { trainId ->
-                            // Navigate to train details by ID
-                            val today = LocalDate.now().toString()
-                            sheetNavController.navigate("train_details/$trainId/$today")
-                        },
-                        onNavigateToProfile = {
-                            // Navigate to profile using main nav controller (full-screen overlay)
-                            mainNavController.navigate("profile")
-                        }
+@Composable
+fun StationSelectionContent(
+    mainNavController: NavHostController,
+    sheetNavController: NavHostController,
+    viewModel: MapContainerViewModel
+) {
+    // Navigation content within sheet
+    NavHost(
+        navController = sheetNavController,
+        startDestination = "station_selection"
+    ) {
+        // Station Selection (home screen)
+        composable("station_selection") {
+            StationSelectionScreen(
+                mapViewModel = viewModel, // Pass shared ViewModel
+                onNavigateToDestination = { fromStation ->
+                    // Navigate to destination picker
+                    sheetNavController.navigate("destination_selection/$fromStation")
+                },
+                onNavigateToTrainDetail = { trainId ->
+                    // Navigate to train details by ID
+                    val today = LocalDate.now().toString()
+                    sheetNavController.navigate("train_details/$trainId/$today")
+                },
+                onNavigateToProfile = {
+                    // Navigate to profile using main nav controller (full-screen overlay)
+                    mainNavController.navigate("profile")
+                }
+            )
+        }
+
+        // Destination Selection
+        composable(
+            route = "destination_selection/{from}",
+            arguments = listOf(
+                navArgument("from") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val fromStation = backStackEntry.arguments?.getString("from") ?: ""
+            DestinationSelectionScreen(
+                originStation = fromStation,
+                mapViewModel = viewModel, // Pass shared ViewModel
+                onNavigateBack = {
+                    sheetNavController.popBackStack()
+                },
+                onNavigateToTrains = { destinationCode ->
+                    destinationCode?.let { destination ->
+                        // Set route polyline when destination is selected
+                        viewModel.setSelectedRoute(fromStation, destination)
+                        // Navigate to train list
+                        sheetNavController.navigate("train_list/$fromStation/$destination")
+                    }
+                }
+            )
+        }
+
+        // Train List
+        composable(
+            route = "train_list/{from}/{to}",
+            arguments = listOf(
+                navArgument("from") { type = NavType.StringType },
+                navArgument("to") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val fromStation = backStackEntry.arguments?.getString("from") ?: ""
+            val toStation = backStackEntry.arguments?.getString("to") ?: ""
+            TrainListScreen(
+                fromStation = fromStation,
+                toStation = toStation,
+                onNavigateBack = {
+                    sheetNavController.popBackStack()
+                },
+                onTrainClicked = { trainId ->
+                    // Navigate to train details
+                    val today = LocalDate.now().toString()
+                    sheetNavController.navigate(
+                        "train_details/$trainId/$today?from=$fromStation&to=$toStation"
                     )
                 }
+            )
+        }
 
-                // Destination Selection
-                composable(
-                    route = "destination_selection/{from}",
-                    arguments = listOf(
-                        navArgument("from") { type = NavType.StringType }
-                    )
-                ) { backStackEntry ->
-                    val fromStation = backStackEntry.arguments?.getString("from") ?: ""
-                    DestinationSelectionScreen(
-                        originStation = fromStation,
-                        mapViewModel = viewModel, // Pass shared ViewModel
-                        onNavigateBack = {
-                            sheetNavController.popBackStack()
-                        },
-                        onNavigateToTrains = { destinationCode ->
-                            destinationCode?.let { destination ->
-                                // Set route polyline when destination is selected
-                                viewModel.setSelectedRoute(fromStation, destination)
-                                // Navigate to train list
-                                sheetNavController.navigate("train_list/$fromStation/$destination")
-                            }
-                        }
-                    )
+        // Train Details
+        composable(
+            route = "train_details/{trainId}/{date}?from={from}&to={to}",
+            arguments = listOf(
+                navArgument("trainId") { type = NavType.StringType },
+                navArgument("date") { type = NavType.StringType },
+                navArgument("from") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("to") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
+            )
+        ) { backStackEntry ->
+            val trainId = backStackEntry.arguments?.getString("trainId") ?: ""
+            val date = backStackEntry.arguments?.getString("date") ?: LocalDate.now().toString()
+            val originCode = backStackEntry.arguments?.getString("from")
+            val destinationCode = backStackEntry.arguments?.getString("to")
 
-                // Train List
-                composable(
-                    route = "train_list/{from}/{to}",
-                    arguments = listOf(
-                        navArgument("from") { type = NavType.StringType },
-                        navArgument("to") { type = NavType.StringType }
-                    )
-                ) { backStackEntry ->
-                    val fromStation = backStackEntry.arguments?.getString("from") ?: ""
-                    val toStation = backStackEntry.arguments?.getString("to") ?: ""
-                    TrainListScreen(
-                        fromStation = fromStation,
-                        toStation = toStation,
-                        onNavigateBack = {
-                            sheetNavController.popBackStack()
-                        },
-                        onTrainClicked = { trainId ->
-                            // Navigate to train details
-                            val today = LocalDate.now().toString()
-                            sheetNavController.navigate(
-                                "train_details/$trainId/$today?from=$fromStation&to=$toStation"
-                            )
-                        }
-                    )
+            TrainDetailScreen(
+                trainId = trainId,
+                date = date,
+                originCode = originCode,
+                destinationCode = destinationCode,
+                onNavigateBack = {
+                    sheetNavController.popBackStack()
                 }
-
-                // Train Details
-                composable(
-                    route = "train_details/{trainId}/{date}?from={from}&to={to}",
-                    arguments = listOf(
-                        navArgument("trainId") { type = NavType.StringType },
-                        navArgument("date") { type = NavType.StringType },
-                        navArgument("from") {
-                            type = NavType.StringType
-                            nullable = true
-                            defaultValue = null
-                        },
-                        navArgument("to") {
-                            type = NavType.StringType
-                            nullable = true
-                            defaultValue = null
-                        }
-                    )
-                ) { backStackEntry ->
-                    val trainId = backStackEntry.arguments?.getString("trainId") ?: ""
-                    val date = backStackEntry.arguments?.getString("date") ?: LocalDate.now().toString()
-                    val originCode = backStackEntry.arguments?.getString("from")
-                    val destinationCode = backStackEntry.arguments?.getString("to")
-
-                    TrainDetailScreen(
-                        trainId = trainId,
-                        date = date,
-                        originCode = originCode,
-                        destinationCode = destinationCode,
-                        onNavigateBack = {
-                            sheetNavController.popBackStack()
-                        }
-                    )
-                }
-            }
+            )
         }
     }
 }

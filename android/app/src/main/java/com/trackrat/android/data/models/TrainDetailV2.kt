@@ -59,16 +59,16 @@ data class RawStatus(
 
 @JsonClass(generateAdapter = true)
 data class DataFreshnessV2(
-    @Json(name = "last_updated") val lastUpdated: String,
-    @Json(name = "age_seconds") val ageSeconds: Int,
-    @Json(name = "update_count") val updateCount: Int,
+    @Json(name = "last_updated") val lastUpdated: String?,
+    @Json(name = "age_seconds") val ageSeconds: Int?,
+    @Json(name = "update_count") val updateCount: Int?,
     @Json(name = "collection_method") val collectionMethod: String?
 )
 
 @JsonClass(generateAdapter = true)
 data class ProgressV2(
-    @Json(name = "stops_completed") val stopsCompleted: Int,
-    @Json(name = "stops_total") val stopsTotal: Int,
+    @Json(name = "stops_completed") val stopsCompleted: Int?,
+    @Json(name = "stops_total") val stopsTotal: Int?,
     @Json(name = "journey_percent") val journeyPercent: Double,
     @Json(name = "minutes_to_arrival") val minutesToArrival: Int?,
     @Json(name = "last_departed") val lastDeparted: String?,

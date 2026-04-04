@@ -5,7 +5,6 @@ import com.trackrat.android.data.models.ApiResult
 import com.trackrat.android.data.models.DepartureV2
 import com.trackrat.android.data.models.DeparturesResponse
 import com.trackrat.android.data.models.TrainDetailsResponse
-import com.trackrat.android.data.models.TrainV2
 import com.trackrat.android.data.models.safeApiCall
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
