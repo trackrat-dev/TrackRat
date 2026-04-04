@@ -7,16 +7,19 @@ import pytest
 from trackrat.config.route_topology import (
     ALL_ROUTES,
     AMTRAK_CAPITOL_CORRIDOR,
+    AMTRAK_CARDINAL,
     AMTRAK_CASCADES,
     AMTRAK_DOWNEASTER,
     AMTRAK_EMPIRE_SERVICE,
     AMTRAK_HIAWATHA,
     AMTRAK_LINCOLN,
     AMTRAK_NEC,
+    AMTRAK_PALMETTO,
     AMTRAK_PIEDMONT,
     AMTRAK_SAN_JOAQUINS_OAK,
     AMTRAK_SAN_JOAQUINS_SAC,
     AMTRAK_SURFLINER,
+    AMTRAK_VERMONTER,
     AMTRAK_WOLVERINE,
     LIRR_BABYLON,
     LIRR_PORT_WASHINGTON,
@@ -1576,3 +1579,111 @@ class TestAmtrakNewRoutesDataSource:
             assert route.line_codes == frozenset(
                 {"AM"}
             ), f"{route.id} has wrong line_codes: {route.line_codes}"
+
+
+class TestCrossRouteSegmentResolution:
+    """Verify routes that share NEC trunk include NY so cross-route lookups work.
+
+    Previously, AMTRAK_VERMONTER started at NHV, AMTRAK_PALMETTO and
+    AMTRAK_CARDINAL started at WS. This meant get_canonical_segments could
+    not resolve segments like NY→BTN because no single route contained both
+    stations, causing direct lines on the congestion map.
+    """
+
+    def test_vermonter_contains_ny_and_btn(self):
+        """Vermonter route must contain both NY and BTN for segment resolution."""
+        assert AMTRAK_VERMONTER.contains_segment("NY", "BTN"), (
+            "AMTRAK_VERMONTER must contain both NY and BTN"
+        )
+
+    def test_vermonter_ny_to_btn_expansion(self):
+        """NY→BTN should expand to all intermediate canonical segments."""
+        segments = AMTRAK_VERMONTER.expand_to_canonical_segments("NY", "BTN")
+        assert segments is not None, "NY→BTN expansion should not be None"
+        # Should have many intermediate segments (NEC trunk + Vermonter inland)
+        assert len(segments) > 10, (
+            f"Expected >10 segments for NY→BTN, got {len(segments)}"
+        )
+        # First segment should start at NY
+        assert segments[0][0] == "NY", f"First segment should start at NY, got {segments[0][0]}"
+        # Last segment should end at BTN
+        assert segments[-1][1] == "BTN", f"Last segment should end at BTN, got {segments[-1][1]}"
+
+    def test_vermonter_get_canonical_segments_ny_to_btn(self):
+        """get_canonical_segments should resolve NY→BTN via the Vermonter."""
+        segments = get_canonical_segments("AMTRAK", "NY", "BTN")
+        assert len(segments) > 1, (
+            f"NY→BTN should expand to multiple segments, got {segments}"
+        )
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "BTN"
+
+    def test_vermonter_no_duplicate_stations(self):
+        """Vermonter route should not have duplicate station codes."""
+        stations = AMTRAK_VERMONTER.stations
+        seen = set()
+        for station in stations:
+            assert station not in seen, (
+                f"Duplicate station {station} in AMTRAK_VERMONTER"
+            )
+            seen.add(station)
+
+    def test_palmetto_contains_ny_and_sav(self):
+        """Palmetto route must contain both NY and SAV for segment resolution."""
+        assert AMTRAK_PALMETTO.contains_segment("NY", "SAV"), (
+            "AMTRAK_PALMETTO must contain both NY and SAV"
+        )
+
+    def test_palmetto_ny_to_sav_expansion(self):
+        """NY→SAV should expand to all intermediate canonical segments."""
+        segments = AMTRAK_PALMETTO.expand_to_canonical_segments("NY", "SAV")
+        assert segments is not None
+        assert len(segments) > 15, (
+            f"Expected >15 segments for NY→SAV, got {len(segments)}"
+        )
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "SAV"
+
+    def test_palmetto_no_duplicate_stations(self):
+        """Palmetto route should not have duplicate station codes."""
+        stations = AMTRAK_PALMETTO.stations
+        seen = set()
+        for station in stations:
+            assert station not in seen, (
+                f"Duplicate station {station} in AMTRAK_PALMETTO"
+            )
+            seen.add(station)
+
+    def test_cardinal_contains_ny_and_chi(self):
+        """Cardinal route must contain both NY and CHI for segment resolution."""
+        assert AMTRAK_CARDINAL.contains_segment("NY", "CHI"), (
+            "AMTRAK_CARDINAL must contain both NY and CHI"
+        )
+
+    def test_cardinal_ny_to_chi_expansion(self):
+        """NY→CHI should expand to all intermediate canonical segments."""
+        segments = AMTRAK_CARDINAL.expand_to_canonical_segments("NY", "CHI")
+        assert segments is not None
+        assert len(segments) > 20, (
+            f"Expected >20 segments for NY→CHI, got {len(segments)}"
+        )
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "CHI"
+
+    def test_cardinal_no_duplicate_stations(self):
+        """Cardinal route should not have duplicate station codes."""
+        stations = AMTRAK_CARDINAL.stations
+        seen = set()
+        for station in stations:
+            assert station not in seen, (
+                f"Duplicate station {station} in AMTRAK_CARDINAL"
+            )
+            seen.add(station)
+
+    def test_ny_btn_not_anomalous(self):
+        """NY→BTN should NOT be flagged as anomalous after the fix."""
+        from trackrat.services.segment_normalizer import _is_segment_anomalous
+
+        assert not _is_segment_anomalous("NY", "BTN", "AMTRAK"), (
+            "NY→BTN should not be anomalous now that Vermonter includes NY"
+        )

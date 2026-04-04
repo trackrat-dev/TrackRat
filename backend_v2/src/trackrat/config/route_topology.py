@@ -1068,10 +1068,13 @@ AMTRAK_VERMONTER = Route(
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
     stations=(
-        # NEC trunk (WS→NY→NHV) handled by AMTRAK_NEC;
-        # Vermonter-specific routing starts at NHV inland branch.
-        "NHV",
+        # NEC trunk included so cross-route segments (e.g. NY→BTN)
+        # can be resolved without requiring a multi-route chain lookup.
+        "NY",
+        "NRO",
+        "STM",
         "BRP",
+        "NHV",
         "HFD",
         "WNL",
         "SPG",
@@ -1145,10 +1148,24 @@ AMTRAK_PALMETTO = Route(
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
     stations=(
-        # NEC trunk (NY→WS) handled by AMTRAK_NEC;
-        # Palmetto extends Southeast corridor to Savannah.
+        # NEC trunk included so cross-route segments (e.g. NY→SAV)
+        # can be resolved without requiring a multi-route chain lookup.
         # Overlaps with AMTRAK_SOUTHEAST (WS→CLT) and AMTRAK_COASTAL (DIL→JAX)
-        # but provides the full WS→SAV path for trains skipping branches.
+        # but provides the full NY→SAV path for trains skipping branches.
+        "NY",
+        "NP",
+        "MP",
+        "NB",
+        "PJ",
+        "TR",
+        "CWH",
+        "PHN",
+        "PH",
+        "WI",
+        "ABE",
+        "BL",
+        "BA",
+        "NCR",
         "WS",
         "ALX",
         "RVR",
@@ -1169,8 +1186,22 @@ AMTRAK_CARDINAL = Route(
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
     stations=(
-        # NEC trunk (NY→WS) handled by AMTRAK_NEC;
-        # Cardinal-specific routing from WS westward.
+        # NEC trunk included so cross-route segments (e.g. NY→CHI)
+        # can be resolved without requiring a multi-route chain lookup.
+        "NY",
+        "NP",
+        "MP",
+        "NB",
+        "PJ",
+        "TR",
+        "CWH",
+        "PHN",
+        "PH",
+        "WI",
+        "ABE",
+        "BL",
+        "BA",
+        "NCR",
         "WS",
         "CLP",
         "CVS",
