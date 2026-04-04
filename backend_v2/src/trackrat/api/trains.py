@@ -298,6 +298,32 @@ async def get_train_details(
             status_code=404, detail=f"Train {train_id} not found for date {date}"
         )
 
+    # Flush JIT changes now to prevent surprise auto-flush failures during
+    # predictions (which do SELECTs that trigger SQLAlchemy auto-flush).
+    # A concurrent collector modifying the same journey can cause flush conflicts;
+    # catching here prevents the session from entering PendingRollbackError state.
+    try:
+        await db.flush()
+    except Exception:
+        await db.rollback()
+        # Re-query journey since rollback expires all ORM objects
+        stmt = (
+            select(TrainJourney)
+            .where(
+                TrainJourney.train_id == train_id,
+                TrainJourney.journey_date == date,
+            )
+            .options(selectinload(TrainJourney.stops))
+        )
+        if data_source:
+            stmt = stmt.where(TrainJourney.data_source == data_source)
+        journey = await db.scalar(stmt)
+        if not journey:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Train {train_id} not found for date {date}",
+            ) from None
+
     # Build stop details
     stops = []
     for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):

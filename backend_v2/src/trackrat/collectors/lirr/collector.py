@@ -268,6 +268,7 @@ class LIRRCollector:
                 selectinload(TrainJourney.snapshots),
                 selectinload(TrainJourney.segment_times),
                 selectinload(TrainJourney.dwell_times),
+                selectinload(TrainJourney.progress),
                 selectinload(TrainJourney.progress_snapshots),
             )
         )

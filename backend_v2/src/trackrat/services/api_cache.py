@@ -15,6 +15,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from trackrat.db.engine import get_session
 from trackrat.models.api import CongestionMapResponse
 from trackrat.models.database import CachedApiResponse
 from trackrat.services.congestion import CongestionAnalyzer
@@ -297,17 +298,20 @@ class ApiCacheService:
 
         for params in param_sets:
             try:
-                # Compute the response using existing logic
-                response_dict = await self._compute_congestion_response(db, params)
+                # Use a fresh session per iteration so a timeout in one
+                # doesn't poison the connection for subsequent iterations.
+                async with get_session() as iteration_db:
+                    response_dict = await self._compute_congestion_response(
+                        iteration_db, params
+                    )
 
-                # Store in cache with 20-minute TTL (comfortably covers 15-min refresh + jitter)
-                await self.store_cached_response(
-                    db=db,
-                    endpoint="/api/v2/routes/congestion",
-                    params=params,
-                    response=response_dict,
-                    ttl_seconds=1200,  # 20 minutes
-                )
+                    await self.store_cached_response(
+                        db=iteration_db,
+                        endpoint="/api/v2/routes/congestion",
+                        params=params,
+                        response=response_dict,
+                        ttl_seconds=1200,  # 20 minutes
+                    )
 
                 logger.info(
                     "precomputed_congestion_response",
@@ -323,9 +327,6 @@ class ApiCacheService:
                     error_type=type(e).__name__,
                     exc_info=True,
                 )
-                # Rollback to clear aborted transaction state so subsequent
-                # iterations don't fail with InFailedSqlTransaction
-                await db.rollback()
 
     async def _compute_congestion_response(
         self, db: AsyncSession, params: dict[str, Any]
@@ -522,15 +523,18 @@ class ApiCacheService:
 
         for params in popular_routes:
             try:
-                response_dict = await self._compute_departure_response(db, params)
+                async with get_session() as iteration_db:
+                    response_dict = await self._compute_departure_response(
+                        iteration_db, params
+                    )
 
-                await self.store_cached_response(
-                    db=db,
-                    endpoint="/api/v2/trains/departures",
-                    params=params,
-                    response=response_dict,
-                    ttl_seconds=120,
-                )
+                    await self.store_cached_response(
+                        db=iteration_db,
+                        endpoint="/api/v2/trains/departures",
+                        params=params,
+                        response=response_dict,
+                        ttl_seconds=120,
+                    )
 
                 logger.info(
                     "precomputed_departure_response",
@@ -546,9 +550,6 @@ class ApiCacheService:
                     error_type=type(e).__name__,
                     exc_info=True,
                 )
-                # Rollback to clear aborted transaction state so subsequent
-                # iterations don't fail with InFailedSqlTransaction
-                await db.rollback()
 
     async def _compute_departure_response(
         self, db: AsyncSession, params: dict[str, Any]
@@ -609,23 +610,24 @@ class ApiCacheService:
 
         for params in param_sets:
             try:
-                response = await compute_route_history(
-                    db=db,
-                    from_station=params["from_station"],
-                    to_station=params["to_station"],
-                    data_source=params["data_source"],
-                    days=params.get("days", 30),
-                    hours=params.get("hours"),
-                    lines=params.get("lines"),
-                )
+                async with get_session() as iteration_db:
+                    response = await compute_route_history(
+                        db=iteration_db,
+                        from_station=params["from_station"],
+                        to_station=params["to_station"],
+                        data_source=params["data_source"],
+                        days=params.get("days", 30),
+                        hours=params.get("hours"),
+                        lines=params.get("lines"),
+                    )
 
-                await self.store_cached_response(
-                    db=db,
-                    endpoint="/api/v2/routes/history",
-                    params=params,
-                    response=response.model_dump(mode="json"),
-                    ttl_seconds=600,
-                )
+                    await self.store_cached_response(
+                        db=iteration_db,
+                        endpoint="/api/v2/routes/history",
+                        params=params,
+                        response=response.model_dump(mode="json"),
+                        ttl_seconds=600,
+                    )
 
                 logger.info(
                     "precomputed_route_history_response",
@@ -640,7 +642,6 @@ class ApiCacheService:
                     error_type=type(e).__name__,
                     exc_info=True,
                 )
-                await db.rollback()
 
     async def cleanup_expired_cache(self, db: AsyncSession) -> int:
         """Remove expired cache entries. Returns number of entries removed."""

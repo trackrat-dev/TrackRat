@@ -33,7 +33,7 @@ class TrainJourney(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     train_id = Column(String(30), nullable=False)  # PATH train IDs are ~21 chars
     journey_date = Column(Date, nullable=False)
-    line_code = Column(String(10), nullable=False)  # PATH line codes are ~6 chars
+    line_code = Column(String(15), nullable=False)  # METRA-UP-NW is 11 chars
     line_name = Column(String(100))
     line_color = Column(String(7))
     destination = Column(String(100), nullable=False)
@@ -463,7 +463,7 @@ class SegmentTransitTime(Base):
     from_station_code = Column(String(10), nullable=False)
     to_station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False)
-    line_code = Column(String(10))
+    line_code = Column(String(15))
 
     # Timing data
     scheduled_minutes = Column(Integer, nullable=False)
@@ -516,7 +516,7 @@ class StationDwellTime(Base):
     )
     station_code = Column(String(10), nullable=False)
     data_source = Column(String(10), nullable=False)
-    line_code = Column(String(10))
+    line_code = Column(String(15))
 
     # Timing data
     scheduled_minutes = Column(Integer)  # Can be NULL for unscheduled stops
