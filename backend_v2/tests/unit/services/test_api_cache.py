@@ -6,6 +6,7 @@ parameter hashing, expiration, and pre-computation of expensive queries.
 """
 
 import json
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -14,6 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import CachedApiResponse
 from trackrat.services.api_cache import CONGESTION_PROVIDERS, ApiCacheService
+
+
+@asynccontextmanager
+async def _mock_get_session():
+    """Mock get_session that yields a mock AsyncSession without DB connection."""
+    yield AsyncMock(spec=AsyncSession)
 
 
 class TestApiCacheService:
@@ -258,71 +265,79 @@ class TestApiCacheService:
             "generated_at": "2025-01-01T12:00:00Z",
         }
 
-        with patch.object(
-            cache_service, "_compute_congestion_response", return_value=mock_response
-        ) as mock_compute:
-            with patch.object(cache_service, "store_cached_response") as mock_store:
-                await cache_service.precompute_congestion_responses(mock_db)
+        with patch(
+            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+        ), patch.object(
+            cache_service,
+            "_compute_congestion_response",
+            return_value=mock_response,
+        ) as mock_compute, patch.object(
+            cache_service, "store_cached_response"
+        ) as mock_store:
+            await cache_service.precompute_congestion_responses(mock_db)
 
-                # N providers x 2 modes + 1 NJT/3hr
-                expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
-                assert mock_compute.call_count == expected_count
-                assert mock_store.call_count == expected_count
+            # N providers x 2 modes + 1 NJT/3hr
+            expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
+            assert mock_compute.call_count == expected_count
+            assert mock_store.call_count == expected_count
 
-                # Build expected params: each provider gets max_per_segment=0 and 100
-                expected_params = []
-                for provider in CONGESTION_PROVIDERS:
-                    expected_params.append(
-                        {
-                            "time_window_hours": 2,
-                            "max_per_segment": 0,
-                            "data_source": provider,
-                        }
-                    )
-                    expected_params.append(
-                        {
-                            "time_window_hours": 2,
-                            "max_per_segment": 100,
-                            "data_source": provider,
-                        }
-                    )
+            # Build expected params: each provider gets max_per_segment=0 and 100
+            expected_params = []
+            for provider in CONGESTION_PROVIDERS:
                 expected_params.append(
                     {
-                        "time_window_hours": 3,
-                        "max_per_segment": 100,
-                        "data_source": "NJT",
+                        "time_window_hours": 2,
+                        "max_per_segment": 0,
+                        "data_source": provider,
                     }
                 )
+                expected_params.append(
+                    {
+                        "time_window_hours": 2,
+                        "max_per_segment": 100,
+                        "data_source": provider,
+                    }
+                )
+            expected_params.append(
+                {
+                    "time_window_hours": 3,
+                    "max_per_segment": 100,
+                    "data_source": "NJT",
+                }
+            )
 
-                # No all-sources (data_source=None) entries should exist
-                for i, expected_param in enumerate(expected_params):
-                    actual_params = mock_compute.call_args_list[i][0][1]
-                    assert actual_params == expected_param
-                    assert (
-                        actual_params["data_source"] is not None
-                    ), f"param set {i} has data_source=None — all-sources queries should not be pre-computed"
+            # No all-sources (data_source=None) entries should exist
+            for i, expected_param in enumerate(expected_params):
+                actual_params = mock_compute.call_args_list[i][0][1]
+                assert actual_params == expected_param
+                assert (
+                    actual_params["data_source"] is not None
+                ), f"param set {i} has data_source=None — all-sources queries should not be pre-computed"
 
-                    store_call = mock_store.call_args_list[i]
-                    assert store_call.kwargs["endpoint"] == "/api/v2/routes/congestion"
-                    assert store_call.kwargs["params"] == expected_param
-                    assert store_call.kwargs["ttl_seconds"] == 1200
+                store_call = mock_store.call_args_list[i]
+                assert store_call.kwargs["endpoint"] == "/api/v2/routes/congestion"
+                assert store_call.kwargs["params"] == expected_param
+                assert store_call.kwargs["ttl_seconds"] == 1200
 
     @pytest.mark.asyncio
     async def test_precompute_handles_computation_errors(self, cache_service, mock_db):
         """Test that pre-computation continues even if some computations fail."""
         expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
-        with patch.object(
+        with patch(
+            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+        ), patch.object(
             cache_service, "_compute_congestion_response"
-        ) as mock_compute:
+        ) as mock_compute, patch.object(
+            cache_service, "store_cached_response"
+        ) as mock_store:
             mock_compute.side_effect = [
                 Exception("Computation failed"),
             ] + [{"data": f"response{i}"} for i in range(2, expected_count + 1)]
 
-            with patch.object(cache_service, "store_cached_response") as mock_store:
-                await cache_service.precompute_congestion_responses(mock_db)
+            await cache_service.precompute_congestion_responses(mock_db)
 
-                assert mock_compute.call_count == expected_count
-                assert mock_store.call_count == expected_count - 1
+            assert mock_compute.call_count == expected_count
+            assert mock_store.call_count == expected_count - 1
 
     @pytest.mark.asyncio
     async def test_compute_congestion_response(self, cache_service, mock_db):
@@ -547,58 +562,66 @@ class TestApiCacheService:
             },
         }
 
-        with patch.object(
+        with patch(
+            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+        ), patch.object(
             cache_service, "_compute_departure_response", return_value=mock_response
-        ) as mock_compute:
-            with patch.object(cache_service, "store_cached_response") as mock_store:
-                await cache_service.precompute_departure_responses(mock_db)
+        ) as mock_compute, patch.object(
+            cache_service, "store_cached_response"
+        ) as mock_store:
+            await cache_service.precompute_departure_responses(mock_db)
 
-                # 22 routes × 2 hide_departed variants = 44 calls
-                # (8 with destination + 6 origin-only + 8 subway terminals)
-                assert mock_compute.call_count == 44
+            # 22 routes × 2 hide_departed variants = 44 calls
+            # (8 with destination + 6 origin-only + 8 subway terminals)
+            assert mock_compute.call_count == 44
 
-                assert mock_store.call_count == 44
+            assert mock_store.call_count == 44
 
-                # Verify first few routes have correct structure including data_sources key
-                first_call_params = mock_compute.call_args_list[0][0][1]
-                assert first_call_params == {
-                    "from_station": "NY",
-                    "to_station": "TR",
-                    "date": None,
-                    "limit": 50,
-                    "hide_departed": False,
-                    "data_sources": None,
-                }
+            # Verify first few routes have correct structure including data_sources key
+            first_call_params = mock_compute.call_args_list[0][0][1]
+            assert first_call_params == {
+                "from_station": "NY",
+                "to_station": "TR",
+                "date": None,
+                "limit": 50,
+                "hide_departed": False,
+                "data_sources": None,
+            }
 
-                # Verify all calls include the data_sources key
-                for i in range(44):
-                    actual_params = mock_compute.call_args_list[i][0][1]
-                    assert (
-                        "data_sources" in actual_params
-                    ), f"Call {i} missing data_sources key: {actual_params}"
+            # Verify all calls include the data_sources key
+            for i in range(44):
+                actual_params = mock_compute.call_args_list[i][0][1]
+                assert (
+                    "data_sources" in actual_params
+                ), f"Call {i} missing data_sources key: {actual_params}"
 
-                    store_call = mock_store.call_args_list[i]
-                    assert store_call.kwargs["endpoint"] == "/api/v2/trains/departures"
-                    assert store_call.kwargs["ttl_seconds"] == 120
+                store_call = mock_store.call_args_list[i]
+                assert store_call.kwargs["endpoint"] == "/api/v2/trains/departures"
+                assert store_call.kwargs["ttl_seconds"] == 120
 
     @pytest.mark.asyncio
     async def test_precompute_departure_handles_errors(self, cache_service, mock_db):
         """Test that departure pre-computation continues even if some computations fail."""
-        with patch.object(cache_service, "_compute_departure_response") as mock_compute:
+        with patch(
+            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+        ), patch.object(
+            cache_service, "_compute_departure_response"
+        ) as mock_compute, patch.object(
+            cache_service, "store_cached_response"
+        ) as mock_store:
             # 44 calls: first fails, rest succeed
             # (22 routes × 2 hide_departed variants = 44)
             mock_compute.side_effect = [
                 Exception("Computation failed"),
             ] + [{"departures": []}] * 43
 
-            with patch.object(cache_service, "store_cached_response") as mock_store:
-                await cache_service.precompute_departure_responses(mock_db)
+            await cache_service.precompute_departure_responses(mock_db)
 
-                # 22 routes × 2 hide_departed variants = 44 calls
-                assert mock_compute.call_count == 44
+            # 22 routes × 2 hide_departed variants = 44 calls
+            assert mock_compute.call_count == 44
 
-                # Only 43 successful (first one failed)
-                assert mock_store.call_count == 43
+            # Only 43 successful (first one failed)
+            assert mock_store.call_count == 43
 
     @pytest.mark.asyncio
     async def test_compute_departure_response(self, cache_service, mock_db):
