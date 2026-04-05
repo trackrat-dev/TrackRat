@@ -13,7 +13,6 @@ Mirrors iOS RouteTopology.swift for consistency.
 from __future__ import annotations
 
 from collections import defaultdict, deque
-
 from dataclasses import dataclass
 
 from trackrat.config.stations.metra import METRA_ROUTE_STATIONS, METRA_ROUTES
@@ -4469,9 +4468,7 @@ def _resolve_cross_route_chain(
 
     # Identify junction stations (on 2+ routes) — these are the only
     # useful transfer points. Also include from/to themselves.
-    junctions = {
-        s for s, r_list in station_routes.items() if len(r_list) >= 2
-    }
+    junctions = {s for s, r_list in station_routes.items() if len(r_list) >= 2}
     junctions.add(from_station)
     junctions.add(to_station)
 

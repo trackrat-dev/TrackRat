@@ -265,15 +265,17 @@ class TestApiCacheService:
             "generated_at": "2025-01-01T12:00:00Z",
         }
 
-        with patch(
-            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
-        ), patch.object(
-            cache_service,
-            "_compute_congestion_response",
-            return_value=mock_response,
-        ) as mock_compute, patch.object(
-            cache_service, "store_cached_response"
-        ) as mock_store:
+        with (
+            patch(
+                "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+            ),
+            patch.object(
+                cache_service,
+                "_compute_congestion_response",
+                return_value=mock_response,
+            ) as mock_compute,
+            patch.object(cache_service, "store_cached_response") as mock_store,
+        ):
             await cache_service.precompute_congestion_responses(mock_db)
 
             # N providers x 2 modes + 1 NJT/3hr
@@ -323,13 +325,13 @@ class TestApiCacheService:
     async def test_precompute_handles_computation_errors(self, cache_service, mock_db):
         """Test that pre-computation continues even if some computations fail."""
         expected_count = len(CONGESTION_PROVIDERS) * 2 + 1
-        with patch(
-            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
-        ), patch.object(
-            cache_service, "_compute_congestion_response"
-        ) as mock_compute, patch.object(
-            cache_service, "store_cached_response"
-        ) as mock_store:
+        with (
+            patch(
+                "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+            ),
+            patch.object(cache_service, "_compute_congestion_response") as mock_compute,
+            patch.object(cache_service, "store_cached_response") as mock_store,
+        ):
             mock_compute.side_effect = [
                 Exception("Computation failed"),
             ] + [{"data": f"response{i}"} for i in range(2, expected_count + 1)]
@@ -562,13 +564,15 @@ class TestApiCacheService:
             },
         }
 
-        with patch(
-            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
-        ), patch.object(
-            cache_service, "_compute_departure_response", return_value=mock_response
-        ) as mock_compute, patch.object(
-            cache_service, "store_cached_response"
-        ) as mock_store:
+        with (
+            patch(
+                "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+            ),
+            patch.object(
+                cache_service, "_compute_departure_response", return_value=mock_response
+            ) as mock_compute,
+            patch.object(cache_service, "store_cached_response") as mock_store,
+        ):
             await cache_service.precompute_departure_responses(mock_db)
 
             # 22 routes × 2 hide_departed variants = 44 calls
@@ -602,13 +606,13 @@ class TestApiCacheService:
     @pytest.mark.asyncio
     async def test_precompute_departure_handles_errors(self, cache_service, mock_db):
         """Test that departure pre-computation continues even if some computations fail."""
-        with patch(
-            "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
-        ), patch.object(
-            cache_service, "_compute_departure_response"
-        ) as mock_compute, patch.object(
-            cache_service, "store_cached_response"
-        ) as mock_store:
+        with (
+            patch(
+                "trackrat.services.api_cache.get_session", side_effect=_mock_get_session
+            ),
+            patch.object(cache_service, "_compute_departure_response") as mock_compute,
+            patch.object(cache_service, "store_cached_response") as mock_store,
+        ):
             # 44 calls: first fails, rest succeed
             # (22 routes × 2 hide_departed variants = 44)
             mock_compute.side_effect = [

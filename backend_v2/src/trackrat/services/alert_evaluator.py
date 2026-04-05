@@ -571,9 +571,7 @@ async def _query_journeys_for_subscription(
 
     else:
         # System-wide mode: all journeys for this data source
-        result = await db.execute(
-            select(TrainJourney).where(and_(*base_conditions))
-        )
+        result = await db.execute(select(TrainJourney).where(and_(*base_conditions)))
         return list(result.scalars().all())
 
 

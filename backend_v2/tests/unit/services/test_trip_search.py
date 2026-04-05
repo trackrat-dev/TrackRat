@@ -615,7 +615,9 @@ class TestFilterUnreasonableDurations:
         trips = [
             _make_trip_option(departure_offset_min=0, duration_min=25),  # fastest
             _make_trip_option(departure_offset_min=5, duration_min=30),  # OK
-            _make_trip_option(departure_offset_min=10, duration_min=55),  # 55 > max(50, 45) = 50 → filtered
+            _make_trip_option(
+                departure_offset_min=10, duration_min=55
+            ),  # 55 > max(50, 45) = 50 → filtered
         ]
         result = _filter_unreasonable_durations(trips)
         durations = [t.total_duration_minutes for t in result]
@@ -646,12 +648,16 @@ class TestFilterUnreasonableDurations:
         durations = [t.total_duration_minutes for t in result]
         assert 40 in durations
         assert 75 in durations, f"75-min trip should be kept (2x=80), got {durations}"
-        assert 85 not in durations, f"85-min trip should be filtered (>80), got {durations}"
+        assert (
+            85 not in durations
+        ), f"85-min trip should be filtered (>80), got {durations}"
 
     def test_boundary_exactly_at_threshold_kept(self):
         """A trip exactly at the threshold should be kept (<=, not <)."""
         trips = [
-            _make_trip_option(duration_min=25),  # fastest, max_reasonable = max(50, 45) = 50
+            _make_trip_option(
+                duration_min=25
+            ),  # fastest, max_reasonable = max(50, 45) = 50
             _make_trip_option(duration_min=50),  # exactly at threshold
         ]
         result = _filter_unreasonable_durations(trips)
@@ -700,9 +706,9 @@ class TestLeg2TimeWindowFromLeg1Arrivals:
             if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
                 earliest_arrival = arr_time
 
-        assert earliest_arrival == now + timedelta(minutes=45), (
-            f"Expected earliest arrival at +45 min, got {earliest_arrival}"
-        )
+        assert earliest_arrival == now + timedelta(
+            minutes=45
+        ), f"Expected earliest arrival at +45 min, got {earliest_arrival}"
 
         # With 5 min walk + 2 min buffer, leg 2 should start at +52
         from trackrat.services.trip_search import CONNECTION_BUFFER_MINUTES
@@ -795,9 +801,9 @@ class TestLeg2TimeWindowFromLeg1Arrivals:
             if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
                 earliest_arrival = arr_time
 
-        assert earliest_arrival is None, (
-            f"No valid arrivals should yield None, got {earliest_arrival}"
-        )
+        assert (
+            earliest_arrival is None
+        ), f"No valid arrivals should yield None, got {earliest_arrival}"
 
     def test_long_leg1_produces_far_future_leg2_window(self):
         """For a 3-hour leg 1 (like Amtrak WS→NY), leg 2 time_from should be ~3h out.

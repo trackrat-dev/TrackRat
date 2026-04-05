@@ -24,10 +24,10 @@ from trackrat.models.api import TrainPosition
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService, _detect_at_station
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_stop(
     station_code: str,
@@ -62,6 +62,7 @@ def _make_journey(
 # ---------------------------------------------------------------------------
 # _detect_at_station tests
 # ---------------------------------------------------------------------------
+
 
 class TestDetectAtStation:
     """Tests for the _detect_at_station helper function."""
@@ -108,9 +109,9 @@ class TestDetectAtStation:
 
         result = _detect_at_station(journey)
 
-        assert result is None, (
-            f"Expected None when NJT stop has no track assigned, got '{result}'"
-        )
+        assert (
+            result is None
+        ), f"Expected None when NJT stop has no track assigned, got '{result}'"
 
     def test_njt_departed_with_track_is_not_at_station(self):
         """NJT: track assigned but already departed -> skip to next undeparted stop."""
@@ -131,30 +132,34 @@ class TestDetectAtStation:
         """Amtrak: raw_amtrak_status='Station' -> at_station_code."""
         stops = [
             _make_stop("NYP", 0, has_departed_station=True),
-            _make_stop("NWK", 1, has_departed_station=False, raw_amtrak_status="Station"),
+            _make_stop(
+                "NWK", 1, has_departed_station=False, raw_amtrak_status="Station"
+            ),
             _make_stop("TRE", 2, has_departed_station=False),
         ]
         journey = _make_journey("AMTRAK", stops)
 
         result = _detect_at_station(journey)
 
-        assert result == "NWK", (
-            f"Expected at_station_code='NWK' for Amtrak station status, got '{result}'"
-        )
+        assert (
+            result == "NWK"
+        ), f"Expected at_station_code='NWK' for Amtrak station status, got '{result}'"
 
     def test_amtrak_enroute_not_at_station(self):
         """Amtrak: raw_amtrak_status='Enroute' -> not at station."""
         stops = [
             _make_stop("NYP", 0, has_departed_station=True),
-            _make_stop("NWK", 1, has_departed_station=False, raw_amtrak_status="Enroute"),
+            _make_stop(
+                "NWK", 1, has_departed_station=False, raw_amtrak_status="Enroute"
+            ),
         ]
         journey = _make_journey("AMTRAK", stops)
 
         result = _detect_at_station(journey)
 
-        assert result is None, (
-            f"Expected None for Amtrak 'Enroute' status, got '{result}'"
-        )
+        assert (
+            result is None
+        ), f"Expected None for Amtrak 'Enroute' status, got '{result}'"
 
     def test_path_never_returns_at_station(self):
         """PATH: no at-station signal available -> always None."""
@@ -166,9 +171,9 @@ class TestDetectAtStation:
 
         result = _detect_at_station(journey)
 
-        assert result is None, (
-            f"Expected None for PATH (no at-station signal), got '{result}'"
-        )
+        assert (
+            result is None
+        ), f"Expected None for PATH (no at-station signal), got '{result}'"
 
     def test_subway_never_returns_at_station(self):
         """Subway: no at-station signal available -> always None."""
@@ -219,6 +224,7 @@ class TestDetectAtStation:
 # ---------------------------------------------------------------------------
 # _calculate_train_position tests (JourneyProgress path)
 # ---------------------------------------------------------------------------
+
 
 class TestCalculateTrainPositionProgressPath:
     """
@@ -275,9 +281,9 @@ class TestCalculateTrainPositionProgressPath:
             f"'{result.at_station_code}' instead of 'NY'. "
             f"The JourneyProgress optimization must not suppress at_station_code."
         )
-        assert result.between_stations is False, (
-            "Train at a station should not be marked as between_stations"
-        )
+        assert (
+            result.between_stations is False
+        ), "Train at a station should not be marked as between_stations"
 
     @patch("sqlalchemy.inspect")
     def test_progress_path_preserves_amtrak_at_station(self, mock_inspect):
@@ -286,7 +292,9 @@ class TestCalculateTrainPositionProgressPath:
 
         stops = [
             _make_stop("NYP", 0, has_departed_station=True),
-            _make_stop("NWK", 1, has_departed_station=False, raw_amtrak_status="Station"),
+            _make_stop(
+                "NWK", 1, has_departed_station=False, raw_amtrak_status="Station"
+            ),
             _make_stop("TRE", 2, has_departed_station=False),
         ]
         journey = _make_journey("AMTRAK", stops)
@@ -376,7 +384,8 @@ class TestCalculateTrainPositionProgressPath:
         journey = _make_journey("NJT", [])
 
         mock_inspect.return_value = self._mock_inspect_state(
-            stops=NO_VALUE, progress=NO_VALUE,
+            stops=NO_VALUE,
+            progress=NO_VALUE,
         )
 
         result = self.service._calculate_train_position(journey)
