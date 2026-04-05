@@ -303,9 +303,11 @@ struct DeparturePickerView: View {
                     }
                 }
                 .onSubmit {
-                    if let firstResult = searchResults.stations.first ?? searchResults.otherSystemStations.first,
+                    if let firstResult = searchResults.stations.first,
                        let code = Stations.getStationCode(firstResult) {
                         selectDeparture(name: firstResult, code: code)
+                    } else if !searchResults.otherSystemStations.isEmpty {
+                        showSettingsForTrainSystems = true
                     }
                 }
             }
