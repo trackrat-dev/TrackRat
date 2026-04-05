@@ -27,8 +27,10 @@ from trackrat.config.route_topology import (
     LIRR_RONKONKOMA,
     MNR_HUDSON,
     MNR_NEW_HAVEN,
+    NJT_GLADSTONE,
     NJT_NORTHEAST_CORRIDOR,
     NJT_NORTH_JERSEY_COAST,
+    NJT_PORT_JERVIS,
     PATH_JSQ_33,
     PATH_NWK_WTC,
     PATCO_SPEEDLINE,
@@ -1770,3 +1772,57 @@ class TestCrossRouteChainResolution:
         assert len(segments) == len(set(segments)), (
             f"Duplicate segments found in chain: {[s for s in segments if segments.count(s) > 1]}"
         )
+
+
+class TestNJTTrunkInclusion:
+    """Verify NJT branch lines include trunk stations for segment expansion."""
+
+    def test_gladstone_contains_hoboken(self):
+        """Gladstone branch must include HB (Hoboken) from M&E trunk."""
+        assert NJT_GLADSTONE.contains_segment("HB", "GL"), (
+            "NJT_GLADSTONE must contain both HB and GL"
+        )
+
+    def test_gladstone_hb_to_gl_expansion(self):
+        """HB→GL should expand through M&E trunk + Gladstone branch."""
+        segments = NJT_GLADSTONE.expand_to_canonical_segments("HB", "GL")
+        assert segments is not None
+        assert len(segments) > 15, (
+            f"Expected >15 segments for HB→GL, got {len(segments)}"
+        )
+        assert segments[0][0] == "HB"
+        assert segments[-1][1] == "GL"
+
+    def test_gladstone_no_duplicate_stations(self):
+        """Gladstone route should not have duplicate station codes."""
+        seen = set()
+        for station in NJT_GLADSTONE.stations:
+            assert station not in seen, (
+                f"Duplicate station {station} in NJT_GLADSTONE"
+            )
+            seen.add(station)
+
+    def test_port_jervis_contains_hoboken(self):
+        """Port Jervis line must include HB (Hoboken) from Main Line trunk."""
+        assert NJT_PORT_JERVIS.contains_segment("HB", "PO"), (
+            "NJT_PORT_JERVIS must contain both HB and PO"
+        )
+
+    def test_port_jervis_hb_to_po_expansion(self):
+        """HB→PO should expand through Main Line trunk + Port Jervis."""
+        segments = NJT_PORT_JERVIS.expand_to_canonical_segments("HB", "PO")
+        assert segments is not None
+        assert len(segments) > 20, (
+            f"Expected >20 segments for HB→PO, got {len(segments)}"
+        )
+        assert segments[0][0] == "HB"
+        assert segments[-1][1] == "PO"
+
+    def test_port_jervis_no_duplicate_stations(self):
+        """Port Jervis route should not have duplicate station codes."""
+        seen = set()
+        for station in NJT_PORT_JERVIS.stations:
+            assert station not in seen, (
+                f"Duplicate station {station} in NJT_PORT_JERVIS"
+            )
+            seen.add(station)

@@ -185,6 +185,21 @@ NJT_GLADSTONE = Route(
     data_source="NJT",
     line_codes=frozenset({"GL", "Gl"}),  # "Gl" for pre-2026-03 DB records
     stations=(
+        # M&E trunk included so skip-stop segments (e.g. HB→GL) can be
+        # expanded to canonical pairs without cross-route chain lookup.
+        "HB",
+        "SE",
+        "NP",
+        "ND",
+        "BU",
+        "EO",
+        "OG",
+        "HI",
+        "MT",
+        "SO",
+        "MW",
+        "MB",
+        "RT",
         "ST",
         "NV",
         "MH",
@@ -318,7 +333,36 @@ NJT_PORT_JERVIS = Route(
     name="Port Jervis Line",
     data_source="NJT",
     line_codes=frozenset({"PJ"}),
-    stations=("SF", "XG", "TC", "RM", "MD", "CW", "CB", "OS", "PO"),
+    stations=(
+        # Main Line trunk included so skip-stop segments (e.g. HB→PO)
+        # can be expanded to canonical pairs.
+        "HB",
+        "SE",
+        "KG",
+        "LN",
+        "DL",
+        "PS",
+        "IF",
+        "RN",
+        "HW",
+        "RS",
+        "RW",
+        "UF",
+        "WK",
+        "AZ",
+        "RY",
+        "17",
+        "MZ",
+        "SF",
+        "XG",
+        "TC",
+        "RM",
+        "MD",
+        "CW",
+        "CB",
+        "OS",
+        "PO",
+    ),
 )
 
 NJT_PASCACK_VALLEY = Route(
