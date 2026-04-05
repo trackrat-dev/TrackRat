@@ -16,7 +16,7 @@ from structlog import get_logger
 from trackrat.api.utils import handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.config.stations import canonical_station_code, expand_station_codes
-from trackrat.db.engine import get_db
+from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
@@ -323,18 +323,20 @@ async def get_train_details(
         )
         stops.append(stop_detail)
 
-    # Add arrival predictions to each stop if requested
+    # Add arrival predictions to each stop if requested.
+    # Uses a separate DB session so that timeout/cancellation doesn't poison
+    # the main request session (which caused HTTP 500 via SQLAlchemy 7s2a error
+    # when the prediction query exceeded the timeout and left db in failed state).
     if include_predictions:
         try:
             forecaster = DirectArrivalForecaster()
-            # Timeout prevents slow DB queries from blocking the entire response.
-            # Predictions are optional enrichment — safe to skip on timeout.
-            await asyncio.wait_for(
-                forecaster.add_predictions_to_stops(
-                    db, journey, stops, user_origin=from_station
-                ),
-                timeout=5.0,
-            )
+            async with get_session() as pred_db:
+                await asyncio.wait_for(
+                    forecaster.add_predictions_to_stops(
+                        pred_db, journey, stops, user_origin=from_station
+                    ),
+                    timeout=5.0,
+                )
 
             logger.info(
                 "added_arrival_predictions",
@@ -460,14 +462,17 @@ async def get_train_details(
                     )
                     data_source = journey.data_source or "NJT"
 
-                    prediction = await historical_track_predictor.predict_track(
-                        station_code=from_station,
-                        train_id=journey.train_id,
-                        line_code=journey.line_code,
-                        data_source=data_source,
-                        scheduled_departure=scheduled_departure,
-                        db=db,
-                    )
+                    # Separate session to avoid poisoning the main request
+                    # session if the query fails or is slow.
+                    async with get_session() as track_db:
+                        prediction = await historical_track_predictor.predict_track(
+                            station_code=from_station,
+                            train_id=journey.train_id,
+                            line_code=journey.line_code,
+                            data_source=data_source,
+                            scheduled_departure=scheduled_departure,
+                            db=track_db,
+                        )
 
                     if prediction:
                         track_prediction = TrackPrediction(

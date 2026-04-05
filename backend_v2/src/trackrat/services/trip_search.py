@@ -331,18 +331,20 @@ async def search_trips(
                 skip_individual_refresh=True,
             )
 
-    # Build all tasks: for each transfer point, leg1 and leg2
-    leg_tasks: list[tuple[int, str]] = []  # (transfer_idx, "leg1"|"leg2")
-    coros = []
+    # Two-phase query: leg 1 first, then leg 2 with time windows derived from
+    # leg 1 arrival times.  This prevents the bug where leg 2 returns only
+    # near-future departures that are too early to connect with a long leg 1.
+
+    # --- Phase 1: Query all leg 1s in parallel ---
+    leg1_coros = []
     for i, (
         _tp,
         alight_station,
         alight_system,
-        board_station,
-        board_system,
+        _board_station,
+        _board_system,
     ) in enumerate(oriented_transfers):
-        # Leg 1: from_station -> alight_station
-        coros.append(
+        leg1_coros.append(
             _query_leg(
                 from_station,
                 alight_station,
@@ -353,42 +355,82 @@ async def search_trips(
                 [alight_system],
             )
         )
-        leg_tasks.append((i, "leg1"))
 
-        # Leg 2: board_station -> to_station
-        # No time_from/time_to — leg 1 may arrive after original window.
-        # hide_departed=True to avoid stale OBSERVED trains from hours ago
-        # that would never match leg 1's arrival time.
-        coros.append(
+    leg1_results = await asyncio.gather(*leg1_coros, return_exceptions=True)
+
+    # --- Phase 2: Query leg 2s with time_from based on leg 1 arrivals ---
+    leg2_coros = []
+    leg2_transfer_indices: list[int] = []
+
+    leg_responses: dict[int, dict[str, DeparturesResponse]] = {}
+    queries_made = 0
+
+    for i, (
+        tp,
+        _alight_station,
+        _alight_system,
+        board_station,
+        board_system,
+    ) in enumerate(oriented_transfers):
+        leg1_result = leg1_results[i]
+        if isinstance(leg1_result, BaseException):
+            logger.warning(
+                "transfer_leg_query_failed",
+                transfer_idx=i,
+                leg="leg1",
+                error=str(leg1_result),
+            )
+            continue
+        queries_made += 1
+        leg_responses[i] = {"leg1": leg1_result}
+
+        if not leg1_result.departures:
+            continue
+
+        # Find earliest valid leg 1 arrival at the transfer station
+        earliest_arrival: datetime | None = None
+        for dep in leg1_result.departures:
+            if dep.is_cancelled or not dep.arrival:
+                continue
+            arr_time = _get_best_time(dep.arrival)
+            if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
+                earliest_arrival = arr_time
+
+        if not earliest_arrival:
+            continue
+
+        # Set leg 2 time_from so the departure service returns trains
+        # starting from the earliest possible connection time.
+        transfer_minutes = tp.walk_minutes + CONNECTION_BUFFER_MINUTES
+        leg2_time_from = earliest_arrival + timedelta(minutes=transfer_minutes)
+
+        leg2_coros.append(
             _query_leg(
                 board_station,
                 to_station,
                 search_date,
-                None,
+                leg2_time_from,
                 None,
                 True,
                 [board_system],
             )
         )
-        leg_tasks.append((i, "leg2"))
+        leg2_transfer_indices.append(i)
 
-    # Execute all leg queries concurrently
-    results = await asyncio.gather(*coros, return_exceptions=True)
+    if leg2_coros:
+        leg2_results = await asyncio.gather(*leg2_coros, return_exceptions=True)
 
-    # Group results by transfer point index
-    leg_responses: dict[int, dict[str, DeparturesResponse]] = {}
-    for (idx, leg_name), result in zip(leg_tasks, results, strict=False):
-        if isinstance(result, BaseException):
-            logger.warning(
-                "transfer_leg_query_failed",
-                transfer_idx=idx,
-                leg=leg_name,
-                error=str(result),
-            )
-            continue
-        leg_responses.setdefault(idx, {})[leg_name] = result
-
-    queries_made = len([r for r in results if not isinstance(r, BaseException)])
+        for idx, result in zip(leg2_transfer_indices, leg2_results, strict=False):
+            if isinstance(result, BaseException):
+                logger.warning(
+                    "transfer_leg_query_failed",
+                    transfer_idx=idx,
+                    leg="leg2",
+                    error=str(result),
+                )
+                continue
+            queries_made += 1
+            leg_responses[idx]["leg2"] = result
 
     # Match connections from parallel results
     transfer_trips: list[TripOption] = []

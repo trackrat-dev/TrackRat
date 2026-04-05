@@ -659,3 +659,176 @@ class TestFilterUnreasonableDurations:
             f"Trip at exact threshold (50) should be kept, got "
             f"{[t.total_duration_minutes for t in result]}"
         )
+
+
+class TestLeg2TimeWindowFromLeg1Arrivals:
+    """Test the logic for computing leg 2 time_from based on leg 1 arrival times.
+
+    Bug context: When leg 1 is long (e.g. MNR 55 min, Amtrak 3h), leg 2 queried
+    with time_from=None returned the next 20 departures from "now", which were all
+    BEFORE leg 1 arrives.  The fix sets time_from to earliest_leg1_arrival +
+    walk_minutes + CONNECTION_BUFFER_MINUTES so the departure service returns
+    trains starting at the connection window.
+    """
+
+    def test_earliest_arrival_from_multiple_departures(self):
+        """Should find the earliest arrival across multiple leg 1 departures."""
+        now = datetime.now(ET)
+        dep1 = _make_departure(
+            train_id="1001",
+            dep_time=now + timedelta(minutes=5),
+            arr_time=now + timedelta(minutes=60),
+        )
+        dep2 = _make_departure(
+            train_id="1002",
+            dep_time=now + timedelta(minutes=15),
+            arr_time=now + timedelta(minutes=45),  # arrives earlier
+        )
+        dep3 = _make_departure(
+            train_id="1003",
+            dep_time=now + timedelta(minutes=25),
+            arr_time=now + timedelta(minutes=80),
+        )
+        departures = [dep1, dep2, dep3]
+
+        # Extract earliest arrival (same logic as in search_trips Phase 2)
+        earliest_arrival = None
+        for dep in departures:
+            if dep.is_cancelled or not dep.arrival:
+                continue
+            arr_time = _get_best_time(dep.arrival)
+            if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
+                earliest_arrival = arr_time
+
+        assert earliest_arrival == now + timedelta(minutes=45), (
+            f"Expected earliest arrival at +45 min, got {earliest_arrival}"
+        )
+
+        # With 5 min walk + 2 min buffer, leg 2 should start at +52
+        from trackrat.services.trip_search import CONNECTION_BUFFER_MINUTES
+
+        walk_minutes = 5
+        leg2_time_from = earliest_arrival + timedelta(
+            minutes=walk_minutes + CONNECTION_BUFFER_MINUTES
+        )
+        expected = now + timedelta(minutes=45 + 5 + CONNECTION_BUFFER_MINUTES)
+        assert leg2_time_from == expected, (
+            f"Leg 2 time_from should be earliest_arrival + walk + buffer, "
+            f"got {leg2_time_from}, expected {expected}"
+        )
+
+    def test_cancelled_departures_skipped(self):
+        """Cancelled departures should not affect earliest arrival calculation."""
+        now = datetime.now(ET)
+        cancelled = _make_departure(
+            train_id="C1",
+            dep_time=now + timedelta(minutes=5),
+            arr_time=now + timedelta(minutes=20),  # earliest but cancelled
+            is_cancelled=True,
+        )
+        running = _make_departure(
+            train_id="R1",
+            dep_time=now + timedelta(minutes=15),
+            arr_time=now + timedelta(minutes=50),
+        )
+        departures = [cancelled, running]
+
+        earliest_arrival = None
+        for dep in departures:
+            if dep.is_cancelled or not dep.arrival:
+                continue
+            arr_time = _get_best_time(dep.arrival)
+            if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
+                earliest_arrival = arr_time
+
+        assert earliest_arrival == now + timedelta(minutes=50), (
+            f"Cancelled dep (arriving +20min) should be skipped; "
+            f"expected +50min, got {earliest_arrival}"
+        )
+
+    def test_departure_without_arrival_skipped(self):
+        """Departures missing arrival info should be skipped."""
+        now = datetime.now(ET)
+        no_arrival = _make_departure(
+            train_id="N1",
+            dep_time=now + timedelta(minutes=5),
+            arr_time=now + timedelta(minutes=20),
+        )
+        no_arrival.arrival = None  # Remove arrival info
+
+        with_arrival = _make_departure(
+            train_id="W1",
+            dep_time=now + timedelta(minutes=15),
+            arr_time=now + timedelta(minutes=40),
+        )
+        departures = [no_arrival, with_arrival]
+
+        earliest_arrival = None
+        for dep in departures:
+            if dep.is_cancelled or not dep.arrival:
+                continue
+            arr_time = _get_best_time(dep.arrival)
+            if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
+                earliest_arrival = arr_time
+
+        assert earliest_arrival == now + timedelta(minutes=40), (
+            f"Departure without arrival should be skipped; "
+            f"expected +40min, got {earliest_arrival}"
+        )
+
+    def test_no_valid_arrivals_returns_none(self):
+        """When all departures are cancelled or lack arrivals, earliest_arrival is None."""
+        now = datetime.now(ET)
+        cancelled = _make_departure(
+            train_id="C1",
+            dep_time=now,
+            arr_time=now + timedelta(minutes=20),
+            is_cancelled=True,
+        )
+        departures = [cancelled]
+
+        earliest_arrival = None
+        for dep in departures:
+            if dep.is_cancelled or not dep.arrival:
+                continue
+            arr_time = _get_best_time(dep.arrival)
+            if arr_time and (earliest_arrival is None or arr_time < earliest_arrival):
+                earliest_arrival = arr_time
+
+        assert earliest_arrival is None, (
+            f"No valid arrivals should yield None, got {earliest_arrival}"
+        )
+
+    def test_long_leg1_produces_far_future_leg2_window(self):
+        """For a 3-hour leg 1 (like Amtrak WS→NY), leg 2 time_from should be ~3h out.
+
+        This is the exact scenario that caused the original bug: Amtrak WS→NY
+        arrives at ~12:30 PM, but leg 2 (LIRR NY→JAM) only returned the next
+        20 departures from ~9:30 AM, all before 12:30.
+        """
+        now = datetime.now(ET)
+        amtrak_dep = _make_departure(
+            train_id="AMTK_123",
+            from_code="WS",
+            from_name="Washington",
+            to_code="NY",
+            to_name="New York Penn Station",
+            dep_time=now + timedelta(minutes=10),
+            arr_time=now + timedelta(hours=3, minutes=10),  # 3h trip
+            data_source="AMTRAK",
+        )
+
+        from trackrat.services.trip_search import CONNECTION_BUFFER_MINUTES
+
+        earliest_arrival = _get_best_time(amtrak_dep.arrival)
+        walk_minutes = 5  # typical NY Penn transfer
+        leg2_time_from = earliest_arrival + timedelta(
+            minutes=walk_minutes + CONNECTION_BUFFER_MINUTES
+        )
+
+        # Leg 2 should start 3h10m + 7min = 3h17m from now
+        expected_offset = timedelta(hours=3, minutes=10 + 5 + CONNECTION_BUFFER_MINUTES)
+        assert leg2_time_from == now + expected_offset, (
+            f"3-hour Amtrak leg 1 should push leg 2 window to +{expected_offset}, "
+            f"got {leg2_time_from - now}"
+        )
