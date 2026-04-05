@@ -119,6 +119,13 @@ class MetraCollector:
             "total_arrivals": 0,
         }
 
+        if not self.client._api_token:
+            logger.error(
+                "Metra collection skipped: TRACKRAT_METRA_API_TOKEN not configured"
+            )
+            stats["error"] = "no API token"
+            return stats
+
         try:
             collection_start = now_for_provider(DATA_SOURCE)
 

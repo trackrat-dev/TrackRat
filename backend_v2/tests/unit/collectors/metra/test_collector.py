@@ -383,3 +383,49 @@ class TestMetraCommonIntegration:
         from trackrat.services.scheduler import SchedulerService
 
         assert "METRA" in SchedulerService.GTFS_SOURCES
+
+
+# =============================================================================
+# MISSING TOKEN HANDLING TESTS
+# =============================================================================
+
+
+class TestCollectorMissingToken:
+    """Tests that MetraCollector returns error stats when API token is missing.
+
+    Bug: collector received empty list from client, logged "No Metra arrivals
+    found", and returned stats with zeros — indistinguishable from success.
+    Scheduler marked this as a completed run, preventing retries.
+
+    See: https://github.com/trackrat-dev/trackrat/issues/901
+    """
+
+    @pytest.mark.asyncio
+    async def test_collect_returns_error_when_no_token(self):
+        """collect() returns error stats immediately when API token is empty."""
+        client = MetraClient(api_token="")
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        result = await collector.collect(session)
+
+        assert result["error"] == "no API token"
+        assert result["total_arrivals"] == 0
+        assert result["discovered"] == 0
+        # Session should not have been touched
+        session.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_proceeds_with_valid_token(self):
+        """collect() does NOT return early when token is configured."""
+        client = MagicMock(spec=MetraClient)
+        client._api_token = "valid-token"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        result = await collector.collect(session)
+
+        # Should have called get_all_arrivals (not returned early)
+        client.get_all_arrivals.assert_called_once()
+        assert "error" not in result

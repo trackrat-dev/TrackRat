@@ -81,6 +81,14 @@ class Settings(BaseSettings):
     # Metra API
     metra_api_token: str = Field(default="", description="Metra GTFS-RT API token")
 
+    @field_validator("metra_api_token", mode="before")
+    @classmethod
+    def load_metra_api_token(cls, v: str) -> str:
+        """Load Metra API token from env vars."""
+        if v:
+            return v
+        return os.environ.get("METRA_API_TOKEN", "")
+
     # MBTA API
     mbta_api_key: str = Field(default="", description="MBTA API key")
 
