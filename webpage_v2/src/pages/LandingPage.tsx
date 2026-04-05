@@ -8,7 +8,6 @@ const APP_STORE_URL = 'https://apps.apple.com/us/app/trackrat/id6746423610';
 const GITHUB_URL = 'https://github.com/trackrat-dev/TrackRat';
 const YOUTUBE_URL = 'https://www.youtube.com/@TrackRat-App/shorts';
 const INSTAGRAM_URL = 'https://www.instagram.com/trackratapp/';
-const FEEDBACK_URL = 'https://trackrat.nolt.io/';
 const API_DOCS_URL = 'https://apiv2.trackrat.net/docs';
 const SUPPORT_EMAIL = 'mailto:trackrat@andymartin.cc';
 
