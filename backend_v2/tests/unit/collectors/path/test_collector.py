@@ -2784,3 +2784,133 @@ class TestTighterTolerance:
         assert result is not None
         # Should pick the closer one (2 min diff)
         assert result.arrival_time == base_time + timedelta(minutes=2)
+
+
+# =============================================================================
+# SESSION FLUSH ERROR HANDLING TESTS
+# =============================================================================
+
+
+class TestCollectJourneyDetailsFlushHandling:
+    """Tests that session.flush() is not called unconditionally after exceptions.
+
+    Bug: When _update_stops_from_arrivals raised a DB exception, the session
+    entered a failed transaction state, but flush() at line 1471 executed
+    unconditionally outside the try/except, producing "Can't reconnect until
+    invalid transaction is rolled back" errors.
+
+    Fix: flush() moved inside try block (happy path). Except block does
+    rollback before persisting error-tracking fields.
+
+    See: https://github.com/trackrat-dev/trackrat/issues/900
+    """
+
+    def _make_collector(self):
+        """Create a PathCollector with a mocked client."""
+        client = AsyncMock()
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = PathCollector(client=client)
+        return collector
+
+    def _make_journey(self, api_error_count=0):
+        """Create a mock TrainJourney."""
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "PATH_PHO_33rdstree_1234567890"
+        journey.destination = "33rd Street"
+        journey.api_error_count = api_error_count
+        journey.update_count = 0
+        journey.is_expired = False
+        journey.last_updated_at = None
+        return journey
+
+    @pytest.mark.asyncio
+    async def test_flush_called_on_success(self):
+        """On successful update, flush is called exactly once."""
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey()
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        collector._update_stops_from_arrivals = AsyncMock()
+
+        await collector._collect_journey_details_impl(session, journey)
+
+        session.flush.assert_called_once()
+        # Error count should be reset to 0
+        assert journey.api_error_count == 0
+
+    @pytest.mark.asyncio
+    async def test_no_flush_on_poisoned_session(self):
+        """When _update_stops_from_arrivals raises, don't flush the broken session directly.
+
+        Instead, rollback first, then flush error-tracking fields separately.
+        """
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey()
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        collector._update_stops_from_arrivals = AsyncMock(
+            side_effect=Exception("DB constraint violation")
+        )
+
+        await collector._collect_journey_details_impl(session, journey)
+
+        # rollback should be called before the error-tracking flush
+        session.rollback.assert_called_once()
+        # flush should be called (for error tracking fields after rollback)
+        session.flush.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_error_count_incremented_after_rollback(self):
+        """After exception and rollback, error count is incremented."""
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey(api_error_count=1)
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        collector._update_stops_from_arrivals = AsyncMock(
+            side_effect=Exception("serialization failure")
+        )
+
+        await collector._collect_journey_details_impl(session, journey)
+
+        assert journey.api_error_count == 2
+        assert journey.is_expired is False
+
+    @pytest.mark.asyncio
+    async def test_journey_expired_after_three_errors(self):
+        """Journey is marked expired after 3 consecutive errors."""
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey(api_error_count=2)
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        collector._update_stops_from_arrivals = AsyncMock(
+            side_effect=Exception("deadlock detected")
+        )
+
+        await collector._collect_journey_details_impl(session, journey)
+
+        assert journey.api_error_count == 3
+        assert journey.is_expired is True
+
+    @pytest.mark.asyncio
+    async def test_error_tracking_flush_failure_handled(self):
+        """If rollback+flush for error tracking also fails, it's caught gracefully."""
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey()
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        collector._update_stops_from_arrivals = AsyncMock(
+            side_effect=Exception("original error")
+        )
+        # The rollback succeeds but the subsequent flush fails
+        session.rollback = AsyncMock()
+        session.flush = AsyncMock(
+            side_effect=Exception("session completely broken")
+        )
+
+        # Should NOT raise — error is caught and logged
+        await collector._collect_journey_details_impl(session, journey)

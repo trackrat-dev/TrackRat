@@ -1456,19 +1456,26 @@ class PathCollector:
                 stops=len(stops),
             )
 
+            await session.flush()
+
         except Exception as e:
             logger.error(
                 "path_journey_update_failed",
                 train_id=journey.train_id,
                 error=str(e),
             )
-            journey.api_error_count = (journey.api_error_count or 0) + 1
-            journey.last_updated_at = now_et()
-
-            if journey.api_error_count >= 3:
-                journey.is_expired = True
-
-        await session.flush()
+            try:
+                await session.rollback()
+                journey.api_error_count = (journey.api_error_count or 0) + 1
+                journey.last_updated_at = now_et()
+                if journey.api_error_count >= 3:
+                    journey.is_expired = True
+                await session.flush()
+            except Exception:
+                logger.error(
+                    "path_journey_error_tracking_failed",
+                    train_id=journey.train_id,
+                )
 
     async def close(self) -> None:
         """Close the client if we own it."""
