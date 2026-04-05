@@ -1,12 +1,12 @@
 # TrackRat Web
 
-A mobile-first web application for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway trains in real-time.
+A mobile-first web application for tracking trains across 11 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA) in real-time.
 
 ## Features
 
 - Real-time train departures and details
-- Search trains by origin and destination across 7 transit systems
-- 1000+ stations with system-grouped picker (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, Subway)
+- Search trains by origin and destination across 11 transit systems
+- 1,500+ stations with system-grouped picker
 - Visual train states: departed (dimmed), boarding (highlighted), cancelled (strikethrough), scheduled
 - Train number filter on departure list
 - Route operations summary
@@ -57,12 +57,12 @@ npm run preview
 ```
 src/
 ├── components/       # Reusable UI components
-├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, Favorites)
+├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, TripDetails, TripHistory, RouteStatus, NetworkStatus, Favorites)
 ├── services/        # API client (with caching) and localStorage wrapper
 ├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
 ├── utils/           # Date formatting, status badges, share helpers
-├── data/            # Station data (1000+ stations, 7 transit systems)
+├── data/            # Station data and route topology (1,500+ stations, 11 transit systems)
 ├── App.tsx          # Main app component with route definitions
 ├── main.tsx         # Entry point
 └── index.css        # Global styles

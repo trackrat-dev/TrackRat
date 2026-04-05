@@ -88,7 +88,7 @@
 ### Prerequisites
 
 1. **Android Studio**: Latest stable version (Hedgehog or newer)
-2. **JDK**: Version 11 or higher
+2. **JDK**: Version 17 or higher
 3. **Android SDK**: API 34 (Android 14)
 4. **Git**: For version control
 5. **Maps**: Will need a Google Cloud Account with a configured Maps API Key
@@ -289,7 +289,7 @@ See `backend_v2/CLAUDE.md` for complete API documentation.
 ## Contact & Support
 
 For questions about the Android implementation:
-- Review this README and `android-app.md`
+- Review this README and `DESIGN.md`
 - Check existing code patterns
 - Consult the iOS app for feature parity
 - Review backend API documentation

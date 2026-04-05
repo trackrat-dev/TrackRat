@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** March 2026
+**Last Updated:** April 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
@@ -176,7 +176,7 @@ device_tokens (
 )
 
 -- Route alert subscriptions
-alert_subscriptions (
+route_alert_subscriptions (
     id, device_token_id, route, data_source,
     delay_threshold_minutes, notify_cancellations,
     created_at, updated_at
@@ -345,6 +345,7 @@ The system now includes comprehensive transit time analysis:
    - MBTA collector in `collectors/mbta/` (collector.py, client.py)
    - Metra collector in `collectors/metra/` (collector.py, client.py)
    - WMATA collector in `collectors/wmata/` (collector.py, client.py)
+   - Service alerts collector in `collectors/service_alerts.py`
    - MTA shared logic in `collectors/mta_common.py` and `collectors/mta_extensions.py`
    - Base classes in `collectors/base.py`
    - Test with data in `tests/unit/collectors/`
@@ -396,7 +397,10 @@ TRACKRAT_WMATA_API_KEY=your_wmata_developer_api_key
 # Metra GTFS-RT API
 TRACKRAT_METRA_API_TOKEN=your_metra_api_token
 
-# Note: BART and MBTA use public GTFS-RT feeds - no authentication required
+# Note: BART uses public GTFS-RT feed - no authentication required
+
+# MBTA API (optional, for higher rate limits)
+TRACKRAT_MBTA_API_KEY=your_mbta_api_key
 
 # Database Configuration (defaults to PostgreSQL)
 TRACKRAT_DATABASE_URL=postgresql+asyncpg://trackratuser:password@localhost:5432/trackratdb
@@ -545,7 +549,7 @@ docker run -p 8000:8000 \
 - [ ] Configure health check monitoring (`/health/live`, `/health/ready`)
 - [ ] Review database connection pool settings
 - [ ] Enable CORS for frontend domains
-- [ ] Verify K_REVISION is set (automatic in Cloud Run)
+- [ ] Verify K_REVISION is set (used for instance tracking; automatic in GCE MIG)
 
 ## Troubleshooting
 
@@ -570,7 +574,7 @@ docker run -p 8000:8000 \
    - Check scheduler_task_runs table for task status
    - Verify database locking is working
    - Look for "task_locked_by_another_replica" in logs
-   - Ensure K_REVISION env var is set in Cloud Run
+   - Ensure K_REVISION env var is set (automatic in GCE MIG)
 
 ### Debug Commands
 
@@ -679,7 +683,7 @@ The backend is organized into service classes for better maintainability:
 
 #### Analytics & ML
 - **TransitAnalyzer** (`services/transit_analyzer.py`): Transit time and dwell time analysis
-- **CongestionAnalyzer** (`services/congestion.py`): Real-time network congestion monitoring
+- **CongestionAnalyzer** (`services/congestion.py`, `services/congestion_types.py`): Real-time network congestion monitoring
 - **DirectArrivalForecaster** (`services/direct_forecaster.py`): Direct arrival predictions from recent data
 - **HistoricalTrackPredictor** (`services/historical_track_predictor.py`): Historical pattern-based track predictions
 - **TrackOccupancyService** (`services/track_occupancy.py`): Real-time track availability
@@ -699,6 +703,17 @@ The backend is organized into service classes for better maintainability:
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
+
+### Recent Improvements (April 2026)
+- ✅ Intra-system transfers for PATH, BART, NJT, LIRR, MBTA, Metra trip search
+- ✅ Fix NJT congestion 500 error
+- ✅ Fix trip search returning routes from disabled transit systems
+- ✅ Fix reverse journey search returning no results for transfer trips
+- ✅ Disambiguate all duplicate and confusing Amtrak station names
+- ✅ Fix startup crash from duplicate 'Hollywood, FL' key in stationCodes dictionary
+- ✅ Parallelize transfer queries and cache GTFS service IDs for faster trip search
+- ✅ Multi-leg trip details view for web and iOS
+- ✅ Open-source release (GPLv3)
 
 ### Recent Improvements (March 2026)
 - ✅ PATH line color disambiguation: resolves misattribution for overlapping routes (e.g., JSQ-33H vs HOB-33)
