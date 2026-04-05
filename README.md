@@ -1,6 +1,6 @@
 # TrackRat
 
-**Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North!**
+**Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA!**
 
 [![App Store](https://img.shields.io/badge/App_Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/trackrat/id6746423610)
 [![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)

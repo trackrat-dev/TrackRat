@@ -121,7 +121,7 @@ gcloud builds submit --config=cloudbuild.yaml .
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
 | `machine_type` | t2d-standard-2 | VM machine type |
-| `disk_size_gb` | 10 | Persistent disk size |
+| `disk_size_gb` | 20 | Persistent disk size |
 | `snapshot_retention_days` | 35 | Snapshot retention period |
 
 **Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability.
@@ -292,9 +292,10 @@ infra_v2/
 ├── cloudbuild-webpage.yaml      # Webpage production deployment
 ├── cloudbuild-webpage-staging.yaml  # Webpage staging deployment
 ├── functions/
-│   └── feedback_notifier/       # Slack notification function
-│       ├── main.py
-│       └── requirements.txt
+│   ├── feedback_notifier/       # Slack notification function
+│   │   ├── main.py
+│   │   └── requirements.txt
+│   └── train_follow_notifier/   # Train follow push notification service
 ├── terraform-webpage/
 │   └── main.tf                  # Standalone webpage infrastructure (GCS, CDN)
 └── terraform/

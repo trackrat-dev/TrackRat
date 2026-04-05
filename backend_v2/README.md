@@ -706,4 +706,6 @@ The V2 backend is designed for easy contribution:
 
 ## License
 
-Copyright 2025-2026 TrackRat Team
+Licensed under the GNU General Public License v3.0. See [LICENSE](../LICENSE) for details.
+
+Copyright 2025-2026 Andrew Martin
