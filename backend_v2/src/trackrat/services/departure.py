@@ -791,6 +791,7 @@ class DepartureService:
                             selectinload(TrainJourney.snapshots),
                             selectinload(TrainJourney.segment_times),
                             selectinload(TrainJourney.dwell_times),
+                            selectinload(TrainJourney.progress),
                             selectinload(TrainJourney.progress_snapshots),
                         )
                         .order_by(TrainJourney.id)
@@ -927,6 +928,7 @@ class DepartureService:
                     selectinload(TrainJourney.snapshots),
                     selectinload(TrainJourney.segment_times),
                     selectinload(TrainJourney.dwell_times),
+                    selectinload(TrainJourney.progress),
                     selectinload(TrainJourney.progress_snapshots),
                 )
                 .limit(50)
@@ -966,6 +968,7 @@ class DepartureService:
                                 selectinload(TrainJourney.snapshots),
                                 selectinload(TrainJourney.segment_times),
                                 selectinload(TrainJourney.dwell_times),
+                                selectinload(TrainJourney.progress),
                                 selectinload(TrainJourney.progress_snapshots),
                             )
                             .execution_options(populate_existing=True)
@@ -1096,6 +1099,20 @@ class DepartureService:
                     stop.scheduled_departure = parse_njt_time(sched_dep_str)
                 elif dep_time_str := stop_data.get("DEP_TIME"):
                     stop.scheduled_departure = parse_njt_time(dep_time_str)
+
+            # Populate real-time estimates from TIME/DEP_TIME fields.
+            # These have inverted semantics by stop type (see journey.py:1320-1332),
+            # but consumers use max(updated_departure, updated_arrival) which handles it.
+            time_str = stop_data.get("TIME")
+            if time_str:
+                parsed_time = parse_njt_time(time_str)
+                if parsed_time:
+                    stop.updated_arrival = parsed_time
+            dep_time_rt_str = stop_data.get("DEP_TIME")
+            if dep_time_rt_str:
+                parsed_dep = parse_njt_time(dep_time_rt_str)
+                if parsed_dep:
+                    stop.updated_departure = parsed_dep
 
             # Update departure status with time validation
             departed = (stop_data.get("DEPARTED") or "").upper() or None

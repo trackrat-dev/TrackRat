@@ -946,10 +946,17 @@ class JourneyCollector(BaseJourneyCollector):
         Returns:
             Created snapshot
         """
-        # Delete existing snapshots for this journey to maintain single snapshot per journey
+        # Delete existing snapshots for this journey to maintain single snapshot per journey.
+        # Use synchronize_session=False to avoid desync between the Core SQL delete
+        # and the ORM identity map's snapshots collection, which can cause
+        # MissingGreenlet errors during subsequent flush cascade/orphan processing.
         await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
+            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id),
+            execution_options={"synchronize_session": False},
         )
+        # Clear the in-memory collection to match DB state.
+        # This prevents flush from seeing stale deleted objects in the collection.
+        journey.snapshots.clear()
 
         # Extract metrics
         completed_stops = sum(1 for stop in train_data.STOPS if stop.DEPARTED == "YES")
