@@ -19,7 +19,6 @@ from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
     get_station_lines,
-    get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
 )
@@ -154,9 +153,7 @@ def _find_relevant_transfer_points(
                     b_has_origin = bool(tp.lines_b & origin_lines)
                     a_has_dest = bool(tp.lines_a & dest_lines)
                     b_has_dest = bool(tp.lines_b & dest_lines)
-                    if (a_has_origin and b_has_dest) or (
-                        b_has_origin and a_has_dest
-                    ):
+                    if (a_has_origin and b_has_dest) or (b_has_origin and a_has_dest):
                         key = frozenset(
                             {
                                 (tp.station_a, tp.system_a),
@@ -337,7 +334,7 @@ async def search_trips(
 
     # --- Phase 1: Query all leg 1s in parallel ---
     leg1_coros = []
-    for i, (
+    for _i, (
         _tp,
         alight_station,
         alight_system,
