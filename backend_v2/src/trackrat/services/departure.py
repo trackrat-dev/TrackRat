@@ -113,6 +113,47 @@ def _has_direct_route(
     return False
 
 
+def _detect_at_station(journey: TrainJourney) -> str | None:
+    """
+    Detect if a train is currently at a station based on provider-specific signals.
+
+    For NJT: a track assignment on an undeparted stop means the train is at that station.
+    For Amtrak: raw_amtrak_status == "Station" means the train is at that station.
+    For completed journeys: the train is at its final stop.
+
+    Returns the station code if the train is at a station, else None.
+    """
+    if not journey.stops:
+        return None
+
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+
+    next_station_found = False
+    for stop in sorted_stops:
+        if stop.has_departed_station:
+            continue
+
+        # This is the first undeparted stop (next station)
+        next_station_found = True
+
+        if journey.data_source == "AMTRAK":
+            if stop.raw_amtrak_status == "Station":
+                return stop.station_code
+        elif journey.data_source == "NJT":
+            if stop.track and not stop.has_departed_station:
+                return stop.station_code
+        # PATH/LIRR/MNR/Subway/BART/MBTA/Metra/WMATA: no at-station signal
+        break
+
+    # If no undeparted stops, train may have completed its journey
+    if not next_station_found and sorted_stops:
+        last_stop = sorted_stops[-1]
+        if last_stop.has_departed_station:
+            return last_stop.station_code
+
+    return None
+
+
 class DepartureService:
     """Service for handling departure queries and processing."""
 
@@ -516,80 +557,79 @@ class DepartureService:
         """
         Calculate current train position.
 
-        OPTIMIZATION: Uses journey_progress table when available to avoid
-        iterating through stops. Falls back to stops-based calculation only
-        when progress data is not available.
+        Always computes at_station_code from stops via _detect_at_station
+        (provider-specific signals: NJT track, Amtrak status, completed journey).
+
+        OPTIMIZATION: Uses journey_progress table when available for
+        last_departed / next_station to avoid iterating through stops.
+        Falls back to stops-based calculation when progress is not available.
         """
         from sqlalchemy import inspect
         from sqlalchemy.orm.base import NO_VALUE
 
         from trackrat.models.database import JourneyProgress
 
-        # OPTIMIZATION: Use pre-computed journey_progress if available
-        # Use inspect to check if relationship is loaded without triggering lazy load
+        # Use inspect to check if relationships are loaded without triggering lazy load
         state = inspect(journey)
+
+        # Guard against lazy-load in sync context — if stops weren't eagerly
+        # loaded, return empty position rather than triggering MissingGreenlet.
+        stops_value = state.attrs.stops.loaded_value if state else NO_VALUE
+        stops_available = stops_value is not NO_VALUE and bool(journey.stops)
+
+        # Always compute at_station_code from stops (provider-specific signals)
+        at_station_code = _detect_at_station(journey) if stops_available else None
 
         # Check if progress relationship is loaded and get its value
         progress_value = state.attrs.progress.loaded_value if state else NO_VALUE
 
-        # If progress is loaded and not None, use it (with type guard)
+        # OPTIMIZATION: Use pre-computed journey_progress if available
         if (
             progress_value is not NO_VALUE
             and progress_value is not None
             and isinstance(progress_value, JourneyProgress)
         ):
-            # Journey progress table has the position already computed
+            if at_station_code:
+                logger.debug(
+                    "at_station_detected_via_progress_path",
+                    train_id=journey.train_id,
+                    at_station_code=at_station_code,
+                    data_source=journey.data_source,
+                )
             return TrainPosition(
                 last_departed_station_code=progress_value.last_departed_station,
-                at_station_code=None,  # Progress doesn't track "at station" state
+                at_station_code=at_station_code,
                 next_station_code=progress_value.next_station,
                 between_stations=(
                     progress_value.last_departed_station is not None
                     and progress_value.next_station is not None
+                    and at_station_code is None
                 ),
             )
 
         # Fallback: Calculate from stops if progress not available.
-        # Guard against lazy-load in sync context — if stops weren't eagerly
-        # loaded, return empty position rather than triggering MissingGreenlet.
-        stops_value = state.attrs.stops.loaded_value if state else NO_VALUE
-        if stops_value is NO_VALUE or not journey.stops:
+        if not stops_available:
             return TrainPosition()
 
-        # Sort stops by sequence
         sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-        # Find last departed station and next station
         last_departed_station_code = None
-        at_station_code = None
         next_station_code = None
 
         for stop in sorted_stops:
             if stop.has_departed_station:
                 last_departed_station_code = stop.station_code
             else:
-                # This is the next station
                 next_station_code = stop.station_code
-
-                # Check if currently at this station (based on raw status)
-                if journey.data_source == "AMTRAK":
-                    # For Amtrak, "Station" means at the station
-                    if stop.raw_amtrak_status == "Station":
-                        at_station_code = stop.station_code
-                elif journey.data_source == "NJT":
-                    # For NJT, having a track assignment suggests at station
-                    if stop.track and not stop.has_departed_station:
-                        at_station_code = stop.station_code
-                # PATH/LIRR/MNR: GTFS-RT API doesn't provide at-station status,
-                # so we rely on has_departed_station only
-
                 break
 
-        # If no undeparted stops found, train may have completed journey
-        if not next_station_code and sorted_stops:
-            last_stop = sorted_stops[-1]
-            if last_stop.has_departed_station:
-                at_station_code = last_stop.station_code
+        if at_station_code:
+            logger.debug(
+                "at_station_detected_via_stops_path",
+                train_id=journey.train_id,
+                at_station_code=at_station_code,
+                data_source=journey.data_source,
+            )
 
         return TrainPosition(
             last_departed_station_code=last_departed_station_code,

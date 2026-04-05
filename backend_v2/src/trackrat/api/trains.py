@@ -36,7 +36,7 @@ from trackrat.models.api import (
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.api_cache import ApiCacheService
-from trackrat.services.departure import DepartureService
+from trackrat.services.departure import DepartureService, _detect_at_station
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
@@ -1040,40 +1040,20 @@ def calculate_train_position(journey: TrainJourney) -> TrainPosition:
     if not journey.stops:
         return TrainPosition()
 
-    # Sort stops by sequence
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-    # Find last departed station and next station
     last_departed_station_code = None
-    at_station_code = None
     next_station_code = None
 
     for stop in sorted_stops:
         if stop.has_departed_station:
             last_departed_station_code = stop.station_code
         else:
-            # This is the next station
             next_station_code = stop.station_code
-
-            # Check if currently at this station (based on raw status)
-            if journey.data_source == "AMTRAK":
-                # For Amtrak, "Station" means at the station
-                if stop.raw_amtrak_status == "Station":
-                    at_station_code = stop.station_code
-            elif journey.data_source == "NJT":
-                # For NJT, having a track assignment suggests at station
-                if stop.track and not stop.has_departed_station:
-                    at_station_code = stop.station_code
-            # PATH: Transiter API doesn't provide at-station status,
-            # so we rely on has_departed_station only
-
             break
 
-    # If no undeparted stops found, train may have completed journey
-    if not next_station_code and sorted_stops:
-        last_stop = sorted_stops[-1]
-        if last_stop.has_departed_station:
-            at_station_code = last_stop.station_code
+    # Use shared at-station detection logic (NJT track, Amtrak status, etc.)
+    at_station_code = _detect_at_station(journey)
 
     return TrainPosition(
         last_departed_station_code=last_departed_station_code,
