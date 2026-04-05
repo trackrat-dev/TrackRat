@@ -1038,6 +1038,7 @@ class TestServiceAlertTimeWindow:
         # Wednesday 2026-02-18 10:00 ET
         fake_wednesday = datetime(2026, 2, 18, 10, 0, 0)
         assert fake_wednesday.weekday() == 2, "Sanity check: 2026-02-18 is Wednesday"
+        fake_epoch = int(fake_wednesday.timestamp())
 
         _make_subscription(
             db_session,
@@ -1054,6 +1055,8 @@ class TestServiceAlertTimeWindow:
             data_source="SUBWAY",
             route_ids=["G"],
             header="G: Planned track work",
+            active_start=fake_epoch - 3600,
+            active_end=fake_epoch + 86400,
         )
         await db_session.flush()
 
@@ -1109,6 +1112,7 @@ class TestServiceAlertTimeWindow:
         # Wednesday 2026-02-18 12:00 ET (noon, inside 6AM-8PM window)
         fake_noon = datetime(2026, 2, 18, 12, 0, 0)
         assert fake_noon.weekday() == 2, "Sanity check: Wednesday"
+        fake_epoch = int(fake_noon.timestamp())
 
         _make_subscription(
             db_session,
@@ -1128,13 +1132,13 @@ class TestServiceAlertTimeWindow:
             data_source="SUBWAY",
             route_ids=["G"],
             header="G: Midday service change",
+            active_start=fake_epoch - 3600,
+            active_end=fake_epoch + 86400,
         )
         await db_session.flush()
 
         apns = _make_apns()
-        with patch(
-            "trackrat.services.alert_evaluator.now_et", return_value=fake_noon
-        ):
+        with patch("trackrat.services.alert_evaluator.now_et", return_value=fake_noon):
             count = await evaluate_service_alerts(db_session, apns)
 
         assert count == 1, "Service alerts inside time window should fire"
@@ -1145,6 +1149,7 @@ class TestServiceAlertTimeWindow:
         """Subscriptions without time window configured should always fire."""
         # Wednesday 2026-02-18 03:00 ET (3 AM)
         fake_3am = datetime(2026, 2, 18, 3, 0, 0)
+        fake_epoch = int(fake_3am.timestamp())
 
         _make_subscription(
             db_session,
@@ -1162,13 +1167,13 @@ class TestServiceAlertTimeWindow:
             data_source="SUBWAY",
             route_ids=["G"],
             header="G: Early morning service change",
+            active_start=fake_epoch - 3600,
+            active_end=fake_epoch + 86400,
         )
         await db_session.flush()
 
         apns = _make_apns()
-        with patch(
-            "trackrat.services.alert_evaluator.now_et", return_value=fake_3am
-        ):
+        with patch("trackrat.services.alert_evaluator.now_et", return_value=fake_3am):
             count = await evaluate_service_alerts(db_session, apns)
 
         assert count == 1, "No time window = always fire"
