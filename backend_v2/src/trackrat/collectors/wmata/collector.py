@@ -64,27 +64,38 @@ class WMATACollector:
         self.client = client  # Will be set from settings if None
         self._owns_client = client is None
 
+    def _ensure_client(self) -> bool:
+        """Ensure client is initialized from settings if needed.
+
+        Returns:
+            True if client is available, False if no API key configured.
+        """
+        if self.client is not None:
+            return True
+        from trackrat.settings import get_settings
+
+        settings = get_settings()
+        if not settings.wmata_api_key:
+            return False
+        self.client = WMATAClient(api_key=settings.wmata_api_key)
+        self._owns_client = True
+        return True
+
     async def run(self) -> dict[str, Any]:
         """Main entry point with session management.
 
         Returns:
             Collection results summary
         """
-        if self.client is None:
-            from trackrat.settings import get_settings
-
-            settings = get_settings()
-            if not settings.wmata_api_key:
-                logger.warning(
-                    "wmata_collection_skipped", reason="no API key configured"
-                )
-                return {
-                    "data_source": "WMATA",
-                    "error": "no API key",
-                    "arrivals_fetched": 0,
-                }
-            self.client = WMATAClient(api_key=settings.wmata_api_key)
-            self._owns_client = True
+        if not self._ensure_client():
+            logger.warning(
+                "wmata_collection_skipped", reason="no API key configured"
+            )
+            return {
+                "data_source": "WMATA",
+                "error": "no API key",
+                "arrivals_fetched": 0,
+            }
 
         try:
             async with get_session() as session:
@@ -107,7 +118,8 @@ class WMATACollector:
         Returns:
             Collection results summary
         """
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("WMATA client not initialized")
         logger.info("wmata_collection_started")
 
         # === API CALLS ===
@@ -166,7 +178,13 @@ class WMATACollector:
             session: Database session
             journey: Journey to update
         """
-        assert self.client is not None
+        if not self._ensure_client():
+            logger.warning(
+                "wmata_jit_skipped",
+                train_id=journey.train_id,
+                reason="no API key configured",
+            )
+            return
 
         await with_train_lock(
             journey.train_id or "",
@@ -180,7 +198,8 @@ class WMATACollector:
         self, session: AsyncSession, journey: TrainJourney
     ) -> None:
         """Inner JIT update logic, called under train lock."""
-        assert self.client is not None
+        if self.client is None:
+            raise RuntimeError("WMATA client not initialized")
 
         try:
             predictions = await self.client.get_all_predictions()
