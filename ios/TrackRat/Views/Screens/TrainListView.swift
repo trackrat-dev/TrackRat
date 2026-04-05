@@ -674,7 +674,7 @@ class TrainListViewModel: ObservableObject {
                 // Check for boarding status changes
                 for train in trains {
                     if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                        if !train.isBoarding(fromStationCode: fromStationCode) && newTrain.isBoarding(fromStationCode: fromStationCode) {
+                        if !train.isBoardingAtStation(fromStationCode) && newTrain.isBoardingAtStation(fromStationCode) {
                             UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         }
                     }
