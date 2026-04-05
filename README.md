@@ -2,9 +2,8 @@
 
 **Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North!**
 
-[![Webpage](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![App Store](https://img.shields.io/badge/App_Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/trackrat/id6746423610)
-[![Web App (beta)](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net/departures)
+[![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 
 TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments, and forecasts delays — all from a unified interface. It runs on iOS, Android (NOT FINISHED), the web (NOT FINISHED), and the backend is written in Python.
@@ -119,6 +118,7 @@ open TrackRat.xcodeproj
 | `TRACKRAT_NJT_API_TOKEN` | Yes | NJ Transit API token ([register here](https://raildata.njtransit.com)) |
 | `TRACKRAT_WMATA_API_KEY` | No | WMATA developer API key (for DC Metro) |
 | `TRACKRAT_METRA_API_TOKEN` | No | Metra GTFS-RT API token (for Chicago) |
+| `TRACKRAT_MBTA_API_KEY` | No | MBTA API key (optional, for higher rate limits) |
 | `APNS_TEAM_ID` | No | Apple Developer Team ID (for Live Activities) |
 | `APNS_KEY_ID` | No | Apple Push Notification key ID |
 | `APNS_AUTH_KEY_PATH` | No | Path to `.p8` auth key file |
@@ -150,7 +150,8 @@ TrackRat/
 │       ├── pages/       # Route pages
 │       ├── components/  # Shared UI components
 │       └── store/       # Zustand state management
-└── infra_v2/terraform/  # GCP infrastructure (Terraform)
+├── infra_v2/terraform/  # GCP backend infrastructure (Terraform)
+└── infra_v2/terraform-webpage/  # GCP webpage infrastructure (Terraform)
 ```
 
 ## Running Tests

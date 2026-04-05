@@ -182,6 +182,9 @@ bash scripts/scrub-staging-db.sh
 # Generate subway station data from GTFS
 python3 scripts/generate_subway_data.py
 
+# Generate route shape coordinates from GTFS for iOS map rendering
+cd backend_v2 && poetry run python3 ../scripts/generate_route_shapes.py
+
 # Create DB backup, restore, and train ML model
 bash scripts/create-and-restore-db-then-train-model.sh
 ```
@@ -223,7 +226,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 
 **Backend Data Collection (BART / MBTA - Unified GTFS-RT):**
 - Single unified collector per system runs every 4 minutes
-- Uses official GTFS-RT protobuf feeds (no auth required for BART; no auth for MBTA)
+- Uses official GTFS-RT protobuf feeds (no auth required for BART; optional API key for MBTA via `TRACKRAT_MBTA_API_KEY` or `MBTA_API_KEY` env var)
 - Shared logic from `mta_common.py` (stop merging, departure inference, completion detection)
 - BART does not use origin inference (too many terminals per line); MBTA does
 - GTFS static schedules backfill stops that GTFS-RT omits
@@ -500,8 +503,11 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /api/v2/trains/{train_id}          # Train details with all stops
 /api/v2/trains/{train_id}/history  # Historical train performance
 
+# Track Occupancy
+/api/v2/trains/stations/{station_code}/tracks/occupied  # Real-time track availability
+
 # Route Analytics
-/api/v2/routes/congestion          # Network congestion data (iOS only)
+/api/v2/routes/congestion          # Network congestion data
 /api/v2/routes/history             # Historical route performance
 /api/v2/routes/summary             # Natural language operations summary
 /api/v2/routes/segments/{from}/{to}/trains  # Segment train details
@@ -531,7 +537,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /admin/stats.json                  # Server usage statistics (JSON)
 
 # System Operations
-/api/v2/live-activities/register   # iOS Live Activity registration
+/api/v2/live-activities/register   # iOS Live Activity registration (POST)
+/api/v2/live-activities/{token}    # Unregister Live Activity (DELETE)
 /api/v2/validation/status          # Validation system status
 /api/v2/validation/results/{route}/{source}  # Route validation details
 /health                            # Health check

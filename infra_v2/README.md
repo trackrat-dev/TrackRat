@@ -289,10 +289,14 @@ infra_v2/
 ├── cloudbuild.yaml              # Production deployment pipeline
 ├── cloudbuild-staging.yaml      # Staging deployment pipeline
 ├── cloudbuild-terraform.yaml    # Terraform automation
+├── cloudbuild-webpage.yaml      # Webpage production deployment
+├── cloudbuild-webpage-staging.yaml  # Webpage staging deployment
 ├── functions/
 │   └── feedback_notifier/       # Slack notification function
 │       ├── main.py
 │       └── requirements.txt
+├── terraform-webpage/
+│   └── main.tf                  # Standalone webpage infrastructure (GCS, CDN)
 └── terraform/
     ├── main.tf                  # Provider and backend config
     ├── variables.tf             # Input variables

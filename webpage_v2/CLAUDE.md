@@ -125,6 +125,10 @@ webpage_v2/
 │   │   ├── HistoricalPerformance.tsx # Train history + track distribution
 │   │   ├── ServiceAlertBanner.tsx # MTA service alerts (collapsible)
 │   │   ├── TransferTripCard.tsx  # Multi-leg trip result card
+│   │   ├── RouteMap.tsx          # MapLibre GL route map
+│   │   ├── SimilarTrainsPanel.tsx # Similar trains suggestion panel
+│   │   ├── TrainDistributionChart.tsx # Track distribution chart
+│   │   ├── UpcomingTrains.tsx    # Upcoming trains widget
 │   │   ├── ErrorBoundary.tsx     # React error boundary
 │   │   └── ErrorMessage.tsx
 │   ├── pages/              # Route components
@@ -134,6 +138,8 @@ webpage_v2/
 │   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (predictions, history, alerts)
 │   │   ├── RouteStatusPage.tsx    # Route performance over time
 │   │   ├── NetworkStatusPage.tsx  # System-wide congestion overview
+│   │   ├── TripDetailsPage.tsx    # Multi-leg trip details view
+│   │   ├── TripHistoryPage.tsx    # Trip search history
 │   │   └── FavoritesPage.tsx      # Manage favorite stations
 │   ├── services/
 │   │   ├── api.ts          # API client with caching
@@ -141,13 +147,17 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   └── stations.ts     # Static station list (1500+ stations, 11 transit systems)
+│   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems)
+│   │   └── routeTopology.ts # Route topology for smart search and filtering
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/
 │       ├── date.ts         # date-fns wrappers
 │       ├── formatting.ts   # Status badge classes
-│       └── share.ts        # Web Share API helper + train URL builder
+│       ├── ratsense.ts     # AI journey predictions (RatSense)
+│       ├── routes.ts       # Route path helpers and URL builders
+│       ├── share.ts        # Web Share API helper + train URL builder
+│       └── trainSearch.ts  # Train search and filtering logic
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
@@ -160,9 +170,11 @@ webpage_v2/
 - `/departures` - Trip selection (origin + destination pickers, last route restore)
 - `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts)
 - `/train/:trainId/:from?/:to?` - Train details (predictions, history, alerts)
+- `/trip` - Multi-leg trip details view (transfer connections)
 - `/route/:from/:to` - Route performance history (7d/30d/90d)
 - `/status` - Network-wide congestion overview by system
 - `/favorites` - Manage favorite stations
+- `/history` - Trip search history
 
 **Base Path**: `/` (hosted at `trackrat.net`)
 
