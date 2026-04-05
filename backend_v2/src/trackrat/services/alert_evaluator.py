@@ -1136,6 +1136,15 @@ async def evaluate_service_alerts(
             if not sub.include_planned_work:
                 continue
 
+            # Day-of-week check (bitmask: Mon=1, Tue=2, ..., Sun=64)
+            day_bit = 1 << now.weekday()
+            if not ((sub.active_days or 0) & day_bit):
+                continue
+
+            # Time window check
+            if not _is_within_time_window(sub, now):
+                continue
+
             if sub.data_source not in SERVICE_ALERT_SOURCES:
                 continue
 
