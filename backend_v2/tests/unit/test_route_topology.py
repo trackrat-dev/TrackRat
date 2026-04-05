@@ -1687,3 +1687,86 @@ class TestCrossRouteSegmentResolution:
         assert not _is_segment_anomalous("NY", "BTN", "AMTRAK"), (
             "NY→BTN should not be anomalous now that Vermonter includes NY"
         )
+
+
+class TestCrossRouteChainResolution:
+    """Verify cross-route chain resolution for Amtrak segments spanning
+    multiple route definitions.
+
+    The chain resolver uses BFS through shared junction stations to
+    connect routes like NEC (NY→WS) + Southeast (WS→CLT) for a
+    segment like NY→CLT.
+    """
+
+    def test_ny_to_charlotte_chains_via_washington(self):
+        """NY→CLT should chain through WS (NEC + Southeast)."""
+        segments = get_canonical_segments("AMTRAK", "NY", "CLT")
+        assert len(segments) > 10
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "CLT"
+        # WS must be a junction in the chain
+        stations_visited = {s[0] for s in segments} | {segments[-1][1]}
+        assert "WS" in stations_visited, "Chain should pass through Washington (WS)"
+
+    def test_ny_to_new_orleans_chains_via_ws_and_clt(self):
+        """NY→NOL should chain through WS and CLT (NEC + Southeast + Crescent)."""
+        segments = get_canonical_segments("AMTRAK", "NY", "NOL")
+        assert len(segments) > 20
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "NOL"
+
+    def test_ny_to_miami_chains_through_southeast(self):
+        """NY→MIA should chain through the full southeast corridor."""
+        segments = get_canonical_segments("AMTRAK", "NY", "MIA")
+        assert len(segments) > 30
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "MIA"
+
+    def test_ny_to_jacksonville(self):
+        """NY→JAX should chain through southeast corridor."""
+        segments = get_canonical_segments("AMTRAK", "NY", "JAX")
+        assert len(segments) > 20
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "JAX"
+
+    def test_ws_to_miami(self):
+        """WS→MIA should chain without NEC trunk."""
+        segments = get_canonical_segments("AMTRAK", "WS", "MIA")
+        assert len(segments) > 15
+        assert segments[0][0] == "WS"
+        assert segments[-1][1] == "MIA"
+
+    def test_chain_not_used_when_single_route_exists(self):
+        """NY→TR should resolve via single route (NEC), not chain."""
+        segments = get_canonical_segments("AMTRAK", "NY", "TR")
+        assert len(segments) == 5
+        assert segments[0] == ("NY", "NP")
+        assert segments[-1] == ("PJ", "TR")
+
+    def test_chain_disabled_for_lirr(self):
+        """LIRR cross-branch segments should NOT chain — they're anomalous."""
+        segments = get_canonical_segments("LIRR", "LBH", "GCT")
+        # Should return as-is (single direct segment), not a chain
+        assert len(segments) == 1
+        assert segments[0] == ("LBH", "GCT")
+
+    def test_chain_disabled_for_subway(self):
+        """Subway cross-branch segments should NOT chain."""
+        segments = get_canonical_segments("SUBWAY", "SH11", "SG22")
+        assert len(segments) == 1
+        assert segments[0] == ("SH11", "SG22")
+
+    def test_chain_segments_are_consecutive(self):
+        """Chain segments must be consecutive (end of one = start of next)."""
+        segments = get_canonical_segments("AMTRAK", "NY", "MIA")
+        for i in range(len(segments) - 1):
+            assert segments[i][1] == segments[i + 1][0], (
+                f"Gap at index {i}: {segments[i][1]} != {segments[i+1][0]}"
+            )
+
+    def test_no_duplicate_segments_in_chain(self):
+        """Chain should not contain duplicate segments."""
+        segments = get_canonical_segments("AMTRAK", "NY", "NOL")
+        assert len(segments) == len(set(segments)), (
+            f"Duplicate segments found in chain: {[s for s in segments if segments.count(s) > 1]}"
+        )

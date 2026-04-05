@@ -12,6 +12,8 @@ Mirrors iOS RouteTopology.swift for consistency.
 
 from __future__ import annotations
 
+from collections import defaultdict, deque
+
 from dataclasses import dataclass
 
 from trackrat.config.stations.metra import METRA_ROUTE_STATIONS, METRA_ROUTES
@@ -4391,6 +4393,109 @@ def _resolve_to_topology_code(station_code: str, data_source: str) -> str:
     return station_code
 
 
+def _resolve_cross_route_chain(
+    data_source: str,
+    from_station: str,
+    to_station: str,
+    max_hops: int = 4,
+) -> list[tuple[str, str]] | None:
+    """
+    Find a chain of routes connecting from_station to to_station via
+    shared junction stations (stations that appear on 2+ routes).
+
+    Uses BFS to find the shortest chain. Returns the concatenated
+    canonical segment pairs, or None if no chain exists.
+
+    Example: NY→CLT via AMTRAK_NEC (NY→WS) + AMTRAK_SOUTHEAST (WS→CLT)
+    returns [(NY,NP),(NP,MP),...,(NCR,WS),(WS,ALX),...,(RGH,CLT)].
+    """
+    routes = get_routes_for_data_source(data_source)
+    if not routes:
+        return None
+
+    # Build station→routes index for fast lookup
+    station_routes: dict[str, list[Route]] = defaultdict(list)
+    for route in routes:
+        for station in route.stations:
+            station_routes[station].append(route)
+
+    # Quick check: both stations must be in at least one route
+    if from_station not in station_routes or to_station not in station_routes:
+        return None
+
+    # Identify junction stations (on 2+ routes) — these are the only
+    # useful transfer points. Also include from/to themselves.
+    junctions = {
+        s for s, r_list in station_routes.items() if len(r_list) >= 2
+    }
+    junctions.add(from_station)
+    junctions.add(to_station)
+
+    # BFS: (current_station, segments_so_far, routes_used)
+    queue: deque[tuple[str, list[tuple[str, str]], frozenset[str]]] = deque()
+
+    # Seed with all routes containing from_station
+    visited: set[str] = {from_station}
+    for route in station_routes[from_station]:
+        # Check if this route directly reaches to_station
+        if to_station in route._station_set:
+            expansion = route.expand_to_canonical_segments(from_station, to_station)
+            if expansion:
+                return expansion  # Single-route path found (shouldn't happen if caller checked)
+
+        # Expand to each junction reachable on this route
+        for junction in junctions:
+            if junction == from_station or junction not in route._station_set:
+                continue
+            expansion = route.expand_to_canonical_segments(from_station, junction)
+            if expansion:
+                queue.append((junction, expansion, frozenset({route.id})))
+
+    best: list[tuple[str, str]] | None = None
+
+    while queue:
+        current, segments, used_routes = queue.popleft()
+
+        # Prune: too many hops or already found a shorter path
+        if len(used_routes) >= max_hops:
+            continue
+        if best is not None and len(segments) >= len(best):
+            continue
+
+        if current in visited and current != from_station:
+            # Allow revisiting from_station (seeded above) but skip others
+            continue
+        visited.add(current)
+
+        for route in station_routes[current]:
+            if route.id in used_routes:
+                continue
+
+            # Check if this route reaches to_station
+            if to_station in route._station_set:
+                expansion = route.expand_to_canonical_segments(current, to_station)
+                if expansion:
+                    candidate = segments + expansion
+                    if best is None or len(candidate) < len(best):
+                        best = candidate
+                continue
+
+            # Otherwise chain through junctions on this route
+            next_used = used_routes | frozenset({route.id})
+            if len(next_used) >= max_hops:
+                continue
+            for junction in junctions:
+                if junction == current or junction in visited:
+                    continue
+                if junction not in route._station_set:
+                    continue
+                expansion = route.expand_to_canonical_segments(current, junction)
+                if expansion:
+                    queue.append((junction, segments + expansion, next_used))
+
+    return best
+
+
 def get_canonical_segments(
     data_source: str,
     from_station: str,
@@ -4453,5 +4558,15 @@ def get_canonical_segments(
     if best_canonical is not None:
         return best_canonical
 
-    # No matching route - return segment as-is
+    # No single route contains both stations — try chaining through
+    # shared junction stations (e.g. NY→CLT via NEC NY→WS + Southeast WS→CLT).
+    # Only enabled for AMTRAK where routes represent segments of longer train
+    # paths that a single service chains through. Other providers (LIRR, MNR,
+    # Subway, etc.) use routes for distinct branches that trains don't cross.
+    if data_source == "AMTRAK":
+        chain = _resolve_cross_route_chain(data_source, resolved_from, resolved_to)
+        if chain is not None:
+            return chain
+
+    # No matching route or chain - return segment as-is
     return [(from_station, to_station)]
