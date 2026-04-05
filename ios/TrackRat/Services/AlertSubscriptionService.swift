@@ -60,10 +60,14 @@ final class AlertSubscriptionService: ObservableObject {
         saveToDefaults()
     }
 
-    /// Find subscriptions matching a route context (by dataSource + station codes or lineId).
+    /// Find subscriptions matching a route context (by dataSource + station codes, lineId, or system-wide).
     func subscriptions(for context: RouteStatusContext) -> [RouteAlertSubscription] {
         subscriptions.filter { sub in
             guard sub.dataSource == context.dataSource else { return false }
+            // Match system-wide subscriptions when context has no line or stations
+            if sub.isSystemWide && context.lineId == nil && context.fromStationCode == nil {
+                return true
+            }
             // Match line subscriptions
             if let lineId = sub.lineId, lineId == context.lineId {
                 return true

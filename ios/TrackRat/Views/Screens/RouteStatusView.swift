@@ -79,14 +79,21 @@ struct RouteStatusView: View {
             }
             .task {
                 // Initialize draft subscription for alert config if not yet subscribed
-                if matchingSubscriptions.isEmpty && draftSubscription == nil,
-                   let from = context.fromStationCode, let to = context.toStationCode {
-                    draftSubscription = RouteAlertSubscription(
-                        dataSource: context.dataSource,
-                        fromStationCode: from,
-                        toStationCode: to,
-                        activeDays: 0
-                    )
+                if matchingSubscriptions.isEmpty && draftSubscription == nil {
+                    if let from = context.fromStationCode, let to = context.toStationCode {
+                        draftSubscription = RouteAlertSubscription(
+                            dataSource: context.dataSource,
+                            fromStationCode: from,
+                            toStationCode: to,
+                            activeDays: 0
+                        )
+                    } else if context.lineId == nil {
+                        // System-wide context
+                        draftSubscription = RouteAlertSubscription(
+                            dataSource: context.dataSource,
+                            activeDays: 0
+                        )
+                    }
                 }
                 await viewModel.loadData(initialPeriod: selectedHistoryPeriod)
             }
@@ -119,9 +126,14 @@ struct RouteStatusView: View {
 
     // MARK: - Alert Subscription Section
 
+    /// Whether this context represents a system-wide subscription (no line or stations).
+    private var isSystemWideContext: Bool {
+        context.lineId == nil && context.fromStationCode == nil && context.toStationCode == nil
+    }
+
     @ViewBuilder
     private var alertSubscriptionSection: some View {
-        if context.fromStationCode != nil && context.toStationCode != nil {
+        if context.fromStationCode != nil && context.toStationCode != nil || isSystemWideContext {
             AlertConfigurationSection(subscription: alertConfigBinding)
                 .onChange(of: alertConfigBinding.wrappedValue.activeDays) { _, newDays in
                     handleActiveDaysChange(newDays)
@@ -144,12 +156,18 @@ struct RouteStatusView: View {
             return Binding(
                 get: {
                     // Draft is initialized in .task; fallback should never be needed
-                    draftSubscription ?? RouteAlertSubscription(
-                        dataSource: context.dataSource,
-                        fromStationCode: context.fromStationCode ?? "",
-                        toStationCode: context.toStationCode ?? "",
-                        activeDays: 0
-                    )
+                    if let draft = draftSubscription {
+                        return draft
+                    } else if isSystemWideContext {
+                        return RouteAlertSubscription(dataSource: context.dataSource, activeDays: 0)
+                    } else {
+                        return RouteAlertSubscription(
+                            dataSource: context.dataSource,
+                            fromStationCode: context.fromStationCode ?? "",
+                            toStationCode: context.toStationCode ?? "",
+                            activeDays: 0
+                        )
+                    }
                 },
                 set: { draftSubscription = $0 }
             )
@@ -158,7 +176,12 @@ struct RouteStatusView: View {
 
     /// Handle active days changes: auto-subscribe when going non-zero, auto-unsubscribe when zero.
     private func handleActiveDaysChange(_ newDays: Int) {
-        guard let from = context.fromStationCode, let to = context.toStationCode else { return }
+        let from = context.fromStationCode
+        let to = context.toStationCode
+        let isSystemWide = isSystemWideContext
+
+        // Need either a station pair or system-wide context
+        guard (from != nil && to != nil) || isSystemWide else { return }
 
         if newDays > 0 && !isSubscribed {
             // Check freemium limit before auto-subscribing
@@ -169,30 +192,53 @@ struct RouteStatusView: View {
                 showingPaywall = true
                 return
             }
-            // Auto-subscribe — create single direction matching what user is viewing
-            let template = draftSubscription ?? RouteAlertSubscription(
-                dataSource: context.dataSource,
-                fromStationCode: from,
-                toStationCode: to,
-                activeDays: newDays
-            )
-            let sub = RouteAlertSubscription(
-                dataSource: template.dataSource,
-                fromStationCode: from,
-                toStationCode: to,
-                activeDays: newDays,
-                activeStartMinutes: template.activeStartMinutes,
-                activeEndMinutes: template.activeEndMinutes,
-                timezone: template.timezone,
-                delayThresholdMinutes: template.delayThresholdMinutes,
-                serviceThresholdPct: template.serviceThresholdPct,
-                cancellationThresholdPct: template.cancellationThresholdPct,
-                notifyCancellation: template.notifyCancellation,
-                notifyDelay: template.notifyDelay,
-                notifyRecovery: template.notifyRecovery,
-                digestTimeMinutes: template.digestTimeMinutes,
-                includePlannedWork: template.includePlannedWork
-            )
+            // Auto-subscribe
+            let sub: RouteAlertSubscription
+            if isSystemWide {
+                let template = draftSubscription ?? RouteAlertSubscription(
+                    dataSource: context.dataSource,
+                    activeDays: newDays
+                )
+                sub = RouteAlertSubscription(
+                    dataSource: template.dataSource,
+                    activeDays: newDays,
+                    activeStartMinutes: template.activeStartMinutes,
+                    activeEndMinutes: template.activeEndMinutes,
+                    timezone: template.timezone,
+                    delayThresholdMinutes: template.delayThresholdMinutes,
+                    serviceThresholdPct: template.serviceThresholdPct,
+                    cancellationThresholdPct: template.cancellationThresholdPct,
+                    notifyCancellation: template.notifyCancellation,
+                    notifyDelay: template.notifyDelay,
+                    notifyRecovery: template.notifyRecovery,
+                    digestTimeMinutes: template.digestTimeMinutes,
+                    includePlannedWork: template.includePlannedWork
+                )
+            } else {
+                let template = draftSubscription ?? RouteAlertSubscription(
+                    dataSource: context.dataSource,
+                    fromStationCode: from!,
+                    toStationCode: to!,
+                    activeDays: newDays
+                )
+                sub = RouteAlertSubscription(
+                    dataSource: template.dataSource,
+                    fromStationCode: from!,
+                    toStationCode: to!,
+                    activeDays: newDays,
+                    activeStartMinutes: template.activeStartMinutes,
+                    activeEndMinutes: template.activeEndMinutes,
+                    timezone: template.timezone,
+                    delayThresholdMinutes: template.delayThresholdMinutes,
+                    serviceThresholdPct: template.serviceThresholdPct,
+                    cancellationThresholdPct: template.cancellationThresholdPct,
+                    notifyCancellation: template.notifyCancellation,
+                    notifyDelay: template.notifyDelay,
+                    notifyRecovery: template.notifyRecovery,
+                    digestTimeMinutes: template.digestTimeMinutes,
+                    includePlannedWork: template.includePlannedWork
+                )
+            }
             alertService.addSubscriptions([sub])
             draftSubscription = nil
             alertService.syncIfPossible()
@@ -203,12 +249,19 @@ struct RouteStatusView: View {
                 alertService.removeSubscription(sub)
             }
             editedSubscriptions.removeAll()
-            draftSubscription = RouteAlertSubscription(
-                dataSource: context.dataSource,
-                fromStationCode: from,
-                toStationCode: to,
-                activeDays: 0
-            )
+            if isSystemWide {
+                draftSubscription = RouteAlertSubscription(
+                    dataSource: context.dataSource,
+                    activeDays: 0
+                )
+            } else {
+                draftSubscription = RouteAlertSubscription(
+                    dataSource: context.dataSource,
+                    fromStationCode: from!,
+                    toStationCode: to!,
+                    activeDays: 0
+                )
+            }
             alertService.syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
@@ -359,7 +412,7 @@ struct RouteStatusView: View {
 
     private var operationsSummarySection: some View {
         OperationsSummaryView(
-            scope: .route,
+            scope: isSystemWideContext ? .network : .route,
             fromStation: context.effectiveFromStation,
             toStation: context.effectiveToStation
         )
