@@ -157,7 +157,7 @@ fun TrainListItem()
 **Working:**
 - Map-based UI with congestion overlay
 - Bottom sheet gesture coordination
-- 6 main screens with navigation
+- 9 main screens with navigation
 - API integration (departures, details, predictions)
 - 30-second auto-refresh
 - Ongoing notifications
@@ -168,7 +168,6 @@ fun TrainListItem()
 - Push notifications (FCM)
 - Home screen widgets
 - Deep linking
-- Share functionality
 
 ---
 

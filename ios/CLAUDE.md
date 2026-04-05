@@ -27,7 +27,7 @@ SwiftUI app for tracking trains across 11 transit systems: NJ Transit, Amtrak, P
 TrackRat/
 ├── App/              # TrackRatApp.swift, AppState
 ├── Views/
-│   ├── Screens/      # 14 screen-level views
+│   ├── Screens/      # 16 screen-level views
 │   └── Components/   # 23 reusable UI components
 ├── Models/           # Data models, API responses, DeepLink, CompletedTrip
 ├── Services/         # 14 singleton services

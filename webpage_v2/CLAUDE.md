@@ -4,7 +4,7 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 5.5 + PWA (vite-plugin-pwa)
+- **Framework**: React 19.2 + TypeScript 6.0 + PWA (vite-plugin-pwa)
 - **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 4.2 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
@@ -40,7 +40,12 @@ API Service (fetch + cache)
 - **Keys**:
   - `trackrat:recentTrips` - last 10 trips, sorted by usage
   - `trackrat:favorites` - favorite stations, sorted by date added
+  - `trackrat:favoriteRoutes` - favorite routes
   - `trackrat:lastRoute` - last selected from/to pair (auto-restored on mount)
+  - `trackrat:systems` - enabled transit systems
+  - `trackrat:homeStation` - home station for quick access
+  - `trackrat:workStation` - work station for quick access
+  - `trackrat:tripHistory` - trip search history
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
 ## Design System
@@ -161,7 +166,7 @@ webpage_v2/
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
-└── tailwind.config.js     # Design system tokens
+└── src/index.css          # Design system tokens (Tailwind CSS 4 @theme)
 ```
 
 ## Routes
@@ -385,7 +390,7 @@ npm run test:watch  # Watch mode for development
 3. Use in component via `apiService.methodName()`
 
 ### Modify Design System
-1. Update `tailwind.config.js` for colors/spacing
+1. Update `src/index.css` `@theme` block for colors/spacing
 2. Update `src/components/Layout.tsx` for global styles
 3. No CSS files needed (Tailwind only)
 
