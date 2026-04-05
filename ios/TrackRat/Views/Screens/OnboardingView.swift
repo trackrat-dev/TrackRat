@@ -19,6 +19,7 @@ struct OnboardingView: View {
     @State private var showSystemSelection = true
     @State private var showBetaSystems = false
     @State private var showingPaywall = false
+    @State private var showingTrainSystemSettings = false
     @State private var showConfetti = false
     @State private var welcomeTextScale: CGFloat = 0.8
 
@@ -118,6 +119,16 @@ struct OnboardingView: View {
                 selectedStation: binding(for: stationBeingEdited),
                 disabledStation: disabledStation(for: stationBeingEdited),
                 selectedSystems: appState.selectedSystems,
+                showsInactiveSystemTips: true,
+                onInactiveStationSelected: { _ in
+                    showStationPicker = false
+
+                    if isRepeating {
+                        showingTrainSystemSettings = true
+                    } else {
+                        showSystemSelection = true
+                    }
+                },
                 onStationSelected: { station in
                     // Explicitly handle station assignment with proper state update
                     DispatchQueue.main.async {
@@ -140,6 +151,11 @@ struct OnboardingView: View {
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: .trainSystems)
+        }
+        .sheet(isPresented: $showingTrainSystemSettings) {
+            SettingsView(editTrainSystems: true)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 

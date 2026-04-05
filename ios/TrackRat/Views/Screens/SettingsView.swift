@@ -668,7 +668,11 @@ struct SettingsSection: View {
             StationPickerSheet(
                 selectedStation: $pickerStation,
                 disabledStation: nil,
-                selectedSystems: appState.selectedSystems
+                selectedSystems: appState.selectedSystems,
+                showsInactiveSystemTips: true,
+                onInactiveStationSelected: { _ in
+                    showStationPicker = false
+                }
             ) { station in
                 switch stationPickerRole {
                 case .home:

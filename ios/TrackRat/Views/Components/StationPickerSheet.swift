@@ -12,6 +12,8 @@ struct StationPickerSheet: View {
     @Binding var selectedStation: Station?
     let disabledStation: Station?  // Station that should be shown as disabled
     var selectedSystems: Set<TrainSystem>? = nil  // Optional: filter stations by selected systems
+    var showsInactiveSystemTips: Bool = false
+    var onInactiveStationSelected: ((Station) -> Void)? = nil
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -34,9 +36,20 @@ struct StationPickerSheet: View {
         return allStations
     }
 
-    /// Search results using ranked search (prefix > substring).
-    private var searchResults: [Station] {
-        guard !searchText.isEmpty else { return [] }
+    /// Search results grouped by whether the station belongs to an active system.
+    private var searchResults: (active: [Station], inactive: [Station]) {
+        guard !searchText.isEmpty else { return ([], []) }
+
+        if showsInactiveSystemTips,
+           let systems = selectedSystems,
+           !systems.isEmpty {
+            let grouped = Stations.searchGrouped(searchText, selectedSystems: systems)
+            return (
+                grouped.primary.compactMap { station(named: $0) },
+                grouped.other.compactMap { station(named: $0) }
+            )
+        }
+
         let q = searchText.lowercased()
         let stations = visibleStations
         let prefixMatches = stations.filter { $0.name.lowercased().hasPrefix(q) }
@@ -46,8 +59,9 @@ struct StationPickerSheet: View {
             ($0.name.localizedCaseInsensitiveContains(searchText) ||
              $0.code.localizedCaseInsensitiveContains(searchText))
         }
-            .sorted { $0.name < $1.name }
-        return Array((prefixMatches + substringMatches).prefix(20))
+        .sorted { $0.name < $1.name }
+
+        return (Array((prefixMatches + substringMatches).prefix(20)), [])
     }
 
     /// Stations grouped by system for the browse view (when search is empty).
@@ -114,6 +128,46 @@ struct StationPickerSheet: View {
         .listRowBackground(Color.clear)
     }
 
+    @ViewBuilder
+    private func inactiveSystemStationRow(_ station: Station) -> some View {
+        Button {
+            onInactiveStationSelected?(station)
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(station.name)
+                            .font(.headline)
+                            .foregroundColor(.white.opacity(0.7))
+
+                        if let system = Stations.primarySystem(forStationCode: station.code) {
+                            SystemBadge(system: system)
+                        }
+                    }
+
+                    Text("Edit your train systems to use this station")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.5))
+                }
+
+                Spacer()
+
+                if onInactiveStationSelected != nil {
+                    Image(systemName: "chevron.right")
+                        .foregroundColor(.white.opacity(0.35))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .listRowBackground(Color.clear)
+    }
+
+    private func station(named name: String) -> Station? {
+        guard let code = Stations.getStationCode(name) else { return nil }
+        return Station(code: code, name: name)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -156,8 +210,27 @@ struct StationPickerSheet: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                 } else {
-                    List(searchResults) { station in
-                        stationRow(station)
+                    List {
+                        ForEach(searchResults.active) { station in
+                            stationRow(station)
+                        }
+
+                        if !searchResults.inactive.isEmpty {
+                            Section {
+                                ForEach(searchResults.inactive) { station in
+                                    inactiveSystemStationRow(station)
+                                }
+                            } header: {
+                                Text("Other systems")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundColor(.white.opacity(0.6))
+                                    .textCase(nil)
+                            } footer: {
+                                Text("Edit your train systems to use these stations.")
+                                    .font(.caption2)
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+                        }
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
