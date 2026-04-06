@@ -2870,7 +2870,7 @@ class TestCollectJourneyDetailsFlushHandling:
 
         collector._get_journey_stops = AsyncMock(return_value=[])
         collector._update_stops_from_arrivals = AsyncMock(
-            side_effect=Exception("serialization failure")
+            side_effect=Exception("some API failure")
         )
 
         await collector._collect_journey_details_impl(session, journey)
@@ -2880,20 +2880,60 @@ class TestCollectJourneyDetailsFlushHandling:
 
     @pytest.mark.asyncio
     async def test_journey_expired_after_three_errors(self):
-        """Journey is marked expired after 3 consecutive errors."""
+        """Journey is marked expired after 3 consecutive non-DB errors."""
         collector = self._make_collector()
         session = AsyncMock(spec=AsyncSession)
         journey = self._make_journey(api_error_count=2)
 
         collector._get_journey_stops = AsyncMock(return_value=[])
         collector._update_stops_from_arrivals = AsyncMock(
-            side_effect=Exception("deadlock detected")
+            side_effect=Exception("API returned invalid response")
         )
 
         await collector._collect_journey_details_impl(session, journey)
 
         assert journey.api_error_count == 3
         assert journey.is_expired is True
+
+    @pytest.mark.asyncio
+    async def test_deadlock_error_propagates_for_retry(self):
+        """DB deadlock errors re-raise so retry_on_deadlock in JIT can retry them.
+
+        Codex Review feedback: the broad except must not swallow retriable DB
+        concurrency errors (deadlocks, serialization failures), because the JIT
+        flow wraps this in retry_on_deadlock which needs to see the exception.
+        """
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey()
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        collector._update_stops_from_arrivals = AsyncMock(
+            side_effect=Exception("deadlock detected")
+        )
+
+        with pytest.raises(Exception, match="deadlock detected"):
+            await collector._collect_journey_details_impl(session, journey)
+
+        # Error count should NOT be incremented — this is a DB issue, not an API error
+        assert journey.api_error_count == 0
+
+    @pytest.mark.asyncio
+    async def test_serialization_error_propagates_for_retry(self):
+        """DB serialization failures also re-raise for retry_on_deadlock."""
+        collector = self._make_collector()
+        session = AsyncMock(spec=AsyncSession)
+        journey = self._make_journey()
+
+        collector._get_journey_stops = AsyncMock(return_value=[])
+        # Simulate flush raising a serialization error
+        session.flush = AsyncMock(
+            side_effect=Exception("could not serialize access due to concurrent update")
+        )
+        collector._update_stops_from_arrivals = AsyncMock()
+
+        with pytest.raises(Exception, match="could not serialize access"):
+            await collector._collect_journey_details_impl(session, journey)
 
     @pytest.mark.asyncio
     async def test_error_tracking_flush_failure_handled(self):

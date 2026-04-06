@@ -28,7 +28,7 @@ from trackrat.config.stations import (
     get_path_route_and_stops,
     get_station_name,
 )
-from trackrat.db.engine import get_session
+from trackrat.db.engine import get_session, _is_postgresql_concurrency_error
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
@@ -1459,6 +1459,10 @@ class PathCollector:
             await session.flush()
 
         except Exception as e:
+            # Re-raise DB concurrency errors (deadlocks, serialization failures)
+            # so retry_on_deadlock in the JIT flow can catch and retry them.
+            if _is_postgresql_concurrency_error(e):
+                raise
             logger.error(
                 "path_journey_update_failed",
                 train_id=journey.train_id,
