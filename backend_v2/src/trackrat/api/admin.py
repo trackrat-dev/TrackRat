@@ -272,6 +272,108 @@ def _render_system_section(system_stats: dict[str, Any]) -> str:
 </table>"""
 
 
+def _format_action_name(action: str) -> str:
+    """Turn 'departure_searches' into 'Departure Searches'."""
+    return action.replace("_", " ").title()
+
+
+def _render_ios_summary_item(usage: dict[str, Any]) -> str:
+    """Render the iOS Users summary-bar item. Returns empty string if no data."""
+    if not usage:
+        return ""
+    users = usage.get("unique_users", 0)
+    actions = usage.get("total_actions", 0)
+    return (
+        f'<div class="summary-item">'
+        f'<div class="label">iOS Users</div>'
+        f'<div class="value" style="font-size:0.85em">'
+        f'{users} unique &middot; {actions} actions</div></div>'
+    )
+
+
+def _render_ios_usage_card(usage: dict[str, Any]) -> str:
+    """Render the iOS Usage analytics card. Returns empty string if no data."""
+    if not usage:
+        return ""
+
+    # -- Action breakdown table --
+    action_rows = ""
+    for entry in usage.get("actions", []):
+        action_rows += (
+            f"<tr><td>{_format_action_name(entry['action'])}</td>"
+            f"<td class='num'>{entry['count']}</td>"
+            f"<td class='num'>{entry['unique_users']}</td></tr>"
+        )
+
+    # -- Hourly activity sparkline --
+    hourly = usage.get("hourly_trend", [])
+    hourly_spark = ""
+    if hourly:
+        max_users = max((h["unique_users"] for h in hourly), default=1) or 1
+        bars = []
+        for h in hourly:
+            if h["unique_users"] == 0:
+                bars.append("<span class='spark-bar spark-bar-empty'></span>")
+            else:
+                height = max(2, int(20 * h["unique_users"] / max_users))
+                bars.append(
+                    f"<span class='spark-bar' style='height:{height}px;"
+                    f"background:#3fb950'></span>"
+                )
+        hourly_spark = (
+            f"<div style='margin:8px 0 12px'>"
+            f"<span style='font-size:0.8em;color:#8b949e'>Hourly unique users: </span>"
+            f"<span class='spark-container'>{''.join(bars)}</span></div>"
+        )
+
+    # -- Version distribution --
+    versions = usage.get("version_distribution", {})
+    version_parts = []
+    for ver, count in versions.items():
+        version_parts.append(f"{_esc(ver)}: {count}")
+    version_line = (
+        f"<div style='font-size:0.8em;color:#8b949e;margin-bottom:8px'>"
+        f"{' &middot; '.join(version_parts)}</div>"
+        if version_parts
+        else ""
+    )
+
+    # -- Top users (collapsible) --
+    top_users = usage.get("top_users", [])
+    top_users_section = ""
+    if top_users:
+        user_rows = ""
+        for u in top_users:
+            user_rows += (
+                f"<tr><td><code>{_esc(u['ip'])}</code></td>"
+                f"<td class='num'>{u['actions']}</td>"
+                f"<td>{_format_action_name(u['top_action'])}</td></tr>"
+            )
+        top_users_section = (
+            f"<h2 class='collapsible' onclick=\"this.classList.toggle('open');"
+            f"this.nextElementSibling.classList.toggle('open')\">"
+            f"Top iOS Users ({len(top_users)})</h2>"
+            f"<div class='collapsible-content'><table>"
+            f"<tr><th>IP</th><th class='num'>Actions</th><th>Primary Activity</th></tr>"
+            f"{user_rows}</table></div>"
+        )
+
+    empty_row = '<tr><td colspan="3">No iOS activity</td></tr>'
+    user_count = usage.get("unique_users", 0)
+    return (
+        f'<div class="card">'
+        f'<h2>iOS Usage ({user_count} users)</h2>'
+        f'{version_line}'
+        f'{hourly_spark}'
+        f'<table>'
+        f'<tr><th>Action</th><th class="num">Count</th><th class="num">Unique Users</th></tr>'
+        f'{action_rows if action_rows else empty_row}'
+        f'</table>'
+        f'{top_users_section}'
+        f'</div>'
+    )
+
+
 def _render_html(
     request_stats: dict[str, Any],
     db_stats: dict[str, Any],
@@ -307,6 +409,9 @@ def _render_html(
                     f"<span class='spark-bar' style='height:{height}px'></span>"
                 )
         sparkline_html = f"<span class='spark-container'>{''.join(bars)}</span>"
+
+    # -- iOS usage analytics --
+    usage = request_stats.get("usage_analytics", {})
 
     # -- Error rate --
     total_reqs = request_stats["total_requests"]
@@ -624,6 +729,7 @@ def _render_html(
     <div class="label">Registrations</div>
     <div class="value" style="font-size:0.85em">{reg_line}</div>
   </div>
+  {_render_ios_summary_item(usage)}
 </div>
 
 <div class="grid">
@@ -651,6 +757,7 @@ def _render_html(
 {train_detail_rows if train_detail_rows else "<tr><td colspan='4'>No views yet</td></tr>"}
 </table>
 </div>
+{_render_ios_usage_card(usage)}
 </div>
 
 <div>
