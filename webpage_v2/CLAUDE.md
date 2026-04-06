@@ -8,7 +8,7 @@
 - **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 4.2 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 7.13
+- **Routing**: React Router DOM 7.14
 - **Date Handling**: date-fns 4.1
 - **HTTP Client**: Native `fetch` (no axios)
 - **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)

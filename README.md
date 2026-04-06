@@ -6,7 +6,7 @@
 [![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 
-TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments, and forecasts delays — all from a unified interface. It runs on iOS, Android (NOT FINISHED), the web (NOT FINISHED), and the backend is written in Python.
+TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments, and forecasts delays — all from a unified interface. It runs on iOS, Android (NOT FINISHED), the [web](https://trackrat.net), and the backend is written in Python.
 
 ## Supported Transit Systems
 

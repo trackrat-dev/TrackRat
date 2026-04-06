@@ -159,7 +159,7 @@ GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL&hide_depart
 Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
-- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, or ALL
+- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, or ALL
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
@@ -372,7 +372,7 @@ Current test coverage:
 - ✅ **Core functionality**: Configuration, time utilities, database models
 - ✅ **Basic API functionality**: Health endpoints, app startup/shutdown
 - ⚠️ **Integration tests**: Require live database setup (some may need fixes)
-- 📝 **Note**: 4/4 critical tests pass, ensuring core system reliability
+- 📝 **Note**: Core test suite passes, ensuring system reliability
 
 ### Database Management
 ```bash
