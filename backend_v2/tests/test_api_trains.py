@@ -580,11 +580,11 @@ async def test_departures_cache_integration(client, db_session):
 
 @pytest.mark.asyncio
 async def test_jit_timeout_falls_through_to_gtfs_fallback(client):
-    """Test that a JIT refresh timeout returns stale data / GTFS fallback instead of hanging.
+    """Test that a JIT refresh timeout with no stale data falls through to GTFS fallback.
 
-    When jit_service.get_fresh_train() hangs (e.g. external transit API is unresponsive),
+    When jit_service.get_fresh_train() hangs and no existing journey exists in the DB,
     the asyncio.wait_for wrapper should cancel the call after 15 seconds and fall through
-    with journey=None, triggering the GTFS fallback path.
+    to the GTFS fallback path (since stale_journey is also None).
 
     This verifies the fix for issue #902: JIT refresh has no timeout.
     """

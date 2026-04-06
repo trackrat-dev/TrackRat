@@ -271,6 +271,19 @@ async def get_train_details(
     if data_source in (None, "NJT") and not is_amtrak_train(train_id):
         njt_client = NJTransitClient()
 
+    # Pre-fetch existing journey so we can fall back to stale data on timeout
+    stale_conditions = [
+        TrainJourney.train_id == train_id,
+        TrainJourney.journey_date == date,
+    ]
+    if data_source:
+        stale_conditions.append(TrainJourney.data_source == data_source)
+    stale_journey = await db.scalar(
+        select(TrainJourney)
+        .where(and_(*stale_conditions))
+        .options(selectinload(TrainJourney.stops))
+    )
+
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
             try:
@@ -285,9 +298,25 @@ async def get_train_details(
                     "jit_refresh_timeout",
                     train_id=train_id,
                     data_source=data_source,
+                    has_stale_data=stale_journey is not None,
                 )
                 await db.rollback()
-                journey = None
+                # Re-query after rollback: rollback expires all ORM objects,
+                # and async SQLAlchemy can't lazy-load (MissingGreenlet).
+                if stale_journey is not None:
+                    stmt = (
+                        select(TrainJourney)
+                        .where(
+                            TrainJourney.train_id == train_id,
+                            TrainJourney.journey_date == date,
+                        )
+                        .options(selectinload(TrainJourney.stops))
+                    )
+                    if data_source:
+                        stmt = stmt.where(TrainJourney.data_source == data_source)
+                    journey = await db.scalar(stmt)
+                else:
+                    journey = None
     finally:
         if njt_client:
             await njt_client.close()
