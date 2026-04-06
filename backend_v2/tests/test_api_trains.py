@@ -2,6 +2,8 @@
 Tests for train API endpoints.
 """
 
+import asyncio
+
 import pytest
 from datetime import datetime, date, timedelta
 from unittest.mock import patch, AsyncMock
@@ -574,3 +576,73 @@ async def test_departures_cache_integration(client, db_session):
         data1["metadata"]["from_station"]["code"]
         == data2["metadata"]["from_station"]["code"]
     )
+
+
+@pytest.mark.asyncio
+async def test_jit_timeout_falls_through_to_gtfs_fallback(client):
+    """Test that a JIT refresh timeout returns stale data / GTFS fallback instead of hanging.
+
+    When jit_service.get_fresh_train() hangs (e.g. external transit API is unresponsive),
+    the asyncio.wait_for wrapper should cancel the call after 15 seconds and fall through
+    with journey=None, triggering the GTFS fallback path.
+
+    This verifies the fix for issue #902: JIT refresh has no timeout.
+    """
+
+    async def _hang_forever(*args, **kwargs):
+        """Simulate a JIT call that never returns (external API hung)."""
+        await asyncio.sleep(3600)
+
+    with patch("trackrat.api.trains.JustInTimeUpdateService") as mock_jit:
+        mock_service = AsyncMock()
+        mock_service.get_fresh_train = _hang_forever
+        mock_jit.return_value.__aenter__.return_value = mock_service
+
+        # Also mock GTFS fallback returning None so we get a clean 404
+        with patch("trackrat.api.trains.GTFSService") as mock_gtfs:
+            mock_gtfs_service = AsyncMock()
+            mock_gtfs_service.get_train_details = AsyncMock(return_value=None)
+            mock_gtfs.return_value = mock_gtfs_service
+
+            # Patch asyncio.wait_for timeout to 0.1s so test runs quickly
+            original_wait_for = asyncio.wait_for
+
+            async def fast_wait_for(coro, *, timeout):
+                """Use a shorter timeout for testing."""
+                return await original_wait_for(coro, timeout=0.1)
+
+            with patch("trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for):
+                response = client.get("/api/v2/trains/9999")
+
+            # Should get 404 (train not found) — NOT a timeout/504/500
+            assert response.status_code == 404, (
+                f"Expected 404 (graceful fallback after JIT timeout), "
+                f"got {response.status_code}: {response.json()}"
+            )
+            assert "not found" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_jit_normal_returns_none_gracefully(client):
+    """Test that the asyncio.wait_for wrapper doesn't interfere with normal JIT operation.
+
+    When JIT returns None within the timeout, the endpoint should fall through to
+    the GTFS fallback path as before (no regression from adding the timeout wrapper).
+    """
+    with patch("trackrat.api.trains.JustInTimeUpdateService") as mock_jit:
+        mock_service = AsyncMock()
+        mock_service.get_fresh_train = AsyncMock(return_value=None)
+        mock_jit.return_value.__aenter__.return_value = mock_service
+
+        with patch("trackrat.api.trains.GTFSService") as mock_gtfs:
+            mock_gtfs_service = AsyncMock()
+            mock_gtfs_service.get_train_details = AsyncMock(return_value=None)
+            mock_gtfs.return_value = mock_gtfs_service
+
+            response = client.get("/api/v2/trains/1234")
+
+        # Should get 404 — the timeout wrapper should not interfere with normal None returns
+        assert response.status_code == 404, (
+            f"Expected 404 (normal JIT returning None), "
+            f"got {response.status_code}: {response.json()}"
+        )

@@ -273,9 +273,21 @@ async def get_train_details(
 
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
-            journey = await jit_service.get_fresh_train(
-                db, train_id, date, force_refresh=refresh, data_source=data_source
-            )
+            try:
+                journey = await asyncio.wait_for(
+                    jit_service.get_fresh_train(
+                        db, train_id, date, force_refresh=refresh, data_source=data_source
+                    ),
+                    timeout=15.0,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "jit_refresh_timeout",
+                    train_id=train_id,
+                    data_source=data_source,
+                )
+                await db.rollback()
+                journey = None
     finally:
         if njt_client:
             await njt_client.close()
