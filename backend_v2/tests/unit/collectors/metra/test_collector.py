@@ -401,17 +401,15 @@ class TestCollectorMissingToken:
     """
 
     @pytest.mark.asyncio
-    async def test_collect_returns_error_when_no_token(self):
-        """collect() returns error stats immediately when API token is empty."""
+    async def test_collect_raises_when_no_token(self):
+        """collect() raises RuntimeError when API token is empty so the scheduler records a failure."""
         client = MetraClient(api_token="")
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
-        result = await collector.collect(session)
+        with pytest.raises(RuntimeError, match="TRACKRAT_METRA_API_TOKEN not configured"):
+            await collector.collect(session)
 
-        assert result["error"] == "no API token"
-        assert result["total_arrivals"] == 0
-        assert result["discovered"] == 0
         # Session should not have been touched
         session.commit.assert_not_called()
 
