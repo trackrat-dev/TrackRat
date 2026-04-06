@@ -4,6 +4,7 @@ Route API endpoints for TrackRat V2.
 Provides route-based historical analysis independent of specific trains.
 """
 
+import asyncio
 import json as json_mod
 from datetime import datetime, timedelta
 from typing import Any
@@ -17,7 +18,7 @@ from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
 from trackrat.config.stations import expand_station_codes, get_station_name
-from trackrat.db.engine import get_db
+from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
     AggregateStats,
     CongestionMapResponse,
@@ -147,17 +148,27 @@ async def get_route_history(
                     db, "/api/v2/routes/history", cache_params
                 )
 
-    # Compute route history (shared with pre-warming in api_cache.py)
-    response = await compute_route_history(
-        db,
-        from_station,
-        to_station,
-        data_source,
-        days,
-        hours,
-        lines,
-        highlight_train=highlight_train,
-    )
+    # Compute route history in a dedicated session with a timeout.
+    # Uses a separate session so that if the query exceeds the timeout,
+    # the resulting transaction corruption doesn't poison the request's
+    # main session (which caused HTTP 500 via "Can't reconnect until
+    # invalid transaction is rolled back" for BART/MBTA).
+    # The 45s timeout fires before the 60s command_timeout in engine.py,
+    # giving clean cancellation instead of DB-level abort.
+    async with get_session() as history_db:
+        response = await asyncio.wait_for(
+            compute_route_history(
+                history_db,
+                from_station,
+                to_station,
+                data_source,
+                days,
+                hours,
+                lines,
+                highlight_train=highlight_train,
+            ),
+            timeout=45.0,
+        )
 
     # Store in cache (skip when highlight_train is provided)
     if not highlight_train:
