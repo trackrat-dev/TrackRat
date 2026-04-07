@@ -804,6 +804,67 @@ class TestUsageAnalytics:
             "feedback_submissions"
         ), f"Trip searches should come before feedback: {action_names}"
 
+    def test_actions_per_user(self):
+        """actions_per_user is average mapped actions divided by unique users."""
+        records = [
+            # User A: 3 mapped actions
+            self._make_record(client_ip="10.0.0.1"),
+            self._make_record(client_ip="10.0.0.1"),
+            self._make_record(client_ip="10.0.0.1"),
+            # User B: 1 mapped action
+            self._make_record(client_ip="10.0.0.2"),
+        ]
+        result = _compute_usage_analytics(records)
+        # 4 actions / 2 users = 2.0
+        assert result["actions_per_user"] == 2.0, (
+            f"Expected 2.0 actions/user, got {result['actions_per_user']}"
+        )
+
+    def test_top_routes_with_unique_users(self):
+        """top_routes shows routes searched by iOS users with unique user counts."""
+        records = [
+            self._make_record(client_ip="10.0.0.1"),  # has from_station/to_station=None
+            self._make_record(client_ip="10.0.0.2"),
+        ]
+        # Override from_station/to_station on the records
+        records[0].from_station = "NY"
+        records[0].to_station = "TR"
+        records[1].from_station = "NY"
+        records[1].to_station = "TR"
+
+        result = _compute_usage_analytics(records)
+        assert len(result["top_routes"]) == 1, (
+            f"Expected 1 route, got {result['top_routes']}"
+        )
+        route = result["top_routes"][0]
+        assert route["from"] == "NY"
+        assert route["to"] == "TR"
+        assert route["searches"] == 2
+        assert route["unique_users"] == 2
+
+    def test_top_routes_empty_without_station_params(self):
+        """top_routes is empty when records have no from/to station."""
+        records = [self._make_record()]  # from_station=None by default
+        result = _compute_usage_analytics(records)
+        assert result["top_routes"] == [], (
+            f"Expected empty top_routes, got {result['top_routes']}"
+        )
+
+    def test_zero_action_users_excluded_from_top_users(self):
+        """Users who only hit unmapped paths don't appear in top_users."""
+        records = [
+            self._make_record(path="/admin/stats", client_ip="10.0.0.1"),
+            self._make_record(
+                path="/api/v2/trains/departures", client_ip="10.0.0.2"
+            ),
+        ]
+        result = _compute_usage_analytics(records)
+        top_ips = [u["ip"] for u in result["top_users"]]
+        assert "10.0.0.1" not in top_ips, (
+            f"User with only unmapped paths should not be in top_users: {top_ips}"
+        )
+        assert "10.0.0.2" in top_ips
+
     def test_analytics_in_snapshot(self):
         """usage_analytics key appears in snapshot when iOS traffic exists."""
         stats = RequestStats()

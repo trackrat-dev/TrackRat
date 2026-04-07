@@ -283,11 +283,13 @@ def _render_ios_summary_item(usage: dict[str, Any]) -> str:
         return ""
     users = usage.get("unique_users", 0)
     actions = usage.get("total_actions", 0)
+    per_user = usage.get("actions_per_user", 0)
     return (
         f'<div class="summary-item">'
         f'<div class="label">iOS Users</div>'
         f'<div class="value" style="font-size:0.85em">'
-        f'{users} unique &middot; {actions} actions</div></div>'
+        f'{users} unique &middot; {actions} actions &middot; '
+        f'{per_user}/user</div></div>'
     )
 
 
@@ -338,6 +340,27 @@ def _render_ios_usage_card(usage: dict[str, Any]) -> str:
         else ""
     )
 
+    # -- Top routes by iOS users --
+    top_routes = usage.get("top_routes", [])
+    routes_section = ""
+    if top_routes:
+        route_rows = ""
+        for rt in top_routes:
+            from_name = get_station_name(rt["from"])
+            to_name = get_station_name(rt["to"])
+            route_rows += (
+                f"<tr><td>{_esc(from_name)}</td><td>{_esc(to_name)}</td>"
+                f"<td class='num'>{rt['searches']}</td>"
+                f"<td class='num'>{rt['unique_users']}</td></tr>"
+            )
+        routes_section = (
+            f"<h2 style='margin-top:16px'>Top Routes</h2>"
+            f"<table>"
+            f"<tr><th>From</th><th>To</th>"
+            f"<th class='num'>Searches</th><th class='num'>Unique Users</th></tr>"
+            f"{route_rows}</table>"
+        )
+
     # -- Top users (collapsible) --
     top_users = usage.get("top_users", [])
     top_users_section = ""
@@ -369,6 +392,7 @@ def _render_ios_usage_card(usage: dict[str, Any]) -> str:
         f'<tr><th>Action</th><th class="num">Count</th><th class="num">Unique Users</th></tr>'
         f'{action_rows if action_rows else empty_row}'
         f'</table>'
+        f'{routes_section}'
         f'{top_users_section}'
         f'</div>'
     )

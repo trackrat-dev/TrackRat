@@ -273,8 +273,7 @@ class RequestStats:
         if ios_only:
             result["ios_only"] = True
 
-        # iOS usage analytics (always computed from full record set,
-        # regardless of ios_only filter — the function filters internally)
+        # iOS usage analytics (respects time window; filters to iOS internally)
         usage_analytics = _compute_usage_analytics(records)
         if usage_analytics:
             result["usage_analytics"] = usage_analytics
@@ -428,17 +427,19 @@ def _compute_usage_analytics(
             }
         )
 
-    # Top users (by total action count, top 15)
+    # Top users (by total mapped action count, top 15; skip users with 0 actions)
     top_users: list[dict[str, Any]] = []
     for ip, actions_counter in sorted(
         ip_actions.items(), key=lambda x: x[1].total(), reverse=True
     )[:15]:
-        top_action = actions_counter.most_common(1)[0][0] if actions_counter else ""
+        total = actions_counter.total()
+        if total == 0:
+            continue
         top_users.append(
             {
                 "ip": ip,
-                "actions": actions_counter.total(),
-                "top_action": top_action,
+                "actions": total,
+                "top_action": actions_counter.most_common(1)[0][0],
             }
         )
 
@@ -447,10 +448,37 @@ def _compute_usage_analytics(
     for r in ios_records:
         version_counts[r.client_label] += 1
 
+    # Top routes searched by iOS users (with unique user counts)
+    route_ips: dict[tuple[str, str], set[str]] = defaultdict(set)
+    route_counts: Counter[tuple[str, str]] = Counter()
+    for r in ios_records:
+        if r.from_station and r.to_station:
+            key = (r.from_station, r.to_station)
+            route_ips[key].add(r.client_ip)
+            route_counts[key] += 1
+
+    top_routes: list[dict[str, Any]] = []
+    for (from_s, to_s), count in route_counts.most_common(10):
+        top_routes.append(
+            {
+                "from": from_s,
+                "to": to_s,
+                "searches": count,
+                "unique_users": len(route_ips[(from_s, to_s)]),
+            }
+        )
+
+    # Engagement: average mapped actions per user
+    unique_count = len(all_ips)
+    total_actions = sum(action_counts.values())
+    actions_per_user = round(total_actions / unique_count, 1) if unique_count else 0
+
     return {
-        "unique_users": len(all_ips),
-        "total_actions": sum(action_counts.values()),
+        "unique_users": unique_count,
+        "total_actions": total_actions,
+        "actions_per_user": actions_per_user,
         "actions": actions,
+        "top_routes": top_routes,
         "hourly_trend": hourly_trend,
         "top_users": top_users,
         "version_distribution": dict(version_counts.most_common()),
