@@ -543,4 +543,70 @@ class StationsTests: XCTestCase {
         XCTAssertEqual(group, expected,
                       "Metropolitan Av complex should include SG29 and SL10, got: \(group)")
     }
+
+    // MARK: - BART Station Coordinate Tests
+
+    func testBARTStationCoordinatesExist() {
+        // All 50 BART stations should have coordinates
+        let bartCodes = [
+            "BART_12TH", "BART_16TH", "BART_19TH", "BART_24TH", "BART_ANTC",
+            "BART_ASHB", "BART_BALB", "BART_BAYF", "BART_BERY", "BART_CAST",
+            "BART_CIVC", "BART_COLS", "BART_COLM", "BART_CONC", "BART_DALY",
+            "BART_DBRK", "BART_DELN", "BART_DUBL", "BART_EMBR", "BART_FRMT",
+            "BART_FTVL", "BART_GLEN", "BART_HAYW", "BART_LAFY", "BART_LAKE",
+            "BART_MCAR", "BART_MLBR", "BART_MLPT", "BART_MONT", "BART_NBRK",
+            "BART_NCON", "BART_OAKL", "BART_ORIN", "BART_PCTR", "BART_PHIL",
+            "BART_PITT", "BART_PLZA", "BART_POWL", "BART_RICH", "BART_ROCK",
+            "BART_SANL", "BART_SBRN", "BART_SFIA", "BART_SHAY", "BART_SSAN",
+            "BART_UCTY", "BART_WARM", "BART_WCRK", "BART_WDUB", "BART_WOAK",
+        ]
+
+        var missing: [String] = []
+        for code in bartCodes {
+            if Stations.getCoordinates(for: code) == nil {
+                missing.append(code)
+            }
+        }
+        XCTAssertTrue(missing.isEmpty,
+                      "BART stations missing coordinates: \(missing.joined(separator: ", "))")
+        XCTAssertEqual(bartCodes.count, 50, "Should check all 50 BART stations")
+    }
+
+    func testBARTCoordinatesInSanFranciscoBayArea() {
+        // All BART stations should be in the SF Bay Area (roughly 37.3-38.1 lat, -122.5 to -121.7 lon)
+        let bartCoords = Stations.stationCoordinates.filter { $0.key.hasPrefix("BART_") }
+        XCTAssertEqual(bartCoords.count, 50, "Should have exactly 50 BART station coordinates")
+
+        for (code, coord) in bartCoords {
+            XCTAssertGreaterThan(coord.latitude, 37.3,
+                                "\(code) latitude \(coord.latitude) is too far south for Bay Area")
+            XCTAssertLessThan(coord.latitude, 38.1,
+                              "\(code) latitude \(coord.latitude) is too far north for Bay Area")
+            XCTAssertGreaterThan(coord.longitude, -122.5,
+                                "\(code) longitude \(coord.longitude) is too far west for Bay Area")
+            XCTAssertLessThan(coord.longitude, -121.7,
+                              "\(code) longitude \(coord.longitude) is too far east for Bay Area")
+        }
+    }
+
+    func testBARTKeyStationCoordinates() {
+        // Verify specific well-known BART stations have correct coordinates
+        guard let embr = Stations.getCoordinates(for: "BART_EMBR") else {
+            XCTFail("Embarcadero (BART_EMBR) should have coordinates")
+            return
+        }
+        XCTAssertEqual(embr.latitude, 37.792762, accuracy: 0.001,
+                       "Embarcadero latitude should be ~37.793")
+        XCTAssertEqual(embr.longitude, -122.397037, accuracy: 0.001,
+                       "Embarcadero longitude should be ~-122.397")
+
+        guard let sfia = Stations.getCoordinates(for: "BART_SFIA") else {
+            XCTFail("SFO Airport (BART_SFIA) should have coordinates")
+            return
+        }
+        XCTAssertEqual(sfia.latitude, 37.616091, accuracy: 0.001,
+                       "SFO Airport latitude should be ~37.616")
+        XCTAssertEqual(sfia.longitude, -122.391954, accuracy: 0.001,
+                       "SFO Airport longitude should be ~-122.392")
+    }
 }
