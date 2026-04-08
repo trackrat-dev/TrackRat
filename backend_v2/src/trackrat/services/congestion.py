@@ -401,7 +401,13 @@ class CongestionAnalyzer:
             WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
         ),
         segment_data AS (
-            -- Calculate segment transit times from paired stops
+            -- Calculate segment transit times from paired stops.
+            -- Only use real-time data (actual/updated) for transit time calculation.
+            -- Scheduled times are deliberately excluded from the COALESCE chains
+            -- to avoid producing misleading "on-time" congestion factors when a
+            -- train is delayed but we have no real-time data for a stop.
+            -- Scheduled times are still used separately for the baseline
+            -- (scheduled_minutes) against which congestion factor is computed.
             SELECT
                 sp.from_station,
                 sp.to_station,
@@ -417,10 +423,10 @@ class CongestionAnalyzer:
                 -- provider APIs, filling gaps where actual times are NULL
                 -- (e.g. NJT stops the train hasn't reached yet).
                 EXTRACT(EPOCH FROM (
-                    COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) -
-                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure)
+                    COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
+                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                 )) / 60.0 as actual_minutes,
-                -- Calculate scheduled transit time
+                -- Calculate scheduled transit time (used as baseline for congestion factor)
                 CASE
                     WHEN sp.from_scheduled_departure IS NOT NULL
                      AND sp.to_scheduled_arrival IS NOT NULL
@@ -431,20 +437,20 @@ class CongestionAnalyzer:
                     ELSE NULL
                 END as scheduled_minutes,
                 -- Track when this segment departed for recency sorting
-                COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) as departure_time
+                COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) as departure_time
             FROM train_journeys tj
             JOIN stop_pairs sp ON sp.journey_id = tj.id
             WHERE
                 -- LEAD returns NULL for last stop in journey (no next stop)
                 sp.to_station IS NOT NULL
                 -- Within time window
-                AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) >= :cutoff_time
-                -- Valid times: need some departure time and some arrival time
-                AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) IS NOT NULL
-                AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) IS NOT NULL
+                AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
+                -- Valid times: need some real-time departure and arrival time
+                AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) IS NOT NULL
+                AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) IS NOT NULL
                 -- Ensure arrival is after departure (positive transit time)
-                AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) >
-                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure)
+                AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) >
+                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
         ),
         segment_with_recency AS (
             -- Add recency window for efficient filtering
@@ -717,7 +723,9 @@ class CongestionAnalyzer:
                 WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
-                -- Calculate individual train segments between adjacent stops
+                -- Calculate individual train segments between adjacent stops.
+                -- Only real-time data (actual/updated) used; scheduled times excluded
+                -- to avoid misleading congestion factors for unobserved stops.
                 SELECT
                     sp.from_station,
                     sp.to_station,
@@ -726,17 +734,17 @@ class CongestionAnalyzer:
                     tj.train_id,
                     tj.journey_date,
                     -- Timing data: fall back through updated (live estimate) then
-                    -- actual_arrival (MTA intermediate stops) then scheduled
-                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) as departure_time,
-                    COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) as arrival_time,
+                    -- actual_arrival (MTA intermediate stops). No scheduled fallback.
+                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) as departure_time,
+                    COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) as arrival_time,
                     sp.from_scheduled_departure as scheduled_departure,
                     sp.to_scheduled_arrival as scheduled_arrival,
                     -- Calculate actual transit time in minutes
                     EXTRACT(EPOCH FROM (
-                        COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) -
-                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure)
+                        COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
+                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                     )) / 60.0 as actual_minutes,
-                    -- Calculate scheduled transit time
+                    -- Calculate scheduled transit time (baseline for congestion factor)
                     CASE
                         WHEN sp.from_scheduled_departure IS NOT NULL
                          AND sp.to_scheduled_arrival IS NOT NULL
@@ -751,15 +759,15 @@ class CongestionAnalyzer:
                 WHERE
                     sp.to_station IS NOT NULL
                     -- Within time window
-                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) >= :cutoff_time
+                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
                     -- Active journeys only (cancelled trains handled separately)
                     AND NOT tj.is_cancelled
-                    -- Valid times: need some departure and arrival time
-                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) IS NOT NULL
-                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) IS NOT NULL
+                    -- Valid times: need real-time departure and arrival time
+                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) IS NOT NULL
+                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) IS NOT NULL
                     -- Ensure arrival is after departure (positive transit time)
-                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) >
-                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure)
+                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) >
+                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
             ),
             ranked_segments AS (
                 -- Rank segments by recency within each route
@@ -822,7 +830,9 @@ class CongestionAnalyzer:
                 WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
             ),
             segment_data AS (
-                -- Calculate individual train segments between adjacent stops
+                -- Calculate individual train segments between adjacent stops.
+                -- Only real-time data (actual/updated) used; scheduled times excluded
+                -- to avoid misleading congestion factors for unobserved stops.
                 SELECT
                     sp.from_station,
                     sp.to_station,
@@ -831,17 +841,17 @@ class CongestionAnalyzer:
                     tj.train_id,
                     tj.journey_date,
                     -- Timing data: fall back through updated (live estimate) then
-                    -- actual_arrival (MTA intermediate stops) then scheduled
-                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) as departure_time,
-                    COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) as arrival_time,
+                    -- actual_arrival (MTA intermediate stops). No scheduled fallback.
+                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) as departure_time,
+                    COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) as arrival_time,
                     sp.from_scheduled_departure as scheduled_departure,
                     sp.to_scheduled_arrival as scheduled_arrival,
                     -- Calculate actual transit time in minutes
                     EXTRACT(EPOCH FROM (
-                        COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) -
-                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure)
+                        COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
+                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                     )) / 60.0 as actual_minutes,
-                    -- Calculate scheduled transit time
+                    -- Calculate scheduled transit time (baseline for congestion factor)
                     CASE
                         WHEN sp.from_scheduled_departure IS NOT NULL
                          AND sp.to_scheduled_arrival IS NOT NULL
@@ -856,16 +866,16 @@ class CongestionAnalyzer:
                 WHERE
                     sp.to_station IS NOT NULL
                     -- Within time window
-                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) >= :cutoff_time
+                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
                     -- Active journeys only
                     AND NOT tj.is_cancelled
-                    -- Valid times: need some departure and arrival time
-                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure) IS NOT NULL
-                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) IS NOT NULL
+                    -- Valid times: need real-time departure and arrival time
+                    AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) IS NOT NULL
+                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) IS NOT NULL
                     -- Valid positive transit times
                     AND EXTRACT(EPOCH FROM (
-                        COALESCE(sp.to_actual_arrival, sp.to_updated_arrival, sp.to_scheduled_arrival) -
-                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival, sp.from_scheduled_departure)
+                        COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
+                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                     )) > 0
             )
             SELECT
@@ -1024,23 +1034,24 @@ class CongestionAnalyzer:
                 from_stop = sorted_stops[i]
                 to_stop = sorted_stops[i + 1]
 
-                # Skip if missing critical data
-                # Fall through actual -> updated (live estimate) -> scheduled
+                # Skip if missing real-time data. Only use actual/updated (live
+                # estimates), never scheduled — scheduled times would produce
+                # misleading "on-time" congestion factors for delayed trains.
                 if not all(
                     [
                         from_stop.station_code,
                         to_stop.station_code,
-                        from_stop.actual_departure or from_stop.updated_departure or from_stop.scheduled_departure,
-                        to_stop.actual_arrival or to_stop.updated_arrival or to_stop.scheduled_arrival,
+                        from_stop.actual_departure or from_stop.updated_departure,
+                        to_stop.actual_arrival or to_stop.updated_arrival,
                     ]
                 ):
                     continue
 
-                # Use actual times when available, fall back to updated (live estimate), then scheduled
+                # Use actual times when available, fall back to updated (live estimate)
                 departure_time = (
-                    from_stop.actual_departure or from_stop.updated_departure or from_stop.scheduled_departure
+                    from_stop.actual_departure or from_stop.updated_departure
                 )
-                arrival_time = to_stop.actual_arrival or to_stop.updated_arrival or to_stop.scheduled_arrival
+                arrival_time = to_stop.actual_arrival or to_stop.updated_arrival
 
                 if not departure_time or not arrival_time:
                     continue
