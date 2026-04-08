@@ -357,19 +357,33 @@ class ApiCacheService:
             if s.from_station != "SAN" and s.to_station != "SAN"
         ]
 
-        # Extract train positions from journeys (same logic as routes.py)
+        # Extract train positions from journeys (same logic as routes.py):
+        # deduplicate by (train_id, data_source) and skip empty positions.
+        from trackrat.models.api import TrainLocationData
+
         train_positions = []
+        seen_trains: set[tuple[str, str]] = set()
         for journey in journeys:
             if journey.is_cancelled:
+                continue
+            key = (journey.train_id, journey.data_source)
+            if key in seen_trains:
                 continue
 
             position = self.departure_service._calculate_train_position(journey)
 
+            # Skip trains with no position data at all
+            if (
+                not position.last_departed_station_code
+                and not position.at_station_code
+                and not position.next_station_code
+            ):
+                continue
+            seen_trains.add(key)
+
             journey_percent = None
             if journey.progress:
                 journey_percent = journey.progress.journey_percent
-
-            from trackrat.models.api import TrainLocationData
 
             location_data = TrainLocationData(
                 train_id=journey.train_id,
