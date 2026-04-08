@@ -99,10 +99,13 @@ class CongestionAnalyzer:
             db, time_window_hours, data_source
         )
 
-        # Load journeys with minimal data - we'll get current positions separately
-        # Only load active journeys (not cancelled, expired, or completed)
+        # Load journeys with minimal data - we'll get current positions separately.
+        # Only load OBSERVED active journeys. SCHEDULED trains have no position
+        # data (no actual_departure on any stop) and would produce all-null
+        # entries in the train_positions response.
         conditions = [
             TrainJourney.last_updated_at >= cutoff_time,
+            TrainJourney.observation_type == "OBSERVED",
             TrainJourney.is_cancelled.is_not(True),
             TrainJourney.is_expired.is_not(True),
             TrainJourney.is_completed.is_not(True),

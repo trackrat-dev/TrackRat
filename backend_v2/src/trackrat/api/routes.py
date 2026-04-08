@@ -733,13 +733,26 @@ async def _compute_and_cache_single_provider(
         if s.from_station != "SAN" and s.to_station != "SAN"
     ]
 
-    # Build train positions
+    # Build train positions, deduplicating by (train_id, data_source) and
+    # skipping entries with no position data (e.g. trains not yet departed).
     departure_service = DepartureService()
     train_positions = []
+    seen_trains: set[tuple[str, str]] = set()
     for journey in journeys:
         if journey.is_cancelled:
             continue
+        key = (journey.train_id, journey.data_source)
+        if key in seen_trains:
+            continue
         position = departure_service._calculate_train_position(journey)
+        # Skip trains with no position data at all
+        if (
+            not position.last_departed_station_code
+            and not position.at_station_code
+            and not position.next_station_code
+        ):
+            continue
+        seen_trains.add(key)
         journey_percent = None
         if journey.progress:
             journey_percent = journey.progress.journey_percent
@@ -980,15 +993,29 @@ async def get_route_congestion(
         if s.from_station != "SAN" and s.to_station != "SAN"
     ]
 
-    # Extract train positions from journeys
+    # Extract train positions from journeys, deduplicating by (train_id, data_source)
+    # and skipping entries with no position data.
     departure_service = DepartureService()
     train_positions = []
+    seen_trains: set[tuple[str, str]] = set()
 
     for journey in journeys:
         if journey.is_cancelled:
             continue
+        key = (journey.train_id, journey.data_source)
+        if key in seen_trains:
+            continue
 
         position = departure_service._calculate_train_position(journey)
+
+        # Skip trains with no position data at all
+        if (
+            not position.last_departed_station_code
+            and not position.at_station_code
+            and not position.next_station_code
+        ):
+            continue
+        seen_trains.add(key)
 
         journey_percent = None
         if journey.progress:
