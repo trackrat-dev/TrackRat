@@ -91,14 +91,18 @@ class TestBulkRefreshEmptyStops:
         stale_scalars.unique.return_value.all.return_value = [journey]
         stale_result.scalars.return_value = stale_scalars
 
+        # Execute call sequence inside _ensure_fresh_station_data:
+        #   1. _do_bulk_refresh → db.execute(select TrainJourney) = bulk journey query
+        #   2. second pass → db.execute(select TrainJourney) = remaining stale query
+        # (needs_refresh uses db.scalar, not db.execute)
         execute_call_count = 0
 
         async def mock_execute(stmt, *args, **kwargs):
             nonlocal execute_call_count
             execute_call_count += 1
-            if execute_call_count == 2:
+            if execute_call_count == 1:
                 return journey_result
-            if execute_call_count == 3:
+            if execute_call_count == 2:
                 return stale_result
             empty_result = Mock()
             empty_scalars = Mock()
@@ -199,12 +203,13 @@ class TestBulkRefreshEmptyStops:
         journey_scalars.all.return_value = [journey]
         journey_result.scalars.return_value = journey_scalars
 
+        # Execute call sequence: call 1 = bulk journey query inside _do_bulk_refresh
         execute_call_count = 0
 
         async def mock_execute(stmt, *args, **kwargs):
             nonlocal execute_call_count
             execute_call_count += 1
-            if execute_call_count == 2:
+            if execute_call_count == 1:
                 return journey_result
             empty_result = Mock()
             empty_scalars = Mock()
