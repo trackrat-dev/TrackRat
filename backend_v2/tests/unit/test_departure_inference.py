@@ -38,6 +38,13 @@ class TestDepartureInference:
 
         session = AsyncMock(spec=AsyncSession)
 
+        # Mock dialect detection for INSERT ON CONFLICT DO NOTHING
+        mock_dialect = Mock()
+        mock_dialect.name = "postgresql"
+        mock_bind = Mock()
+        mock_bind.dialect = mock_dialect
+        session.bind = mock_bind
+
         # Mock the result object that SQLAlchemy returns
         mock_result = Mock()
         # Handle the full chain: result.scalars().unique().all()

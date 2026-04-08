@@ -52,13 +52,9 @@ class TestBulkRefreshEmptyStops:
     ):
         """When bulk getTrainSchedule returns a train with STOPS=[], the train
         must remain stale so the second-pass getTrainStopList refresh picks it up.
-
-        This prevents the infinite loop where every 60s JIT fires, marks the train
-        fresh without data, and the fallback never kicks in.
         """
         stale_time = now_et() - timedelta(minutes=5)
 
-        # Create a journey that is stale (last_updated_at 5 minutes ago)
         journey = TrainJourney()
         journey.id = 1
         journey.train_id = "3893"
@@ -77,7 +73,6 @@ class TestBulkRefreshEmptyStops:
                 "TRAIN_ID": "3893",
                 "DESTINATION": "Trenton",
                 "BACKCOLOR": "#FF6600 ",
-                # No STOPS key — NJT API intermittency
             }
         ]
 
@@ -90,27 +85,21 @@ class TestBulkRefreshEmptyStops:
         journey_scalars.all.return_value = [journey]
         journey_result.scalars.return_value = journey_scalars
 
-        # Second-pass stale query should also return our journey
-        # (because it's still stale after bulk refresh with empty STOPS)
+        # Second-pass stale query
         stale_result = Mock()
         stale_scalars = Mock()
         stale_scalars.unique.return_value.all.return_value = [journey]
         stale_result.scalars.return_value = stale_scalars
 
-        # Track which execute calls return which results
         execute_call_count = 0
 
         async def mock_execute(stmt, *args, **kwargs):
             nonlocal execute_call_count
             execute_call_count += 1
-            # First execute: stale check query
-            # Second execute: bulk journey query
             if execute_call_count == 2:
                 return journey_result
-            # Third execute: second-pass stale query
             if execute_call_count == 3:
                 return stale_result
-            # Default: empty result
             empty_result = Mock()
             empty_scalars = Mock()
             empty_scalars.unique.return_value.all.return_value = []
@@ -121,12 +110,18 @@ class TestBulkRefreshEmptyStops:
 
         mock_session.execute = AsyncMock(side_effect=mock_execute)
 
+        async def mock_retry_on_deadlock(db, func):
+            return await func()
+
         with (
             patch("trackrat.services.departure.NJTransitClient") as mock_njt,
             patch(
                 "trackrat.services.departure.NJTJourneyCollector"
-            ) as mock_collector_class,
-            patch("trackrat.services.departure.retry_on_deadlock") as mock_retry,
+            ),
+            patch(
+                "trackrat.services.departure.retry_on_deadlock",
+                side_effect=mock_retry_on_deadlock,
+            ),
         ):
             mock_client = AsyncMock()
             mock_client.get_train_schedule_with_stops = AsyncMock(
@@ -134,13 +129,6 @@ class TestBulkRefreshEmptyStops:
             )
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
-
-            # retry_on_deadlock should call the function directly
-            mock_retry.side_effect = lambda db, func: func()
-
-            mock_collector = AsyncMock()
-            mock_collector.collect_journey_details = AsyncMock()
-            mock_collector_class.return_value = mock_collector
 
             await service._ensure_fresh_station_data(
                 mock_session,
@@ -157,14 +145,14 @@ class TestBulkRefreshEmptyStops:
             )
 
             # update_count SHOULD be incremented (tracks refresh attempts)
-            assert journey.update_count == 1, (
-                f"update_count should be 1 (attempt counted), got {journey.update_count}"
-            )
+            assert (
+                journey.update_count == 1
+            ), f"update_count should be 1 (attempt counted), got {journey.update_count}"
 
             # has_complete_journey should NOT be set
-            assert not journey.has_complete_journey, (
-                "has_complete_journey should remain False when STOPS is empty"
-            )
+            assert (
+                not journey.has_complete_journey
+            ), "has_complete_journey should remain False when STOPS is empty"
 
     @pytest.mark.asyncio
     async def test_nonempty_stops_marks_fresh(self, service, mock_session):
@@ -230,12 +218,16 @@ class TestBulkRefreshEmptyStops:
 
         mock_session.execute = AsyncMock(side_effect=mock_execute)
 
+        async def mock_retry_on_deadlock(db, func):
+            return await func()
+
         with (
             patch("trackrat.services.departure.NJTransitClient") as mock_njt,
+            patch("trackrat.services.departure.NJTJourneyCollector"),
             patch(
-                "trackrat.services.departure.NJTJourneyCollector"
-            ) as mock_collector_class,
-            patch("trackrat.services.departure.retry_on_deadlock") as mock_retry,
+                "trackrat.services.departure.retry_on_deadlock",
+                side_effect=mock_retry_on_deadlock,
+            ),
             patch.object(
                 service,
                 "_update_stops_from_embedded_data",
@@ -248,8 +240,6 @@ class TestBulkRefreshEmptyStops:
             )
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
-
-            mock_retry.side_effect = lambda db, func: func()
 
             await service._ensure_fresh_station_data(
                 mock_session,

@@ -100,6 +100,13 @@ async def test_api_error_count_reset_on_success():
     session.add = Mock()  # session.add is synchronous, not async
     session.delete = AsyncMock()  # session.delete is async in newer SQLAlchemy
 
+    # Mock dialect detection for INSERT ON CONFLICT DO NOTHING
+    mock_dialect = Mock()
+    mock_dialect.name = "postgresql"
+    mock_bind = Mock()
+    mock_bind.dialect = mock_dialect
+    session.bind = mock_bind
+
     # Mock for multiple session.execute calls - need to handle many calls for stops, deletes, etc.
     mock_result_generic = AsyncMock()
     mock_result_generic.scalar = AsyncMock(return_value=None)
