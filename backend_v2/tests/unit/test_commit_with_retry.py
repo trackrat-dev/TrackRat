@@ -119,9 +119,10 @@ def test_rollback_called_before_each_retry(mock_sleep):
 
     commit_with_retry(session)
 
-    assert call_order == ["rollback", "sleep(0.5)"], (
-        f"Expected rollback before sleep, got: {call_order}"
-    )
+    assert call_order == [
+        "rollback",
+        "sleep(0.5)",
+    ], f"Expected rollback before sleep, got: {call_order}"
 
 
 @patch("trackrat.utils.scheduler_utils.time.sleep")

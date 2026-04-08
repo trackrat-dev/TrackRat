@@ -49,8 +49,12 @@ async def test_prefetched_data_skips_api_call():
     # Mock internal methods to prevent them from running.
     # We only care about whether the API call is made or skipped.
     with (
-        patch.object(collector, "_is_same_journey", new_callable=AsyncMock, return_value=True),
-        patch.object(collector, "enhance_with_departure_board_data", new_callable=AsyncMock),
+        patch.object(
+            collector, "_is_same_journey", new_callable=AsyncMock, return_value=True
+        ),
+        patch.object(
+            collector, "enhance_with_departure_board_data", new_callable=AsyncMock
+        ),
         patch.object(collector, "create_journey_snapshot", new_callable=AsyncMock),
         patch.object(collector, "update_journey_metadata", new_callable=AsyncMock),
         patch.object(collector, "update_journey_stops", new_callable=AsyncMock),
@@ -91,8 +95,12 @@ async def test_without_prefetched_data_calls_api():
     journey.api_error_count = 0
 
     with (
-        patch.object(collector, "_is_same_journey", new_callable=AsyncMock, return_value=True),
-        patch.object(collector, "enhance_with_departure_board_data", new_callable=AsyncMock),
+        patch.object(
+            collector, "_is_same_journey", new_callable=AsyncMock, return_value=True
+        ),
+        patch.object(
+            collector, "enhance_with_departure_board_data", new_callable=AsyncMock
+        ),
         patch.object(collector, "create_journey_snapshot", new_callable=AsyncMock),
         patch.object(collector, "update_journey_metadata", new_callable=AsyncMock),
         patch.object(collector, "update_journey_stops", new_callable=AsyncMock),
