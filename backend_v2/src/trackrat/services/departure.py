@@ -840,6 +840,7 @@ class DepartureService:
                     journeys_by_id = {j.train_id: j for j in result.scalars().all()}
 
                     count = 0
+                    empty_stops_count = 0
                     for train_data in train_items:
                         train_id = train_data.get("TRAIN_ID")
                         if not train_id:
@@ -863,10 +864,13 @@ class DepartureService:
                         # Clean color value (remove trailing spaces)
                         if backcolor := train_data.get("BACKCOLOR"):
                             journey.line_color = backcolor.strip()
-                        journey.last_updated_at = now_et()
                         journey.update_count = (journey.update_count or 0) + 1
 
-                        # Update stops from embedded STOPS data
+                        # Update stops from embedded STOPS data.
+                        # Only mark fresh (last_updated_at) when STOPS are
+                        # actually populated — otherwise the second-pass
+                        # individual refresh (getTrainStopList) is suppressed
+                        # and the train permanently shows null real-time times.
                         stops_data = train_data.get("STOPS") or []
                         if stops_data:
                             await self._update_stops_from_embedded_data(
@@ -874,6 +878,7 @@ class DepartureService:
                             )
                             journey.has_complete_journey = True
                             journey.stops_count = len(stops_data)
+                            journey.last_updated_at = now_et()
 
                             # Update origin/terminal/scheduled times from stops.
                             # Use immutable schedule fields (SCHED_*_DATE) over
@@ -904,12 +909,23 @@ class DepartureService:
                                         sched_arr
                                     )
 
+                        if not stops_data:
+                            empty_stops_count += 1
+
                         logger.debug(
                             "journey_updated_from_schedule",
                             train_id=train_id,
                             stops_count=len(stops_data),
                         )
                         count += 1
+
+                    if empty_stops_count:
+                        logger.info(
+                            "bulk_refresh_empty_stops",
+                            station_code=station_code,
+                            empty_stops_trains=empty_stops_count,
+                            total_trains=count,
+                        )
 
                     await db.commit()
                     return count

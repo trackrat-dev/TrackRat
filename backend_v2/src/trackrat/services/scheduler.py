@@ -1952,10 +1952,22 @@ class SchedulerService:
                     # Update journey metadata
                     journey.destination = train_data.DESTINATION
                     journey.line_color = train_data.BACKCOLOR.strip()
-                    journey.has_complete_journey = True
-                    journey.stops_count = len(train_data.STOPS)
-                    journey.last_updated_at = now_et()
                     journey.update_count = (journey.update_count or 0) + 1
+
+                    # Only mark complete/fresh when STOPS are present.
+                    # Empty STOPS from the NJT API should not suppress
+                    # future collection via has_complete_journey or
+                    # stale last_updated_at checks.
+                    if train_data.STOPS:
+                        journey.has_complete_journey = True
+                        journey.stops_count = len(train_data.STOPS)
+                        journey.last_updated_at = now_et()
+                    else:
+                        logger.info(
+                            "njt_api_empty_stops",
+                            train_id=train_id,
+                            stops_count=0,
+                        )
 
                     # Update origin/terminal/scheduled_departure from stops
                     if train_data.STOPS:

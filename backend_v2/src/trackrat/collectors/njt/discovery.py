@@ -522,9 +522,6 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     journey_date=journey_date,
                                 )
 
-                            # Update last seen time
-                            existing.last_updated_at = now_et()
-
                             # Mark as observed if it was previously scheduled
                             if existing.observation_type == "SCHEDULED":
                                 existing.observation_type = "OBSERVED"
@@ -551,12 +548,16 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     session, existing, station_code, track
                                 )
 
-                            # Populate real-time stop times from embedded STOPS data
+                            # Populate real-time stop times from embedded STOPS data.
+                            # Only bump last_updated_at when stops are actually
+                            # populated — otherwise later collection passes skip
+                            # this train as "fresh" despite having no real-time data.
                             stops_data = train_data.get("STOPS") or []
                             if stops_data:
                                 await self._populate_stop_times_from_discovery(
                                     session, existing, stops_data
                                 )
+                                existing.last_updated_at = now_et()
 
                             continue
 
