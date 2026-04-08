@@ -12,7 +12,7 @@ import random
 import re
 import threading
 import time
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -273,6 +273,11 @@ class RequestStats:
         if ios_only:
             result["ios_only"] = True
 
+        # iOS usage analytics (respects time window; filters to iOS internally)
+        usage_analytics = _compute_usage_analytics(records)
+        if usage_analytics:
+            result["usage_analytics"] = usage_analytics
+
         return result
 
 
@@ -314,6 +319,170 @@ def _compute_latency_trends(
         result[path] = buckets_data
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# iOS usage analytics
+# ---------------------------------------------------------------------------
+
+# Map path templates to human-readable action names for iOS analytics.
+_ACTION_MAP: dict[str, str] = {
+    "/api/v2/trains/departures": "departure_searches",
+    "/api/v2/trains/{train_id}": "train_detail_views",
+    "/api/v2/trains/{train_id}/history": "train_history_views",
+    "/api/v2/trips/search": "trip_searches",
+    "/api/v2/live-activities/register": "live_activity_starts",
+    "/api/v2/alerts/subscriptions": "alert_subscriptions",
+    "/api/v2/alerts/subscriptions/{device_id}": "alert_subscriptions",
+    "/api/v2/feedback": "feedback_submissions",
+    "/api/v2/predictions/track": "prediction_lookups",
+    "/api/v2/predictions/delay": "prediction_lookups",
+    "/api/v2/predictions/supported-stations": "prediction_lookups",
+    "/api/v2/devices/register": "device_registrations",
+    "/api/v2/routes/preferences": "preference_updates",
+    "/api/v2/alerts/service": "service_alert_views",
+}
+
+# Display order for action table (most interesting first).
+_ACTION_DISPLAY_ORDER = [
+    "departure_searches",
+    "train_detail_views",
+    "trip_searches",
+    "prediction_lookups",
+    "train_history_views",
+    "live_activity_starts",
+    "alert_subscriptions",
+    "service_alert_views",
+    "device_registrations",
+    "preference_updates",
+    "feedback_submissions",
+]
+
+
+def _compute_usage_analytics(
+    records: list["RequestRecord"],
+) -> dict[str, Any]:
+    """Compute iOS-specific usage analytics from filtered request records.
+
+    Returns a dict with unique user counts, per-action breakdowns, hourly trends,
+    and top user summaries — all based on iOS client IPs as a user proxy.
+    """
+    ios_records = [r for r in records if r.client_label.startswith("iOS/")]
+    if not ios_records:
+        return {}
+
+    # Per-IP action counters
+    ip_actions: dict[str, Counter[str]] = defaultdict(Counter)
+    action_ips: dict[str, set[str]] = defaultdict(set)
+    action_counts: Counter[str] = Counter()
+    all_ips: set[str] = set()
+
+    for r in ios_records:
+        all_ips.add(r.client_ip)
+        action = _ACTION_MAP.get(r.path_template)
+        if action:
+            ip_actions[r.client_ip][action] += 1
+            action_ips[action].add(r.client_ip)
+            action_counts[action] += 1
+
+    # Build ordered action breakdown
+    actions: list[dict[str, Any]] = []
+    for action_name in _ACTION_DISPLAY_ORDER:
+        count = action_counts.get(action_name, 0)
+        if count > 0:
+            actions.append(
+                {
+                    "action": action_name,
+                    "count": count,
+                    "unique_users": len(action_ips[action_name]),
+                }
+            )
+    # Append any actions not in the display order
+    for action_name, count in action_counts.most_common():
+        if action_name not in _ACTION_DISPLAY_ORDER and count > 0:
+            actions.append(
+                {
+                    "action": action_name,
+                    "count": count,
+                    "unique_users": len(action_ips[action_name]),
+                }
+            )
+
+    # Hourly trend: unique iOS users + total actions per hour bucket
+    hourly: dict[int, dict[str, Any]] = {}
+    for r in ios_records:
+        bucket = int(r.timestamp // 3600) * 3600
+        if bucket not in hourly:
+            hourly[bucket] = {"ips": set(), "count": 0}
+        hourly[bucket]["ips"].add(r.client_ip)
+        hourly[bucket]["count"] += 1
+
+    hourly_trend: list[dict[str, Any]] = []
+    for bucket in sorted(hourly.keys()):
+        hourly_trend.append(
+            {
+                "bucket": bucket,
+                "unique_users": len(hourly[bucket]["ips"]),
+                "total_actions": hourly[bucket]["count"],
+            }
+        )
+
+    # Top users (by total mapped action count, top 15; skip users with 0 actions)
+    top_users: list[dict[str, Any]] = []
+    for ip, actions_counter in sorted(
+        ip_actions.items(), key=lambda x: x[1].total(), reverse=True
+    )[:15]:
+        total = actions_counter.total()
+        if total == 0:
+            continue
+        top_users.append(
+            {
+                "ip": ip,
+                "actions": total,
+                "top_action": actions_counter.most_common(1)[0][0],
+            }
+        )
+
+    # Version distribution
+    version_counts: Counter[str] = Counter()
+    for r in ios_records:
+        version_counts[r.client_label] += 1
+
+    # Top routes searched by iOS users (with unique user counts)
+    route_ips: dict[tuple[str, str], set[str]] = defaultdict(set)
+    route_counts: Counter[tuple[str, str]] = Counter()
+    for r in ios_records:
+        if r.from_station and r.to_station:
+            key = (r.from_station, r.to_station)
+            route_ips[key].add(r.client_ip)
+            route_counts[key] += 1
+
+    top_routes: list[dict[str, Any]] = []
+    for (from_s, to_s), count in route_counts.most_common(10):
+        top_routes.append(
+            {
+                "from": from_s,
+                "to": to_s,
+                "searches": count,
+                "unique_users": len(route_ips[(from_s, to_s)]),
+            }
+        )
+
+    # Engagement: average mapped actions per user
+    unique_count = len(all_ips)
+    total_actions = sum(action_counts.values())
+    actions_per_user = round(total_actions / unique_count, 1) if unique_count else 0
+
+    return {
+        "unique_users": unique_count,
+        "total_actions": total_actions,
+        "actions_per_user": actions_per_user,
+        "actions": actions,
+        "top_routes": top_routes,
+        "hourly_trend": hourly_trend,
+        "top_users": top_users,
+        "version_distribution": dict(version_counts.most_common()),
+    }
 
 
 # ---------------------------------------------------------------------------
