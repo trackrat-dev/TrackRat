@@ -31,7 +31,14 @@ def commit_with_retry(
     Commit a synchronous database session.
 
     Simple wrapper that commits, retrying on transient PostgreSQL errors
-    (e.g., serialization failures).
+    (e.g., serialization failures, deadlocks, statement timeouts).
+
+    **Limitation**: On retry, the session is rolled back first (required by
+    PostgreSQL), which reverts all pending ORM attribute changes. The retry
+    only re-calls ``session.commit()`` — it does NOT replay the unit of work.
+    This means callers must treat retried commits as no-ops for dirty ORM
+    state. Currently only used for idempotent operations where the scheduler
+    will re-process the train on the next cycle.
 
     Args:
         session: Synchronous SQLAlchemy session to commit

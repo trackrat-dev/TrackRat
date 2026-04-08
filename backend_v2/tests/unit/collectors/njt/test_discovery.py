@@ -34,7 +34,7 @@ def _make_session_mock():
 def mock_njt_client():
     """Mock NJ Transit client."""
     client = AsyncMock()
-    client.get_train_schedule_with_stops_with_stops = AsyncMock()
+    client.get_train_schedule_with_stops = AsyncMock()
     return client
 
 
