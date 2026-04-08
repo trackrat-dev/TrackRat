@@ -2948,9 +2948,7 @@ class TestCollectJourneyDetailsFlushHandling:
         )
         # The rollback succeeds but the subsequent flush fails
         session.rollback = AsyncMock()
-        session.flush = AsyncMock(
-            side_effect=Exception("session completely broken")
-        )
+        session.flush = AsyncMock(side_effect=Exception("session completely broken"))
 
         # Should NOT raise — error is caught and logged
         await collector._collect_journey_details_impl(session, journey)

@@ -407,7 +407,9 @@ class TestCollectorMissingToken:
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
-        with pytest.raises(RuntimeError, match="TRACKRAT_METRA_API_TOKEN not configured"):
+        with pytest.raises(
+            RuntimeError, match="TRACKRAT_METRA_API_TOKEN not configured"
+        ):
             await collector.collect(session)
 
         # Session should not have been touched

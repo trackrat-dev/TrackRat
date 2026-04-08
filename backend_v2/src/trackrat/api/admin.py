@@ -288,8 +288,8 @@ def _render_ios_summary_item(usage: dict[str, Any]) -> str:
         f'<div class="summary-item">'
         f'<div class="label">iOS Users</div>'
         f'<div class="value" style="font-size:0.85em">'
-        f'{users} unique &middot; {actions} actions &middot; '
-        f'{per_user}/user</div></div>'
+        f"{users} unique &middot; {actions} actions &middot; "
+        f"{per_user}/user</div></div>"
     )
 
 
@@ -385,16 +385,16 @@ def _render_ios_usage_card(usage: dict[str, Any]) -> str:
     user_count = usage.get("unique_users", 0)
     return (
         f'<div class="card">'
-        f'<h2>iOS Usage ({user_count} users)</h2>'
-        f'{version_line}'
-        f'{hourly_spark}'
-        f'<table>'
+        f"<h2>iOS Usage ({user_count} users)</h2>"
+        f"{version_line}"
+        f"{hourly_spark}"
+        f"<table>"
         f'<tr><th>Action</th><th class="num">Count</th><th class="num">Unique Users</th></tr>'
-        f'{action_rows if action_rows else empty_row}'
-        f'</table>'
-        f'{routes_section}'
-        f'{top_users_section}'
-        f'</div>'
+        f"{action_rows if action_rows else empty_row}"
+        f"</table>"
+        f"{routes_section}"
+        f"{top_users_section}"
+        f"</div>"
     )
 
 

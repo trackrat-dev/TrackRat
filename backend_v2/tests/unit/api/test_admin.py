@@ -545,9 +545,9 @@ class TestAdminStatsJson:
         response = client.get("/admin/stats.json")
         data = response.json()
 
-        assert "usage_analytics" in data, (
-            f"Expected usage_analytics key, got: {list(data.keys())}"
-        )
+        assert (
+            "usage_analytics" in data
+        ), f"Expected usage_analytics key, got: {list(data.keys())}"
         ua = data["usage_analytics"]
         assert ua["unique_users"] == 2
         assert ua["total_actions"] == 2

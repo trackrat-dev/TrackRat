@@ -88,9 +88,7 @@ class WMATACollector:
             Collection results summary
         """
         if not self._ensure_client():
-            logger.warning(
-                "wmata_collection_skipped", reason="no API key configured"
-            )
+            logger.warning("wmata_collection_skipped", reason="no API key configured")
             return {
                 "data_source": "WMATA",
                 "error": "no API key",

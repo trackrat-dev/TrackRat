@@ -611,7 +611,9 @@ async def test_jit_timeout_falls_through_to_gtfs_fallback(client):
                 """Use a shorter timeout for testing."""
                 return await original_wait_for(coro, timeout=0.1)
 
-            with patch("trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for):
+            with patch(
+                "trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for
+            ):
                 response = client.get("/api/v2/trains/9999")
 
             # Should get 404 (train not found) — NOT a timeout/504/500
@@ -727,6 +729,7 @@ async def test_jit_timeout_preserves_stale_journey(client):
     app.dependency_overrides[get_db] = get_test_db
 
     try:
+
         async def _hang_forever(*args, **kwargs):
             await asyncio.sleep(3600)
 
@@ -740,7 +743,9 @@ async def test_jit_timeout_preserves_stale_journey(client):
             async def fast_wait_for(coro, *, timeout):
                 return await original_wait_for(coro, timeout=0.1)
 
-            with patch("trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for):
+            with patch(
+                "trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for
+            ):
                 response = client.get("/api/v2/trains/9999")
 
             # Should get 200 with stale journey data — NOT a 404
@@ -749,9 +754,9 @@ async def test_jit_timeout_preserves_stale_journey(client):
                 f"got {response.status_code}: {response.text}"
             )
             data = response.json()
-            assert data["train"]["train_id"] == "9999", (
-                f"Expected train_id '9999' in response, got: {data}"
-            )
+            assert (
+                data["train"]["train_id"] == "9999"
+            ), f"Expected train_id '9999' in response, got: {data}"
             assert data["train"]["data_source"] == "NJT"
     finally:
         # Restore original override

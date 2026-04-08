@@ -366,6 +366,8 @@ class ApiCacheService:
         for journey in journeys:
             if journey.is_cancelled:
                 continue
+            if not journey.train_id or not journey.data_source:
+                continue
             key = (journey.train_id, journey.data_source)
             if key in seen_trains:
                 continue

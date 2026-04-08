@@ -30,10 +30,11 @@ async def test_route_history_timeout_returns_504(client):
     mock_cache = MagicMock()
     mock_cache.get_cached_response = AsyncMock(return_value=None)
 
-    with patch(
-        "trackrat.api.routes.ApiCacheService", return_value=mock_cache
-    ), patch(
-        "trackrat.api.routes.compute_route_history", side_effect=_slow_computation
+    with (
+        patch("trackrat.api.routes.ApiCacheService", return_value=mock_cache),
+        patch(
+            "trackrat.api.routes.compute_route_history", side_effect=_slow_computation
+        ),
     ):
         # Patch asyncio.wait_for in routes module to use a short timeout for testing
         original_wait_for = asyncio.wait_for
@@ -41,9 +42,7 @@ async def test_route_history_timeout_returns_504(client):
         async def fast_wait_for(coro, *, timeout):
             return await original_wait_for(coro, timeout=0.1)
 
-        with patch(
-            "trackrat.api.routes.asyncio.wait_for", side_effect=fast_wait_for
-        ):
+        with patch("trackrat.api.routes.asyncio.wait_for", side_effect=fast_wait_for):
             response = client.get(
                 "/api/v2/routes/history?from_station=NY&to_station=TR&data_source=NJT"
             )
@@ -80,12 +79,10 @@ async def test_route_history_uses_dedicated_session(client):
     mock_ctx.__aenter__ = AsyncMock(return_value=session_from_get_session)
     mock_ctx.__aexit__ = AsyncMock(return_value=False)
 
-    with patch(
-        "trackrat.api.routes.ApiCacheService", return_value=mock_cache
-    ), patch(
-        "trackrat.api.routes.compute_route_history", side_effect=_capture_db_arg
-    ), patch(
-        "trackrat.api.routes.get_session", return_value=mock_ctx
+    with (
+        patch("trackrat.api.routes.ApiCacheService", return_value=mock_cache),
+        patch("trackrat.api.routes.compute_route_history", side_effect=_capture_db_arg),
+        patch("trackrat.api.routes.get_session", return_value=mock_ctx),
     ):
         response = client.get(
             "/api/v2/routes/history?from_station=NY&to_station=TR&data_source=NJT"
@@ -93,9 +90,9 @@ async def test_route_history_uses_dedicated_session(client):
 
     # The endpoint will return 500 because compute_route_history raised ValueError,
     # but we only care that the right session was passed
-    assert len(captured_db_arg) == 1, (
-        "compute_route_history should have been called once"
-    )
+    assert (
+        len(captured_db_arg) == 1
+    ), "compute_route_history should have been called once"
     assert captured_db_arg[0] is session_from_get_session, (
         "compute_route_history should receive the dedicated session from get_session(), "
         "not the request's main db session"

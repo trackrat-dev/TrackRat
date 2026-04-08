@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.collectors.wmata.client import WMATAClient
 
-
 _SETTINGS_PATH = "trackrat.settings.get_settings"
 
 

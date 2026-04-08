@@ -289,7 +289,11 @@ async def get_train_details(
             try:
                 journey = await asyncio.wait_for(
                     jit_service.get_fresh_train(
-                        db, train_id, date, force_refresh=refresh, data_source=data_source
+                        db,
+                        train_id,
+                        date,
+                        force_refresh=refresh,
+                        data_source=data_source,
                     ),
                     timeout=15.0,
                 )

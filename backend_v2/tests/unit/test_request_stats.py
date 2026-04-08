@@ -638,9 +638,9 @@ class TestUsageAnalytics:
             self._make_record(client_ip="10.0.0.3"),
         ]
         result = _compute_usage_analytics(records)
-        assert result["unique_users"] == 3, (
-            f"Expected 3 unique users, got {result['unique_users']}"
-        )
+        assert (
+            result["unique_users"] == 3
+        ), f"Expected 3 unique users, got {result['unique_users']}"
 
     def test_action_counts(self):
         """Actions are correctly counted and mapped from path templates."""
@@ -652,9 +652,9 @@ class TestUsageAnalytics:
         ]
         result = _compute_usage_analytics(records)
         actions_by_name = {a["action"]: a["count"] for a in result["actions"]}
-        assert actions_by_name["departure_searches"] == 2, (
-            f"Expected 2 departure_searches, got {actions_by_name}"
-        )
+        assert (
+            actions_by_name["departure_searches"] == 2
+        ), f"Expected 2 departure_searches, got {actions_by_name}"
         assert actions_by_name["train_detail_views"] == 1
         assert actions_by_name["trip_searches"] == 1
         assert result["total_actions"] == 4
@@ -671,10 +671,12 @@ class TestUsageAnalytics:
         actions_by_name = {a["action"]: a for a in result["actions"]}
 
         dep = actions_by_name["departure_searches"]
-        assert dep["count"] == 3, f"Expected 3 departure search count, got {dep['count']}"
-        assert dep["unique_users"] == 2, (
-            f"Expected 2 unique users for departures, got {dep['unique_users']}"
-        )
+        assert (
+            dep["count"] == 3
+        ), f"Expected 3 departure search count, got {dep['count']}"
+        assert (
+            dep["unique_users"] == 2
+        ), f"Expected 2 unique users for departures, got {dep['unique_users']}"
 
         detail = actions_by_name["train_detail_views"]
         assert detail["unique_users"] == 1
@@ -687,9 +689,9 @@ class TestUsageAnalytics:
             self._make_record(client_label="browser", client_ip="10.0.0.3"),
         ]
         result = _compute_usage_analytics(records)
-        assert result["unique_users"] == 1, (
-            f"Expected 1 iOS user, got {result['unique_users']}"
-        )
+        assert (
+            result["unique_users"] == 1
+        ), f"Expected 1 iOS user, got {result['unique_users']}"
 
     def test_unmapped_paths_not_counted_as_actions(self):
         """Paths not in _ACTION_MAP don't appear in actions list."""
@@ -698,9 +700,9 @@ class TestUsageAnalytics:
             self._make_record(path="/health"),
         ]
         result = _compute_usage_analytics(records)
-        assert result["actions"] == [], (
-            f"Expected no actions for unmapped paths, got {result['actions']}"
-        )
+        assert (
+            result["actions"] == []
+        ), f"Expected no actions for unmapped paths, got {result['actions']}"
         assert result["total_actions"] == 0
         # But unique_users should still be counted (we saw iOS traffic)
         assert result["unique_users"] == 1
@@ -714,9 +716,9 @@ class TestUsageAnalytics:
         ]
         result = _compute_usage_analytics(records)
         actions_by_name = {a["action"]: a["count"] for a in result["actions"]}
-        assert actions_by_name["prediction_lookups"] == 3, (
-            f"Expected 3 prediction_lookups, got {actions_by_name}"
-        )
+        assert (
+            actions_by_name["prediction_lookups"] == 3
+        ), f"Expected 3 prediction_lookups, got {actions_by_name}"
 
     def test_hourly_trend(self):
         """Hourly trend groups users and actions by hour bucket."""
@@ -760,21 +762,15 @@ class TestUsageAnalytics:
     def test_top_users_shows_primary_activity(self):
         """Top user's top_action reflects their most frequent action."""
         records = [
-            self._make_record(
-                path="/api/v2/trains/departures", client_ip="10.0.0.1"
-            ),
-            self._make_record(
-                path="/api/v2/trains/departures", client_ip="10.0.0.1"
-            ),
-            self._make_record(
-                path="/api/v2/trains/{train_id}", client_ip="10.0.0.1"
-            ),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/{train_id}", client_ip="10.0.0.1"),
         ]
         result = _compute_usage_analytics(records)
         top = result["top_users"]
-        assert top[0]["top_action"] == "departure_searches", (
-            f"Expected departure_searches as top action, got {top[0]['top_action']}"
-        )
+        assert (
+            top[0]["top_action"] == "departure_searches"
+        ), f"Expected departure_searches as top action, got {top[0]['top_action']}"
 
     def test_version_distribution(self):
         """Version distribution counts requests per iOS version."""
@@ -816,9 +812,9 @@ class TestUsageAnalytics:
         ]
         result = _compute_usage_analytics(records)
         # 4 actions / 2 users = 2.0
-        assert result["actions_per_user"] == 2.0, (
-            f"Expected 2.0 actions/user, got {result['actions_per_user']}"
-        )
+        assert (
+            result["actions_per_user"] == 2.0
+        ), f"Expected 2.0 actions/user, got {result['actions_per_user']}"
 
     def test_top_routes_with_unique_users(self):
         """top_routes shows routes searched by iOS users with unique user counts."""
@@ -833,9 +829,9 @@ class TestUsageAnalytics:
         records[1].to_station = "TR"
 
         result = _compute_usage_analytics(records)
-        assert len(result["top_routes"]) == 1, (
-            f"Expected 1 route, got {result['top_routes']}"
-        )
+        assert (
+            len(result["top_routes"]) == 1
+        ), f"Expected 1 route, got {result['top_routes']}"
         route = result["top_routes"][0]
         assert route["from"] == "NY"
         assert route["to"] == "TR"
@@ -846,23 +842,21 @@ class TestUsageAnalytics:
         """top_routes is empty when records have no from/to station."""
         records = [self._make_record()]  # from_station=None by default
         result = _compute_usage_analytics(records)
-        assert result["top_routes"] == [], (
-            f"Expected empty top_routes, got {result['top_routes']}"
-        )
+        assert (
+            result["top_routes"] == []
+        ), f"Expected empty top_routes, got {result['top_routes']}"
 
     def test_zero_action_users_excluded_from_top_users(self):
         """Users who only hit unmapped paths don't appear in top_users."""
         records = [
             self._make_record(path="/admin/stats", client_ip="10.0.0.1"),
-            self._make_record(
-                path="/api/v2/trains/departures", client_ip="10.0.0.2"
-            ),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.2"),
         ]
         result = _compute_usage_analytics(records)
         top_ips = [u["ip"] for u in result["top_users"]]
-        assert "10.0.0.1" not in top_ips, (
-            f"User with only unmapped paths should not be in top_users: {top_ips}"
-        )
+        assert (
+            "10.0.0.1" not in top_ips
+        ), f"User with only unmapped paths should not be in top_users: {top_ips}"
         assert "10.0.0.2" in top_ips
 
     def test_analytics_in_snapshot(self):
@@ -876,9 +870,9 @@ class TestUsageAnalytics:
             client_ip="10.0.0.1",
         )
         snap = stats.snapshot()
-        assert "usage_analytics" in snap, (
-            f"Expected usage_analytics in snapshot, keys: {list(snap.keys())}"
-        )
+        assert (
+            "usage_analytics" in snap
+        ), f"Expected usage_analytics in snapshot, keys: {list(snap.keys())}"
         assert snap["usage_analytics"]["unique_users"] == 1
         assert snap["usage_analytics"]["total_actions"] == 1
 
@@ -893,9 +887,9 @@ class TestUsageAnalytics:
             client_ip="10.0.0.1",
         )
         snap = stats.snapshot()
-        assert "usage_analytics" not in snap, (
-            "usage_analytics should not be present without iOS traffic"
-        )
+        assert (
+            "usage_analytics" not in snap
+        ), "usage_analytics should not be present without iOS traffic"
 
 
 class TestSingleton:

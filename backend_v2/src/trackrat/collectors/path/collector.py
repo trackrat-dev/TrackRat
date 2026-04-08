@@ -28,7 +28,7 @@ from trackrat.config.stations import (
     get_path_route_and_stops,
     get_station_name,
 )
-from trackrat.db.engine import get_session, _is_postgresql_concurrency_error
+from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
 from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock

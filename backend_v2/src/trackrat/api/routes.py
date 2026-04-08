@@ -752,6 +752,8 @@ async def _compute_and_cache_single_provider(
     for journey in journeys:
         if journey.is_cancelled:
             continue
+        if not journey.train_id or not journey.data_source:
+            continue
         key = (journey.train_id, journey.data_source)
         if key in seen_trains:
             continue
@@ -931,9 +933,12 @@ async def get_route_congestion(
         cache_service = ApiCacheService()
         for system in requested_systems:
             try:
-                await _compute_and_cache_single_provider(
-                    db, system, effective_time_window, max_per_segment
-                )
+                # Use a fresh session per provider so a timeout in one
+                # doesn't poison the connection for subsequent iterations.
+                async with get_session() as provider_db:
+                    await _compute_and_cache_single_provider(
+                        provider_db, system, effective_time_window, max_per_segment
+                    )
             except Exception as e:
                 error_name = type(e).__name__
                 if (
@@ -948,10 +953,12 @@ async def get_route_congestion(
                     continue  # Skip this provider, try others
                 raise
 
-        # Re-merge from the freshly-populated caches
-        merged = await cache_service.merge_congestion_from_provider_caches(
-            db, requested_systems, effective_time_window, max_per_segment
-        )
+        # Re-merge from the freshly-populated caches (fresh session in case
+        # the request db was never used or was poisoned by an earlier path).
+        async with get_session() as merge_db:
+            merged = await cache_service.merge_congestion_from_provider_caches(
+                merge_db, requested_systems, effective_time_window, max_per_segment
+            )
         if merged:
             return Response(
                 content=json_mod.dumps(merged),
@@ -1012,6 +1019,8 @@ async def get_route_congestion(
 
     for journey in journeys:
         if journey.is_cancelled:
+            continue
+        if not journey.train_id or not journey.data_source:
             continue
         key = (journey.train_id, journey.data_source)
         if key in seen_trains:
