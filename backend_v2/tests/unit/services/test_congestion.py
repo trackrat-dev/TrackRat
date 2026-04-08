@@ -504,6 +504,7 @@ class TestCongestionAnalyzer:
         mock_row.from_station = "NY"
         mock_row.to_station = "NP"
         mock_row.data_source = "NJT"
+        mock_row.line_code = "NE"
         mock_row.journey_date = datetime.now(UTC).date()
         mock_row.departure_time = datetime.now(UTC) - timedelta(hours=1)
         mock_row.arrival_time = datetime.now(UTC) - timedelta(minutes=45)
@@ -530,9 +531,10 @@ class TestCongestionAnalyzer:
         assert ("NY", "SE") in segments_by_key
         assert ("SE", "NP") in segments_by_key
 
-        # Both segments inherit the original segment's timing data
+        # Both segments inherit the original segment's timing and line data
         for segment in segments:
             assert segment.train_id == "1234"
+            assert segment.line == "NE"
             assert segment.actual_minutes == 15.0
             assert segment.delay_minutes == 0.0
             assert segment.congestion_factor == 1.0

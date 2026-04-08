@@ -324,6 +324,7 @@ def normalize_individual_segments(
                 from_station_name=get_station_name(from_station),
                 to_station_name=get_station_name(to_station),
                 data_source=segment.data_source,
+                line=segment.line,
                 scheduled_departure=segment.scheduled_departure,
                 actual_departure=segment.actual_departure,
                 scheduled_arrival=segment.scheduled_arrival,

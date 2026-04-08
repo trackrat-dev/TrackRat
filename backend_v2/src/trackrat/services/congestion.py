@@ -730,6 +730,7 @@ class CongestionAnalyzer:
                     sp.from_station,
                     sp.to_station,
                     tj.data_source,
+                    tj.line_code,
                     tj.id as journey_id,
                     tj.train_id,
                     tj.journey_date,
@@ -785,6 +786,7 @@ class CongestionAnalyzer:
                 from_station,
                 to_station,
                 data_source,
+                line_code,
                 journey_date,
                 departure_time,
                 arrival_time,
@@ -837,6 +839,7 @@ class CongestionAnalyzer:
                     sp.from_station,
                     sp.to_station,
                     tj.data_source,
+                    tj.line_code,
                     tj.id as journey_id,
                     tj.train_id,
                     tj.journey_date,
@@ -884,6 +887,7 @@ class CongestionAnalyzer:
                 from_station,
                 to_station,
                 data_source,
+                line_code,
                 journey_date,
                 departure_time,
                 arrival_time,
@@ -960,6 +964,7 @@ class CongestionAnalyzer:
                 from_station_name=get_station_name(row.from_station),
                 to_station_name=get_station_name(row.to_station),
                 data_source=row.data_source,
+                line=row.line_code or "",
                 scheduled_departure=row.scheduled_departure or row.departure_time,
                 actual_departure=row.departure_time,
                 scheduled_arrival=row.scheduled_arrival or row.arrival_time,
@@ -1092,6 +1097,7 @@ class CongestionAnalyzer:
                         "departure_time": departure_time,
                         "journey_id": journey.id,
                         "train_id": journey.train_id,
+                        "line_code": journey.line_code or "",
                     }
                 )
 
@@ -1240,6 +1246,7 @@ class CongestionAnalyzer:
                     from_station_name=get_station_name(from_station),
                     to_station_name=get_station_name(to_station),
                     data_source=data_source,
+                    line=segment_data.get("line_code", ""),
                     scheduled_departure=segment_data[
                         "departure_time"
                     ],  # Using actual as proxy for scheduled
