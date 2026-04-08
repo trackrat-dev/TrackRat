@@ -122,9 +122,29 @@ async def test_api_error_count_reset_on_success():
 
     # Mock both execute and scalar methods
     session.execute = AsyncMock(return_value=mock_result_generic)
-    session.scalar = AsyncMock(
-        return_value=None
-    )  # For queries that return a single object
+
+    # scalar must return JourneyStop-like mocks for update_journey_stops lookups
+    # (the new ON CONFLICT path re-fetches after INSERT, so None would break)
+    def _make_mock_stop():
+        s = Mock()
+        s.scheduled_arrival = None
+        s.scheduled_departure = None
+        s.actual_departure = None
+        s.actual_arrival = None
+        s.has_departed_station = False
+        s.departure_source = None
+        s.updated_arrival = None
+        s.updated_departure = None
+        s.stop_sequence = 0
+        s.station_code = ""
+        s.pickup_only = False
+        s.dropoff_only = False
+        s.track = None
+        s.track_assigned_at = None
+        s.raw_njt_departed_flag = None
+        return s
+
+    session.scalar = AsyncMock(side_effect=lambda stmt: _make_mock_stop())
 
     # Mock successful API response
     from trackrat.models.api import NJTransitTrainData, NJTransitStopData

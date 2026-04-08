@@ -59,7 +59,29 @@ class TestDepartureInference:
         mock_result.fetchall.return_value = []
 
         session.execute = AsyncMock(return_value=mock_result)
-        session.scalar = AsyncMock(return_value=None)
+
+        # scalar returns a fresh mock JourneyStop for each call by default.
+        # Tests that need specific stop objects override this with side_effect.
+        def _make_mock_stop():
+            s = Mock()
+            s.scheduled_arrival = None
+            s.scheduled_departure = None
+            s.actual_departure = None
+            s.actual_arrival = None
+            s.has_departed_station = False
+            s.departure_source = None
+            s.updated_arrival = None
+            s.updated_departure = None
+            s.stop_sequence = 0
+            s.station_code = ""
+            s.pickup_only = False
+            s.dropoff_only = False
+            s.track = None
+            s.track_assigned_at = None
+            s.raw_njt_departed_flag = None
+            return s
+
+        session.scalar = AsyncMock(side_effect=lambda stmt: _make_mock_stop())
         session.commit = AsyncMock()
         session.flush = AsyncMock()
         session.rollback = AsyncMock()
@@ -457,6 +479,18 @@ class TestDepartureInference:
         """Test that scheduled times are never modified after initial set."""
         session = mock_session
 
+        # Return existing stops so update_journey_stops modifies them in-place
+        stops_by_code = {s.station_code: s for s in sample_journey.stops}
+        stop_iter = iter(["NY", "NP"])
+
+        async def _scalar(stmt):
+            try:
+                return stops_by_code[next(stop_iter)]
+            except StopIteration:
+                return None
+
+        session.scalar = AsyncMock(side_effect=_scalar)
+
         # Save original scheduled times
         original_scheduled = {
             stop.station_code: {
@@ -622,6 +656,18 @@ class TestDepartureInference:
                 ),
             ],
         )
+
+        # Return existing stops so update_journey_stops modifies them in-place
+        stops_by_code = {s.station_code: s for s in journey.stops}
+        stop_iter = iter(["NY", "TR"])
+
+        async def _scalar(stmt):
+            try:
+                return stops_by_code[next(stop_iter)]
+            except StopIteration:
+                return None
+
+        session.scalar = AsyncMock(side_effect=_scalar)
 
         api_stops = [
             MagicMock(

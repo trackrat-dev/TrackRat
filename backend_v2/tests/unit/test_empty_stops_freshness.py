@@ -115,9 +115,7 @@ class TestBulkRefreshEmptyStops:
 
         with (
             patch("trackrat.services.departure.NJTransitClient") as mock_njt,
-            patch(
-                "trackrat.services.departure.NJTJourneyCollector"
-            ),
+            patch("trackrat.services.departure.NJTJourneyCollector"),
             patch(
                 "trackrat.services.departure.retry_on_deadlock",
                 side_effect=mock_retry_on_deadlock,
@@ -255,6 +253,6 @@ class TestBulkRefreshEmptyStops:
                 f"but remained at {journey.last_updated_at}"
             )
 
-            assert journey.has_complete_journey is True, (
-                "has_complete_journey should be True when STOPS are present"
-            )
+            assert (
+                journey.has_complete_journey is True
+            ), "has_complete_journey should be True when STOPS are present"

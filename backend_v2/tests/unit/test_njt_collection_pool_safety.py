@@ -119,9 +119,7 @@ class TestSessionSplitting:
 
         with (
             patch("sqlalchemy.orm.sessionmaker", return_value=SessionMaker()),
-            patch(
-                "trackrat.services.scheduler.get_session", return_value=mock_ctx
-            ),
+            patch("trackrat.services.scheduler.get_session", return_value=mock_ctx),
             patch(
                 "trackrat.collectors.njt.journey.JourneyCollector.collect_journey_details",
                 new_callable=AsyncMock,
@@ -132,9 +130,9 @@ class TestSessionSplitting:
             )
 
         assert result is not None, "Collection should succeed"
-        assert not session_open_during_api_call, (
-            "Sync session must be closed before NJT API call"
-        )
+        assert (
+            not session_open_during_api_call
+        ), "Sync session must be closed before NJT API call"
 
 
 class TestSemaphoreConcurrencyLimit:
@@ -190,9 +188,7 @@ class TestSemaphoreConcurrencyLimit:
 
         with (
             patch("sqlalchemy.orm.sessionmaker", return_value=SessionMaker()),
-            patch(
-                "trackrat.services.scheduler.get_session", return_value=mock_ctx
-            ),
+            patch("trackrat.services.scheduler.get_session", return_value=mock_ctx),
             patch(
                 "trackrat.collectors.njt.journey.JourneyCollector.collect_journey_details",
                 new_callable=AsyncMock,
@@ -208,18 +204,16 @@ class TestSemaphoreConcurrencyLimit:
 
         successes = [r for r in results if r is not None and r.get("success")]
         assert len(successes) == 20, f"Expected 20 successes, got {len(successes)}"
-        assert max_concurrent <= 10, (
-            f"Max concurrent API calls was {max_concurrent}, should be <= 10"
-        )
+        assert (
+            max_concurrent <= 10
+        ), f"Max concurrent API calls was {max_concurrent}, should be <= 10"
 
 
 class TestCodePaths:
     """Test various code paths through _collect_single_njt_journey_safe."""
 
     @pytest.mark.asyncio
-    async def test_successful_collection_returns_correct_data(
-        self, scheduler_service
-    ):
+    async def test_successful_collection_returns_correct_data(self, scheduler_service):
         """Successful collection should return result dict with expected fields."""
         train_data = _make_train_data()
         scheduler_service.njt_client.get_train_stop_list = AsyncMock(
@@ -257,9 +251,7 @@ class TestCodePaths:
 
         with (
             patch("sqlalchemy.orm.sessionmaker", return_value=SessionMaker()),
-            patch(
-                "trackrat.services.scheduler.get_session", return_value=mock_ctx
-            ),
+            patch("trackrat.services.scheduler.get_session", return_value=mock_ctx),
             patch(
                 "trackrat.collectors.njt.journey.JourneyCollector.collect_journey_details",
                 new_callable=AsyncMock,
@@ -303,8 +295,8 @@ class TestCodePaths:
                 "1234", date(2026, 3, 11)
             )
 
-        assert result is not None, (
-            "Transient errors should return a result dict, not None"
-        )
+        assert (
+            result is not None
+        ), "Transient errors should return a result dict, not None"
         assert result["retry_needed"] is True
         assert result["success"] is False
