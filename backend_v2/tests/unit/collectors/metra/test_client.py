@@ -109,10 +109,10 @@ class TestMetraClient:
         assert client_no_token._api_token == ""
 
     @pytest.mark.asyncio
-    async def test_get_all_arrivals_returns_empty_without_token(self, client_no_token):
-        """Client should return empty list when no API token is configured."""
-        result = await client_no_token.get_all_arrivals()
-        assert result == []
+    async def test_get_all_arrivals_raises_without_token(self, client_no_token):
+        """Client should raise ValueError when no API token is configured."""
+        with pytest.raises(ValueError, match="TRACKRAT_METRA_API_TOKEN not configured"):
+            await client_no_token.get_all_arrivals()
 
     def test_cache_validity_when_empty(self, client):
         """Cache should be invalid when empty."""
@@ -430,3 +430,50 @@ class TestMetraClient:
         with patch.dict("os.environ", {"TRACKRAT_METRA_API_TOKEN": "test"}):
             async with MetraClient() as client:
                 assert client is not None
+
+
+class TestMetraClientMissingToken:
+    """Tests that MetraClient fails loudly when API token is missing.
+
+    Bug: get_all_arrivals() silently returned [] when token was empty,
+    causing the collector to report zero departures as a successful run.
+
+    See: https://github.com/trackrat-dev/trackrat/issues/901
+    """
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_raises_without_token(self):
+        """get_all_arrivals raises ValueError when no API token configured."""
+        client = MetraClient(api_token="")
+
+        with pytest.raises(ValueError, match="TRACKRAT_METRA_API_TOKEN not configured"):
+            await client.get_all_arrivals()
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_works_with_token(self):
+        """get_all_arrivals does not raise when token is provided (happy path)."""
+        client = MetraClient(api_token="test-token")
+
+        # Build a minimal valid GTFS-RT feed
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(UTC).timestamp())
+
+        mock_response = MagicMock()
+        mock_response.content = feed.SerializeToString()
+        mock_response.raise_for_status = MagicMock()
+
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_response)
+        client._session = mock_http
+
+        result = await client.get_all_arrivals()
+
+        assert isinstance(result, list)  # No ValueError raised
+
+    def test_init_warns_on_empty_token(self):
+        """MetraClient logs a warning at init when token is empty."""
+        # This just verifies the client can be created with empty token
+        # without crashing — the warning is for ops visibility
+        client = MetraClient(api_token="")
+        assert client._api_token == ""

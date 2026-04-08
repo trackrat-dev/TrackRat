@@ -119,6 +119,11 @@ class MetraCollector:
             "total_arrivals": 0,
         }
 
+        if not self.client._api_token:
+            raise RuntimeError(
+                "Metra collection failed: TRACKRAT_METRA_API_TOKEN not configured"
+            )
+
         try:
             collection_start = now_for_provider(DATA_SOURCE)
 
