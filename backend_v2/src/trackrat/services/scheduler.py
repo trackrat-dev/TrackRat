@@ -970,32 +970,34 @@ class SchedulerService:
         """Check for trains needing journey updates."""
         task_id = f"journey_check_{now_et().isoformat()}"
 
-        async def do_journey_check_work() -> None:
-            """The actual journey check work, wrapped for freshness checking."""
-            try:
-                logger.info("checking_journey_updates")
-
-                # Track running task
-                task = asyncio.current_task()
-                if task:
-                    self._running_tasks[task_id] = task
-
-                # Find trains needing updates
-                async with get_session() as session:
-                    # Trains that need initial collection (at departure time)
-                    await self.schedule_departure_collections(session)
-
-                    # Trains that need periodic updates (every 15 minutes)
-                    await self.schedule_periodic_updates(session)
-
-            finally:
-                # Remove from running tasks
-                self._running_tasks.pop(task_id, None)
-
         # Use freshness check to prevent duplicate runs across replicas
         # This runs every 5 minutes, so use a 4-minute minimum interval
         async with get_session() as db:
             safe_interval = calculate_safe_interval(5)  # 5-minute scheduled interval
+
+            async def do_journey_check_work() -> None:
+                """The actual journey check work, wrapped for freshness checking.
+
+                Reuses the freshness-check session (db) instead of opening a
+                second get_session(). This avoids consuming two async pool
+                connections simultaneously, which caused TimeoutError under
+                peak collector load.
+                """
+                try:
+                    logger.info("checking_journey_updates")
+
+                    task = asyncio.current_task()
+                    if task:
+                        self._running_tasks[task_id] = task
+
+                    # Trains that need initial collection (at departure time)
+                    await self.schedule_departure_collections(db)
+
+                    # Trains that need periodic updates (every 15 minutes)
+                    await self.schedule_periodic_updates(db)
+
+                finally:
+                    self._running_tasks.pop(task_id, None)
 
             executed = await run_with_freshness_check(
                 db=db,
