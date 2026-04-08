@@ -763,6 +763,7 @@ class JourneyCollector(BaseJourneyCollector):
         session: AsyncSession,
         journey: TrainJourney,
         skip_enhancement: bool = False,
+        prefetched_train_data: NJTransitTrainData | None = None,
     ) -> None:
         """Collect complete journey details for a train.
 
@@ -770,6 +771,8 @@ class JourneyCollector(BaseJourneyCollector):
             session: Database session
             journey: Journey to collect data for
             skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
+            prefetched_train_data: If provided, skip the NJT API call and use this data
+                directly. Used by the batch collector to share one canonical write path.
         """
         # Track start time for performance measurement
         start_time = now_et()
@@ -783,62 +786,65 @@ class JourneyCollector(BaseJourneyCollector):
             ),
         )
 
-        # Get train stop list
-        if not journey.train_id:
-            raise ValueError(f"Journey {journey.id} has no train_id")
+        if prefetched_train_data is not None:
+            train_data = prefetched_train_data
+        else:
+            # Get train stop list
+            if not journey.train_id:
+                raise ValueError(f"Journey {journey.id} has no train_id")
 
-        try:
-            train_data = await self.njt_client.get_train_stop_list(journey.train_id)
-        except NJTransitNullDataError:
-            # NJT API returned a response with all key fields null — transient
-            # API issue. The train likely still appears on departure boards.
-            # Do NOT increment api_error_count; keep last known data.
-            logger.info(
-                "train_null_data_skipped",
-                train_id=journey.train_id,
-                journey_id=journey.id,
-                api_error_count=journey.api_error_count,
-            )
-            return
-        except TrainNotFoundError:
-            # Train is genuinely not available (empty/None response) —
-            # increment error count toward expiry threshold.
-            journey.api_error_count = (journey.api_error_count or 0) + 1
-            journey.last_updated_at = now_et()
-            journey.update_count = (journey.update_count or 0) + 1
-
-            # After 3 failed attempts, attempt last-chance completion then expire
-            if journey.api_error_count >= 3:
-                # Train disappeared from API — likely completed its run.
-                # Check if penultimate stop departed, which means the train
-                # reached its terminal. We can't set terminal actual_arrival
-                # (no API data), but marking the journey completed is still
-                # valuable for analytics that only need completion status.
-                if not journey.is_completed:
-                    await self._attempt_completion_on_expiry(session, journey)
-
-                if not journey.is_completed:
-                    journey.is_expired = True
-                logger.warning(
-                    (
-                        "train_marked_expired"
-                        if journey.is_expired
-                        else "train_completed_on_expiry"
-                    ),
+            try:
+                train_data = await self.njt_client.get_train_stop_list(journey.train_id)
+            except NJTransitNullDataError:
+                # NJT API returned a response with all key fields null — transient
+                # API issue. The train likely still appears on departure boards.
+                # Do NOT increment api_error_count; keep last known data.
+                logger.info(
+                    "train_null_data_skipped",
                     train_id=journey.train_id,
                     journey_id=journey.id,
                     api_error_count=journey.api_error_count,
                 )
-            else:
-                logger.warning(
-                    "train_not_found_error_incremented",
-                    train_id=journey.train_id,
-                    journey_id=journey.id,
-                    api_error_count=journey.api_error_count,
-                )
+                return
+            except TrainNotFoundError:
+                # Train is genuinely not available (empty/None response) —
+                # increment error count toward expiry threshold.
+                journey.api_error_count = (journey.api_error_count or 0) + 1
+                journey.last_updated_at = now_et()
+                journey.update_count = (journey.update_count or 0) + 1
 
-            await session.flush()
-            return
+                # After 3 failed attempts, attempt last-chance completion then expire
+                if journey.api_error_count >= 3:
+                    # Train disappeared from API — likely completed its run.
+                    # Check if penultimate stop departed, which means the train
+                    # reached its terminal. We can't set terminal actual_arrival
+                    # (no API data), but marking the journey completed is still
+                    # valuable for analytics that only need completion status.
+                    if not journey.is_completed:
+                        await self._attempt_completion_on_expiry(session, journey)
+
+                    if not journey.is_completed:
+                        journey.is_expired = True
+                    logger.warning(
+                        (
+                            "train_marked_expired"
+                            if journey.is_expired
+                            else "train_completed_on_expiry"
+                        ),
+                        train_id=journey.train_id,
+                        journey_id=journey.id,
+                        api_error_count=journey.api_error_count,
+                    )
+                else:
+                    logger.warning(
+                        "train_not_found_error_incremented",
+                        train_id=journey.train_id,
+                        journey_id=journey.id,
+                        api_error_count=journey.api_error_count,
+                    )
+
+                await session.flush()
+                return
 
         # Debug: Log journey validation inputs
         logger.debug(

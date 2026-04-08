@@ -30,7 +30,7 @@ from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
-from trackrat.db.engine import get_session
+from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
@@ -1791,45 +1791,16 @@ class SchedulerService:
             )
             return None
 
-    def _determine_train_status_sync(self, stops_data: list[Any]) -> str:
-        """Determine overall train status from stops (sync version).
-
-        Args:
-            stops_data: List of NJTransitStopData
-
-        Returns:
-            Overall status string
-        """
-        if not stops_data:
-            return "UNKNOWN"
-
-        # Check if all stops are cancelled
-        if all((stop.STOP_STATUS or "") == "CANCELLED" for stop in stops_data):
-            return "CANCELLED"
-
-        # Find current position
-        for i, stop in enumerate(stops_data):
-            if stop.DEPARTED != "YES":
-                # This is the next stop
-                if i == 0:
-                    return "NOT_DEPARTED"
-                elif stop.TRACK:
-                    return "BOARDING"
-                else:
-                    return "IN_TRANSIT"
-
-        # All stops departed
-        return "COMPLETED"
-
     async def _collect_single_njt_journey_safe(
         self, train_id: str, journey_date: date | None = None
     ) -> dict[str, Any] | None:
-        """Safely collect a single NJT journey using synchronous database operations.
+        """Safely collect a single NJT journey.
 
-        This method splits DB access into read and write phases around the external
-        NJT API call, so that no database connection is held while waiting for the
-        network response.  This prevents connection pool exhaustion when many trains
-        are collected concurrently.
+        Phase 1 (sync): Quick lookup of journey_id to confirm it exists.
+        Phase 2 (async): NJT API call with no DB connection held.
+        Phase 3 (async): Write via shared collect_journey_details() path,
+            which uses merge/preserve semantics (frozen arrivals,
+            departure_source non-downgrade, etc.).
 
         Args:
             train_id: The train ID to collect
@@ -1839,15 +1810,14 @@ class SchedulerService:
             Dict with journey info if successful, None if failed
         """
         try:
-            from sqlalchemy import and_, delete, select
+            from sqlalchemy import and_, select
             from sqlalchemy.orm import sessionmaker
 
             from trackrat.collectors.njt.client import (
                 NJTransitNullDataError,
                 TrainNotFoundError,
             )
-            from trackrat.models.database import JourneySnapshot, JourneyStop
-            from trackrat.utils.time import now_et, parse_njt_time
+            from trackrat.utils.time import now_et
 
             if journey_date is None:
                 journey_date = now_et().date()
@@ -1936,9 +1906,24 @@ class SchedulerService:
                 logger.warning("no_train_data_received_sync", train_id=train_id)
                 return None
 
-            # ── Phase 3: Write results to DB (connection held only for writes) ──
-            with SyncSession() as session:
-                journey = session.get(TrainJourney, journey_id)
+            # ── Phase 3: Write results via shared async collector path ──
+            # Uses the same merge/preserve semantics as the async collector
+            # (frozen arrivals, departure_source non-downgrade, etc.) instead
+            # of the old DELETE+INSERT that caused lock contention with JIT and
+            # destroyed previously captured data.
+            from trackrat.collectors.njt.journey import (
+                JourneyCollector,
+                _journey_eager_options,
+            )
+
+            async with get_session() as session:
+                stmt = (
+                    select(TrainJourney)
+                    .where(TrainJourney.id == journey_id)
+                    .options(*_journey_eager_options())
+                    .execution_options(populate_existing=True)
+                )
+                journey = await session.scalar(stmt)
                 if not journey:
                     logger.warning(
                         "journey_disappeared_before_write",
@@ -1947,227 +1932,33 @@ class SchedulerService:
                     )
                     return None
 
-                # Reset error count on successful fetch
-                journey.api_error_count = 0
-
-                with session.no_autoflush:
-                    # Update journey metadata
-                    journey.destination = train_data.DESTINATION
-                    journey.line_color = train_data.BACKCOLOR.strip()
-                    journey.update_count = (journey.update_count or 0) + 1
-
-                    # Only mark complete/fresh when STOPS are present.
-                    # Empty STOPS from the NJT API should not suppress
-                    # future collection via has_complete_journey or
-                    # stale last_updated_at checks.
-                    if train_data.STOPS:
-                        journey.has_complete_journey = True
-                        journey.stops_count = len(train_data.STOPS)
-                        journey.last_updated_at = now_et()
-                    else:
-                        logger.info(
-                            "njt_api_empty_stops",
-                            train_id=train_id,
-                            stops_count=0,
-                        )
-
-                    # Update origin/terminal/scheduled_departure from stops
-                    if train_data.STOPS:
-                        first_stop = train_data.STOPS[0]
-                        last_stop = train_data.STOPS[-1]
-
-                        journey.origin_station_code = first_stop.STATION_2CHAR
-                        journey.terminal_station_code = last_stop.STATION_2CHAR
-                        # Use immutable schedule fields for scheduled times.
-                        # At origin: DEP_TIME = actual departure, TIME = schedule.
-                        # At terminal: TIME = live estimate, SCHED_DEP_DATE = schedule.
-                        if first_stop.SCHED_DEP_DATE:
-                            journey.scheduled_departure = parse_njt_time(
-                                first_stop.SCHED_DEP_DATE
-                            )
-                        elif first_stop.TIME:
-                            journey.scheduled_departure = parse_njt_time(
-                                first_stop.TIME
-                            )
-                        if journey.scheduled_arrival is None:
-                            if last_stop.SCHED_DEP_DATE:
-                                journey.scheduled_arrival = parse_njt_time(
-                                    last_stop.SCHED_DEP_DATE
-                                )
-                            elif last_stop.SCHED_ARR_DATE:
-                                journey.scheduled_arrival = parse_njt_time(
-                                    last_stop.SCHED_ARR_DATE
-                                )
-
-                    # Delete existing stops
-                    session.execute(
-                        delete(JourneyStop).where(JourneyStop.journey_id == journey.id)
-                    )
-
-                    # Create new stops
-                    for idx, stop_data in enumerate(train_data.STOPS):
-                        # Prefer immutable SCHED_*_DATE fields for scheduled times.
-                        # TIME/DEP_TIME have inverted semantics at origin vs intermediate
-                        # and TIME is a live estimate at intermediate stops.
-                        sched_arr = (
-                            parse_njt_time(stop_data.SCHED_ARR_DATE)
-                            if stop_data.SCHED_ARR_DATE
-                            else None
-                        )
-                        sched_dep = (
-                            parse_njt_time(stop_data.SCHED_DEP_DATE)
-                            if stop_data.SCHED_DEP_DATE
-                            else None
-                        )
-                        # Validate: arrival must be <= departure at same stop
-                        if sched_arr and sched_dep and sched_arr > sched_dep:
-                            sched_arr = None
-
-                        scheduled_arrival = sched_arr
-                        scheduled_departure = sched_dep or (
-                            parse_njt_time(stop_data.DEP_TIME)
-                            if stop_data.DEP_TIME
-                            else None
-                        )
-
-                        # Parse live times for actual values
-                        time_field = (
-                            parse_njt_time(stop_data.TIME) if stop_data.TIME else None
-                        )
-                        dep_time_field = (
-                            parse_njt_time(stop_data.DEP_TIME)
-                            if stop_data.DEP_TIME
-                            else None
-                        )
-
-                        is_stop_cancelled = (stop_data.STOP_STATUS or "") == "CANCELLED"
-                        actual_arrival = None
-                        actual_departure = None
-                        if stop_data.DEPARTED == "YES" and not is_stop_cancelled:
-                            # At origin: DEP_TIME = actual, at intermediate: TIME = actual
-                            is_origin = idx == 0
-                            actual_departure = (
-                                dep_time_field if is_origin else time_field
-                            ) or scheduled_departure
-                            actual_arrival = time_field
-
-                        stop = JourneyStop(
-                            journey_id=journey.id,
-                            station_code=stop_data.STATION_2CHAR,
-                            station_name=stop_data.STATIONNAME,
-                            stop_sequence=idx,
-                            scheduled_departure=scheduled_departure,
-                            scheduled_arrival=scheduled_arrival,
-                            actual_departure=actual_departure,
-                            actual_arrival=actual_arrival,
-                            track=stop_data.TRACK or None,
-                            track_assigned_at=now_et() if stop_data.TRACK else None,
-                            raw_njt_departed_flag=stop_data.DEPARTED,
-                            has_departed_station=(
-                                stop_data.DEPARTED == "YES"
-                                and not is_stop_cancelled
-                                and (
-                                    not scheduled_departure
-                                    or scheduled_departure <= now_et()
-                                )
-                            ),
-                        )
-                        session.add(stop)
-
-                    # Create/update journey snapshot
-                    session.execute(
-                        delete(JourneySnapshot).where(
-                            JourneySnapshot.journey_id == journey.id
-                        )
-                    )
-
-                    completed_stops = sum(
-                        1
-                        for stop in train_data.STOPS
-                        if stop.DEPARTED == "YES"
-                        and (stop.STOP_STATUS or "") != "CANCELLED"
-                    )
-
-                    track_assignments = {
-                        stop.STATION_2CHAR: stop.TRACK
-                        for stop in train_data.STOPS
-                        if stop.TRACK
-                    }
-
-                    delay_minutes = 0
-                    for stop in reversed(train_data.STOPS):
-                        if stop.DEPARTED == "YES" and stop.STOP_STATUS:
-                            if "LATE" in (stop.STOP_STATUS or ""):
-                                try:
-                                    parts = stop.STOP_STATUS.split()
-                                    if "MINUTES" in parts:
-                                        idx = parts.index("MINUTES")
-                                        if idx > 0:
-                                            delay_minutes = int(parts[idx - 1])
-                                    elif "MINS" in parts:
-                                        idx = parts.index("MINS")
-                                        if idx > 0:
-                                            delay_minutes = int(parts[idx - 1])
-                                except (ValueError, IndexError):
-                                    pass
-                            break
-
-                    train_status = self._determine_train_status_sync(train_data.STOPS)
-
-                    snapshot = JourneySnapshot(
-                        journey_id=journey.id,
-                        captured_at=now_et(),
-                        raw_stop_list_data={},
-                        train_status=train_status,
-                        delay_minutes=delay_minutes,
-                        completed_stops=completed_stops,
-                        total_stops=len(train_data.STOPS),
-                        track_assignments=track_assignments,
-                    )
-                    session.add(snapshot)
-
-                    # Update journey status from stops
-                    is_completed = bool(
-                        train_data.STOPS and train_data.STOPS[-1].DEPARTED == "YES"
-                    )
-                    journey.is_completed = is_completed
-
-                    is_cancelled = all(
-                        (stop.STOP_STATUS or "") == "CANCELLED"
-                        for stop in train_data.STOPS
-                    )
-                    if is_cancelled:
-                        journey.is_cancelled = True
-                        journey.cancellation_reason = "All stops cancelled by NJT"
-
-                result_data = {
-                    "train_id": train_id,
-                    "stops_count": len(train_data.STOPS),
-                    "destination": train_data.DESTINATION,
-                    "success": True,
-                    "is_completed": is_completed,
-                }
-
-                commit_with_retry(session, log_context={"train_id": train_id})
+                collector = JourneyCollector(self.njt_client)
+                await collector.collect_journey_details(
+                    session,
+                    journey,
+                    skip_enhancement=True,
+                    prefetched_train_data=train_data,
+                )
+                await session.commit()
 
             logger.info(
                 "journey_collection_completed_sync",
                 train_id=train_id,
                 journey_id=journey_id,
                 stops_count=len(train_data.STOPS),
-                is_completed=is_completed,
+                is_completed=journey.is_completed,
             )
 
-            return result_data
+            return {
+                "train_id": train_id,
+                "stops_count": len(train_data.STOPS),
+                "destination": train_data.DESTINATION,
+                "success": True,
+                "is_completed": journey.is_completed,
+            }
 
         except Exception as e:
-            error_msg = str(e).lower()
-            is_transient = (
-                "serialization failure" in error_msg
-                or "deadlock detected" in error_msg
-                or "could not serialize access" in error_msg
-            )
-            if is_transient:
+            if _is_postgresql_concurrency_error(e):
                 logger.warning(
                     "safe_journey_collection_transient_error",
                     train_id=train_id,

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from structlog import get_logger
 
+from trackrat.db.engine import _is_postgresql_concurrency_error
 from trackrat.models.database import SchedulerTaskRun
 
 logger = get_logger(__name__)
@@ -47,19 +48,17 @@ def commit_with_retry(
             session.commit()
             return
         except Exception as e:
-            error_msg = str(e).lower()
-            is_transient = (
-                "serialization failure" in error_msg
-                or "deadlock detected" in error_msg
-                or "could not serialize access" in error_msg
-            )
-            if is_transient and retry < max_retries - 1:
+            if _is_postgresql_concurrency_error(e) and retry < max_retries - 1:
                 logger.warning(
                     "database_transient_error_retrying",
                     retry=retry + 1,
                     error=str(e),
                     **context,
                 )
+                # Rollback the aborted transaction before retrying —
+                # PostgreSQL rejects all commands after an error until
+                # the transaction is rolled back.
+                session.rollback()
                 time.sleep(0.5 * (retry + 1))
             else:
                 raise
