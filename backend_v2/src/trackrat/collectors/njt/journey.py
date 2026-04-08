@@ -36,7 +36,7 @@ from trackrat.utils.time import (
 logger = get_logger(__name__)
 
 
-def _journey_eager_options() -> list:
+def _journey_eager_options() -> list[Any]:
     """Standard selectinload options for TrainJourney queries that flow into
     collect_journey_details().
 
@@ -1218,12 +1218,18 @@ class JourneyCollector(BaseJourneyCollector):
             ):
                 max_departed_sequence = max(max_departed_sequence, sequence)
 
-        # Detect dialect once for the stop-insert upsert below
+        # Detect dialect once for the stop-insert upsert below.
+        # Both PostgreSQL and SQLite dialect inserts support on_conflict_do_nothing.
         dialect_name = session.bind.dialect.name if session.bind else "postgresql"
+        dialect_insert: Any
         if dialect_name == "sqlite":
-            from sqlalchemy.dialects.sqlite import insert as dialect_insert
+            from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
+
+            dialect_insert = _sqlite_insert
         else:
-            from sqlalchemy.dialects.postgresql import insert as dialect_insert
+            from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+            dialect_insert = _pg_insert
 
         # Second pass: Process each stop
         for sequence, stop_data in enumerate(stops_data):
@@ -1309,9 +1315,9 @@ class JourneyCollector(BaseJourneyCollector):
                         index_elements=["journey_id", "station_code"]
                     )
                 )
-                result = await session.execute(insert_stmt)
+                insert_result = await session.execute(insert_stmt)
 
-                if result.rowcount:
+                if insert_result.rowcount:  # type: ignore[attr-defined]
                     logger.debug(
                         "created_stop_with_scheduled_times",
                         train_id=journey.train_id,

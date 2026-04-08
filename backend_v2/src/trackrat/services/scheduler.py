@@ -1917,13 +1917,13 @@ class SchedulerService:
             )
 
             async with get_session() as session:
-                stmt = (
+                load_stmt = (
                     select(TrainJourney)
                     .where(TrainJourney.id == journey_id)
                     .options(*_journey_eager_options())
                     .execution_options(populate_existing=True)
                 )
-                journey = await session.scalar(stmt)
+                journey = await session.scalar(load_stmt)
                 if not journey:
                     logger.warning(
                         "journey_disappeared_before_write",
