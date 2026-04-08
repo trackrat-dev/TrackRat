@@ -2,9 +2,11 @@
 Tests for train API endpoints.
 """
 
+import asyncio
+
 import pytest
 from datetime import datetime, date, timedelta
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et, ET
@@ -574,3 +576,212 @@ async def test_departures_cache_integration(client, db_session):
         data1["metadata"]["from_station"]["code"]
         == data2["metadata"]["from_station"]["code"]
     )
+
+
+@pytest.mark.asyncio
+async def test_jit_timeout_falls_through_to_gtfs_fallback(client):
+    """Test that a JIT refresh timeout with no stale data falls through to GTFS fallback.
+
+    When jit_service.get_fresh_train() hangs and no existing journey exists in the DB,
+    the asyncio.wait_for wrapper should cancel the call after 15 seconds and fall through
+    to the GTFS fallback path (since stale_journey is also None).
+
+    This verifies the fix for issue #902: JIT refresh has no timeout.
+    """
+
+    async def _hang_forever(*args, **kwargs):
+        """Simulate a JIT call that never returns (external API hung)."""
+        await asyncio.sleep(3600)
+
+    with patch("trackrat.api.trains.JustInTimeUpdateService") as mock_jit:
+        mock_service = AsyncMock()
+        mock_service.get_fresh_train = _hang_forever
+        mock_jit.return_value.__aenter__.return_value = mock_service
+
+        # Also mock GTFS fallback returning None so we get a clean 404
+        with patch("trackrat.api.trains.GTFSService") as mock_gtfs:
+            mock_gtfs_service = AsyncMock()
+            mock_gtfs_service.get_train_details = AsyncMock(return_value=None)
+            mock_gtfs.return_value = mock_gtfs_service
+
+            # Patch asyncio.wait_for timeout to 0.1s so test runs quickly
+            original_wait_for = asyncio.wait_for
+
+            async def fast_wait_for(coro, *, timeout):
+                """Use a shorter timeout for testing."""
+                return await original_wait_for(coro, timeout=0.1)
+
+            with patch("trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for):
+                response = client.get("/api/v2/trains/9999")
+
+            # Should get 404 (train not found) — NOT a timeout/504/500
+            assert response.status_code == 404, (
+                f"Expected 404 (graceful fallback after JIT timeout), "
+                f"got {response.status_code}: {response.json()}"
+            )
+            assert "not found" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_jit_timeout_preserves_stale_journey(client):
+    """Test that a JIT timeout returns stale journey data instead of 404.
+
+    When jit_service.get_fresh_train() hangs but an existing journey is already
+    in the DB, the timeout handler should fall back to the stale journey rather
+    than dropping to None and returning a false 404.
+
+    This addresses the Codex review comment on PR #907: trains not in GTFS
+    (extra service, unmapped IDs) should return degraded-but-useful stale data
+    instead of a 404.
+    """
+    from trackrat.main import app
+    from trackrat.db.engine import get_db
+
+    now = now_et()
+
+    # Build a mock journey object with all attributes the response builder needs
+    mock_journey = Mock(spec=TrainJourney)
+    mock_journey.train_id = "9999"
+    mock_journey.journey_date = date.today()
+    mock_journey.line_code = "NE"
+    mock_journey.line_name = "Northeast Corridor"
+    mock_journey.line_color = "#F7505E"
+    mock_journey.destination = "Trenton"
+    mock_journey.origin_station_code = "NY"
+    mock_journey.terminal_station_code = "TR"
+    mock_journey.scheduled_departure = now + timedelta(hours=1)
+    mock_journey.scheduled_arrival = now + timedelta(hours=2)
+    mock_journey.actual_departure = None
+    mock_journey.actual_arrival = None
+    mock_journey.first_seen_at = now - timedelta(minutes=5)
+    mock_journey.last_updated_at = now - timedelta(minutes=2)
+    mock_journey.has_complete_journey = True
+    mock_journey.stops_count = 2
+    mock_journey.is_cancelled = False
+    mock_journey.cancellation_reason = None
+    mock_journey.is_completed = False
+    mock_journey.data_source = "NJT"
+    mock_journey.observation_type = "OBSERVED"
+    mock_journey.update_count = 3
+    mock_journey.progress_snapshots = []
+    mock_journey.discovery_track = None
+    mock_journey.discovery_station_code = None
+
+    # Create mock stops
+    mock_stop_ny = Mock()
+    mock_stop_ny.station_code = "NY"
+    mock_stop_ny.station_name = "New York Penn Station"
+    mock_stop_ny.stop_sequence = 0
+    mock_stop_ny.scheduled_departure = now + timedelta(hours=1)
+    mock_stop_ny.scheduled_arrival = now + timedelta(hours=1)
+    mock_stop_ny.updated_departure = None
+    mock_stop_ny.updated_arrival = None
+    mock_stop_ny.actual_departure = None
+    mock_stop_ny.actual_arrival = None
+    mock_stop_ny.track = None
+    mock_stop_ny.track_assigned_at = None
+    mock_stop_ny.raw_amtrak_status = None
+    mock_stop_ny.raw_njt_departed_flag = None
+    mock_stop_ny.has_departed_station = False
+
+    mock_stop_tr = Mock()
+    mock_stop_tr.station_code = "TR"
+    mock_stop_tr.station_name = "Trenton"
+    mock_stop_tr.stop_sequence = 1
+    mock_stop_tr.scheduled_departure = now + timedelta(hours=2)
+    mock_stop_tr.scheduled_arrival = now + timedelta(hours=2)
+    mock_stop_tr.updated_departure = None
+    mock_stop_tr.updated_arrival = None
+    mock_stop_tr.actual_departure = None
+    mock_stop_tr.actual_arrival = None
+    mock_stop_tr.track = None
+    mock_stop_tr.track_assigned_at = None
+    mock_stop_tr.raw_amtrak_status = None
+    mock_stop_tr.raw_njt_departed_flag = None
+    mock_stop_tr.has_departed_station = False
+
+    mock_journey.stops = [mock_stop_ny, mock_stop_tr]
+
+    # Build a mock DB session where scalar() returns the stale journey
+    mock_db = AsyncMock()
+    mock_db.scalar = AsyncMock(return_value=mock_journey)
+    mock_db.flush = AsyncMock()
+    mock_db.rollback = AsyncMock()
+    mock_db.commit = AsyncMock()
+
+    # Mock execute for any other queries (return empty results)
+    mock_result = Mock()
+    mock_scalars = Mock()
+    mock_scalars.unique.return_value.all.return_value = []
+    mock_scalars.all.return_value = []
+    mock_result.scalars.return_value = mock_scalars
+    mock_result.scalar.return_value = None
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db.execute = AsyncMock(return_value=mock_result)
+
+    # Override get_db to use our custom mock
+    async def get_test_db():
+        yield mock_db
+
+    original_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = get_test_db
+
+    try:
+        async def _hang_forever(*args, **kwargs):
+            await asyncio.sleep(3600)
+
+        with patch("trackrat.api.trains.JustInTimeUpdateService") as mock_jit:
+            mock_service = AsyncMock()
+            mock_service.get_fresh_train = _hang_forever
+            mock_jit.return_value.__aenter__.return_value = mock_service
+
+            original_wait_for = asyncio.wait_for
+
+            async def fast_wait_for(coro, *, timeout):
+                return await original_wait_for(coro, timeout=0.1)
+
+            with patch("trackrat.api.trains.asyncio.wait_for", side_effect=fast_wait_for):
+                response = client.get("/api/v2/trains/9999")
+
+            # Should get 200 with stale journey data — NOT a 404
+            assert response.status_code == 200, (
+                f"Expected 200 (stale journey preserved after JIT timeout), "
+                f"got {response.status_code}: {response.text}"
+            )
+            data = response.json()
+            assert data["train"]["train_id"] == "9999", (
+                f"Expected train_id '9999' in response, got: {data}"
+            )
+            assert data["train"]["data_source"] == "NJT"
+    finally:
+        # Restore original override
+        if original_override is not None:
+            app.dependency_overrides[get_db] = original_override
+        else:
+            app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.mark.asyncio
+async def test_jit_normal_returns_none_gracefully(client):
+    """Test that the asyncio.wait_for wrapper doesn't interfere with normal JIT operation.
+
+    When JIT returns None within the timeout, the endpoint should fall through to
+    the GTFS fallback path as before (no regression from adding the timeout wrapper).
+    """
+    with patch("trackrat.api.trains.JustInTimeUpdateService") as mock_jit:
+        mock_service = AsyncMock()
+        mock_service.get_fresh_train = AsyncMock(return_value=None)
+        mock_jit.return_value.__aenter__.return_value = mock_service
+
+        with patch("trackrat.api.trains.GTFSService") as mock_gtfs:
+            mock_gtfs_service = AsyncMock()
+            mock_gtfs_service.get_train_details = AsyncMock(return_value=None)
+            mock_gtfs.return_value = mock_gtfs_service
+
+            response = client.get("/api/v2/trains/1234")
+
+        # Should get 404 — the timeout wrapper should not interfere with normal None returns
+        assert response.status_code == 404, (
+            f"Expected 404 (normal JIT returning None), "
+            f"got {response.status_code}: {response.json()}"
+        )
