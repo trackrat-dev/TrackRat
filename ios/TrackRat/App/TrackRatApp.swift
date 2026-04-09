@@ -812,7 +812,7 @@ final class AppState: ObservableObject {
     }
 
     // Beta feature: Enable tapping route segments to view details
-    @Published var enableSegmentTap: Bool = false {
+    @Published var enableSegmentTap: Bool = true {
         didSet {
             UserDefaults.standard.set(enableSegmentTap, forKey: "enableSegmentTap")
         }
