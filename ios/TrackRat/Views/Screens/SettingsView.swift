@@ -669,7 +669,6 @@ struct SettingsSection: View {
                 selectedStation: $pickerStation,
                 disabledStation: nil,
                 selectedSystems: appState.selectedSystems,
-                showsInactiveSystemTips: true,
                 onInactiveStationSelected: { _ in
                     showStationPicker = false
                 }
