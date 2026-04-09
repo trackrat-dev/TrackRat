@@ -12,7 +12,6 @@ struct StationPickerSheet: View {
     @Binding var selectedStation: Station?
     let disabledStation: Station?  // Station that should be shown as disabled
     var selectedSystems: Set<TrainSystem>? = nil  // Optional: filter stations by selected systems
-    var showsInactiveSystemTips: Bool = false
     var onInactiveStationSelected: ((Station) -> Void)? = nil
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -40,28 +39,26 @@ struct StationPickerSheet: View {
     private var searchResults: (active: [Station], inactive: [Station]) {
         guard !searchText.isEmpty else { return ([], []) }
 
-        if showsInactiveSystemTips,
-           let systems = selectedSystems,
-           !systems.isEmpty {
-            let grouped = Stations.searchGrouped(searchText, selectedSystems: systems)
-            return (
-                grouped.primary.compactMap { station(named: $0) },
-                grouped.other.compactMap { station(named: $0) }
-            )
-        }
-
-        let q = searchText.lowercased()
-        let stations = visibleStations
-        let prefixMatches = stations.filter { $0.name.lowercased().hasPrefix(q) }
+        guard let systems = selectedSystems, !systems.isEmpty else {
+            // No system filter — show all matching stations as active
+            let q = searchText.lowercased()
+            let stations = visibleStations
+            let prefixMatches = stations.filter { $0.name.lowercased().hasPrefix(q) }
+                .sorted { $0.name < $1.name }
+            let substringMatches = stations.filter {
+                !$0.name.lowercased().hasPrefix(q) &&
+                ($0.name.localizedCaseInsensitiveContains(searchText) ||
+                 $0.code.localizedCaseInsensitiveContains(searchText))
+            }
             .sorted { $0.name < $1.name }
-        let substringMatches = stations.filter {
-            !$0.name.lowercased().hasPrefix(q) &&
-            ($0.name.localizedCaseInsensitiveContains(searchText) ||
-             $0.code.localizedCaseInsensitiveContains(searchText))
+            return (Array((prefixMatches + substringMatches).prefix(20)), [])
         }
-        .sorted { $0.name < $1.name }
 
-        return (Array((prefixMatches + substringMatches).prefix(20)), [])
+        let grouped = Stations.searchGrouped(searchText, selectedSystems: systems)
+        return (
+            grouped.primary.compactMap { station(named: $0) },
+            grouped.other.compactMap { station(named: $0) }
+        )
     }
 
     /// Stations grouped by system for the browse view (when search is empty).

@@ -119,7 +119,6 @@ struct OnboardingView: View {
                 selectedStation: binding(for: stationBeingEdited),
                 disabledStation: disabledStation(for: stationBeingEdited),
                 selectedSystems: appState.selectedSystems,
-                showsInactiveSystemTips: true,
                 onInactiveStationSelected: { _ in
                     showStationPicker = false
 

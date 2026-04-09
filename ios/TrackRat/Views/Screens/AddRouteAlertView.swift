@@ -316,6 +316,9 @@ struct AddRouteAlertView: View {
                 selectedStation: $fromStation,
                 disabledStation: toStation,
                 selectedSystems: alertCapableSystems,
+                onInactiveStationSelected: { _ in
+                    showFromPicker = false
+                },
                 onStationSelected: { station in
                     fromStation = station
                     showFromPicker = false
@@ -327,6 +330,9 @@ struct AddRouteAlertView: View {
                 selectedStation: $toStation,
                 disabledStation: fromStation,
                 selectedSystems: alertCapableSystems,
+                onInactiveStationSelected: { _ in
+                    showToPicker = false
+                },
                 onStationSelected: { station in
                     toStation = station
                     showToPicker = false
