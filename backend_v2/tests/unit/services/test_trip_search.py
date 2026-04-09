@@ -838,3 +838,76 @@ class TestLeg2TimeWindowFromLeg1Arrivals:
             f"3-hour Amtrak leg 1 should push leg 2 window to +{expected_offset}, "
             f"got {leg2_time_from - now}"
         )
+
+
+class TestDirectTripFallthroughBehavior:
+    """Regression test for issue #921: search_trips must fall through to
+    transfer search when direct departures exist but produce no usable trips.
+
+    The bug: `search_trips` checked `if direct_response.departures:` and
+    returned early even when all departures failed `_make_direct_trip`
+    (returned None due to missing times). The fix: check whether any
+    *converted* trips exist before returning.
+    """
+
+    def test_make_direct_trip_returns_none_for_all_none_times(self):
+        """_make_direct_trip must return None when departure has no times.
+
+        This is the precondition for the fallthrough bug: if all departures
+        in a response produce None from _make_direct_trip, the search must
+        not return an empty trips list — it should fall through to transfers.
+        """
+        dep = _make_departure()
+        # Set departure info with no times at all
+        dep.departure = _make_station_info(code="NP", name="Newark Penn Station")
+        trip = _make_direct_trip(dep)
+        assert trip is None, (
+            "_make_direct_trip should return None when departure has no "
+            "actual_time, updated_time, or scheduled_time"
+        )
+
+    def test_search_trips_checks_converted_trips_not_raw_departures(self):
+        """Verify that search_trips guards on converted trips, not raw departures.
+
+        Inspects the source of search_trips to ensure the early return is
+        conditional on `direct_trips` (the list of successfully converted
+        TripOption objects), NOT on `direct_response.departures` (the raw
+        list from the departure service).
+        """
+        import ast
+        import inspect
+        import textwrap
+
+        from trackrat.services import trip_search as module
+
+        source = inspect.getsource(module)
+        source = textwrap.dedent(source)
+        tree = ast.parse(source)
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name != "search_trips":
+                continue
+
+            # Find all `if` guards that lead to a return with search_type="direct"
+            source_lines = source.splitlines()
+            for child in ast.walk(node):
+                if not isinstance(child, ast.If):
+                    continue
+                # Check if this if-block contains a return with "direct" in it
+                block_source = ast.get_source_segment(source, child)
+                if block_source and '"direct"' in block_source:
+                    # The guard condition should reference direct_trips (or similar),
+                    # NOT direct_response.departures
+                    cond_source = ast.get_source_segment(source, child.test)
+                    assert cond_source is not None
+                    assert "direct_response.departures" not in cond_source, (
+                        f"search_trips still guards on direct_response.departures "
+                        f"instead of the converted trips list. "
+                        f"Guard condition: {cond_source}. "
+                        f"This causes empty results when departures exist but "
+                        f"produce no usable trips (issue #921)."
+                    )
+                    break
+            break
