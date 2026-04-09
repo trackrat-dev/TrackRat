@@ -583,7 +583,7 @@ struct SettingsSection: View {
                         .foregroundColor(.orange)
                         .frame(width: 24, height: 24)
 
-                    Text("Contribute on GitHub")
+                    Text("Get Involved on GitHub")
                         .font(.headline)
                         .fontWeight(.medium)
                         .foregroundColor(.white)
