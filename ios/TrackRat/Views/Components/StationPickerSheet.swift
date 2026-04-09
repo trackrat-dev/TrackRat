@@ -225,10 +225,6 @@ struct StationPickerSheet: View {
                                     .font(.caption.weight(.semibold))
                                     .foregroundColor(.white.opacity(0.6))
                                     .textCase(nil)
-                            } footer: {
-                                Text("Edit your train systems to use these stations.")
-                                    .font(.caption2)
-                                    .foregroundColor(.white.opacity(0.45))
                             }
                         }
                     }
