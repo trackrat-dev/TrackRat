@@ -11,6 +11,7 @@
 - **Routing**: React Router DOM 7.14
 - **Date Handling**: date-fns 4.1
 - **HTTP Client**: Native `fetch` (no axios)
+- **Maps**: MapLibre GL 5.22 + react-map-gl 8.1
 - **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)
 
 ## Architecture Patterns

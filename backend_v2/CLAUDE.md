@@ -74,7 +74,7 @@ The V2 backend eliminates the complexity of V1 by:
    - Provides future train visibility beyond 30-60 minute window
 
 2. **Discovery Phase** (Every 30 minutes, configurable)
-   - **NJT**: Polls 7 major stations (NY, NP, PJ, TR, LB, PL, DN) via `getTrainSchedule`
+   - **NJT**: Polls 18 stations (NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV) via `getTrainSchedule`
    - **Amtrak**: Polls major stations for active trains
    - Updates journey records from SCHEDULED to OBSERVED when trains appear
 
@@ -101,8 +101,9 @@ train_journeys (
     id, train_id, journey_date, line_code, line_name, line_color,
     destination, origin_station_code, terminal_station_code,
     data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR/SUBWAY/BART/MBTA/METRA/WMATA), observation_type (OBSERVED/SCHEDULED),
+    first_seen_at, last_updated_at, update_count,
     scheduled_departure, scheduled_arrival, actual_departure, actual_arrival,
-    has_complete_journey, stops_count, is_cancelled, is_completed,
+    has_complete_journey, stops_count, is_cancelled, cancellation_reason, is_completed,
     api_error_count, is_expired, discovery_track, discovery_station_code
 
 -- Individual stops with times and tracks
@@ -112,11 +113,14 @@ train_journeys (
 -- Consumers must use max(updated_departure, updated_arrival) for NJT departures.
 -- See database.py JourneyStop model for full documentation.
 journey_stops (
-    journey_id, station_code, stop_sequence,
+    journey_id, station_code, station_name, stop_sequence,
     scheduled_departure, scheduled_arrival,
     updated_departure, updated_arrival,
     actual_departure, actual_arrival,
-    track, status
+    raw_amtrak_status, raw_njt_departed_flag,
+    has_departed_station, departure_source, arrival_source,
+    track, track_assigned_at, pickup_only, dropoff_only,
+    created_at, updated_at
 )
 
 -- Transit time analysis (NEW)
@@ -144,7 +148,9 @@ journey_progress (
 
 -- Historical snapshots for ML training
 journey_snapshots (
-    journey_id, snapshot_type, api_response, created_at
+    journey_id, captured_at, raw_stop_list_data,
+    train_status, delay_minutes, completed_stops, total_stops,
+    track_assignments
 )
 
 -- API response caching
@@ -154,7 +160,9 @@ cached_api_responses (
 
 -- Scheduler coordination (for horizontal scaling)
 scheduler_task_runs (
-    task_name, last_successful_run, run_count, last_run_revision
+    task_name, last_successful_run, last_attempt, run_count,
+    average_duration_ms, last_duration_ms, last_instance_id,
+    created_at, updated_at
 )
 
 -- Live Activity tokens
@@ -165,21 +173,47 @@ live_activity_tokens (
 
 -- Validation results
 validation_results (
-    id, validation_run_id, route, data_source,
-    expected_trains, found_trains, missing_trains,
-    coverage_percent, validation_time
+    id, run_at, route, source,
+    transit_train_count, api_train_count, coverage_percent,
+    missing_trains, extra_trains, details
 )
 
 -- Device tokens for push notifications
 device_tokens (
-    id, device_token, platform, created_at, updated_at
+    id, device_id, apns_token, created_at, updated_at
 )
 
 -- Route alert subscriptions
 route_alert_subscriptions (
-    id, device_token_id, route, data_source,
-    delay_threshold_minutes, notify_cancellations,
-    created_at, updated_at
+    id, device_id, data_source, line_id, from_station_code, to_station_code,
+    train_id, direction, active_days, active_start_minutes, active_end_minutes,
+    timezone, delay_threshold_minutes, service_threshold_pct, cancellation_threshold_pct,
+    notify_cancellation, notify_delay, notify_recovery,
+    digest_time_minutes, include_planned_work,
+    created_at, last_alerted_at, last_alert_hash, last_digest_at, last_service_alert_ids
+)
+
+-- Discovery run tracking
+discovery_runs (
+    id, data_source, station_code, started_at, completed_at,
+    trains_found, trains_created, trains_updated, error
+)
+
+-- MTA service alerts
+service_alerts (
+    id, alert_id, data_source, alert_type, header, description,
+    affected_routes, affected_stops, active_periods, is_active,
+    first_seen_at, last_seen_at, created_at, updated_at
+)
+
+-- GTFS static data tables
+gtfs_feed_info, gtfs_routes, gtfs_trips, gtfs_stop_times,
+gtfs_calendar, gtfs_calendar_dates
+
+-- Route preferences
+route_preferences (
+    id, device_id, from_station_code, to_station_code, data_source,
+    display_order, created_at, updated_at
 )
 ```
 
@@ -222,8 +256,8 @@ POST /feedback                                       # Submit user feedback
 POST /live-activities/register    # Register Live Activity
 DELETE /live-activities/{token}   # Unregister Live Activity
 
-# Admin
-GET /admin/stats              # Server usage statistics (HTML)
+# Admin (NOT under /api/v2/ prefix)
+GET /admin/stats              # Server usage statistics (HTML, supports ?hours=N&ios_only=true)
 GET /admin/stats.json         # Server usage statistics (JSON)
 
 # Trip Search
@@ -244,8 +278,10 @@ GET /metrics                  # Prometheus metrics
 ### 4. Background Scheduler (Horizontally Scalable)
 
 The APScheduler runs in-process and handles:
-- **Daily at 4 AM ET**: NJT schedule collection (27-hour schedules)
-- **Daily at 4:30 AM ET**: Amtrak pattern-based schedule generation
+- **Daily at 12:30 AM ET**: NJT schedule collection (27-hour schedules)
+- **Daily at 12:45 AM ET**: Amtrak pattern-based schedule generation
+- **Daily at 1:00 AM ET**: Lock manager cleanup
+- **Daily at 3:00 AM ET**: GTFS static schedule refresh
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
 - **Every 4 min**: PATH collection (unified, RidePATH API)
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
@@ -256,11 +292,15 @@ The APScheduler runs in-process and handles:
 - **Every 4 min**: Metra collection (unified, GTFS-RT, requires API token)
 - **Every 3 min**: WMATA/DC Metro collection (REST API, requires API key)
 - **Every 5 min**: Journey update checks for active trains
-- **Every 15 min**: Individual journey collection updates
-- **Every 15 min**: API cache pre-computation for congestion endpoints
-- **Hourly at :05**: Train validation across key routes
-- **Every 30 min**: Live Activity push notification updates
+- **Every 90 sec**: Departure cache pre-computation
+- **Every 5 min**: Route history cache pre-computation
+- **Every 15 min**: Congestion cache pre-computation
+- **Every 15 min**: Service alerts collection (MTA + NJT)
+- **Every 1 min**: Live Activity push notification updates
+- **Hourly**: Live Activity token cleanup
+- **Hourly**: Train validation across key routes
 - **Every 5 min**: Route alert evaluation and push notifications
+- **Every 5 min**: Morning digest evaluation
 - **Automatic startup**: Begins when FastAPI app starts
 
 **Horizontal Scaling Support:**
@@ -511,7 +551,7 @@ alembic history
 
 ```python
 # Enable debug logging
-LOG_LEVEL=DEBUG poetry run uvicorn trackrat.main:app
+TRACKRAT_LOG_LEVEL=DEBUG poetry run uvicorn trackrat.main:app
 
 # Use interactive debugger
 import ipdb; ipdb.set_trace()
@@ -580,7 +620,7 @@ docker run -p 8000:8000 \
 
 ```bash
 # Check database connectivity
-poetry run python -c "from trackrat.db.engine import test_connection; import asyncio; asyncio.run(test_connection())"
+poetry run python -c "from trackrat.db.engine import get_engine; print('DB engine:', get_engine())"
 
 # Verify NJ Transit API connectivity
 curl -s http://localhost:8000/health | jq .data_freshness
@@ -791,7 +831,7 @@ The backend is organized into service classes for better maintainability:
 
 ### Performance Characteristics
 - API response time: <100ms (p95) with caching
-- Discovery completion: ~30 seconds for 7 stations
+- Discovery completion: ~30 seconds for 18 stations
 - Schedule generation: <60 seconds for all NJT trains
 - Cache hit rate: ~80% for popular routes
 - Database queries: <10ms for indexed queries

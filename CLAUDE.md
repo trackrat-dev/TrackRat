@@ -140,7 +140,8 @@ Default target is staging; pass a URL as first positional arg for production.
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
 or `.njt-token` file (gitignored) in the repo root. Priority: TRACKRAT_NJT_API_TOKEN > NJT_TOKEN > .njt-token file.
 
-The WMATA API key can be set via `TRACKRAT_WMATA_API_KEY` or `WMATA_API_KEY` env var.
+The WMATA API key is set via `TRACKRAT_WMATA_API_KEY` env var for the backend.
+The ground-truth validation script also accepts `WMATA_API_KEY` as a fallback.
 
 **Server Usage Report:**
 
@@ -229,12 +230,13 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Uses official GTFS-RT protobuf feeds (no auth required for BART; optional API key for MBTA via `TRACKRAT_MBTA_API_KEY` or `MBTA_API_KEY` env var)
 - Shared logic from `mta_common.py` (stop merging, departure inference, completion detection)
 - BART does not use origin inference (too many terminals per line); MBTA does
+- BART uses Pacific Time (`America/Los_Angeles`)
 - GTFS static schedules backfill stops that GTFS-RT omits
 
 **Backend Data Collection (Metra - Unified GTFS-RT):**
 - Single collector runs every 4 minutes using official Metra GTFS-RT feed
 - Requires `TRACKRAT_METRA_API_TOKEN` env var for API authentication
-- Uses Central Time (only non-Eastern-Time collector)
+- Uses Central Time (BART also uses non-Eastern time; see Pacific Time below)
 - Shared logic from `mta_common.py`
 
 **Backend Data Collection (WMATA / DC Metro - REST API):**
@@ -245,7 +247,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Stop times are estimated using per-segment defaults (no scheduled times from WMATA)
 
 **Backend Data Collection (PATCO - Schedule-only):**
-- Uses GTFS static schedules from SEPTA feed
+- Uses GTFS static schedules from National RTAP feed
 - No real-time API available; times are scheduled only
 
 **MTA Service Alerts Collection:**
@@ -329,7 +331,7 @@ This prevents wasting time editing incorrect files when the user has given clear
 ```bash
 cd backend_v2
 poetry install
-alembic upgrade head
+poetry run alembic upgrade head
 
 # Run locally
 poetry run uvicorn trackrat.main:app --reload
@@ -469,7 +471,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend services: `backend_v2/src/trackrat/services/`
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata, service_alerts, mta_common, mta_extensions)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (base, njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata, service_alerts, mta_common, mta_extensions)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py)
@@ -478,7 +480,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`
 - iOS services: `ios/TrackRat/Services/`
 - iOS models: `ios/TrackRat/Models/`
-- iOS shared: `ios/TrackRat/Shared/` (LiveActivityModels, Stations, RouteTopology, etc.)
+- iOS shared: `ios/TrackRat/Shared/` (LiveActivityModels, Stations, StationData, StationDepartures, StationCoordinates, RouteTopology, RouteShapes)
 - iOS utilities: `ios/TrackRat/Utilities/` (Extensions, Logger)
 - iOS theme: `ios/TrackRat/Theme/` (TrackRatTheme)
 - iOS Live Activity: `ios/TrainLiveActivityExtension/`
@@ -488,10 +490,14 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Web components: `webpage_v2/src/components/`
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
-- Web tests: `webpage_v2/src/` (colocated `*.test.ts` files, Vitest + React Testing Library)
+- Web data: `webpage_v2/src/data/` (routeTopology, stations)
+- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch)
+- Web types: `webpage_v2/src/types/`
+- Web tests: `webpage_v2/src/` (colocated `*.test.ts` and `*.test.tsx` files, Vitest + React Testing Library)
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)
 - Infrastructure Terraform: `infra_v2/terraform/`
 - Infrastructure Cloud Build: `infra_v2/cloudbuild*.yaml`
+- Cloud Functions: `infra_v2/functions/` (feedback_notifier, train_follow_notifier)
 - Universal links (AASA): `webpage_v2/public/.well-known/apple-app-site-association`
 - Webpage infrastructure (Terraform): `infra_v2/terraform-webpage/`
 

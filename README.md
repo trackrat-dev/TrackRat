@@ -217,6 +217,6 @@ Copyright 2025-2026 Andrew Martin
 
 - **iOS App:** [App Store](https://apps.apple.com/us/app/trackrat/id6746423610)
 - **Web App:** [trackrat.net](https://trackrat.net)
-- **Feedback:** [trackrat.nolt.io](https://trackrat.nolt.io)
+- **Feedback:** In-app feedback form (iOS, Web) or email below
 - **YouTube:** [@TrackRat-App](https://www.youtube.com/@TrackRat-App/shorts)
 - **Contact:** trackrat@andymartin.cc
