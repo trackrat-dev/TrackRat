@@ -281,7 +281,10 @@ async def get_train_details(
     stale_journey = await db.scalar(
         select(TrainJourney)
         .where(and_(*stale_conditions))
-        .options(selectinload(TrainJourney.stops))
+        .options(
+            selectinload(TrainJourney.stops),
+            selectinload(TrainJourney.progress_snapshots),
+        )
     )
 
     try:
@@ -314,7 +317,10 @@ async def get_train_details(
                             TrainJourney.train_id == train_id,
                             TrainJourney.journey_date == date,
                         )
-                        .options(selectinload(TrainJourney.stops))
+                        .options(
+                            selectinload(TrainJourney.stops),
+                            selectinload(TrainJourney.progress_snapshots),
+                        )
                     )
                     if data_source:
                         stmt = stmt.where(TrainJourney.data_source == data_source)
@@ -358,7 +364,10 @@ async def get_train_details(
                 TrainJourney.train_id == train_id,
                 TrainJourney.journey_date == date,
             )
-            .options(selectinload(TrainJourney.stops))
+            .options(
+                selectinload(TrainJourney.stops),
+                selectinload(TrainJourney.progress_snapshots),
+            )
         )
         if data_source:
             stmt = stmt.where(TrainJourney.data_source == data_source)
