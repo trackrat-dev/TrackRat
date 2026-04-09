@@ -377,6 +377,7 @@ DISCOVERY_STATIONS = [
     "HG",  # High Bridge
     "GL",  # Gladstone
     "ND",  # Newark Broad Street
+    "BU",  # Brick Church - Morris & Essex junction near Newark
     "HQ",  # Hackettstown
     "DV",  # Dover
     "JA",  # Jersey Avenue
