@@ -25,6 +25,10 @@ from trackrat.services.departure import (
 from trackrat.utils.time import now_et
 
 
+async def mock_retry_on_deadlock(db, fn):
+    return await fn()
+
+
 class TestJitPromotion:
     """Tests that _ensure_fresh_station_data promotes SCHEDULED → OBSERVED."""
 
@@ -46,9 +50,7 @@ class TestJitPromotion:
         journey.update_count = 0
         journey.has_complete_journey = False
         journey.stops_count = 0
-        journey.last_updated_at = last_updated_at or (
-            now_et() - timedelta(hours=3)
-        )
+        journey.last_updated_at = last_updated_at or (now_et() - timedelta(hours=3))
         journey.scheduled_departure = None
         journey.scheduled_arrival = None
         journey.origin_station_code = None
@@ -106,8 +108,12 @@ class TestJitPromotion:
 
         mock_db = AsyncMock()
         # Simulate _do_bulk_refresh: the journey lookup returns our mock
+        # _do_bulk_refresh uses .scalars().all(), second-pass stale query uses .scalars().unique().all()
         mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [journey]
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = [journey]
+        mock_scalars.unique.return_value.all.return_value = [journey]
+        mock_result.scalars.return_value = mock_scalars
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
 
@@ -116,24 +122,25 @@ class TestJitPromotion:
             return_value={"ITEMS": [train_data]}
         )
 
-        with patch(
-            "trackrat.services.departure.NJTransitClient",
-            return_value=njt_client,
-        ), patch(
-            "trackrat.services.departure.retry_on_deadlock",
-            side_effect=lambda db, fn: fn(),
+        with (
+            patch(
+                "trackrat.services.departure.NJTransitClient",
+                return_value=njt_client,
+            ),
+            patch(
+                "trackrat.services.departure.retry_on_deadlock",
+                side_effect=mock_retry_on_deadlock,
+            ),
         ):
-            await service._ensure_fresh_station_data(
-                mock_db, "SO", now_et().date()
-            )
+            await service._ensure_fresh_station_data(mock_db, "SO", now_et().date())
 
         assert journey.observation_type == "OBSERVED", (
             "SCHEDULED journey should be promoted to OBSERVED when NJT "
             "station board API returns it with stop data"
         )
-        assert journey.line_code == "ME", (
-            "line_code should be updated from real-time API LINE field"
-        )
+        assert (
+            journey.line_code == "ME"
+        ), "line_code should be updated from real-time API LINE field"
 
     @pytest.mark.asyncio
     async def test_no_promote_without_stop_data(self):
@@ -147,7 +154,10 @@ class TestJitPromotion:
 
         mock_db = AsyncMock()
         mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [journey]
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = [journey]
+        mock_scalars.unique.return_value.all.return_value = [journey]
+        mock_result.scalars.return_value = mock_scalars
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
 
@@ -156,16 +166,17 @@ class TestJitPromotion:
             return_value={"ITEMS": [train_data]}
         )
 
-        with patch(
-            "trackrat.services.departure.NJTransitClient",
-            return_value=njt_client,
-        ), patch(
-            "trackrat.services.departure.retry_on_deadlock",
-            side_effect=lambda db, fn: fn(),
+        with (
+            patch(
+                "trackrat.services.departure.NJTransitClient",
+                return_value=njt_client,
+            ),
+            patch(
+                "trackrat.services.departure.retry_on_deadlock",
+                side_effect=mock_retry_on_deadlock,
+            ),
         ):
-            await service._ensure_fresh_station_data(
-                mock_db, "SO", now_et().date()
-            )
+            await service._ensure_fresh_station_data(mock_db, "SO", now_et().date())
 
         assert journey.observation_type == "SCHEDULED", (
             "SCHEDULED journey should NOT be promoted when NJT API "
@@ -183,7 +194,10 @@ class TestJitPromotion:
 
         mock_db = AsyncMock()
         mock_result = Mock()
-        mock_result.scalars.return_value.all.return_value = [journey]
+        mock_scalars = Mock()
+        mock_scalars.all.return_value = [journey]
+        mock_scalars.unique.return_value.all.return_value = [journey]
+        mock_result.scalars.return_value = mock_scalars
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
 
@@ -192,16 +206,17 @@ class TestJitPromotion:
             return_value={"ITEMS": [train_data]}
         )
 
-        with patch(
-            "trackrat.services.departure.NJTransitClient",
-            return_value=njt_client,
-        ), patch(
-            "trackrat.services.departure.retry_on_deadlock",
-            side_effect=lambda db, fn: fn(),
+        with (
+            patch(
+                "trackrat.services.departure.NJTransitClient",
+                return_value=njt_client,
+            ),
+            patch(
+                "trackrat.services.departure.retry_on_deadlock",
+                side_effect=mock_retry_on_deadlock,
+            ),
         ):
-            await service._ensure_fresh_station_data(
-                mock_db, "SO", now_et().date()
-            )
+            await service._ensure_fresh_station_data(mock_db, "SO", now_et().date())
 
         assert journey.observation_type == "OBSERVED"
 
@@ -252,9 +267,7 @@ class TestRunInlineJitRefresh:
 
         with patch(
             "trackrat.services.departure._background_refresh_station",
-            new_callable=lambda: lambda *a, **kw: asyncio.coroutine(
-                lambda: None
-            )(),
+            new_callable=AsyncMock,
         ):
             result = await service._run_inline_jit_refresh(
                 "SO", now_et().date(), True, True

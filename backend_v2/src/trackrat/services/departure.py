@@ -772,20 +772,14 @@ class DepartureService:
         )
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
-        task.add_done_callback(
-            lambda _t: _refreshing_stations.discard(from_station)
-        )
+        task.add_done_callback(lambda _t: _refreshing_stations.discard(from_station))
 
         done, _ = await asyncio.wait({task}, timeout=10.0)
         if done:
-            logger.info(
-                "inline_jit_refresh_complete", station_code=from_station
-            )
+            logger.info("inline_jit_refresh_complete", station_code=from_station)
             return True
 
-        logger.warning(
-            "inline_jit_refresh_timed_out", station_code=from_station
-        )
+        logger.warning("inline_jit_refresh_timed_out", station_code=from_station)
         return False
 
     async def _maybe_trigger_background_refresh(
@@ -999,9 +993,7 @@ class DepartureService:
                                 journey.observation_type = "OBSERVED"
                                 rt_line = train_data.get("LINE", "").strip()
                                 if rt_line:
-                                    journey.line_code = parse_njt_line_code(
-                                        rt_line
-                                    )
+                                    journey.line_code = parse_njt_line_code(rt_line)
                                     journey.line_name = (
                                         train_data.get("LINE_NAME", "")
                                         or journey.line_name

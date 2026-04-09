@@ -259,7 +259,7 @@ class TestSchedulerService:
                 ) as mock_freshness_check:
                     # Make freshness check actually call the task function
                     async def execute_task_func(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         await task_func()
                         return True
@@ -319,7 +319,7 @@ class TestSchedulerService:
                     ) as mock_freshness_check:
                         # Make freshness check actually call the task function
                         async def execute_task_func(
-                            db, task_name, minimum_interval_seconds, task_func
+                            db, task_name, minimum_interval_seconds, task_func, **kwargs
                         ):
                             await task_func()
                             return True
@@ -431,7 +431,7 @@ class TestSchedulerService:
                 ) as mock_freshness_check:
                     # Make freshness check actually call the task function
                     async def execute_task_func(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         await task_func()
                         return True
@@ -475,7 +475,7 @@ class TestSchedulerService:
                 ) as mock_freshness_check:
                     # Make freshness check actually call the task function
                     async def execute_task_func(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         await task_func()
                         return True
@@ -515,7 +515,7 @@ class TestSchedulerService:
                 ) as mock_freshness_check:
                     # Make freshness check actually call the task function
                     async def execute_task_func(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         await task_func()
                         return True
@@ -555,7 +555,7 @@ class TestSchedulerService:
                 ) as mock_freshness_check:
                     # Make freshness check actually call the task function
                     async def execute_task_func(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         await task_func()
                         return True
@@ -593,7 +593,7 @@ class TestSchedulerService:
                 ) as mock_freshness_check:
                     # Make freshness check actually call the task function
                     async def execute_task_func(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         # The task func should handle the exception internally
                         await task_func()
