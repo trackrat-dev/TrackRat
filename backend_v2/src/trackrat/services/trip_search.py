@@ -240,15 +240,18 @@ async def search_trips(
         skip_individual_refresh=False,
     )
 
-    if direct_response.departures:
-        trips = []
-        for dep in direct_response.departures:
-            trip = _make_direct_trip(dep)
-            if trip:
-                trips.append(trip)
-        logger.info("trip_search_direct", count=len(trips))
+    # Build direct trips from departures (may produce fewer trips than departures
+    # if some have missing times — see _make_direct_trip returning None)
+    direct_trips = []
+    for dep in direct_response.departures:
+        trip = _make_direct_trip(dep)
+        if trip:
+            direct_trips.append(trip)
+
+    if direct_trips:
+        logger.info("trip_search_direct", count=len(direct_trips))
         return TripSearchResponse(
-            trips=trips,
+            trips=direct_trips,
             metadata={
                 "from_station": {
                     "code": from_station,
@@ -258,7 +261,7 @@ async def search_trips(
                     "code": to_station,
                     "name": get_station_name(to_station),
                 },
-                "count": len(trips),
+                "count": len(direct_trips),
                 "search_type": "direct",
                 "generated_at": now_et().isoformat(),
             },
