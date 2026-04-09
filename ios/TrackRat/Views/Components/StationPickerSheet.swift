@@ -71,6 +71,10 @@ struct StationPickerSheet: View {
             ("LIRR", "LIRR"),
             ("MNR", "Metro-North"),
             ("SUBWAY", "NYC Subway"),
+            ("BART", "BART"),
+            ("MBTA", "MBTA"),
+            ("METRA", "Metra"),
+            ("WMATA", "DC Metro"),
         ]
 
         let stations = visibleStations
