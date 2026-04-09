@@ -70,6 +70,25 @@ struct RouteStatusView: View {
             .navigationTitle(context.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if context.fromStationCode != nil && context.toStationCode != nil {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            let reversed = RouteStatusContext(
+                                dataSource: context.dataSource,
+                                lineId: context.lineId,
+                                direction: context.direction,
+                                fromStationCode: context.toStationCode,
+                                toStationCode: context.fromStationCode
+                            )
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                appState.pendingRouteStatus = reversed
+                            }
+                        } label: {
+                            Label("Reverse", systemImage: "arrow.left.arrow.right")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark.circle.fill")
