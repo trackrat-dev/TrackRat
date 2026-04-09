@@ -1344,12 +1344,12 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     // Check if this individual train is cancelled
                     if segment.isCancelled {
                         renderer.strokeColor = UIColor.systemRed
-                        renderer.lineWidth = 3.0
+                        renderer.lineWidth = 4.0
                         renderer.alpha = 0.9 // Keep cancelled trains highly visible
                     } else {
                         // Use highlight mode to determine color
                         renderer.strokeColor = getColorForIndividualSegment(segment)
-                        renderer.lineWidth = 3.0 // Thinner for individual journeys
+                        renderer.lineWidth = 4.0
 
                         // Calculate opacity based on recency of departure
                         renderer.alpha = getRecencyBasedAlpha(for: segment.actualDeparture)
@@ -1379,7 +1379,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     }
 
                     renderer.strokeColor = color
-                    renderer.lineWidth = 6.0
+                    renderer.lineWidth = 4.0
 
                     // Dash pattern indicates cancellation severity (>5%)
                     if let dashPattern = segment.dashPattern {
@@ -1388,7 +1388,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
                 } else {
                     renderer.strokeColor = UIColor.gray
-                    renderer.lineWidth = 6.0
+                    renderer.lineWidth = 4.0
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8
                 }
 

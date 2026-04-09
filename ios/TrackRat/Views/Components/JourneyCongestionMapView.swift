@@ -480,10 +480,10 @@ struct CongestionMapKitView: UIViewRepresentable {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 if let segment = polyline.segment {
                     renderer.strokeColor = colorForSegment(segment)
-                    renderer.lineWidth = 6.0
+                    renderer.lineWidth = 4.0
                 } else {
                     renderer.strokeColor = UIColor.gray
-                    renderer.lineWidth = 6.0
+                    renderer.lineWidth = 4.0
                 }
                 renderer.alpha = 0.8
                 return renderer
@@ -563,14 +563,6 @@ struct CongestionMapKitView: UIViewRepresentable {
 
         private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
             CongestionColors.color(forFrequencyFactor: frequencyFactor)
-        }
-
-        private func getFrequencyLineWidth(_ frequencyFactor: Double?) -> CGFloat {
-            guard let factor = frequencyFactor else { return 5 }
-            if factor >= 0.9 { return 5 }
-            else if factor >= 0.7 { return 7 }
-            else if factor >= 0.5 { return 8 }
-            else { return 9 }
         }
 
         /// Escalate a health color by one level toward red for cancellation impact
