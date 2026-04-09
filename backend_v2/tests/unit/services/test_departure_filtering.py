@@ -155,6 +155,71 @@ class TestDepartureFiltering:
         assert result.departures[0].train_id == "1234"
 
     @pytest.mark.asyncio
+    async def test_cancelled_expired_trains_included_in_departures(self):
+        """Test that cancelled trains are visible even if also marked expired.
+
+        The congestion endpoint counts cancelled+expired trains in its
+        cancellation_rate. The departures endpoint must also show them so
+        users see the cancelled trains that cause the dashed congestion line.
+        The cancelled train's own 2-hour staleness window still applies.
+        """
+        # Create journeys: one normal, one cancelled+expired
+        normal_journey = self._create_journey("1234", is_expired=False)
+        cancelled_expired = self._create_journey(
+            "5678", is_cancelled=True, is_expired=True
+        )
+
+        mock_session = AsyncMock(spec=AsyncSession)
+
+        mock_result = Mock()
+        mock_scalars = Mock()
+        # Both should be returned: the is_expired filter exempts cancelled trains
+        mock_scalars.unique.return_value.all.return_value = [
+            normal_journey,
+            cancelled_expired,
+        ]
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et() + timedelta(hours=2)
+
+                with patch.object(
+                    service,
+                    "_calculate_train_position",
+                    return_value=self._mock_train_position(),
+                ):
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                        mock_gtfs = AsyncMock()
+                        mock_gtfs.get_scheduled_departures = AsyncMock(
+                            return_value=Mock(departures=[])
+                        )
+                        mock_gtfs_class.return_value = mock_gtfs
+
+                        result = await service.get_departures(
+                            db=mock_session,
+                            from_station="TR",
+                            to_station="NY",
+                        )
+
+        # Both trains should be visible
+        assert len(result.departures) == 2
+        train_ids = {d.train_id for d in result.departures}
+        assert train_ids == {"1234", "5678"}
+
+        # The cancelled+expired train should have is_cancelled=True
+        cancelled_dep = next(d for d in result.departures if d.train_id == "5678")
+        assert cancelled_dep.is_cancelled is True
+
+    @pytest.mark.asyncio
     async def test_completed_trains_excluded_from_departures(self):
         """Test that trains with is_completed=True are excluded from departure results."""
         # Create journeys: one normal, one completed

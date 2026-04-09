@@ -263,8 +263,13 @@ class DepartureService:
             journey_date_filter,
             # Filter by selected data sources
             TrainJourney.data_source.in_(allowed_sources),
-            # Filter out expired trains (no longer in real-time feed)
-            TrainJourney.is_expired.is_not(True),
+            # Filter out expired trains (no longer in real-time feed),
+            # but keep cancelled trains even if expired — they must remain
+            # visible to match what the congestion endpoint counts.
+            or_(
+                TrainJourney.is_expired.is_not(True),
+                TrainJourney.is_cancelled.is_(True),
+            ),
             # Filter out completed trains (journey finished)
             TrainJourney.is_completed.is_not(True),
             # Filter out stale cancelled trains regardless of hide_departed.
