@@ -978,9 +978,12 @@ final class AppState: ObservableObject {
 
         // Load beta features
         showDepartureOdds = UserDefaults.standard.bool(forKey: "showDepartureOdds")
-        if UserDefaults.standard.object(forKey: "enableSegmentTap") != nil {
-            enableSegmentTap = UserDefaults.standard.bool(forKey: "enableSegmentTap")
+        // Migration: previous bug stored false for users who never toggled this setting
+        if !UserDefaults.standard.bool(forKey: "enableSegmentTap_defaultFixed") {
+            UserDefaults.standard.set(true, forKey: "enableSegmentTap")
+            UserDefaults.standard.set(true, forKey: "enableSegmentTap_defaultFixed")
         }
+        enableSegmentTap = UserDefaults.standard.bool(forKey: "enableSegmentTap")
     }
 
 }
