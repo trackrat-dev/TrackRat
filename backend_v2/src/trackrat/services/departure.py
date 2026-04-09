@@ -15,6 +15,7 @@ from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
+from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import get_session, retry_on_deadlock
@@ -310,16 +311,33 @@ class DepartureService:
         # PERFORMANCE: Track timing for observability
         perf_start = time.perf_counter()
 
-        # Non-blocking JIT refresh for NJT trains. Instead of blocking the
-        # request while making external API calls (2-15s), we check staleness
-        # cheaply and fire the refresh as a background task. The current request
-        # serves data that's at most ~60s stale; the next request gets fresh data.
-        # Skip when NJT is not in the requested data sources.
+        # JIT refresh for NJT trains.  Normally non-blocking (background task),
+        # but when SCHEDULED NJT trains are about to be hidden by the stale
+        # filter, we run the refresh inline so the user sees them immediately.
         jit_start = time.perf_counter()
+        jit_ran_inline = False
         if "NJT" in allowed_sources:
-            await self._maybe_trigger_background_refresh(
-                db, from_station, target_date, skip_individual_refresh, hide_departed
-            )
+            if (
+                target_date == today
+                and from_station not in _refreshing_stations
+                and await self._has_imminent_scheduled_njt(
+                    db, from_station, target_date
+                )
+            ):
+                jit_ran_inline = await self._run_inline_jit_refresh(
+                    from_station,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
+                )
+            if not jit_ran_inline:
+                await self._maybe_trigger_background_refresh(
+                    db,
+                    from_station,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
+                )
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
         query_start = time.perf_counter()
@@ -683,6 +701,93 @@ class DepartureService:
         observed_cutoff = last_observed + timedelta(minutes=2)
         return max(min_cutoff, observed_cutoff)
 
+    async def _has_imminent_scheduled_njt(
+        self,
+        db: AsyncSession,
+        from_station: str,
+        target_date: date,
+    ) -> bool:
+        """Check if stale SCHEDULED NJT trains exist that the stale filter would hide.
+
+        Returns True when an inline JIT refresh is worthwhile: there is at
+        least one SCHEDULED NJT train within the stale-filter threshold whose
+        data hasn't been refreshed in the last 60 seconds.
+        """
+        current_time = now_et()
+        threshold = current_time + timedelta(
+            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+        )
+        cutoff_time = current_time - timedelta(seconds=60)
+        from_codes = expand_station_codes(from_station)
+
+        result = await db.scalar(
+            select(TrainJourney.id)
+            .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code.in_(from_codes),
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == target_date,
+                    TrainJourney.observation_type == "SCHEDULED",
+                    TrainJourney.last_updated_at < cutoff_time,
+                    TrainJourney.is_expired.is_not(True),
+                    TrainJourney.is_completed.is_not(True),
+                    TrainJourney.is_cancelled.is_not(True),
+                    JourneyStop.scheduled_departure.isnot(None),
+                    JourneyStop.scheduled_departure < threshold,
+                    JourneyStop.scheduled_departure > current_time,
+                )
+            )
+            .limit(1)
+        )
+        return result is not None
+
+    async def _run_inline_jit_refresh(
+        self,
+        from_station: str,
+        target_date: date,
+        skip_individual_refresh: bool,
+        hide_departed: bool,
+    ) -> bool:
+        """Run JIT station refresh inline, waiting up to 10 seconds.
+
+        Unlike the background path, this blocks the request so the subsequent
+        query sees promoted trains.  If the refresh doesn't finish in time the
+        task keeps running in the background and the request proceeds with
+        whatever data is in the DB.
+
+        Returns True if the refresh completed (caller can skip the background
+        trigger), False otherwise.
+        """
+        _refreshing_stations.add(from_station)
+        task = asyncio.create_task(
+            _background_refresh_station(
+                self,
+                from_station,
+                target_date,
+                skip_individual_refresh,
+                hide_departed,
+            ),
+            name=f"inline_jit_{from_station}",
+        )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        task.add_done_callback(
+            lambda _t: _refreshing_stations.discard(from_station)
+        )
+
+        done, _ = await asyncio.wait({task}, timeout=10.0)
+        if done:
+            logger.info(
+                "inline_jit_refresh_complete", station_code=from_station
+            )
+            return True
+
+        logger.warning(
+            "inline_jit_refresh_timed_out", station_code=from_station
+        )
+        return False
+
     async def _maybe_trigger_background_refresh(
         self,
         db: AsyncSession,
@@ -846,6 +951,7 @@ class DepartureService:
 
                     count = 0
                     empty_stops_count = 0
+                    promoted_count = 0
                     for train_data in train_items:
                         train_id = train_data.get("TRAIN_ID")
                         if not train_id:
@@ -884,6 +990,23 @@ class DepartureService:
                             journey.has_complete_journey = True
                             journey.stops_count = len(stops_data)
                             journey.last_updated_at = now_et()
+
+                            # Promote SCHEDULED → OBSERVED: the NJT station
+                            # board API returned this train with stop data,
+                            # confirming it is running. Same signal discovery
+                            # uses at discovery.py:526.
+                            if journey.observation_type == "SCHEDULED":
+                                journey.observation_type = "OBSERVED"
+                                rt_line = train_data.get("LINE", "").strip()
+                                if rt_line:
+                                    journey.line_code = parse_njt_line_code(
+                                        rt_line
+                                    )
+                                    journey.line_name = (
+                                        train_data.get("LINE_NAME", "")
+                                        or journey.line_name
+                                    )
+                                promoted_count += 1
 
                             # Update origin/terminal/scheduled times from stops.
                             # Use immutable schedule fields (SCHED_*_DATE) over
@@ -929,6 +1052,14 @@ class DepartureService:
                             "bulk_refresh_empty_stops",
                             station_code=station_code,
                             empty_stops_trains=empty_stops_count,
+                            total_trains=count,
+                        )
+
+                    if promoted_count:
+                        logger.info(
+                            "jit_promoted_scheduled_to_observed",
+                            station_code=station_code,
+                            promoted_count=promoted_count,
                             total_trains=count,
                         )
 
