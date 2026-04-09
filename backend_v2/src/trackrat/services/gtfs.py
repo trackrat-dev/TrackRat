@@ -44,7 +44,7 @@ from trackrat.models.database import (
     GTFSStopTime,
     GTFSTrip,
 )
-from trackrat.utils.time import DATETIME_MAX_ET, ET, now_et
+from trackrat.utils.time import DATETIME_MAX_ET, ET, PROVIDER_TIMEZONE, now_et
 
 logger = get_logger(__name__)
 
@@ -719,15 +719,24 @@ class GTFSService:
         match = re.search(r"\b(\d{2,4})\b", headsign)
         return match.group(1) if match else None
 
-    def _parse_gtfs_time(self, time_str: str, target_date: date) -> datetime | None:
+    def _parse_gtfs_time(
+        self, time_str: str, target_date: date, data_source: str | None = None
+    ) -> datetime | None:
         """Parse GTFS time string (HH:MM:SS, can be >24:00) to datetime.
+
+        GTFS static schedule times are local clock times in the agency's
+        timezone. The correct timezone is looked up from PROVIDER_TIMEZONE,
+        defaulting to Eastern if the provider is unknown.
 
         Args:
             time_str: Time string like "14:30:00" or "25:30:00"
             target_date: The service date
+            data_source: Provider identifier (e.g., "METRA", "BART") for
+                timezone lookup. Defaults to Eastern if None or unknown.
 
         Returns:
-            Datetime in Eastern time, handling overnight trips
+            Timezone-aware datetime in the provider's local timezone,
+            handling overnight trips
         """
         if not time_str:
             return None
@@ -751,8 +760,9 @@ class GTFSService:
         if days_offset > 0:
             base_dt += timedelta(days=days_offset)
 
-        # Localize to Eastern time
-        return ET.localize(base_dt)
+        # Localize to the provider's timezone (defaults to ET for unknown providers)
+        tz = PROVIDER_TIMEZONE.get(data_source, ET) if data_source else ET
+        return tz.localize(base_dt)
 
     async def get_active_service_ids(
         self, db: AsyncSession, data_source: str, target_date: date
@@ -930,8 +940,8 @@ class GTFSService:
             if not station_code:
                 continue
 
-            arrival_dt = self._parse_gtfs_time(arrival_str, target_date)
-            departure_dt = self._parse_gtfs_time(departure_str, target_date)
+            arrival_dt = self._parse_gtfs_time(arrival_str, target_date, "PATH")
+            departure_dt = self._parse_gtfs_time(departure_str, target_date, "PATH")
 
             parsed_stops.append((station_code, arrival_dt, departure_dt))
 
@@ -1111,8 +1121,8 @@ class GTFSService:
             if not station_code:
                 continue
 
-            arrival_dt = self._parse_gtfs_time(arrival_str, target_date)
-            departure_dt = self._parse_gtfs_time(departure_str, target_date)
+            arrival_dt = self._parse_gtfs_time(arrival_str, target_date, "PATH")
+            departure_dt = self._parse_gtfs_time(departure_str, target_date, "PATH")
 
             parsed_stops.append((station_code, arrival_dt, departure_dt))
 
@@ -1418,9 +1428,9 @@ class GTFSService:
                 arrival_time_str = dest_info[0]
 
             # Parse times
-            departure_dt = self._parse_gtfs_time(dep_time_str, target_date)
+            departure_dt = self._parse_gtfs_time(dep_time_str, target_date, data_source)
             arrival_dt = (
-                self._parse_gtfs_time(arrival_time_str, target_date)
+                self._parse_gtfs_time(arrival_time_str, target_date, data_source)
                 if arrival_time_str
                 else None
             )
@@ -1831,8 +1841,8 @@ class GTFSService:
             if not station_code:
                 continue
 
-            arrival_dt = self._parse_gtfs_time(arrival_time, target_date)
-            departure_dt = self._parse_gtfs_time(departure_time, target_date)
+            arrival_dt = self._parse_gtfs_time(arrival_time, target_date, matched_source)
+            departure_dt = self._parse_gtfs_time(departure_time, target_date, matched_source)
 
             stops.append(
                 StopDetails(
@@ -2082,8 +2092,8 @@ class GTFSService:
 
         stops = []
         for row in stop_rows:
-            arrival_dt = self._parse_gtfs_time(row.arrival_time, target_date)
-            departure_dt = self._parse_gtfs_time(row.departure_time, target_date)
+            arrival_dt = self._parse_gtfs_time(row.arrival_time, target_date, data_source)
+            departure_dt = self._parse_gtfs_time(row.departure_time, target_date, data_source)
             if not arrival_dt:
                 continue
             stops.append(
