@@ -2,8 +2,8 @@ import SwiftUI
 import MapKit
 
 struct RouteStatusView: View {
-    let context: RouteStatusContext
     @StateObject private var viewModel: RouteStatusViewModel
+    private var context: RouteStatusContext { viewModel.context }
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
@@ -39,7 +39,6 @@ struct RouteStatusView: View {
     }
 
     init(context: RouteStatusContext) {
-        self.context = context
         self._viewModel = StateObject(wrappedValue: RouteStatusViewModel(context: context))
     }
 
@@ -80,10 +79,9 @@ struct RouteStatusView: View {
                                 fromStationCode: context.toStationCode,
                                 toStationCode: context.fromStationCode
                             )
-                            dismiss()
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                appState.pendingRouteStatus = reversed
-                            }
+                            editedSubscriptions = [:]
+                            draftSubscription = nil
+                            Task { await viewModel.replaceContext(reversed, historyPeriod: selectedHistoryPeriod) }
                         } label: {
                             Label("Reverse", systemImage: "arrow.left.arrow.right")
                         }
@@ -973,7 +971,7 @@ private struct UpcomingTrainRow: View {
 
 @MainActor
 final class RouteStatusViewModel: ObservableObject {
-    let context: RouteStatusContext
+    @Published var context: RouteStatusContext
 
     // Map state
     @Published var filteredSegments: [CongestionSegment] = []
@@ -1093,6 +1091,28 @@ final class RouteStatusViewModel: ObservableObject {
 
     deinit {
         saveTask?.cancel()
+    }
+
+    /// Replace the context (e.g. for reverse route) and reload all data in-place.
+    func replaceContext(_ newContext: RouteStatusContext, historyPeriod: HistoryPeriod) async {
+        saveTask?.cancel()
+        context = newContext
+        filteredSegments = []
+        journeyStations = []
+        mapRegion = MKCoordinateRegion()
+        isLoadingMap = true
+        mapError = nil
+        serviceAlerts = []
+        isLoadingServiceAlerts = true
+        upcomingTrains = []
+        isLoadingUpcomingTrains = true
+        isLoadingHistory = true
+        historyBySystem = [:]
+        discoveredSystems = []
+        enabledLineIds = []
+        filterLoaded = false
+        loadedHistoryPeriods = []
+        await loadData(initialPeriod: historyPeriod)
     }
 
     func loadData(initialPeriod: HistoryPeriod = .hour) async {
