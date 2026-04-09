@@ -1346,6 +1346,7 @@ struct SegmentedTrackPredictionView: View {
 
                 if isLoadingPredictions {
                     ProgressView()
+                        .frame(maxWidth: .infinity)
                         .frame(height: 64)
                 } else if hasOnlyLowConfidencePredictions {
                     Text("No clear favorite")
