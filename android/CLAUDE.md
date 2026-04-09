@@ -53,21 +53,27 @@ android/app/src/main/java/com/trackrat/android/
 ├── TrackRatApp.kt              # Application class with Hilt
 ├── data/
 │   ├── api/                    # Retrofit API interface
+│   ├── mappers/                # TrainMappers
 │   ├── models/                 # Data models (TrainV2, StatusV2, etc.)
 │   ├── preferences/            # DataStore preferences
 │   ├── repository/             # Data repository pattern
-│   └── services/               # TrackPrediction, BackendHealth
+│   ├── services/               # TrackPrediction, BackendHealth
+│   └── Stations.kt             # Station data
 ├── di/                         # Hilt DI modules
-├── services/                   # TrainTrackingService, Notifications
+├── navigation/                 # TrackRatDestinations, Navigator
+├── services/                   # TrainTrackingService, RatSense, Notifications
 ├── ui/
+│   ├── advanced/               # Advanced config screen
 │   ├── components/             # Reusable UI (BottomSheet, Loading, etc.)
-│   ├── theme/                  # Material3 theme, colors, typography
-│   ├── map/                    # MapContainerScreen, congestion
-│   ├── stationselection/       # Origin picker
 │   ├── destinationselection/   # Destination picker
-│   ├── trainlist/              # Departure list
+│   ├── favorites/              # Favorite stations
+│   ├── map/                    # MapContainerScreen, congestion
+│   ├── onboarding/             # Onboarding flow
+│   ├── profile/                # Settings screens
+│   ├── stationselection/       # Origin picker
+│   ├── theme/                  # Material3 theme, colors, typography
 │   ├── traindetail/            # Journey details
-│   └── profile/                # Settings screens
+│   └── trainlist/              # Departure list
 └── utils/                      # Constants, Stations, Helpers
 ```
 
@@ -167,7 +173,6 @@ fun TrainListItem()
 **Not Implemented:**
 - Push notifications (FCM)
 - Home screen widgets
-- Deep linking
 
 ---
 

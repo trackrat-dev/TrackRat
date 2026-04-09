@@ -16,7 +16,7 @@ A mobile-first web application for tracking trains across 11 transit systems (NJ
 - Last route auto-restoration
 - Data freshness indicators and journey date display
 - iOS smart app banner
-- Mobile-first dark mode with glassmorphism UI
+- Mobile-first warm light theme with glassmorphism UI
 - Auto-refresh every 30 seconds
 - PWA support (installable, offline-capable)
 - Web Share API for sharing train links
@@ -74,7 +74,7 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 ### Key Endpoints
 
-- `GET /trains/departures` - Get train departures between stations
+- `GET /trips/search` - Search trips between stations (primary departure endpoint)
 - `GET /trains/{id}` - Get train details with all stops
 - `GET /predictions/track` - Track/platform predictions
 - `GET /routes/summary` - Route operations summary

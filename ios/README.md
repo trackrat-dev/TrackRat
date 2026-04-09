@@ -303,15 +303,15 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 ## 📊 Analytics & Monitoring
 
 ### Current Implementation
-- Basic console logging for debugging
+- Anonymous usage analytics reported to backend (`/admin/stats`)
+- Per-action tracking (departure searches, train views, trip searches)
+- Version distribution and hourly activity trends
 - No third-party analytics SDKs
-- Privacy-first approach
+- Privacy-first approach (no PII collected)
 
 ### Future Considerations
-- Anonymous usage statistics
 - Crash reporting integration
 - Performance monitoring
-- User feedback system
 
 ## 🔐 Security & Privacy
 

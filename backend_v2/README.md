@@ -2,7 +2,7 @@
 
 A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA built with FastAPI, PostgreSQL, and modern Python.
 
-**Version:** 2.2.0 (April 2026)
+**Version:** 2.0.0 (April 2026)
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Python:** 3.11+ with strict type checking
 
@@ -604,13 +604,6 @@ The container performs comprehensive APNS validation at startup:
 - ✅ **Environment variables are set and properly formatted**
 - ✅ **P8 certificate can be loaded by cryptography library**
 - ❌ **Container exits immediately if any validation fails**
-
-Test the validation:
-```bash
-# Test container validation (should fail without APNS)
-./test-docker-apns.sh
-```
-```
 
 ### Production Considerations
 
