@@ -28,6 +28,7 @@ struct AddRouteAlertView: View {
 
     // Customization sheet state
     @State private var directionalSheetData: DirectionalSheetData? = nil
+    @State private var showTrainSystemSettings = false
 
     /// User's selected systems that support real-time alerts.
     private var alertCapableSystems: Set<TrainSystem> {
@@ -56,6 +57,11 @@ struct AddRouteAlertView: View {
             DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
                 saveSystemSubscription(subs)
             }
+        }
+        .sheet(isPresented: $showTrainSystemSettings) {
+            SettingsView(editTrainSystems: true)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -91,34 +97,34 @@ struct AddRouteAlertView: View {
 
     private var alertContent: some View {
         VStack(spacing: 16) {
-            if alertCapableSystems.isEmpty {
-                noEligibleSystemsView(detail: "Your selected systems are schedule-only and cannot detect delays.")
-            } else {
-                Picker("Alert Type", selection: $alertMode) {
-                    ForEach(AlertMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
+            Picker("Alert Type", selection: $alertMode) {
+                ForEach(AlertMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
 
-                switch alertMode {
-                case .route:
+            switch alertMode {
+            case .route:
+                if alertCapableSystems.isEmpty {
+                    noEligibleSystemsView(detail: "Your selected systems are schedule-only and cannot detect delays.")
+                } else {
                     routeModePicker
-                case .system:
-                    systemModePicker
                 }
+            case .system:
+                systemModePicker
+            }
 
-                if let message = confirmationMessage {
-                    HStack(spacing: 6) {
-                        Image(systemName: message.hasPrefix("Alert") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                            .foregroundColor(message.hasPrefix("Alert") ? .green : .yellow)
-                        Text(message)
-                            .foregroundColor(.white)
-                    }
-                    .font(.subheadline)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if let message = confirmationMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: message.hasPrefix("Alert") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundColor(message.hasPrefix("Alert") ? .green : .yellow)
+                    Text(message)
+                        .foregroundColor(.white)
                 }
+                .font(.subheadline)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.top)
@@ -145,35 +151,53 @@ struct AddRouteAlertView: View {
     }
 
     private var systemGrid: some View {
-        let systems = alertCapableSystems.sorted { $0.displayName < $1.displayName }
-        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
-            ForEach(systems) { (system: TrainSystem) in
-                let isSelected = selectedSystem == system
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        selectedSystem = isSelected ? nil : system
-                    }
-                } label: {
-                    Text(system.displayName)
-                        .font(.subheadline)
-                        .fontWeight(isSelected ? .semibold : .regular)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(Color.orange)
-                            } else {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(.ultraThinMaterial)
+        let systems = TrainSystem.allCases
+            .filter { $0.supportsAlerts }
+            .sorted { $0.displayName < $1.displayName }
+        let hasInactive = systems.contains { !appState.selectedSystems.contains($0) }
+
+        return VStack(spacing: 8) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+                ForEach(systems) { (system: TrainSystem) in
+                    let isActive = appState.selectedSystems.contains(system)
+                    let isSelected = selectedSystem == system
+                    Button {
+                        if isActive {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                selectedSystem = isSelected ? nil : system
                             }
+                        } else {
+                            showTrainSystemSettings = true
                         }
-                        .foregroundColor(isSelected ? .black : .white)
+                    } label: {
+                        Text(system.displayName)
+                            .font(.subheadline)
+                            .fontWeight(isSelected ? .semibold : .regular)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background {
+                                if isSelected {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.orange)
+                                } else {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(.ultraThinMaterial)
+                                }
+                            }
+                            .foregroundColor(isSelected ? .black : .white)
+                            .opacity(isActive ? 1.0 : 0.4)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+            }
+            .padding(.horizontal)
+
+            if hasInactive {
+                Text("Tap a dimmed system to enable it")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.4))
             }
         }
-        .padding(.horizontal)
     }
 
     private var systemAddButton: some View {
