@@ -16,8 +16,20 @@ struct LineSelectionView: View {
     var body: some View {
         if hasContent {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Line Selection")
-                    .font(.headline)
+                HStack {
+                    Text("Line Selection")
+                        .font(.headline)
+                    Spacer()
+                    if !enabledLineIds.isEmpty {
+                        Button("Select All") {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                enabledLineIds = []
+                            }
+                        }
+                        .font(.subheadline)
+                        .foregroundColor(.orange)
+                    }
+                }
 
                 ForEach(systems) { systemInfo in
                     VStack(alignment: .leading, spacing: 8) {
