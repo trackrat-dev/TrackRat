@@ -164,9 +164,9 @@ class TestNormalizeAggregatedSegments:
             )
         ]
         result = normalize_aggregated_segments(raw)
-        assert len(result) == 0, (
-            f"Cross-line NJT segment PL->CW should be filtered, got {len(result)} segments"
-        )
+        assert (
+            len(result) == 0
+        ), f"Cross-line NJT segment PL->CW should be filtered, got {len(result)} segments"
 
     def test_empty_input(self):
         """Test handling of empty input."""

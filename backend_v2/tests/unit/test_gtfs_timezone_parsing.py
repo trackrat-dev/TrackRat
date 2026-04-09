@@ -138,8 +138,17 @@ class TestProviderTimezoneCompleteness:
 
     def test_eastern_providers(self):
         """Eastern Time providers should be mapped to ET."""
-        for provider in ("NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR",
-                         "SUBWAY", "MBTA", "WMATA"):
+        for provider in (
+            "NJT",
+            "AMTRAK",
+            "PATH",
+            "PATCO",
+            "LIRR",
+            "MNR",
+            "SUBWAY",
+            "MBTA",
+            "WMATA",
+        ):
             assert PROVIDER_TIMEZONE[provider] == ET, (
                 f"{provider} should be Eastern Time but is mapped to "
                 f"{PROVIDER_TIMEZONE[provider]}"

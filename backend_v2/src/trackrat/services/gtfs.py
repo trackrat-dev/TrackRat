@@ -1841,8 +1841,12 @@ class GTFSService:
             if not station_code:
                 continue
 
-            arrival_dt = self._parse_gtfs_time(arrival_time, target_date, matched_source)
-            departure_dt = self._parse_gtfs_time(departure_time, target_date, matched_source)
+            arrival_dt = self._parse_gtfs_time(
+                arrival_time, target_date, matched_source
+            )
+            departure_dt = self._parse_gtfs_time(
+                departure_time, target_date, matched_source
+            )
 
             stops.append(
                 StopDetails(
@@ -2092,8 +2096,12 @@ class GTFSService:
 
         stops = []
         for row in stop_rows:
-            arrival_dt = self._parse_gtfs_time(row.arrival_time, target_date, data_source)
-            departure_dt = self._parse_gtfs_time(row.departure_time, target_date, data_source)
+            arrival_dt = self._parse_gtfs_time(
+                row.arrival_time, target_date, data_source
+            )
+            departure_dt = self._parse_gtfs_time(
+                row.departure_time, target_date, data_source
+            )
             if not arrival_dt:
                 continue
             stops.append(
