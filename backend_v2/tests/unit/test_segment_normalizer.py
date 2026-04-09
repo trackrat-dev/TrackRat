@@ -119,12 +119,12 @@ class TestNormalizeAggregatedSegments:
         assert ny_se.sample_count == 15
 
     def test_unknown_segment_passthrough(self):
-        """Test that unknown segments pass through unchanged."""
+        """Test that unknown segments pass through unchanged for unchecked sources."""
         raw = [
             SegmentCongestion(
                 from_station="XX",
                 to_station="YY",
-                data_source="NJT",
+                data_source="PATH",
                 congestion_factor=1.0,
                 congestion_level="normal",
                 avg_transit_minutes=10.0,
@@ -140,6 +140,33 @@ class TestNormalizeAggregatedSegments:
         assert len(result) == 1
         assert result[0].from_station == "XX"
         assert result[0].to_station == "YY"
+
+    def test_njt_cross_line_segment_filtered(self):
+        """Test that NJT segments crossing lines with no shared route are filtered.
+
+        PL (Plauderville, Bergen County Line) and CW (Salisbury Mills-Cornwall,
+        Port Jervis Line) are on different NJT lines with no shared route.
+        A phantom segment between them should be dropped.
+        """
+        raw = [
+            SegmentCongestion(
+                from_station="PL",
+                to_station="CW",
+                data_source="NJT",
+                congestion_factor=1.0,
+                congestion_level="normal",
+                avg_transit_minutes=30.0,
+                baseline_minutes=28.0,
+                sample_count=1,
+                average_delay_minutes=2.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+        assert len(result) == 0, (
+            f"Cross-line NJT segment PL->CW should be filtered, got {len(result)} segments"
+        )
 
     def test_empty_input(self):
         """Test handling of empty input."""
@@ -352,8 +379,8 @@ class TestNormalizeIndividualSegments:
         assert len(journey_200_segs) == 3
 
     def test_unknown_segment_passthrough(self):
-        """Test that unknown segments pass through unchanged."""
-        raw = [self._create_segment("XX", "YY")]
+        """Test that unknown segments pass through unchanged for unchecked sources."""
+        raw = [self._create_segment("XX", "YY", data_source="PATH")]
         result = normalize_individual_segments(raw)
 
         assert len(result) == 1
@@ -472,12 +499,20 @@ class TestIsSegmentAnomalous:
         """Test that LIRR segments on a shared route are not flagged."""
         assert not _is_segment_anomalous("NY", "WDD", "LIRR")
 
-    def test_njt_segments_not_checked(self):
-        """Test that NJT segments are not subject to route-match filtering.
+    def test_njt_same_route_segment_not_anomalous(self):
+        """Test that NJT segments on a shared route are not flagged.
 
-        NJT uses complete API stop lists, not sparse GTFS-RT data.
+        NY and SE are both on the NEC route — a valid segment.
         """
-        assert not _is_segment_anomalous("NY", "LB", "NJT")
+        assert not _is_segment_anomalous("NY", "SE", "NJT")
+
+    def test_njt_cross_line_segment_anomalous(self):
+        """Test that NJT segments crossing lines with no shared route are flagged.
+
+        PL (Plauderville, Bergen County Line) and CW (Salisbury Mills-Cornwall,
+        Port Jervis Line) are on different NJT lines with no shared route.
+        """
+        assert _is_segment_anomalous("PL", "CW", "NJT")
 
     def test_non_gtfsrt_sources_not_checked(self):
         """Test that non-GTFS-RT sources without branching are not subject to route-match filtering.

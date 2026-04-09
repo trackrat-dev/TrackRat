@@ -31,6 +31,7 @@ logger = get_logger(__name__)
 # AMTRAK included because sparse API responses can create segments spanning
 # hundreds of miles when intermediate stops lack actual times.
 _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
+    "NJT",
     "AMTRAK",
     "SUBWAY",
     "BART",
