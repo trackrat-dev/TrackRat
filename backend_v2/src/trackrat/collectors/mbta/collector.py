@@ -150,7 +150,10 @@ class MBTACollector:
 
             logger.info(f"Found {len(trips)} MBTA CR trips in GTFS-RT feed")
 
-            # Process each trip inside a savepoint
+            # Process each trip inside a savepoint, committing in batches
+            # to preserve partial progress on timeout or late-stage failure.
+            batch_size = 50
+            trips_in_batch = 0
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
@@ -164,6 +167,11 @@ class MBTACollector:
                 except Exception as e:
                     logger.error(f"Error processing MBTA trip {trip_id}: {e}")
                     stats["errors"] += 1
+
+                trips_in_batch += 1
+                if trips_in_batch >= batch_size:
+                    await session.commit()
+                    trips_in_batch = 0
 
             # If every trip failed, raise so scheduler marks this run as failed
             if stats["errors"] > 0 and stats["discovered"] + stats["updated"] == 0:

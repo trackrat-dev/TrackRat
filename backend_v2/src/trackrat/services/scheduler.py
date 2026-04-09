@@ -43,6 +43,7 @@ from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.scheduler_utils import (
     calculate_safe_interval,
+    calculate_task_timeout,
     commit_with_retry,
     run_with_freshness_check,
 )
@@ -542,6 +543,9 @@ class SchedulerService:
                 task_name="njt_discovery",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_discovery_work,
+                timeout_seconds=calculate_task_timeout(
+                    self.settings.discovery_interval_minutes
+                ),
             )
 
             if not executed:
@@ -595,6 +599,9 @@ class SchedulerService:
                 task_name="amtrak_discovery",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_amtrak_discovery_work,
+                timeout_seconds=calculate_task_timeout(
+                    self.settings.discovery_interval_minutes
+                ),
             )
 
             if not executed:
@@ -641,6 +648,7 @@ class SchedulerService:
                 task_name="path_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_path_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -690,6 +698,7 @@ class SchedulerService:
                 task_name="lirr_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_lirr_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -739,6 +748,7 @@ class SchedulerService:
                 task_name="mnr_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_mnr_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -783,6 +793,7 @@ class SchedulerService:
                 task_name="subway_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_subway_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -827,6 +838,7 @@ class SchedulerService:
                 task_name="metra_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_metra_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -873,6 +885,7 @@ class SchedulerService:
                 task_name="wmata_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_wmata_collection_work,
+                timeout_seconds=calculate_task_timeout(3),
             )
 
             if not executed:
@@ -917,6 +930,7 @@ class SchedulerService:
                 task_name="bart_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_bart_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -961,6 +975,7 @@ class SchedulerService:
                 task_name="mbta_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_mbta_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
             )
 
             if not executed:
@@ -3392,6 +3407,7 @@ class SchedulerService:
                 task_name="service_alerts_collection",
                 minimum_interval_seconds=safe_interval,
                 task_func=do_service_alerts_work,
+                timeout_seconds=calculate_task_timeout(15),
             )
 
             if not executed:
