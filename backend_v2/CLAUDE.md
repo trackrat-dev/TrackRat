@@ -74,7 +74,7 @@ The V2 backend eliminates the complexity of V1 by:
    - Provides future train visibility beyond 30-60 minute window
 
 2. **Discovery Phase** (Every 30 minutes, configurable)
-   - **NJT**: Polls 18 stations (NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV) via `getTrainSchedule`
+   - **NJT**: Polls 21 stations (NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV, RW, WW, HN) via `getTrainSchedule`
    - **Amtrak**: Polls major stations for active trains
    - Updates journey records from SCHEDULED to OBSERVED when trains appear
 
@@ -831,7 +831,7 @@ The backend is organized into service classes for better maintainability:
 
 ### Performance Characteristics
 - API response time: <100ms (p95) with caching
-- Discovery completion: ~30 seconds for 18 stations
+- Discovery completion: ~30 seconds for 21 stations
 - Schedule generation: <60 seconds for all NJT trains
 - Cache hit rate: ~80% for popular routes
 - Database queries: <10ms for indexed queries

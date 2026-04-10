@@ -201,8 +201,9 @@ class TestTrainDiscoveryCollector:
     @pytest.mark.asyncio
     async def test_collect_aggregates_all_train_ids(self, discovery_collector):
         """Test that collect method aggregates train IDs from all stations."""
-        # Mock discover_station_trains to return different results for each station
-        # Need to include all discovery stations: NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV
+        # Mock discover_station_trains to return different results for each station.
+        # Must include all DISCOVERY_STATIONS:
+        # NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV, RW, WW, HN
         station_results = {
             "NY": {
                 "trains_discovered": 3,
@@ -312,6 +313,24 @@ class TestTrainDiscoveryCollector:
                 "new_train_ids": [],
                 "all_train_ids": [],
             },
+            "RW": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "WW": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "HN": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
         }
 
         mock_session = AsyncMock()
@@ -334,16 +353,16 @@ class TestTrainDiscoveryCollector:
             result = await discovery_collector.collect()
 
         # Verify aggregation
-        assert result["stations_processed"] == 18  # Updated discovery stations count
+        assert result["stations_processed"] == 21  # Updated discovery stations count
         assert result["total_discovered"] == 5  # 3 + 2 (from NY and NP stations)
         assert result["total_new"] == 1  # 1 (from NY station)
 
         # Verify station_results contains all station data
         assert "station_results" in result
-        assert len(result["station_results"]) == 18
+        assert len(result["station_results"]) == 21
 
         # Verify discover_station_trains was called for each discovery station
-        assert mock_discover.call_count == 18
+        assert mock_discover.call_count == 21
 
     @pytest.mark.asyncio
     async def test_process_discovered_trains_creates_journey_records(

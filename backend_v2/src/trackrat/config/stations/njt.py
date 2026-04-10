@@ -364,14 +364,22 @@ NJT_GTFS_STOP_TO_INTERNAL_MAP: dict[str, str] = {
 # PATCO GTFS stop_id to internal station code mapping
 # GTFS uses numeric stop_id (1-14), matching stop_code
 
-# Discovery stations for train polling - centralized configuration
+# Discovery stations for train polling - centralized configuration.
+#
+# Every NJT line must have at least one *intermediate* station here (not just
+# a terminal), otherwise trains originating from non-discovery stations on
+# that line remain SCHEDULED forever and are hidden by the
+# SCHEDULED_VISIBILITY_THRESHOLD_MINUTES filter in departure.py before users
+# ever see them. Terminal stations catch only trains that *depart* from them
+# (outbound), because arriving trains have no SCHED_DEP_DATE and are skipped
+# by discovery.py.
 DISCOVERY_STATIONS = [
     "NY",  # New York Penn Station
     "NP",  # Newark Penn Station
     "TR",  # Trenton
     "LB",  # Long Branch
-    "PL",  # Plauderville
-    "DN",  # Denville
+    "PL",  # Plauderville - Bergen County Line midline
+    "DN",  # Dunellen - Raritan Valley Line midline
     "MP",  # Metropark
     "HB",  # Hoboken
     "HG",  # High Bridge
@@ -379,9 +387,12 @@ DISCOVERY_STATIONS = [
     "ND",  # Newark Broad Street
     "BU",  # Brick Church - Morris & Essex junction near Newark
     "HQ",  # Hackettstown
-    "DV",  # Dover
+    "DV",  # Denville - Morris & Essex / Montclair-Boonton western coverage
     "JA",  # Jersey Avenue
     "RA",  # Raritan
     "ST",  # Summit - major Morris & Essex terminal for inbound trains
     "SV",  # Spring Valley - Pascack Valley Line terminus
+    "RW",  # Ridgewood - Main / Bergen County / Port Jervis shared trunk
+    "WW",  # Westwood - Pascack Valley Line midline
+    "HN",  # Hammonton - Atlantic City Line midline
 ]
