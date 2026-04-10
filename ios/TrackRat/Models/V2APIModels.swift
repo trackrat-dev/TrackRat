@@ -746,40 +746,7 @@ struct CongestionSegment: Codable, Identifiable {
     }
     
     var displayColor: Color {
-        Color(CongestionColors.color(forCongestionFactor: congestionFactor))
-    }
-
-    // Cancellation visualization properties
-    var hasCancellations: Bool {
-        return cancellationCount > 0
-    }
-    
-    var hasHighCancellationRate: Bool {
-        return cancellationRate > 10.0
-    }
-    
-    var shouldShowDashedLine: Bool {
-        return cancellationRate > 5.0
-    }
-    
-    var cancellationDisplayText: String {
-        if cancellationRate == 0 {
-            return "No cancellations"
-        } else {
-            return "\(Int(cancellationRate))% cancelled"
-        }
-    }
-    
-    var dashPattern: [NSNumber]? {
-        guard shouldShowDashedLine else { return nil }
-
-        if cancellationRate > 20 {
-            return [2, 2]  // Short dashes for high cancellation
-        } else if cancellationRate > 10 {
-            return [5, 3]  // Medium dashes
-        } else {
-            return [8, 4]  // Long dashes
-        }
+        Color(CongestionColors.color(forCongestionFactor: congestionFactor, cancellationRate: cancellationRate))
     }
 
     // MARK: - Frequency/Health Display Properties

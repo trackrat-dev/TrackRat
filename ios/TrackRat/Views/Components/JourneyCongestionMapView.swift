@@ -454,24 +454,16 @@ struct CongestionMapKitView: UIViewRepresentable {
         // MARK: - Public color/width helpers (used by updateUIView and rendererFor)
         func colorForSegment(_ segment: CongestionSegment) -> UIColor {
             guard highlightMode != .off else { return UIColor.clear }
-            var color: UIColor
             switch segment.preferredHighlightMode {
             case .health:
                 // Fall back to delay coloring when no frequency baseline exists yet
                 if segment.frequencyFactor != nil {
-                    color = getFrequencyUIColor(for: segment.frequencyFactor)
-                } else {
-                    color = getUIColor(for: segment.congestionFactor)
+                    return CongestionColors.color(forFrequencyFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
                 }
-            case .delays, .off: color = getUIColor(for: segment.congestionFactor)
+                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+            case .delays, .off:
+                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
             }
-            // Escalate color for significant cancellation rates
-            if segment.cancellationRate > 20 {
-                color = UIColor.systemRed
-            } else if segment.cancellationRate > 10 {
-                color = escalateColor(color)
-            }
-            return color
         }
 
         // MARK: - Polyline Rendering
@@ -557,21 +549,6 @@ struct CongestionMapKitView: UIViewRepresentable {
         }
         
         // MARK: - Helper Methods
-        private func getUIColor(for congestionFactor: Double) -> UIColor {
-            CongestionColors.color(forCongestionFactor: congestionFactor)
-        }
-
-        private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
-            CongestionColors.color(forFrequencyFactor: frequencyFactor)
-        }
-
-        /// Escalate a health color by one level toward red for cancellation impact
-        private func escalateColor(_ color: UIColor) -> UIColor {
-            if color == UIColor.systemGreen { return UIColor.systemYellow }
-            if color == UIColor.systemYellow { return UIColor.systemOrange }
-            return UIColor.systemRed
-        }
-
         private func createStationPinView(for station: JourneyStation) -> UIView {
             let size: CGFloat = 12
             let containerView = UIView(frame: CGRect(x: 0, y: 0, width: size, height: size))

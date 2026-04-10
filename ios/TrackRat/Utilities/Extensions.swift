@@ -337,6 +337,11 @@ extension Stations {
 // MARK: - Congestion Map Color Helpers
 
 /// Shared color helpers used by CongestionMapView and JourneyCongestionMapView.
+///
+/// Cancellations are folded into the delay/frequency factor before bucketing into a
+/// color tier, so a single color communicates "how bad is this segment" combining
+/// delays and cancellations. Weights are tuned so a 10% cancellation rate shifts
+/// the color roughly one tier toward red.
 enum CongestionColors {
     // Thresholds mirror backend `congestion_types.py`:
     //   normal   factor <= 1.10  (≤10% slower than baseline)
@@ -347,12 +352,20 @@ enum CongestionColors {
     static let moderateThreshold: Double = 1.25
     static let heavyThreshold: Double = 1.50
 
+    static let cancellationCongestionWeight: Double = 0.015  // ~1 tier per 10% cancellation
+    static let cancellationFrequencyWeight: Double = 0.020   // ~1 tier per 10% cancellation
+
     /// Color for delay-based congestion factor (higher = more delayed).
     static func color(forCongestionFactor factor: Double) -> UIColor {
         if factor <= normalThreshold { return .systemGreen }
         else if factor <= moderateThreshold { return .systemYellow }
         else if factor <= heavyThreshold { return .systemOrange }
         else { return .systemRed }
+    }
+
+    /// Color for delay-based congestion factor with cancellation rate folded in.
+    static func color(forCongestionFactor factor: Double, cancellationRate: Double) -> UIColor {
+        color(forCongestionFactor: factor + max(0, cancellationRate) * cancellationCongestionWeight)
     }
 
     /// Color for frequency factor (higher = healthier service).
@@ -362,5 +375,21 @@ enum CongestionColors {
         else if factor >= 0.7 { return .systemYellow }
         else if factor >= 0.5 { return .systemOrange }
         else { return .systemRed }
+    }
+
+    /// Color for frequency factor with cancellation rate folded in.
+    static func color(forFrequencyFactor factor: Double?, cancellationRate: Double) -> UIColor {
+        guard let factor else { return .systemGray }
+        return color(forFrequencyFactor: factor - max(0, cancellationRate) * cancellationFrequencyWeight)
+    }
+
+    /// Stable identifier for the delay-based color tier this segment would render as.
+    /// Used to group adjacent segments with the same effective color into one overlay.
+    static func congestionTierKey(forFactor factor: Double, cancellationRate: Double) -> String {
+        let effective = factor + max(0, cancellationRate) * cancellationCongestionWeight
+        if effective <= normalThreshold { return "normal" }
+        if effective <= moderateThreshold { return "moderate" }
+        if effective <= heavyThreshold { return "heavy" }
+        return "severe"
     }
 }
