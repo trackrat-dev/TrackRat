@@ -334,9 +334,14 @@ struct CombinedDetailsCard: View {
         return formatter.string(from: train.departureTime)
     }
         
+    // Feature flag: TrackRat arrival predictions (🐀✨) shown to the right of
+    // station stops. Defaults to off. Flip to `true` to re-enable.
+    private static let journeyPredictionsFeatureEnabled = false
+
     // Check if predictions should be shown for the entire journey.
     // Shows predictions when any stop in the journey has a meaningful predicted delay.
     private var shouldShowJourneyPredictions: Bool {
+        guard Self.journeyPredictionsFeatureEnabled else { return false }
         return displayableTrainStops.contains { stop in
             guard let predictedArrival = stop.predictedArrival,
                   let bestKnown = stop.bestKnownArrival,
