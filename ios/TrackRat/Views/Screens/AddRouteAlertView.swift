@@ -23,7 +23,6 @@ struct AddRouteAlertView: View {
     @State private var confirmationMessage: String? = nil
 
     // System-wide state
-    @State private var selectedSystem: TrainSystem? = nil
     @State private var systemAlertSheetData: DirectionalSheetData? = nil
 
     // Customization sheet state
@@ -90,7 +89,6 @@ struct AddRouteAlertView: View {
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         systemAlertSheetData = nil
-        withAnimation { selectedSystem = nil }
     }
 
     // MARK: - Alert Content
@@ -142,10 +140,6 @@ struct AddRouteAlertView: View {
 
             systemGrid
 
-            if selectedSystem != nil {
-                systemAddButton
-            }
-
             Spacer()
         }
     }
@@ -154,82 +148,50 @@ struct AddRouteAlertView: View {
         let systems = TrainSystem.allCases
             .filter { $0.supportsAlerts }
             .sorted { $0.displayName < $1.displayName }
-        let hasInactive = systems.contains { !appState.selectedSystems.contains($0) }
 
-        return VStack(spacing: 8) {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
-                ForEach(systems) { (system: TrainSystem) in
-                    let isActive = appState.selectedSystems.contains(system)
-                    let isSelected = selectedSystem == system
-                    Button {
-                        if isActive {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                selectedSystem = isSelected ? nil : system
-                            }
-                        } else {
-                            showTrainSystemSettings = true
-                        }
-                    } label: {
-                        Text(system.displayName)
-                            .font(.subheadline)
-                            .fontWeight(isSelected ? .semibold : .regular)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background {
-                                if isSelected {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(Color.orange)
-                                } else {
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(.ultraThinMaterial)
-                                }
-                            }
-                            .foregroundColor(isSelected ? .black : .white)
-                            .opacity(isActive ? 1.0 : 0.4)
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+            ForEach(systems) { (system: TrainSystem) in
+                let isActive = appState.selectedSystems.contains(system)
+                Button {
+                    if isActive {
+                        openSystemAlertSheet(for: system)
+                    } else {
+                        showTrainSystemSettings = true
                     }
-                    .buttonStyle(.plain)
+                } label: {
+                    Text(system.displayName)
+                        .font(.subheadline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+                        .foregroundColor(.white)
+                        .opacity(isActive ? 1.0 : 0.4)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal)
-
-            if hasInactive {
-                Text("Tap a dimmed system to enable it")
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.4))
-            }
-        }
-    }
-
-    private var systemAddButton: some View {
-        Button {
-            guard let system = selectedSystem else { return }
-            let alreadyExists = alertService.subscriptions.contains {
-                $0.isSystemWide && $0.dataSource == system.rawValue
-            }
-
-            if alreadyExists {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                showConfirmation("Already subscribed")
-            } else {
-                let sub = RouteAlertSubscription(dataSource: system.rawValue)
-                systemAlertSheetData = DirectionalSheetData(directions: [
-                    DirectionDraft(
-                        label: "\(system.displayName) System Alerts",
-                        subscription: sub,
-                        alreadySubscribed: false
-                    ),
-                ])
-            }
-        } label: {
-            Text("Add Alert")
-                .font(.headline)
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Capsule().fill(.orange))
         }
         .padding(.horizontal)
-        .padding(.top, 8)
+    }
+
+    private func openSystemAlertSheet(for system: TrainSystem) {
+        let alreadyExists = alertService.subscriptions.contains {
+            $0.isSystemWide && $0.dataSource == system.rawValue
+        }
+
+        if alreadyExists {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            showConfirmation("Already subscribed")
+            return
+        }
+
+        let sub = RouteAlertSubscription(dataSource: system.rawValue)
+        systemAlertSheetData = DirectionalSheetData(directions: [
+            DirectionDraft(
+                label: "\(system.displayName) System Alerts",
+                subscription: sub,
+                alreadySubscribed: false
+            ),
+        ])
     }
 
     // MARK: - Route Mode (Station-Pair Picker)
