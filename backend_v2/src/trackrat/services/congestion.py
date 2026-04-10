@@ -46,6 +46,34 @@ REALTIME_SOURCES = {
 }
 
 
+# Scheduled inter-station travel time used as the congestion baseline.
+# Primary form (to_scheduled_arrival - from_scheduled_departure) is correct
+# for providers that populate scheduled_arrival per stop (Amtrak, GTFS-RT
+# systems). NJT only emits one scheduled time per intermediate stop and
+# stores it in scheduled_departure, leaving scheduled_arrival NULL — so the
+# fallback uses the delta between consecutive scheduled departures. That
+# delta includes the destination stop's dwell, biasing the baseline up by
+# ~30-60 sec, but is far better than the previous behavior of falling back
+# to NULL and pinning every NJT segment to congestion_factor=1.0.
+_SCHEDULED_MINUTES_SQL = """
+                    CASE
+                        WHEN sp.from_scheduled_departure IS NOT NULL
+                         AND sp.to_scheduled_arrival IS NOT NULL
+                         AND sp.to_scheduled_arrival > sp.from_scheduled_departure
+                        THEN EXTRACT(EPOCH FROM (
+                            sp.to_scheduled_arrival - sp.from_scheduled_departure
+                        )) / 60.0
+                        WHEN sp.from_scheduled_departure IS NOT NULL
+                         AND sp.to_scheduled_departure IS NOT NULL
+                         AND sp.to_scheduled_departure > sp.from_scheduled_departure
+                        THEN EXTRACT(EPOCH FROM (
+                            sp.to_scheduled_departure - sp.from_scheduled_departure
+                        )) / 60.0
+                        ELSE NULL
+                    END as scheduled_minutes
+"""
+
+
 # Re-export for backward compatibility
 __all__ = [
     "SegmentCongestion",
@@ -395,7 +423,8 @@ class CongestionAnalyzer:
                 LEAD(js.station_code) OVER w as to_station,
                 LEAD(js.actual_arrival) OVER w as to_actual_arrival,
                 LEAD(js.updated_arrival) OVER w as to_updated_arrival,
-                LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival
+                LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
+                LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
             FROM journey_stops js
             JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
             WHERE js.station_code IS NOT NULL
@@ -429,16 +458,8 @@ class CongestionAnalyzer:
                     COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
                     COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                 )) / 60.0 as actual_minutes,
-                -- Calculate scheduled transit time (used as baseline for congestion factor)
-                CASE
-                    WHEN sp.from_scheduled_departure IS NOT NULL
-                     AND sp.to_scheduled_arrival IS NOT NULL
-                     AND sp.to_scheduled_arrival > sp.from_scheduled_departure
-                    THEN EXTRACT(EPOCH FROM (
-                        sp.to_scheduled_arrival - sp.from_scheduled_departure
-                    )) / 60.0
-                    ELSE NULL
-                END as scheduled_minutes,
+                -- Scheduled inter-station travel time (baseline for congestion factor)
+                {_SCHEDULED_MINUTES_SQL},
                 -- Track when this segment departed for recency sorting
                 COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) as departure_time
             FROM train_journeys tj
@@ -717,7 +738,8 @@ class CongestionAnalyzer:
                     LEAD(js.station_code) OVER w as to_station,
                     LEAD(js.actual_arrival) OVER w as to_actual_arrival,
                     LEAD(js.updated_arrival) OVER w as to_updated_arrival,
-                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival
+                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
+                    LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
                 FROM journey_stops js
                 JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
                 WHERE js.station_code IS NOT NULL
@@ -748,16 +770,8 @@ class CongestionAnalyzer:
                         COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
                         COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                     )) / 60.0 as actual_minutes,
-                    -- Calculate scheduled transit time (baseline for congestion factor)
-                    CASE
-                        WHEN sp.from_scheduled_departure IS NOT NULL
-                         AND sp.to_scheduled_arrival IS NOT NULL
-                         AND sp.to_scheduled_arrival > sp.from_scheduled_departure
-                        THEN EXTRACT(EPOCH FROM (
-                            sp.to_scheduled_arrival - sp.from_scheduled_departure
-                        )) / 60.0
-                        ELSE NULL
-                    END as scheduled_minutes
+                    -- Scheduled inter-station travel time (baseline for congestion factor)
+                    {_SCHEDULED_MINUTES_SQL}
                 FROM train_journeys tj
                 JOIN stop_pairs sp ON sp.journey_id = tj.id
                 WHERE
@@ -826,7 +840,8 @@ class CongestionAnalyzer:
                     LEAD(js.station_code) OVER w as to_station,
                     LEAD(js.actual_arrival) OVER w as to_actual_arrival,
                     LEAD(js.updated_arrival) OVER w as to_updated_arrival,
-                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival
+                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
+                    LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
                 FROM journey_stops js
                 JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
                 WHERE js.station_code IS NOT NULL
@@ -857,16 +872,8 @@ class CongestionAnalyzer:
                         COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
                         COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                     )) / 60.0 as actual_minutes,
-                    -- Calculate scheduled transit time (baseline for congestion factor)
-                    CASE
-                        WHEN sp.from_scheduled_departure IS NOT NULL
-                         AND sp.to_scheduled_arrival IS NOT NULL
-                         AND sp.to_scheduled_arrival > sp.from_scheduled_departure
-                        THEN EXTRACT(EPOCH FROM (
-                            sp.to_scheduled_arrival - sp.from_scheduled_departure
-                        )) / 60.0
-                        ELSE NULL
-                    END as scheduled_minutes
+                    -- Scheduled inter-station travel time (baseline for congestion factor)
+                    {_SCHEDULED_MINUTES_SQL}
                 FROM train_journeys tj
                 JOIN stop_pairs sp ON sp.journey_id = tj.id
                 WHERE

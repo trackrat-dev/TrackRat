@@ -746,17 +746,9 @@ struct CongestionSegment: Codable, Identifiable {
     }
     
     var displayColor: Color {
-        if congestionFactor < 1.05 {
-            return .green
-        } else if congestionFactor < 1.25 {
-            return .yellow
-        } else if congestionFactor < 2.0 {
-            return .orange
-        } else {
-            return .red
-        }
+        Color(CongestionColors.color(forCongestionFactor: congestionFactor))
     }
-    
+
     // Cancellation visualization properties
     var hasCancellations: Bool {
         return cancellationCount > 0
@@ -907,15 +899,7 @@ struct StationCoordinates: Codable {
 
 extension IndividualJourneySegment {
     var displayColor: Color {
-        if congestionFactor < 1.05 {
-            return .green
-        } else if congestionFactor < 1.25 {
-            return .yellow
-        } else if congestionFactor < 2.0 {
-            return .orange
-        } else {
-            return .red
-        }
+        Color(CongestionColors.color(forCongestionFactor: congestionFactor))
     }
     
     /// Convert the journey date string to a Date object

@@ -1019,8 +1019,6 @@ struct FilterSheet: View {
                     Picker("Hours", selection: $timeWindow) {
                         Text("2 hours").tag(2)
                         Text("3 hours").tag(3)
-                        Text("6 hours").tag(6)
-                        Text("12 hours").tag(12)
                     }
                     .pickerStyle(.segmented)
                 }

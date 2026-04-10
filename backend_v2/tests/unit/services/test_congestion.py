@@ -539,6 +539,71 @@ class TestCongestionAnalyzer:
             assert segment.delay_minutes == 0.0
             assert segment.congestion_factor == 1.0
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("max_per_segment", [10, 0])
+    async def test_individual_segments_sql_has_njt_scheduled_fallback(
+        self, congestion_analyzer, mock_db, max_per_segment
+    ):
+        """The individual-segments SQL must include a fallback for providers
+        that leave scheduled_arrival NULL (NJT).
+
+        Without the fallback, scheduled_minutes is NULL for every NJT segment,
+        which forces delay_minutes to 0 and congestion_factor to 1.0 — making
+        every NJT segment look "normal" regardless of actual delay. This test
+        guards against regressing the fix in both SQL branches (with and
+        without per-route limiting).
+        """
+        mock_result = Mock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        await congestion_analyzer.get_individual_segments_optimized(
+            mock_db, max_per_segment=max_per_segment, data_source="NJT"
+        )
+
+        sql = str(mock_db.execute.call_args.args[0])
+        # Primary form: to_scheduled_arrival - from_scheduled_departure
+        assert "sp.to_scheduled_arrival - sp.from_scheduled_departure" in sql
+        # NJT fallback: to_scheduled_departure - from_scheduled_departure
+        assert "sp.to_scheduled_departure - sp.from_scheduled_departure" in sql
+        # Fallback requires the column to be projected from stop_pairs
+        assert "LEAD(js.scheduled_departure) OVER w as to_scheduled_departure" in sql
+
+    @pytest.mark.asyncio
+    async def test_aggregated_congestion_sql_has_njt_scheduled_fallback(
+        self, congestion_analyzer, mock_db
+    ):
+        """The aggregated congestion SQL has the same NJT scheduled_arrival
+        problem as the individual-segments SQL: without the fallback,
+        avg_scheduled is NULL for NJT and the baseline silently degrades to
+        median_actual (a noisy proxy of the data being measured), making
+        NJT congestion factors meaningless.
+        """
+        mock_result = Mock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+        congestion_analyzer._cache.clear()
+
+        await congestion_analyzer.get_network_congestion_optimized(
+            mock_db, time_window_hours=3, data_source="NJT"
+        )
+
+        # First execute is the SET LOCAL statement_timeout; second is the query.
+        main_sql = next(
+            (
+                str(call.args[0])
+                for call in mock_db.execute.call_args_list
+                if "WITH stop_pairs" in str(call.args[0])
+            ),
+            None,
+        )
+        assert main_sql is not None, "main aggregated query was not executed"
+        assert "sp.to_scheduled_arrival - sp.from_scheduled_departure" in main_sql
+        assert "sp.to_scheduled_departure - sp.from_scheduled_departure" in main_sql
+        assert (
+            "LEAD(js.scheduled_departure) OVER w as to_scheduled_departure" in main_sql
+        )
+
     def test_cache_expiration(self, congestion_analyzer):
         """Test that cache expires after TTL."""
         # Set up initial cache entry

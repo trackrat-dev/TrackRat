@@ -848,7 +848,16 @@ async def _compute_and_cache_single_provider(
 @router.get("/congestion")
 @handle_errors
 async def get_route_congestion(
-    time_window_hours: int = Query(1, ge=1, le=24, description="Hours to look back"),
+    time_window_hours: int = Query(
+        2,
+        ge=1,
+        le=3,
+        description=(
+            "Hours to look back. Only 2 (default, all systems) and 3 (NJT extended)"
+            " are pre-computed; larger windows are rejected because live aggregation"
+            " exceeds the query timeout for high-volume providers."
+        ),
+    ),
     max_per_segment: int = Query(
         100,
         ge=0,

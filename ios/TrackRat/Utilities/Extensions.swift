@@ -338,11 +338,20 @@ extension Stations {
 
 /// Shared color helpers used by CongestionMapView and JourneyCongestionMapView.
 enum CongestionColors {
+    // Thresholds mirror backend `congestion_types.py`:
+    //   normal   factor <= 1.10  (≤10% slower than baseline)
+    //   moderate factor <= 1.25  (10-25% slower)
+    //   heavy    factor <= 1.50  (25-50% slower)
+    //   severe   factor >  1.50  (>50% slower)
+    static let normalThreshold: Double = 1.10
+    static let moderateThreshold: Double = 1.25
+    static let heavyThreshold: Double = 1.50
+
     /// Color for delay-based congestion factor (higher = more delayed).
     static func color(forCongestionFactor factor: Double) -> UIColor {
-        if factor < 1.05 { return .systemGreen }
-        else if factor < 1.25 { return .systemYellow }
-        else if factor < 2.0 { return .systemOrange }
+        if factor <= normalThreshold { return .systemGreen }
+        else if factor <= moderateThreshold { return .systemYellow }
+        else if factor <= heavyThreshold { return .systemOrange }
         else { return .systemRed }
     }
 

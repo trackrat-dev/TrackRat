@@ -141,3 +141,21 @@ async def test_multi_provider_timeout_skips_provider_continues(client):
         f"Expected 200 (partial results), got {response.status_code}: "
         f"{response.text}"
     )
+
+
+@pytest.mark.parametrize("hours", [0, 4, 6, 12, 24])
+def test_congestion_rejects_unsupported_time_window(client, hours):
+    """time_window_hours outside [1,3] must be rejected by FastAPI parameter
+    validation (HTTP 422), not propagated through to the live aggregation
+    path where it reliably exceeds the SQL statement timeout and surfaces
+    as an opaque HTTP 503.
+
+    The pre-computer only generates window=2 (universal) and window=3 (NJT
+    extended). Larger windows have no cache and are not viable live, so
+    accepting them is a contract violation.
+    """
+    response = client.get(f"/api/v2/routes/congestion?time_window_hours={hours}")
+    assert response.status_code == 422, (
+        f"time_window_hours={hours} should be rejected with 422, "
+        f"got {response.status_code}: {response.text}"
+    )
