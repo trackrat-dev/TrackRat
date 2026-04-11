@@ -142,8 +142,10 @@ class LIRRCollector:
 
             logger.info(f"Found {len(trips)} LIRR trips in GTFS-RT feed")
 
-            # Process each trip inside a savepoint so one failure
-            # doesn't poison the session for subsequent trips.
+            # Process each trip inside a savepoint, committing in batches
+            # to preserve partial progress on timeout or late-stage failure.
+            batch_size = 50
+            trips_in_batch = 0
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
@@ -157,6 +159,11 @@ class LIRRCollector:
                 except Exception as e:
                     logger.error(f"Error processing LIRR trip {trip_id}: {e}")
                     stats["errors"] += 1
+
+                trips_in_batch += 1
+                if trips_in_batch >= batch_size:
+                    await session.commit()
+                    trips_in_batch = 0
 
             # If every trip failed, raise so scheduler marks this run as failed
             if stats["errors"] > 0 and stats["discovered"] + stats["updated"] == 0:
@@ -268,6 +275,7 @@ class LIRRCollector:
                 selectinload(TrainJourney.snapshots),
                 selectinload(TrainJourney.segment_times),
                 selectinload(TrainJourney.dwell_times),
+                selectinload(TrainJourney.progress),
                 selectinload(TrainJourney.progress_snapshots),
             )
         )

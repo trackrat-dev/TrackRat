@@ -287,9 +287,13 @@ class TestLookupIndexes:
         # All should be same-station, same-system with different line groups
         for tp in tps:
             assert tp.system_a == "NJT" and tp.system_b == "NJT"
-            assert tp.station_a == tp.station_b, f"Intra-system junction should be same station, got {tp.station_a} != {tp.station_b}"
+            assert (
+                tp.station_a == tp.station_b
+            ), f"Intra-system junction should be same station, got {tp.station_a} != {tp.station_b}"
             assert tp.same_station is True
-            assert tp.lines_a != tp.lines_b, f"Junction should connect different line groups at {tp.station_a}"
+            assert (
+                tp.lines_a != tp.lines_b
+            ), f"Junction should connect different line groups at {tp.station_a}"
 
     def test_get_transfer_points_subway_subway_has_results(self):
         """SUBWAY <-> SUBWAY should return intra-subway transfer points."""

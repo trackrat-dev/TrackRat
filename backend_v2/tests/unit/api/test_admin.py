@@ -231,6 +231,101 @@ class TestAdminStatsPage:
         assert "Popular Train Details" in html
         assert "No views yet" in html
 
+    def test_ios_usage_card_shown_with_ios_traffic(self, client):
+        """iOS Usage card appears when there is iOS traffic."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230 CFNetwork/1568",
+            duration=0.05,
+            client_ip="10.0.0.1",
+            query_params={"from": "NY", "to": "TR"},
+        )
+        stats.record_request(
+            path_template="/api/v2/trains/{train_id}",
+            status_code=200,
+            user_agent="TrackRat/230 CFNetwork/1568",
+            duration=0.03,
+            client_ip="10.0.0.2",
+        )
+
+        response = client.get("/admin/stats")
+        html = response.text
+
+        assert "iOS Usage (2 users)" in html, (
+            f"Expected iOS Usage card with 2 users, got: "
+            f"{'iOS Usage' if 'iOS Usage' in html else 'card missing entirely'}"
+        )
+        assert "Departure Searches" in html
+        assert "Train Detail Views" in html
+        assert "iOS/230" in html  # version distribution
+
+    def test_ios_usage_card_hidden_without_ios_traffic(self, client):
+        """iOS Usage card does not appear when only non-iOS traffic exists."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="curl/7.88",
+            duration=0.05,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats")
+        html = response.text
+        assert "iOS Usage" not in html
+
+    def test_ios_usage_shows_top_routes(self, client):
+        """iOS Usage card shows top routes searched by iOS users."""
+        reset_request_stats()
+        stats = get_request_stats()
+        # Two users searching the same route
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.05,
+            client_ip="10.0.0.1",
+            query_params={"from": "NY", "to": "TR"},
+        )
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.05,
+            client_ip="10.0.0.2",
+            query_params={"from": "NY", "to": "TR"},
+        )
+
+        response = client.get("/admin/stats")
+        html = response.text
+
+        assert "Top Routes" in html
+        assert "New York Penn Station" in html
+        assert "Trenton" in html
+
+    def test_ios_usage_summary_bar_item(self, client):
+        """Summary bar includes iOS Users item with engagement metric."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.05,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats")
+        html = response.text
+
+        assert "iOS Users" in html
+        assert "1 unique" in html
+        assert "/user" in html
+
 
 class TestAdminStatsJson:
     """Tests for the /admin/stats.json JSON endpoint."""
@@ -426,3 +521,52 @@ class TestAdminStatsJson:
         view_key = next(k for k in data["train_detail_views"] if "3254" in k)
         assert "Trenton" in view_key, f"Expected resolved station name, got: {view_key}"
         assert data["train_detail_views"][view_key] == 2
+
+    def test_json_includes_usage_analytics(self, client):
+        """JSON endpoint includes usage_analytics when iOS traffic exists."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.05,
+            client_ip="10.0.0.1",
+            query_params={"from": "NY", "to": "TR"},
+        )
+        stats.record_request(
+            path_template="/api/v2/trains/{train_id}",
+            status_code=200,
+            user_agent="TrackRat/230",
+            duration=0.03,
+            client_ip="10.0.0.2",
+        )
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+
+        assert (
+            "usage_analytics" in data
+        ), f"Expected usage_analytics key, got: {list(data.keys())}"
+        ua = data["usage_analytics"]
+        assert ua["unique_users"] == 2
+        assert ua["total_actions"] == 2
+        assert ua["actions_per_user"] == 1.0
+        assert len(ua["actions"]) >= 2
+        assert len(ua["top_routes"]) >= 1
+
+    def test_json_no_usage_analytics_without_ios(self, client):
+        """JSON endpoint omits usage_analytics when no iOS traffic."""
+        reset_request_stats()
+        stats = get_request_stats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="curl/7",
+            duration=0.05,
+            client_ip="10.0.0.1",
+        )
+
+        response = client.get("/admin/stats.json")
+        data = response.json()
+        assert "usage_analytics" not in data

@@ -15,7 +15,11 @@ ET = pytz.timezone("America/New_York")
 # Central Time Zone (for Chicago Metra)
 CT = pytz.timezone("America/Chicago")
 
-# Provider timezone mapping — used by collectors to determine local "today"
+# Pacific Time Zone (for BART)
+PT = pytz.timezone("America/Los_Angeles")
+
+# Provider timezone mapping — used by collectors and GTFS parsing to determine
+# the correct local timezone for each transit provider
 PROVIDER_TIMEZONE: dict[str, pytz.BaseTzInfo] = {
     "NJT": ET,
     "AMTRAK": ET,
@@ -25,6 +29,9 @@ PROVIDER_TIMEZONE: dict[str, pytz.BaseTzInfo] = {
     "MNR": ET,
     "SUBWAY": ET,
     "METRA": CT,
+    "BART": PT,
+    "MBTA": ET,
+    "WMATA": ET,
 }
 
 

@@ -4,6 +4,7 @@ Route API endpoints for TrackRat V2.
 Provides route-based historical analysis independent of specific trains.
 """
 
+import asyncio
 import json as json_mod
 from datetime import datetime, timedelta
 from typing import Any
@@ -17,7 +18,7 @@ from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
 from trackrat.config.stations import expand_station_codes, get_station_name
-from trackrat.db.engine import get_db
+from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
     AggregateStats,
     CongestionMapResponse,
@@ -147,17 +148,27 @@ async def get_route_history(
                     db, "/api/v2/routes/history", cache_params
                 )
 
-    # Compute route history (shared with pre-warming in api_cache.py)
-    response = await compute_route_history(
-        db,
-        from_station,
-        to_station,
-        data_source,
-        days,
-        hours,
-        lines,
-        highlight_train=highlight_train,
-    )
+    # Compute route history in a dedicated session with a timeout.
+    # Uses a separate session so that if the query exceeds the timeout,
+    # the resulting transaction corruption doesn't poison the request's
+    # main session (which caused HTTP 500 via "Can't reconnect until
+    # invalid transaction is rolled back" for BART/MBTA).
+    # The 45s timeout fires before the 60s command_timeout in engine.py,
+    # giving clean cancellation instead of DB-level abort.
+    async with get_session() as history_db:
+        response = await asyncio.wait_for(
+            compute_route_history(
+                history_db,
+                from_station,
+                to_station,
+                data_source,
+                days,
+                hours,
+                lines,
+                highlight_train=highlight_train,
+            ),
+            timeout=45.0,
+        )
 
     # Store in cache (skip when highlight_train is provided)
     if not highlight_train:
@@ -733,13 +744,28 @@ async def _compute_and_cache_single_provider(
         if s.from_station != "SAN" and s.to_station != "SAN"
     ]
 
-    # Build train positions
+    # Build train positions, deduplicating by (train_id, data_source) and
+    # skipping entries with no position data (e.g. trains not yet departed).
     departure_service = DepartureService()
     train_positions = []
+    seen_trains: set[tuple[str, str]] = set()
     for journey in journeys:
         if journey.is_cancelled:
             continue
+        if not journey.train_id or not journey.data_source:
+            continue
+        key = (journey.train_id, journey.data_source)
+        if key in seen_trains:
+            continue
         position = departure_service._calculate_train_position(journey)
+        # Skip trains with no position data at all
+        if (
+            not position.last_departed_station_code
+            and not position.at_station_code
+            and not position.next_station_code
+        ):
+            continue
+        seen_trains.add(key)
         journey_percent = None
         if journey.progress:
             journey_percent = journey.progress.journey_percent
@@ -822,7 +848,16 @@ async def _compute_and_cache_single_provider(
 @router.get("/congestion")
 @handle_errors
 async def get_route_congestion(
-    time_window_hours: int = Query(1, ge=1, le=24, description="Hours to look back"),
+    time_window_hours: int = Query(
+        2,
+        ge=1,
+        le=3,
+        description=(
+            "Hours to look back. Only 2 (default, all systems) and 3 (NJT extended)"
+            " are pre-computed; larger windows are rejected because live aggregation"
+            " exceeds the query timeout for high-volume providers."
+        ),
+    ),
     max_per_segment: int = Query(
         100,
         ge=0,
@@ -907,9 +942,12 @@ async def get_route_congestion(
         cache_service = ApiCacheService()
         for system in requested_systems:
             try:
-                await _compute_and_cache_single_provider(
-                    db, system, effective_time_window, max_per_segment
-                )
+                # Use a fresh session per provider so a timeout in one
+                # doesn't poison the connection for subsequent iterations.
+                async with get_session() as provider_db:
+                    await _compute_and_cache_single_provider(
+                        provider_db, system, effective_time_window, max_per_segment
+                    )
             except Exception as e:
                 error_name = type(e).__name__
                 if (
@@ -924,10 +962,12 @@ async def get_route_congestion(
                     continue  # Skip this provider, try others
                 raise
 
-        # Re-merge from the freshly-populated caches
-        merged = await cache_service.merge_congestion_from_provider_caches(
-            db, requested_systems, effective_time_window, max_per_segment
-        )
+        # Re-merge from the freshly-populated caches (fresh session in case
+        # the request db was never used or was poisoned by an earlier path).
+        async with get_session() as merge_db:
+            merged = await cache_service.merge_congestion_from_provider_caches(
+                merge_db, requested_systems, effective_time_window, max_per_segment
+            )
         if merged:
             return Response(
                 content=json_mod.dumps(merged),
@@ -980,15 +1020,31 @@ async def get_route_congestion(
         if s.from_station != "SAN" and s.to_station != "SAN"
     ]
 
-    # Extract train positions from journeys
+    # Extract train positions from journeys, deduplicating by (train_id, data_source)
+    # and skipping entries with no position data.
     departure_service = DepartureService()
     train_positions = []
+    seen_trains: set[tuple[str, str]] = set()
 
     for journey in journeys:
         if journey.is_cancelled:
             continue
+        if not journey.train_id or not journey.data_source:
+            continue
+        key = (journey.train_id, journey.data_source)
+        if key in seen_trains:
+            continue
 
         position = departure_service._calculate_train_position(journey)
+
+        # Skip trains with no position data at all
+        if (
+            not position.last_departed_station_code
+            and not position.at_station_code
+            and not position.next_station_code
+        ):
+            continue
+        seen_trains.add(key)
 
         journey_percent = None
         if journey.progress:

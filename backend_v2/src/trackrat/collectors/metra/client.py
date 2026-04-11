@@ -127,7 +127,9 @@ class MetraClient:
             Empty list if API token is not configured.
         """
         if not self._api_token:
-            return []
+            raise ValueError(
+                "TRACKRAT_METRA_API_TOKEN not configured — cannot fetch Metra data"
+            )
 
         if self._is_cache_valid():
             return self._cache or []

@@ -1,0 +1,77 @@
+TrackRat Board Meeting — April 4, 2026
+Chairman: Andy Martin
+CEO: Claude
+
+---
+
+STATE OF THE COMPANY
+
+- 3 active paying subscribers at $4.99/month
+- ~346 total downloads since August 2025 (1/day baseline, spike-driven)
+- 8 transit systems live: NJT, Amtrak, PATH, LIRR, Metro-North, NYC Subway, WMATA, PATCO
+- Freemium model: 1 system + 1 alert free
+- Repo made public April 3, 2026 (Apache 2.0): https://github.com/trackrat-dev/TrackRat
+- 0 GitHub stars, 1 fork as of meeting date
+- Android contributor onboarded independently before OSS announcement
+
+LAUNCH RECAP (since March 19 meeting)
+
+- 7 Reddit posts across r/NJTransit, r/Amtrak, r/nycrail, r/LIRR, r/MetroNorthRailroad, r/jerseycity, r/newjersey
+- ~40 upvotes total, generally supportive comments
+- March 19-22 spike (58 downloads in 4 days) driven by paid Instagram/YouTube reel (~$50 ad spend) — most effective acquisition event to date
+- App Store updated with current screenshots and description
+- Show HN post planned for today (April 4)
+- OSS community post planned for today (April 4)
+
+36 commits shipped since March 19:
+- Multi-leg trip details view (web + iOS)
+- Trip search: intra-system transfers, parallel queries
+- E2E test coverage expanded from 6 to 27 bidirectional pairs
+- Amtrak station disambiguation
+- iOS v3.1
+- Web app routing and search improvements
+
+KEY DECISIONS
+
+1. Primary goal for next 30 days: reach 10 paying subscribers
+2. Paid acquisition on hold until funnel conversion is better understood
+3. Android: support the contributor, no internal commitment
+4. OSS post audience and content to be finalized separately (post-meeting)
+
+INITIATIVES — NEXT 30 DAYS
+
+1. OSS launch this week — Show HN today, OSS community post today
+   Success metric: GitHub stars, developer inbound
+
+2. Check App Store Connect analytics — free, already available, shows
+   impression → page view → download funnel. Do this before adding any SDK.
+
+3. Add PostHog analytics (defer until after this week's traffic spike)
+   Key events to instrument: paywall view, paywall conversion, first route alert created
+
+4. One more video/reel (mid-month) — proven channel, ideally showing a real
+   commute with route alerts firing. No paid spend required.
+
+EXPLICITLY DEFERRED
+
+- New transit systems
+- PWA
+- Deep links / sharing
+- Paid advertising (pending funnel data)
+- JSON-LD SEO
+
+ACTION ITEMS
+
+Chairman:
+- Post Show HN today
+- Post OSS community post today
+- Check App Store Connect funnel data
+- Record one new video/reel mid-month
+
+CEO:
+- Finalize OSS post text and audience with Chairman
+- PostHog integration (after traffic spike settles)
+
+---
+
+Next meeting: post Show HN / OSS launch, assess reception and subscriber movement

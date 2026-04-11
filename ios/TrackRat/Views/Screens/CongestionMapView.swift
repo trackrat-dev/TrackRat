@@ -1019,8 +1019,6 @@ struct FilterSheet: View {
                     Picker("Hours", selection: $timeWindow) {
                         Text("2 hours").tag(2)
                         Text("3 hours").tag(3)
-                        Text("6 hours").tag(6)
-                        Text("12 hours").tag(12)
                     }
                     .pickerStyle(.segmented)
                 }
@@ -1130,13 +1128,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
             for overlay in context.coordinator.aggregatedOverlays {
                 if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer,
                    let segment = overlay.segment {
-                    var color = context.coordinator.getColorForSegmentPublic(segment)
-                    if segment.cancellationRate > 20 {
-                        color = UIColor.systemRed
-                    } else if segment.cancellationRate > 10 {
-                        color = context.coordinator.escalateColorPublic(color)
-                    }
-                    renderer.strokeColor = color
+                    renderer.strokeColor = context.coordinator.getColorForSegmentPublic(segment)
                 }
             }
             // Update individual segment colors
@@ -1344,12 +1336,12 @@ struct SystemCongestionMapView: UIViewRepresentable {
                     // Check if this individual train is cancelled
                     if segment.isCancelled {
                         renderer.strokeColor = UIColor.systemRed
-                        renderer.lineWidth = 3.0
+                        renderer.lineWidth = 4.0
                         renderer.alpha = 0.9 // Keep cancelled trains highly visible
                     } else {
                         // Use highlight mode to determine color
                         renderer.strokeColor = getColorForIndividualSegment(segment)
-                        renderer.lineWidth = 3.0 // Thinner for individual journeys
+                        renderer.lineWidth = 4.0
 
                         // Calculate opacity based on recency of departure
                         renderer.alpha = getRecencyBasedAlpha(for: segment.actualDeparture)
@@ -1369,26 +1361,12 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
                 if let segment = polyline.segment {
                     // Base color from delay/frequency metrics
-                    var color = getColorForSegment(segment)
-
-                    // Escalate color for significant cancellation rates
-                    if segment.cancellationRate > 20 {
-                        color = UIColor.systemRed
-                    } else if segment.cancellationRate > 10 {
-                        color = escalateColor(color)
-                    }
-
-                    renderer.strokeColor = color
-                    renderer.lineWidth = 6.0
-
-                    // Dash pattern indicates cancellation severity (>5%)
-                    if let dashPattern = segment.dashPattern {
-                        renderer.lineDashPattern = dashPattern
-                    }
+                    renderer.strokeColor = getColorForSegment(segment)
+                    renderer.lineWidth = 4.0
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8 // Dim when showing individual segments
                 } else {
                     renderer.strokeColor = UIColor.gray
-                    renderer.lineWidth = 6.0
+                    renderer.lineWidth = 4.0
                     renderer.alpha = polyline.isDimmed ? 0.3 : 0.8
                 }
 
@@ -1449,26 +1427,21 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
         
         // MARK: - Helper Methods
-        private func getUIColor(for congestionFactor: Double) -> UIColor {
-            CongestionColors.color(forCongestionFactor: congestionFactor)
-        }
 
-        private func getFrequencyUIColor(for frequencyFactor: Double?) -> UIColor {
-            CongestionColors.color(forFrequencyFactor: frequencyFactor)
-        }
-
-        /// Get color for aggregated segment based on its data source's preferred mode
+        /// Get color for aggregated segment based on its data source's preferred mode.
+        /// Cancellation rate is folded into the color so a single hue communicates both
+        /// delay severity and cancellation severity.
         private func getColorForSegment(_ segment: CongestionSegment) -> UIColor {
             guard highlightMode != .off else { return UIColor.clear }
             switch segment.preferredHighlightMode {
             case .health:
                 // Fall back to delay coloring when no frequency baseline exists yet
-                if let _ = segment.frequencyFactor {
-                    return getFrequencyUIColor(for: segment.frequencyFactor)
+                if segment.frequencyFactor != nil {
+                    return CongestionColors.color(forFrequencyFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
                 }
-                return getUIColor(for: segment.congestionFactor)
+                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
             case .delays, .off:
-                return getUIColor(for: segment.congestionFactor)
+                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
             }
         }
 
@@ -1477,28 +1450,16 @@ struct SystemCongestionMapView: UIViewRepresentable {
             getColorForSegment(segment)
         }
 
-        /// Get color for individual segment based on highlight mode
+        /// Get color for individual segment based on highlight mode.
+        /// Individual segments don't carry cancellation rates (per-train, not aggregated).
         private func getColorForIndividualSegment(_ segment: IndividualJourneySegment) -> UIColor {
-            // Individual segments don't have per-train frequency data, always use congestion coloring
             guard highlightMode != .off else { return UIColor.clear }
-            return getUIColor(for: segment.congestionFactor)
+            return CongestionColors.color(forCongestionFactor: segment.congestionFactor)
         }
 
         /// Public accessor for getColorForIndividualSegment (used by updateUIView for mode changes)
         func getColorForIndividualSegmentPublic(_ segment: IndividualJourneySegment) -> UIColor {
             getColorForIndividualSegment(segment)
-        }
-
-        /// Escalate a health color by one level toward red for cancellation impact
-        private func escalateColor(_ color: UIColor) -> UIColor {
-            if color == UIColor.systemGreen { return UIColor.systemYellow }
-            if color == UIColor.systemYellow { return UIColor.systemOrange }
-            return UIColor.systemRed // orange/red stay red
-        }
-
-        /// Public accessor for escalateColor (used by updateUIView for mode changes)
-        func escalateColorPublic(_ color: UIColor) -> UIColor {
-            escalateColor(color)
         }
 
         private func getRecencyBasedAlpha(for departureTime: Date) -> CGFloat {
@@ -1763,11 +1724,9 @@ private func canonicalSegmentKey(_ stationA: String, _ stationB: String, _ dataS
     return "\(a)-\(b)-\(dataSource)"
 }
 
-/// Key that determines whether two segments can be visually merged (same color, dash, etc.).
+/// Key that determines whether two segments can be visually merged (same effective color).
 private func visualMergeKey(for segment: CongestionSegment) -> String {
-    let cancBracket = segment.cancellationRate > 20 ? 2 : segment.cancellationRate > 10 ? 1 : 0
-    let dashed = segment.dashPattern != nil
-    return "\(segment.congestionLevel)-\(cancBracket)-\(dashed)"
+    CongestionColors.congestionTierKey(forFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
 }
 
 /// Flush a run of adjacent segments into a single merged overlay.

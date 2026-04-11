@@ -15,6 +15,7 @@ from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
+from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import get_session, retry_on_deadlock
@@ -111,6 +112,47 @@ def _has_direct_route(
                 if find_route_for_segment(source, fc, tc) is not None:
                     return True
     return False
+
+
+def _detect_at_station(journey: TrainJourney) -> str | None:
+    """
+    Detect if a train is currently at a station based on provider-specific signals.
+
+    For NJT: a track assignment on an undeparted stop means the train is at that station.
+    For Amtrak: raw_amtrak_status == "Station" means the train is at that station.
+    For completed journeys: the train is at its final stop.
+
+    Returns the station code if the train is at a station, else None.
+    """
+    if not journey.stops:
+        return None
+
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+
+    next_station_found = False
+    for stop in sorted_stops:
+        if stop.has_departed_station:
+            continue
+
+        # This is the first undeparted stop (next station)
+        next_station_found = True
+
+        if journey.data_source == "AMTRAK":
+            if stop.raw_amtrak_status == "Station":
+                return stop.station_code
+        elif journey.data_source == "NJT":
+            if stop.track and not stop.has_departed_station:
+                return stop.station_code
+        # PATH/LIRR/MNR/Subway/BART/MBTA/Metra/WMATA: no at-station signal
+        break
+
+    # If no undeparted stops, train may have completed its journey
+    if not next_station_found and sorted_stops:
+        last_stop = sorted_stops[-1]
+        if last_stop.has_departed_station:
+            return last_stop.station_code
+
+    return None
 
 
 class DepartureService:
@@ -222,8 +264,13 @@ class DepartureService:
             journey_date_filter,
             # Filter by selected data sources
             TrainJourney.data_source.in_(allowed_sources),
-            # Filter out expired trains (no longer in real-time feed)
-            TrainJourney.is_expired.is_not(True),
+            # Filter out expired trains (no longer in real-time feed),
+            # but keep cancelled trains even if expired — they must remain
+            # visible to match what the congestion endpoint counts.
+            or_(
+                TrainJourney.is_expired.is_not(True),
+                TrainJourney.is_cancelled.is_(True),
+            ),
             # Filter out completed trains (journey finished)
             TrainJourney.is_completed.is_not(True),
             # Filter out stale cancelled trains regardless of hide_departed.
@@ -264,16 +311,33 @@ class DepartureService:
         # PERFORMANCE: Track timing for observability
         perf_start = time.perf_counter()
 
-        # Non-blocking JIT refresh for NJT trains. Instead of blocking the
-        # request while making external API calls (2-15s), we check staleness
-        # cheaply and fire the refresh as a background task. The current request
-        # serves data that's at most ~60s stale; the next request gets fresh data.
-        # Skip when NJT is not in the requested data sources.
+        # JIT refresh for NJT trains.  Normally non-blocking (background task),
+        # but when SCHEDULED NJT trains are about to be hidden by the stale
+        # filter, we run the refresh inline so the user sees them immediately.
         jit_start = time.perf_counter()
+        jit_ran_inline = False
         if "NJT" in allowed_sources:
-            await self._maybe_trigger_background_refresh(
-                db, from_station, target_date, skip_individual_refresh, hide_departed
-            )
+            if (
+                target_date == today
+                and from_station not in _refreshing_stations
+                and await self._has_imminent_scheduled_njt(
+                    db, from_station, target_date
+                )
+            ):
+                jit_ran_inline = await self._run_inline_jit_refresh(
+                    from_station,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
+                )
+            if not jit_ran_inline:
+                await self._maybe_trigger_background_refresh(
+                    db,
+                    from_station,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
+                )
         jit_duration_ms = (time.perf_counter() - jit_start) * 1000
 
         query_start = time.perf_counter()
@@ -516,80 +580,79 @@ class DepartureService:
         """
         Calculate current train position.
 
-        OPTIMIZATION: Uses journey_progress table when available to avoid
-        iterating through stops. Falls back to stops-based calculation only
-        when progress data is not available.
+        Always computes at_station_code from stops via _detect_at_station
+        (provider-specific signals: NJT track, Amtrak status, completed journey).
+
+        OPTIMIZATION: Uses journey_progress table when available for
+        last_departed / next_station to avoid iterating through stops.
+        Falls back to stops-based calculation when progress is not available.
         """
         from sqlalchemy import inspect
         from sqlalchemy.orm.base import NO_VALUE
 
         from trackrat.models.database import JourneyProgress
 
-        # OPTIMIZATION: Use pre-computed journey_progress if available
-        # Use inspect to check if relationship is loaded without triggering lazy load
+        # Use inspect to check if relationships are loaded without triggering lazy load
         state = inspect(journey)
+
+        # Guard against lazy-load in sync context — if stops weren't eagerly
+        # loaded, return empty position rather than triggering MissingGreenlet.
+        stops_value = state.attrs.stops.loaded_value if state else NO_VALUE
+        stops_available = stops_value is not NO_VALUE and bool(journey.stops)
+
+        # Always compute at_station_code from stops (provider-specific signals)
+        at_station_code = _detect_at_station(journey) if stops_available else None
 
         # Check if progress relationship is loaded and get its value
         progress_value = state.attrs.progress.loaded_value if state else NO_VALUE
 
-        # If progress is loaded and not None, use it (with type guard)
+        # OPTIMIZATION: Use pre-computed journey_progress if available
         if (
             progress_value is not NO_VALUE
             and progress_value is not None
             and isinstance(progress_value, JourneyProgress)
         ):
-            # Journey progress table has the position already computed
+            if at_station_code:
+                logger.debug(
+                    "at_station_detected_via_progress_path",
+                    train_id=journey.train_id,
+                    at_station_code=at_station_code,
+                    data_source=journey.data_source,
+                )
             return TrainPosition(
                 last_departed_station_code=progress_value.last_departed_station,
-                at_station_code=None,  # Progress doesn't track "at station" state
+                at_station_code=at_station_code,
                 next_station_code=progress_value.next_station,
                 between_stations=(
                     progress_value.last_departed_station is not None
                     and progress_value.next_station is not None
+                    and at_station_code is None
                 ),
             )
 
         # Fallback: Calculate from stops if progress not available.
-        # Guard against lazy-load in sync context — if stops weren't eagerly
-        # loaded, return empty position rather than triggering MissingGreenlet.
-        stops_value = state.attrs.stops.loaded_value if state else NO_VALUE
-        if stops_value is NO_VALUE or not journey.stops:
+        if not stops_available:
             return TrainPosition()
 
-        # Sort stops by sequence
         sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-        # Find last departed station and next station
         last_departed_station_code = None
-        at_station_code = None
         next_station_code = None
 
         for stop in sorted_stops:
             if stop.has_departed_station:
                 last_departed_station_code = stop.station_code
             else:
-                # This is the next station
                 next_station_code = stop.station_code
-
-                # Check if currently at this station (based on raw status)
-                if journey.data_source == "AMTRAK":
-                    # For Amtrak, "Station" means at the station
-                    if stop.raw_amtrak_status == "Station":
-                        at_station_code = stop.station_code
-                elif journey.data_source == "NJT":
-                    # For NJT, having a track assignment suggests at station
-                    if stop.track and not stop.has_departed_station:
-                        at_station_code = stop.station_code
-                # PATH/LIRR/MNR: GTFS-RT API doesn't provide at-station status,
-                # so we rely on has_departed_station only
-
                 break
 
-        # If no undeparted stops found, train may have completed journey
-        if not next_station_code and sorted_stops:
-            last_stop = sorted_stops[-1]
-            if last_stop.has_departed_station:
-                at_station_code = last_stop.station_code
+        if at_station_code:
+            logger.debug(
+                "at_station_detected_via_stops_path",
+                train_id=journey.train_id,
+                at_station_code=at_station_code,
+                data_source=journey.data_source,
+            )
 
         return TrainPosition(
             last_departed_station_code=last_departed_station_code,
@@ -637,6 +700,87 @@ class DepartureService:
 
         observed_cutoff = last_observed + timedelta(minutes=2)
         return max(min_cutoff, observed_cutoff)
+
+    async def _has_imminent_scheduled_njt(
+        self,
+        db: AsyncSession,
+        from_station: str,
+        target_date: date,
+    ) -> bool:
+        """Check if stale SCHEDULED NJT trains exist that the stale filter would hide.
+
+        Returns True when an inline JIT refresh is worthwhile: there is at
+        least one SCHEDULED NJT train within the stale-filter threshold whose
+        data hasn't been refreshed in the last 60 seconds.
+        """
+        current_time = now_et()
+        threshold = current_time + timedelta(
+            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+        )
+        cutoff_time = current_time - timedelta(seconds=60)
+        from_codes = expand_station_codes(from_station)
+
+        result = await db.scalar(
+            select(TrainJourney.id)
+            .join(JourneyStop, JourneyStop.journey_id == TrainJourney.id)
+            .where(
+                and_(
+                    JourneyStop.station_code.in_(from_codes),
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == target_date,
+                    TrainJourney.observation_type == "SCHEDULED",
+                    TrainJourney.last_updated_at < cutoff_time,
+                    TrainJourney.is_expired.is_not(True),
+                    TrainJourney.is_completed.is_not(True),
+                    TrainJourney.is_cancelled.is_not(True),
+                    JourneyStop.scheduled_departure.isnot(None),
+                    JourneyStop.scheduled_departure < threshold,
+                    JourneyStop.scheduled_departure > current_time,
+                )
+            )
+            .limit(1)
+        )
+        return result is not None
+
+    async def _run_inline_jit_refresh(
+        self,
+        from_station: str,
+        target_date: date,
+        skip_individual_refresh: bool,
+        hide_departed: bool,
+    ) -> bool:
+        """Run JIT station refresh inline, waiting up to 10 seconds.
+
+        Unlike the background path, this blocks the request so the subsequent
+        query sees promoted trains.  If the refresh doesn't finish in time the
+        task keeps running in the background and the request proceeds with
+        whatever data is in the DB.
+
+        Returns True if the refresh completed (caller can skip the background
+        trigger), False otherwise.
+        """
+        _refreshing_stations.add(from_station)
+        task = asyncio.create_task(
+            _background_refresh_station(
+                self,
+                from_station,
+                target_date,
+                skip_individual_refresh,
+                hide_departed,
+            ),
+            name=f"inline_jit_{from_station}",
+        )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+        task.add_done_callback(lambda _t: _refreshing_stations.discard(from_station))
+
+        done, _ = await asyncio.wait({task}, timeout=10.0)
+        if done:
+            logger.info("inline_jit_refresh_complete", station_code=from_station)
+            return True
+
+        logger.warning("inline_jit_refresh_timed_out", station_code=from_station)
+        return False
 
     async def _maybe_trigger_background_refresh(
         self,
@@ -791,6 +935,7 @@ class DepartureService:
                             selectinload(TrainJourney.snapshots),
                             selectinload(TrainJourney.segment_times),
                             selectinload(TrainJourney.dwell_times),
+                            selectinload(TrainJourney.progress),
                             selectinload(TrainJourney.progress_snapshots),
                         )
                         .order_by(TrainJourney.id)
@@ -799,6 +944,8 @@ class DepartureService:
                     journeys_by_id = {j.train_id: j for j in result.scalars().all()}
 
                     count = 0
+                    empty_stops_count = 0
+                    promoted_count = 0
                     for train_data in train_items:
                         train_id = train_data.get("TRAIN_ID")
                         if not train_id:
@@ -822,10 +969,13 @@ class DepartureService:
                         # Clean color value (remove trailing spaces)
                         if backcolor := train_data.get("BACKCOLOR"):
                             journey.line_color = backcolor.strip()
-                        journey.last_updated_at = now_et()
                         journey.update_count = (journey.update_count or 0) + 1
 
-                        # Update stops from embedded STOPS data
+                        # Update stops from embedded STOPS data.
+                        # Only mark fresh (last_updated_at) when STOPS are
+                        # actually populated — otherwise the second-pass
+                        # individual refresh (getTrainStopList) is suppressed
+                        # and the train permanently shows null real-time times.
                         stops_data = train_data.get("STOPS") or []
                         if stops_data:
                             await self._update_stops_from_embedded_data(
@@ -833,6 +983,22 @@ class DepartureService:
                             )
                             journey.has_complete_journey = True
                             journey.stops_count = len(stops_data)
+                            journey.last_updated_at = now_et()
+
+                            # Promote SCHEDULED → OBSERVED: the NJT station
+                            # board API returned this train with stop data,
+                            # confirming it is running. Same signal discovery
+                            # uses at discovery.py:526.
+                            if journey.observation_type == "SCHEDULED":
+                                journey.observation_type = "OBSERVED"
+                                rt_line = train_data.get("LINE", "").strip()
+                                if rt_line:
+                                    journey.line_code = parse_njt_line_code(rt_line)
+                                    journey.line_name = (
+                                        train_data.get("LINE_NAME", "")
+                                        or journey.line_name
+                                    )
+                                promoted_count += 1
 
                             # Update origin/terminal/scheduled times from stops.
                             # Use immutable schedule fields (SCHED_*_DATE) over
@@ -863,12 +1029,31 @@ class DepartureService:
                                         sched_arr
                                     )
 
+                        if not stops_data:
+                            empty_stops_count += 1
+
                         logger.debug(
                             "journey_updated_from_schedule",
                             train_id=train_id,
                             stops_count=len(stops_data),
                         )
                         count += 1
+
+                    if empty_stops_count:
+                        logger.info(
+                            "bulk_refresh_empty_stops",
+                            station_code=station_code,
+                            empty_stops_trains=empty_stops_count,
+                            total_trains=count,
+                        )
+
+                    if promoted_count:
+                        logger.info(
+                            "jit_promoted_scheduled_to_observed",
+                            station_code=station_code,
+                            promoted_count=promoted_count,
+                            total_trains=count,
+                        )
 
                     await db.commit()
                     return count
@@ -927,6 +1112,7 @@ class DepartureService:
                     selectinload(TrainJourney.snapshots),
                     selectinload(TrainJourney.segment_times),
                     selectinload(TrainJourney.dwell_times),
+                    selectinload(TrainJourney.progress),
                     selectinload(TrainJourney.progress_snapshots),
                 )
                 .limit(50)
@@ -966,6 +1152,7 @@ class DepartureService:
                                 selectinload(TrainJourney.snapshots),
                                 selectinload(TrainJourney.segment_times),
                                 selectinload(TrainJourney.dwell_times),
+                                selectinload(TrainJourney.progress),
                                 selectinload(TrainJourney.progress_snapshots),
                             )
                             .execution_options(populate_existing=True)
@@ -1096,6 +1283,20 @@ class DepartureService:
                     stop.scheduled_departure = parse_njt_time(sched_dep_str)
                 elif dep_time_str := stop_data.get("DEP_TIME"):
                     stop.scheduled_departure = parse_njt_time(dep_time_str)
+
+            # Populate real-time estimates from TIME/DEP_TIME fields.
+            # These have inverted semantics by stop type (see journey.py:1320-1332),
+            # but consumers use max(updated_departure, updated_arrival) which handles it.
+            time_str = stop_data.get("TIME")
+            if time_str:
+                parsed_time = parse_njt_time(time_str)
+                if parsed_time:
+                    stop.updated_arrival = parsed_time
+            dep_time_rt_str = stop_data.get("DEP_TIME")
+            if dep_time_rt_str:
+                parsed_dep = parse_njt_time(dep_time_rt_str)
+                if parsed_dep:
+                    stop.updated_departure = parsed_dep
 
             # Update departure status with time validation
             departed = (stop_data.get("DEPARTED") or "").upper() or None

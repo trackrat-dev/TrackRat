@@ -34,7 +34,7 @@ android {
                 "proguard-rules.pro"
             )
             // Production API configuration
-            buildConfigField("String", "API_BASE_URL", "\"https://prod.api.trackrat.net/api/v2/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://apiv2.trackrat.net/api/v2/\"")
             buildConfigField("String", "ENVIRONMENT_NAME", "\"Production\"")
             buildConfigField("boolean", "ALLOW_ENVIRONMENT_SWITCHING", "false")
         }
@@ -45,19 +45,19 @@ android {
                 "proguard-rules.pro"
             )
             // Development API configuration - defaults to production but can be changed
-            buildConfigField("String", "API_BASE_URL", "\"https://prod.api.trackrat.net/api/v2/\"")
+            buildConfigField("String", "API_BASE_URL", "\"https://apiv2.trackrat.net/api/v2/\"")
             buildConfigField("String", "ENVIRONMENT_NAME", "\"Development\"")
             buildConfigField("boolean", "ALLOW_ENVIRONMENT_SWITCHING", "true")
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
         // Enable Java 8+ time API support on older Android versions
         isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true

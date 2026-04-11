@@ -4,13 +4,14 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 5.5 + PWA (vite-plugin-pwa)
+- **Framework**: React 19.2 + TypeScript 6.0 + PWA (vite-plugin-pwa)
 - **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 4.2 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 7.13
+- **Routing**: React Router DOM 7.14
 - **Date Handling**: date-fns 4.1
 - **HTTP Client**: Native `fetch` (no axios)
+- **Maps**: MapLibre GL 5.22 + react-map-gl 8.1
 - **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)
 
 ## Architecture Patterns
@@ -40,7 +41,12 @@ API Service (fetch + cache)
 - **Keys**:
   - `trackrat:recentTrips` - last 10 trips, sorted by usage
   - `trackrat:favorites` - favorite stations, sorted by date added
+  - `trackrat:favoriteRoutes` - favorite routes
   - `trackrat:lastRoute` - last selected from/to pair (auto-restored on mount)
+  - `trackrat:systems` - enabled transit systems
+  - `trackrat:homeStation` - home station for quick access
+  - `trackrat:workStation` - work station for quick access
+  - `trackrat:tripHistory` - trip search history
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
 ## Design System
@@ -125,6 +131,10 @@ webpage_v2/
 │   │   ├── HistoricalPerformance.tsx # Train history + track distribution
 │   │   ├── ServiceAlertBanner.tsx # MTA service alerts (collapsible)
 │   │   ├── TransferTripCard.tsx  # Multi-leg trip result card
+│   │   ├── RouteMap.tsx          # MapLibre GL route map
+│   │   ├── SimilarTrainsPanel.tsx # Similar trains suggestion panel
+│   │   ├── TrainDistributionChart.tsx # Track distribution chart
+│   │   ├── UpcomingTrains.tsx    # Upcoming trains widget
 │   │   ├── ErrorBoundary.tsx     # React error boundary
 │   │   └── ErrorMessage.tsx
 │   ├── pages/              # Route components
@@ -134,6 +144,8 @@ webpage_v2/
 │   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (predictions, history, alerts)
 │   │   ├── RouteStatusPage.tsx    # Route performance over time
 │   │   ├── NetworkStatusPage.tsx  # System-wide congestion overview
+│   │   ├── TripDetailsPage.tsx    # Multi-leg trip details view
+│   │   ├── TripHistoryPage.tsx    # Trip search history
 │   │   └── FavoritesPage.tsx      # Manage favorite stations
 │   ├── services/
 │   │   ├── api.ts          # API client with caching
@@ -141,17 +153,21 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   └── stations.ts     # Static station list (1500+ stations, 11 transit systems)
+│   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems)
+│   │   └── routeTopology.ts # Route topology for smart search and filtering
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/
 │       ├── date.ts         # date-fns wrappers
 │       ├── formatting.ts   # Status badge classes
-│       └── share.ts        # Web Share API helper + train URL builder
+│       ├── ratsense.ts     # AI journey predictions (RatSense)
+│       ├── routes.ts       # Route path helpers and URL builders
+│       ├── share.ts        # Web Share API helper + train URL builder
+│       └── trainSearch.ts  # Train search and filtering logic
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
-└── tailwind.config.js     # Design system tokens
+└── src/index.css          # Design system tokens (Tailwind CSS 4 @theme)
 ```
 
 ## Routes
@@ -160,9 +176,11 @@ webpage_v2/
 - `/departures` - Trip selection (origin + destination pickers, last route restore)
 - `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts)
 - `/train/:trainId/:from?/:to?` - Train details (predictions, history, alerts)
+- `/trip` - Multi-leg trip details view (transfer connections)
 - `/route/:from/:to` - Route performance history (7d/30d/90d)
 - `/status` - Network-wide congestion overview by system
 - `/favorites` - Manage favorite stations
+- `/history` - Trip search history
 
 **Base Path**: `/` (hosted at `trackrat.net`)
 
@@ -373,7 +391,7 @@ npm run test:watch  # Watch mode for development
 3. Use in component via `apiService.methodName()`
 
 ### Modify Design System
-1. Update `tailwind.config.js` for colors/spacing
+1. Update `src/index.css` `@theme` block for colors/spacing
 2. Update `src/components/Layout.tsx` for global styles
 3. No CSS files needed (Tailwind only)
 

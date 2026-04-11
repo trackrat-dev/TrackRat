@@ -7,16 +7,19 @@ import pytest
 from trackrat.config.route_topology import (
     ALL_ROUTES,
     AMTRAK_CAPITOL_CORRIDOR,
+    AMTRAK_CARDINAL,
     AMTRAK_CASCADES,
     AMTRAK_DOWNEASTER,
     AMTRAK_EMPIRE_SERVICE,
     AMTRAK_HIAWATHA,
     AMTRAK_LINCOLN,
     AMTRAK_NEC,
+    AMTRAK_PALMETTO,
     AMTRAK_PIEDMONT,
     AMTRAK_SAN_JOAQUINS_OAK,
     AMTRAK_SAN_JOAQUINS_SAC,
     AMTRAK_SURFLINER,
+    AMTRAK_VERMONTER,
     AMTRAK_WOLVERINE,
     LIRR_BABYLON,
     LIRR_PORT_WASHINGTON,
@@ -24,8 +27,10 @@ from trackrat.config.route_topology import (
     LIRR_RONKONKOMA,
     MNR_HUDSON,
     MNR_NEW_HAVEN,
+    NJT_GLADSTONE,
     NJT_NORTHEAST_CORRIDOR,
     NJT_NORTH_JERSEY_COAST,
+    NJT_PORT_JERVIS,
     PATH_JSQ_33,
     PATH_NWK_WTC,
     PATCO_SPEEDLINE,
@@ -1576,3 +1581,250 @@ class TestAmtrakNewRoutesDataSource:
             assert route.line_codes == frozenset(
                 {"AM"}
             ), f"{route.id} has wrong line_codes: {route.line_codes}"
+
+
+class TestCrossRouteSegmentResolution:
+    """Verify routes that share NEC trunk include NY so cross-route lookups work.
+
+    Previously, AMTRAK_VERMONTER started at NHV, AMTRAK_PALMETTO and
+    AMTRAK_CARDINAL started at WS. This meant get_canonical_segments could
+    not resolve segments like NY→BTN because no single route contained both
+    stations, causing direct lines on the congestion map.
+    """
+
+    def test_vermonter_contains_ny_and_btn(self):
+        """Vermonter route must contain both NY and BTN for segment resolution."""
+        assert AMTRAK_VERMONTER.contains_segment(
+            "NY", "BTN"
+        ), "AMTRAK_VERMONTER must contain both NY and BTN"
+
+    def test_vermonter_ny_to_btn_expansion(self):
+        """NY→BTN should expand to all intermediate canonical segments."""
+        segments = AMTRAK_VERMONTER.expand_to_canonical_segments("NY", "BTN")
+        assert segments is not None, "NY→BTN expansion should not be None"
+        # Should have many intermediate segments (NEC trunk + Vermonter inland)
+        assert (
+            len(segments) > 10
+        ), f"Expected >10 segments for NY→BTN, got {len(segments)}"
+        # First segment should start at NY
+        assert (
+            segments[0][0] == "NY"
+        ), f"First segment should start at NY, got {segments[0][0]}"
+        # Last segment should end at BTN
+        assert (
+            segments[-1][1] == "BTN"
+        ), f"Last segment should end at BTN, got {segments[-1][1]}"
+
+    def test_vermonter_get_canonical_segments_ny_to_btn(self):
+        """get_canonical_segments should resolve NY→BTN via the Vermonter."""
+        segments = get_canonical_segments("AMTRAK", "NY", "BTN")
+        assert (
+            len(segments) > 1
+        ), f"NY→BTN should expand to multiple segments, got {segments}"
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "BTN"
+
+    def test_vermonter_no_duplicate_stations(self):
+        """Vermonter route should not have duplicate station codes."""
+        stations = AMTRAK_VERMONTER.stations
+        seen = set()
+        for station in stations:
+            assert (
+                station not in seen
+            ), f"Duplicate station {station} in AMTRAK_VERMONTER"
+            seen.add(station)
+
+    def test_palmetto_contains_ny_and_sav(self):
+        """Palmetto route must contain both NY and SAV for segment resolution."""
+        assert AMTRAK_PALMETTO.contains_segment(
+            "NY", "SAV"
+        ), "AMTRAK_PALMETTO must contain both NY and SAV"
+
+    def test_palmetto_ny_to_sav_expansion(self):
+        """NY→SAV should expand to all intermediate canonical segments."""
+        segments = AMTRAK_PALMETTO.expand_to_canonical_segments("NY", "SAV")
+        assert segments is not None
+        assert (
+            len(segments) > 15
+        ), f"Expected >15 segments for NY→SAV, got {len(segments)}"
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "SAV"
+
+    def test_palmetto_no_duplicate_stations(self):
+        """Palmetto route should not have duplicate station codes."""
+        stations = AMTRAK_PALMETTO.stations
+        seen = set()
+        for station in stations:
+            assert (
+                station not in seen
+            ), f"Duplicate station {station} in AMTRAK_PALMETTO"
+            seen.add(station)
+
+    def test_cardinal_contains_ny_and_chi(self):
+        """Cardinal route must contain both NY and CHI for segment resolution."""
+        assert AMTRAK_CARDINAL.contains_segment(
+            "NY", "CHI"
+        ), "AMTRAK_CARDINAL must contain both NY and CHI"
+
+    def test_cardinal_ny_to_chi_expansion(self):
+        """NY→CHI should expand to all intermediate canonical segments."""
+        segments = AMTRAK_CARDINAL.expand_to_canonical_segments("NY", "CHI")
+        assert segments is not None
+        assert (
+            len(segments) > 20
+        ), f"Expected >20 segments for NY→CHI, got {len(segments)}"
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "CHI"
+
+    def test_cardinal_no_duplicate_stations(self):
+        """Cardinal route should not have duplicate station codes."""
+        stations = AMTRAK_CARDINAL.stations
+        seen = set()
+        for station in stations:
+            assert (
+                station not in seen
+            ), f"Duplicate station {station} in AMTRAK_CARDINAL"
+            seen.add(station)
+
+    def test_ny_btn_not_anomalous(self):
+        """NY→BTN should NOT be flagged as anomalous after the fix."""
+        from trackrat.services.segment_normalizer import _is_segment_anomalous
+
+        assert not _is_segment_anomalous(
+            "NY", "BTN", "AMTRAK"
+        ), "NY→BTN should not be anomalous now that Vermonter includes NY"
+
+
+class TestCrossRouteChainResolution:
+    """Verify cross-route chain resolution for Amtrak segments spanning
+    multiple route definitions.
+
+    The chain resolver uses BFS through shared junction stations to
+    connect routes like NEC (NY→WS) + Southeast (WS→CLT) for a
+    segment like NY→CLT.
+    """
+
+    def test_ny_to_charlotte_chains_via_washington(self):
+        """NY→CLT should chain through WS (NEC + Southeast)."""
+        segments = get_canonical_segments("AMTRAK", "NY", "CLT")
+        assert len(segments) > 10
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "CLT"
+        # WS must be a junction in the chain
+        stations_visited = {s[0] for s in segments} | {segments[-1][1]}
+        assert "WS" in stations_visited, "Chain should pass through Washington (WS)"
+
+    def test_ny_to_new_orleans_chains_via_ws_and_clt(self):
+        """NY→NOL should chain through WS and CLT (NEC + Southeast + Crescent)."""
+        segments = get_canonical_segments("AMTRAK", "NY", "NOL")
+        assert len(segments) > 20
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "NOL"
+
+    def test_ny_to_miami_chains_through_southeast(self):
+        """NY→MIA should chain through the full southeast corridor."""
+        segments = get_canonical_segments("AMTRAK", "NY", "MIA")
+        assert len(segments) > 30
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "MIA"
+
+    def test_ny_to_jacksonville(self):
+        """NY→JAX should chain through southeast corridor."""
+        segments = get_canonical_segments("AMTRAK", "NY", "JAX")
+        assert len(segments) > 20
+        assert segments[0][0] == "NY"
+        assert segments[-1][1] == "JAX"
+
+    def test_ws_to_miami(self):
+        """WS→MIA should chain without NEC trunk."""
+        segments = get_canonical_segments("AMTRAK", "WS", "MIA")
+        assert len(segments) > 15
+        assert segments[0][0] == "WS"
+        assert segments[-1][1] == "MIA"
+
+    def test_chain_not_used_when_single_route_exists(self):
+        """NY→TR should resolve via single route (NEC), not chain."""
+        segments = get_canonical_segments("AMTRAK", "NY", "TR")
+        assert len(segments) == 5
+        assert segments[0] == ("NY", "NP")
+        assert segments[-1] == ("PJ", "TR")
+
+    def test_chain_disabled_for_lirr(self):
+        """LIRR cross-branch segments should NOT chain — they're anomalous."""
+        segments = get_canonical_segments("LIRR", "LBH", "GCT")
+        # Should return as-is (single direct segment), not a chain
+        assert len(segments) == 1
+        assert segments[0] == ("LBH", "GCT")
+
+    def test_chain_disabled_for_subway(self):
+        """Subway cross-branch segments should NOT chain."""
+        segments = get_canonical_segments("SUBWAY", "SH11", "SG22")
+        assert len(segments) == 1
+        assert segments[0] == ("SH11", "SG22")
+
+    def test_chain_segments_are_consecutive(self):
+        """Chain segments must be consecutive (end of one = start of next)."""
+        segments = get_canonical_segments("AMTRAK", "NY", "MIA")
+        for i in range(len(segments) - 1):
+            assert (
+                segments[i][1] == segments[i + 1][0]
+            ), f"Gap at index {i}: {segments[i][1]} != {segments[i+1][0]}"
+
+    def test_no_duplicate_segments_in_chain(self):
+        """Chain should not contain duplicate segments."""
+        segments = get_canonical_segments("AMTRAK", "NY", "NOL")
+        assert len(segments) == len(
+            set(segments)
+        ), f"Duplicate segments found in chain: {[s for s in segments if segments.count(s) > 1]}"
+
+
+class TestNJTTrunkInclusion:
+    """Verify NJT branch lines include trunk stations for segment expansion."""
+
+    def test_gladstone_contains_hoboken(self):
+        """Gladstone branch must include HB (Hoboken) from M&E trunk."""
+        assert NJT_GLADSTONE.contains_segment(
+            "HB", "GL"
+        ), "NJT_GLADSTONE must contain both HB and GL"
+
+    def test_gladstone_hb_to_gl_expansion(self):
+        """HB→GL should expand through M&E trunk + Gladstone branch."""
+        segments = NJT_GLADSTONE.expand_to_canonical_segments("HB", "GL")
+        assert segments is not None
+        assert (
+            len(segments) > 15
+        ), f"Expected >15 segments for HB→GL, got {len(segments)}"
+        assert segments[0][0] == "HB"
+        assert segments[-1][1] == "GL"
+
+    def test_gladstone_no_duplicate_stations(self):
+        """Gladstone route should not have duplicate station codes."""
+        seen = set()
+        for station in NJT_GLADSTONE.stations:
+            assert station not in seen, f"Duplicate station {station} in NJT_GLADSTONE"
+            seen.add(station)
+
+    def test_port_jervis_contains_hoboken(self):
+        """Port Jervis line must include HB (Hoboken) from Main Line trunk."""
+        assert NJT_PORT_JERVIS.contains_segment(
+            "HB", "PO"
+        ), "NJT_PORT_JERVIS must contain both HB and PO"
+
+    def test_port_jervis_hb_to_po_expansion(self):
+        """HB→PO should expand through Main Line trunk + Port Jervis."""
+        segments = NJT_PORT_JERVIS.expand_to_canonical_segments("HB", "PO")
+        assert segments is not None
+        assert (
+            len(segments) > 20
+        ), f"Expected >20 segments for HB→PO, got {len(segments)}"
+        assert segments[0][0] == "HB"
+        assert segments[-1][1] == "PO"
+
+    def test_port_jervis_no_duplicate_stations(self):
+        """Port Jervis route should not have duplicate station codes."""
+        seen = set()
+        for station in NJT_PORT_JERVIS.stations:
+            assert (
+                station not in seen
+            ), f"Duplicate station {station} in NJT_PORT_JERVIS"
+            seen.add(station)

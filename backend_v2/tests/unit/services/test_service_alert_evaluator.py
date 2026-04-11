@@ -7,7 +7,8 @@ APNS send calls are mocked since we cannot hit Apple's servers.
 """
 
 import time
-from unittest.mock import AsyncMock
+from datetime import datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ from trackrat.services.alert_evaluator import (
     _find_matching_alerts,
     _get_gtfs_route_ids_for_subscription,
     _get_route_name_for_subscription,
+    _is_within_time_window,
     _line_codes_to_gtfs_ids,
     evaluate_service_alerts,
 )
@@ -43,6 +45,10 @@ def _make_subscription(
     line_id: str = "subway-g",
     direction: str | None = None,
     include_planned_work: bool = True,
+    active_days: int = 127,
+    active_start_minutes: int | None = None,
+    active_end_minutes: int | None = None,
+    timezone: str | None = None,
 ) -> tuple[DeviceToken, RouteAlertSubscription]:
     """Create a DeviceToken + RouteAlertSubscription pair for service alert testing."""
     device = DeviceToken(device_id=device_id, apns_token=apns_token)
@@ -54,6 +60,10 @@ def _make_subscription(
         line_id=line_id,
         direction=direction,
         include_planned_work=include_planned_work,
+        active_days=active_days,
+        active_start_minutes=active_start_minutes,
+        active_end_minutes=active_end_minutes,
+        timezone=timezone,
     )
     db.add(sub)
     return device, sub
@@ -978,3 +988,194 @@ class TestEvaluateServiceAlerts:
         # The oldest IDs should have been trimmed
         assert "lmm:planned_work:old-0" not in retained
         assert "lmm:planned_work:old-1" not in retained
+
+
+@pytest.mark.asyncio
+class TestServiceAlertTimeWindow:
+    """Tests that service alerts respect active_days and time window settings.
+
+    Regression tests for bug where evaluate_service_alerts bypassed
+    day-of-week and time window checks that evaluate_route_alerts
+    correctly applied, causing users to receive service alert
+    notifications outside their configured schedule.
+    """
+
+    async def test_active_days_skips_weekend(self, db_session: AsyncSession):
+        """active_days=31 (Mon-Fri) should NOT send service alerts on Saturday."""
+        # Saturday 2026-02-21 10:00 ET
+        fake_saturday = datetime(2026, 2, 21, 10, 0, 0)
+        assert fake_saturday.weekday() == 5, "Sanity check: 2026-02-21 is Saturday"
+
+        _make_subscription(
+            db_session,
+            device_id="sa-weekend-dev",
+            apns_token="sa-weekend-token",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+            active_days=31,  # Mon-Fri only
+        )
+        _make_service_alert(
+            db_session,
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: No service this weekend",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fake_saturday
+        ):
+            count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 0, "active_days=31 should suppress service alerts on weekends"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: service alert weekend skip works with active_days bitmask")
+
+    async def test_active_days_fires_on_weekday(self, db_session: AsyncSession):
+        """active_days=31 (Mon-Fri) should send service alerts on Wednesday."""
+        # Wednesday 2026-02-18 10:00 ET
+        fake_wednesday = datetime(2026, 2, 18, 10, 0, 0)
+        assert fake_wednesday.weekday() == 2, "Sanity check: 2026-02-18 is Wednesday"
+        fake_epoch = int(fake_wednesday.timestamp())
+
+        _make_subscription(
+            db_session,
+            device_id="sa-weekday-dev",
+            apns_token="sa-weekday-token",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+            active_days=31,  # Mon-Fri only
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:weekday-test",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: Planned track work",
+            active_start=fake_epoch - 3600,
+            active_end=fake_epoch + 86400,
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fake_wednesday
+        ):
+            count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1, "active_days=31 should fire service alerts on weekdays"
+        apns.send_alert_notification.assert_called_once()
+        print("  Verified: service alert fires on weekday with active_days bitmask")
+
+    async def test_time_window_outside_range_suppresses(self, db_session: AsyncSession):
+        """Service alerts outside the configured time window should be suppressed."""
+        # Wednesday 2026-02-18 23:30 ET (11:30 PM, outside 6AM-8PM window)
+        fake_late_night = datetime(2026, 2, 18, 23, 30, 0)
+        assert fake_late_night.weekday() == 2, "Sanity check: Wednesday"
+
+        _make_subscription(
+            db_session,
+            device_id="sa-timewin-dev",
+            apns_token="sa-timewin-token",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+            active_days=127,  # All days
+            active_start_minutes=360,  # 6:00 AM
+            active_end_minutes=1200,  # 8:00 PM
+            timezone="America/New_York",
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:late-night",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: Late night service change",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        with patch(
+            "trackrat.services.alert_evaluator.now_et", return_value=fake_late_night
+        ):
+            count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 0, "Service alerts outside time window should be suppressed"
+        apns.send_alert_notification.assert_not_called()
+        print("  Verified: service alert suppressed outside time window")
+
+    async def test_time_window_inside_range_fires(self, db_session: AsyncSession):
+        """Service alerts inside the configured time window should fire."""
+        # Wednesday 2026-02-18 12:00 ET (noon, inside 6AM-8PM window)
+        fake_noon = datetime(2026, 2, 18, 12, 0, 0)
+        assert fake_noon.weekday() == 2, "Sanity check: Wednesday"
+        fake_epoch = int(fake_noon.timestamp())
+
+        _make_subscription(
+            db_session,
+            device_id="sa-timewin-ok-dev",
+            apns_token="sa-timewin-ok-token",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+            active_days=127,  # All days
+            active_start_minutes=360,  # 6:00 AM
+            active_end_minutes=1200,  # 8:00 PM
+            timezone="America/New_York",
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:noon-test",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: Midday service change",
+            active_start=fake_epoch - 3600,
+            active_end=fake_epoch + 86400,
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        with patch("trackrat.services.alert_evaluator.now_et", return_value=fake_noon):
+            count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1, "Service alerts inside time window should fire"
+        apns.send_alert_notification.assert_called_once()
+        print("  Verified: service alert fires inside time window")
+
+    async def test_no_time_window_always_fires(self, db_session: AsyncSession):
+        """Subscriptions without time window configured should always fire."""
+        # Wednesday 2026-02-18 03:00 ET (3 AM)
+        fake_3am = datetime(2026, 2, 18, 3, 0, 0)
+        fake_epoch = int(fake_3am.timestamp())
+
+        _make_subscription(
+            db_session,
+            device_id="sa-nowin-dev",
+            apns_token="sa-nowin-token",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+            active_days=127,  # All days
+            # No time window set (active_start_minutes=None, active_end_minutes=None)
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:nowin-test",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G: Early morning service change",
+            active_start=fake_epoch - 3600,
+            active_end=fake_epoch + 86400,
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        with patch("trackrat.services.alert_evaluator.now_et", return_value=fake_3am):
+            count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1, "No time window = always fire"
+        apns.send_alert_notification.assert_called_once()
+        print("  Verified: service alert fires when no time window configured")

@@ -4,6 +4,7 @@ Utilities for distributed scheduler task management.
 Ensures scheduled tasks only run once across multiple Cloud Run replicas.
 """
 
+import asyncio
 import os
 import time
 from collections.abc import Awaitable, Callable
@@ -16,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from structlog import get_logger
 
+from trackrat.db.engine import _is_postgresql_concurrency_error
 from trackrat.models.database import SchedulerTaskRun
 
 logger = get_logger(__name__)
@@ -30,7 +32,14 @@ def commit_with_retry(
     Commit a synchronous database session.
 
     Simple wrapper that commits, retrying on transient PostgreSQL errors
-    (e.g., serialization failures).
+    (e.g., serialization failures, deadlocks, statement timeouts).
+
+    **Limitation**: On retry, the session is rolled back first (required by
+    PostgreSQL), which reverts all pending ORM attribute changes. The retry
+    only re-calls ``session.commit()`` — it does NOT replay the unit of work.
+    This means callers must treat retried commits as no-ops for dirty ORM
+    state. Currently only used for idempotent operations where the scheduler
+    will re-process the train on the next cycle.
 
     Args:
         session: Synchronous SQLAlchemy session to commit
@@ -47,19 +56,17 @@ def commit_with_retry(
             session.commit()
             return
         except Exception as e:
-            error_msg = str(e).lower()
-            is_transient = (
-                "serialization failure" in error_msg
-                or "deadlock detected" in error_msg
-                or "could not serialize access" in error_msg
-            )
-            if is_transient and retry < max_retries - 1:
+            if _is_postgresql_concurrency_error(e) and retry < max_retries - 1:
                 logger.warning(
                     "database_transient_error_retrying",
                     retry=retry + 1,
                     error=str(e),
                     **context,
                 )
+                # Rollback the aborted transaction before retrying —
+                # PostgreSQL rejects all commands after an error until
+                # the transaction is rolled back.
+                session.rollback()
                 time.sleep(0.5 * (retry + 1))
             else:
                 raise
@@ -70,6 +77,7 @@ async def run_with_freshness_check(
     task_name: str,
     minimum_interval_seconds: int,
     task_func: Callable[[], Awaitable[Any]],
+    timeout_seconds: int | None = None,
 ) -> bool:
     """
     Execute a scheduled task only if it hasn't run recently.
@@ -82,6 +90,9 @@ async def run_with_freshness_check(
         task_name: Unique identifier for the task (e.g., "njt_discovery")
         minimum_interval_seconds: Don't run if task ran within this many seconds
         task_func: The async function to execute if freshness check passes
+        timeout_seconds: Maximum execution time in seconds. If the task exceeds
+            this limit, it is cancelled via asyncio.TimeoutError. None means
+            no timeout (default for backward compatibility).
 
     Returns:
         True if the task was executed, False if it was skipped due to freshness
@@ -185,7 +196,10 @@ async def run_with_freshness_check(
         # This prevents other replicas from running the same task simultaneously
         start_time = time.time()
         try:
-            await task_func()
+            if timeout_seconds is not None:
+                await asyncio.wait_for(task_func(), timeout=timeout_seconds)
+            else:
+                await task_func()
             duration_ms = int((time.time() - start_time) * 1000)
 
             # Update success metrics in the same transaction
@@ -213,6 +227,18 @@ async def run_with_freshness_check(
             )
             return True
 
+        except TimeoutError:
+            duration_ms = int((time.time() - start_time) * 1000)
+            await db.rollback()
+            logger.error(
+                "task_execution_timed_out",
+                task=task_name,
+                timeout_seconds=timeout_seconds,
+                duration_ms=duration_ms,
+                instance=instance_id,
+            )
+            raise
+
         except Exception as e:
             await db.rollback()
             logger.error(
@@ -238,6 +264,24 @@ async def run_with_freshness_check(
         )
         # If we can't check freshness, don't run the task (fail safe)
         return False
+
+
+def calculate_task_timeout(scheduled_minutes: int) -> int:
+    """
+    Calculate a generous task-level timeout based on the scheduled frequency.
+
+    Uses 2x the scheduled interval as a ceiling. This catches truly stuck
+    tasks (e.g., hung API calls, connection pool exhaustion) while allowing
+    legitimately slow runs to complete. With batch commits in collectors,
+    partial progress is preserved if a task hits the timeout.
+
+    Args:
+        scheduled_minutes: How often the task is scheduled to run
+
+    Returns:
+        Timeout in seconds
+    """
+    return scheduled_minutes * 60 * 2
 
 
 def calculate_safe_interval(scheduled_minutes: int) -> int:

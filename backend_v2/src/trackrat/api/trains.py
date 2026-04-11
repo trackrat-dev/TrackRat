@@ -16,7 +16,7 @@ from structlog import get_logger
 from trackrat.api.utils import handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.config.stations import canonical_station_code, expand_station_codes
-from trackrat.db.engine import get_db
+from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
     DataFreshness,
     DeparturesResponse,
@@ -36,7 +36,7 @@ from trackrat.models.api import (
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.api_cache import ApiCacheService
-from trackrat.services.departure import DepartureService
+from trackrat.services.departure import DepartureService, _detect_at_station
 from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
@@ -271,11 +271,62 @@ async def get_train_details(
     if data_source in (None, "NJT") and not is_amtrak_train(train_id):
         njt_client = NJTransitClient()
 
+    # Pre-fetch existing journey so we can fall back to stale data on timeout
+    stale_conditions = [
+        TrainJourney.train_id == train_id,
+        TrainJourney.journey_date == date,
+    ]
+    if data_source:
+        stale_conditions.append(TrainJourney.data_source == data_source)
+    stale_journey = await db.scalar(
+        select(TrainJourney)
+        .where(and_(*stale_conditions))
+        .options(
+            selectinload(TrainJourney.stops),
+            selectinload(TrainJourney.progress_snapshots),
+        )
+    )
+
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
-            journey = await jit_service.get_fresh_train(
-                db, train_id, date, force_refresh=refresh, data_source=data_source
-            )
+            try:
+                journey = await asyncio.wait_for(
+                    jit_service.get_fresh_train(
+                        db,
+                        train_id,
+                        date,
+                        force_refresh=refresh,
+                        data_source=data_source,
+                    ),
+                    timeout=15.0,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "jit_refresh_timeout",
+                    train_id=train_id,
+                    data_source=data_source,
+                    has_stale_data=stale_journey is not None,
+                )
+                await db.rollback()
+                # Re-query after rollback: rollback expires all ORM objects,
+                # and async SQLAlchemy can't lazy-load (MissingGreenlet).
+                if stale_journey is not None:
+                    stmt = (
+                        select(TrainJourney)
+                        .where(
+                            TrainJourney.train_id == train_id,
+                            TrainJourney.journey_date == date,
+                        )
+                        .options(
+                            selectinload(TrainJourney.stops),
+                            selectinload(TrainJourney.progress_snapshots),
+                        )
+                    )
+                    if data_source:
+                        stmt = stmt.where(TrainJourney.data_source == data_source)
+                    journey = await db.scalar(stmt)
+                else:
+                    journey = None
     finally:
         if njt_client:
             await njt_client.close()
@@ -297,6 +348,35 @@ async def get_train_details(
         raise HTTPException(
             status_code=404, detail=f"Train {train_id} not found for date {date}"
         )
+
+    # Flush JIT changes now to prevent surprise auto-flush failures during
+    # predictions (which do SELECTs that trigger SQLAlchemy auto-flush).
+    # A concurrent collector modifying the same journey can cause flush conflicts;
+    # catching here prevents the session from entering PendingRollbackError state.
+    try:
+        await db.flush()
+    except Exception:
+        await db.rollback()
+        # Re-query journey since rollback expires all ORM objects
+        stmt = (
+            select(TrainJourney)
+            .where(
+                TrainJourney.train_id == train_id,
+                TrainJourney.journey_date == date,
+            )
+            .options(
+                selectinload(TrainJourney.stops),
+                selectinload(TrainJourney.progress_snapshots),
+            )
+        )
+        if data_source:
+            stmt = stmt.where(TrainJourney.data_source == data_source)
+        journey = await db.scalar(stmt)
+        if not journey:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Train {train_id} not found for date {date}",
+            ) from None
 
     # Build stop details
     stops = []
@@ -323,18 +403,20 @@ async def get_train_details(
         )
         stops.append(stop_detail)
 
-    # Add arrival predictions to each stop if requested
+    # Add arrival predictions to each stop if requested.
+    # Uses a separate DB session so that timeout/cancellation doesn't poison
+    # the main request session (which caused HTTP 500 via SQLAlchemy 7s2a error
+    # when the prediction query exceeded the timeout and left db in failed state).
     if include_predictions:
         try:
             forecaster = DirectArrivalForecaster()
-            # Timeout prevents slow DB queries from blocking the entire response.
-            # Predictions are optional enrichment — safe to skip on timeout.
-            await asyncio.wait_for(
-                forecaster.add_predictions_to_stops(
-                    db, journey, stops, user_origin=from_station
-                ),
-                timeout=5.0,
-            )
+            async with get_session() as pred_db:
+                await asyncio.wait_for(
+                    forecaster.add_predictions_to_stops(
+                        pred_db, journey, stops, user_origin=from_station
+                    ),
+                    timeout=5.0,
+                )
 
             logger.info(
                 "added_arrival_predictions",
@@ -460,14 +542,17 @@ async def get_train_details(
                     )
                     data_source = journey.data_source or "NJT"
 
-                    prediction = await historical_track_predictor.predict_track(
-                        station_code=from_station,
-                        train_id=journey.train_id,
-                        line_code=journey.line_code,
-                        data_source=data_source,
-                        scheduled_departure=scheduled_departure,
-                        db=db,
-                    )
+                    # Separate session to avoid poisoning the main request
+                    # session if the query fails or is slow.
+                    async with get_session() as track_db:
+                        prediction = await historical_track_predictor.predict_track(
+                            station_code=from_station,
+                            train_id=journey.train_id,
+                            line_code=journey.line_code,
+                            data_source=data_source,
+                            scheduled_departure=scheduled_departure,
+                            db=track_db,
+                        )
 
                     if prediction:
                         track_prediction = TrackPrediction(
@@ -1009,40 +1094,20 @@ def calculate_train_position(journey: TrainJourney) -> TrainPosition:
     if not journey.stops:
         return TrainPosition()
 
-    # Sort stops by sequence
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
-    # Find last departed station and next station
     last_departed_station_code = None
-    at_station_code = None
     next_station_code = None
 
     for stop in sorted_stops:
         if stop.has_departed_station:
             last_departed_station_code = stop.station_code
         else:
-            # This is the next station
             next_station_code = stop.station_code
-
-            # Check if currently at this station (based on raw status)
-            if journey.data_source == "AMTRAK":
-                # For Amtrak, "Station" means at the station
-                if stop.raw_amtrak_status == "Station":
-                    at_station_code = stop.station_code
-            elif journey.data_source == "NJT":
-                # For NJT, having a track assignment suggests at station
-                if stop.track and not stop.has_departed_station:
-                    at_station_code = stop.station_code
-            # PATH: Transiter API doesn't provide at-station status,
-            # so we rely on has_departed_station only
-
             break
 
-    # If no undeparted stops found, train may have completed journey
-    if not next_station_code and sorted_stops:
-        last_stop = sorted_stops[-1]
-        if last_stop.has_departed_station:
-            at_station_code = last_stop.station_code
+    # Use shared at-station detection logic (NJT track, Amtrak status, etc.)
+    at_station_code = _detect_at_station(journey)
 
     return TrainPosition(
         last_departed_station_code=last_departed_station_code,

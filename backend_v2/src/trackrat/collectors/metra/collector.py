@@ -119,6 +119,11 @@ class MetraCollector:
             "total_arrivals": 0,
         }
 
+        if not self.client._api_token:
+            raise RuntimeError(
+                "Metra collection failed: TRACKRAT_METRA_API_TOKEN not configured"
+            )
+
         try:
             collection_start = now_for_provider(DATA_SOURCE)
 
@@ -139,7 +144,10 @@ class MetraCollector:
 
             logger.info(f"Found {len(trips)} Metra trips in GTFS-RT feed")
 
-            # Process each trip inside a savepoint
+            # Process each trip inside a savepoint, committing in batches
+            # to preserve partial progress on timeout or late-stage failure.
+            batch_size = 50
+            trips_in_batch = 0
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
@@ -153,6 +161,11 @@ class MetraCollector:
                 except Exception as e:
                     logger.error(f"Error processing Metra trip {trip_id}: {e}")
                     stats["errors"] += 1
+
+                trips_in_batch += 1
+                if trips_in_batch >= batch_size:
+                    await session.commit()
+                    trips_in_batch = 0
 
             # If every trip failed, raise so scheduler marks this run as failed
             if stats["errors"] > 0 and stats["discovered"] + stats["updated"] == 0:
@@ -256,7 +269,16 @@ class MetraCollector:
                 TrainJourney.journey_date == journey_date,
                 TrainJourney.data_source == DATA_SOURCE,
             )
-            .options(selectinload(TrainJourney.stops))
+            .options(
+                selectinload(TrainJourney.stops),
+                # Load all delete-orphan collections to prevent
+                # greenlet_spawn errors during flush orphan checks
+                selectinload(TrainJourney.snapshots),
+                selectinload(TrainJourney.segment_times),
+                selectinload(TrainJourney.dwell_times),
+                selectinload(TrainJourney.progress),
+                selectinload(TrainJourney.progress_snapshots),
+            )
         )
         journey = existing.scalar_one_or_none()
 

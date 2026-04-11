@@ -1,8 +1,8 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway built with FastAPI, PostgreSQL, and modern Python.
+A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA built with FastAPI, PostgreSQL, and modern Python.
 
-**Version:** 2.1.0 (February 2026)
+**Version:** 2.0.0 (April 2026)
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Python:** 3.11+ with strict type checking
 
@@ -18,7 +18,7 @@ A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATC
 - **📊 Built-in Monitoring**: Health checks, metrics, validation, and structured logging
 - **🤖 ML Predictions**: Track assignment predictions with confidence scoring
 - **📱 Live Activities**: Push notification support for iOS Live Activity updates
-- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway with extensible architecture
+- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA with extensible architecture
 - **🔔 Route Alerts**: Push notifications for delays and cancellations on subscribed routes
 - **🔍 Coverage Validation**: Hourly validation ensures complete train coverage
 - **💾 API Caching**: Intelligent response caching with pre-computation
@@ -84,12 +84,16 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 4 minutes**: LIRR train collection (unified GTFS-RT collector)
 - **Every 4 minutes**: Metro-North train collection (unified GTFS-RT collector)
 - **Every 4 minutes**: NYC Subway collection (8 GTFS-RT feeds, 36 routes)
+- **Every 4 minutes**: BART collection (unified, GTFS-RT)
+- **Every 4 minutes**: MBTA Commuter Rail collection (unified, GTFS-RT)
+- **Every 4 minutes**: Metra collection (unified, GTFS-RT, requires API token)
+- **Every 3 minutes**: WMATA/DC Metro collection (REST API, requires API key)
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 5 minutes**: Route alert evaluation and push notifications
 - **Hourly at :05**: Validation across key routes
 - Monitor scheduler status at `/scheduler/status` endpoint
 
-**Note**: PATH, LIRR, Metro-North, and NYC Subway each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, and Subway use MTA's GTFS-RT feeds with shared logic in `mta_common.py`. PATCO uses GTFS static schedules only (no real-time API).
+**Note**: PATH, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, Subway, BART, MBTA, and Metra use GTFS-RT feeds with shared logic in `mta_common.py`. WMATA uses its REST API. PATCO uses GTFS static schedules only (no real-time API).
 
 ## Configuration
 
@@ -99,6 +103,8 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_NJT_API_TOKEN`: Your NJ Transit API token
 - `TRACKRAT_DATABASE_URL`: PostgreSQL connection string
 - Note: Amtrak uses the public Amtraker API (no authentication required)
+- `TRACKRAT_WMATA_API_KEY`: WMATA developer API key (required for DC Metro)
+- `TRACKRAT_METRA_API_TOKEN`: Metra GTFS-RT API token (required for Metra)
 - **APNS Configuration** (required for Live Activities):
   - `APNS_TEAM_ID`: Apple Developer Team ID (10 characters)
   - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
@@ -117,6 +123,7 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_INTERNAL_API_URL`: Internal API URL for validation service (default: http://localhost:8000)
 - `TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY`: Max missing trains to verify in detail (default: 20)
 - `TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS`: Use database-aggregated pattern analysis (default: true)
+- `TRACKRAT_MBTA_API_KEY`: MBTA API key for higher rate limits (optional, public feed works without)
 - `TRACKRAT_ENABLE_SQL_LOGGING`: Enable SQLAlchemy query logging (default: false)
 
 ### APNS Certificate Setup
@@ -152,7 +159,7 @@ GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL&hide_depart
 Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
-- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, or ALL
+- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, or ALL
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
@@ -318,6 +325,19 @@ POST /api/v2/live-activities/register
 DELETE /api/v2/live-activities/{token}
 ```
 
+### Trip Search
+```
+GET /api/v2/trips/search?from={from}&to={to}&limit=50&hide_departed=true
+```
+Multi-leg trip search with transfers across transit systems
+
+### Route Preferences
+```
+GET /api/v2/routes/preferences
+PUT /api/v2/routes/preferences
+```
+User route preferences (saved per device)
+
 ## Development
 
 ### 🧪 Running Tests
@@ -352,7 +372,7 @@ Current test coverage:
 - ✅ **Core functionality**: Configuration, time utilities, database models
 - ✅ **Basic API functionality**: Health endpoints, app startup/shutdown
 - ⚠️ **Integration tests**: Require live database setup (some may need fixes)
-- 📝 **Note**: 4/4 critical tests pass, ensuring core system reliability
+- 📝 **Note**: Core test suite passes, ensuring system reliability
 
 ### Database Management
 ```bash
@@ -448,6 +468,10 @@ The scheduler supports multiple replicas:
 - **LIRRCollector**: Unified LIRR collector using MTA GTFS-RT feeds
 - **MNRCollector**: Unified Metro-North collector using MTA GTFS-RT feeds
 - **SubwayCollector**: Unified NYC Subway collector processing 8 GTFS-RT feeds
+- **BARTCollector**: Unified BART collector using GTFS-RT feeds
+- **MBTACollector**: Unified MBTA Commuter Rail collector using GTFS-RT feeds
+- **MetraCollector**: Unified Metra collector using GTFS-RT feeds (Central Time)
+- **WMATACollector**: DC Metro collector using WMATA REST API
 - **MTA Common**: Shared MTA logic for stop merging, departure inference, completion detection
 - **JustInTimeUpdateService**: On-demand data refresh (supports NJT, Amtrak, PATH)
 
@@ -462,6 +486,9 @@ The scheduler supports multiple replicas:
 - **SummaryService**: Natural language operations summaries
 - **SegmentNormalizer**: Station segment normalization for analytics
 - **GTFSService**: GTFS static and real-time feed management
+
+#### Trip Search
+- **TripSearchService**: Multi-leg trip search across transit systems with transfers
 
 #### ML & Predictions
 - **HistoricalTrackPredictor**: Track assignment predictions using historical patterns
@@ -578,13 +605,6 @@ The container performs comprehensive APNS validation at startup:
 - ✅ **P8 certificate can be loaded by cryptography library**
 - ❌ **Container exits immediately if any validation fails**
 
-Test the validation:
-```bash
-# Test container validation (should fail without APNS)
-./test-docker-apns.sh
-```
-```
-
 ### Production Considerations
 
 #### Database
@@ -679,4 +699,6 @@ The V2 backend is designed for easy contribution:
 
 ## License
 
-Copyright 2025-2026 TrackRat Team
+Licensed under the GNU General Public License v3.0. See [LICENSE](../LICENSE) for details.
+
+Copyright 2025-2026 Andrew Martin

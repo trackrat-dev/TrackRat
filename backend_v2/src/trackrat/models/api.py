@@ -612,6 +612,7 @@ class IndividualJourneySegment(BaseModel):
     from_station_name: str
     to_station_name: str
     data_source: str
+    line: str
     scheduled_departure: datetime
     actual_departure: datetime
     scheduled_arrival: datetime

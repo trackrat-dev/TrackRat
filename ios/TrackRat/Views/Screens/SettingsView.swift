@@ -568,6 +568,37 @@ struct SettingsSection: View {
                 )
             }
 
+            // GitHub
+            Button {
+                if let githubURL = URL(string: "https://github.com/trackrat-dev/TrackRat") {
+                    openURL(githubURL)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            } label: {
+                HStack(spacing: 16) {
+                    Image("github")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(.orange)
+                        .frame(width: 24, height: 24)
+
+                    Text("Get Involved on GitHub")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+
+                    Spacer()
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                )
+            }
+            .buttonStyle(.plain)
+
             // YouTube & Instagram
             HStack(spacing: 12) {
                 Button {
@@ -668,7 +699,10 @@ struct SettingsSection: View {
             StationPickerSheet(
                 selectedStation: $pickerStation,
                 disabledStation: nil,
-                selectedSystems: appState.selectedSystems
+                selectedSystems: appState.selectedSystems,
+                onInactiveStationSelected: { _ in
+                    showStationPicker = false
+                }
             ) { station in
                 switch stationPickerRole {
                 case .home:

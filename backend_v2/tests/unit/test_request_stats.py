@@ -8,8 +8,10 @@ queries, iOS-only filtering, per-IP tracking, and latency trend bucketing.
 
 import time
 from trackrat.utils.request_stats import (
+    RequestRecord,
     RequestStats,
     _classify_user_agent,
+    _compute_usage_analytics,
     reset_request_stats,
     get_request_stats,
 )
@@ -597,6 +599,297 @@ class TestLatencyTrend:
         stats = RequestStats()
         snap = stats.snapshot()
         assert snap["train_detail_views"] == []
+
+
+class TestUsageAnalytics:
+    """Tests for _compute_usage_analytics iOS usage tracking."""
+
+    def _make_record(
+        self,
+        path: str = "/api/v2/trains/departures",
+        client_label: str = "iOS/230",
+        client_ip: str = "10.0.0.1",
+        timestamp: float | None = None,
+    ) -> RequestRecord:
+        return RequestRecord(
+            timestamp=timestamp or time.time(),
+            path_template=path,
+            status_code=200,
+            client_label=client_label,
+            client_ip=client_ip,
+            duration=0.05,
+        )
+
+    def test_empty_when_no_ios_records(self):
+        """Returns empty dict when there are no iOS records at all."""
+        records = [
+            self._make_record(client_label="curl", client_ip="1.1.1.1"),
+            self._make_record(client_label="browser", client_ip="2.2.2.2"),
+        ]
+        result = _compute_usage_analytics(records)
+        assert result == {}, f"Expected empty dict for non-iOS records, got: {result}"
+
+    def test_unique_users_counts_distinct_ips(self):
+        """unique_users is the count of distinct iOS client IPs."""
+        records = [
+            self._make_record(client_ip="10.0.0.1"),
+            self._make_record(client_ip="10.0.0.1"),  # same IP
+            self._make_record(client_ip="10.0.0.2"),
+            self._make_record(client_ip="10.0.0.3"),
+        ]
+        result = _compute_usage_analytics(records)
+        assert (
+            result["unique_users"] == 3
+        ), f"Expected 3 unique users, got {result['unique_users']}"
+
+    def test_action_counts(self):
+        """Actions are correctly counted and mapped from path templates."""
+        records = [
+            self._make_record(path="/api/v2/trains/departures"),
+            self._make_record(path="/api/v2/trains/departures"),
+            self._make_record(path="/api/v2/trains/{train_id}"),
+            self._make_record(path="/api/v2/trips/search"),
+        ]
+        result = _compute_usage_analytics(records)
+        actions_by_name = {a["action"]: a["count"] for a in result["actions"]}
+        assert (
+            actions_by_name["departure_searches"] == 2
+        ), f"Expected 2 departure_searches, got {actions_by_name}"
+        assert actions_by_name["train_detail_views"] == 1
+        assert actions_by_name["trip_searches"] == 1
+        assert result["total_actions"] == 4
+
+    def test_unique_users_per_action(self):
+        """Each action tracks how many unique IPs performed it."""
+        records = [
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.2"),
+            self._make_record(path="/api/v2/trains/{train_id}", client_ip="10.0.0.1"),
+        ]
+        result = _compute_usage_analytics(records)
+        actions_by_name = {a["action"]: a for a in result["actions"]}
+
+        dep = actions_by_name["departure_searches"]
+        assert (
+            dep["count"] == 3
+        ), f"Expected 3 departure search count, got {dep['count']}"
+        assert (
+            dep["unique_users"] == 2
+        ), f"Expected 2 unique users for departures, got {dep['unique_users']}"
+
+        detail = actions_by_name["train_detail_views"]
+        assert detail["unique_users"] == 1
+
+    def test_non_ios_records_ignored(self):
+        """Non-iOS records are excluded from analytics."""
+        records = [
+            self._make_record(client_label="iOS/230", client_ip="10.0.0.1"),
+            self._make_record(client_label="curl", client_ip="10.0.0.2"),
+            self._make_record(client_label="browser", client_ip="10.0.0.3"),
+        ]
+        result = _compute_usage_analytics(records)
+        assert (
+            result["unique_users"] == 1
+        ), f"Expected 1 iOS user, got {result['unique_users']}"
+
+    def test_unmapped_paths_not_counted_as_actions(self):
+        """Paths not in _ACTION_MAP don't appear in actions list."""
+        records = [
+            self._make_record(path="/admin/stats"),
+            self._make_record(path="/health"),
+        ]
+        result = _compute_usage_analytics(records)
+        assert (
+            result["actions"] == []
+        ), f"Expected no actions for unmapped paths, got {result['actions']}"
+        assert result["total_actions"] == 0
+        # But unique_users should still be counted (we saw iOS traffic)
+        assert result["unique_users"] == 1
+
+    def test_prediction_paths_merged(self):
+        """Multiple prediction paths map to single 'prediction_lookups' action."""
+        records = [
+            self._make_record(path="/api/v2/predictions/track"),
+            self._make_record(path="/api/v2/predictions/delay"),
+            self._make_record(path="/api/v2/predictions/supported-stations"),
+        ]
+        result = _compute_usage_analytics(records)
+        actions_by_name = {a["action"]: a["count"] for a in result["actions"]}
+        assert (
+            actions_by_name["prediction_lookups"] == 3
+        ), f"Expected 3 prediction_lookups, got {actions_by_name}"
+
+    def test_hourly_trend(self):
+        """Hourly trend groups users and actions by hour bucket."""
+        now = time.time()
+        hour_ago = now - 3600
+        records = [
+            self._make_record(client_ip="10.0.0.1", timestamp=hour_ago),
+            self._make_record(client_ip="10.0.0.2", timestamp=hour_ago),
+            self._make_record(client_ip="10.0.0.1", timestamp=now),
+        ]
+        result = _compute_usage_analytics(records)
+        trend = result["hourly_trend"]
+        assert len(trend) >= 1, f"Expected at least 1 hourly bucket, got {len(trend)}"
+
+        # Total actions across all buckets should match total records
+        total = sum(h["total_actions"] for h in trend)
+        assert total == 3, f"Expected 3 total actions in trend, got {total}"
+
+    def test_top_users_ordered_by_action_count(self):
+        """Top users are sorted by total action count descending."""
+        records = [
+            # User A: 1 action
+            self._make_record(client_ip="10.0.0.1"),
+            # User B: 3 actions
+            self._make_record(client_ip="10.0.0.2"),
+            self._make_record(client_ip="10.0.0.2"),
+            self._make_record(client_ip="10.0.0.2"),
+            # User C: 2 actions
+            self._make_record(client_ip="10.0.0.3"),
+            self._make_record(client_ip="10.0.0.3"),
+        ]
+        result = _compute_usage_analytics(records)
+        top = result["top_users"]
+        assert top[0]["ip"] == "10.0.0.2", f"Expected top user 10.0.0.2, got {top[0]}"
+        assert top[0]["actions"] == 3
+        assert top[1]["ip"] == "10.0.0.3"
+        assert top[1]["actions"] == 2
+        assert top[2]["ip"] == "10.0.0.1"
+        assert top[2]["actions"] == 1
+
+    def test_top_users_shows_primary_activity(self):
+        """Top user's top_action reflects their most frequent action."""
+        records = [
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/{train_id}", client_ip="10.0.0.1"),
+        ]
+        result = _compute_usage_analytics(records)
+        top = result["top_users"]
+        assert (
+            top[0]["top_action"] == "departure_searches"
+        ), f"Expected departure_searches as top action, got {top[0]['top_action']}"
+
+    def test_version_distribution(self):
+        """Version distribution counts requests per iOS version."""
+        records = [
+            self._make_record(client_label="iOS/230"),
+            self._make_record(client_label="iOS/230"),
+            self._make_record(client_label="iOS/191"),
+        ]
+        result = _compute_usage_analytics(records)
+        versions = result["version_distribution"]
+        assert versions["iOS/230"] == 2, f"Expected iOS/230: 2, got {versions}"
+        assert versions["iOS/191"] == 1
+
+    def test_actions_display_order(self):
+        """Actions are returned in display order, not arbitrary counter order."""
+        records = [
+            self._make_record(path="/api/v2/feedback"),  # low priority
+            self._make_record(path="/api/v2/trains/departures"),  # high priority
+            self._make_record(path="/api/v2/trips/search"),  # mid priority
+        ]
+        result = _compute_usage_analytics(records)
+        action_names = [a["action"] for a in result["actions"]]
+        assert action_names.index("departure_searches") < action_names.index(
+            "trip_searches"
+        ), f"Departure searches should come before trip searches: {action_names}"
+        assert action_names.index("trip_searches") < action_names.index(
+            "feedback_submissions"
+        ), f"Trip searches should come before feedback: {action_names}"
+
+    def test_actions_per_user(self):
+        """actions_per_user is average mapped actions divided by unique users."""
+        records = [
+            # User A: 3 mapped actions
+            self._make_record(client_ip="10.0.0.1"),
+            self._make_record(client_ip="10.0.0.1"),
+            self._make_record(client_ip="10.0.0.1"),
+            # User B: 1 mapped action
+            self._make_record(client_ip="10.0.0.2"),
+        ]
+        result = _compute_usage_analytics(records)
+        # 4 actions / 2 users = 2.0
+        assert (
+            result["actions_per_user"] == 2.0
+        ), f"Expected 2.0 actions/user, got {result['actions_per_user']}"
+
+    def test_top_routes_with_unique_users(self):
+        """top_routes shows routes searched by iOS users with unique user counts."""
+        records = [
+            self._make_record(client_ip="10.0.0.1"),  # has from_station/to_station=None
+            self._make_record(client_ip="10.0.0.2"),
+        ]
+        # Override from_station/to_station on the records
+        records[0].from_station = "NY"
+        records[0].to_station = "TR"
+        records[1].from_station = "NY"
+        records[1].to_station = "TR"
+
+        result = _compute_usage_analytics(records)
+        assert (
+            len(result["top_routes"]) == 1
+        ), f"Expected 1 route, got {result['top_routes']}"
+        route = result["top_routes"][0]
+        assert route["from"] == "NY"
+        assert route["to"] == "TR"
+        assert route["searches"] == 2
+        assert route["unique_users"] == 2
+
+    def test_top_routes_empty_without_station_params(self):
+        """top_routes is empty when records have no from/to station."""
+        records = [self._make_record()]  # from_station=None by default
+        result = _compute_usage_analytics(records)
+        assert (
+            result["top_routes"] == []
+        ), f"Expected empty top_routes, got {result['top_routes']}"
+
+    def test_zero_action_users_excluded_from_top_users(self):
+        """Users who only hit unmapped paths don't appear in top_users."""
+        records = [
+            self._make_record(path="/admin/stats", client_ip="10.0.0.1"),
+            self._make_record(path="/api/v2/trains/departures", client_ip="10.0.0.2"),
+        ]
+        result = _compute_usage_analytics(records)
+        top_ips = [u["ip"] for u in result["top_users"]]
+        assert (
+            "10.0.0.1" not in top_ips
+        ), f"User with only unmapped paths should not be in top_users: {top_ips}"
+        assert "10.0.0.2" in top_ips
+
+    def test_analytics_in_snapshot(self):
+        """usage_analytics key appears in snapshot when iOS traffic exists."""
+        stats = RequestStats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="TrackRat/230 CFNetwork/1568",
+            duration=0.05,
+            client_ip="10.0.0.1",
+        )
+        snap = stats.snapshot()
+        assert (
+            "usage_analytics" in snap
+        ), f"Expected usage_analytics in snapshot, keys: {list(snap.keys())}"
+        assert snap["usage_analytics"]["unique_users"] == 1
+        assert snap["usage_analytics"]["total_actions"] == 1
+
+    def test_analytics_absent_without_ios_traffic(self):
+        """usage_analytics key is absent when no iOS traffic exists."""
+        stats = RequestStats()
+        stats.record_request(
+            path_template="/api/v2/trains/departures",
+            status_code=200,
+            user_agent="curl/7",
+            duration=0.05,
+            client_ip="10.0.0.1",
+        )
+        snap = stats.snapshot()
+        assert (
+            "usage_analytics" not in snap
+        ), "usage_analytics should not be present without iOS traffic"
 
 
 class TestSingleton:

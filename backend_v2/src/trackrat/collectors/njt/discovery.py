@@ -264,6 +264,104 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         track=sanitized_track,
                     )
 
+    async def _populate_stop_times_from_discovery(
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+        stops_data: list[dict[str, Any]],
+    ) -> None:
+        """Populate real-time stop times from embedded STOPS data during discovery.
+
+        The getTrainSchedule response includes per-stop TIME and DEP_TIME fields
+        that are identical to those from getTrainStopList. This method uses them
+        to fill in updated_arrival/updated_departure on JourneyStop rows,
+        eliminating the 15-minute gap between OBSERVED status and real-time data
+        availability.
+
+        For existing stops, only writes when the field is NULL — the journey
+        collector's data (from the dedicated getTrainStopList API) is more
+        authoritative and is never overwritten.
+
+        For missing stops (e.g., brand new journeys), creates the stop row with
+        times so the departure endpoint has data immediately.
+        """
+        from trackrat.config.stations import get_station_name
+
+        for stop_data in stops_data:
+            station_code = (stop_data.get("STATION_2CHAR") or "").strip()
+            if not station_code:
+                continue
+
+            time_str = stop_data.get("TIME")
+            dep_time_str = stop_data.get("DEP_TIME")
+            if not time_str and not dep_time_str:
+                continue
+
+            # Parse time fields (same format as journey collector)
+            time_field = parse_njt_time(time_str) if time_str else None
+            dep_time_field = parse_njt_time(dep_time_str) if dep_time_str else None
+
+            # Find existing stop
+            stmt = select(JourneyStop).where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.station_code == station_code,
+                )
+            )
+            stop = await session.scalar(stmt)
+
+            if stop:
+                # Only fill in NULL fields — never overwrite journey collector data
+                changed = False
+                if stop.updated_arrival is None and time_field:
+                    stop.updated_arrival = time_field
+                    changed = True
+                if stop.updated_departure is None and dep_time_field:
+                    stop.updated_departure = dep_time_field
+                    changed = True
+                if changed:
+                    logger.debug(
+                        "populated_stop_times_during_discovery",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        updated_arrival=time_field.isoformat() if time_field else None,
+                        updated_departure=(
+                            dep_time_field.isoformat() if dep_time_field else None
+                        ),
+                    )
+            else:
+                # Stop doesn't exist — create it with times.
+                # Use savepoint to handle race with journey collector.
+                try:
+                    async with session.begin_nested():
+                        stop = JourneyStop(
+                            journey_id=journey.id,
+                            station_code=station_code,
+                            station_name=get_station_name(station_code),
+                            updated_arrival=time_field,
+                            updated_departure=dep_time_field,
+                        )
+                        session.add(stop)
+                        await session.flush()
+                    logger.debug(
+                        "created_stop_with_times_during_discovery",
+                        train_id=journey.train_id,
+                        station_code=station_code,
+                        updated_arrival=time_field.isoformat() if time_field else None,
+                        updated_departure=(
+                            dep_time_field.isoformat() if dep_time_field else None
+                        ),
+                    )
+                except IntegrityError:
+                    # Race: journey collector created this stop concurrently.
+                    # Re-query and fill in times if still NULL.
+                    stop = await session.scalar(stmt)
+                    if stop:
+                        if stop.updated_arrival is None and time_field:
+                            stop.updated_arrival = time_field
+                        if stop.updated_departure is None and dep_time_field:
+                            stop.updated_departure = dep_time_field
+
     async def _find_matching_scheduled_train(
         self,
         session: AsyncSession,
@@ -424,9 +522,6 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     journey_date=journey_date,
                                 )
 
-                            # Update last seen time
-                            existing.last_updated_at = now_et()
-
                             # Mark as observed if it was previously scheduled
                             if existing.observation_type == "SCHEDULED":
                                 existing.observation_type = "OBSERVED"
@@ -452,6 +547,17 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                 await self._update_stop_track_if_needed(
                                     session, existing, station_code, track
                                 )
+
+                            # Populate real-time stop times from embedded STOPS data.
+                            # Only bump last_updated_at when stops are actually
+                            # populated — otherwise later collection passes skip
+                            # this train as "fresh" despite having no real-time data.
+                            stops_data = train_data.get("STOPS") or []
+                            if stops_data:
+                                await self._populate_stop_times_from_discovery(
+                                    session, existing, stops_data
+                                )
+                                existing.last_updated_at = now_et()
 
                             continue
 
@@ -497,6 +603,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                             scheduled_match,
                                             station_code,
                                             track,
+                                        )
+
+                                    # Populate real-time stop times from embedded STOPS data
+                                    stops_data = train_data.get("STOPS") or []
+                                    if stops_data:
+                                        await self._populate_stop_times_from_discovery(
+                                            session, scheduled_match, stops_data
                                         )
 
                                 logger.info(
@@ -554,6 +667,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         if track and station_code:
                             await self._update_stop_track_if_needed(
                                 session, journey, station_code, track
+                            )
+
+                        # Populate real-time stop times from embedded STOPS data
+                        stops_data = train_data.get("STOPS") or []
+                        if stops_data:
+                            await self._populate_stop_times_from_discovery(
+                                session, journey, stops_data
                             )
 
                         logger.debug(

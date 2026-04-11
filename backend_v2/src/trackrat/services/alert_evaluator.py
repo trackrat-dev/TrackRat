@@ -193,12 +193,7 @@ async def evaluate_route_alerts(
                     state_changed = True
                 continue
 
-            # System-wide subscriptions: skip real-time delay/cancellation
-            # evaluation (handled entirely via service alerts in evaluate_service_alerts)
-            if _is_system_wide(sub):
-                continue
-
-            # Build query for relevant journeys (line / station-pair modes)
+            # Build query for relevant journeys (line / station-pair / system-wide modes)
             journeys = await _query_journeys_for_subscription(
                 db, sub, today, one_hour_ago, now
             )
@@ -519,7 +514,7 @@ async def _query_journeys_for_subscription(
 
         return journeys
 
-    else:
+    elif sub.from_station_code and sub.to_station_code:
         # Station-pair mode: match origin/destination or journey stops
         # Eagerly load stops so _is_significantly_delayed can check
         # arrival delay at the destination station.
@@ -572,6 +567,11 @@ async def _query_journeys_for_subscription(
                 )
             )
         )
+        return list(result.scalars().all())
+
+    else:
+        # System-wide mode: all journeys for this data source
+        result = await db.execute(select(TrainJourney).where(and_(*base_conditions)))
         return list(result.scalars().all())
 
 
@@ -646,13 +646,14 @@ async def _query_baseline_train_count(
         if not route:
             return None
         base_conditions.append(TrainJourney.line_code.in_(list(route.line_codes)))
-    else:
+    elif sub.from_station_code and sub.to_station_code:
         base_conditions.extend(
             [
                 TrainJourney.origin_station_code == sub.from_station_code,
                 TrainJourney.terminal_station_code == sub.to_station_code,
             ]
         )
+    # else: system-wide — no additional filtering, all journeys for data_source
 
     # Count trains per day, then average across days
     per_day = (
@@ -1064,7 +1065,11 @@ async def _generate_digest_summary(
                 train_id=sub.train_id,
             )
         else:
-            return None
+            # System-wide: use network summary for the data source
+            result = await summary_service.get_network_summary(
+                db,
+                data_source=sub.data_source,
+            )
 
         # For push notifications, use body (descriptive) over headline (terse)
         # to avoid redundancy — headline contains stats like "85% on time" or
@@ -1134,6 +1139,15 @@ async def evaluate_service_alerts(
 
         for sub in device.subscriptions:
             if not sub.include_planned_work:
+                continue
+
+            # Day-of-week check (bitmask: Mon=1, Tue=2, ..., Sun=64)
+            day_bit = 1 << now.weekday()
+            if not ((sub.active_days or 0) & day_bit):
+                continue
+
+            # Time window check
+            if not _is_within_time_window(sub, now):
                 continue
 
             if sub.data_source not in SERVICE_ALERT_SOURCES:

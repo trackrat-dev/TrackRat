@@ -9,8 +9,10 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch
 from datetime import datetime, date
 
+from sqlalchemy.exc import IntegrityError
+
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
-from trackrat.models.database import TrainJourney, DiscoveryRun
+from trackrat.models.database import TrainJourney, JourneyStop, DiscoveryRun
 from trackrat.utils.time import now_et
 
 
@@ -32,7 +34,7 @@ def _make_session_mock():
 def mock_njt_client():
     """Mock NJ Transit client."""
     client = AsyncMock()
-    client.get_train_schedule_with_stops_with_stops = AsyncMock()
+    client.get_train_schedule_with_stops = AsyncMock()
     return client
 
 
@@ -199,8 +201,9 @@ class TestTrainDiscoveryCollector:
     @pytest.mark.asyncio
     async def test_collect_aggregates_all_train_ids(self, discovery_collector):
         """Test that collect method aggregates train IDs from all stations."""
-        # Mock discover_station_trains to return different results for each station
-        # Need to include all discovery stations: NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV
+        # Mock discover_station_trains to return different results for each station.
+        # Must include all DISCOVERY_STATIONS:
+        # NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV, RW, WW, HN
         station_results = {
             "NY": {
                 "trains_discovered": 3,
@@ -310,6 +313,24 @@ class TestTrainDiscoveryCollector:
                 "new_train_ids": [],
                 "all_train_ids": [],
             },
+            "RW": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "WW": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
+            "HN": {
+                "trains_discovered": 0,
+                "new_trains": 0,
+                "new_train_ids": [],
+                "all_train_ids": [],
+            },
         }
 
         mock_session = AsyncMock()
@@ -332,16 +353,16 @@ class TestTrainDiscoveryCollector:
             result = await discovery_collector.collect()
 
         # Verify aggregation
-        assert result["stations_processed"] == 18  # Updated discovery stations count
+        assert result["stations_processed"] == 21  # Updated discovery stations count
         assert result["total_discovered"] == 5  # 3 + 2 (from NY and NP stations)
         assert result["total_new"] == 1  # 1 (from NY station)
 
         # Verify station_results contains all station data
         assert "station_results" in result
-        assert len(result["station_results"]) == 18
+        assert len(result["station_results"]) == 21
 
         # Verify discover_station_trains was called for each discovery station
-        assert mock_discover.call_count == 18
+        assert mock_discover.call_count == 21
 
     @pytest.mark.asyncio
     async def test_process_discovered_trains_creates_journey_records(
@@ -508,3 +529,342 @@ class TestTrainDiscoveryCollector:
 
         # Verify session.add was called only for non-Amtrak trains
         assert mock_session.add.call_count == len(expected_processed)
+
+
+class TestPopulateStopTimesFromDiscovery:
+    """Tests for _populate_stop_times_from_discovery method."""
+
+    @pytest.fixture
+    def collector(self):
+        """Create discovery collector with mocked client."""
+        return TrainDiscoveryCollector(AsyncMock())
+
+    @pytest.fixture
+    def journey(self):
+        """Create a mock journey with id and train_id."""
+        j = Mock(spec=TrainJourney)
+        j.id = 42
+        j.train_id = "3737"
+        return j
+
+    def _make_stops_data(self, entries):
+        """Build STOPS list from simplified tuples: (station_code, time, dep_time)."""
+        result = []
+        for code, time_str, dep_time_str in entries:
+            d = {"STATION_2CHAR": code}
+            if time_str is not None:
+                d["TIME"] = time_str
+            if dep_time_str is not None:
+                d["DEP_TIME"] = dep_time_str
+            result.append(d)
+        return result
+
+    @pytest.mark.asyncio
+    async def test_fills_null_fields_on_existing_stop(self, collector, journey):
+        """When an existing stop has NULL updated_arrival/updated_departure,
+        both fields are populated from the discovery data."""
+        mock_session = _make_session_mock()
+        existing_stop = Mock(spec=JourneyStop)
+        existing_stop.updated_arrival = None
+        existing_stop.updated_departure = None
+        mock_session.scalar = AsyncMock(return_value=existing_stop)
+
+        parsed_time = datetime(2025, 1, 1, 10, 0, 0)
+        parsed_dep = datetime(2025, 1, 1, 10, 1, 0)
+
+        stops_data = self._make_stops_data(
+            [
+                ("NY", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+            ]
+        )
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time",
+            side_effect=[parsed_time, parsed_dep],
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        assert existing_stop.updated_arrival == parsed_time
+        assert existing_stop.updated_departure == parsed_dep
+
+    @pytest.mark.asyncio
+    async def test_does_not_overwrite_existing_values(self, collector, journey):
+        """When an existing stop already has non-NULL times, they are preserved.
+        The journey collector data is authoritative and must not be overwritten."""
+        mock_session = _make_session_mock()
+        original_arrival = datetime(2025, 1, 1, 9, 58, 0)
+        original_departure = datetime(2025, 1, 1, 9, 59, 0)
+        existing_stop = Mock(spec=JourneyStop)
+        existing_stop.updated_arrival = original_arrival
+        existing_stop.updated_departure = original_departure
+        mock_session.scalar = AsyncMock(return_value=existing_stop)
+
+        stops_data = self._make_stops_data(
+            [
+                ("NY", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+            ]
+        )
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time",
+            side_effect=[datetime(2025, 1, 1, 10, 0), datetime(2025, 1, 1, 10, 1)],
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        # Original values must be preserved
+        assert existing_stop.updated_arrival == original_arrival
+        assert existing_stop.updated_departure == original_departure
+
+    @pytest.mark.asyncio
+    async def test_partial_null_fills_only_null_field(self, collector, journey):
+        """When only one field is NULL on an existing stop, only that field is updated."""
+        mock_session = _make_session_mock()
+        original_arrival = datetime(2025, 1, 1, 9, 58, 0)
+        existing_stop = Mock(spec=JourneyStop)
+        existing_stop.updated_arrival = original_arrival
+        existing_stop.updated_departure = None  # Only this is NULL
+        mock_session.scalar = AsyncMock(return_value=existing_stop)
+
+        parsed_dep = datetime(2025, 1, 1, 10, 1, 0)
+        stops_data = self._make_stops_data(
+            [
+                ("NY", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+            ]
+        )
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time",
+            side_effect=[datetime(2025, 1, 1, 10, 0), parsed_dep],
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        assert existing_stop.updated_arrival == original_arrival  # Unchanged
+        assert existing_stop.updated_departure == parsed_dep  # Filled
+
+    @pytest.mark.asyncio
+    async def test_creates_new_stop_when_not_found(self, collector, journey):
+        """When no JourneyStop exists for the station, creates a new one with times."""
+        mock_session = _make_session_mock()
+        mock_session.scalar = AsyncMock(return_value=None)
+        mock_session.flush = AsyncMock()
+
+        parsed_time = datetime(2025, 1, 1, 10, 0, 0)
+        parsed_dep = datetime(2025, 1, 1, 10, 1, 0)
+        stops_data = self._make_stops_data(
+            [
+                ("TR", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+            ]
+        )
+
+        with (
+            patch(
+                "trackrat.collectors.njt.discovery.parse_njt_time",
+                side_effect=[parsed_time, parsed_dep],
+            ),
+            patch(
+                "trackrat.config.stations.get_station_name",
+                return_value="Trenton",
+            ),
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        # Verify session.add was called with a JourneyStop
+        assert mock_session.add.call_count == 1
+        added_stop = mock_session.add.call_args[0][0]
+        assert added_stop.journey_id == journey.id
+        assert added_stop.station_code == "TR"
+        assert added_stop.station_name == "Trenton"
+        assert added_stop.updated_arrival == parsed_time
+        assert added_stop.updated_departure == parsed_dep
+
+    @pytest.mark.asyncio
+    async def test_integrity_error_race_fills_null_fields(self, collector, journey):
+        """When creating a new stop races with the journey collector (IntegrityError),
+        re-queries the stop and fills NULL fields on the concurrently-created row."""
+        mock_session = _make_session_mock()
+        mock_session.flush = AsyncMock(side_effect=IntegrityError("dup", {}, None))
+
+        # First scalar call returns None (stop not found), second returns the
+        # concurrently-created stop with NULL times
+        race_stop = Mock(spec=JourneyStop)
+        race_stop.updated_arrival = None
+        race_stop.updated_departure = None
+        mock_session.scalar = AsyncMock(side_effect=[None, race_stop])
+
+        parsed_time = datetime(2025, 1, 1, 10, 0, 0)
+        parsed_dep = datetime(2025, 1, 1, 10, 1, 0)
+        stops_data = self._make_stops_data(
+            [
+                ("TR", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+            ]
+        )
+
+        with (
+            patch(
+                "trackrat.collectors.njt.discovery.parse_njt_time",
+                side_effect=[parsed_time, parsed_dep],
+            ),
+            patch(
+                "trackrat.config.stations.get_station_name",
+                return_value="Trenton",
+            ),
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        # The re-queried stop should have its NULL fields filled
+        assert race_stop.updated_arrival == parsed_time
+        assert race_stop.updated_departure == parsed_dep
+
+    @pytest.mark.asyncio
+    async def test_integrity_error_race_preserves_existing_values(
+        self, collector, journey
+    ):
+        """When IntegrityError race occurs but the concurrent stop already has
+        non-NULL times, those values are preserved."""
+        mock_session = _make_session_mock()
+        mock_session.flush = AsyncMock(side_effect=IntegrityError("dup", {}, None))
+
+        original_arrival = datetime(2025, 1, 1, 9, 55, 0)
+        race_stop = Mock(spec=JourneyStop)
+        race_stop.updated_arrival = original_arrival
+        race_stop.updated_departure = None
+        mock_session.scalar = AsyncMock(side_effect=[None, race_stop])
+
+        parsed_time = datetime(2025, 1, 1, 10, 0, 0)
+        parsed_dep = datetime(2025, 1, 1, 10, 1, 0)
+        stops_data = self._make_stops_data(
+            [
+                ("TR", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+            ]
+        )
+
+        with (
+            patch(
+                "trackrat.collectors.njt.discovery.parse_njt_time",
+                side_effect=[parsed_time, parsed_dep],
+            ),
+            patch(
+                "trackrat.config.stations.get_station_name",
+                return_value="Trenton",
+            ),
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        # arrival was already set by journey collector — must not be overwritten
+        assert race_stop.updated_arrival == original_arrival
+        # departure was NULL — should be filled
+        assert race_stop.updated_departure == parsed_dep
+
+    @pytest.mark.asyncio
+    async def test_skips_empty_station_code(self, collector, journey):
+        """Stops with empty or missing STATION_2CHAR are skipped entirely."""
+        mock_session = _make_session_mock()
+        mock_session.scalar = AsyncMock()
+
+        stops_data = [
+            {"STATION_2CHAR": "", "TIME": "01-Jan-2025 10:00:00 AM"},
+            {"STATION_2CHAR": "  ", "TIME": "01-Jan-2025 10:00:00 AM"},
+            {"TIME": "01-Jan-2025 10:00:00 AM"},  # Missing key
+        ]
+
+        await collector._populate_stop_times_from_discovery(
+            mock_session, journey, stops_data
+        )
+
+        # No database queries should have been made
+        mock_session.scalar.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_skips_stop_with_no_time_fields(self, collector, journey):
+        """Stops that have a station code but no TIME or DEP_TIME are skipped."""
+        mock_session = _make_session_mock()
+        mock_session.scalar = AsyncMock()
+
+        stops_data = [
+            {"STATION_2CHAR": "NY"},  # No TIME or DEP_TIME at all
+            {"STATION_2CHAR": "TR", "TIME": None, "DEP_TIME": None},
+        ]
+
+        await collector._populate_stop_times_from_discovery(
+            mock_session, journey, stops_data
+        )
+
+        mock_session.scalar.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_handles_only_time_no_dep_time(self, collector, journey):
+        """When only TIME is present (no DEP_TIME), only updated_arrival is set."""
+        mock_session = _make_session_mock()
+        existing_stop = Mock(spec=JourneyStop)
+        existing_stop.updated_arrival = None
+        existing_stop.updated_departure = None
+        mock_session.scalar = AsyncMock(return_value=existing_stop)
+
+        parsed_time = datetime(2025, 1, 1, 10, 0, 0)
+        stops_data = self._make_stops_data([("NY", "01-Jan-2025 10:00:00 AM", None)])
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time",
+            return_value=parsed_time,
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        assert existing_stop.updated_arrival == parsed_time
+        assert existing_stop.updated_departure is None
+
+    @pytest.mark.asyncio
+    async def test_processes_multiple_stops(self, collector, journey):
+        """Multiple stops in the data are all processed correctly."""
+        mock_session = _make_session_mock()
+
+        stop_ny = Mock(spec=JourneyStop)
+        stop_ny.updated_arrival = None
+        stop_ny.updated_departure = None
+
+        stop_tr = Mock(spec=JourneyStop)
+        stop_tr.updated_arrival = datetime(2025, 1, 1, 9, 50, 0)  # Already set
+        stop_tr.updated_departure = None
+
+        mock_session.scalar = AsyncMock(side_effect=[stop_ny, stop_tr])
+
+        parsed_times = [
+            datetime(2025, 1, 1, 10, 0, 0),  # NY TIME
+            datetime(2025, 1, 1, 10, 1, 0),  # NY DEP_TIME
+            datetime(2025, 1, 1, 10, 30, 0),  # TR TIME
+            datetime(2025, 1, 1, 10, 31, 0),  # TR DEP_TIME
+        ]
+        stops_data = self._make_stops_data(
+            [
+                ("NY", "01-Jan-2025 10:00:00 AM", "01-Jan-2025 10:01:00 AM"),
+                ("TR", "01-Jan-2025 10:30:00 AM", "01-Jan-2025 10:31:00 AM"),
+            ]
+        )
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time",
+            side_effect=parsed_times,
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        # NY: both NULL -> both filled
+        assert stop_ny.updated_arrival == parsed_times[0]
+        assert stop_ny.updated_departure == parsed_times[1]
+        # TR: arrival was set -> preserved; departure was NULL -> filled
+        assert stop_tr.updated_arrival == datetime(2025, 1, 1, 9, 50, 0)
+        assert stop_tr.updated_departure == parsed_times[3]

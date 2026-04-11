@@ -812,7 +812,7 @@ final class AppState: ObservableObject {
     }
 
     // Beta feature: Enable tapping route segments to view details
-    @Published var enableSegmentTap: Bool = false {
+    @Published var enableSegmentTap: Bool = true {
         didSet {
             UserDefaults.standard.set(enableSegmentTap, forKey: "enableSegmentTap")
         }
@@ -978,6 +978,11 @@ final class AppState: ObservableObject {
 
         // Load beta features
         showDepartureOdds = UserDefaults.standard.bool(forKey: "showDepartureOdds")
+        // Migration: previous bug stored false for users who never toggled this setting
+        if !UserDefaults.standard.bool(forKey: "enableSegmentTap_defaultFixed") {
+            UserDefaults.standard.set(true, forKey: "enableSegmentTap")
+            UserDefaults.standard.set(true, forKey: "enableSegmentTap_defaultFixed")
+        }
         enableSegmentTap = UserDefaults.standard.bool(forKey: "enableSegmentTap")
     }
 

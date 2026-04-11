@@ -273,17 +273,22 @@ struct TrainV2: Identifiable, Codable {
         return DateFormatter.easternTimeShort.string(from: time)
     }
     
-    // Check if train is departing soon (within specified minutes)
+    // Check if train is departing soon (within specified minutes).
+    // Allows a 5-minute grace period past the departure time so that
+    // boarding indicators remain visible for delayed trains that are
+    // still at the station. The actual departure is gated separately
+    // by hasDepartedStation in isBoardingAtStation.
     func isDepartingSoon(fromStationCode: String, withinMinutes: Int = 11) -> Bool {
         guard let departureTime = getDepartureTime(fromStationCode: fromStationCode) else {
             return false
         }
-        
+
         let now = Date()
         let timeUntilDeparture = departureTime.timeIntervalSince(now)
-        
-        // Check if departure is in the future and within the specified time window
-        return timeUntilDeparture > 0 && timeUntilDeparture <= Double(withinMinutes * 60)
+
+        // Show from withinMinutes before departure until 5 minutes after
+        // (train may still be at station if delayed or waiting)
+        return timeUntilDeparture > -300 && timeUntilDeparture <= Double(withinMinutes * 60)
     }
     
     // Check if train has already departed from the specified station

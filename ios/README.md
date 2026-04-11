@@ -1,6 +1,6 @@
 # TrackRat iOS App 🚂
 
-A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, and NYC Subway trains with Live Activities, real-time updates, intelligent track predictions, route alerts, and innovative navigation features.
+A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA (DC Metro) trains with Live Activities, real-time updates, intelligent track predictions, route alerts, and innovative navigation features.
 
 ## 🎯 Key Features
 
@@ -19,8 +19,12 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **LIRR**: All branches via MTA GTFS-RT
 - **Metro-North**: All branches via MTA GTFS-RT
 - **NYC Subway**: 36 routes, 472 stations via MTA GTFS-RT
-- **Total Coverage**: 1,000+ stations across the Eastern United States
-- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway
+- **BART**: All lines via BART GTFS-RT
+- **MBTA**: Commuter Rail via MBTA GTFS-RT
+- **Metra**: All lines (Chicago) via Metra GTFS-RT
+- **WMATA (DC Metro)**: All 6 lines, 98 stations via WMATA REST API
+- **Total Coverage**: 1,500+ stations across the United States
+- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA
 
 ### Route Alerts
 - **Push Notifications**: Get alerted when subscribed routes experience delays or cancellations
@@ -94,7 +98,8 @@ TrackRat/
 ├── Models/                      # Data layer
 │   ├── TrainV2.swift           # Pure data model with context-aware calculations
 │   ├── V2APIModels.swift       # Backend V2 API models
-│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway)
+│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway, BART, MBTA, Metra, WMATA)
+│   ├── TripOption.swift        # Trip search result model
 │   ├── CompletedTrip.swift     # Completed trip model for trip history
 │   ├── DeepLink.swift          # URL scheme handling
 │   └── Train.swift             # Legacy compatibility model
@@ -116,14 +121,16 @@ TrackRat/
 │   └── StaticTrackDistributionService.swift # Track analytics
 │
 ├── Views/                       # UI layer
-│   ├── Screens/                # Full-screen views (14 screens)
+│   ├── Screens/                # Full-screen views (16 screens)
 │   │   ├── TripSelectionView.swift      # Home screen with search
 │   │   ├── DeparturePickerView.swift    # Origin station selection
 │   │   ├── DestinationPickerView.swift  # Destination selection
 │   │   ├── TrainListView.swift          # Departure board
 │   │   ├── TrainDetailsView.swift       # Train journey details
+│   │   ├── TripDetailsView.swift        # Multi-leg trip details
 │   │   ├── CongestionMapView.swift      # Network congestion
 │   │   ├── HistoricalDataView.swift     # Performance analytics
+│   │   ├── PennStationGuideView.swift   # Penn Station boarding guide
 │   │   ├── SettingsView.swift           # User settings (inline favorites & route alerts)
 │   │   ├── MapContainerView.swift       # Primary map interface
 │   │   ├── OnboardingView.swift         # User onboarding
@@ -167,7 +174,8 @@ TrackRat/
 │   ├── StationCoordinates.swift # Station GPS coordinates
 │   ├── StationDepartures.swift # Station departure configuration
 │   ├── LiveActivityModels.swift # Widget shared types
-│   └── RouteTopology.swift      # Route definitions for map layers
+│   ├── RouteTopology.swift      # Route definitions for map layers
+│   └── RouteShapes.swift        # Route shape coordinates for map rendering
 │
 ├── Theme/                       # Visual design
 │   └── TrackRatTheme.swift     # Colors and styles
@@ -295,15 +303,15 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 ## 📊 Analytics & Monitoring
 
 ### Current Implementation
-- Basic console logging for debugging
+- Anonymous usage analytics reported to backend (`/admin/stats`)
+- Per-action tracking (departure searches, train views, trip searches)
+- Version distribution and hourly activity trends
 - No third-party analytics SDKs
-- Privacy-first approach
+- Privacy-first approach (no PII collected)
 
 ### Future Considerations
-- Anonymous usage statistics
 - Crash reporting integration
 - Performance monitoring
-- User feedback system
 
 ## 🔐 Security & Privacy
 

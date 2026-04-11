@@ -9,8 +9,8 @@ from typing import Any, cast
 
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.engine import CursorResult
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.base import BaseJourneyCollector
@@ -34,6 +34,24 @@ from trackrat.utils.time import (
 )
 
 logger = get_logger(__name__)
+
+
+def _journey_eager_options() -> list[Any]:
+    """Standard selectinload options for TrainJourney queries that flow into
+    collect_journey_details().
+
+    All delete-orphan cascade relationships must be eagerly loaded to prevent
+    MissingGreenlet errors during SQLAlchemy's unit-of-work flush process,
+    which bypasses lazy="raise_on_sql" and attempts real IO in async context.
+    """
+    return [
+        selectinload(TrainJourney.stops),
+        selectinload(TrainJourney.snapshots),
+        selectinload(TrainJourney.segment_times),
+        selectinload(TrainJourney.dwell_times),
+        selectinload(TrainJourney.progress),
+        selectinload(TrainJourney.progress_snapshots),
+    ]
 
 
 def normalize_njt_stop_times(
@@ -136,12 +154,16 @@ class JourneyCollector(BaseJourneyCollector):
             TrainJourney object if successful, None if failed
         """
         # Find the journey for this train
-        stmt = select(TrainJourney).where(
-            and_(
-                TrainJourney.train_id == train_id,
-                TrainJourney.data_source == "NJT",
-                TrainJourney.journey_date == now_et().date(),
+        stmt = (
+            select(TrainJourney)
+            .where(
+                and_(
+                    TrainJourney.train_id == train_id,
+                    TrainJourney.data_source == "NJT",
+                    TrainJourney.journey_date == now_et().date(),
+                )
             )
+            .options(*_journey_eager_options())
         )
         journey = await session.scalar(stmt)
 
@@ -391,6 +413,7 @@ class JourneyCollector(BaseJourneyCollector):
                 # Then by oldest update
                 TrainJourney.last_updated_at,
             )
+            .options(*_journey_eager_options())
             .limit(limit)
         )
 
@@ -433,6 +456,7 @@ class JourneyCollector(BaseJourneyCollector):
                     ),
                 )
             )
+            .options(*_journey_eager_options())
             .order_by(TrainJourney.journey_date.desc())
         )
 
@@ -739,6 +763,7 @@ class JourneyCollector(BaseJourneyCollector):
         session: AsyncSession,
         journey: TrainJourney,
         skip_enhancement: bool = False,
+        prefetched_train_data: NJTransitTrainData | None = None,
     ) -> None:
         """Collect complete journey details for a train.
 
@@ -746,6 +771,8 @@ class JourneyCollector(BaseJourneyCollector):
             session: Database session
             journey: Journey to collect data for
             skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
+            prefetched_train_data: If provided, skip the NJT API call and use this data
+                directly. Used by the batch collector to share one canonical write path.
         """
         # Track start time for performance measurement
         start_time = now_et()
@@ -759,62 +786,65 @@ class JourneyCollector(BaseJourneyCollector):
             ),
         )
 
-        # Get train stop list
-        if not journey.train_id:
-            raise ValueError(f"Journey {journey.id} has no train_id")
+        if prefetched_train_data is not None:
+            train_data = prefetched_train_data
+        else:
+            # Get train stop list
+            if not journey.train_id:
+                raise ValueError(f"Journey {journey.id} has no train_id")
 
-        try:
-            train_data = await self.njt_client.get_train_stop_list(journey.train_id)
-        except NJTransitNullDataError:
-            # NJT API returned a response with all key fields null — transient
-            # API issue. The train likely still appears on departure boards.
-            # Do NOT increment api_error_count; keep last known data.
-            logger.info(
-                "train_null_data_skipped",
-                train_id=journey.train_id,
-                journey_id=journey.id,
-                api_error_count=journey.api_error_count,
-            )
-            return
-        except TrainNotFoundError:
-            # Train is genuinely not available (empty/None response) —
-            # increment error count toward expiry threshold.
-            journey.api_error_count = (journey.api_error_count or 0) + 1
-            journey.last_updated_at = now_et()
-            journey.update_count = (journey.update_count or 0) + 1
-
-            # After 3 failed attempts, attempt last-chance completion then expire
-            if journey.api_error_count >= 3:
-                # Train disappeared from API — likely completed its run.
-                # Check if penultimate stop departed, which means the train
-                # reached its terminal. We can't set terminal actual_arrival
-                # (no API data), but marking the journey completed is still
-                # valuable for analytics that only need completion status.
-                if not journey.is_completed:
-                    await self._attempt_completion_on_expiry(session, journey)
-
-                if not journey.is_completed:
-                    journey.is_expired = True
-                logger.warning(
-                    (
-                        "train_marked_expired"
-                        if journey.is_expired
-                        else "train_completed_on_expiry"
-                    ),
+            try:
+                train_data = await self.njt_client.get_train_stop_list(journey.train_id)
+            except NJTransitNullDataError:
+                # NJT API returned a response with all key fields null — transient
+                # API issue. The train likely still appears on departure boards.
+                # Do NOT increment api_error_count; keep last known data.
+                logger.info(
+                    "train_null_data_skipped",
                     train_id=journey.train_id,
                     journey_id=journey.id,
                     api_error_count=journey.api_error_count,
                 )
-            else:
-                logger.warning(
-                    "train_not_found_error_incremented",
-                    train_id=journey.train_id,
-                    journey_id=journey.id,
-                    api_error_count=journey.api_error_count,
-                )
+                return
+            except TrainNotFoundError:
+                # Train is genuinely not available (empty/None response) —
+                # increment error count toward expiry threshold.
+                journey.api_error_count = (journey.api_error_count or 0) + 1
+                journey.last_updated_at = now_et()
+                journey.update_count = (journey.update_count or 0) + 1
 
-            await session.flush()
-            return
+                # After 3 failed attempts, attempt last-chance completion then expire
+                if journey.api_error_count >= 3:
+                    # Train disappeared from API — likely completed its run.
+                    # Check if penultimate stop departed, which means the train
+                    # reached its terminal. We can't set terminal actual_arrival
+                    # (no API data), but marking the journey completed is still
+                    # valuable for analytics that only need completion status.
+                    if not journey.is_completed:
+                        await self._attempt_completion_on_expiry(session, journey)
+
+                    if not journey.is_completed:
+                        journey.is_expired = True
+                    logger.warning(
+                        (
+                            "train_marked_expired"
+                            if journey.is_expired
+                            else "train_completed_on_expiry"
+                        ),
+                        train_id=journey.train_id,
+                        journey_id=journey.id,
+                        api_error_count=journey.api_error_count,
+                    )
+                else:
+                    logger.warning(
+                        "train_not_found_error_incremented",
+                        train_id=journey.train_id,
+                        journey_id=journey.id,
+                        api_error_count=journey.api_error_count,
+                    )
+
+                await session.flush()
+                return
 
         # Debug: Log journey validation inputs
         logger.debug(
@@ -946,10 +976,17 @@ class JourneyCollector(BaseJourneyCollector):
         Returns:
             Created snapshot
         """
-        # Delete existing snapshots for this journey to maintain single snapshot per journey
+        # Delete existing snapshots for this journey to maintain single snapshot per journey.
+        # Use synchronize_session=False to avoid desync between the Core SQL delete
+        # and the ORM identity map's snapshots collection, which can cause
+        # MissingGreenlet errors during subsequent flush cascade/orphan processing.
         await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
+            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id),
+            execution_options={"synchronize_session": False},
         )
+        # Clear the in-memory collection to match DB state.
+        # This prevents flush from seeing stale deleted objects in the collection.
+        journey.snapshots.clear()
 
         # Extract metrics
         completed_stops = sum(1 for stop in train_data.STOPS if stop.DEPARTED == "YES")
@@ -1181,6 +1218,19 @@ class JourneyCollector(BaseJourneyCollector):
             ):
                 max_departed_sequence = max(max_departed_sequence, sequence)
 
+        # Detect dialect once for the stop-insert upsert below.
+        # Both PostgreSQL and SQLite dialect inserts support on_conflict_do_nothing.
+        dialect_name = session.bind.dialect.name if session.bind else "postgresql"
+        dialect_insert: Any
+        if dialect_name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as _sqlite_insert
+
+            dialect_insert = _sqlite_insert
+        else:
+            from sqlalchemy.dialects.postgresql import insert as _pg_insert
+
+            dialect_insert = _pg_insert
+
         # Second pass: Process each stop
         for sequence, stop_data in enumerate(stops_data):
             # Parse raw time fields from NJT API
@@ -1245,21 +1295,29 @@ class JourneyCollector(BaseJourneyCollector):
             stop = await session.scalar(stmt)
 
             if not stop:
-                # NEW STOP - Set scheduled times (immutable)
-                # Use savepoint to handle race with discovery creating the same stop
-                try:
-                    async with session.begin_nested():
-                        stop = JourneyStop(
-                            journey_id=journey.id,
-                            station_code=stop_data.STATION_2CHAR,
-                            station_name=stop_data.STATIONNAME
-                            or get_station_name(stop_data.STATION_2CHAR or ""),
-                            stop_sequence=sequence,
-                            scheduled_arrival=best_scheduled_arrival,
-                            scheduled_departure=best_scheduled_departure,
-                        )
-                        session.add(stop)
-                        await session.flush()
+                # NEW STOP - Set scheduled times (immutable).
+                # Use INSERT ... ON CONFLICT DO NOTHING to handle the race with
+                # discovery creating the same stop.  This avoids begin_nested()
+                # savepoints whose rollback expires eagerly-loaded relationship
+                # state and triggers MissingGreenlet on the next flush.
+                insert_stmt = (
+                    dialect_insert(JourneyStop)
+                    .values(
+                        journey_id=journey.id,
+                        station_code=stop_data.STATION_2CHAR,
+                        station_name=stop_data.STATIONNAME
+                        or get_station_name(stop_data.STATION_2CHAR or ""),
+                        stop_sequence=sequence,
+                        scheduled_arrival=best_scheduled_arrival,
+                        scheduled_departure=best_scheduled_departure,
+                    )
+                    .on_conflict_do_nothing(
+                        index_elements=["journey_id", "station_code"]
+                    )
+                )
+                insert_result = await session.execute(insert_stmt)
+
+                if insert_result.rowcount:  # type: ignore[attr-defined]
                     logger.debug(
                         "created_stop_with_scheduled_times",
                         train_id=journey.train_id,
@@ -1276,16 +1334,15 @@ class JourneyCollector(BaseJourneyCollector):
                             else None
                         ),
                     )
-                except IntegrityError:
-                    # Race condition: discovery created this stop concurrently
-                    stop = await session.scalar(stmt)
-                    if not stop:
-                        raise  # Should not happen — re-raise if stop truly missing
+                else:
                     logger.info(
                         "stop_created_by_concurrent_process",
                         train_id=journey.train_id,
                         station=stop_data.STATION_2CHAR,
                     )
+
+                # Re-fetch the stop (whether we just created it or it already existed)
+                stop = await session.scalar(stmt)
             else:
                 # EXISTING STOP - Never update scheduled times unless they're NULL
                 if stop.scheduled_arrival is None and best_scheduled_arrival:
@@ -2117,11 +2174,15 @@ class JourneyCollector(BaseJourneyCollector):
         """
         async with get_session() as session:
             # Find the journey
-            stmt = select(TrainJourney).where(
-                and_(
-                    TrainJourney.train_id == train_id,
-                    TrainJourney.data_source == "NJT",
+            stmt = (
+                select(TrainJourney)
+                .where(
+                    and_(
+                        TrainJourney.train_id == train_id,
+                        TrainJourney.data_source == "NJT",
+                    )
                 )
+                .options(*_journey_eager_options())
             )
 
             if journey_date:

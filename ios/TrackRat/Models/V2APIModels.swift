@@ -746,48 +746,7 @@ struct CongestionSegment: Codable, Identifiable {
     }
     
     var displayColor: Color {
-        if congestionFactor < 1.05 {
-            return .green
-        } else if congestionFactor < 1.25 {
-            return .yellow
-        } else if congestionFactor < 2.0 {
-            return .orange
-        } else {
-            return .red
-        }
-    }
-    
-    // Cancellation visualization properties
-    var hasCancellations: Bool {
-        return cancellationCount > 0
-    }
-    
-    var hasHighCancellationRate: Bool {
-        return cancellationRate > 10.0
-    }
-    
-    var shouldShowDashedLine: Bool {
-        return cancellationRate > 5.0
-    }
-    
-    var cancellationDisplayText: String {
-        if cancellationRate == 0 {
-            return "No cancellations"
-        } else {
-            return "\(Int(cancellationRate))% cancelled"
-        }
-    }
-    
-    var dashPattern: [NSNumber]? {
-        guard shouldShowDashedLine else { return nil }
-
-        if cancellationRate > 20 {
-            return [2, 2]  // Short dashes for high cancellation
-        } else if cancellationRate > 10 {
-            return [5, 3]  // Medium dashes
-        } else {
-            return [8, 4]  // Long dashes
-        }
+        Color(CongestionColors.color(forCongestionFactor: congestionFactor, cancellationRate: cancellationRate))
     }
 
     // MARK: - Frequency/Health Display Properties
@@ -907,15 +866,7 @@ struct StationCoordinates: Codable {
 
 extension IndividualJourneySegment {
     var displayColor: Color {
-        if congestionFactor < 1.05 {
-            return .green
-        } else if congestionFactor < 1.25 {
-            return .yellow
-        } else if congestionFactor < 2.0 {
-            return .orange
-        } else {
-            return .red
-        }
+        Color(CongestionColors.color(forCongestionFactor: congestionFactor))
     }
     
     /// Convert the journey date string to a Date object

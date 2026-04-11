@@ -8,7 +8,6 @@ const APP_STORE_URL = 'https://apps.apple.com/us/app/trackrat/id6746423610';
 const GITHUB_URL = 'https://github.com/trackrat-dev/TrackRat';
 const YOUTUBE_URL = 'https://www.youtube.com/@TrackRat-App/shorts';
 const INSTAGRAM_URL = 'https://www.instagram.com/trackratapp/';
-const FEEDBACK_URL = 'https://trackrat.nolt.io/';
 const API_DOCS_URL = 'https://apiv2.trackrat.net/docs';
 const SUPPORT_EMAIL = 'mailto:trackrat@andymartin.cc';
 
@@ -243,17 +242,6 @@ export function LandingPage() {
               </div>
             ))}
           </div>
-          <p className="text-text-muted text-center">
-            Have an idea for another transit system?{' '}
-            <a
-              href={FEEDBACK_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent hover:underline"
-            >
-              Send us your suggestions
-            </a>
-          </p>
         </div>
       </section>
 
@@ -324,22 +312,6 @@ export function LandingPage() {
             >
               Contact Support
             </a>
-            <a
-              href={FEEDBACK_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-text-muted hover:text-accent transition-colors"
-            >
-              Submit Feedback
-            </a>
-            <a
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-text-muted hover:text-accent transition-colors"
-            >
-              GitHub
-            </a>
           </div>
           <p className="text-text-muted text-xs mt-2">
             Amtrak data powered by{' '}
@@ -354,7 +326,7 @@ export function LandingPage() {
             .
           </p>
           <p className="text-text-muted text-sm mt-4">
-            &copy; {new Date().getFullYear()} TrackRat · Open Source (GPLv3)
+            &copy; {new Date().getFullYear()} TrackRat
           </p>
         </div>
       </footer>

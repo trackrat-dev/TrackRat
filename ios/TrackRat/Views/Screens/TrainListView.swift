@@ -360,13 +360,14 @@ struct TrainCard: View {
         return train.isCancelled
     }
     
-    /// Check if train is boarding at origin
+    /// Check if train is boarding at origin.
+    /// Uses client-side track+time detection (isBoardingAtStation) which is resilient
+    /// to backend at_station_code gaps from the JourneyProgress optimization path.
     private var isBoardingAtOrigin: Bool {
-        // Use context-aware boarding check and verify track + departure timing
         // Don't show boarding for scheduled-only trains
+        // isBoardingAtStation already checks track != nil and !hasDepartedStation
         return !isScheduledOnly &&
-               train.isBoarding(fromStationCode: departureStationCode) &&
-               train.track != nil &&
+               train.isBoardingAtStation(departureStationCode) &&
                train.isDepartingSoon(fromStationCode: departureStationCode, withinMinutes: 11)
     }
 
@@ -673,7 +674,7 @@ class TrainListViewModel: ObservableObject {
                 // Check for boarding status changes
                 for train in trains {
                     if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                        if !train.isBoarding(fromStationCode: fromStationCode) && newTrain.isBoarding(fromStationCode: fromStationCode) {
+                        if !train.isBoardingAtStation(fromStationCode) && newTrain.isBoardingAtStation(fromStationCode) {
                             UINotificationFeedbackGenerator().notificationOccurred(.warning)
                         }
                     }

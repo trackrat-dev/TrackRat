@@ -649,7 +649,8 @@ TRIP_ET_HOUR=$(TZ=America/New_York date +%H)
 # Returns 0 on success, 1 on failure.
 # Usage: trip_test "label" from to expected tmpfile [always_expect]
 #   expected: "transfer" | "direct" | "any"
-#   always_expect: "true" to always FAIL on 0 trips (for 24/7 services like subway)
+#   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
+#                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
 trip_test() {
   local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5" always_expect="${6:-false}"
   local code count search_type is_direct legs transfers
@@ -666,7 +667,9 @@ trip_test() {
   count=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
   search_type=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
   if [[ "$count" -eq 0 ]]; then
-    if [[ "$always_expect" == "true" || "$TRIP_ET_HOUR" -ge 6 ]]; then
+    if [[ "$always_expect" == "true" && "$TRIP_ET_HOUR" -ge 1 && "$TRIP_ET_HOUR" -lt 6 ]]; then
+      warn "$label: 0 trips ($search_type) — overnight (24/7 service, sparse data)"
+    elif [[ "$always_expect" == "true" || "$TRIP_ET_HOUR" -ge 6 ]]; then
       fail "$label: 0 trips ($search_type)"
       FAILED_ROUTES+=("Trip search $label: 0 trips ($search_type)")
     else
@@ -711,7 +714,8 @@ trip_test() {
 
 # Test A→B and B→A. Flag asymmetry if only one direction works.
 # Usage: trip_bidi "label" from to expected [always_expect]
-#   always_expect: "true" to always FAIL on 0 trips (for 24/7 services like subway)
+#   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
+#                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
 trip_bidi() {
   local label="$1" from="$2" to="$3" expected="$4" always_expect="${5:-false}"
   local fwd_ok=0 rev_ok=0

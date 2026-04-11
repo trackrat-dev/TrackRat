@@ -27,11 +27,11 @@ logger = get_logger(__name__)
 # Data sources where segments must match a known route topology.
 # Unmatched segments (not found in any route) are dropped as anomalous —
 # typically caused by sparse stop lists creating phantom long-distance
-# connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W for subway,
-# or NYP → BTN for Amtrak trains with missing intermediate stops).
+# connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W for subway).
 # AMTRAK included because sparse API responses can create segments spanning
 # hundreds of miles when intermediate stops lack actual times.
 _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
+    "NJT",
     "AMTRAK",
     "SUBWAY",
     "BART",
@@ -325,6 +325,7 @@ def normalize_individual_segments(
                 from_station_name=get_station_name(from_station),
                 to_station_name=get_station_name(to_station),
                 data_source=segment.data_source,
+                line=segment.line,
                 scheduled_departure=segment.scheduled_departure,
                 actual_departure=segment.actual_departure,
                 scheduled_arrival=segment.scheduled_arrival,

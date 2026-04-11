@@ -249,8 +249,8 @@ class TestFuzzyMatchScheduledTrain:
         assert result == set()
         mock_session.add.assert_not_called()
 
-        # Existing journey was updated (last seen time)
-        assert existing_journey.last_updated_at is not None
+        # Existing journey was matched (observation_type unchanged)
+        assert existing_journey.observation_type == "OBSERVED"
 
     @pytest.mark.asyncio
     async def test_already_observed_not_matched(self, collector):

@@ -357,7 +357,7 @@ class TestNJTBatchCollectionIntegration:
                 ) as mock_freshness:
                     # Mock to execute the task function directly and return True
                     async def mock_freshness_check(
-                        db, task_name, minimum_interval_seconds, task_func
+                        db, task_name, minimum_interval_seconds, task_func, **kwargs
                     ):
                         await task_func()
                         return True

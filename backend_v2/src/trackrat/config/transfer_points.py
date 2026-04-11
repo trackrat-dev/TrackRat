@@ -231,7 +231,7 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
     # E.g., PATH Journal Sq (PJS) where NWK-WTC meets JSQ-33.
     for system, system_lines in _SYSTEM_STATION_LINES.items():
         # Find stations served by multiple distinct line-code sets
-        for station_code, lines in system_lines.items():
+        for station_code, _lines in system_lines.items():
             if station_code not in station_systems:
                 continue
             if system not in station_systems[station_code]:
@@ -239,10 +239,7 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
             # Get all routes through this station
             route_groups: list[frozenset[str]] = []
             for route in ALL_ROUTES:
-                if (
-                    route.data_source == system
-                    and station_code in route.stations
-                ):
+                if route.data_source == system and station_code in route.stations:
                     if route.line_codes not in route_groups:
                         route_groups.append(route.line_codes)
             # If station is served by 2+ distinct route groups, it's a junction

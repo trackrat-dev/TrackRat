@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.utils.scheduler_utils import (
     calculate_safe_interval,
+    calculate_task_timeout,
     run_with_freshness_check,
 )
 from trackrat.models.database import SchedulerTaskRun
@@ -361,3 +362,196 @@ class TestCalculateSafeInterval:
         result = calculate_safe_interval(120)
         expected = int((120 - 12) * 60)  # 108 minutes = 6480 seconds
         assert result == expected
+
+
+class TestCalculateTaskTimeout:
+    """Test cases for calculate_task_timeout function."""
+
+    def test_four_minute_collector(self):
+        """4-minute collector (e.g., subway) should get 480s timeout."""
+        result = calculate_task_timeout(4)
+        assert result == 480  # 4 * 60 * 2
+
+    def test_three_minute_collector(self):
+        """3-minute collector (e.g., WMATA) should get 360s timeout."""
+        result = calculate_task_timeout(3)
+        assert result == 360  # 3 * 60 * 2
+
+    def test_thirty_minute_discovery(self):
+        """30-minute discovery task should get 3600s timeout."""
+        result = calculate_task_timeout(30)
+        assert result == 3600  # 30 * 60 * 2
+
+    def test_fifteen_minute_task(self):
+        """15-minute task (e.g., service alerts) should get 1800s timeout."""
+        result = calculate_task_timeout(15)
+        assert result == 1800  # 15 * 60 * 2
+
+
+class TestRunWithFreshnessCheckTimeout:
+    """Test timeout behavior in run_with_freshness_check."""
+
+    @pytest.fixture
+    def mock_db(self):
+        """Mock AsyncSession database."""
+        mock = AsyncMock(spec=AsyncSession)
+        mock.execute = AsyncMock()
+        mock.flush = AsyncMock()
+        mock.commit = AsyncMock()
+        mock.rollback = AsyncMock()
+        mock.add = Mock()
+        return mock
+
+    def _setup_stale_task(self, mock_db):
+        """Set up a mock task that needs to run (last ran long ago)."""
+        from datetime import timezone
+
+        old_time = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        mock_task_run = Mock(spec=SchedulerTaskRun)
+        mock_task_run.task_name = "test_task"
+        mock_task_run.last_successful_run = old_time
+        mock_task_run.run_count = 1
+        mock_task_run.average_duration_ms = 5000
+
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
+        return mock_task_run
+
+    @pytest.mark.asyncio
+    async def test_timeout_cancels_slow_task(self, mock_db):
+        """Verify that a task exceeding timeout_seconds is cancelled.
+
+        Simulates a collector that takes 5 seconds when only 1 second
+        is allowed. The task should be cancelled and the DB rolled back.
+        """
+        import asyncio
+
+        self._setup_stale_task(mock_db)
+
+        async def slow_task():
+            await asyncio.sleep(10)  # Would take 10 seconds
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            # The inner except catches TimeoutError but re-raises it.
+            # The outer except catches it and returns False.
+            result = await run_with_freshness_check(
+                db=mock_db,
+                task_name="test_task",
+                minimum_interval_seconds=60,
+                task_func=slow_task,
+                timeout_seconds=1,  # 1 second timeout
+            )
+
+        # Task should not succeed
+        assert result is False
+        # DB should be rolled back (inner handler + outer handler)
+        assert mock_db.rollback.call_count == 2
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_timeout_allows_completion(self, mock_db):
+        """Verify that timeout_seconds=None allows tasks to complete normally."""
+        mock_task_run = self._setup_stale_task(mock_db)
+        task_func = AsyncMock()
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with patch("trackrat.utils.scheduler_utils.time") as mock_time:
+                mock_time.time.side_effect = [1000.0, 1003.0]
+
+                result = await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=task_func,
+                    timeout_seconds=None,  # No timeout
+                )
+
+        assert result is True
+        task_func.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_fast_task_completes_within_timeout(self, mock_db):
+        """Verify that a fast task completes normally even with a timeout set."""
+        mock_task_run = self._setup_stale_task(mock_db)
+        task_func = AsyncMock()
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with patch("trackrat.utils.scheduler_utils.time") as mock_time:
+                mock_time.time.side_effect = [1000.0, 1001.0]
+
+                result = await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=task_func,
+                    timeout_seconds=480,  # Generous timeout
+                )
+
+        assert result is True
+        task_func.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_timeout_logs_duration(self, mock_db):
+        """Verify that a timed-out task logs its actual duration."""
+        import asyncio
+
+        self._setup_stale_task(mock_db)
+
+        async def slow_task():
+            await asyncio.sleep(10)
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with patch("trackrat.utils.scheduler_utils.logger") as mock_logger:
+                await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="slow_collector",
+                    minimum_interval_seconds=60,
+                    task_func=slow_task,
+                    timeout_seconds=1,
+                )
+
+                # Verify the timeout was logged with task name
+                timeout_calls = [
+                    call
+                    for call in mock_logger.error.call_args_list
+                    if call.args[0] == "task_execution_timed_out"
+                ]
+                assert len(timeout_calls) == 1
+                assert timeout_calls[0].kwargs["task"] == "slow_collector"
+                assert timeout_calls[0].kwargs["timeout_seconds"] == 1

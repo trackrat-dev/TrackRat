@@ -44,6 +44,7 @@ def _is_postgresql_concurrency_error(error: Exception) -> bool:
         "could not receive data from server",
         # Concurrency/locking issues
         "deadlock detected",
+        "serialization failure",
         "could not serialize access due to concurrent update",
         "could not serialize access due to read/write dependencies",
         # Statement cancellation (e.g., asyncpg command_timeout)

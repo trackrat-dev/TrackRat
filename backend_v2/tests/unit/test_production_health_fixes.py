@@ -512,7 +512,7 @@ class TestLiveActivitySessionScope:
                     ) as mock_freshness_check:
 
                         async def execute_task_func(
-                            db, task_name, minimum_interval_seconds, task_func
+                            db, task_name, minimum_interval_seconds, task_func, **kwargs
                         ):
                             await task_func()
                             return True

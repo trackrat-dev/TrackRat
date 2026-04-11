@@ -450,13 +450,13 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
 
 def _fetch_gtfsrt_ground_truth(
     client_class: type,
-    generate_train_id: Callable[[str], str] | None = None,
+    generate_train_id: Callable[[str, str], str] | None = None,
 ) -> list[GroundTruthArrival]:
     """Fetch ground truth departures from a GTFS-RT feed (shared by LIRR, MNR, Subway).
 
     Args:
-        client_class: The GTFS-RT client class (LIRRClient or MNRClient).
-        generate_train_id: Optional function to derive train_id from trip_id,
+        client_class: The GTFS-RT client class (LIRRClient, MNRClient, SubwayClient).
+        generate_train_id: Optional function (trip_id, route_id) -> train_id,
             enabling strong-signal matching against TrackRat.
     """
     arrivals: list[GroundTruthArrival] = []
@@ -493,11 +493,12 @@ def _fetch_gtfsrt_ground_truth(
             now = datetime.now(timezone.utc)
             minutes_away = max(0, int((expected_time - now).total_seconds() / 60))
 
-            # Derive train_id from trip_id using collector's logic
+            # Derive train_id from trip_id (+ route_id) using collector's logic
             train_id = ""
             if generate_train_id:
                 try:
-                    train_id = generate_train_id(arr.trip_id)
+                    route_id = getattr(arr, "route_id", "")
+                    train_id = generate_train_id(arr.trip_id, route_id)
                 except Exception:
                     pass  # Fall back to empty train_id
 
@@ -525,7 +526,9 @@ def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
     from trackrat.collectors.lirr.client import LIRRClient
     from trackrat.collectors.lirr.collector import _generate_train_id as lirr_train_id
 
-    return _fetch_gtfsrt_ground_truth(LIRRClient, generate_train_id=lirr_train_id)
+    return _fetch_gtfsrt_ground_truth(
+        LIRRClient, generate_train_id=lambda tid, rid: lirr_train_id(tid)
+    )
 
 
 def fetch_mnr_ground_truth() -> list[GroundTruthArrival]:
@@ -533,14 +536,17 @@ def fetch_mnr_ground_truth() -> list[GroundTruthArrival]:
     from trackrat.collectors.mnr.client import MNRClient
     from trackrat.collectors.mnr.collector import _generate_train_id as mnr_train_id
 
-    return _fetch_gtfsrt_ground_truth(MNRClient, generate_train_id=mnr_train_id)
+    return _fetch_gtfsrt_ground_truth(
+        MNRClient, generate_train_id=lambda tid, rid: mnr_train_id(tid)
+    )
 
 
 def fetch_subway_ground_truth() -> list[GroundTruthArrival]:
     """Fetch ground truth departures from NYC Subway GTFS-RT feeds."""
     from trackrat.collectors.subway.client import SubwayClient
+    from trackrat.collectors.subway.collector import _generate_train_id as subway_train_id
 
-    return _fetch_gtfsrt_ground_truth(SubwayClient)
+    return _fetch_gtfsrt_ground_truth(SubwayClient, generate_train_id=subway_train_id)
 
 
 # --- Fetch TrackRat departures ---

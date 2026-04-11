@@ -78,19 +78,18 @@
 
 1. **Push Notifications** (FCM) - not needed yet
 2. **Route History Screen** - backend endpoint exists, UI not built
-3. **Deep Linking** - not implemented
-4. **Share Functionality** - not implemented
-5. **Home Screen Widgets** (Glance API)
-6. **Offline Mode** - no local caching
+3. **Home Screen Widgets** (Glance API)
+4. **Offline Mode** - no local caching
 
 ## Getting Started - Development Setup
 
 ### Prerequisites
 
 1. **Android Studio**: Latest stable version (Hedgehog or newer)
-2. **JDK**: Version 11 or higher
+2. **JDK**: Version 17 or higher
 3. **Android SDK**: API 34 (Android 14)
 4. **Git**: For version control
+5. **Maps**: Will need a Google Cloud Account with a configured Maps API Key
 
 ### Initial Setup
 
@@ -114,6 +113,11 @@
    // For physical device on same network
    val BASE_URL = "http://YOUR_LOCAL_IP:8000/api/v2/"
    ```
+   
+4. ** Add Google Maps API Key **
+    - Navigate to local.properties
+    - Add a key `mapsApiKey=`
+    - Set the value equal to your Google Maps SDK API Key
 
 ### Building and Running
 
@@ -201,16 +205,27 @@ android/
 │       │   │   ├── TrackRatApp.kt         # Application class
 │       │   │   ├── data/
 │       │   │   │   ├── api/              # API service & adapters
+│       │   │   │   ├── mappers/          # TrainMappers
 │       │   │   │   ├── models/           # Data models
 │       │   │   │   ├── preferences/      # User preferences
-│       │   │   │   └── repository/       # Data repositories
+│       │   │   │   ├── repository/       # Data repositories
+│       │   │   │   ├── services/         # TrackPrediction, BackendHealth
+│       │   │   │   └── Stations.kt       # Station data
 │       │   │   ├── di/                   # Dependency injection
+│       │   │   ├── navigation/           # TrackRatDestinations, Navigator
+│       │   │   ├── services/             # TrainTrackingService, RatSense, Notifications
 │       │   │   ├── ui/
+│       │   │   │   ├── advanced/         # Advanced config screen
 │       │   │   │   ├── components/       # Reusable UI components
-│       │   │   │   ├── theme/            # Material3 theming
+│       │   │   │   ├── destinationselection/ # Destination picker
+│       │   │   │   ├── favorites/        # Favorite stations
+│       │   │   │   ├── map/              # MapContainerScreen, congestion
+│       │   │   │   ├── onboarding/       # Onboarding flow
+│       │   │   │   ├── profile/          # Settings screens
 │       │   │   │   ├── stationselection/ # Station selection screen
-│       │   │   │   ├── trainlist/        # Train list screen
-│       │   │   │   └── traindetail/      # Train detail screen
+│       │   │   │   ├── theme/            # Material3 theming
+│       │   │   │   ├── traindetail/      # Train detail screen
+│       │   │   │   └── trainlist/        # Train list screen
 │       │   │   └── utils/                # Utilities & helpers
 │       │   ├── res/                      # Resources (strings, themes)
 │       │   └── AndroidManifest.xml       # App manifest
@@ -226,7 +241,7 @@ android/
 
 1. **Gradle sync fails**
    - File → Invalidate Caches and Restart
-   - Check JDK version (must be 11+)
+   - Check JDK version (must be 17+)
    - Ensure Android SDK 34 is installed
 
 2. **API connection errors**
@@ -283,7 +298,7 @@ See `backend_v2/CLAUDE.md` for complete API documentation.
 ## Contact & Support
 
 For questions about the Android implementation:
-- Review this README and `android-app.md`
+- Review this README and `DESIGN.md`
 - Check existing code patterns
 - Consult the iOS app for feature parity
 - Review backend API documentation
