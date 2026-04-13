@@ -271,7 +271,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 
 **Key Design Principles:**
 - Single Journey Record: One database row per train per day
-- Horizontal Scaling: Database-coordinated scheduler with row-level locking
+- Horizontal Scaling: Database-coordinated scheduler with row-level locking and task-level timeouts
 - API Response Caching: 15-minute pre-computed responses for congestion endpoints
 
 **iOS Architecture:**
@@ -471,7 +471,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend services: `backend_v2/src/trackrat/services/`
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (base, njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata, service_alerts, mta_common, mta_extensions)
+- Backend entrypoint: `backend_v2/src/trackrat/main.py`, `backend_v2/src/trackrat/settings.py`
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py)
@@ -516,7 +517,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /api/v2/routes/congestion          # Network congestion data
 /api/v2/routes/history             # Historical route performance
 /api/v2/routes/summary             # Natural language operations summary
-/api/v2/routes/segments/{from}/{to}/trains  # Segment train details
+/api/v2/routes/segments/{from_station}/{to_station}/trains  # Segment train details
 
 # Predictions
 /api/v2/predictions/track          # Track/platform predictions (Web, iOS)
@@ -544,7 +545,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 
 # System Operations
 /api/v2/live-activities/register   # iOS Live Activity registration (POST)
-/api/v2/live-activities/{token}    # Unregister Live Activity (DELETE)
+/api/v2/live-activities/{push_token}  # Unregister Live Activity (DELETE)
 /api/v2/validation/status          # Validation system status
 /api/v2/validation/results/{route}/{source}  # Route validation details
 /health                            # Health check
