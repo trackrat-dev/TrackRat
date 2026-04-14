@@ -95,7 +95,7 @@
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/trackrat-dev/trackrat.git
+   git clone https://github.com/trackrat-dev/TrackRat.git
    cd TrackRat/android
    ```
 
