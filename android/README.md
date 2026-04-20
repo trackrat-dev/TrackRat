@@ -204,29 +204,29 @@ android/
 │       │   │   ├── MainActivity.kt         # Entry point
 │       │   │   ├── TrackRatApp.kt         # Application class
 │       │   │   ├── data/
-│       │   │   │   ├── api/              # API service & adapters
+│       │   │   │   ├── api/              # API service, HtmlEntityDecoder, ZonedDateTimeAdapter
 │       │   │   │   ├── mappers/          # TrainMappers
 │       │   │   │   ├── models/           # Data models
-│       │   │   │   ├── preferences/      # User preferences
+│       │   │   │   ├── preferences/      # UserPreferencesRepository, EnvironmentManager
 │       │   │   │   ├── repository/       # Data repositories
 │       │   │   │   ├── services/         # TrackPrediction, BackendHealth
 │       │   │   │   └── Stations.kt       # Station data
 │       │   │   ├── di/                   # Dependency injection
 │       │   │   ├── navigation/           # TrackRatDestinations, Navigator
-│       │   │   ├── services/             # TrainTrackingService, RatSense, Notifications
+│       │   │   ├── services/             # TrainTrackingService, RatSense, Notifications, TrackingStateRepository, TrainUpdateReceiver
 │       │   │   ├── ui/
 │       │   │   │   ├── advanced/         # Advanced config screen
 │       │   │   │   ├── components/       # Reusable UI components
 │       │   │   │   ├── destinationselection/ # Destination picker
 │       │   │   │   ├── favorites/        # Favorite stations
-│       │   │   │   ├── map/              # MapContainerScreen, congestion
+│       │   │   │   ├── map/              # MapContainerScreen, MapContainerViewModel, PolylineHitDetector
 │       │   │   │   ├── onboarding/       # Onboarding flow
-│       │   │   │   ├── profile/          # Settings screens
+│       │   │   │   ├── profile/          # Settings screens, components/ (ProfileActionRow, ProfileSectionCard)
 │       │   │   │   ├── stationselection/ # Station selection screen
 │       │   │   │   ├── theme/            # Material3 theming
 │       │   │   │   ├── traindetail/      # Train detail screen
 │       │   │   │   └── trainlist/        # Train list screen
-│       │   │   └── utils/                # Utilities & helpers
+│       │   │   └── utils/                # Constants, HapticFeedbackHelper, ShareService, ErrorUtils
 │       │   ├── res/                      # Resources (strings, themes)
 │       │   └── AndroidManifest.xml       # App manifest
 │       └── test/                          # Unit tests

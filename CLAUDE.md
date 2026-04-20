@@ -10,6 +10,8 @@ TrackRat is an open-source transit tracking framework (GPLv3) with:
 - **Android**: Kotlin (Jetpack Compose + Hilt + Retrofit) in `android/`
 - **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
 - **Backend docs**: See `backend_v2/CLAUDE.md` for detailed backend architecture
+- **iOS docs**: See `ios/CLAUDE.md` for iOS architecture and development
+- **Android docs**: See `android/CLAUDE.md` for Android architecture and development
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
@@ -474,7 +476,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend collectors: `backend_v2/src/trackrat/collectors/` (base, njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata, service_alerts, mta_common, mta_extensions)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
-- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py)
+- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, migrations/)
 - Backend tests: `backend_v2/tests/`
 - iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`

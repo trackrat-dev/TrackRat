@@ -13,7 +13,7 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 | System | Coverage | Data Source | Real-Time |
 |--------|----------|-------------|-----------|
 | NJ Transit | All rail lines | NJ Transit API | Yes |
-| Amtrak | Northeast Corridor | Amtraker API | Yes |
+| Amtrak | Multi-corridor (NEC, Keystone, Southeast, New England) | Amtraker API | Yes |
 | PATH | All 4 routes, 13 stations | RidePATH API | Yes |
 | LIRR | All branches | MTA GTFS-RT | Yes |
 | Metro-North | All branches | MTA GTFS-RT | Yes |
@@ -22,7 +22,7 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 | BART | All lines | BART GTFS-RT | Yes |
 | MBTA | Commuter Rail | MBTA GTFS-RT | Yes |
 | Metra | All lines (Chicago) | Metra GTFS-RT | Yes |
-| PATCO | Lindenwold–15th St | GTFS Static | Schedule only |
+| PATCO | Lindenwold–15-16th & Locust | GTFS Static | Schedule only |
 
 ## What It Does
 
@@ -102,7 +102,7 @@ npm run build        # Production build
 
 ### iOS App (Swift / SwiftUI)
 
-**Prerequisites:** macOS 14+, Xcode 15+, iOS 18.0+ deployment target
+**Prerequisites:** macOS 14+, Xcode 16+, iOS 18.0+ deployment target
 
 ```bash
 cd ios
