@@ -1258,6 +1258,7 @@ class GTFSService:
         target_date: date,
         limit: int = 50,
         data_sources: list[str] | None = None,
+        time_from: datetime | None = None,
     ) -> DeparturesResponse:
         """Get scheduled departures from GTFS data for a future date.
 
@@ -1268,6 +1269,10 @@ class GTFSService:
             target_date: The date to get schedules for
             limit: Maximum number of results
             data_sources: If provided, only query these data sources
+            time_from: If provided, only return departures at or after this time.
+                Applied after sort, before limit — critical for high-frequency
+                providers (e.g. SUBWAY) whose first `limit` trains would
+                otherwise all fall inside the overnight window.
 
         Returns:
             DeparturesResponse with scheduled trains
@@ -1312,6 +1317,16 @@ class GTFSService:
         # Sort by departure time
         # Use timezone-aware constant for safe comparison with ET-localized times
         departures.sort(key=lambda d: d.departure.scheduled_time or DATETIME_MAX_ET)
+
+        # Drop departures before time_from so `limit` counts trains from the
+        # requested window rather than always from the start of the day.
+        if time_from is not None:
+            departures = [
+                d
+                for d in departures
+                if d.departure.scheduled_time is not None
+                and d.departure.scheduled_time >= time_from
+            ]
 
         # Apply limit
         departures = departures[:limit]

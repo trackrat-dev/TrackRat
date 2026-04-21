@@ -140,6 +140,64 @@ class TrainListViewModelTests: XCTestCase {
         XCTAssertEqual(cancelledCount, 1)
     }
 
+    // MARK: - Future-schedule filter tests
+
+    func testFilterUpcomingTrainsRemovesFarFutureTrainsForToday() {
+        let now = Date()
+        let near = MockDataFactory.createMockTrainV2(trainId: "NEAR", departureTime: now.addingTimeInterval(3600))
+        let far = MockDataFactory.createMockTrainV2(trainId: "FAR", departureTime: now.addingTimeInterval(10 * 3600))
+
+        let filtered = viewModel.filterUpcomingTrains([near, far], fromStationCode: "NY", date: now)
+
+        XCTAssertEqual(filtered.map { $0.trainId }, ["NEAR"],
+                       "Today view should keep the 6-hour window and drop trains beyond it")
+    }
+
+    func testFilterUpcomingTrainsKeepsAllTrainsForFutureDate() {
+        let now = Date()
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: now)!
+        let startOfTomorrow = Calendar.current.startOfDay(for: tomorrow)
+
+        // All "tomorrow" trains are > 6h from now; without the fix, 100% get filtered.
+        let earlyMorning = MockDataFactory.createMockTrainV2(trainId: "EARLY",
+                                                             departureTime: startOfTomorrow.addingTimeInterval(3600))
+        let evening = MockDataFactory.createMockTrainV2(trainId: "EVENING",
+                                                        departureTime: startOfTomorrow.addingTimeInterval(18 * 3600))
+
+        let filtered = viewModel.filterUpcomingTrains([earlyMorning, evening],
+                                                      fromStationCode: "NY",
+                                                      date: startOfTomorrow)
+
+        XCTAssertEqual(Set(filtered.map { $0.trainId }), Set(["EARLY", "EVENING"]),
+                       "Future-date view should not apply the 6-hour live-board filter")
+    }
+
+    func testTimeFromForFutureDateProjectsTodaysTimeOfDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+
+        // Today at 15:30 ET; tomorrow at midnight ET (as DateSelectorSheet produces)
+        let today = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 5, day: 4, hour: 15, minute: 30))!
+        let tomorrowStart = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 5, day: 5))!
+
+        let timeFrom = APIService.timeFromForFutureDate(tomorrowStart, now: today)
+
+        XCTAssertNotNil(timeFrom)
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: timeFrom!)
+        XCTAssertEqual(components.year, 2026)
+        XCTAssertEqual(components.month, 5)
+        XCTAssertEqual(components.day, 5)
+        XCTAssertEqual(components.hour, 15)
+        XCTAssertEqual(components.minute, 30)
+    }
+
+    func testTimeFromForFutureDateReturnsNilForToday() {
+        let now = Date()
+        let todayStart = Calendar.current.startOfDay(for: now)
+        XCTAssertNil(APIService.timeFromForFutureDate(todayStart, now: now),
+                     "Today should preserve existing behavior (no time_from sent)")
+    }
+
     // MARK: - Performance Tests
 
     func testLargeDataSetPerformance() {

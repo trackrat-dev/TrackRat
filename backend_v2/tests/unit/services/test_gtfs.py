@@ -1299,3 +1299,114 @@ class TestGetStaticStopTimesLirrFallback:
         assert len(find_calls) == 2
         assert find_calls[0] == ("9999_2026-02-24", "trip_id")
         assert find_calls[1] == ("9999", "train_id")
+
+
+class TestGetScheduledDeparturesTimeFrom:
+    """Tests for `time_from` filtering in get_scheduled_departures().
+
+    High-frequency providers like SUBWAY would otherwise return only the
+    overnight sliver of the day because the first `limit` trains sorted by
+    departure time are all pre-dawn. `time_from` moves the limit window to
+    the caller's time of interest.
+    """
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    def _make_departure(self, train_id: str, dt: datetime):
+        from trackrat.models.api import (
+            DataFreshness,
+            LineInfo,
+            StationInfo,
+            TrainDeparture,
+            TrainPosition,
+        )
+
+        return TrainDeparture(
+            train_id=train_id,
+            journey_date=dt.date(),
+            line=LineInfo(code="1", name="1", color="#EE352E"),
+            destination="South Ferry",
+            departure=StationInfo(code="S127", name="Times Sq", scheduled_time=dt),
+            arrival=None,
+            train_position=TrainPosition(),
+            data_freshness=DataFreshness(last_updated=dt, age_seconds=0),
+            data_source="SUBWAY",
+            observation_type="SCHEDULED",
+        )
+
+    @pytest.mark.asyncio
+    async def test_time_from_shifts_limit_window(self):
+        """Setting time_from should skip earlier departures before applying limit."""
+        target_date = date(2026, 4, 23)
+        # 10 hourly SUBWAY departures from 00:30 to 09:30 ET
+        mock_deps = [
+            self._make_departure(
+                f"S{i:03d}",
+                ET.localize(datetime.combine(target_date, time(i, 30))),
+            )
+            for i in range(10)
+        ]
+
+        mock_db = AsyncMock()
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
+
+        with (
+            patch.object(
+                self.service, "get_active_service_ids", return_value={"WD_SUBWAY"}
+            ),
+            patch.object(
+                self.service,
+                "_query_departures_for_source",
+                AsyncMock(return_value=mock_deps),
+            ),
+        ):
+            response = await self.service.get_scheduled_departures(
+                db=mock_db,
+                from_station="S127",
+                to_station=None,
+                target_date=target_date,
+                limit=5,
+                data_sources=["SUBWAY"],
+                time_from=cutoff,
+            )
+
+        # Only 08:30 and 09:30 departures survive the cutoff
+        returned_ids = [d.train_id for d in response.departures]
+        assert returned_ids == ["S008", "S009"]
+
+    @pytest.mark.asyncio
+    async def test_no_time_from_returns_first_limit_of_day(self):
+        """Without time_from, behavior matches pre-fix: earliest N departures."""
+        target_date = date(2026, 4, 23)
+        mock_deps = [
+            self._make_departure(
+                f"S{i:03d}",
+                ET.localize(datetime.combine(target_date, time(i, 30))),
+            )
+            for i in range(10)
+        ]
+
+        mock_db = AsyncMock()
+
+        with (
+            patch.object(
+                self.service, "get_active_service_ids", return_value={"WD_SUBWAY"}
+            ),
+            patch.object(
+                self.service,
+                "_query_departures_for_source",
+                AsyncMock(return_value=mock_deps),
+            ),
+        ):
+            response = await self.service.get_scheduled_departures(
+                db=mock_db,
+                from_station="S127",
+                to_station=None,
+                target_date=target_date,
+                limit=5,
+                data_sources=["SUBWAY"],
+            )
+
+        returned_ids = [d.train_id for d in response.departures]
+        assert returned_ids == ["S000", "S001", "S002", "S003", "S004"]

@@ -183,6 +183,7 @@ class DepartureService:
         # For future dates, use GTFS static schedule data
         if target_date > today:
             from trackrat.services.gtfs import GTFSService
+            from trackrat.utils.time import ensure_timezone_aware
 
             gtfs_service = GTFSService()
             logger.info(
@@ -191,6 +192,11 @@ class DepartureService:
                 from_station=from_station,
                 to_station=to_station,
             )
+            # Normalize time_from to ET-aware so comparisons with parsed
+            # GTFS times (always ET-aware) don't raise TypeError.
+            aware_time_from = (
+                ensure_timezone_aware(time_from) if time_from is not None else None
+            )
             response = await gtfs_service.get_scheduled_departures(
                 db=db,
                 from_station=from_station,
@@ -198,6 +204,7 @@ class DepartureService:
                 target_date=target_date,
                 limit=limit,
                 data_sources=data_sources,
+                time_from=aware_time_from,
             )
             if data_sources:
                 response.departures = [
