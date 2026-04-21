@@ -215,6 +215,65 @@ async def get_departures(
     return response
 
 
+@router.get("/recent-departures", response_model=DeparturesResponse)
+@handle_errors
+async def get_recent_departures(
+    from_station: str = Query(
+        ...,
+        alias="from",
+        min_length=2,
+        max_length=10,
+        description="Departure station code",
+    ),
+    to_station: str | None = Query(
+        None,
+        alias="to",
+        min_length=2,
+        max_length=10,
+        description="Arrival station code",
+    ),
+    window_minutes: int = Query(
+        120,
+        ge=1,
+        le=240,
+        description="Minutes to look back for recently-departed trains",
+    ),
+    data_sources: str | None = Query(
+        None,
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
+    ),
+    limit: int = Query(50, le=1000, description="Maximum results"),
+    db: AsyncSession = Depends(get_db),
+) -> DeparturesResponse:
+    """Get recently-departed trains from a station.
+
+    Mirrors /departures but returns trains whose scheduled departure from the
+    origin station was in the past ``window_minutes``, including cancellations
+    and completed journeys. Results are sorted most-recent-first.
+    """
+    logger.info(
+        "get_recent_departures_request",
+        from_station=from_station,
+        to_station=to_station,
+        window_minutes=window_minutes,
+        data_sources=data_sources,
+    )
+
+    source_list: list[str] | None = None
+    if data_sources:
+        source_list = [s.strip().upper() for s in data_sources.split(",") if s.strip()]
+
+    service = DepartureService()
+    return await service.get_recent_departures(
+        db,
+        from_station,
+        to_station,
+        window_minutes=window_minutes,
+        limit=limit,
+        data_sources=source_list,
+    )
+
+
 @router.get("/{train_id}", response_model=TrainDetailsResponse)
 @handle_errors
 async def get_train_details(
