@@ -1809,3 +1809,189 @@ class TestCancelledTrainsWithoutDestinationStops:
             f"Cancelled train from NB should not match NY→TR route, "
             f"got {result['total_journeys']} journeys"
         )
+
+
+@pytest.mark.asyncio
+class TestCancelledTrainsWithSubDayWindow:
+    """Verify cancelled trains are counted in sub-day (hours=N) windows.
+
+    Regression: for NJT trains whose destination is an intermediate stop
+    (e.g. NY→Hamilton on a NY→Trenton train), cancelled journeys have NULL
+    actual_arrival AND NULL scheduled_arrival at the destination stop — NJT
+    only populates scheduled_departure at intermediate stops. Filtering the
+    window by destination arrival therefore excludes every cancelled train
+    on an intermediate-destination route, making cancellation_rate read 0%
+    during disruptions even when the per-train display shows "Cancelled".
+    """
+
+    async def test_cancelled_train_with_intermediate_dest_counts_in_hour_window(
+        self, db_session: AsyncSession
+    ):
+        """NJT-shaped cancelled train: dest stop has NULL arrival fields.
+
+        Origin departure is inside the 1-hour window; destination arrival
+        fields are NULL (NJT intermediate-stop shape). The train must still
+        be counted in the windowed aggregate.
+        """
+        # Cancelled train: origin NY @ BASE_TIME+30min, dest HL has sched_dep
+        # only (no scheduled_arrival, no actual_arrival) — matches NJT's
+        # intermediate-stop data shape.
+        await _create_journey(
+            db_session,
+            train_id="3887",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME + timedelta(minutes=30),
+                },
+                {
+                    "station_code": "HL",
+                    "stop_sequence": 11,
+                    "scheduled_departure": BASE_TIME + timedelta(minutes=90),
+                    # scheduled_arrival and actual_arrival both NULL.
+                },
+            ],
+            is_cancelled=True,
+        )
+        # One non-cancelled train that completes normally in the window.
+        await _create_journey(
+            db_session,
+            train_id="3885",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME,
+                    "actual_departure": BASE_TIME,
+                },
+                {
+                    "station_code": "HL",
+                    "stop_sequence": 11,
+                    "scheduled_arrival": BASE_TIME + timedelta(minutes=55),
+                    "actual_arrival": BASE_TIME + timedelta(minutes=55),
+                },
+            ],
+        )
+        await db_session.commit()
+
+        # 1-hour window centered so both trains' origin departures fall inside.
+        now = BASE_TIME + timedelta(hours=1)
+        cutoff = now - timedelta(hours=1)
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="NJT",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["HL"],
+            cutoff_time=cutoff,
+            now=now,
+        )
+
+        assert result["total_journeys"] == 2, (
+            f"Expected 2 journeys in 1-hour window (1 running + 1 cancelled "
+            f"with intermediate destination), got {result['total_journeys']}. "
+            "Cancelled trains must be windowed by origin departure, not by "
+            "destination arrival (which is NULL for NJT intermediate stops)."
+        )
+        assert result["cancellation_rate"] == pytest.approx(50.0, abs=1), (
+            f"Expected 50% cancellation (1 of 2), got "
+            f"{result['cancellation_rate']}%. Matches the NYP→Hamilton "
+            "production bug where train 3887 showed Cancelled on the train "
+            "card but the aggregate read 0%."
+        )
+
+    async def test_cancelled_train_excluded_when_origin_departure_outside_window(
+        self, db_session: AsyncSession
+    ):
+        """Cancelled trains outside the window must not leak in.
+
+        Guards against a naive fix that drops the time filter entirely.
+        """
+        # Cancelled train whose origin departure is 3 hours before `now`.
+        await _create_journey(
+            db_session,
+            train_id="old_cancelled",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": BASE_TIME - timedelta(hours=3),
+                },
+                {
+                    "station_code": "HL",
+                    "stop_sequence": 11,
+                    "scheduled_departure": BASE_TIME - timedelta(hours=2),
+                },
+            ],
+            is_cancelled=True,
+        )
+        await db_session.commit()
+
+        now = BASE_TIME
+        cutoff = now - timedelta(hours=1)
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="NJT",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["HL"],
+            cutoff_time=cutoff,
+            now=now,
+        )
+
+        assert result["total_journeys"] == 0, (
+            f"Cancelled train with origin departure 3h outside the 1h window "
+            f"must not be counted, got {result['total_journeys']}"
+        )
+
+    async def test_cancelled_origin_only_included_in_hour_window(
+        self, db_session: AsyncSession
+    ):
+        """Reconciled SCHEDULED train (no dest stop) still counted in window."""
+        cancelled_journey = TrainJourney(
+            train_id="no_dest_cancelled",
+            journey_date=BASE_DATE,
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            observation_type="SCHEDULED",
+            scheduled_departure=BASE_TIME + timedelta(minutes=10),
+            is_cancelled=True,
+            cancellation_reason="Not observed in real-time feed",
+            has_complete_journey=False,
+            stops_count=1,
+        )
+        db_session.add(cancelled_journey)
+        await db_session.flush()
+        db_session.add(
+            JourneyStop(
+                journey_id=cancelled_journey.id,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=None,
+                scheduled_departure=BASE_TIME + timedelta(minutes=10),
+            )
+        )
+        await db_session.commit()
+
+        now = BASE_TIME + timedelta(hours=1)
+        cutoff = now - timedelta(hours=1)
+        result = await _calculate_route_stats_sql(
+            db=db_session,
+            data_source="NJT",
+            start_date=BASE_DATE - timedelta(days=1),
+            end_date=BASE_DATE + timedelta(days=1),
+            from_codes=["NY"],
+            to_codes=["HL"],
+            cutoff_time=cutoff,
+            now=now,
+        )
+
+        assert result["total_journeys"] == 1
+        assert result["cancellation_rate"] == 100.0
