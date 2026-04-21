@@ -55,6 +55,15 @@ struct TrackRatApp: App {
                     SubscriptionService.shared.refreshOnForeground()
                     // Re-sync route alert subscriptions if stale (e.g. after server DB restore)
                     AlertSubscriptionService.shared.syncIfNeeded()
+                    // Refresh Live Activity's cached train data on foreground.
+                    // The 30s polling Timer is suspended while backgrounded and resumes on
+                    // its next scheduled fire, so the cache can be stale (or expired past
+                    // the 5min ceiling) when the user taps the Live Activity. Refreshing
+                    // here writes fresh data to TrainCacheService so the deep-link
+                    // navigation into TrainDetailsView can render progress instantly.
+                    if LiveActivityService.shared.isActivityActive {
+                        Task { await LiveActivityService.shared.refreshCurrentActivity() }
+                    }
                 case .inactive:
                     print("📱 Scene Phase Inactive")
                 case .background:

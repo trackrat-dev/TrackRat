@@ -979,23 +979,18 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
-        // PRIORITY 1: Check cache first (will have full train data with stops from previous visits)
-        // Skip stale cache (>60s) to avoid showing outdated data when resuming from background
-        // (e.g., tapping Live Activity after app was suspended — polling timer doesn't fire in background)
+        // PRIORITY 1: Render any non-expired cache instantly, reconcile in background.
+        // The 5-minute isExpired ceiling in TrainCacheService bounds staleness; the
+        // background refresh corrects any drift. Critical for Live Activity taps: the
+        // Activity's ContentState has progress info but no stops array, so the cache
+        // (written by LiveActivityService.fetchAndUpdateTrain) is the only instant
+        // source of departed-stops state.
         if !trainIdentifier.isEmpty,
-           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate),
-           cached.ageSeconds <= 60 {
-            // Load from cache immediately - NO loading indicator
+           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
             print("📦 Loading from cache (\(cached.ageSeconds)s old) - instant display")
             train = cached.train
             updateComputedProperties()
-
-            // Only fetch fresh data in background if cache is older than 30 seconds
-            if cached.ageSeconds > 30 {
-                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
-            } else {
-                print("📦 Cache is fresh (\(cached.ageSeconds)s old) - skipping background refresh")
-            }
+            await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             return
         }
 
