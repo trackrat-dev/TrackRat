@@ -325,6 +325,17 @@ def build_consolidated_stations(
     return consolidated
 
 
+# Manual additions to the GTFS-derived station_routes mapping.
+# Used where MTA's GTFS static feed misses service patterns that are genuinely
+# present in the real world (e.g., platforms shared by multiple routes where
+# only one shows up in the static schedule sample).
+MANUAL_STATION_ROUTE_ADDITIONS: dict[str, set[str]] = {
+    # Canal St BMT Broadway express/bridge platform: both N (via Manhattan
+    # Bridge during weekday daytime) and Q use it; GTFS static only lists Q.
+    "SQ01": {"N"},
+}
+
+
 def build_station_routes(
     trips: list[dict], stop_times: list[dict], stations: list[dict]
 ) -> dict[str, set[str]]:
@@ -346,6 +357,9 @@ def build_station_routes(
         code = gtfs_to_internal.get(parent_id)
         if code:
             station_routes[code].add(route_id)
+
+    for code, extra_routes in MANUAL_STATION_ROUTE_ADDITIONS.items():
+        station_routes[code].update(extra_routes)
 
     return dict(station_routes)
 

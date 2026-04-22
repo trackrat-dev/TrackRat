@@ -99,6 +99,16 @@ class TestStationMapping:
         # Function should either return the code itself or a default
         assert result is not None
 
+    def test_canal_st_bridge_platform_lists_n_and_q(self):
+        """SQ01 is the BMT Broadway bridge platform at Canal St, shared by
+        the Q (always) and the N (via Manhattan Bridge during weekday daytime).
+        MTA's GTFS static feed only lists Q, but users boarding an N train
+        here expect to see N in the displayed name."""
+        assert SUBWAY_STATION_NAMES["SQ01"] == "Canal St (N/Q)"
+        assert get_station_name("SQ01") == "Canal St (N/Q)"
+        # Sibling tunnel platform stays untouched
+        assert SUBWAY_STATION_NAMES["SR23"] == "Canal St (N/R/W)"
+
     def test_mapping_completeness(self):
         """Test that all expected stations are mapped."""
         expected_internal_codes = [
