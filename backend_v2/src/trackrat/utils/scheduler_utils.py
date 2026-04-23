@@ -5,6 +5,7 @@ Ensures scheduled tasks only run once across multiple Cloud Run replicas.
 """
 
 import asyncio
+import contextlib
 import os
 import time
 from collections.abc import Awaitable, Callable
@@ -264,6 +265,13 @@ async def run_with_freshness_check(
         )
         # If we can't check freshness, don't run the task (fail safe)
         return False
+
+    except BaseException:
+        # CancelledError, KeyboardInterrupt, SystemExit bypass except Exception.
+        # Rollback to release the FOR UPDATE lock and avoid idle-in-transaction.
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        raise
 
 
 def calculate_task_timeout(scheduled_minutes: int) -> int:

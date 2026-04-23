@@ -5,6 +5,8 @@ Tests the distributed task execution system that prevents duplicate
 task runs across multiple Cloud Run replicas.
 """
 
+import asyncio
+
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
@@ -555,3 +557,197 @@ class TestRunWithFreshnessCheckTimeout:
                 assert len(timeout_calls) == 1
                 assert timeout_calls[0].kwargs["task"] == "slow_collector"
                 assert timeout_calls[0].kwargs["timeout_seconds"] == 1
+
+
+class TestRunWithFreshnessCheckCancelledError:
+    """Test that CancelledError (BaseException) is handled correctly.
+
+    CancelledError inherits from BaseException, not Exception, so it
+    bypasses except Exception handlers. Before the fix, this would leave
+    the AsyncSession with an open transaction holding a FOR UPDATE lock.
+    """
+
+    @pytest.fixture
+    def mock_db(self):
+        """Mock AsyncSession database."""
+        mock = AsyncMock(spec=AsyncSession)
+        mock.execute = AsyncMock()
+        mock.flush = AsyncMock()
+        mock.commit = AsyncMock()
+        mock.rollback = AsyncMock()
+        mock.add = Mock()
+        return mock
+
+    def _setup_stale_task(self, mock_db):
+        """Set up a mock task that needs to run (last ran long ago)."""
+        from datetime import timezone
+
+        old_time = datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        mock_task_run = Mock(spec=SchedulerTaskRun)
+        mock_task_run.task_name = "test_task"
+        mock_task_run.last_successful_run = old_time
+        mock_task_run.run_count = 1
+        mock_task_run.average_duration_ms = 5000
+
+        upsert_result = Mock()
+        select_result = Mock()
+        select_result.scalar_one_or_none.return_value = mock_task_run
+        mock_db.execute.side_effect = [upsert_result, select_result]
+        return mock_task_run
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_during_task_rolls_back(self, mock_db):
+        """CancelledError during task execution must rollback the transaction.
+
+        This is the core bug from issue #984: CancelledError bypasses
+        except Exception, leaving the FOR UPDATE lock held indefinitely.
+        """
+        self._setup_stale_task(mock_db)
+
+        async def cancelled_task():
+            raise asyncio.CancelledError()
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with pytest.raises(asyncio.CancelledError):
+                await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=cancelled_task,
+                )
+
+        # The critical assertion: rollback MUST have been called
+        mock_db.rollback.assert_called()
+        mock_db.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_propagates(self, mock_db):
+        """CancelledError must propagate after rollback, not be swallowed."""
+        self._setup_stale_task(mock_db)
+
+        async def cancelled_task():
+            raise asyncio.CancelledError()
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with pytest.raises(asyncio.CancelledError):
+                await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=cancelled_task,
+                )
+
+    @pytest.mark.asyncio
+    async def test_cancelled_error_during_db_setup_rolls_back(self, mock_db):
+        """CancelledError during the upsert/lock phase must also rollback."""
+        mock_db.execute.side_effect = asyncio.CancelledError()
+        task_func = AsyncMock()
+
+        with pytest.raises(asyncio.CancelledError):
+            await run_with_freshness_check(
+                db=mock_db,
+                task_name="test_task",
+                minimum_interval_seconds=60,
+                task_func=task_func,
+            )
+
+        mock_db.rollback.assert_called()
+        task_func.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_keyboard_interrupt_rolls_back(self, mock_db):
+        """KeyboardInterrupt (also BaseException) must rollback."""
+        self._setup_stale_task(mock_db)
+
+        async def interrupted_task():
+            raise KeyboardInterrupt()
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with pytest.raises(KeyboardInterrupt):
+                await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=interrupted_task,
+                )
+
+        mock_db.rollback.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_rollback_failure_during_cancellation_still_propagates(self, mock_db):
+        """If rollback itself fails during CancelledError, the error still propagates."""
+        self._setup_stale_task(mock_db)
+        mock_db.rollback.side_effect = RuntimeError("connection lost")
+
+        async def cancelled_task():
+            raise asyncio.CancelledError()
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            # CancelledError should propagate even if rollback fails
+            with pytest.raises(asyncio.CancelledError):
+                await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=cancelled_task,
+                )
+
+    @pytest.mark.asyncio
+    async def test_normal_exception_still_returns_false(self, mock_db):
+        """Verify existing behavior is preserved: Exception returns False."""
+        self._setup_stale_task(mock_db)
+
+        async def failing_task():
+            raise ValueError("something broke")
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            result = await run_with_freshness_check(
+                db=mock_db,
+                task_name="test_task",
+                minimum_interval_seconds=60,
+                task_func=failing_task,
+            )
+
+        # Exception subclasses are caught and return False (existing behavior)
+        assert result is False
+        mock_db.rollback.assert_called()
