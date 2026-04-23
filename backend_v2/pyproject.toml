@@ -56,7 +56,7 @@ pytest-asyncio = "^1.0.0"
 pytest-cov = "^7.1.0"
 
 # Type Checking
-mypy = "1.19.1"  # Pinned to avoid CI/local version mismatches
+mypy = "1.20.0"  # Pinned to avoid CI/local version mismatches
 types-python-dateutil = "^2.9.0"
 types-pytz = "^2026.1"
 sqlalchemy = {extras = ["mypy"], version = "^2.0.48"}
