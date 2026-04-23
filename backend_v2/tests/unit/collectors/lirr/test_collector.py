@@ -295,67 +295,51 @@ class TestLIRRCollectorProcessTrip:
     async def test_process_trip_updates_existing_journey(
         self, collector, mock_session, sample_arrivals
     ):
-        """Test _process_trip updates existing journey."""
-        # Mock existing journey
+        """Test _process_trip updates an existing journey without issuing
+        per-arrival JourneyStop SELECTs (uses the eagerly-loaded stops)."""
+        # Mock existing journey — station codes must match sample_arrivals
+        # (JAM, NY) since the update path looks stops up by station_code.
+        now = datetime.now(timezone.utc)
+        mock_stop_jam = MagicMock(spec=JourneyStop)
+        mock_stop_jam.station_code = "JAM"
+        mock_stop_jam.track = None
+        mock_stop_jam.actual_departure = now
+        mock_stop_jam.actual_arrival = now
+        mock_stop_jam.scheduled_arrival = now
+        mock_stop_jam.has_departed_station = False
+        mock_stop_jam.departure_source = None
+        mock_stop_jam.stop_sequence = 1
+        mock_stop_ny = MagicMock(spec=JourneyStop)
+        mock_stop_ny.station_code = "NY"
+        mock_stop_ny.track = None
+        mock_stop_ny.actual_departure = None
+        mock_stop_ny.actual_arrival = now + timedelta(minutes=30)
+        mock_stop_ny.scheduled_arrival = now + timedelta(minutes=30)
+        mock_stop_ny.has_departed_station = False
+        mock_stop_ny.departure_source = None
+        mock_stop_ny.stop_sequence = 2
+
         existing_journey = MagicMock(spec=TrainJourney)
         existing_journey.id = 1
         existing_journey.train_id = "L123456"
         existing_journey.data_source = "LIRR"
+        existing_journey.stops = [mock_stop_jam, mock_stop_ny]
 
-        # Mock existing stops (one per sample arrival) with attributes needed
-        # by update_stop_departure_status and the track assignment logic
-        now = datetime.now(timezone.utc)
-        mock_stop_1 = MagicMock(spec=JourneyStop)
-        mock_stop_1.track = None
-        mock_stop_1.actual_departure = now
-        mock_stop_1.actual_arrival = now
-        mock_stop_1.scheduled_arrival = now
-        mock_stop_1.has_departed_station = False
-        mock_stop_1.departure_source = None
-        mock_stop_1.stop_sequence = 1
-        mock_stop_2 = MagicMock(spec=JourneyStop)
-        mock_stop_2.track = None
-        mock_stop_2.actual_departure = None
-        mock_stop_2.actual_arrival = now + timedelta(minutes=30)
-        mock_stop_2.scheduled_arrival = now + timedelta(minutes=30)
-        mock_stop_2.has_departed_station = False
-        mock_stop_2.departure_source = None
-        mock_stop_2.stop_sequence = 2
-
-        # First execute returns journey, next two return stops,
-        # then all-stops query for departure status update
+        # Only two queries expected: existence check + the bulk segment
+        # analyzer's stops query via analyze_new_segments. No per-arrival
+        # JourneyStop SELECTs and no re-query of journey.stops.
         journey_result = MagicMock()
         journey_result.scalar_one_or_none.return_value = existing_journey
 
-        stop_result_1 = MagicMock()
-        stop_result_1.scalar_one_or_none.return_value = mock_stop_1
-
-        stop_result_2 = MagicMock()
-        stop_result_2.scalar_one_or_none.return_value = mock_stop_2
-
-        all_stops_result = MagicMock()
-        all_stops_scalars = MagicMock()
-        all_stops_scalars.all.return_value = [mock_stop_1, mock_stop_2]
-        all_stops_result.scalars.return_value = all_stops_scalars
-
-        # Remaining calls (transit analyzer etc.) return empty results
         empty_result = MagicMock()
         empty_scalars = MagicMock()
         empty_scalars.all.return_value = []
         empty_result.scalars.return_value = empty_scalars
         empty_result.scalar_one_or_none.return_value = None
+        empty_result.scalar.return_value = None
 
         mock_session.execute = AsyncMock(
-            side_effect=[
-                journey_result,
-                stop_result_1,
-                stop_result_2,
-                all_stops_result,
-                empty_result,
-                empty_result,
-                empty_result,
-                empty_result,
-            ]
+            side_effect=[journey_result] + [empty_result] * 10
         )
 
         result, journey = await collector._process_trip(
@@ -364,6 +348,22 @@ class TestLIRRCollectorProcessTrip:
 
         assert result == "updated"
         assert journey is existing_journey
+        # Stops must be updated in memory — actual_arrival assigned from the arrivals
+        assert mock_stop_jam.actual_arrival == sample_arrivals[0].arrival_time
+        assert mock_stop_ny.actual_arrival == sample_arrivals[1].arrival_time
+        # The N+1 SELECT pattern emitted one `select(JourneyStop).where(
+        # journey_id, station_code)` per arrival. That query shape must not
+        # be issued anymore — only the existence check and downstream
+        # analyzer queries remain.
+        per_arrival_select_calls = [
+            call
+            for call in mock_session.execute.call_args_list
+            if "station_code =" in str(call).replace("\n", " ")
+            and "stop_sequence" not in str(call).replace("\n", " ")
+        ]
+        assert (
+            len(per_arrival_select_calls) == 0
+        ), f"N+1 query pattern detected: {per_arrival_select_calls}"
 
     @pytest.mark.asyncio
     async def test_process_trip_returns_none_for_empty_arrivals(
