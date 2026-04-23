@@ -23,6 +23,9 @@ export function Layout() {
               <span className="bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent">
                 TrackRat
               </span>
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-accent/15 text-accent">
+                Beta
+              </span>
             </Link>
           </h1>
           <div className="flex items-center gap-3">
