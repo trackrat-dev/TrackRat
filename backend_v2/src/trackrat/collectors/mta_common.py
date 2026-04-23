@@ -281,6 +281,45 @@ def build_complete_stops(
     return deduped, origin_code, terminal_code
 
 
+def set_stop_track(
+    stop: JourneyStop,
+    new_track: str | None,
+    data_source: str,
+    train_id: str | None,
+    now: datetime,
+) -> None:
+    """Assign a new track to a stop, updating ``track_assigned_at`` and logging.
+
+    No-op when ``new_track`` is falsy or equal to the existing value. Emits a
+    structured ``journey_stop_track_changed`` INFO log on every real transition
+    (None → value, or value → value). Callers must validate ``new_track`` before
+    calling (see :func:`trackrat.utils.sanitize.validate_track`).
+
+    Args:
+        stop: The JourneyStop to mutate.
+        new_track: Track value from the upstream feed.
+        data_source: Collector identifier for logging (e.g., "LIRR", "MNR").
+        train_id: Train identifier for log correlation.
+        now: Current time (used to stamp ``track_assigned_at`` on first assignment).
+    """
+    if not new_track or new_track == stop.track:
+        return
+    old = stop.track
+    if not old:
+        stop.track_assigned_at = now
+    stop.track = new_track
+    logger.info(
+        "journey_stop_track_changed",
+        extra={
+            "train_id": train_id,
+            "station_code": stop.station_code,
+            "old_track": old,
+            "new_track": new_track,
+            "data_source": data_source,
+        },
+    )
+
+
 def update_stop_departure_status(stops: list[JourneyStop], now: datetime) -> None:
     """Infer departure status for MTA stops based on actual/scheduled times.
 

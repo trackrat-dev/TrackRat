@@ -21,6 +21,7 @@ from trackrat.collectors.mta_common import (
     check_journey_completed,
     infer_direction_from_terminals,
     infer_missing_origin,
+    set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -510,10 +511,9 @@ class MNRCollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
-                    if arr.track:
-                        if not existing_stop.track:
-                            existing_stop.track_assigned_at = now_et()
-                        existing_stop.track = arr.track
+                    set_stop_track(
+                        existing_stop, arr.track, "MNR", journey.train_id, now_et()
+                    )
 
             # Update departure status and journey metadata using the in-memory
             # stops collection — no re-query needed.
@@ -614,10 +614,7 @@ class MNRCollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
-                if arr.track:
-                    if not stop.track:
-                        stop.track_assigned_at = now_et()
-                    stop.track = arr.track
+                set_stop_track(stop, arr.track, "MNR", journey.train_id, now_et())
 
         # Update journey-level times — arrival_time is already the predicted time
         first_stop = min(best_trip, key=lambda a: a.arrival_time)

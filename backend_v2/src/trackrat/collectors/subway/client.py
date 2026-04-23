@@ -22,6 +22,7 @@ from trackrat.config.stations import (
     SUBWAY_GTFS_RT_FEED_URLS,
     map_subway_gtfs_stop,
 )
+from trackrat.utils.sanitize import validate_track
 
 logger = logging.getLogger(__name__)
 
@@ -224,11 +225,21 @@ class SubwayClient:
                             continue
                         arrival_time = departure_time
 
-                    # Extract track from NYCT StopTimeUpdate extension
-                    track: str | None = None
+                    # Extract track from NYCT StopTimeUpdate extension, then reject
+                    # values outside the station's known track set (no-op for stations
+                    # without configured tracks, which is most subway stations today).
+                    raw_track: str | None = None
                     nyct_stu = extract_nyct_stop_time_update(stu)
                     if nyct_stu:
-                        track = nyct_stu["actual_track"] or nyct_stu["scheduled_track"]
+                        raw_track = (
+                            nyct_stu["actual_track"] or nyct_stu["scheduled_track"]
+                        )
+                    track = validate_track(
+                        station_code,
+                        raw_track,
+                        data_source="SUBWAY",
+                        train_id=trip_id,
+                    )
 
                     arrivals.append(
                         SubwayArrival(

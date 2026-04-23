@@ -26,6 +26,7 @@ from trackrat.collectors.mta_common import (
     build_complete_stops,
     check_journey_completed,
     infer_subway_origin,
+    set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -465,8 +466,9 @@ class SubwayCollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
-                    if arr.track:
-                        existing_stop.track = arr.track
+                    set_stop_track(
+                        existing_stop, arr.track, "SUBWAY", journey.train_id, now_et()
+                    )
 
             now = now_et()
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
@@ -551,8 +553,7 @@ class SubwayCollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
-                if arr.track:
-                    stop.track = arr.track
+                set_stop_track(stop, arr.track, "SUBWAY", journey.train_id, now_et())
 
         first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)

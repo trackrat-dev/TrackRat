@@ -20,6 +20,7 @@ from trackrat.collectors.mta_common import (
     build_complete_stops,
     check_journey_completed,
     infer_missing_origin,
+    set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -519,10 +520,9 @@ class LIRRCollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
-                    if arr.track:
-                        if not existing_stop.track:
-                            existing_stop.track_assigned_at = now_et()
-                        existing_stop.track = arr.track
+                    set_stop_track(
+                        existing_stop, arr.track, "LIRR", journey.train_id, now_et()
+                    )
 
             # Update departure status and journey metadata using the in-memory
             # stops collection — no re-query needed.
@@ -624,10 +624,7 @@ class LIRRCollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
-                if arr.track:
-                    if not stop.track:
-                        stop.track_assigned_at = now_et()
-                    stop.track = arr.track
+                set_stop_track(stop, arr.track, "LIRR", journey.train_id, now_et())
 
         # Update journey-level times — arrival_time is already the predicted time
         first_stop = min(best_trip, key=lambda a: a.arrival_time)

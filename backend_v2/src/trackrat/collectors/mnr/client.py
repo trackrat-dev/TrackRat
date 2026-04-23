@@ -18,6 +18,7 @@ from trackrat.config.stations import (
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
     MNR_ROUTES,
 )
+from trackrat.utils.sanitize import validate_track
 
 logger = logging.getLogger(__name__)
 
@@ -181,8 +182,15 @@ class MNRClient:
                             continue
                         arrival_time = departure_time
 
-                    # Extract track from MTA Railroad GTFS-RT extension (field 1005)
-                    track = extract_mta_track(stu)
+                    # Extract track from MTA Railroad GTFS-RT extension (field 1005),
+                    # then reject values that aren't in the station's known track set
+                    # (protects against occasional bad frames in MTA's feed).
+                    track = validate_track(
+                        station_code,
+                        extract_mta_track(stu),
+                        data_source="MNR",
+                        train_id=trip_id,
+                    )
 
                     arrivals.append(
                         MnrArrival(
