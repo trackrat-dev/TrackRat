@@ -41,7 +41,9 @@ class TestGetSessionBaseExceptionHandling:
         self, mock_session, mock_sessionmaker
     ):
         """CancelledError inside get_session must trigger explicit rollback."""
-        with patch("trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker):
+        with patch(
+            "trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker
+        ):
             with pytest.raises(asyncio.CancelledError):
                 async with get_session() as session:
                     raise asyncio.CancelledError()
@@ -55,7 +57,9 @@ class TestGetSessionBaseExceptionHandling:
         self, mock_session, mock_sessionmaker
     ):
         """Regular Exception inside get_session triggers rollback (existing behavior)."""
-        with patch("trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker):
+        with patch(
+            "trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker
+        ):
             with pytest.raises(ValueError):
                 async with get_session() as session:
                     raise ValueError("test error")
@@ -67,7 +71,9 @@ class TestGetSessionBaseExceptionHandling:
     @pytest.mark.asyncio
     async def test_successful_session_commits(self, mock_session, mock_sessionmaker):
         """Successful session usage commits and closes."""
-        with patch("trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker):
+        with patch(
+            "trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker
+        ):
             async with get_session() as session:
                 pass  # No error
 
@@ -82,7 +88,9 @@ class TestGetSessionBaseExceptionHandling:
         """If rollback fails during CancelledError, the error still propagates."""
         mock_session.rollback.side_effect = RuntimeError("connection lost")
 
-        with patch("trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker):
+        with patch(
+            "trackrat.db.engine.get_sessionmaker", return_value=mock_sessionmaker
+        ):
             with pytest.raises(asyncio.CancelledError):
                 async with get_session() as session:
                     raise asyncio.CancelledError()

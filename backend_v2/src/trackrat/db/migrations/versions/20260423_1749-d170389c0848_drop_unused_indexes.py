@@ -48,9 +48,7 @@ def downgrade() -> None:
     op.create_index(
         "idx_recent_dwell", "station_dwell_times", ["station_code", "created_at"]
     )
-    op.create_index(
-        "idx_discovery_time", "discovery_runs", ["station_code", "run_at"]
-    )
+    op.create_index("idx_discovery_time", "discovery_runs", ["station_code", "run_at"])
     op.create_index(
         "idx_validation_coverage",
         "validation_results",

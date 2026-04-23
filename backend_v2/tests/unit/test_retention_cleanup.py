@@ -107,23 +107,26 @@ class TestRetentionCleanupBatchLogic:
         service = SchedulerService.__new__(SchedulerService)
 
         execute_results = [
-            Mock(rowcount=500),   # journey batch
-            Mock(rowcount=100),   # discovery batch
-            Mock(rowcount=50),    # validation batch
+            Mock(rowcount=500),  # journey batch
+            Mock(rowcount=100),  # discovery batch
+            Mock(rowcount=50),  # validation batch
         ]
 
         freshness_session = AsyncMock()
 
         with (
-            patch("trackrat.services.scheduler.get_settings", return_value=mock_settings),
             patch(
-                "trackrat.services.scheduler.get_session"
-            ) as mock_get_session,
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
             patch(
                 "trackrat.services.scheduler.run_with_freshness_check"
             ) as mock_freshness,
         ):
-            async def execute_task_func(db, task_name, minimum_interval_seconds, task_func):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
                 await task_func()
                 return True
 
@@ -160,26 +163,29 @@ class TestRetentionCleanupBatchLogic:
 
         service = SchedulerService.__new__(SchedulerService)
 
-        # Simulate: first journey batch returns 10000 (full), second returns 5000 (partial)
+        # Simulate: first journey batch returns 1000 (full), second returns 500 (partial)
         execute_results = [
-            Mock(rowcount=10000),  # journey batch 1
-            Mock(rowcount=5000),   # journey batch 2
-            Mock(rowcount=0),      # discovery batch
-            Mock(rowcount=0),      # validation batch
+            Mock(rowcount=1000),  # journey batch 1
+            Mock(rowcount=500),  # journey batch 2
+            Mock(rowcount=0),  # discovery batch
+            Mock(rowcount=0),  # validation batch
         ]
 
         freshness_session = AsyncMock()
 
         with (
-            patch("trackrat.services.scheduler.get_settings", return_value=mock_settings),
             patch(
-                "trackrat.services.scheduler.get_session"
-            ) as mock_get_session,
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
             patch(
                 "trackrat.services.scheduler.run_with_freshness_check"
             ) as mock_freshness,
         ):
-            async def execute_task_func(db, task_name, minimum_interval_seconds, task_func):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
                 await task_func()
                 return True
 
@@ -219,10 +225,10 @@ class TestRetentionCleanupBatchLogic:
         freshness_session = AsyncMock()
 
         with (
-            patch("trackrat.services.scheduler.get_settings", return_value=mock_settings),
             patch(
-                "trackrat.services.scheduler.get_session"
-            ) as mock_get_session,
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
             patch(
                 "trackrat.services.scheduler.run_with_freshness_check",
                 return_value=False,
@@ -268,15 +274,18 @@ class TestRetentionCleanupBatchLogic:
             return session
 
         with (
-            patch("trackrat.services.scheduler.get_settings", return_value=mock_settings),
             patch(
-                "trackrat.services.scheduler.get_session"
-            ) as mock_get_session,
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
             patch(
                 "trackrat.services.scheduler.run_with_freshness_check"
             ) as mock_freshness,
         ):
-            async def execute_task_func(db, task_name, minimum_interval_seconds, task_func):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
                 await task_func()
                 return True
 
@@ -303,7 +312,7 @@ class TestRetentionCleanupBatchLogic:
             assert len(executed_params) == 3
             for params in executed_params:
                 assert params["days"] == 90
-                assert params["batch_size"] == 10000
+                assert params["batch_size"] == 1000
 
     @pytest.mark.asyncio
     async def test_cleanup_handles_exception_gracefully(self, mock_settings):
@@ -318,16 +327,19 @@ class TestRetentionCleanupBatchLogic:
         freshness_session = AsyncMock()
 
         with (
-            patch("trackrat.services.scheduler.get_settings", return_value=mock_settings),
             patch(
-                "trackrat.services.scheduler.get_session"
-            ) as mock_get_session,
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
             patch(
                 "trackrat.services.scheduler.run_with_freshness_check"
             ) as mock_freshness,
             patch("trackrat.services.scheduler.logger") as mock_logger,
         ):
-            async def execute_task_func(db, task_name, minimum_interval_seconds, task_func):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
                 await task_func()
                 return True
 
@@ -424,12 +436,12 @@ class TestRetentionCleanupSQLStatements:
                 if fk.column.table.name == "train_journeys":
                     journey_fk = fk
                     break
-            assert journey_fk is not None, (
-                f"{model.__tablename__} missing FK to train_journeys"
-            )
-            assert journey_fk.ondelete == "CASCADE", (
-                f"{model.__tablename__} FK to train_journeys missing ON DELETE CASCADE"
-            )
+            assert (
+                journey_fk is not None
+            ), f"{model.__tablename__} missing FK to train_journeys"
+            assert (
+                journey_fk.ondelete == "CASCADE"
+            ), f"{model.__tablename__} FK to train_journeys missing ON DELETE CASCADE"
 
 
 class TestRetentionCleanupFreshnessCheck:

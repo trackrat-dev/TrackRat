@@ -72,19 +72,19 @@ def test_dropped_indexes_not_in_journey_snapshots_model():
 
 def test_dropped_indexes_not_in_station_dwell_times_model():
     indexes = _get_index_names(StationDwellTime)
-    assert "idx_station_dwell" not in indexes, (
-        f"idx_station_dwell should be removed from StationDwellTime"
-    )
-    assert "idx_recent_dwell" not in indexes, (
-        f"idx_recent_dwell should be removed from StationDwellTime"
-    )
+    assert (
+        "idx_station_dwell" not in indexes
+    ), f"idx_station_dwell should be removed from StationDwellTime"
+    assert (
+        "idx_recent_dwell" not in indexes
+    ), f"idx_recent_dwell should be removed from StationDwellTime"
 
 
 def test_dropped_indexes_not_in_discovery_runs_model():
     indexes = _get_index_names(DiscoveryRun)
-    assert "idx_discovery_time" not in indexes, (
-        f"idx_discovery_time should be removed from DiscoveryRun"
-    )
+    assert (
+        "idx_discovery_time" not in indexes
+    ), f"idx_discovery_time should be removed from DiscoveryRun"
 
 
 def test_dropped_indexes_not_in_validation_results_model():
@@ -95,9 +95,9 @@ def test_dropped_indexes_not_in_validation_results_model():
 
 def test_dropped_indexes_not_in_service_alerts_model():
     indexes = _get_index_names(ServiceAlert)
-    assert "idx_service_alert_type" not in indexes, (
-        f"idx_service_alert_type should be removed from ServiceAlert"
-    )
+    assert (
+        "idx_service_alert_type" not in indexes
+    ), f"idx_service_alert_type should be removed from ServiceAlert"
 
 
 def test_dropped_indexes_not_in_route_alert_subscriptions_model():
@@ -151,45 +151,39 @@ def test_track_occupancy_lookup_explicitly_retained():
 
 def test_retained_indexes_still_present_on_journey_snapshots():
     indexes = _get_index_names(JourneySnapshot)
-    assert "idx_journey_time" in indexes, (
-        f"idx_journey_time should be retained on JourneySnapshot"
-    )
+    assert (
+        "idx_journey_time" in indexes
+    ), f"idx_journey_time should be retained on JourneySnapshot"
 
 
 def test_retained_indexes_still_present_on_service_alerts():
     indexes = _get_index_names(ServiceAlert)
-    assert "idx_service_alert_active" in indexes, (
-        f"idx_service_alert_active should be retained on ServiceAlert"
-    )
+    assert (
+        "idx_service_alert_active" in indexes
+    ), f"idx_service_alert_active should be retained on ServiceAlert"
 
 
 def test_retained_indexes_still_present_on_route_alert_subscriptions():
     indexes = _get_index_names(RouteAlertSubscription)
     expected = {"idx_alert_sub_device", "idx_alert_sub_train"}
     missing = expected - indexes
-    assert not missing, (
-        f"RouteAlertSubscription is missing retained indexes: {missing}"
-    )
+    assert not missing, f"RouteAlertSubscription is missing retained indexes: {missing}"
 
 
 def test_unique_constraint_preserved_on_journey_stops():
     """unique_journey_stop constraint must survive the index cleanup."""
     table_args = getattr(JourneyStop, "__table_args__", ())
-    constraints = [
-        arg for arg in table_args if isinstance(arg, UniqueConstraint)
-    ]
+    constraints = [arg for arg in table_args if isinstance(arg, UniqueConstraint)]
     names = {c.name for c in constraints}
-    assert "unique_journey_stop" in names, (
-        f"unique_journey_stop constraint missing from JourneyStop"
-    )
+    assert (
+        "unique_journey_stop" in names
+    ), f"unique_journey_stop constraint missing from JourneyStop"
 
 
 def test_unique_constraint_preserved_on_service_alerts():
     """uq_service_alert_id constraint must survive the index cleanup."""
     table_args = getattr(ServiceAlert, "__table_args__", ())
-    constraints = [
-        arg for arg in table_args if isinstance(arg, UniqueConstraint)
-    ]
+    constraints = [arg for arg in table_args if isinstance(arg, UniqueConstraint)]
     names = {c.name for c in constraints}
     assert "uq_service_alert_id" in names
 
@@ -210,9 +204,7 @@ def test_no_dropped_index_appears_in_any_model():
     for model in all_models:
         indexes = _get_index_names(model)
         overlap = DROPPED_INDEXES & indexes
-        assert not overlap, (
-            f"{model.__name__} still has dropped indexes: {overlap}"
-        )
+        assert not overlap, f"{model.__name__} still has dropped indexes: {overlap}"
 
 
 def test_migration_drops_exactly_eleven_indexes():
@@ -232,6 +224,7 @@ def test_migration_drops_exactly_eleven_indexes():
     )
 
     import trackrat.db.migrations.versions as versions_pkg
+
     mod = getattr(
         versions_pkg,
         "20260423_1749-d170389c0848_drop_unused_indexes",
@@ -316,6 +309,4 @@ def test_migration_downgrade_recreates_all_eleven_indexes():
         f"Downgrade should recreate exactly {DROPPED_INDEXES}, "
         f"but created {created_names}"
     )
-    assert len(calls) == 11, (
-        f"Expected 11 create_index calls, got {len(calls)}"
-    )
+    assert len(calls) == 11, f"Expected 11 create_index calls, got {len(calls)}"

@@ -34,9 +34,7 @@ def test_segment_transit_times_has_journey_id_index():
     on a 13M+ row table.
     """
     index_columns = _get_index_columns(SegmentTransitTime)
-    journey_id_indexed = any(
-        cols[0] == "journey_id" for cols in index_columns
-    )
+    journey_id_indexed = any(cols[0] == "journey_id" for cols in index_columns)
     assert journey_id_indexed, (
         "segment_transit_times is missing an index with journey_id as the "
         "leading column. This causes sequential scans on selectinload. "
@@ -51,9 +49,7 @@ def test_station_dwell_times_has_journey_id_index():
     needs this index to avoid sequential scans.
     """
     index_columns = _get_index_columns(StationDwellTime)
-    journey_id_indexed = any(
-        cols[0] == "journey_id" for cols in index_columns
-    )
+    journey_id_indexed = any(cols[0] == "journey_id" for cols in index_columns)
     assert journey_id_indexed, (
         "station_dwell_times is missing an index with journey_id as the "
         "leading column. This causes sequential scans on selectinload. "

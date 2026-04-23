@@ -2540,7 +2540,7 @@ class SchedulerService:
         cutoff_days = settings.retention_days
 
         async def do_retention_work() -> None:
-            batch_size = 10000
+            batch_size = 1000
             total_journeys = 0
             total_discovery = 0
             total_validation = 0

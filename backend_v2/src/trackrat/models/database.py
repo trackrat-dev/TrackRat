@@ -524,6 +524,7 @@ class StationDwellTime(Base):
 
     __table_args__ = (Index("idx_dwell_journey", "journey_id"),)
 
+
 class JourneyProgress(Base):
     """Journey progress snapshots for real-time tracking."""
 
