@@ -478,16 +478,11 @@ class LIRRCollector:
             journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
-            # Update stops
+            # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries).
+            # journey.stops was loaded via selectinload on the existence check above.
+            stops_by_code = {s.station_code: s for s in journey.stops}
             for arr in arrivals:
-                # Find existing stop
-                stop_result = await session.execute(
-                    select(JourneyStop).where(
-                        JourneyStop.journey_id == journey.id,
-                        JourneyStop.station_code == arr.station_code,
-                    )
-                )
-                existing_stop = stop_result.scalar_one_or_none()
+                existing_stop = stops_by_code.get(arr.station_code)
 
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
@@ -501,14 +496,10 @@ class LIRRCollector:
                             existing_stop.track_assigned_at = now_et()
                         existing_stop.track = arr.track
 
-            # Update departure status and journey metadata
+            # Update departure status and journey metadata using the in-memory
+            # stops collection — no re-query needed.
             now = now_et()
-            stop_result = await session.execute(
-                select(JourneyStop)
-                .where(JourneyStop.journey_id == journey.id)
-                .order_by(JourneyStop.stop_sequence)
-            )
-            journey_stops = list(stop_result.scalars().all())
+            journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
