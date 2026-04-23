@@ -137,16 +137,19 @@ class MNRCollector:
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             trips_in_batch = 0
+            analyzed_journeys: list[TrainJourney] = []
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
-                        result = await self._process_trip(
+                        result, journey = await self._process_trip(
                             session, trip_id, trip_arrivals
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
+                        if journey is not None and journey.id is not None:
+                            analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing MNR trip {trip_id}: {e}")
                     stats["errors"] += 1
@@ -162,6 +165,14 @@ class MNRCollector:
                     f"MNR collection: all {stats['errors']} trips failed, "
                     f"no successful discoveries or updates"
                 )
+
+            # Batched segment analysis for all processed journeys. Moving this
+            # out of the per-trip loop eliminates the O(trips * stops)
+            # per-segment SELECTs that dominate per-cycle cost.
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments_bulk(
+                session, analyzed_journeys
+            )
 
             # Expire active OBSERVED journeys not seen in this collection cycle.
             today = collection_start.date()
@@ -202,7 +213,7 @@ class MNRCollector:
 
     async def _process_trip(
         self, session: AsyncSession, trip_id: str, arrivals: list[MnrArrival]
-    ) -> str | None:
+    ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
 
@@ -215,10 +226,13 @@ class MNRCollector:
             arrivals: List of arrivals for this trip
 
         Returns:
-            "discovered", "updated", or None
+            Tuple of (result_type, journey) where result_type is
+            "discovered", "updated", or None. The journey reference is
+            returned so the caller can batch post-processing (e.g.,
+            TransitAnalyzer) after the per-trip loop completes.
         """
         if not arrivals:
-            return None
+            return None, None
 
         # Sort arrivals by time to get stop sequence
         arrivals.sort(key=lambda a: a.arrival_time)
@@ -322,7 +336,7 @@ class MNRCollector:
                     trip_id,
                     effective_stop_count,
                 )
-                return None
+                return None, None
 
             # Compute scheduled times
             if merged_stops:
@@ -457,12 +471,8 @@ class MNRCollector:
             update_journey_metadata(journey, now)
             check_journey_completed(journey, created_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Discovered MNR train {train_id}")
-            return "discovered"
+            return "discovered", journey
 
         else:
             # Update existing journey — arrival_time is already the predicted time
@@ -504,12 +514,8 @@ class MNRCollector:
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Updated MNR train {train_id}")
-            return "updated"
+            return "updated", journey
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney

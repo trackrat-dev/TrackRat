@@ -337,13 +337,12 @@ class TestSubwayCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        with patch("trackrat.collectors.subway.collector.TransitAnalyzer") as mock_ta:
-            mock_ta.return_value.analyze_new_segments = AsyncMock()
-            result, journey_id = await collector._process_trip(
-                mock_session, "131800_1..S03R", sample_arrivals
-            )
+        result, journey = await collector._process_trip(
+            mock_session, "131800_1..S03R", sample_arrivals
+        )
 
         assert result == "discovered"
+        assert journey is not None
         assert mock_session.add.call_count >= 1
         mock_session.flush.assert_called()
 
@@ -373,24 +372,22 @@ class TestSubwayCollectorProcessTrip:
             mock_result_stops_list,  # Get all stops for update
         ]
 
-        with patch("trackrat.collectors.subway.collector.TransitAnalyzer") as mock_ta:
-            mock_ta.return_value.analyze_new_segments = AsyncMock()
-            result, journey_id = await collector._process_trip(
-                mock_session, "131800_1..S03R", sample_arrivals
-            )
+        result, journey = await collector._process_trip(
+            mock_session, "131800_1..S03R", sample_arrivals
+        )
 
         assert result == "updated"
-        assert journey_id == 42
+        assert journey is existing_journey
 
     @pytest.mark.asyncio
     async def test_process_trip_returns_none_for_empty_arrivals(
         self, collector, mock_session
     ):
         """Test _process_trip returns (None, None) for empty arrivals list."""
-        result, journey_id = await collector._process_trip(mock_session, "trip_123", [])
+        result, journey = await collector._process_trip(mock_session, "trip_123", [])
 
         assert result is None
-        assert journey_id is None
+        assert journey is None
 
     @pytest.mark.asyncio
     async def test_process_trip_sorts_arrivals_by_time(self, collector, mock_session):
@@ -432,11 +429,10 @@ class TestSubwayCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        with patch("trackrat.collectors.subway.collector.TransitAnalyzer") as mock_ta:
-            mock_ta.return_value.analyze_new_segments = AsyncMock()
-            result, _ = await collector._process_trip(mock_session, "trip_1", arrivals)
+        result, journey = await collector._process_trip(mock_session, "trip_1", arrivals)
 
         assert result == "discovered"
+        assert journey is not None
 
 
 # =============================================================================

@@ -270,11 +270,12 @@ class TestMNRCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result = await collector._process_trip(
+        result, journey = await collector._process_trip(
             mock_session, "trip_123456", sample_arrivals
         )
 
         assert result == "discovered"
+        assert journey is not None
         # Should add journey and stops
         assert mock_session.add.call_count >= 1
         mock_session.flush.assert_called()
@@ -346,20 +347,22 @@ class TestMNRCollectorProcessTrip:
             ]
         )
 
-        result = await collector._process_trip(
+        result, journey = await collector._process_trip(
             mock_session, "trip_123456", sample_arrivals
         )
 
         assert result == "updated"
+        assert journey is existing_journey
 
     @pytest.mark.asyncio
     async def test_process_trip_returns_none_for_empty_arrivals(
         self, collector, mock_session
     ):
-        """Test _process_trip returns None for empty arrivals list."""
-        result = await collector._process_trip(mock_session, "trip_123", [])
+        """Test _process_trip returns (None, None) for empty arrivals list."""
+        result, journey = await collector._process_trip(mock_session, "trip_123", [])
 
         assert result is None
+        assert journey is None
 
     @pytest.mark.asyncio
     async def test_process_trip_sorts_arrivals_by_time(self, collector, mock_session):
@@ -397,9 +400,12 @@ class TestMNRCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result = await collector._process_trip(mock_session, "trip_123", arrivals)
+        result, journey = await collector._process_trip(
+            mock_session, "trip_123", arrivals
+        )
 
         assert result == "discovered"
+        assert journey is not None
         # Origin should be GCT (earlier time)
         # This is implicitly tested by the journey being created correctly
 
