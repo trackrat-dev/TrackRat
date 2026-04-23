@@ -16,9 +16,9 @@ from structlog import get_logger
 from trackrat.api.utils import handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.config.stations import (
+    STATION_NAMES,
     canonical_station_code,
     expand_station_codes,
-    get_station_name,
 )
 from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
@@ -388,7 +388,7 @@ async def get_train_details(
         stop_detail = StopDetails(
             station=SimpleStationInfo(
                 code=stop.station_code,
-                name=get_station_name(stop.station_code) or stop.station_name,
+                name=STATION_NAMES.get(stop.station_code) or stop.station_name or stop.station_code,
             ),
             stop_sequence=stop.stop_sequence or 0,
             scheduled_arrival=stop.scheduled_arrival,
