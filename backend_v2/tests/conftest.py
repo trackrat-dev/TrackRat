@@ -10,9 +10,6 @@ import structlog
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, Mock, patch
 
-# Disable Sentry completely before any imports
-os.environ["SENTRY_DSN"] = ""
-
 # Set required environment variables before importing trackrat modules
 # This is needed because main.py calls get_settings() at module import time
 os.environ.setdefault(
