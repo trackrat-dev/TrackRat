@@ -10,16 +10,14 @@ These tests verify the fix for the bug where NJT trains like #6318
 """
 
 import asyncio
-from datetime import date, timedelta
+from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from trackrat.models.database import TrainJourney, JourneyStop
+from trackrat.models.database import TrainJourney
 from trackrat.services.departure import (
     DepartureService,
-    SCHEDULED_VISIBILITY_THRESHOLD_MINUTES,
-    _background_refresh_station,
     _refreshing_stations,
 )
 from trackrat.utils.time import now_et
@@ -268,12 +266,14 @@ class TestRunInlineJitRefresh:
         with patch(
             "trackrat.services.departure._background_refresh_station",
             new_callable=AsyncMock,
-        ):
-            result = await service._run_inline_jit_refresh(
-                "SO", now_et().date(), True, True
-            )
+        ) as mock_refresh:
+            result = await service._run_inline_jit_refresh("SO", now_et().date(), True)
 
         assert result is True
+        # Inline path always skips the second pass to stay within its
+        # 10s budget; see _run_inline_jit_refresh docstring.
+        _, kwargs = mock_refresh.call_args
+        assert kwargs["skip_individual_refresh"] is True
         # Station should be cleaned up after task completes
         # (done callback fires)
 
@@ -290,9 +290,7 @@ class TestRunInlineJitRefresh:
             "trackrat.services.departure._background_refresh_station",
             side_effect=slow_refresh,
         ):
-            result = await service._run_inline_jit_refresh(
-                "SO", now_et().date(), True, True
-            )
+            result = await service._run_inline_jit_refresh("SO", now_et().date(), True)
 
         assert result is False
 
@@ -302,8 +300,6 @@ class TestRunInlineJitRefresh:
         get_departures code skips inline refresh."""
         # This tests the guard in get_departures, not _run_inline_jit_refresh
         _refreshing_stations.add("SO")
-
-        service = DepartureService.__new__(DepartureService)
         # _run_inline_jit_refresh should not be called due to guard,
         # but verify the guard condition works
         assert "SO" in _refreshing_stations

@@ -353,7 +353,6 @@ class DepartureService:
                 jit_ran_inline = await self._run_inline_jit_refresh(
                     from_station,
                     target_date,
-                    skip_individual_refresh,
                     hide_departed,
                 )
             if not jit_ran_inline:
@@ -948,7 +947,6 @@ class DepartureService:
         self,
         from_station: str,
         target_date: date,
-        skip_individual_refresh: bool,
         hide_departed: bool,
     ) -> bool:
         """Run JIT station refresh inline, waiting up to 10 seconds.
@@ -957,6 +955,12 @@ class DepartureService:
         query sees promoted trains.  If the refresh doesn't finish in time the
         task keeps running in the background and the request proceeds with
         whatever data is in the DB.
+
+        The second pass (per-train getTrainStopList refresh of trains past
+        their scheduled time) is always skipped on the inline path: it adds
+        up to 50 sequential NJT API calls, which blows the 10s inline budget,
+        and the user-visible upcoming trains have already been refreshed
+        by the bulk getTrainSchedule call in the first pass.
 
         Returns True if the refresh completed (caller can skip the background
         trigger), False otherwise.
@@ -967,8 +971,8 @@ class DepartureService:
                 self,
                 from_station,
                 target_date,
-                skip_individual_refresh,
-                hide_departed,
+                skip_individual_refresh=True,
+                hide_departed=hide_departed,
             ),
             name=f"inline_jit_{from_station}",
         )
