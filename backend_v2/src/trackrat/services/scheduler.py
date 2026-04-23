@@ -12,7 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -414,6 +414,17 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=900,  # 15 minute grace period
+        )
+
+        # Schedule data retention cleanup (daily at 3:30 AM ET, after GTFS refresh)
+        self.scheduler.add_job(
+            self.retention_cleanup,
+            trigger=CronTrigger(hour=3, minute=30, timezone="America/New_York"),
+            id="retention_cleanup",
+            name="Data Retention Cleanup",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=3600,
         )
 
         # Start the scheduler
@@ -2516,6 +2527,117 @@ class SchedulerService:
                 error=str(e),
                 error_type=type(e).__name__,
             )
+
+    async def retention_cleanup(self) -> None:
+        """Delete old train journey data and auxiliary records.
+
+        Deletes train_journeys older than retention_days (cascading to
+        journey_stops, journey_snapshots, journey_progress,
+        segment_transit_times, station_dwell_times via ON DELETE CASCADE).
+        Also prunes discovery_runs and validation_results.
+        """
+        settings = get_settings()
+        cutoff_days = settings.retention_days
+
+        async def do_retention_work() -> None:
+            batch_size = 10000
+            total_journeys = 0
+            total_discovery = 0
+            total_validation = 0
+
+            try:
+                logger.info(
+                    "starting_retention_cleanup",
+                    cutoff_days=cutoff_days,
+                )
+
+                # Phase 1: Delete old train_journeys in batches
+                while True:
+                    async with get_session() as db:
+                        result = await db.execute(
+                            text(
+                                "DELETE FROM train_journeys "
+                                "WHERE id IN ("
+                                "  SELECT id FROM train_journeys "
+                                "  WHERE journey_date < CURRENT_DATE - make_interval(days => :days) "
+                                "  LIMIT :batch_size"
+                                ")"
+                            ),
+                            {"days": cutoff_days, "batch_size": batch_size},
+                        )
+                        deleted = result.rowcount or 0
+                    total_journeys += deleted
+                    if deleted < batch_size:
+                        break
+
+                # Phase 2: Delete old discovery_runs in batches
+                while True:
+                    async with get_session() as db:
+                        result = await db.execute(
+                            text(
+                                "DELETE FROM discovery_runs "
+                                "WHERE id IN ("
+                                "  SELECT id FROM discovery_runs "
+                                "  WHERE run_at < NOW() - make_interval(days => :days) "
+                                "  LIMIT :batch_size"
+                                ")"
+                            ),
+                            {"days": cutoff_days, "batch_size": batch_size},
+                        )
+                        deleted = result.rowcount or 0
+                    total_discovery += deleted
+                    if deleted < batch_size:
+                        break
+
+                # Phase 3: Delete old validation_results in batches
+                while True:
+                    async with get_session() as db:
+                        result = await db.execute(
+                            text(
+                                "DELETE FROM validation_results "
+                                "WHERE id IN ("
+                                "  SELECT id FROM validation_results "
+                                "  WHERE run_at < NOW() - make_interval(days => :days) "
+                                "  LIMIT :batch_size"
+                                ")"
+                            ),
+                            {"days": cutoff_days, "batch_size": batch_size},
+                        )
+                        deleted = result.rowcount or 0
+                    total_validation += deleted
+                    if deleted < batch_size:
+                        break
+
+                logger.info(
+                    "retention_cleanup_completed",
+                    cutoff_days=cutoff_days,
+                    journeys_deleted=total_journeys,
+                    discovery_runs_deleted=total_discovery,
+                    validation_results_deleted=total_validation,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "retention_cleanup_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    journeys_deleted_so_far=total_journeys,
+                    discovery_runs_deleted_so_far=total_discovery,
+                    validation_results_deleted_so_far=total_validation,
+                )
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(24 * 60)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="retention_cleanup",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_retention_work,
+            )
+
+            if not executed:
+                logger.debug("retention_cleanup_skipped_still_fresh")
 
     # All GTFS feed sources — add new systems here
     GTFS_SOURCES = (
