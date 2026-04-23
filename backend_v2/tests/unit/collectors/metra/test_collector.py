@@ -495,6 +495,31 @@ class TestCollectorErrorPropagation:
         with pytest.raises(RuntimeError, match="feed fetch failed"):
             await collector.collect(session)
 
+    @pytest.mark.asyncio
+    async def test_fetch_error_resets_consecutive_empty_counter(self):
+        """MetraFetchError should reset the consecutive empty counter.
+
+        A fetch error breaks the "consecutive empty" chain because it's a
+        different failure mode (already surfaced as RuntimeError). Without
+        the reset, empty→empty→error→empty would falsely count as 3
+        consecutive empty cycles.
+        """
+        collector_module._consecutive_empty_cycles = 2
+
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(
+            side_effect=MetraFetchError("HTTP 500")
+        )
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="Metra feed fetch failed"):
+            await collector.collect(session)
+
+        assert collector_module._consecutive_empty_cycles == 0
+
 
 # =============================================================================
 # CONSECUTIVE EMPTY CYCLE DETECTION TESTS

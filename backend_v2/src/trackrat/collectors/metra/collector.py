@@ -138,6 +138,7 @@ class MetraCollector:
             try:
                 arrivals = await self.client.get_all_arrivals()
             except MetraFetchError as e:
+                _consecutive_empty_cycles = 0
                 raise RuntimeError(f"Metra feed fetch failed: {e}") from e
 
             stats["total_arrivals"] = len(arrivals)
