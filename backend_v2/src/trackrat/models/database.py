@@ -485,6 +485,7 @@ class SegmentTransitTime(Base):
     )
 
     __table_args__ = (
+        Index("idx_segment_journey", "journey_id"),
         Index(
             "idx_segment_lookup",
             "from_station_code",
@@ -543,6 +544,7 @@ class StationDwellTime(Base):
     )
 
     __table_args__ = (
+        Index("idx_dwell_journey", "journey_id"),
         Index("idx_station_dwell", "station_code", "data_source", "departure_time"),
         Index("idx_recent_dwell", "station_code", "created_at"),
     )
