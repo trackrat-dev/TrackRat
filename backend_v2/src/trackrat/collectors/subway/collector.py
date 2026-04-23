@@ -14,7 +14,7 @@ Key differences from LIRR/MNR:
 import asyncio
 import hashlib
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -145,17 +145,54 @@ class SubwayCollector:
 
             logger.info(f"Found {len(trips)} subway trips in GTFS-RT feeds")
 
+            # Pre-compute the (train_id, journey_date) key for every trip so
+            # we can bulk-load matching journeys in one query. Without this,
+            # each _process_trip did its own SELECT + 6-way selectinload —
+            # ~500 trips × 7 round-trips per cycle. See issue #962 context.
+            trip_meta: list[tuple[str, str, date, list[SubwayArrival]]] = (
+                []
+            )  # (trip_id, train_id, journey_date, arrivals)
+            for trip_id, trip_arrivals in trips.items():
+                if not trip_arrivals:
+                    continue
+                first_arrival = min(trip_arrivals, key=lambda a: a.arrival_time)
+                tid = _generate_train_id(trip_id, first_arrival.route_id)
+                jd = first_arrival.arrival_time.astimezone(ET).date()
+                trip_meta.append((trip_id, tid, jd, trip_arrivals))
+
+            existing_by_key: dict[tuple[str, date], TrainJourney] = {}
+            if trip_meta:
+                train_ids = {m[1] for m in trip_meta}
+                journey_dates = {m[2] for m in trip_meta}
+                existing_q = await session.execute(
+                    select(TrainJourney)
+                    .where(
+                        TrainJourney.data_source == "SUBWAY",
+                        TrainJourney.train_id.in_(train_ids),
+                        TrainJourney.journey_date.in_(journey_dates),
+                    )
+                    .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
+                )
+                existing_by_key = {
+                    (j.train_id, j.journey_date): j
+                    for j in existing_q.scalars()
+                    if j.train_id is not None and j.journey_date is not None
+                }
+
             # Process each trip inside a savepoint, committing in batches
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             seen_journey_ids: set[int] = set()
             analyzed_journeys: list[TrainJourney] = []
             trips_in_batch = 0
-            for trip_id, trip_arrivals in trips.items():
+            for trip_id, tid, jd, trip_arrivals in trip_meta:
                 try:
                     async with session.begin_nested():
                         result, journey = await self._process_trip(
-                            session, trip_id, trip_arrivals
+                            session,
+                            trip_id,
+                            trip_arrivals,
+                            existing_by_key.get((tid, jd)),
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
@@ -236,10 +273,21 @@ class SubwayCollector:
         return stats
 
     async def _process_trip(
-        self, session: AsyncSession, trip_id: str, arrivals: list[SubwayArrival]
+        self,
+        session: AsyncSession,
+        trip_id: str,
+        arrivals: list[SubwayArrival],
+        existing_journey: TrainJourney | None,
     ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
+
+        Args:
+            existing_journey: Pre-fetched TrainJourney for this (train_id,
+                journey_date, data_source) key, or None if no existing
+                record. The caller bulk-loads these before the per-trip
+                loop so we avoid ~500 per-trip SELECTs per cycle; see
+                collect().
 
         Returns:
             Tuple of (result_type, journey) where result_type is
@@ -275,17 +323,7 @@ class SubwayCollector:
         arrival_et = first_arrival.arrival_time.astimezone(ET)
         journey_date = arrival_et.date()
 
-        # Check if journey already exists
-        existing = await session.execute(
-            select(TrainJourney)
-            .where(
-                TrainJourney.train_id == train_id,
-                TrainJourney.journey_date == journey_date,
-                TrainJourney.data_source == "SUBWAY",
-            )
-            .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
-        )
-        journey = existing.scalar_one_or_none()
+        journey = existing_journey
 
         if journey is None:
             # Try GTFS static backfill
