@@ -55,9 +55,19 @@ class TestDepartureFlagValidation:
         """Test that past trains are still correctly marked as departed."""
         service = DepartureService()
 
+        # Use a real JourneyStop so it's found in the stops_by_code dict
+        stop = JourneyStop(
+            journey_id=1,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+        )
+        stop.actual_departure = None
+
         journey = MagicMock(spec=TrainJourney)
         journey.train_id = "3201"
         journey.id = 1
+        journey.stops = [stop]
 
         # Past train with DEPARTED=YES
         stops_data = [
@@ -71,19 +81,7 @@ class TestDepartureFlagValidation:
             }
         ]
 
-        # Mock session: simulate successful insert, then return a real JourneyStop
-        stop = JourneyStop(
-            journey_id=1,
-            station_code="NY",
-            station_name="New York Penn Station",
-            stop_sequence=0,
-        )
-        stop.actual_departure = None
-        insert_result = MagicMock()
-        insert_result.scalar_one_or_none.return_value = 1
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=insert_result)
-        mock_session.get = AsyncMock(return_value=stop)
 
         with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time
@@ -111,9 +109,19 @@ class TestDepartureFlagValidation:
         """
         service = DepartureService()
 
+        # Use a real JourneyStop so it's found in the stops_by_code dict
+        stop = JourneyStop(
+            journey_id=2,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+        )
+        stop.actual_departure = None
+
         journey = MagicMock(spec=TrainJourney)
         journey.train_id = "7845"
         journey.id = 2
+        journey.stops = [stop]
 
         # Train with DEPARTED=YES and no existing actual_departure
         stops_data = [
@@ -127,19 +135,7 @@ class TestDepartureFlagValidation:
             }
         ]
 
-        # Mock session: simulate successful insert, then return a real JourneyStop
-        stop = JourneyStop(
-            journey_id=2,
-            station_code="NY",
-            station_name="New York Penn Station",
-            stop_sequence=0,
-        )
-        stop.actual_departure = None
-        insert_result = MagicMock()
-        insert_result.scalar_one_or_none.return_value = 1
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(return_value=insert_result)
-        mock_session.get = AsyncMock(return_value=stop)
 
         with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time
@@ -165,10 +161,6 @@ class TestDepartureFlagValidation:
         """
         service = DepartureService()
 
-        journey = MagicMock(spec=TrainJourney)
-        journey.train_id = "7845"
-        journey.id = 3
-
         # Create an existing stop with actual_departure already set
         existing_actual = self.past_time - timedelta(minutes=5)
         existing_stop = JourneyStop(
@@ -181,6 +173,11 @@ class TestDepartureFlagValidation:
         existing_stop.track = None
         existing_stop.track_assigned_at = None
 
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "7845"
+        journey.id = 3
+        journey.stops = [existing_stop]
+
         stops_data = [
             {
                 "STATION_2CHAR": "NY",
@@ -192,13 +189,7 @@ class TestDepartureFlagValidation:
             }
         ]
 
-        # Mock session: simulate conflict (stop already exists), return existing_stop
-        insert_result = MagicMock()
-        insert_result.scalar_one_or_none.return_value = None
-        select_result = MagicMock()
-        select_result.scalar_one.return_value = existing_stop
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(side_effect=[insert_result, select_result])
 
         with patch("trackrat.services.departure.parse_njt_time") as mock_parse:
             mock_parse.return_value = self.past_time

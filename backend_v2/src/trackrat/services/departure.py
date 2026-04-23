@@ -1182,6 +1182,12 @@ class DepartureService:
                             error=str(e) or repr(e),
                             error_type=type(e).__name__,
                         )
+                        # Roll back the failed transaction so subsequent
+                        # iterations don't cascade with PendingRollbackError.
+                        try:
+                            await db.rollback()
+                        except Exception:
+                            pass
 
                 await db.commit()
                 logger.info(
@@ -1218,6 +1224,14 @@ class DepartureService:
         multiple sessions (e.g., cache precomputation vs user request).
         """
 
+        # Build lookup from eagerly-loaded stops to avoid N+1 queries and
+        # prevent greenlet_spawn errors from fetching stops outside the ORM
+        # collection (session.get() after pg_insert creates objects not tracked
+        # in journey.stops, causing orphan-check lazy loads during flush).
+        stops_by_code: dict[str, JourneyStop] = {
+            s.station_code: s for s in journey.stops
+        }
+
         # First pass: find the furthest departed stop for sequential inference.
         # NJT's DEPARTED flag is inconsistent across API calls — a later stop
         # can show DEPARTED=YES while an earlier one shows NO, even though the
@@ -1232,35 +1246,33 @@ class DepartureService:
             if not station_code:
                 continue
 
-            # Upsert: insert or fetch existing stop (race-safe)
-            stmt = (
-                pg_insert(JourneyStop)
-                .values(
-                    journey_id=journey.id,
-                    station_code=station_code,
-                    station_name=stop_data.get("STATIONNAME", ""),
-                    stop_sequence=i,
+            stop = stops_by_code.get(station_code)
+            if stop is None:
+                # Not in eagerly-loaded collection — insert via raw SQL for
+                # concurrent-update safety, then re-fetch.
+                stmt = (
+                    pg_insert(JourneyStop)
+                    .values(
+                        journey_id=journey.id,
+                        station_code=station_code,
+                        station_name=stop_data.get("STATIONNAME", ""),
+                        stop_sequence=i,
+                    )
+                    .on_conflict_do_nothing(constraint="unique_journey_stop")
                 )
-                .on_conflict_do_nothing(constraint="unique_journey_stop")
-                .returning(JourneyStop.id)
-            )
-            result = await session.execute(stmt)
-            inserted_id = result.scalar_one_or_none()
+                await session.execute(stmt)
 
-            if inserted_id:
-                # New row inserted — fetch the ORM object
-                stop = await session.get(JourneyStop, inserted_id)
-            else:
-                # Already existed — fetch by unique key
-                existing = await session.execute(
+                result = await session.execute(
                     select(JourneyStop).where(
                         JourneyStop.journey_id == journey.id,
                         JourneyStop.station_code == station_code,
                     )
                 )
-                stop = existing.scalar_one()
+                stop = result.scalar_one()
+                journey.stops.append(stop)
+                stops_by_code[station_code] = stop
 
-            assert stop is not None  # Just inserted or fetched by unique key
+            assert stop is not None
 
             # Update scheduled times from immutable SCHED_*_DATE fields.
             # Only set if not already populated (preserves schedule-collector values).
