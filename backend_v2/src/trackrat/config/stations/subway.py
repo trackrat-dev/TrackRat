@@ -457,7 +457,7 @@ SUBWAY_STATION_NAMES: dict[str, str] = {
     "SN08": "Kings Hwy (N/W)",
     "SN09": "Avenue U (N/W)",
     "SN10": "86 St (N/W)",
-    "SQ01": "Canal St (Q)",
+    "SQ01": "Canal St (N/Q)",
     "SQ03": "72 St (Q)",
     "SQ04": "86 St (Q)",
     "SQ05": "96 St (Q)",
