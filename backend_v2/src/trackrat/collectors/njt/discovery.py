@@ -19,7 +19,7 @@ from trackrat.config.stations import DISCOVERY_STATIONS
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
-from trackrat.utils.time import now_et, parse_njt_time
+from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 from trackrat.utils.train import is_amtrak_train
 
 logger = get_logger(__name__)
@@ -465,6 +465,15 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
 
                 scheduled_departure = parse_njt_time(sched_dep_str)
                 journey_date = scheduled_departure.date()
+
+                if not validate_journey_date(journey_date):
+                    logger.warning(
+                        "rejecting_invalid_journey_date",
+                        train_id=train_id,
+                        journey_date=journey_date.isoformat(),
+                        raw_sched_dep=sched_dep_str,
+                    )
+                    continue
 
                 # Disable autoflush inside savepoint to prevent implicit
                 # lock acquisition during SELECTs that can deadlock with
