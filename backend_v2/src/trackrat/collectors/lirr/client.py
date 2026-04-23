@@ -21,6 +21,11 @@ from trackrat.config.stations import (
 
 logger = logging.getLogger(__name__)
 
+# Phase-broken HTTP timeout. Bounds a hung TCP connect or stalled TLS handshake
+# independently from read time so an unreachable MTA host can't consume the
+# scheduler's 480s budget waiting on a scalar read timeout.
+_DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
+
 
 class LirrArrival(BaseModel):
     """A single arrival/stop time from the LIRR GTFS-RT feed."""
@@ -50,13 +55,19 @@ class LIRRClient:
     Uses a 30-second cache to minimize API calls.
     """
 
-    def __init__(self, timeout: float = 30.0) -> None:
+    def __init__(
+        self, timeout: httpx.Timeout | float | None = None
+    ) -> None:
         """Initialize LIRR client.
 
         Args:
-            timeout: HTTP request timeout in seconds
+            timeout: httpx.Timeout instance or scalar seconds. Defaults to a
+                phase-broken timeout (connect=5s, read=15s, write=5s, pool=5s)
+                so a hung TCP connect can't hold the whole collector.
         """
-        self.timeout = timeout
+        self.timeout: httpx.Timeout | float = (
+            timeout if timeout is not None else _DEFAULT_TIMEOUT
+        )
         self._session: httpx.AsyncClient | None = None
         self._cache: list[LirrArrival] | None = None
         self._cache_time: datetime | None = None

@@ -760,3 +760,57 @@ class TestLIRRCollectorRun:
             assert "discovered" in result
             assert "updated" in result
             assert "errors" in result
+
+
+class TestLIRRCollectorFailFast:
+    """Tests for LIRR fail-fast on upstream 5xx / hang (#960)."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(
+        self, mock_session
+    ):
+        """If the upstream feed hangs indefinitely, the collector must bail
+        quickly via asyncio.wait_for instead of consuming the scheduler budget.
+        """
+        import asyncio as _asyncio
+
+        hang_event = _asyncio.Event()  # never set, so the fetch hangs forever
+
+        async def hang_forever():
+            await hang_event.wait()
+            return []
+
+        hung_client = AsyncMock(spec=LIRRClient)
+        hung_client.get_all_arrivals = hang_forever
+        hung_client.close = AsyncMock()
+
+        collector = LIRRCollector(client=hung_client)
+
+        # Patch the timeout constant to something small so the test is fast
+        with patch(
+            "trackrat.collectors.lirr.collector._FEED_FETCH_TIMEOUT_SECONDS",
+            0.05,
+        ):
+            import time
+            t0 = time.monotonic()
+            result = await collector.collect(mock_session)
+            elapsed = time.monotonic() - t0
+
+        # Must return well within 1s, not hang forever
+        assert elapsed < 1.0, f"collect() took {elapsed:.2f}s — fail-fast broken"
+        # Stats should be the initial empty dict (no work was done)
+        assert result["total_arrivals"] == 0
+        assert result["discovered"] == 0
+        assert result["updated"] == 0
+        # No DB commit should be attempted when the fetch timed out
+        mock_session.commit.assert_not_called()

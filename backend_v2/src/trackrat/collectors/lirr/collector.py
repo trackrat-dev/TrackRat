@@ -5,6 +5,7 @@ Uses the LIRRClient to fetch GTFS-RT data and creates/updates TrainJourney recor
 Follows the same pattern as the PATH collector for simplicity.
 """
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -33,6 +34,11 @@ from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import ET, now_et
 
 logger = logging.getLogger(__name__)
+
+# Outer bound on the feed fetch. Generous relative to the per-phase timeouts in
+# LIRRClient, but still leaves the bulk of the 480s scheduler budget for DB
+# work when the upstream MTA endpoint is degraded.
+_FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
 
 def _generate_train_id(trip_id: str) -> str:
@@ -125,8 +131,22 @@ class LIRRCollector:
         try:
             collection_start = now_et()
 
-            # Fetch all arrivals
-            arrivals = await self.client.get_all_arrivals()
+            # Fetch all arrivals. Wrap in wait_for so an upstream MTA outage
+            # (hung connects, stalled reads beyond the phase timeouts) can't
+            # consume the whole 480s scheduler budget — we bail with empty
+            # stats and pick it up next cycle (~4 min).
+            try:
+                arrivals = await asyncio.wait_for(
+                    self.client.get_all_arrivals(),
+                    timeout=_FEED_FETCH_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "lirr_feed_fetch_timed_out | timeout_s=%.1f",
+                    _FEED_FETCH_TIMEOUT_SECONDS,
+                )
+                return stats
+
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:

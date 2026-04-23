@@ -676,3 +676,32 @@ class TestSubwayClient:
 
         assert "1234567S" in succeeded_feeds
         assert "ACE" not in succeeded_feeds, "Empty feed should not count as success"
+
+
+class TestSubwayClientTimeout:
+    """Tests for SubwayClient phase-broken HTTP timeout (#960)."""
+
+    def test_default_timeout_is_phase_broken(self):
+        """Default timeout breaks connect/read/write/pool into separate budgets.
+
+        Prevents a hung TCP connect from consuming the full read timeout:
+        without this, a stalled connect could tie up each of the 8 feeds for
+        the scalar read timeout, amplifying the problem.
+        """
+        client = SubwayClient()
+        assert isinstance(client.timeout, httpx.Timeout)
+        assert client.timeout.connect == 5.0
+        assert client.timeout.read == 15.0
+        assert client.timeout.write == 5.0
+        assert client.timeout.pool == 5.0
+
+    def test_explicit_float_timeout_is_preserved(self):
+        """Callers can still pass a scalar for tests / simple scripts."""
+        client = SubwayClient(timeout=10.0)
+        assert client.timeout == 10.0
+
+    def test_explicit_httpx_timeout_is_preserved(self):
+        """Callers can pass an httpx.Timeout for fine-grained control."""
+        custom = httpx.Timeout(connect=1.0, read=2.0, write=1.0, pool=1.0)
+        client = SubwayClient(timeout=custom)
+        assert client.timeout is custom
