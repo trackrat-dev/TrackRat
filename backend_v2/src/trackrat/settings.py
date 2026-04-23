@@ -150,6 +150,13 @@ class Settings(BaseSettings):
         ge=30,
     )
 
+    # Retention Settings
+    retention_days: int = Field(
+        default=120,
+        description="Days to retain train journey data before cleanup (min 30)",
+        ge=30,
+    )
+
     # Validation Settings
     internal_api_url: str = Field(
         default="http://localhost:8000",
