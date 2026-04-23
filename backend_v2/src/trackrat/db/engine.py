@@ -7,6 +7,7 @@ Uses PostgreSQL with asyncpg for scalable, concurrent database access.
 import asyncio
 import functools
 from collections.abc import AsyncGenerator, Awaitable, Callable
+import contextlib
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
@@ -198,6 +199,10 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
             await session.commit()
         except Exception:
             await session.rollback()
+            raise
+        except BaseException:
+            with contextlib.suppress(Exception):
+                await session.rollback()
             raise
         finally:
             await session.close()
