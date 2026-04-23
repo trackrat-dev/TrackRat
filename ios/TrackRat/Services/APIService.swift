@@ -92,7 +92,23 @@ final class APIService: ObservableObject {
         }
         return decoder
     }()
-    
+
+    /// For a future `selectedDate`, project today's wall-clock time-of-day (ET)
+    /// onto it so the backend's limit-50 window lands around the user's current
+    /// commute time rather than always at midnight. Returns nil for today or
+    /// past dates so the existing today-path behavior is unchanged.
+    static func timeFromForFutureDate(_ selectedDate: Date, now: Date = Date()) -> Date? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        guard let selectedStart = calendar.dateInterval(of: .day, for: selectedDate)?.start,
+              let todayStart = calendar.dateInterval(of: .day, for: now)?.start,
+              selectedStart > todayStart else {
+            return nil
+        }
+        let timeOfDay = now.timeIntervalSince(todayStart)
+        return selectedStart.addingTimeInterval(timeOfDay)
+    }
+
     // MARK: - Train Search
 
     struct DepartureSearchResult {
@@ -282,10 +298,20 @@ final class APIService: ObservableObject {
         ]
 
         if let date = date {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            formatter.timeZone = TimeZone(identifier: "America/New_York")
-            queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
+            queryItems.append(URLQueryItem(name: "date", value: dateFormatter.string(from: date)))
+
+            // For future dates, anchor the backend's `limit` window to the
+            // user's current time-of-day on the selected day. Without this,
+            // high-frequency providers (e.g. SUBWAY) return only the pre-dawn
+            // sliver of the day because all 50 returned trains fall before sunrise.
+            if let futureTimeFrom = Self.timeFromForFutureDate(date) {
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                queryItems.append(URLQueryItem(name: "time_from", value: isoFormatter.string(from: futureTimeFrom)))
+            }
         }
 
         if let dataSources = dataSources, !dataSources.isEmpty {
