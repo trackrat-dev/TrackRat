@@ -69,6 +69,12 @@ def format_github_issue(payload):
     return title, body
 
 
+# Bounded timeout keeps GitHub creation non-fatal: a stalled request can't
+# outlast the Cloud Function and trigger a Pub/Sub retry that would duplicate
+# the Slack post (and potentially the GitHub issue).
+GITHUB_API_TIMEOUT_SECONDS = 10
+
+
 def create_github_issue(token, title, body):
     """Create a GitHub issue in the trackrat-dev/TrackRat repository.
 
@@ -89,7 +95,7 @@ def create_github_issue(token, title, body):
     )
 
     try:
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=GITHUB_API_TIMEOUT_SECONDS) as response:
             result = json.loads(response.read().decode("utf-8"))
             return result.get("html_url")
     except urllib.error.HTTPError as e:
@@ -107,7 +113,7 @@ def create_github_issue(token, title, body):
                 },
                 method="POST",
             )
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=GITHUB_API_TIMEOUT_SECONDS) as response:
                 result = json.loads(response.read().decode("utf-8"))
                 return result.get("html_url")
         raise
