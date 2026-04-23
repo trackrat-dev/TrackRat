@@ -576,6 +576,182 @@ class DepartureService:
             },
         )
 
+    async def get_recent_departures(
+        self,
+        db: AsyncSession,
+        from_station: str,
+        to_station: str | None = None,
+        window_minutes: int = 120,
+        limit: int = 50,
+        data_sources: list[str] | None = None,
+    ) -> DeparturesResponse:
+        """Get recently-departed trains from a station.
+
+        Returns trains whose scheduled departure from the origin station was
+        within the last ``window_minutes``, including cancellations and
+        completed journeys. Sorted by scheduled departure, most recent first.
+
+        Unlike ``get_departures``, this intentionally bypasses the
+        ``is_expired`` / ``is_completed`` / ``hide_departed`` filters so that
+        finished trips remain visible. No JIT refresh or GTFS merge — the
+        data is historical.
+        """
+        now = now_et()
+        window_start = now - timedelta(minutes=window_minutes)
+
+        # journey_date range spans yesterday→today to handle overnight journeys
+        # scheduled before midnight for trains observed past midnight.
+        journey_date_filter = and_(
+            TrainJourney.journey_date >= (window_start.date() - timedelta(days=1)),
+            TrainJourney.journey_date <= now.date(),
+        )
+
+        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        from_codes = expand_station_codes(from_station)
+        to_codes = expand_station_codes(to_station) if to_station else []
+
+        recent_filters = [
+            JourneyStop.scheduled_departure >= window_start,
+            JourneyStop.scheduled_departure < now,
+            journey_date_filter,
+            TrainJourney.data_source.in_(allowed_sources),
+            # A train counts as "recent" if it actually left the origin or
+            # was cancelled. Excludes SCHEDULED trains that never ran and
+            # weren't marked as cancelled (no useful signal for the user).
+            or_(
+                JourneyStop.has_departed_station.is_(True),
+                TrainJourney.is_cancelled.is_(True),
+            ),
+        ]
+
+        stmt = (
+            select(TrainJourney)
+            .join(
+                JourneyStop,
+                and_(
+                    JourneyStop.journey_id == TrainJourney.id,
+                    JourneyStop.station_code.in_(from_codes),
+                ),
+            )
+            .where(and_(*recent_filters))
+            .options(selectinload(TrainJourney.stops))
+            .order_by(JourneyStop.scheduled_departure.desc())
+        )
+
+        result = await db.execute(stmt)
+        journeys = list(result.scalars().unique().all())
+
+        # Deduplicate by train_id (same logic as get_departures): keeps the
+        # first (most-recent) occurrence per train_id.
+        seen_train_ids: set[str] = set()
+        unique_journeys: list[TrainJourney] = []
+        for journey in journeys:
+            train_id = journey.train_id
+            if train_id and train_id not in seen_train_ids:
+                seen_train_ids.add(train_id)
+                unique_journeys.append(journey)
+
+        departures: list[TrainDeparture] = []
+        for journey in unique_journeys:
+            from_stop = None
+            to_stop = None
+            for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
+                if stop.station_code in from_codes and not from_stop:
+                    from_stop = stop
+                elif to_station and stop.station_code in to_codes and from_stop:
+                    if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
+                        to_stop = stop
+                        break
+
+            if not from_stop or (to_station and not to_stop):
+                continue
+
+            train_position = self._calculate_train_position(journey)
+            departure = TrainDeparture(
+                train_id=journey.train_id,
+                journey_date=journey.journey_date,
+                line=LineInfo(
+                    code=journey.line_code or "UNK",
+                    name=journey.line_name or journey.line_code or "Unknown",
+                    color=(journey.line_color or "#000000").strip(),
+                ),
+                destination=journey.destination,
+                departure=StationInfo(
+                    code=from_station,
+                    name=get_station_name(from_station),
+                    scheduled_time=from_stop.scheduled_departure
+                    or from_stop.scheduled_arrival,
+                    # See get_departures for max() rationale re: NJT semantics.
+                    updated_time=(
+                        max(from_stop.updated_departure, from_stop.updated_arrival)
+                        if from_stop.updated_departure and from_stop.updated_arrival
+                        else from_stop.updated_departure or from_stop.updated_arrival
+                    ),
+                    actual_time=from_stop.actual_departure or from_stop.actual_arrival,
+                    track=from_stop.track,
+                ),
+                arrival=(
+                    StationInfo(
+                        code=to_station,
+                        name=get_station_name(to_station),
+                        scheduled_time=to_stop.scheduled_arrival
+                        or to_stop.scheduled_departure,
+                        updated_time=to_stop.updated_arrival
+                        or to_stop.updated_departure,
+                        actual_time=to_stop.actual_arrival or to_stop.actual_departure,
+                        track=to_stop.track,
+                    )
+                    if to_stop and to_station
+                    else None
+                ),
+                train_position=train_position,
+                data_freshness=DataFreshness(
+                    last_updated=journey.last_updated_at or journey.first_seen_at,
+                    age_seconds=int(
+                        safe_datetime_subtract(
+                            now_et(),
+                            journey.last_updated_at
+                            or journey.first_seen_at
+                            or now_et(),
+                        ).total_seconds()
+                    ),
+                    update_count=journey.update_count,
+                ),
+                data_source=journey.data_source,
+                observation_type=get_effective_observation_type(journey),
+                is_cancelled=journey.is_cancelled,
+                cancellation_reason=journey.cancellation_reason,
+                is_expired=journey.is_expired or False,
+            )
+            departures.append(departure)
+
+        limited_departures = departures[:limit]
+
+        has_direct_route = True
+        if to_station:
+            has_direct_route = _has_direct_route(
+                from_station, to_station, allowed_sources
+            )
+
+        return DeparturesResponse(
+            departures=limited_departures,
+            has_direct_route=has_direct_route,
+            metadata={
+                "from_station": {
+                    "code": from_station,
+                    "name": get_station_name(from_station),
+                },
+                "to_station": (
+                    {"code": to_station, "name": get_station_name(to_station)}
+                    if to_station
+                    else None
+                ),
+                "count": len(limited_departures),
+                "window_minutes": window_minutes,
+                "generated_at": now.isoformat(),
+            },
+        )
+
     def _calculate_train_position(self, journey: TrainJourney) -> TrainPosition:
         """
         Calculate current train position.

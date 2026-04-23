@@ -56,6 +56,7 @@ struct RouteStatusView: View {
                     operationsSummarySection
                     historySections
                     upcomingTrainsSection
+                    recentTrainsSection
                     serviceAlertsSection
                     alertSubscriptionSection
                 }
@@ -63,6 +64,7 @@ struct RouteStatusView: View {
                 .animation(.easeInOut(duration: 0.3), value: viewModel.filterLoaded)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingMap)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingUpcomingTrains)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingRecentTrains)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingServiceAlerts)
             }
             .background(Color(.systemGroupedBackground))
@@ -496,7 +498,7 @@ struct RouteStatusView: View {
                     Button {
                         selectedTrain = train
                     } label: {
-                        UpcomingTrainRow(train: train, dataSource: train.dataSource)
+                        TrainRow(train: train, dataSource: train.dataSource)
                     }
                     .buttonStyle(.plain)
                 }
@@ -515,6 +517,33 @@ struct RouteStatusView: View {
                         .foregroundColor(.orange)
                         .padding(.top, 4)
                     }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        }
+    }
+
+    // MARK: - Recent Trains Section
+
+    /// Recently-departed trains shown by their originally scheduled time, with delay/cancellation
+    /// badges. Uses the same row component as Upcoming; hides if nothing recent is available.
+    @ViewBuilder
+    private var recentTrainsSection: some View {
+        if viewModel.isLoadingRecentTrains {
+            upcomingTrainsSkeletonSection
+        } else if !viewModel.recentTrains.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Recent Trains")
+                    .font(.headline)
+
+                ForEach(viewModel.recentTrains.prefix(3)) { train in
+                    Button {
+                        selectedTrain = train
+                    } label: {
+                        TrainRow(train: train, dataSource: train.dataSource, timeMode: .scheduled)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding()
@@ -889,11 +918,20 @@ private struct ServiceAlertCard: View {
     }
 }
 
-// MARK: - Upcoming Train Row
+// MARK: - Train Row
 
-private struct UpcomingTrainRow: View {
+/// Which time to display in the trailing column.
+/// `.live` shows the best live estimate (updatedTime ?? scheduledTime) — used for upcoming trains.
+/// `.scheduled` always shows the originally scheduled time — used for recent trains so lateness is
+/// communicated solely via the delay badge.
+enum TrainRowTimeMode {
+    case live, scheduled
+}
+
+private struct TrainRow: View {
     let train: TrainV2
     let dataSource: String
+    var timeMode: TrainRowTimeMode = .live
 
     /// Whether this transit system uses synthetic train IDs (e.g., subway, PATCO)
     private var useSyntheticId: Bool {
@@ -943,7 +981,13 @@ private struct UpcomingTrainRow: View {
     }
 
     private var departureTimeString: String {
-        let time = train.departure.updatedTime ?? train.departure.scheduledTime
+        let time: Date?
+        switch timeMode {
+        case .live:
+            time = train.departure.updatedTime ?? train.departure.scheduledTime
+        case .scheduled:
+            time = train.departure.scheduledTime ?? train.departure.updatedTime
+        }
         guard let time = time else { return "--" }
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
@@ -987,6 +1031,13 @@ final class RouteStatusViewModel: ObservableObject {
     // Upcoming trains
     @Published var upcomingTrains: [TrainV2] = []
     @Published var isLoadingUpcomingTrains = true
+
+    // Recent trains (already departed within the recent window)
+    @Published var recentTrains: [TrainV2] = []
+    @Published var isLoadingRecentTrains = true
+
+    /// Minutes of history for the Recent Trains section.
+    static let recentTrainsWindowMinutes = 120
 
     // History overall loading state (true until first period loads)
     @Published var isLoadingHistory = true
@@ -1106,6 +1157,8 @@ final class RouteStatusViewModel: ObservableObject {
         isLoadingServiceAlerts = true
         upcomingTrains = []
         isLoadingUpcomingTrains = true
+        recentTrains = []
+        isLoadingRecentTrains = true
         isLoadingHistory = true
         historyBySystem = [:]
         discoveredSystems = []
@@ -1137,6 +1190,7 @@ final class RouteStatusViewModel: ObservableObject {
             }
             group.addTask { await self.loadServiceAlerts() }
             group.addTask { await self.loadUpcomingTrains() }
+            group.addTask { await self.loadRecentTrains() }
         }
     }
 
@@ -1461,6 +1515,45 @@ final class RouteStatusViewModel: ObservableObject {
             upcomingTrains = Array(filtered.prefix(5))
         } catch {
             print("⚠️ Failed to load upcoming trains: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Recent Trains
+
+    private func loadRecentTrains() async {
+        isLoadingRecentTrains = true
+        defer { isLoadingRecentTrains = false }
+
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else { return }
+        do {
+            let systemsToFetch: Set<TrainSystem>
+            if enabledSystems.isEmpty {
+                systemsToFetch = TrainSystem(rawValue: context.dataSource).map { Set([$0]) } ?? []
+            } else {
+                systemsToFetch = Set(enabledSystems.compactMap { TrainSystem(rawValue: $0) })
+            }
+
+            let trains = try await APIService.shared.searchRecentTrains(
+                fromStationCode: from,
+                toStationCode: to,
+                windowMinutes: Self.recentTrainsWindowMinutes,
+                dataSources: systemsToFetch
+            )
+
+            // Filter by enabled lines (matches loadUpcomingTrains behavior)
+            let filtered: [TrainV2]
+            if enabledLineIds.isEmpty {
+                filtered = trains
+            } else {
+                filtered = trains.filter { train in
+                    enabledLineIds.contains("\(train.dataSource):\(train.line.code)")
+                }
+            }
+
+            recentTrains = Array(filtered.prefix(5))
+        } catch {
+            print("⚠️ Failed to load recent trains: \(error.localizedDescription)")
         }
     }
 

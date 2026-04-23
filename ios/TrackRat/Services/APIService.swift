@@ -158,7 +158,49 @@ final class APIService: ObservableObject {
         )
         return result.trains
     }
-    
+
+    /// Fetch recently-departed trains from origin -> destination, sorted most-recent-first.
+    /// Includes cancellations and completed journeys within the given window.
+    func searchRecentTrains(fromStationCode: String, toStationCode: String? = nil, windowMinutes: Int = 120, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
+        guard var components = URLComponents(string: "\(baseURL)/v2/trains/recent-departures") else {
+            throw APIError.invalidURL
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "from", value: fromStationCode),
+            URLQueryItem(name: "window_minutes", value: String(windowMinutes)),
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
+        ]
+
+        if let toStationCode = toStationCode {
+            queryItems.append(URLQueryItem(name: "to", value: toStationCode))
+        }
+
+        if let dataSources = dataSources, !dataSources.isEmpty {
+            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.apiDataSources))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        return try await executeWithRetry {
+            let (data, _) = try await self.session.data(from: url)
+            do {
+                let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
+                return response.departures.map { self.adaptV2DepartureToTrainV2($0) }
+            } catch {
+                print("🔴 V2 DECODING ERROR (searchRecentTrains): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw error
+            }
+        }
+    }
+
     // MARK: - Service Alerts
 
     func fetchServiceAlerts(dataSource: String) async throws -> [V2ServiceAlert] {
