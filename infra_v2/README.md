@@ -42,7 +42,7 @@ Simplified GCP infrastructure using Managed Instance Groups with Container-Optim
                    │                                                          │
                    │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
                    │  │Secret Manager│  │  Artifact    │  │  GCS Deploy  │   │
-                   │  │  (5 secrets) │  │  Registry    │  │    Bucket    │   │
+                   │  │  (8 secrets) │  │  Registry    │  │    Bucket    │   │
                    │  └──────────────┘  └──────────────┘  └──────────────┘   │
                    └──────────────────────────────────────────────────────────┘
 ```
@@ -58,6 +58,9 @@ gcloud secrets create trackrat-njt-api-token --data-file=-
 gcloud secrets create trackrat-apns-team-id --data-file=-
 gcloud secrets create trackrat-apns-key-id --data-file=-
 gcloud secrets create trackrat-apns-bundle-id --data-file=-
+gcloud secrets create trackrat-apns-auth-key --data-file=-
+gcloud secrets create trackrat-wmata-api-key --data-file=-
+gcloud secrets create trackrat-metra-api-token --data-file=-
 ```
 
 ### Terraform State Bucket

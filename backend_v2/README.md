@@ -349,9 +349,9 @@ The V2 backend includes a comprehensive test suite covering core functionality:
 poetry run pytest -v
 
 # Run specific test categories
-poetry run pytest tests/test_basic.py -v           # Core functionality only
-poetry run pytest tests/test_config.py -v         # Configuration tests
-poetry run pytest tests/test_utils.py -v          # Utility function tests
+poetry run pytest tests/unit/ -v                  # Unit tests (collectors, api, services, config)
+poetry run pytest tests/integration/ -v           # Integration tests
+poetry run pytest tests/e2e/ -v                   # End-to-end tests
 
 # Run with coverage report
 poetry run pytest --cov=trackrat --cov-report=html
