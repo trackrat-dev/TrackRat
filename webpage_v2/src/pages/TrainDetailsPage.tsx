@@ -174,6 +174,7 @@ export function TrainDetailsPage() {
   const shouldShowPredictions =
     stationSupported &&              // Supported station (from API)
     !predictionStop?.track &&        // No track assigned
+    !predictionStop?.has_departed_station && // Train hasn't left user's origin
     !train.is_cancelled;             // Not cancelled
 
   return (
