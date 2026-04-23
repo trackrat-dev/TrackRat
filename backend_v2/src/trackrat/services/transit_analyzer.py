@@ -97,12 +97,82 @@ class TransitAnalyzer:
 
         return await self._analyze_segments(db, journey, stops, check_duplicates=True)
 
+    async def analyze_new_segments_bulk(
+        self, db: AsyncSession, journeys: list[TrainJourney]
+    ) -> int:
+        """
+        Analyze new segments for multiple journeys in a single bulk operation.
+
+        Uses two queries total (existing-segment tuples + stops) regardless of
+        journey count, instead of O(journeys * segments) per-segment SELECTs
+        emitted by per-journey ``analyze_new_segments`` calls. Callers should
+        batch up journeys processed during a collection cycle and invoke this
+        once at the end of the cycle.
+
+        Returns:
+            Total number of new segments created across all journeys.
+        """
+        if not journeys:
+            return 0
+
+        journey_ids = [j.id for j in journeys if j.id is not None]
+        if not journey_ids:
+            return 0
+
+        # Fetch the set of (journey_id, from_station, to_station) tuples that
+        # already have segment records, in one query.
+        existing_stmt = select(
+            SegmentTransitTime.journey_id,
+            SegmentTransitTime.from_station_code,
+            SegmentTransitTime.to_station_code,
+        ).where(SegmentTransitTime.journey_id.in_(journey_ids))
+        existing_result = await db.execute(existing_stmt)
+        existing_set: set[tuple[int, str, str]] = {
+            (row[0], row[1], row[2]) for row in existing_result.all()
+        }
+
+        # Fetch all stops for these journeys in one query.
+        stops_stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id.in_(journey_ids))
+            .order_by(JourneyStop.journey_id, JourneyStop.stop_sequence)
+        )
+        stops_result = await db.execute(stops_stmt)
+        stops_by_journey: dict[int, list[JourneyStop]] = {}
+        for stop in stops_result.scalars():
+            stops_by_journey.setdefault(stop.journey_id, []).append(stop)
+
+        total_created = 0
+        for journey in journeys:
+            if journey.id is None:
+                continue
+            stops = stops_by_journey.get(journey.id, [])
+            if len(stops) < 2:
+                continue
+            total_created += await self._analyze_segments(
+                db,
+                journey,
+                stops,
+                check_duplicates=True,
+                known_existing=existing_set,
+            )
+
+        if total_created > 0:
+            logger.debug(
+                "bulk_segments_analyzed",
+                journey_count=len(journey_ids),
+                segments_created=total_created,
+            )
+
+        return total_created
+
     async def _analyze_segments(
         self,
         db: AsyncSession,
         journey: TrainJourney,
         stops: list[JourneyStop],
         check_duplicates: bool = False,
+        known_existing: set[tuple[int, str, str]] | None = None,
     ) -> int:
         """Calculate and store transit times between consecutive stations.
 
@@ -111,6 +181,9 @@ class TransitAnalyzer:
             journey: Journey to analyze
             stops: List of journey stops
             check_duplicates: If True, check if segment already exists before creating
+            known_existing: Precomputed set of (journey_id, from, to) tuples that
+                already have segment records. When provided, avoids the per-segment
+                DB SELECT and uses an in-memory lookup instead.
 
         Returns:
             Number of segments created
@@ -134,17 +207,26 @@ class TransitAnalyzer:
 
             # Check if segment already exists (to avoid duplicates)
             if check_duplicates:
-                exists_stmt = select(SegmentTransitTime).where(
-                    and_(
-                        SegmentTransitTime.journey_id == journey.id,
-                        SegmentTransitTime.from_station_code
-                        == current_stop.station_code,
-                        SegmentTransitTime.to_station_code == next_stop.station_code,
+                if known_existing is not None:
+                    if (
+                        journey.id,
+                        current_stop.station_code,
+                        next_stop.station_code,
+                    ) in known_existing:
+                        continue
+                else:
+                    exists_stmt = select(SegmentTransitTime).where(
+                        and_(
+                            SegmentTransitTime.journey_id == journey.id,
+                            SegmentTransitTime.from_station_code
+                            == current_stop.station_code,
+                            SegmentTransitTime.to_station_code
+                            == next_stop.station_code,
+                        )
                     )
-                )
-                result = await db.execute(exists_stmt)
-                if result.scalar():
-                    continue  # Skip if already analyzed
+                    result = await db.execute(exists_stmt)
+                    if result.scalar():
+                        continue  # Skip if already analyzed
 
             # Calculate scheduled transit time
             scheduled_minutes = None

@@ -128,19 +128,21 @@ class SubwayCollector:
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             seen_journey_ids: set[int] = set()
+            analyzed_journeys: list[TrainJourney] = []
             trips_in_batch = 0
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
-                        result, journey_id = await self._process_trip(
+                        result, journey = await self._process_trip(
                             session, trip_id, trip_arrivals
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
-                        if journey_id:
-                            seen_journey_ids.add(journey_id)
+                        if journey is not None and journey.id is not None:
+                            seen_journey_ids.add(journey.id)
+                            analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing subway trip {trip_id}: {e}")
                     stats["errors"] += 1
@@ -154,6 +156,15 @@ class SubwayCollector:
                 raise RuntimeError(
                     f"Subway collection: all {stats['errors']} trips failed"
                 )
+
+            # Batched segment analysis for all processed journeys. Moving this
+            # out of the per-trip loop reduces O(trips * stops) per-segment
+            # SELECTs to two total queries regardless of fleet size — critical
+            # for subway's ~500 trips per cycle.
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments_bulk(
+                session, analyzed_journeys
+            )
 
             # Full-replacement expiration: subway feeds are complete snapshots,
             # so any active journey NOT in the current feed should be expired
@@ -207,13 +218,15 @@ class SubwayCollector:
 
     async def _process_trip(
         self, session: AsyncSession, trip_id: str, arrivals: list[SubwayArrival]
-    ) -> tuple[str | None, int | None]:
+    ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
 
         Returns:
-            Tuple of (result_type, journey_id) where result_type is
-            "discovered", "updated", or None
+            Tuple of (result_type, journey) where result_type is
+            "discovered", "updated", or None. The journey reference is
+            returned so the caller can batch post-processing (e.g.,
+            TransitAnalyzer) after the per-trip loop completes.
         """
         if not arrivals:
             return None, None
@@ -415,11 +428,8 @@ class SubwayCollector:
             update_journey_metadata(journey, now)
             check_journey_completed(journey, created_stops)
 
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Discovered subway train {train_id}")
-            return "discovered", journey.id
+            return "discovered", journey
 
         else:
             # Update existing journey
@@ -446,11 +456,8 @@ class SubwayCollector:
             update_journey_metadata(journey, now)
             check_journey_completed(journey, journey_stops)
 
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Updated subway train {train_id}")
-            return "updated", journey.id
+            return "updated", journey
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
