@@ -219,22 +219,14 @@ class JourneyStop(Base):
         UniqueConstraint("journey_id", "station_code", name="unique_journey_stop"),
         Index("idx_station_times", "station_code", "scheduled_departure"),
         Index("idx_journey_sequence", "journey_id", "stop_sequence"),
-        # Performance optimization: composite index for track occupancy queries
-        # Used by track_occupancy.py to find occupied tracks at a station
         Index(
             "idx_track_occupancy_lookup",
             "station_code",
             "has_departed_station",
             "scheduled_departure",
         ),
-        # Performance optimization: composite index for track distribution queries
-        # Used by historical_track_predictor.py for GROUP BY aggregations
         Index("idx_stop_track_distribution", "station_code", "track"),
-        # Performance optimization: composite index for stop-level delay forecaster joins
-        # Used by delay_forecaster.py to join journey_stops to train_journeys
         Index("idx_stop_delay_forecaster", "station_code", "journey_id"),
-        # Performance optimization: composite index for route history EXISTS subquery
-        # Used by routes.py to check station pair ordering on journeys
         Index(
             "idx_stop_journey_station_seq",
             "journey_id",
@@ -274,10 +266,7 @@ class JourneySnapshot(Base):
         "TrainJourney", back_populates="snapshots", lazy="raise_on_sql"
     )
 
-    __table_args__ = (
-        Index("idx_journey_time", "journey_id", "captured_at"),
-        Index("idx_captured_at", "captured_at"),
-    )
+    __table_args__ = (Index("idx_journey_time", "journey_id", "captured_at"),)
 
 
 class DiscoveryRun(Base):
@@ -293,8 +282,6 @@ class DiscoveryRun(Base):
     duration_ms = Column(Integer)
     success = Column(Boolean, default=True, nullable=False)
     error_details = Column(Text)
-
-    __table_args__ = (Index("idx_discovery_time", "station_code", "run_at"),)
 
 
 class LiveActivityToken(Base):
@@ -405,13 +392,6 @@ class RouteAlertSubscription(Base):
             name="ck_alert_sub_type",
         ),
         Index("idx_alert_sub_device", "device_id"),
-        Index("idx_alert_sub_line", "data_source", "line_id"),
-        Index(
-            "idx_alert_sub_stations",
-            "data_source",
-            "from_station_code",
-            "to_station_code",
-        ),
         Index("idx_alert_sub_train", "data_source", "train_id"),
     )
 
@@ -447,7 +427,6 @@ class ServiceAlert(Base):
     __table_args__ = (
         UniqueConstraint("alert_id", "data_source", name="uq_service_alert_id"),
         Index("idx_service_alert_active", "is_active", "data_source"),
-        Index("idx_service_alert_type", "alert_type", "data_source"),
     )
 
 
@@ -543,12 +522,7 @@ class StationDwellTime(Base):
         "TrainJourney", back_populates="dwell_times", lazy="raise_on_sql"
     )
 
-    __table_args__ = (
-        Index("idx_dwell_journey", "journey_id"),
-        Index("idx_station_dwell", "station_code", "data_source", "departure_time"),
-        Index("idx_recent_dwell", "station_code", "created_at"),
-    )
-
+    __table_args__ = (Index("idx_dwell_journey", "journey_id"),)
 
 class JourneyProgress(Base):
     """Journey progress snapshots for real-time tracking."""
@@ -640,8 +614,6 @@ class SchedulerTaskRun(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    __table_args__ = (Index("idx_task_freshness", "task_name", "last_successful_run"),)
-
 
 class ValidationResult(Base):
     """Store results from train validation service for monitoring and analysis."""
@@ -667,12 +639,6 @@ class ValidationResult(Base):
     # Additional details for debugging
     details = Column(JSON)  # Store sample accessibility checks, error details, etc.
 
-    # Indexing for efficient queries
-    __table_args__ = (
-        Index("idx_validation_time", "run_at", "route", "source"),
-        Index("idx_validation_coverage", "route", "source", "coverage_percent"),
-    )
-
 
 # =============================================================================
 # GTFS Static Schedule Tables
@@ -695,8 +661,6 @@ class GTFSFeedInfo(Base):
     trip_count = Column(Integer)
     stop_time_count = Column(Integer)
     error_message = Column(Text)  # Last error if download/parse failed
-
-    __table_args__ = (Index("idx_gtfs_feed_source", "data_source"),)
 
 
 class GTFSRoute(Base):
