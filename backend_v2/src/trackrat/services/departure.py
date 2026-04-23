@@ -36,7 +36,11 @@ from trackrat.utils.time import (
     parse_njt_time,
     safe_datetime_subtract,
 )
-from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
+from trackrat.utils.train import (
+    get_effective_observation_type,
+    is_amtrak_train,
+    is_njt_stop_cancelled,
+)
 
 logger = get_logger(__name__)
 
@@ -1493,8 +1497,7 @@ class DepartureService:
             stop.raw_njt_departed_flag = departed
 
             # Cancelled stops never physically departed
-            stop_status = (stop_data.get("STOP_STATUS") or "").upper()
-            is_stop_cancelled = stop_status == "CANCELLED"
+            is_stop_cancelled = is_njt_stop_cancelled(stop_data.get("STOP_STATUS"))
 
             if is_stop_cancelled:
                 if not stop.has_departed_station:
