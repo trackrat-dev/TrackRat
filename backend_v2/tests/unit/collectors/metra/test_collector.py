@@ -2,7 +2,8 @@
 Unit tests for MetraCollector.
 
 Tests unified Metra train discovery and journey update logic,
-including train ID generation, timezone handling, and origin inference.
+including train ID generation, timezone handling, origin inference,
+error propagation, and consecutive-zero cycle detection.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -10,12 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from trackrat.collectors.metra.client import MetraArrival, MetraClient
+from trackrat.collectors.metra.client import MetraArrival, MetraClient, MetraFetchError
 from trackrat.collectors.metra.collector import (
     DATA_SOURCE,
     MetraCollector,
     _generate_train_id,
 )
+import trackrat.collectors.metra.collector as collector_module
 
 # =============================================================================
 # HELPER FUNCTION TESTS
@@ -386,46 +388,217 @@ class TestMetraCommonIntegration:
 
 
 # =============================================================================
-# MISSING TOKEN HANDLING TESTS
+# MISSING CREDENTIALS HANDLING TESTS
 # =============================================================================
 
 
-class TestCollectorMissingToken:
-    """Tests that MetraCollector returns error stats when API token is missing.
-
-    Bug: collector received empty list from client, logged "No Metra arrivals
-    found", and returned stats with zeros — indistinguishable from success.
-    Scheduler marked this as a completed run, preventing retries.
-
-    See: https://github.com/trackrat-dev/trackrat/issues/901
-    """
+class TestCollectorMissingCredentials:
+    """Tests that MetraCollector raises when credentials are missing."""
 
     @pytest.mark.asyncio
-    async def test_collect_raises_when_no_token(self):
-        """collect() raises RuntimeError when API token is empty so the scheduler records a failure."""
+    async def test_collect_raises_when_no_credentials(self):
+        """collect() raises RuntimeError when no credentials are configured."""
         client = MetraClient(api_token="")
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
-        with pytest.raises(
-            RuntimeError, match="TRACKRAT_METRA_API_TOKEN not configured"
-        ):
+        with pytest.raises(RuntimeError, match="credentials not configured"):
             await collector.collect(session)
 
-        # Session should not have been touched
         session.commit.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_collect_proceeds_with_valid_token(self):
         """collect() does NOT return early when token is configured."""
         client = MagicMock(spec=MetraClient)
-        client._api_token = "valid-token"
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        # Reset module-level counter
+        collector_module._consecutive_empty_cycles = 0
+
+        result = await collector.collect(session)
+
+        client.get_all_arrivals.assert_called_once()
+        assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_collect_proceeds_with_basic_auth(self):
+        """collect() works with Basic Auth credentials."""
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "basic"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        collector_module._consecutive_empty_cycles = 0
+
+        result = await collector.collect(session)
+
+        client.get_all_arrivals.assert_called_once()
+        assert "error" not in result
+
+
+# =============================================================================
+# ERROR PROPAGATION TESTS
+# =============================================================================
+
+
+class TestCollectorErrorPropagation:
+    """Tests that MetraCollector propagates MetraFetchError from the client.
+
+    Bug: get_all_arrivals() silently returned [] on HTTP errors,
+    causing the collector to report 0 departures as a successful run.
+    Now MetraFetchError propagates and the collector wraps it in RuntimeError.
+
+    See: https://github.com/trackrat-dev/trackrat/issues/963
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_counter(self):
+        """Reset the module-level consecutive empty counter before each test."""
+        collector_module._consecutive_empty_cycles = 0
+        yield
+        collector_module._consecutive_empty_cycles = 0
+
+    @pytest.mark.asyncio
+    async def test_fetch_error_propagates_as_runtime_error(self):
+        """MetraFetchError from client should propagate as RuntimeError."""
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(
+            side_effect=MetraFetchError("HTTP 500")
+        )
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="Metra feed fetch failed"):
+            await collector.collect(session)
+
+    @pytest.mark.asyncio
+    async def test_auth_error_propagates(self):
+        """Authentication errors should propagate, not be swallowed."""
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(
+            side_effect=MetraFetchError("authentication failed (HTTP 401)")
+        )
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="feed fetch failed"):
+            await collector.collect(session)
+
+
+# =============================================================================
+# CONSECUTIVE EMPTY CYCLE DETECTION TESTS
+# =============================================================================
+
+
+class TestConsecutiveEmptyCycles:
+    """Tests for consecutive-zero arrival detection.
+
+    When the feed returns 0 arrivals for N consecutive cycles, the collector
+    should raise so the scheduler marks the run as failed, making the problem
+    visible in error logs and health checks.
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_counter(self):
+        """Reset the module-level consecutive empty counter before each test."""
+        collector_module._consecutive_empty_cycles = 0
+        yield
+        collector_module._consecutive_empty_cycles = 0
+
+    @pytest.mark.asyncio
+    async def test_first_empty_cycle_warns_but_succeeds(self):
+        """First empty cycle should warn but not raise."""
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
         client.get_all_arrivals = AsyncMock(return_value=[])
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
         result = await collector.collect(session)
 
-        # Should have called get_all_arrivals (not returned early)
-        client.get_all_arrivals.assert_called_once()
-        assert "error" not in result
+        assert result["total_arrivals"] == 0
+        assert collector_module._consecutive_empty_cycles == 1
+
+    @pytest.mark.asyncio
+    async def test_two_consecutive_empty_cycles_still_warns(self):
+        """Two consecutive empty cycles should warn but not raise."""
+        collector_module._consecutive_empty_cycles = 1
+
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        result = await collector.collect(session)
+
+        assert result["total_arrivals"] == 0
+        assert collector_module._consecutive_empty_cycles == 2
+
+    @pytest.mark.asyncio
+    async def test_three_consecutive_empty_cycles_raises(self):
+        """Three consecutive empty cycles should raise RuntimeError."""
+        collector_module._consecutive_empty_cycles = 2
+
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="consecutive.*cycles returned 0"):
+            await collector.collect(session)
+
+    @pytest.mark.asyncio
+    async def test_nonempty_cycle_resets_counter(self):
+        """A successful non-empty fetch should reset the consecutive counter."""
+        collector_module._consecutive_empty_cycles = 2
+
+        # Build a minimal arrival that will cause the collector to proceed
+        arrival = MetraArrival(
+            station_code="CUS",
+            gtfs_stop_id="CUS",
+            trip_id="ME_ME2012_V1_B",
+            route_id="ME",
+            direction_id=1,
+            headsign=None,
+            arrival_time=datetime(2026, 3, 25, 10, 30, tzinfo=UTC),
+            departure_time=None,
+            delay_seconds=0,
+            track=None,
+        )
+
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(return_value=[arrival])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        # The collector will try to process the trip and likely fail (no DB),
+        # but the counter should still be reset before that
+        try:
+            await collector.collect(session)
+        except Exception:
+            pass
+
+        assert collector_module._consecutive_empty_cycles == 0
+
+    @pytest.mark.asyncio
+    async def test_threshold_is_configurable(self):
+        """The threshold constant should be accessible and reasonable."""
+        assert collector_module._CONSECUTIVE_EMPTY_THRESHOLD == 3

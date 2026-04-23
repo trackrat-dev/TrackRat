@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from trackrat.collectors.metra.client import MetraArrival, MetraClient
+from trackrat.collectors.metra.client import MetraArrival, MetraClient, MetraFetchError
 from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
@@ -37,6 +37,11 @@ from trackrat.utils.time import now_for_provider
 logger = logging.getLogger(__name__)
 
 DATA_SOURCE = "METRA"
+
+# Module-level counter that persists across collector instantiations (same process).
+# Reset on any successful non-empty fetch.
+_consecutive_empty_cycles = 0
+_CONSECUTIVE_EMPTY_THRESHOLD = 3
 
 
 def _generate_train_id(trip_id: str) -> str:
@@ -111,6 +116,8 @@ class MetraCollector:
         Returns:
             Statistics dict
         """
+        global _consecutive_empty_cycles
+
         stats = {
             "discovered": 0,
             "updated": 0,
@@ -119,21 +126,41 @@ class MetraCollector:
             "total_arrivals": 0,
         }
 
-        if not self.client._api_token:
+        if not self.client.has_credentials:
             raise RuntimeError(
-                "Metra collection failed: TRACKRAT_METRA_API_TOKEN not configured"
+                "Metra collection failed: API credentials not configured"
             )
 
         try:
             collection_start = now_for_provider(DATA_SOURCE)
 
-            # Fetch all arrivals
-            arrivals = await self.client.get_all_arrivals()
+            # Fetch all arrivals — let MetraFetchError propagate
+            try:
+                arrivals = await self.client.get_all_arrivals()
+            except MetraFetchError as e:
+                raise RuntimeError(f"Metra feed fetch failed: {e}") from e
+
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:
-                logger.warning("No Metra arrivals found in GTFS-RT feed")
+                _consecutive_empty_cycles += 1
+                if _consecutive_empty_cycles >= _CONSECUTIVE_EMPTY_THRESHOLD:
+                    raise RuntimeError(
+                        f"Metra collection: {_consecutive_empty_cycles} consecutive "
+                        f"cycles returned 0 arrivals — possible auth or API failure "
+                        f"(auth_method={self.client._auth_method})"
+                    )
+                logger.warning(
+                    "metra_empty_feed",
+                    extra={
+                        "consecutive_empty_cycles": _consecutive_empty_cycles,
+                        "threshold": _CONSECUTIVE_EMPTY_THRESHOLD,
+                    },
+                )
                 return stats
+
+            # Successful non-empty fetch — reset the counter
+            _consecutive_empty_cycles = 0
 
             # Group arrivals by trip_id
             trips: dict[str, list[MetraArrival]] = {}
@@ -204,6 +231,8 @@ class MetraCollector:
                 f"{stats['errors']} errors"
             )
 
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.error(f"Metra collection failed: {e}")
             await session.rollback()
@@ -523,7 +552,13 @@ class MetraCollector:
         if journey.data_source != DATA_SOURCE:
             return
 
-        arrivals = await self.client.get_all_arrivals()
+        try:
+            arrivals = await self.client.get_all_arrivals()
+        except MetraFetchError:
+            logger.warning(
+                "metra_jit_fetch_failed", extra={"train_id": journey.train_id}
+            )
+            return
 
         journey_station_codes = {s.station_code for s in journey.stops}
 

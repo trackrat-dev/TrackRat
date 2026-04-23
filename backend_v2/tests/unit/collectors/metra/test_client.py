@@ -1,8 +1,8 @@
 """
 Unit tests for MetraClient.
 
-Tests GTFS-RT API communication, protobuf parsing, caching, and
-authentication token handling.
+Tests GTFS-RT API communication, protobuf parsing, caching,
+authentication (query-param and Basic Auth), and error propagation.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -15,6 +15,7 @@ from google.transit import gtfs_realtime_pb2
 from trackrat.collectors.metra.client import (
     MetraArrival,
     MetraClient,
+    MetraFetchError,
 )
 
 
@@ -92,26 +93,57 @@ class TestMetraClient:
 
     @pytest.fixture
     def client_no_token(self):
-        """Create a MetraClient instance without an API token."""
+        """Create a MetraClient instance without any credentials."""
         return MetraClient(api_token="", timeout=10.0)
 
+    @pytest.fixture
+    def client_basic_auth(self):
+        """Create a MetraClient instance with Basic Auth credentials."""
+        return MetraClient(
+            api_username="test_user", api_password="test_pass", timeout=10.0
+        )
+
     def test_initialization_with_token(self, client):
-        """Test client initializes with correct defaults when token is set."""
+        """Test client initializes with query-param auth when token is set."""
         assert client.timeout == 10.0
         assert client._session is None
         assert client._api_token == "test_token"
+        assert client._auth is None
+        assert client._auth_method == "query_param"
+        assert client.has_credentials is True
         assert client._cache is None
         assert client._cache_time is None
         assert client._cache_ttl == 30
 
     def test_initialization_without_token(self, client_no_token):
-        """Test client initializes gracefully without API token."""
+        """Test client initializes gracefully without any credentials."""
         assert client_no_token._api_token == ""
+        assert client_no_token._auth is None
+        assert client_no_token.has_credentials is False
+
+    def test_initialization_with_basic_auth(self, client_basic_auth):
+        """Test client initializes with Basic Auth when username/password are set."""
+        assert client_basic_auth._auth is not None
+        assert isinstance(client_basic_auth._auth, httpx.BasicAuth)
+        assert client_basic_auth._auth_method == "basic"
+        assert client_basic_auth._api_token == ""
+        assert client_basic_auth.has_credentials is True
+
+    def test_basic_auth_takes_precedence_over_token(self):
+        """When both token and username/password are set, Basic Auth wins."""
+        client = MetraClient(
+            api_token="my_token",
+            api_username="user",
+            api_password="pass",
+        )
+        assert client._auth_method == "basic"
+        assert client._api_token == ""
+        assert client._auth is not None
 
     @pytest.mark.asyncio
-    async def test_get_all_arrivals_raises_without_token(self, client_no_token):
-        """Client should raise ValueError when no API token is configured."""
-        with pytest.raises(ValueError, match="TRACKRAT_METRA_API_TOKEN not configured"):
+    async def test_get_all_arrivals_raises_without_credentials(self, client_no_token):
+        """Client should raise ValueError when no credentials are configured."""
+        with pytest.raises(ValueError, match="credentials not configured"):
             await client_no_token.get_all_arrivals()
 
     def test_cache_validity_when_empty(self, client):
@@ -154,6 +186,16 @@ class TestMetraClient:
         """Unknown routes should return None."""
         assert client._get_route_info("UNKNOWN") is None
 
+    def test_build_url_query_param(self, client):
+        """Query-param client should append token to URL."""
+        url = client._build_url()
+        assert "?api_token=test_token" in url
+
+    def test_build_url_basic_auth(self, client_basic_auth):
+        """Basic Auth client should use plain URL without query params."""
+        url = client_basic_auth._build_url()
+        assert "?api_token" not in url
+
     @pytest.mark.asyncio
     async def test_session_property_creates_client(self, client):
         """Accessing session property should create an httpx client."""
@@ -161,6 +203,14 @@ class TestMetraClient:
         assert session is not None
         assert isinstance(session, httpx.AsyncClient)
         await client.close()
+
+    @pytest.mark.asyncio
+    async def test_session_basic_auth_sets_auth(self, client_basic_auth):
+        """Basic Auth client should pass auth to httpx.AsyncClient."""
+        session = client_basic_auth.session
+        assert session is not None
+        assert session._auth is not None
+        await client_basic_auth.close()
 
     @pytest.mark.asyncio
     async def test_close_clears_session(self, client):
@@ -301,32 +351,62 @@ class TestMetraClient:
         assert result[0].arrival_time == result[0].departure_time
 
     @pytest.mark.asyncio
-    async def test_get_all_arrivals_http_error_returns_cache(self, client):
-        """HTTP errors should return cached data if available."""
-        cached_arrival = MetraArrival(
-            station_code="CUS",
-            gtfs_stop_id="CUS",
-            trip_id="ME_ME2012_V1_B",
-            route_id="ME",
-            direction_id=1,
-            headsign=None,
-            arrival_time=datetime(2026, 3, 25, 10, 30, tzinfo=UTC),
-            departure_time=None,
-            delay_seconds=0,
-            track=None,
-        )
-        client._cache = [cached_arrival]
-        client._cache_time = datetime.now(UTC) - timedelta(seconds=60)  # Expired
-
+    async def test_get_all_arrivals_http_status_error_raises(self, client):
+        """HTTP status errors should raise MetraFetchError instead of silently returning."""
         client._session = AsyncMock()
+        mock_request = MagicMock(spec=httpx.Request)
+        mock_request.url = "https://example.com"
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 500
         client._session.get = AsyncMock(
             side_effect=httpx.HTTPStatusError(
-                "500", request=MagicMock(), response=MagicMock()
+                "500", request=mock_request, response=mock_response
             )
         )
 
-        result = await client.get_all_arrivals()
-        assert len(result) == 1  # Returns stale cache
+        with pytest.raises(MetraFetchError, match="HTTP 500"):
+            await client.get_all_arrivals()
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_auth_error_raises_with_detail(self, client):
+        """401/403 errors should raise MetraFetchError with auth-specific message."""
+        client._session = AsyncMock()
+        mock_request = MagicMock(spec=httpx.Request)
+        mock_request.url = "https://example.com"
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 401
+        client._session.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "401", request=mock_request, response=mock_response
+            )
+        )
+
+        with pytest.raises(MetraFetchError, match="authentication failed"):
+            await client.get_all_arrivals()
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_network_error_raises(self, client):
+        """Network errors should raise MetraFetchError."""
+        client._session = AsyncMock()
+        client._session.get = AsyncMock(
+            side_effect=httpx.ConnectTimeout("timeout")
+        )
+
+        with pytest.raises(MetraFetchError, match="Network error"):
+            await client.get_all_arrivals()
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_parse_error_raises(self, client):
+        """Protobuf parse errors should raise MetraFetchError."""
+        mock_response = MagicMock()
+        mock_response.content = b"not a valid protobuf"
+        mock_response.raise_for_status = MagicMock()
+
+        client._session = AsyncMock()
+        client._session.get = AsyncMock(return_value=mock_response)
+
+        with pytest.raises(MetraFetchError, match="Error parsing"):
+            await client.get_all_arrivals()
 
     @pytest.mark.asyncio
     async def test_get_station_arrivals_filters_by_station(self, client):
@@ -432,21 +512,15 @@ class TestMetraClient:
                 assert client is not None
 
 
-class TestMetraClientMissingToken:
-    """Tests that MetraClient fails loudly when API token is missing.
-
-    Bug: get_all_arrivals() silently returned [] when token was empty,
-    causing the collector to report zero departures as a successful run.
-
-    See: https://github.com/trackrat-dev/trackrat/issues/901
-    """
+class TestMetraClientMissingCredentials:
+    """Tests that MetraClient fails loudly when credentials are missing."""
 
     @pytest.mark.asyncio
-    async def test_get_all_arrivals_raises_without_token(self):
-        """get_all_arrivals raises ValueError when no API token configured."""
+    async def test_get_all_arrivals_raises_without_credentials(self):
+        """get_all_arrivals raises ValueError when no credentials configured."""
         client = MetraClient(api_token="")
 
-        with pytest.raises(ValueError, match="TRACKRAT_METRA_API_TOKEN not configured"):
+        with pytest.raises(ValueError, match="credentials not configured"):
             await client.get_all_arrivals()
 
     @pytest.mark.asyncio
@@ -471,9 +545,134 @@ class TestMetraClientMissingToken:
 
         assert isinstance(result, list)  # No ValueError raised
 
-    def test_init_warns_on_empty_token(self):
-        """MetraClient logs a warning at init when token is empty."""
-        # This just verifies the client can be created with empty token
-        # without crashing — the warning is for ops visibility
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_works_with_basic_auth(self):
+        """get_all_arrivals does not raise when Basic Auth credentials are provided."""
+        client = MetraClient(api_username="user", api_password="pass")
+
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.header.gtfs_realtime_version = "2.0"
+        feed.header.timestamp = int(datetime.now(UTC).timestamp())
+
+        mock_response = MagicMock()
+        mock_response.content = feed.SerializeToString()
+        mock_response.raise_for_status = MagicMock()
+
+        mock_http = AsyncMock()
+        mock_http.get = AsyncMock(return_value=mock_response)
+        client._session = mock_http
+
+        result = await client.get_all_arrivals()
+
+        assert isinstance(result, list)
+
+    def test_init_warns_on_empty_credentials(self):
+        """MetraClient logs a warning at init when credentials are empty."""
         client = MetraClient(api_token="")
-        assert client._api_token == ""
+        assert client.has_credentials is False
+
+    def test_has_credentials_token(self):
+        """has_credentials is True with a token."""
+        client = MetraClient(api_token="test")
+        assert client.has_credentials is True
+
+    def test_has_credentials_basic_auth(self):
+        """has_credentials is True with Basic Auth."""
+        client = MetraClient(api_username="u", api_password="p")
+        assert client.has_credentials is True
+
+    def test_has_credentials_empty(self):
+        """has_credentials is False with no credentials."""
+        client = MetraClient(api_token="")
+        assert client.has_credentials is False
+
+
+class TestMetraFetchError:
+    """Tests for MetraFetchError propagation from get_all_arrivals."""
+
+    @pytest.mark.asyncio
+    async def test_http_403_raises_auth_specific_error(self):
+        """HTTP 403 should raise MetraFetchError mentioning authentication."""
+        client = MetraClient(api_token="bad_token")
+        mock_request = MagicMock(spec=httpx.Request)
+        mock_request.url = "https://example.com"
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 403
+        client._session = AsyncMock()
+        client._session.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "403", request=mock_request, response=mock_response
+            )
+        )
+
+        with pytest.raises(MetraFetchError) as exc_info:
+            await client.get_all_arrivals()
+
+        assert "authentication failed" in str(exc_info.value)
+        assert "query_param" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_http_403_with_basic_auth_mentions_basic(self):
+        """HTTP 403 with Basic Auth should mention auth_method=basic."""
+        client = MetraClient(api_username="bad", api_password="creds")
+        mock_request = MagicMock(spec=httpx.Request)
+        mock_request.url = "https://example.com"
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 403
+        client._session = AsyncMock()
+        client._session.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "403", request=mock_request, response=mock_response
+            )
+        )
+
+        with pytest.raises(MetraFetchError) as exc_info:
+            await client.get_all_arrivals()
+
+        assert "basic" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_connect_timeout_raises_fetch_error(self):
+        """Connection timeouts should raise MetraFetchError, not be swallowed."""
+        client = MetraClient(api_token="test")
+        client._session = AsyncMock()
+        client._session.get = AsyncMock(
+            side_effect=httpx.ConnectTimeout("timed out")
+        )
+
+        with pytest.raises(MetraFetchError, match="Network error"):
+            await client.get_all_arrivals()
+
+    @pytest.mark.asyncio
+    async def test_stale_cache_not_returned_on_error(self):
+        """Errors should NOT silently return stale cache — they should raise."""
+        client = MetraClient(api_token="test")
+        client._cache = [
+            MetraArrival(
+                station_code="CUS",
+                gtfs_stop_id="CUS",
+                trip_id="ME_ME2012_V1_B",
+                route_id="ME",
+                direction_id=1,
+                headsign=None,
+                arrival_time=datetime(2026, 3, 25, 10, 30, tzinfo=UTC),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+            ),
+        ]
+        client._cache_time = datetime.now(UTC) - timedelta(seconds=60)  # Expired
+
+        client._session = AsyncMock()
+        mock_request = MagicMock(spec=httpx.Request)
+        mock_request.url = "https://example.com"
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 500
+        client._session.get = AsyncMock(
+            side_effect=httpx.HTTPStatusError(
+                "500", request=mock_request, response=mock_response
+            )
+        )
+
+        with pytest.raises(MetraFetchError):
+            await client.get_all_arrivals()
