@@ -1162,7 +1162,8 @@ class DepartureService:
                             await njt_collector.collect_journey_details(db, fresh)
 
                     try:
-                        await retry_on_deadlock(db, refresh_journey)
+                        async with db.begin_nested():
+                            await retry_on_deadlock(db, refresh_journey)
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
@@ -1182,12 +1183,6 @@ class DepartureService:
                             error=str(e) or repr(e),
                             error_type=type(e).__name__,
                         )
-                        # Roll back the failed transaction so subsequent
-                        # iterations don't cascade with PendingRollbackError.
-                        try:
-                            await db.rollback()
-                        except Exception:
-                            pass
 
                 await db.commit()
                 logger.info(

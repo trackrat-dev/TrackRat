@@ -235,39 +235,44 @@ class TestDepartedFlagSequentialInference:
         assert s2.has_departed_station is True
 
 
-class TestSecondPassRollback:
-    """Test that the second-pass error handler rolls back to prevent
-    PendingRollbackError cascade (fix for the cascade symptom in #962)."""
+class TestSecondPassSavepoint:
+    """Test that the second-pass per-journey refresh uses begin_nested()
+    (savepoint) to isolate failures and prevent PendingRollbackError cascade
+    while preserving prior successful refreshes (fix for #962)."""
 
-    def test_rollback_called_on_stale_train_refresh_failure(self):
-        """When a stale train refresh fails with a non-PostgreSQL error,
-        the error handler should rollback the session before continuing."""
-        # Read the source to verify the rollback is present
+    def test_savepoint_wraps_each_journey_refresh(self):
+        """Each stale journey refresh should be wrapped in begin_nested()
+        so a failure only rolls back that savepoint, not the entire
+        transaction."""
         import inspect
         from trackrat.services.departure import DepartureService
 
         source = inspect.getsource(DepartureService._ensure_fresh_station_data)
 
-        # The error handler for stale_train_refresh_failed must contain
-        # await db.rollback() to prevent PendingRollbackError cascade
-        assert "stale_train_refresh_failed" in source
-        assert "await db.rollback()" in source
-
-        # Verify the rollback is inside a try/except (defensive)
-        lines = source.split("\n")
-        found_stale_handler = False
-        found_rollback_after = False
-        for i, line in enumerate(lines):
-            if "stale_train_refresh_failed" in line:
-                found_stale_handler = True
-            if found_stale_handler and "await db.rollback()" in line:
-                found_rollback_after = True
-                break
-
-        assert found_stale_handler, (
+        assert "stale_train_refresh_failed" in source, (
             "Expected 'stale_train_refresh_failed' log in _ensure_fresh_station_data"
         )
-        assert found_rollback_after, (
-            "Expected 'await db.rollback()' after stale_train_refresh_failed handler "
-            "to prevent PendingRollbackError cascade"
+
+        # The per-journey refresh must use begin_nested() (savepoint)
+        # instead of a bare db.rollback() that would undo prior successes
+        assert "begin_nested()" in source, (
+            "Expected 'begin_nested()' savepoint wrapping each journey refresh "
+            "to isolate failures without rolling back prior successful work"
         )
+
+        # There should be NO bare db.rollback() in the per-journey loop
+        # (between stale_train_refresh_failed and await db.commit()).
+        # The begin_nested() savepoint handles rollback automatically.
+        lines = source.split("\n")
+        in_stale_handler = False
+        for line in lines:
+            if "stale_train_refresh_failed" in line:
+                in_stale_handler = True
+            if in_stale_handler and "await db.commit()" in line:
+                break
+            if in_stale_handler and "await db.rollback()" in line:
+                raise AssertionError(
+                    "Found 'await db.rollback()' between stale_train_refresh_failed "
+                    "and db.commit() — this rolls back the entire transaction "
+                    "including prior successful refreshes. Use begin_nested()."
+                )
