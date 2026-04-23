@@ -1,27 +1,124 @@
-"""Cloud Function to send user feedback notifications to Slack."""
+"""Cloud Function to send user feedback notifications to Slack and create GitHub issues."""
 
 import base64
 import json
+import urllib.error
 import urllib.request
-from google.cloud import secretmanager
 
 
-def get_slack_webhook():
-    """Retrieve Slack webhook URL from Secret Manager."""
+def get_secret(secret_id):
+    """Retrieve a secret from Secret Manager."""
+    from google.cloud import secretmanager
+
     client = secretmanager.SecretManagerServiceClient()
-    name = "projects/trackrat-v2/secrets/slack-feedback-webhook/versions/latest"
+    name = f"projects/trackrat-v2/secrets/{secret_id}/versions/latest"
     response = client.access_secret_version(request={"name": name})
     return response.payload.data.decode("UTF-8")
 
 
+def format_github_issue(payload):
+    """Format feedback payload into a GitHub issue title and body.
+
+    Returns (title, body) tuple.
+    """
+    message = payload.get("message", "No message")
+    origin = payload.get("origin_code", "?")
+    dest = payload.get("destination_code", "?")
+    screen = payload.get("screen", "unknown")
+    device = payload.get("device_model", "unknown")
+    train_id = payload.get("train_id") or "N/A"
+    app_version = payload.get("app_version") or "unknown"
+    timestamp = payload.get("timestamp", "unknown")
+
+    is_suggestion = message.startswith("[Improvement Suggestion] ")
+    if is_suggestion:
+        display_message = message[len("[Improvement Suggestion] "):]
+        heading = "Improvement Suggestion"
+    else:
+        display_message = message
+        heading = "Issue Report"
+
+    title_msg = display_message[:80].replace("\n", " ")
+    if len(display_message) > 80:
+        title_msg += "..."
+
+    route = f"{origin} → {dest}" if origin != "?" or dest != "?" else "N/A"
+
+    title = f"[User Feedback] {title_msg}"
+
+    body = "\n".join([
+        f"## {heading}",
+        "",
+        f"> {display_message}",
+        "",
+        "### Context",
+        "",
+        "| Field | Value |",
+        "|-------|-------|",
+        f"| **Route** | {route} |",
+        f"| **Screen** | {screen} |",
+        f"| **Train** | {train_id} |",
+        f"| **Device** | {device} |",
+        f"| **App Version** | {app_version} |",
+        f"| **Submitted** | {timestamp} |",
+        "",
+        "---",
+        "*Automatically created from in-app feedback.*",
+    ])
+
+    return title, body
+
+
+def create_github_issue(token, title, body):
+    """Create a GitHub issue in the trackrat-dev/TrackRat repository.
+
+    Returns the HTML URL of the created issue.
+    """
+    url = "https://api.github.com/repos/trackrat-dev/TrackRat/issues"
+    data = json.dumps({"title": title, "body": body, "labels": ["user-feedback"]})
+    req = urllib.request.Request(
+        url,
+        data=data.encode("utf-8"),
+        headers={
+            "Accept": "application/vnd.github.v3+json",
+            "Authorization": f"token {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "TrackRat-Feedback-Notifier",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            return result.get("html_url")
+    except urllib.error.HTTPError as e:
+        if e.code == 422:
+            # Label might not exist — retry without labels
+            data = json.dumps({"title": title, "body": body})
+            req = urllib.request.Request(
+                url,
+                data=data.encode("utf-8"),
+                headers={
+                    "Accept": "application/vnd.github.v3+json",
+                    "Authorization": f"token {token}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "TrackRat-Feedback-Notifier",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                return result.get("html_url")
+        raise
+
+
 def notify_feedback(event, context):
     """Triggered by Pub/Sub when user feedback is submitted."""
-    # Decode the Pub/Sub message
     pubsub_data = base64.b64decode(event["data"]).decode("utf-8")
     log_entry = json.loads(pubsub_data)
     payload = log_entry.get("jsonPayload", {})
 
-    # Extract feedback details
     message = payload.get("message", "No message")
     origin = payload.get("origin_code", "?")
     dest = payload.get("destination_code", "?")
@@ -30,7 +127,7 @@ def notify_feedback(event, context):
     train_id = payload.get("train_id") or "N/A"
     timestamp = payload.get("timestamp", "unknown")
 
-    # Build Slack message
+    # Send Slack notification
     slack_message = {
         "blocks": [
             {
@@ -59,8 +156,7 @@ def notify_feedback(event, context):
         ]
     }
 
-    # Send to Slack
-    webhook_url = get_slack_webhook()
+    webhook_url = get_secret("slack-feedback-webhook")
     req = urllib.request.Request(
         webhook_url,
         data=json.dumps(slack_message).encode("utf-8"),
@@ -73,3 +169,13 @@ def notify_feedback(event, context):
             raise Exception(f"Slack webhook failed: {response.status}")
 
     print(f"Feedback notification sent: {origin}→{dest}: {message[:50]}...")
+
+    # Create GitHub issue
+    try:
+        github_token = get_secret("github-feedback-token")
+        title, body = format_github_issue(payload)
+        issue_url = create_github_issue(github_token, title, body)
+        print(f"GitHub issue created: {issue_url}")
+    except Exception as e:
+        # Non-fatal: Slack notification already succeeded
+        print(f"Failed to create GitHub issue: {e}")
