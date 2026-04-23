@@ -55,9 +55,7 @@ class MNRClient:
     Uses a 30-second cache to minimize API calls.
     """
 
-    def __init__(
-        self, timeout: httpx.Timeout | float | None = None
-    ) -> None:
+    def __init__(self, timeout: httpx.Timeout | float | None = None) -> None:
         """Initialize Metro-North client.
 
         Args:

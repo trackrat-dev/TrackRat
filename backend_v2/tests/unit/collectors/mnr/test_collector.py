@@ -762,9 +762,7 @@ class TestMNRCollectorFailFast:
         return session
 
     @pytest.mark.asyncio
-    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(
-        self, mock_session
-    ):
+    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(self, mock_session):
         """If the upstream feed hangs indefinitely, the collector must bail
         quickly via asyncio.wait_for instead of consuming the scheduler budget.
         """
@@ -787,6 +785,7 @@ class TestMNRCollectorFailFast:
             0.05,
         ):
             import time
+
             t0 = time.monotonic()
             result = await collector.collect(mock_session)
             elapsed = time.monotonic() - t0

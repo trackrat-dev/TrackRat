@@ -122,7 +122,7 @@ class SubwayCollector:
                     self.client.get_all_arrivals(),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "subway_feed_fetch_timed_out | timeout_s=%.1f",
                     _FEED_FETCH_TIMEOUT_SECONDS,
@@ -182,9 +182,7 @@ class SubwayCollector:
             # SELECTs to two total queries regardless of fleet size — critical
             # for subway's ~500 trips per cycle.
             transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments_bulk(
-                session, analyzed_journeys
-            )
+            await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
             # Full-replacement expiration: subway feeds are complete snapshots,
             # so any active journey NOT in the current feed should be expired

@@ -82,9 +82,7 @@ class TestStopsByCodeLookup:
         mock_session = AsyncMock()
 
         asyncio.run(
-            service._update_stops_from_embedded_data(
-                mock_session, journey, stops_data
-            )
+            service._update_stops_from_embedded_data(mock_session, journey, stops_data)
         )
 
         # No session.execute calls needed — stop was found in the dict
@@ -110,9 +108,7 @@ class TestStopsByCodeLookup:
         mock_session = AsyncMock()
 
         asyncio.run(
-            service._update_stops_from_embedded_data(
-                mock_session, journey, stops_data
-            )
+            service._update_stops_from_embedded_data(mock_session, journey, stops_data)
         )
 
         # Zero DB queries for existing stops
@@ -132,16 +128,12 @@ class TestStopsByCodeLookup:
         # Two execute calls: pg_insert, then select
         insert_result = MagicMock()
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(
-            side_effect=[insert_result, select_result]
-        )
+        mock_session.execute = AsyncMock(side_effect=[insert_result, select_result])
 
         stops_data = _make_stops_data(["NY"])
 
         asyncio.run(
-            service._update_stops_from_embedded_data(
-                mock_session, journey, stops_data
-            )
+            service._update_stops_from_embedded_data(mock_session, journey, stops_data)
         )
 
         # Two execute calls: insert + select
@@ -164,16 +156,12 @@ class TestStopsByCodeLookup:
 
         insert_result = MagicMock()
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(
-            side_effect=[insert_result, select_result]
-        )
+        mock_session.execute = AsyncMock(side_effect=[insert_result, select_result])
 
         stops_data = _make_stops_data(["NY", "NP"])
 
         asyncio.run(
-            service._update_stops_from_embedded_data(
-                mock_session, journey, stops_data
-            )
+            service._update_stops_from_embedded_data(mock_session, journey, stops_data)
         )
 
         # Only 2 execute calls (for NP insert + select), not 4
@@ -195,9 +183,7 @@ class TestStopsByCodeLookup:
         ]
 
         asyncio.run(
-            service._update_stops_from_embedded_data(
-                mock_session, journey, stops_data
-            )
+            service._update_stops_from_embedded_data(mock_session, journey, stops_data)
         )
 
         assert len(journey.stops) == 0
@@ -225,9 +211,7 @@ class TestDepartedFlagSequentialInference:
         mock_session = AsyncMock()
 
         asyncio.run(
-            service._update_stops_from_embedded_data(
-                mock_session, journey, stops_data
-            )
+            service._update_stops_from_embedded_data(mock_session, journey, stops_data)
         )
 
         assert s0.has_departed_station is True
@@ -249,9 +233,9 @@ class TestSecondPassSavepoint:
 
         source = inspect.getsource(DepartureService._ensure_fresh_station_data)
 
-        assert "stale_train_refresh_failed" in source, (
-            "Expected 'stale_train_refresh_failed' log in _ensure_fresh_station_data"
-        )
+        assert (
+            "stale_train_refresh_failed" in source
+        ), "Expected 'stale_train_refresh_failed' log in _ensure_fresh_station_data"
 
         # The per-journey refresh must use begin_nested() (savepoint)
         # instead of a bare db.rollback() that would undo prior successes

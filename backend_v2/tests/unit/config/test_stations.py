@@ -1074,8 +1074,7 @@ class TestSubwayGTFSStopMapping:
             "route_topology lists stations whose display-name suffix does "
             "not include the route's line_code(s). Either fix "
             "SUBWAY_STATION_NAMES (the station actually serves that route) "
-            "or remove the station from the route topology:\n"
-            + "\n".join(mismatches)
+            "or remove the station from the route topology:\n" + "\n".join(mismatches)
         )
 
 

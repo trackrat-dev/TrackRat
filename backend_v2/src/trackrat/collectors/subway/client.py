@@ -110,9 +110,7 @@ class SubwayClient:
     Uses a 30-second per-feed cache to minimize API calls.
     """
 
-    def __init__(
-        self, timeout: httpx.Timeout | float | None = None
-    ) -> None:
+    def __init__(self, timeout: httpx.Timeout | float | None = None) -> None:
         self.timeout: httpx.Timeout | float = (
             timeout if timeout is not None else _DEFAULT_TIMEOUT
         )

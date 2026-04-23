@@ -388,9 +388,7 @@ class TestMetraClient:
     async def test_get_all_arrivals_network_error_raises(self, client):
         """Network errors should raise MetraFetchError."""
         client._session = AsyncMock()
-        client._session.get = AsyncMock(
-            side_effect=httpx.ConnectTimeout("timeout")
-        )
+        client._session.get = AsyncMock(side_effect=httpx.ConnectTimeout("timeout"))
 
         with pytest.raises(MetraFetchError, match="Network error"):
             await client.get_all_arrivals()
@@ -636,9 +634,7 @@ class TestMetraFetchError:
         """Connection timeouts should raise MetraFetchError, not be swallowed."""
         client = MetraClient(api_token="test")
         client._session = AsyncMock()
-        client._session.get = AsyncMock(
-            side_effect=httpx.ConnectTimeout("timed out")
-        )
+        client._session.get = AsyncMock(side_effect=httpx.ConnectTimeout("timed out"))
 
         with pytest.raises(MetraFetchError, match="Network error"):
             await client.get_all_arrivals()

@@ -471,9 +471,7 @@ class TestCollectorErrorPropagation:
         client = MagicMock(spec=MetraClient)
         client.has_credentials = True
         client._auth_method = "query_param"
-        client.get_all_arrivals = AsyncMock(
-            side_effect=MetraFetchError("HTTP 500")
-        )
+        client.get_all_arrivals = AsyncMock(side_effect=MetraFetchError("HTTP 500"))
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
@@ -509,9 +507,7 @@ class TestCollectorErrorPropagation:
         client = MagicMock(spec=MetraClient)
         client.has_credentials = True
         client._auth_method = "query_param"
-        client.get_all_arrivals = AsyncMock(
-            side_effect=MetraFetchError("HTTP 500")
-        )
+        client.get_all_arrivals = AsyncMock(side_effect=MetraFetchError("HTTP 500"))
         collector = MetraCollector(client=client)
         session = AsyncMock()
 

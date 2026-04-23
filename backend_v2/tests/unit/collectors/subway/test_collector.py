@@ -429,7 +429,9 @@ class TestSubwayCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result, journey = await collector._process_trip(mock_session, "trip_1", arrivals)
+        result, journey = await collector._process_trip(
+            mock_session, "trip_1", arrivals
+        )
 
         assert result == "discovered"
         assert journey is not None
@@ -1106,9 +1108,7 @@ class TestSubwayCollectorFailFast:
         return session
 
     @pytest.mark.asyncio
-    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(
-        self, mock_session
-    ):
+    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(self, mock_session):
         """If the upstream feeds hang indefinitely, the collector must bail
         quickly via asyncio.wait_for. Subway is hit hardest by hangs because
         it fans out to 8 feeds — any one stalled feed can hold the whole
@@ -1134,6 +1134,7 @@ class TestSubwayCollectorFailFast:
             0.05,
         ):
             import time
+
             t0 = time.monotonic()
             result = await collector.collect(mock_session)
             elapsed = time.monotonic() - t0

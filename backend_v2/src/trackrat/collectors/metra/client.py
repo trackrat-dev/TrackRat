@@ -273,9 +273,7 @@ class MetraClient:
                     f"Metra API authentication failed (HTTP {status}). "
                     f"Check credentials (auth_method={self._auth_method})."
                 ) from e
-            raise MetraFetchError(
-                f"Metra GTFS-RT feed returned HTTP {status}"
-            ) from e
+            raise MetraFetchError(f"Metra GTFS-RT feed returned HTTP {status}") from e
         except httpx.HTTPError as e:
             logger.error(
                 "metra_feed_network_error",
@@ -288,9 +286,7 @@ class MetraClient:
             raise
         except Exception as e:
             logger.error(f"Error parsing Metra GTFS-RT feed: {e}")
-            raise MetraFetchError(
-                f"Error parsing Metra GTFS-RT feed: {e}"
-            ) from e
+            raise MetraFetchError(f"Error parsing Metra GTFS-RT feed: {e}") from e
 
     async def get_station_arrivals(self, station_code: str) -> list[MetraArrival]:
         """

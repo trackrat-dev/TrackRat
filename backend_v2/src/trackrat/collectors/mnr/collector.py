@@ -131,7 +131,7 @@ class MNRCollector:
                     self.client.get_all_arrivals(),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "mnr_feed_fetch_timed_out | timeout_s=%.1f",
                     _FEED_FETCH_TIMEOUT_SECONDS,
@@ -190,9 +190,7 @@ class MNRCollector:
             # out of the per-trip loop eliminates the O(trips * stops)
             # per-segment SELECTs that dominate per-cycle cost.
             transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments_bulk(
-                session, analyzed_journeys
-            )
+            await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
             # Expire active OBSERVED journeys not seen in this collection cycle.
             today = collection_start.date()

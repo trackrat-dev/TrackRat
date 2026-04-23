@@ -730,7 +730,9 @@ class TestCongestionAnalyzer:
         assert main_sql is not None, "stop_pairs query was not executed"
         # The cutoff_time filter must be inside the stop_pairs CTE definition
         # (before the closing parenthesis of the CTE), not just in segment_data
-        stop_pairs_section = main_sql.split("stop_pairs AS")[1].split("segment_data AS")[0]
+        stop_pairs_section = main_sql.split("stop_pairs AS")[1].split(
+            "segment_data AS"
+        )[0]
         assert "last_updated_at >= :cutoff_time" in stop_pairs_section, (
             "cutoff_time filter missing from stop_pairs CTE — "
             "this causes statement timeouts for high-volume providers"
@@ -761,7 +763,9 @@ class TestCongestionAnalyzer:
             None,
         )
         assert main_sql is not None, "stop_pairs query was not executed"
-        stop_pairs_section = main_sql.split("stop_pairs AS")[1].split("segment_data AS")[0]
+        stop_pairs_section = main_sql.split("stop_pairs AS")[1].split(
+            "segment_data AS"
+        )[0]
         assert "last_updated_at >= :cutoff_time" in stop_pairs_section, (
             f"cutoff_time filter missing from stop_pairs CTE "
             f"(max_per_segment={max_per_segment})"
