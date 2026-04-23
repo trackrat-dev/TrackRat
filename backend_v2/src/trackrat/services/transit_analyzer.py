@@ -285,6 +285,10 @@ class TransitAnalyzer:
             )
 
             db.add(segment)
+            if known_existing is not None:
+                known_existing.add(
+                    (journey.id, current_stop.station_code, next_stop.station_code)
+                )
             segments_created += 1
 
         if segments_created > 0:

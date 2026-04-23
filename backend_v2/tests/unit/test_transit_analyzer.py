@@ -457,3 +457,33 @@ async def test_bulk_analyzer_respects_existing_per_journey(mock_session):
         (s.journey_id, s.from_station_code, s.to_station_code) for s in segments
     }
     assert created_keys == {(1, "B", "C"), (2, "A", "B"), (2, "B", "C")}
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_deduplicates_same_journey_appearing_twice(mock_session):
+    """If the same journey appears more than once in the input list (e.g.,
+    because a train ID showed up in multiple GTFS-RT feeds), its segments
+    must only be created once — the in-memory known_existing set must be
+    updated after each insert to prevent duplicates."""
+    j1 = _make_journey(1, "SUBWAY", "1")
+
+    _setup_bulk_mocks(
+        mock_session,
+        stops_by_journey={1: j1.stops},
+        existing_tuples=[],
+    )
+
+    analyzer = TransitAnalyzer()
+    # Pass the same journey twice to simulate a duplicate in the collector list.
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j1, j1])
+
+    # Should create exactly 2 segments (A->B, B->C), not 4.
+    assert created == 2
+    segments = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segments) == 2
+    created_keys = [
+        (s.journey_id, s.from_station_code, s.to_station_code) for s in segments
+    ]
+    assert sorted(created_keys) == [(1, "A", "B"), (1, "B", "C")]
