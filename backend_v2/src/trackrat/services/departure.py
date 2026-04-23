@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import noload, selectinload
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
@@ -43,6 +43,21 @@ from trackrat.utils.train import (
 )
 
 logger = get_logger(__name__)
+
+# Loader options for the NJT JIT refresh path. Must load `stops` (merged by
+# NJT journey collector) and `snapshots` (cleared and rewritten by
+# JourneyCollector.create_journey_snapshot). The other 3 delete-orphan child
+# collections aren't touched in this path, so noload() skips the orphan-check
+# lazy-loads that would otherwise trigger greenlet_spawn errors in async
+# context — at much lower per-journey cost than a defensive selectinload.
+_NJT_REFRESH_LOAD_OPTIONS = (
+    selectinload(TrainJourney.stops),
+    selectinload(TrainJourney.snapshots),
+    noload(TrainJourney.segment_times),
+    noload(TrainJourney.dwell_times),
+    noload(TrainJourney.progress),
+    noload(TrainJourney.progress_snapshots),
+)
 
 # Tracks station codes currently being refreshed in background tasks.
 # Prevents duplicate concurrent JIT refreshes for the same station.
@@ -1115,16 +1130,7 @@ class DepartureService:
                                 TrainJourney.data_source == "NJT",
                             )
                         )
-                        .options(
-                            selectinload(TrainJourney.stops),
-                            # Load all delete-orphan collections to prevent
-                            # greenlet_spawn errors during flush orphan checks
-                            selectinload(TrainJourney.snapshots),
-                            selectinload(TrainJourney.segment_times),
-                            selectinload(TrainJourney.dwell_times),
-                            selectinload(TrainJourney.progress),
-                            selectinload(TrainJourney.progress_snapshots),
-                        )
+                        .options(*_NJT_REFRESH_LOAD_OPTIONS)
                         .order_by(TrainJourney.id)
                     )
                     result = await db.execute(stmt)
@@ -1291,17 +1297,7 @@ class DepartureService:
                         TrainJourney.is_cancelled.is_not(True),
                     )
                 )
-                # Eagerly load all delete-orphan collections to prevent
-                # greenlet_spawn errors during flush/commit orphan checks.
-                # Must match the selectinloads in refresh_journey below.
-                .options(
-                    selectinload(TrainJourney.stops),
-                    selectinload(TrainJourney.snapshots),
-                    selectinload(TrainJourney.segment_times),
-                    selectinload(TrainJourney.dwell_times),
-                    selectinload(TrainJourney.progress),
-                    selectinload(TrainJourney.progress_snapshots),
-                )
+                .options(*_NJT_REFRESH_LOAD_OPTIONS)
                 .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())
@@ -1332,16 +1328,7 @@ class DepartureService:
                         result = await db.execute(
                             select(TrainJourney)
                             .where(TrainJourney.id == jid)
-                            .options(
-                                selectinload(TrainJourney.stops),
-                                # Load all delete-orphan collections to prevent
-                                # greenlet_spawn errors during flush orphan checks
-                                selectinload(TrainJourney.snapshots),
-                                selectinload(TrainJourney.segment_times),
-                                selectinload(TrainJourney.dwell_times),
-                                selectinload(TrainJourney.progress),
-                                selectinload(TrainJourney.progress_snapshots),
-                            )
+                            .options(*_NJT_REFRESH_LOAD_OPTIONS)
                             .execution_options(populate_existing=True)
                         )
                         fresh = result.scalar_one_or_none()

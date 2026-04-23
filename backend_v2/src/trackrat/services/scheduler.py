@@ -2792,7 +2792,7 @@ class SchedulerService:
                     self._running_tasks[task_id] = task
 
                 from sqlalchemy import and_, select
-                from sqlalchemy.orm import selectinload, sessionmaker
+                from sqlalchemy.orm import noload, selectinload, sessionmaker
 
                 # Use synchronous database access to avoid greenlet issues in scheduler context
                 SyncSession = sessionmaker(self._get_sync_engine())
@@ -2850,14 +2850,18 @@ class SchedulerService:
                                 )
                             )
                             .options(
+                                # Live Activity status calc reads journey.stops
+                                # and journey.snapshots[-1].train_status; the
+                                # other 4 delete-orphan collections aren't
+                                # touched, so noload() skips orphan-check
+                                # lazy-loads without the per-journey round-
+                                # trips a defensive selectinload would cost.
                                 selectinload(TrainJourney.stops),
-                                # Load all delete-orphan collections to prevent
-                                # greenlet_spawn errors during flush orphan checks
                                 selectinload(TrainJourney.snapshots),
-                                selectinload(TrainJourney.segment_times),
-                                selectinload(TrainJourney.dwell_times),
-                                selectinload(TrainJourney.progress),
-                                selectinload(TrainJourney.progress_snapshots),
+                                noload(TrainJourney.segment_times),
+                                noload(TrainJourney.dwell_times),
+                                noload(TrainJourney.progress),
+                                noload(TrainJourney.progress_snapshots),
                             )
                         )
 

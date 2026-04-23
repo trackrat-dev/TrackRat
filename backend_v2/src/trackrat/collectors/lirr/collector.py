@@ -12,10 +12,10 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from trackrat.collectors.lirr.client import LirrArrival, LIRRClient
 from trackrat.collectors.mta_common import (
+    JOURNEY_UPDATE_LOAD_OPTIONS,
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
@@ -301,16 +301,7 @@ class LIRRCollector:
                 TrainJourney.journey_date == journey_date,
                 TrainJourney.data_source == "LIRR",
             )
-            .options(
-                selectinload(TrainJourney.stops),
-                # Load all delete-orphan collections to prevent
-                # greenlet_spawn errors during flush orphan checks
-                selectinload(TrainJourney.snapshots),
-                selectinload(TrainJourney.segment_times),
-                selectinload(TrainJourney.dwell_times),
-                selectinload(TrainJourney.progress),
-                selectinload(TrainJourney.progress_snapshots),
-            )
+            .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
         )
         journey = existing.scalar_one_or_none()
 
