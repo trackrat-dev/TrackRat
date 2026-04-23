@@ -11,6 +11,7 @@ Key differences from LIRR/MNR:
 - 8 feeds fetched concurrently via SubwayClient
 """
 
+import asyncio
 import hashlib
 import logging
 from datetime import timedelta
@@ -48,6 +49,11 @@ logger = logging.getLogger(__name__)
 # Subway full-replacement window: if a journey was updated within this
 # window but is missing from the current feed, expire it immediately.
 _REPLACEMENT_WINDOW = timedelta(minutes=30)
+
+# Outer bound on the multi-feed fetch. Generous relative to the per-feed phase
+# timeouts, but still leaves the bulk of the 480s scheduler budget for DB work
+# when the upstream MTA endpoints are degraded.
+_FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
 
 def _generate_train_id(trip_id: str, route_id: str) -> str:
@@ -107,8 +113,22 @@ class SubwayCollector:
         try:
             collection_start = now_et()
 
-            # Fetch all arrivals from all 8 feeds
-            arrivals, succeeded_feeds = await self.client.get_all_arrivals()
+            # Fetch all arrivals from all 8 feeds. Wrap in wait_for so that an
+            # upstream MTA outage (hung connects, stalled reads beyond the
+            # phase timeouts) can't consume the whole 480s scheduler budget —
+            # we bail with empty stats and pick it up next cycle (~4 min).
+            try:
+                arrivals, succeeded_feeds = await asyncio.wait_for(
+                    self.client.get_all_arrivals(),
+                    timeout=_FEED_FETCH_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "subway_feed_fetch_timed_out | timeout_s=%.1f",
+                    _FEED_FETCH_TIMEOUT_SECONDS,
+                )
+                return stats
+
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:

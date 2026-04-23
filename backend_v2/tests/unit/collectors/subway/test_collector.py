@@ -1090,3 +1090,56 @@ class TestGtfsFeedUrl:
         assert (
             "supplemented" in SUBWAY_GTFS_STATIC_URL
         ), f"Expected supplemented feed URL, got: {SUBWAY_GTFS_STATIC_URL}"
+
+
+class TestSubwayCollectorFailFast:
+    """Tests for subway fail-fast on upstream 5xx / hang (#960)."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(
+        self, mock_session
+    ):
+        """If the upstream feeds hang indefinitely, the collector must bail
+        quickly via asyncio.wait_for. Subway is hit hardest by hangs because
+        it fans out to 8 feeds — any one stalled feed can hold the whole
+        gather() until each per-feed timeout expires.
+        """
+        import asyncio as _asyncio
+
+        hang_event = _asyncio.Event()
+
+        async def hang_forever():
+            await hang_event.wait()
+            return ([], set())
+
+        hung_client = AsyncMock(spec=SubwayClient)
+        hung_client.get_all_arrivals = hang_forever
+        hung_client.close = AsyncMock()
+
+        with patch("trackrat.collectors.subway.collector.GTFSService"):
+            collector = SubwayCollector(client=hung_client)
+
+        with patch(
+            "trackrat.collectors.subway.collector._FEED_FETCH_TIMEOUT_SECONDS",
+            0.05,
+        ):
+            import time
+            t0 = time.monotonic()
+            result = await collector.collect(mock_session)
+            elapsed = time.monotonic() - t0
+
+        assert elapsed < 1.0, f"collect() took {elapsed:.2f}s — fail-fast broken"
+        assert result["total_arrivals"] == 0
+        assert result["discovered"] == 0
+        assert result["updated"] == 0
+        mock_session.commit.assert_not_called()
