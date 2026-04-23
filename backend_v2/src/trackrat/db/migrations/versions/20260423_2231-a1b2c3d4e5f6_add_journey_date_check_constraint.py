@@ -20,6 +20,13 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         """
+        DELETE FROM train_journeys
+        WHERE journey_date < '2020-01-01'
+           OR journey_date > (CURRENT_DATE + INTERVAL '365 days')
+        """
+    )
+    op.execute(
+        """
         ALTER TABLE train_journeys
         ADD CONSTRAINT chk_reasonable_journey_date
         CHECK (
