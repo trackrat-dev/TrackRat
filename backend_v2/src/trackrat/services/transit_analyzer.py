@@ -140,6 +140,8 @@ class TransitAnalyzer:
         stops_result = await db.execute(stops_stmt)
         stops_by_journey: dict[int, list[JourneyStop]] = {}
         for stop in stops_result.scalars():
+            if stop.journey_id is None:
+                continue
             stops_by_journey.setdefault(stop.journey_id, []).append(stop)
 
         total_created = 0
@@ -285,7 +287,12 @@ class TransitAnalyzer:
             )
 
             db.add(segment)
-            if known_existing is not None:
+            if (
+                known_existing is not None
+                and journey.id is not None
+                and current_stop.station_code is not None
+                and next_stop.station_code is not None
+            ):
                 known_existing.add(
                     (journey.id, current_stop.station_code, next_stop.station_code)
                 )

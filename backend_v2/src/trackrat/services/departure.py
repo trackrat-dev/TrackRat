@@ -1407,7 +1407,7 @@ class DepartureService:
         # collection (session.get() after pg_insert creates objects not tracked
         # in journey.stops, causing orphan-check lazy loads during flush).
         stops_by_code: dict[str, JourneyStop] = {
-            s.station_code: s for s in journey.stops
+            s.station_code: s for s in journey.stops if s.station_code is not None
         }
 
         # First pass: find the furthest departed stop for sequential inference.
