@@ -12,10 +12,28 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy.orm import noload, selectinload
+
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import normalize_to_et
 
 logger = logging.getLogger(__name__)
+
+# Loader options for GTFS-RT collector update queries (subway, LIRR, MNR,
+# BART, MBTA, Metra). TrainJourney has 5 delete-orphan child collections
+# (snapshots, segment_times, dwell_times, progress, progress_snapshots)
+# that SQLAlchemy would lazy-load during flush orphan checks, triggering
+# greenlet_spawn errors in async context. These collectors never modify
+# any of them — they only read/merge journey.stops — so noload() skips
+# the check without the per-journey round-trips that selectinload costs.
+JOURNEY_UPDATE_LOAD_OPTIONS = (
+    selectinload(TrainJourney.stops),
+    noload(TrainJourney.snapshots),
+    noload(TrainJourney.segment_times),
+    noload(TrainJourney.dwell_times),
+    noload(TrainJourney.progress),
+    noload(TrainJourney.progress_snapshots),
+)
 
 # Terminal stations where outbound trains originate (direction_id=0).
 # Used as a fallback when GTFS static backfill is unavailable.
