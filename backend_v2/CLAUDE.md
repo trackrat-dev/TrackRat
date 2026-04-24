@@ -372,9 +372,10 @@ The system now includes comprehensive transit time analysis:
    - Run tests: `poetry run pytest tests/`
 
 2. **Database Changes**:
-   - Create migration: `alembic revision -m "description"`
-   - Edit migration file in `db/migrations/versions/`
-   - **NOTE**: Migrations run automatically during application startup (after backup restore)
+   - Create migration: `poetry run alembic revision -m "description"` — this generates a unique 12-char hex revision ID for you. **Never hand-write a migration file with a made-up or placeholder revision ID** (e.g. `a1b2c3d4e5f6`). Duplicate IDs cause Alembic to refuse to load the tree and the backend crash-loops on startup.
+   - Edit the generated file in `db/migrations/versions/` (upgrade/downgrade bodies only; leave the `revision =` / `down_revision =` lines alone).
+   - Before committing, verify the tree is valid: `poetry run alembic heads` must print exactly one head, and `poetry run alembic upgrade head --sql >/dev/null` must succeed. These two commands catch duplicate revision IDs and broken chains that application tests won't.
+   - **NOTE**: Migrations run automatically during application startup (after backup restore). A broken migration tree = staging/prod crash loop.
 
 3. **Collector Changes**:
    - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py, schedule.py)
