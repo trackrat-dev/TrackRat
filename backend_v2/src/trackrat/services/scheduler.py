@@ -2554,16 +2554,19 @@ class SchedulerService:
                 # Phase 1: Delete old train_journeys in batches
                 while True:
                     async with get_session() as db:
-                        result = await db.execute(
-                            text(
-                                "DELETE FROM train_journeys "
-                                "WHERE id IN ("
-                                "  SELECT id FROM train_journeys "
-                                "  WHERE journey_date < CURRENT_DATE - make_interval(days => :days) "
-                                "  LIMIT :batch_size"
-                                ")"
+                        result = cast(
+                            CursorResult[tuple[()]],
+                            await db.execute(
+                                text(
+                                    "DELETE FROM train_journeys "
+                                    "WHERE id IN ("
+                                    "  SELECT id FROM train_journeys "
+                                    "  WHERE journey_date < CURRENT_DATE - make_interval(days => :days) "
+                                    "  LIMIT :batch_size"
+                                    ")"
+                                ),
+                                {"days": cutoff_days, "batch_size": batch_size},
                             ),
-                            {"days": cutoff_days, "batch_size": batch_size},
                         )
                         deleted = result.rowcount or 0
                     total_journeys += deleted
@@ -2573,16 +2576,19 @@ class SchedulerService:
                 # Phase 2: Delete old discovery_runs in batches
                 while True:
                     async with get_session() as db:
-                        result = await db.execute(
-                            text(
-                                "DELETE FROM discovery_runs "
-                                "WHERE id IN ("
-                                "  SELECT id FROM discovery_runs "
-                                "  WHERE run_at < NOW() - make_interval(days => :days) "
-                                "  LIMIT :batch_size"
-                                ")"
+                        result = cast(
+                            CursorResult[tuple[()]],
+                            await db.execute(
+                                text(
+                                    "DELETE FROM discovery_runs "
+                                    "WHERE id IN ("
+                                    "  SELECT id FROM discovery_runs "
+                                    "  WHERE run_at < NOW() - make_interval(days => :days) "
+                                    "  LIMIT :batch_size"
+                                    ")"
+                                ),
+                                {"days": cutoff_days, "batch_size": batch_size},
                             ),
-                            {"days": cutoff_days, "batch_size": batch_size},
                         )
                         deleted = result.rowcount or 0
                     total_discovery += deleted
@@ -2592,16 +2598,19 @@ class SchedulerService:
                 # Phase 3: Delete old validation_results in batches
                 while True:
                     async with get_session() as db:
-                        result = await db.execute(
-                            text(
-                                "DELETE FROM validation_results "
-                                "WHERE id IN ("
-                                "  SELECT id FROM validation_results "
-                                "  WHERE run_at < NOW() - make_interval(days => :days) "
-                                "  LIMIT :batch_size"
-                                ")"
+                        result = cast(
+                            CursorResult[tuple[()]],
+                            await db.execute(
+                                text(
+                                    "DELETE FROM validation_results "
+                                    "WHERE id IN ("
+                                    "  SELECT id FROM validation_results "
+                                    "  WHERE run_at < NOW() - make_interval(days => :days) "
+                                    "  LIMIT :batch_size"
+                                    ")"
+                                ),
+                                {"days": cutoff_days, "batch_size": batch_size},
                             ),
-                            {"days": cutoff_days, "batch_size": batch_size},
                         )
                         deleted = result.rowcount or 0
                     total_validation += deleted
