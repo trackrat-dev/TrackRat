@@ -214,7 +214,7 @@ def test_migration_drops_exactly_eleven_indexes():
         "20260423_1749-d170389c0848_drop_unused_indexes"
     )
     assert migration.revision == "d170389c0848"
-    assert migration.down_revision == "6feb0d5b5600"
+    assert migration.down_revision == "c17a6a3e8c3c"
 
     calls = []
     mock_op = types.SimpleNamespace(
