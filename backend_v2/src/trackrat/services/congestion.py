@@ -541,12 +541,16 @@ class CongestionAnalyzer:
                     COUNT(DISTINCT stt.journey_id) as day_count
                 FROM segment_transit_times stt
                 WHERE stt.departure_time >= NOW() - INTERVAL '30 days'
-                  AND stt.hour_of_day = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/New_York'))
+                  -- Cast EXTRACT results to integer to match hour_of_day/day_of_week
+                  -- column types. Without the cast, PostgreSQL implicitly casts the
+                  -- integer column to numeric at filter time, which prevents
+                  -- idx_segment_baseline from being used (#989).
+                  AND stt.hour_of_day = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/New_York'))::integer
                   -- Match weekday vs weekend
                   -- EXTRACT(DOW) uses Sun=0,Sat=6; Python weekday() uses Mon=0,Sat=5,Sun=6
                   AND (
-                      (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) IN (0, 6) AND stt.day_of_week IN (5, 6))
-                      OR (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
+                      (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York'))::integer IN (0, 6) AND stt.day_of_week IN (5, 6))
+                      OR (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York'))::integer NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
                   )
                   {ds_filter_stt}
                 GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source, stt.departure_time::date
