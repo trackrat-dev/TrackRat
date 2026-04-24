@@ -5,9 +5,9 @@ Uses PostgreSQL with asyncpg for scalable, concurrent database access.
 """
 
 import asyncio
+import contextlib
 import functools
 from collections.abc import AsyncGenerator, Awaitable, Callable
-import contextlib
 from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
