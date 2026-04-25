@@ -37,7 +37,12 @@ class TestLineStats:
     """Test cases for LineStats data class."""
 
     def test_line_stats_on_time_percentage_calculation(self):
-        """Test on-time percentage calculation."""
+        """On-time percentage uses arrival_data_count as the denominator.
+
+        Trains without real arrival data (scheduled_fallback or in-progress)
+        contribute to train_count but not to arrival_data_count, so they
+        must not affect OTP.
+        """
         stats = LineStats(
             line_name="Northeast Corridor",
             line_code="NEC",
@@ -46,13 +51,14 @@ class TestLineStats:
             cancellation_count=1,
             total_delay_minutes=45.0,
             data_source="NJT",
+            arrival_data_count=9,
         )
 
-        # 8 on-time out of 9 non-cancelled = 88.89%
+        # 8 on-time out of 9 trains with arrival data = 88.89%
         assert abs(stats.on_time_percentage - 88.89) < 0.1
 
     def test_line_stats_average_delay_calculation(self):
-        """Test average delay calculation."""
+        """Average delay uses arrival_data_count as the denominator."""
         stats = LineStats(
             line_name="Northeast Corridor",
             line_code="NEC",
@@ -61,9 +67,10 @@ class TestLineStats:
             cancellation_count=1,
             total_delay_minutes=45.0,
             data_source="NJT",
+            arrival_data_count=9,
         )
 
-        # 45 minutes / 9 non-cancelled = 5.0 minutes
+        # 45 minutes / 9 trains with arrival data = 5.0 minutes
         assert stats.average_delay_minutes == 5.0
 
     def test_line_stats_all_cancelled(self):
@@ -76,6 +83,7 @@ class TestLineStats:
             cancellation_count=5,
             total_delay_minutes=0.0,
             data_source="NJT",
+            arrival_data_count=0,
         )
 
         assert stats.on_time_percentage == 0.0
@@ -91,6 +99,25 @@ class TestLineStats:
             cancellation_count=0,
             total_delay_minutes=0.0,
             data_source="NJT",
+            arrival_data_count=0,
+        )
+
+        assert stats.on_time_percentage == 0.0
+        assert stats.average_delay_minutes == 0.0
+
+    def test_line_stats_only_scheduled_fallback_trains(self):
+        """Regression: trains with only scheduled_fallback arrivals must
+        not deflate OTP. arrival_data_count=0 means we have no usable data,
+        so OTP returns 0.0 (callers treat that as "no signal")."""
+        stats = LineStats(
+            line_name="PATH",
+            line_code="PATH",
+            train_count=20,
+            on_time_count=0,
+            cancellation_count=0,
+            total_delay_minutes=0.0,
+            data_source="PATH",
+            arrival_data_count=0,
         )
 
         assert stats.on_time_percentage == 0.0
@@ -211,7 +238,12 @@ class TestSummaryService:
         return journeys
 
     def test_calculate_line_stats(self, summary_service, sample_journeys):
-        """Test line statistics calculation from journeys."""
+        """Test line statistics calculation from journeys.
+
+        sample_journeys has: 1 on-time arrival, 1 ten-minute-late arrival,
+        1 cancelled (no stops). Both arrival stops have real data
+        (arrival_source is unset on the Mock, so it's not "scheduled_fallback").
+        """
         line_stats = summary_service._calculate_line_stats(sample_journeys)
 
         assert "Northeast Corridor" in line_stats
@@ -221,6 +253,80 @@ class TestSummaryService:
         assert nec_stats.cancellation_count == 1
         assert nec_stats.line_code == "NEC"
         assert nec_stats.data_source == "NJT"
+        # Both non-cancelled trains had usable arrival data.
+        assert nec_stats.arrival_data_count == 2
+        # One was on time (0 min), the other was 10 min late.
+        assert nec_stats.on_time_count == 1
+        assert nec_stats.total_delay_minutes == 10.0
+        # 1 / 2 = 50% on time
+        assert nec_stats.on_time_percentage == 50.0
+
+    def test_calculate_line_stats_excludes_scheduled_fallback(self, summary_service):
+        """Regression: a non-cancelled train whose last stop arrival is
+        flagged scheduled_fallback must not contribute to on_time_count or
+        arrival_data_count, so OTP reflects only trains with real data."""
+        current_time = datetime.now(UTC)
+
+        # Real on-time arrival
+        real_journey = Mock(spec=TrainJourney)
+        real_journey.id = 1
+        real_journey.train_id = "REAL-1"
+        real_journey.data_source = "PATH"
+        real_journey.line_name = "PATH"
+        real_journey.line_code = "PATH"
+        real_journey.is_cancelled = False
+        real_stop = Mock()
+        real_stop.station_code = "WTC"
+        real_stop.stop_sequence = 5
+        real_stop.scheduled_arrival = current_time - timedelta(minutes=10)
+        real_stop.actual_arrival = current_time - timedelta(minutes=10)
+        real_stop.arrival_source = "api_observed"
+        real_journey.stops = [real_stop]
+
+        # Scheduled-fallback arrival (collector wrote actual = scheduled
+        # because the GTFS-RT feed didn't supply a real arrival time)
+        fallback_journey = Mock(spec=TrainJourney)
+        fallback_journey.id = 2
+        fallback_journey.train_id = "FALLBACK-1"
+        fallback_journey.data_source = "PATH"
+        fallback_journey.line_name = "PATH"
+        fallback_journey.line_code = "PATH"
+        fallback_journey.is_cancelled = False
+        fallback_stop = Mock()
+        fallback_stop.station_code = "WTC"
+        fallback_stop.stop_sequence = 5
+        fallback_stop.scheduled_arrival = current_time - timedelta(minutes=10)
+        fallback_stop.actual_arrival = current_time - timedelta(minutes=10)
+        fallback_stop.arrival_source = "scheduled_fallback"
+        fallback_journey.stops = [fallback_stop]
+
+        # In-progress: no actual_arrival yet
+        inprogress_journey = Mock(spec=TrainJourney)
+        inprogress_journey.id = 3
+        inprogress_journey.train_id = "INPROGRESS-1"
+        inprogress_journey.data_source = "PATH"
+        inprogress_journey.line_name = "PATH"
+        inprogress_journey.line_code = "PATH"
+        inprogress_journey.is_cancelled = False
+        inprogress_stop = Mock()
+        inprogress_stop.station_code = "WTC"
+        inprogress_stop.stop_sequence = 5
+        inprogress_stop.scheduled_arrival = current_time + timedelta(minutes=5)
+        inprogress_stop.actual_arrival = None
+        inprogress_stop.arrival_source = None
+        inprogress_journey.stops = [inprogress_stop]
+
+        stats = summary_service._calculate_line_stats(
+            [real_journey, fallback_journey, inprogress_journey]
+        )
+
+        path = stats["PATH"]
+        # All three observed trains stay in train_count.
+        assert path.train_count == 3
+        # Only the train with real arrival data contributes to OTP.
+        assert path.arrival_data_count == 1
+        assert path.on_time_count == 1
+        assert path.on_time_percentage == 100.0
 
     def test_generate_network_summary_excellent(self, summary_service):
         """Test network summary generation for excellent performance."""
@@ -233,6 +339,7 @@ class TestSummaryService:
                 cancellation_count=0,
                 total_delay_minutes=15.0,
                 data_source="NJT",
+                arrival_data_count=20,
             )
         }
 
@@ -244,6 +351,7 @@ class TestSummaryService:
             or "on time" in summary.headline.lower()
         )
         assert summary.metrics is not None
+        assert summary.metrics.on_time_percentage is not None
         assert summary.metrics.on_time_percentage >= 90
 
     def test_generate_network_summary_degraded(self, summary_service):
@@ -257,6 +365,7 @@ class TestSummaryService:
                 cancellation_count=3,
                 total_delay_minutes=150.0,
                 data_source="NJT",
+                arrival_data_count=17,
             )
         }
 
@@ -265,6 +374,89 @@ class TestSummaryService:
         assert summary.scope == "network"
         # When cancellations are present, they lead the headline
         assert "cancellation" in summary.headline.lower()
+
+    def test_generate_network_summary_excludes_scheduled_fallback(
+        self, summary_service
+    ):
+        """Regression: scheduled_fallback trains stay in train_count but not
+        in arrival_data_count, so OTP reflects only trains with real data.
+
+        This is the original PATH bug — 100 observed trains where most have
+        arrival_source="scheduled_fallback" used to deflate OTP because the
+        denominator counted them. Now the denominator is arrival_data_count.
+        """
+        line_stats = {
+            "PATH": LineStats(
+                line_name="PATH",
+                line_code="PATH",
+                train_count=100,  # observed trains in window
+                on_time_count=18,  # 18 of 20 with real data were on time
+                cancellation_count=0,
+                total_delay_minutes=24.0,  # only from real-data trains
+                data_source="PATH",
+                arrival_data_count=20,  # 80 had scheduled_fallback or were in-progress
+            )
+        }
+
+        summary = summary_service._generate_network_summary(line_stats)
+
+        assert summary.metrics is not None
+        # 18 / 20 = 90% — NOT 18 / 100 = 18% (the old buggy denominator)
+        assert summary.metrics.on_time_percentage is not None
+        assert abs(summary.metrics.on_time_percentage - 90.0) < 0.01
+        # train_count still reflects all observed trains
+        assert summary.metrics.train_count == 100
+
+    def test_generate_network_summary_no_arrival_data_only_cancellations(
+        self, summary_service
+    ):
+        """When we have cancellations but no usable arrival data, report
+        cancellations without claiming an OTP we can't compute."""
+        line_stats = {
+            "PATH": LineStats(
+                line_name="PATH",
+                line_code="PATH",
+                train_count=10,
+                on_time_count=0,
+                cancellation_count=3,
+                total_delay_minutes=0.0,
+                data_source="PATH",
+                arrival_data_count=0,
+            )
+        }
+
+        summary = summary_service._generate_network_summary(line_stats)
+
+        assert "cancellation" in summary.headline.lower()
+        assert "3" in summary.headline
+        assert summary.metrics is not None
+        assert summary.metrics.on_time_percentage is None
+        assert summary.metrics.average_delay_minutes is None
+        assert summary.metrics.cancellation_count == 3
+
+    def test_generate_network_summary_no_arrival_data_no_cancellations(
+        self, summary_service
+    ):
+        """When we have observed trains but no usable arrival data and no
+        cancellations, hide the section (empty headline/body, metrics=None)."""
+        line_stats = {
+            "PATH": LineStats(
+                line_name="PATH",
+                line_code="PATH",
+                train_count=10,
+                on_time_count=0,
+                cancellation_count=0,
+                total_delay_minutes=0.0,
+                data_source="PATH",
+                arrival_data_count=0,
+            )
+        }
+
+        summary = summary_service._generate_network_summary(line_stats)
+
+        assert summary.headline == ""
+        assert summary.body == ""
+        assert summary.metrics is None
 
     def test_generate_network_summary_empty(self, summary_service):
         """Test network summary with no data returns empty headline."""
@@ -456,6 +648,62 @@ class TestSummaryService:
         assert stats.total_count == 1
         assert stats.on_time_percentage == 100.0
 
+    def test_calculate_arrival_stats_excludes_scheduled_fallback(self, summary_service):
+        """Regression: route arrival stats must not count scheduled_fallback
+        arrivals. Those always show 0 delay (collector wrote actual = scheduled
+        because the feed didn't supply a real arrival timestamp) and would
+        falsely inflate OTP."""
+        current_time = datetime.now(UTC)
+
+        def make_journey(*, late_minutes: float, arrival_source: str | None) -> Mock:
+            journey = Mock(spec=TrainJourney)
+            journey.is_cancelled = False
+            stop = Mock()
+            stop.station_code = "WTC"
+            stop.stop_sequence = 5
+            stop.scheduled_arrival = current_time - timedelta(minutes=10)
+            stop.actual_arrival = current_time - timedelta(minutes=10 - late_minutes)
+            stop.arrival_source = arrival_source
+            journey.stops = [stop]
+            return journey
+
+        # 1 real on-time train + 5 scheduled_fallback trains (all show 0 delay)
+        real_on_time = make_journey(late_minutes=0, arrival_source="api_observed")
+        fallbacks = [
+            make_journey(late_minutes=0, arrival_source="scheduled_fallback")
+            for _ in range(5)
+        ]
+
+        stats = summary_service._calculate_arrival_stats(
+            [real_on_time, *fallbacks], "WTC"
+        )
+
+        assert stats is not None
+        # Only the 1 real train counts.
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 100.0
+        assert stats.average_delay_minutes == 0.0
+
+    def test_calculate_arrival_stats_returns_none_when_only_fallbacks(
+        self, summary_service
+    ):
+        """When every train has scheduled_fallback arrivals, return None
+        (no arrival data) — caller falls back to departure stats."""
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.is_cancelled = False
+        stop = Mock()
+        stop.station_code = "WTC"
+        stop.stop_sequence = 5
+        stop.scheduled_arrival = current_time - timedelta(minutes=10)
+        stop.actual_arrival = current_time - timedelta(minutes=10)
+        stop.arrival_source = "scheduled_fallback"
+        journey.stops = [stop]
+
+        stats = summary_service._calculate_arrival_stats([journey], "WTC")
+        assert stats is None
+
     def test_generate_train_summary_good_performance(self, summary_service):
         """Test train summary for train with good historical performance."""
         current_time = datetime.now(UTC)
@@ -634,6 +882,7 @@ class TestSummaryService:
                 cancellation_count=0,
                 total_delay_minutes=20.0,
                 data_source="NJT",
+                arrival_data_count=20,
             )
         }
 
