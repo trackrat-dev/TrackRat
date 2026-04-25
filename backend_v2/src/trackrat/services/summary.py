@@ -69,7 +69,15 @@ CARRIER_DISPLAY_NAMES: dict[str, str] = {
 
 @dataclass
 class LineStats:
-    """Statistics for a single line."""
+    """Statistics for a single line.
+
+    `arrival_data_count` is the number of non-cancelled trains with usable
+    arrival data (real actual_arrival + scheduled_arrival, with
+    arrival_source != "scheduled_fallback"). It is the correct denominator
+    for on-time percentage and average delay; `train_count` is informational
+    only and includes scheduled_fallback / in-progress trains that don't
+    contribute to delay calculations.
+    """
 
     line_name: str
     line_code: str
@@ -78,20 +86,19 @@ class LineStats:
     cancellation_count: int
     total_delay_minutes: float
     data_source: str
+    arrival_data_count: int = 0
 
     @property
     def on_time_percentage(self) -> float:
-        non_cancelled = self.train_count - self.cancellation_count
-        if non_cancelled <= 0:
+        if self.arrival_data_count <= 0:
             return 0.0
-        return (self.on_time_count / non_cancelled) * 100
+        return (self.on_time_count / self.arrival_data_count) * 100
 
     @property
     def average_delay_minutes(self) -> float:
-        non_cancelled = self.train_count - self.cancellation_count
-        if non_cancelled <= 0:
+        if self.arrival_data_count <= 0:
             return 0.0
-        return self.total_delay_minutes / non_cancelled
+        return self.total_delay_minutes / self.arrival_data_count
 
 
 @dataclass
@@ -565,7 +572,15 @@ class SummaryService:
     def _calculate_line_stats(
         self, journeys: list[TrainJourney]
     ) -> dict[str, LineStats]:
-        """Calculate statistics grouped by line."""
+        """Calculate statistics grouped by line.
+
+        On-time percentage and average delay use `arrival_data_count` (trains
+        with real arrival data) as the denominator — NOT `train_count`. Trains
+        with scheduled_fallback arrivals or no arrival data (still in progress)
+        are intentionally excluded from both numerator and denominator so they
+        neither inflate nor deflate the metric. This matches the SQL logic in
+        api/routes.py for /routes/history.
+        """
         stats: dict[str, dict[str, Any]] = defaultdict(
             lambda: {
                 "line_name": "",
@@ -574,6 +589,7 @@ class SummaryService:
                 "on_time_count": 0,
                 "cancellation_count": 0,
                 "total_delay_minutes": 0.0,
+                "arrival_data_count": 0,
                 "data_source": "",
             }
         )
@@ -589,29 +605,32 @@ class SummaryService:
 
             if journey.is_cancelled:
                 line_data["cancellation_count"] += 1
-            else:
-                # Calculate delay from last stop
-                if journey.stops:
-                    last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
-                    if last_stop.actual_arrival and last_stop.scheduled_arrival:
-                        # Exclude scheduled_fallback arrivals — they always show
-                        # 0 delay (actual == scheduled) and inflate on-time stats.
-                        # NOTE: Historical stops (before ~March 2026) may have
-                        # NULL arrival_source (partial backfill). Those stops
-                        # still contribute to OTP here since we only exclude
-                        # "scheduled_fallback", not NULL.
-                        if last_stop.arrival_source == "scheduled_fallback":
-                            pass
-                        else:
-                            delay = (
-                                last_stop.actual_arrival - last_stop.scheduled_arrival
-                            ).total_seconds() / 60
-                            line_data["total_delay_minutes"] += max(0, delay)
-                            if delay <= ON_TIME_THRESHOLD_MINUTES:
-                                line_data["on_time_count"] += 1
-                    else:
-                        # No arrival data (in-progress), assume on time
-                        line_data["on_time_count"] += 1
+                continue
+
+            if not journey.stops:
+                continue
+
+            last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
+            if not (last_stop.actual_arrival and last_stop.scheduled_arrival):
+                # In-progress: no usable arrival data yet. Excluded from OTP.
+                continue
+            if last_stop.arrival_source == "scheduled_fallback":
+                # Collector wrote actual_arrival = scheduled_arrival because the
+                # feed didn't supply a real arrival timestamp. Including this
+                # would always count as on-time (0 delay) and is misleading.
+                # NOTE: Historical stops (before ~March 2026) may have NULL
+                # arrival_source (partial backfill); those still count toward
+                # OTP since we only exclude the explicit "scheduled_fallback"
+                # tag, consistent with api/routes.py and api/trains.py.
+                continue
+
+            delay = (
+                last_stop.actual_arrival - last_stop.scheduled_arrival
+            ).total_seconds() / 60
+            line_data["arrival_data_count"] += 1
+            line_data["total_delay_minutes"] += max(0, delay)
+            if delay <= ON_TIME_THRESHOLD_MINUTES:
+                line_data["on_time_count"] += 1
 
         return {
             key: LineStats(
@@ -622,6 +641,7 @@ class SummaryService:
                 cancellation_count=data["cancellation_count"],
                 total_delay_minutes=data["total_delay_minutes"],
                 data_source=data["data_source"],
+                arrival_data_count=data["arrival_data_count"],
             )
             for key, data in stats.items()
         }
@@ -646,26 +666,63 @@ class SummaryService:
                 metrics=None,
             )
 
-        # Aggregate totals (note: line_stats uses arrival-based on-time)
+        # Aggregate totals. OTP and avg_delay use `arrival_data_count` as the
+        # denominator (trains with usable arrival data), NOT `train_count`.
+        # Including scheduled_fallback or in-progress trains in the denominator
+        # would deflate OTP for frequency-first systems (PATH, Subway) where
+        # GTFS-RT often emits scheduled_fallback arrivals.
         total_trains = sum(ls.train_count for ls in line_stats.values())
         total_on_time = sum(ls.on_time_count for ls in line_stats.values())
         total_cancellations = sum(ls.cancellation_count for ls in line_stats.values())
         total_delay = sum(ls.total_delay_minutes for ls in line_stats.values())
+        total_with_arrival = sum(ls.arrival_data_count for ls in line_stats.values())
 
-        non_cancelled = total_trains - total_cancellations
-        on_time_pct = (total_on_time / non_cancelled * 100) if non_cancelled > 0 else 0
-        avg_delay = total_delay / non_cancelled if non_cancelled > 0 else 0
+        if total_with_arrival == 0 and total_cancellations == 0:
+            # No usable arrival data and no cancellations to report — hide
+            # the section entirely (empty headline/body is the iOS signal).
+            logger.info(
+                "network_summary_empty",
+                reason="no_arrival_data",
+                total_trains=total_trains,
+                line_count=len(line_stats),
+                message="Returning empty body - no usable arrival data",
+            )
+            return OperationsSummary(
+                headline="",
+                body="",
+                scope="network",
+                time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
+                data_freshness_seconds=0,
+                generated_at=now_et(),
+                metrics=None,
+            )
 
-        # Generate headline and body
-        headline, body = self._format_network_headline_body(
-            on_time_pct, avg_delay, total_cancellations
-        )
+        on_time_pct: float | None
+        avg_delay: float | None
+        if total_with_arrival > 0:
+            on_time_pct = total_on_time / total_with_arrival * 100
+            avg_delay = total_delay / total_with_arrival
+            headline, body = self._format_network_headline_body(
+                on_time_pct, avg_delay, total_cancellations
+            )
+        else:
+            # Cancellations only — report them without claiming an OTP we
+            # can't compute.
+            on_time_pct = None
+            avg_delay = None
+            cancel_word = (
+                "cancellation" if total_cancellations == 1 else "cancellations"
+            )
+            train_word = "train" if total_cancellations == 1 else "trains"
+            headline = f"{total_cancellations} {cancel_word}"
+            body = f"{total_cancellations} {train_word} cancelled."
 
         logger.info(
             "network_summary_generated",
             total_trains=total_trains,
-            on_time_pct=round(on_time_pct, 1),
-            avg_delay=round(avg_delay, 1),
+            total_with_arrival=total_with_arrival,
+            on_time_pct=round(on_time_pct, 1) if on_time_pct is not None else None,
+            avg_delay=round(avg_delay, 1) if avg_delay is not None else None,
             cancellations=total_cancellations,
             line_count=len(line_stats),
             headline=headline,
@@ -953,7 +1010,10 @@ class SummaryService:
         Calculate on-time arrival statistics for a list of journeys.
 
         Uses arrival delay at the destination station. Only includes journeys
-        that have actual arrival data (completed journeys).
+        with real arrival data: actual_arrival is set, scheduled_arrival is
+        set, and arrival_source is not "scheduled_fallback". Fallback arrivals
+        always show 0 delay (collector wrote actual = scheduled because the
+        feed didn't supply a real arrival timestamp) and would inflate OTP.
 
         Args:
             journeys: List of journeys to analyze
@@ -977,7 +1037,12 @@ class SummaryService:
                 (s for s in journey.stops if s.station_code in to_codes_set), None
             )
 
-            if to_stop and to_stop.scheduled_arrival and to_stop.actual_arrival:
+            if (
+                to_stop
+                and to_stop.scheduled_arrival
+                and to_stop.actual_arrival
+                and to_stop.arrival_source != "scheduled_fallback"
+            ):
                 counted_trains += 1
                 delay = (
                     to_stop.actual_arrival - to_stop.scheduled_arrival
