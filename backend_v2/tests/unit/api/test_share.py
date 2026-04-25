@@ -226,10 +226,22 @@ class TestBuildImageUrl:
         request = MagicMock()
         request.url.scheme = "https"
         request.url.netloc = "apiv2.trackrat.net"
+        request.headers = {}
         url = _build_image_url(request, "3957", date(2026, 4, 24), "NY", "HB")
         assert url == (
             "https://apiv2.trackrat.net/share/train/3957/image?date=2026-04-24&to=HB"
         )
+
+    def test_honors_x_forwarded_proto_for_https_behind_lb(self) -> None:
+        """Behind GCP's LB, request.url.scheme is http; X-Forwarded-Proto must win."""
+        from unittest.mock import MagicMock
+
+        request = MagicMock()
+        request.url.scheme = "http"  # what the app sees behind TLS-terminating LB
+        request.url.netloc = "apiv2.trackrat.net"
+        request.headers = {"x-forwarded-proto": "https"}
+        url = _build_image_url(request, "3957", None, None, None)
+        assert url.startswith("https://apiv2.trackrat.net/")
 
 
 # ---- Route-level smoke tests (no DB data; mock client returns None) ----

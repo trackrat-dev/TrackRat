@@ -212,7 +212,12 @@ def _build_image_url(
 ) -> str:
     """Absolute URL of the OG image, rooted at the host the request arrived on."""
     del from_  # Image route doesn't need ``from``; only ``to`` affects the rendered string.
-    base = f"{request.url.scheme}://{request.url.netloc}"
+    # Behind the GCP load balancer TLS terminates at the LB, so request.url.scheme
+    # is "http". Apple's iMessage crawler will reject http og:image URLs as
+    # insecure, so trust X-Forwarded-Proto when present.
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = request.headers.get("x-forwarded-host", request.url.netloc)
+    base = f"{scheme}://{host}"
     params: dict[str, str] = {}
     if journey_date is not None:
         params["date"] = journey_date.isoformat()
