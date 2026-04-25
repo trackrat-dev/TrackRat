@@ -290,7 +290,11 @@ struct TrainLiveActivityView: View {
             HStack {
                 Spacer()
                 Group {
-                    if !context.state.hasTrainDeparted {
+                    if !context.state.hasTrainDeparted, let track = context.state.track {
+                        // Boarding announced — show track instead of countdown until train departs origin
+                        Text("Boarding on Track \(track)")
+                            .foregroundColor(.white)
+                    } else if !context.state.hasTrainDeparted {
                         // Show departure timing when train hasn't departed yet
                         if let minutes = context.state.minutesUntilDeparture {
                             Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
