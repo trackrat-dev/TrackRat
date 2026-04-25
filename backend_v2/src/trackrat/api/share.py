@@ -23,7 +23,7 @@ from __future__ import annotations
 import html
 from datetime import date as date_type
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy import and_, select
@@ -152,6 +152,12 @@ def _arrival_at(journey: TrainJourney, station_code: str) -> datetime | None:
     have inverted semantics at intermediate stops (see JourneyStop docs);
     we take ``max(updated_arrival, updated_departure)`` as the live estimate
     for that case, which is harmless for other providers.
+
+    If ``station_code`` is the journey's terminal and there's no matching
+    ``JourneyStop`` (rare — happens for journeys without per-stop records
+    yet), falls back to the journey-level arrival fields. For any other
+    station_code with no matching stop, returns ``None`` so the caller
+    can render a generic status rather than the wrong time.
     """
     for stop in journey.stops or []:
         if stop.station_code != station_code:
@@ -165,7 +171,10 @@ def _arrival_at(journey: TrainJourney, station_code: str) -> datetime | None:
         elif stop.updated_arrival:
             return stop.updated_arrival
         return stop.scheduled_arrival
-    return journey.actual_arrival or journey.scheduled_arrival
+
+    if station_code == journey.terminal_station_code:
+        return journey.actual_arrival or journey.scheduled_arrival
+    return None
 
 
 def _format_clock_time(dt: datetime) -> str:
@@ -189,7 +198,9 @@ def _build_spa_url(
     if to:
         params["to"] = to
     suffix = f"?{urlencode(params)}" if params else ""
-    return f"{_SPA_HOST}/train/{train_id}{suffix}"
+    # quote() with safe="" prevents a malicious train_id from injecting URL
+    # structure (path traversal, query corruption, fragment injection).
+    return f"{_SPA_HOST}/train/{quote(train_id, safe='')}{suffix}"
 
 
 def _build_image_url(
@@ -208,7 +219,7 @@ def _build_image_url(
     if to:
         params["to"] = to
     suffix = f"?{urlencode(params)}" if params else ""
-    return f"{base}/share/train/{train_id}/image{suffix}"
+    return f"{base}/share/train/{quote(train_id, safe='')}/image{suffix}"
 
 
 def _render_html(

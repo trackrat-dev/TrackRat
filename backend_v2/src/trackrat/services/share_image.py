@@ -71,7 +71,10 @@ def render_share_image(headline: str, status: str) -> bytes:
     _draw_centered(draw, status, status_font, status_y, STATUS_COLOR)
 
     buf = BytesIO()
-    canvas.save(buf, format="PNG", optimize=True)
+    # ``optimize=True`` runs multiple DEFLATE passes for marginal size savings
+    # at significant CPU cost. Default compression is plenty for a ~30 KB
+    # share-preview PNG; skip the optimization to keep render time under ~50ms.
+    canvas.save(buf, format="PNG")
     return buf.getvalue()
 
 

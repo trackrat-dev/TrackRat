@@ -4,6 +4,7 @@ Main FastAPI application for TrackRat V2.
 This module sets up the FastAPI app with all routers, middleware, and lifecycle events.
 """
 
+import json
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
@@ -364,10 +365,8 @@ async def apple_app_site_association() -> Response:
     Must be served over HTTPS without redirects with ``Content-Type: application/json``
     (Apple's crawler is strict about both).
     """
-    import json as _json
-
     return Response(
-        content=_json.dumps(_AASA_PAYLOAD),
+        content=json.dumps(_AASA_PAYLOAD),
         media_type="application/json",
         headers={"Cache-Control": "public, max-age=3600"},
     )

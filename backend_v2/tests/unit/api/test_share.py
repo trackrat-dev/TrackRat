@@ -114,9 +114,26 @@ class TestArrivalAt:
         journey = _make_journey(data_source="NJT", stops=[stop])
         assert _arrival_at(journey, "HB") == updated_dep
 
-    def test_returns_none_when_no_matching_stop(self) -> None:
-        journey = _make_journey(stops=[])
-        assert _arrival_at(journey, "HB") is None
+    def test_returns_none_when_no_matching_stop_for_non_terminal(self) -> None:
+        """User asked about XYZ which isn't a stop on this journey: return None,
+        don't lie with the terminal time."""
+        terminal_stop = JourneyStop(
+            station_code="HB",
+            station_name="Hoboken",
+            actual_arrival=HOBOKEN_ARRIVAL_UTC,
+        )
+        journey = _make_journey(terminal="HB", stops=[terminal_stop])
+        assert _arrival_at(journey, "XYZ") is None
+
+    def test_falls_back_to_journey_arrival_when_terminal_has_no_stop_record(
+        self,
+    ) -> None:
+        """Schedule-only journeys may not have JourneyStop rows yet; the
+        journey-level arrival is the right fallback for the terminal."""
+        scheduled_arrival = datetime(2026, 4, 24, 21, 30, tzinfo=UTC)
+        journey = _make_journey(terminal="HB", stops=[])
+        journey.scheduled_arrival = scheduled_arrival
+        assert _arrival_at(journey, "HB") == scheduled_arrival
 
 
 class TestFormatShareStrings:
@@ -192,6 +209,15 @@ class TestBuildSpaUrl:
         url = _build_spa_url("3957", date(2026, 4, 24), "NY", "HB")
         assert url == "https://trackrat.net/train/3957?date=2026-04-24&from=NY&to=HB"
 
+    def test_train_id_with_special_chars_is_escaped(self) -> None:
+        """A malicious train_id must not be able to inject URL structure."""
+        # Path traversal attempt
+        url = _build_spa_url("../evil.com", None, None, None)
+        assert url == "https://trackrat.net/train/..%2Fevil.com"
+        # Query-string injection attempt
+        url2 = _build_spa_url("3957?x=evil", date(2026, 4, 24), None, None)
+        assert url2 == "https://trackrat.net/train/3957%3Fx%3Devil?date=2026-04-24"
+
 
 class TestBuildImageUrl:
     def test_uses_request_host_and_drops_from_param(self) -> None:
@@ -236,9 +262,7 @@ class TestShareRoutes:
 class TestAppleAppSiteAssociation:
     """The AASA file enables Universal Links into the iOS app for /share/train/*."""
 
-    def test_returns_json_with_correct_appid_and_path(
-        self, client: TestClient
-    ) -> None:
+    def test_returns_json_with_correct_appid_and_path(self, client: TestClient) -> None:
         resp = client.get("/.well-known/apple-app-site-association")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/json"
