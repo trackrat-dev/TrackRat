@@ -6,6 +6,7 @@ authors = ["TrackRat Team"]
 license = "GPL-3.0-only"
 readme = "README.md"
 packages = [{include = "trackrat", from = "src"}]
+include = ["src/trackrat/assets/**/*"]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -48,6 +49,9 @@ greenlet = "^3.3.2"
 
 # Utilities
 python-dotenv = "^1.2.2"
+
+# Image generation (share-link OG previews)
+Pillow = "^11.0.0"
 
 [tool.poetry.group.dev.dependencies]
 # Testing
