@@ -1368,8 +1368,11 @@ struct SegmentedTrackPredictionView: View {
                 }
 
                 // Penn Station waiting guide link for NY departures
-                if isDepartingFromNYPenn && showWaitingLink {
-                    PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
+                // Only Amtrak and NJ Transit have authored guide content; other systems
+                // (e.g., LIRR) also depart from NY Penn but would be shown the wrong guide.
+                if isDepartingFromNYPenn && showWaitingLink &&
+                    (train.dataSource == "AMTRAK" || train.dataSource == "NJT") {
+                    PennStationWaitingLink(isAmtrak: train.dataSource == "AMTRAK")
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
