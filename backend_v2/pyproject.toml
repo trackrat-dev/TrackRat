@@ -51,7 +51,7 @@ greenlet = "^3.3.2"
 python-dotenv = "^1.2.2"
 
 # Image generation (share-link OG previews)
-Pillow = "^11.0.0"
+Pillow = ">=11,<13"
 
 [tool.poetry.group.dev.dependencies]
 # Testing
