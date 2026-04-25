@@ -134,18 +134,15 @@ struct DeepLink {
         return components.url
     }
     
-    /// Generate share text for the train
-    func generateShareText(trainLine: String? = nil, destinationName: String? = nil) -> String {
-        var text = "Check out train \(trainId)"
-        
-        if let line = trainLine {
-            text += " (\(line))"
-        }
-        
-        if let fromCode = fromStationCode,
-           let fromName = Stations.stationName(forCode: fromCode) {
-            text += " from \(Stations.displayName(for: fromName))"
-        }
+    /// Generate share text for the train.
+    ///
+    /// Format: ``"View NJT 7801 to Trenton"``. Bound by the share-preview
+    /// card design — short, scannable, and the same shape the OG image
+    /// renders so the message reads naturally even if the rich preview
+    /// fails to load on the recipient's device.
+    func generateShareText(dataSource: String? = nil, destinationName: String? = nil) -> String {
+        let prefix = dataSource.map { "\($0) " } ?? ""
+        var text = "View \(prefix)\(trainId)"
 
         if let destName = destinationName {
             text += " to \(destName)"
@@ -153,7 +150,7 @@ struct DeepLink {
                   let toName = Stations.stationName(forCode: toCode) {
             text += " to \(Stations.displayName(for: toName))"
         }
-        
+
         return text
     }
 }
