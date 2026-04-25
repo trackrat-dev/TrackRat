@@ -55,8 +55,7 @@ struct RouteStatusView: View {
                     }
                     operationsSummarySection
                     historySections
-                    upcomingTrainsSection
-                    recentTrainsSection
+                    departuresSection
                     serviceAlertsSection
                     alertSubscriptionSection
                 }
@@ -365,38 +364,42 @@ struct RouteStatusView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 
-    /// Upcoming Trains skeleton matching the actual train row layout
-    private var upcomingTrainsSkeletonSection: some View {
+    /// Departures skeleton: two muted "past" rows, a Now divider, two "future" rows.
+    private var departuresSkeletonSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             ShimmerRect(width: 140, height: 20)
 
             ForEach(0..<2, id: \.self) { _ in
-                HStack(spacing: 12) {
-                    // Line color bar
-                    ShimmerRect(width: 4, height: 40, cornerRadius: 2)
+                skeletonTrainRow.opacity(0.55)
+            }
 
-                    // Train info
-                    VStack(alignment: .leading, spacing: 4) {
-                        ShimmerRect(width: 90, height: 16)
-                        ShimmerRect(width: 60, height: 12)
-                    }
+            NowDivider()
 
-                    Spacer()
-
-                    // Time and delay
-                    VStack(alignment: .trailing, spacing: 4) {
-                        ShimmerRect(width: 60, height: 16)
-                        ShimmerRect(width: 50, height: 12)
-                    }
-                }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .background(RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.secondarySystemGroupedBackground)))
+            ForEach(0..<2, id: \.self) { _ in
+                skeletonTrainRow
             }
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    }
+
+    private var skeletonTrainRow: some View {
+        HStack(spacing: 12) {
+            ShimmerRect(width: 4, height: 40, cornerRadius: 2)
+            VStack(alignment: .leading, spacing: 4) {
+                ShimmerRect(width: 90, height: 16)
+                ShimmerRect(width: 60, height: 12)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                ShimmerRect(width: 60, height: 16)
+                ShimmerRect(width: 50, height: 12)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color(.secondarySystemGroupedBackground)))
     }
 
 
@@ -483,17 +486,34 @@ struct RouteStatusView: View {
         }
     }
 
-    // MARK: - Upcoming Trains Section
+    // MARK: - Departures Section
 
+    /// Unified timeline of recently-departed and upcoming trains around a "Now" divider.
+    /// Past trains are reversed so the section reads chronologically top-to-bottom and
+    /// rendered with reduced opacity to keep visual focus on what's coming next.
     @ViewBuilder
-    private var upcomingTrainsSection: some View {
-        if viewModel.isLoadingUpcomingTrains {
-            upcomingTrainsSkeletonSection
-        } else if !viewModel.upcomingTrains.isEmpty {
+    private var departuresSection: some View {
+        if viewModel.isLoadingUpcomingTrains || viewModel.isLoadingRecentTrains {
+            departuresSkeletonSection
+        } else if !viewModel.upcomingTrains.isEmpty || !viewModel.recentTrains.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Upcoming Trains")
+                Text("Departures")
                     .font(.headline)
 
+                // Past: oldest at top, most-recent just above the Now divider.
+                ForEach(Array(viewModel.recentTrains.prefix(3).reversed())) { train in
+                    Button {
+                        selectedTrain = train
+                    } label: {
+                        TrainRow(train: train, dataSource: train.dataSource)
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(0.55)
+                }
+
+                NowDivider()
+
+                // Future: soonest first.
                 ForEach(viewModel.upcomingTrains.prefix(3)) { train in
                     Button {
                         selectedTrain = train
@@ -501,6 +521,14 @@ struct RouteStatusView: View {
                         TrainRow(train: train, dataSource: train.dataSource)
                     }
                     .buttonStyle(.plain)
+                }
+
+                if viewModel.upcomingTrains.isEmpty {
+                    Text("No more trains scheduled")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 4)
                 }
 
                 if context.effectiveFromStation != nil && context.effectiveToStation != nil {
@@ -517,33 +545,6 @@ struct RouteStatusView: View {
                         .foregroundColor(.orange)
                         .padding(.top, 4)
                     }
-                }
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        }
-    }
-
-    // MARK: - Recent Trains Section
-
-    /// Recently-departed trains shown by their originally scheduled time, with delay/cancellation
-    /// badges. Uses the same row component as Upcoming; hides if nothing recent is available.
-    @ViewBuilder
-    private var recentTrainsSection: some View {
-        if viewModel.isLoadingRecentTrains {
-            upcomingTrainsSkeletonSection
-        } else if !viewModel.recentTrains.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Recent Trains")
-                    .font(.headline)
-
-                ForEach(viewModel.recentTrains.prefix(3)) { train in
-                    Button {
-                        selectedTrain = train
-                    } label: {
-                        TrainRow(train: train, dataSource: train.dataSource, timeMode: .scheduled)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
             .padding()
@@ -918,20 +919,40 @@ private struct ServiceAlertCard: View {
     }
 }
 
-// MARK: - Train Row
+// MARK: - Now Divider
 
-/// Which time to display in the trailing column.
-/// `.live` shows the best live estimate (updatedTime ?? scheduledTime) — used for upcoming trains.
-/// `.scheduled` always shows the originally scheduled time — used for recent trains so lateness is
-/// communicated solely via the delay badge.
-enum TrainRowTimeMode {
-    case live, scheduled
+/// Thin orange hairline with a centered "NOW · h:mm a" pill, used to separate past and
+/// future rows in the unified Departures section. Updates each minute.
+private struct NowDivider: View {
+    @State private var now: Date = Date()
+    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    private var timeString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: now)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(.orange).frame(height: 1)
+            Text("NOW · \(timeString)")
+                .font(.caption2.bold())
+                .foregroundColor(.orange)
+                .fixedSize()
+            Rectangle().fill(.orange).frame(height: 1)
+        }
+        .padding(.vertical, 2)
+        .onReceive(timer) { now = $0 }
+    }
 }
+
+// MARK: - Train Row
 
 private struct TrainRow: View {
     let train: TrainV2
     let dataSource: String
-    var timeMode: TrainRowTimeMode = .live
 
     /// Whether this transit system uses synthetic train IDs (e.g., subway, PATCO)
     private var useSyntheticId: Bool {
@@ -981,14 +1002,9 @@ private struct TrainRow: View {
     }
 
     private var departureTimeString: String {
-        let time: Date?
-        switch timeMode {
-        case .live:
-            time = train.departure.updatedTime ?? train.departure.scheduledTime
-        case .scheduled:
-            time = train.departure.scheduledTime ?? train.departure.updatedTime
+        guard let time = train.departure.updatedTime ?? train.departure.scheduledTime else {
+            return "--"
         }
-        guard let time = time else { return "--" }
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
