@@ -69,14 +69,20 @@ struct TrainActivityAttributes: ActivityAttributes {
             return Int(interval / 60)
         }
         
+        /// Whether to show boarding state: track assigned, not departed, and within 15 minutes of departure
+        var isBoarding: Bool {
+            guard trackDisplay != nil, !hasTrainDeparted else { return false }
+            guard let minutes = minutesUntilDeparture else { return true }
+            return minutes <= 15
+        }
+
         /// Display text for compact leading area
         var compactLeadingText: String {
             if hasTrainDeparted {
                 return "Arriving"
-            } else if trackDisplay != nil {
+            } else if isBoarding {
                 return "Boarding"
-            }
-            else {
+            } else {
                 return "Departing"
             }
         }
@@ -93,7 +99,7 @@ struct TrainActivityAttributes: ActivityAttributes {
                         return "late"
                     }
                 }
-            } else if trackDisplay != nil {
+            } else if isBoarding {
                 return trackDisplay!
             } else {
                 if let minutes = minutesUntilDeparture {
