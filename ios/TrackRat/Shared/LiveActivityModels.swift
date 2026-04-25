@@ -117,7 +117,7 @@ struct TrainActivityAttributes: ActivityAttributes {
         
         /// Track display with "T" prefix
         var trackDisplay: String? {
-            guard let track = track else { return nil }
+            guard let track = track, !track.isEmpty else { return nil }
             return "T\(track)"
         }
         
