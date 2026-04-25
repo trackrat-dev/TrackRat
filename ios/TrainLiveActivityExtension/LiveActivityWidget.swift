@@ -290,7 +290,10 @@ struct TrainLiveActivityView: View {
             HStack {
                 Spacer()
                 Group {
-                    if !context.state.hasTrainDeparted {
+                    if context.state.isBoarding, let track = context.state.track {
+                        Text("Boarding on Track \(track)")
+                            .foregroundColor(.white)
+                    } else if !context.state.hasTrainDeparted {
                         // Show departure timing when train hasn't departed yet
                         if let minutes = context.state.minutesUntilDeparture {
                             Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
@@ -352,7 +355,7 @@ private struct CenterStatusView: View {
     let theme: String
     
     private var displayText: String {
-        if !state.hasTrainDeparted && state.trackDisplay != nil {
+        if state.isBoarding {
             return "Boarding on Track \(state.track ?? "")"
         } else if !state.hasTrainDeparted, let minutes = state.minutesUntilDeparture {
             return minutes > 0 ? "Departing in \(minutes)m" : "Departing now"
