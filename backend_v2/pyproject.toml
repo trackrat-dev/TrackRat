@@ -38,7 +38,7 @@ pytz = "^2026.1"
 structlog = "^25.5.0"
 
 # Monitoring
-prometheus-client = "^0.24.1"
+prometheus-client = ">=0.24.1,<0.26.0"
 
 # Apple Push Notifications
 pyjwt = {extras = ["crypto"], version = "^2.12.1"}
