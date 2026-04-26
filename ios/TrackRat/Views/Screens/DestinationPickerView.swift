@@ -30,8 +30,8 @@ struct DestinationPickerView: View {
     }
 
     // Favorites split by whether they share a train system with the origin.
-    // Non-matching favorites are demoted below, treated the same as stations
-    // on a system the user hasn't activated.
+    // Non-matching favorites are demoted below with a "No route from {origin}"
+    // subtitle and are visually inert.
     private var favoritesByOriginOverlap: (matching: [FavoriteStation], otherSystem: [FavoriteStation]) {
         let origin = appState.departureStationCode
         var matching: [FavoriteStation] = []
@@ -44,6 +44,28 @@ struct DestinationPickerView: View {
             }
         }
         return (matching, other)
+    }
+
+    // Splits demoted search results into two reasons so each gets the right UX:
+    //   - systemDisabled: in user's selectedSystems would fix it → tap opens settings
+    //   - noRoute: no train system overlap with origin → inert, with explanatory subtitle
+    // No-route wins if both are true (changing settings can't fix a no-route destination).
+    private var demotedSearchResults: (systemDisabled: [String], noRoute: [String]) {
+        let origin = appState.departureStationCode
+        var systemDisabled: [String] = []
+        var noRoute: [String] = []
+        for name in searchResults.otherSystemStations {
+            guard let code = Stations.getStationCode(name) else {
+                systemDisabled.append(name)
+                continue
+            }
+            if Stations.sharesSystem(stationCode: code, withOrigin: origin) {
+                systemDisabled.append(name)
+            } else {
+                noRoute.append(name)
+            }
+        }
+        return (systemDisabled, noRoute)
     }
     
     // Computed property for dynamic spacing - keep consistent spacing
@@ -121,7 +143,7 @@ struct DestinationPickerView: View {
                                     .onSubmit {
                                         if let firstResult = searchResults.stations.first {
                                             selectDestination(firstResult)
-                                        } else if !searchResults.otherSystemStations.isEmpty {
+                                        } else if !demotedSearchResults.systemDisabled.isEmpty {
                                             showSettingsForTrainSystems = true
                                         }
                                     }
@@ -183,7 +205,8 @@ struct DestinationPickerView: View {
                                     .padding(.horizontal)
                                 }
 
-                                if !searchResults.otherSystemStations.isEmpty {
+                                let demoted = demotedSearchResults
+                                if !demoted.systemDisabled.isEmpty {
                                     Text("Other systems — edit your train systems to use")
                                         .font(.caption)
                                         .foregroundColor(.white.opacity(0.5))
@@ -191,13 +214,23 @@ struct DestinationPickerView: View {
                                         .padding(.horizontal, 20)
                                         .padding(.top, 4)
 
-                                    ForEach(searchResults.otherSystemStations, id: \.self) { station in
+                                    ForEach(demoted.systemDisabled, id: \.self) { station in
                                         Button {
                                             showSettingsForTrainSystems = true
                                         } label: {
                                             otherSystemDestinationSearchRow(station: station)
                                         }
                                         .buttonStyle(.plain)
+                                        .padding(.horizontal)
+                                    }
+                                }
+
+                                if !demoted.noRoute.isEmpty {
+                                    ForEach(demoted.noRoute, id: \.self) { station in
+                                        otherSystemDestinationSearchRow(
+                                            station: station,
+                                            noRouteOrigin: appState.selectedDeparture
+                                        )
                                         .padding(.horizontal)
                                     }
                                 }
@@ -216,20 +249,14 @@ struct DestinationPickerView: View {
                                     .padding(.horizontal)
                                 }
 
-                                if !split.otherSystem.isEmpty {
-                                    Text("Other systems — edit your train systems to use")
-                                        .font(.caption)
-                                        .foregroundColor(.white.opacity(0.5))
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 20)
-                                        .padding(.top, 4)
-
-                                    ForEach(split.otherSystem) { station in
-                                        FavoriteDestinationButton(station: station, isDimmed: true) {
-                                            showSettingsForTrainSystems = true
-                                        }
-                                        .padding(.horizontal)
+                                ForEach(split.otherSystem) { station in
+                                    FavoriteDestinationButton(
+                                        station: station,
+                                        noRouteOrigin: appState.selectedDeparture
+                                    ) {
+                                        // Inert — kept for FavoriteDestinationButton signature.
                                     }
+                                    .padding(.horizontal)
                                 }
                             }
                             .padding(.top, 8)
@@ -292,22 +319,35 @@ struct DestinationPickerView: View {
         )
     }
 
+    /// Demoted search row. When `noRouteOrigin` is provided, shows
+    /// "No route from {origin}" below the station name in place of the
+    /// SystemBadge — used when the destination doesn't share a system with
+    /// the selected origin (a state the user can't fix in settings).
     @ViewBuilder
-    private func otherSystemDestinationSearchRow(station: String) -> some View {
+    private func otherSystemDestinationSearchRow(station: String, noRouteOrigin: String? = nil) -> some View {
         HStack {
-            HStack {
-                Text(Stations.displayName(for: station))
-                    .font(.body)
-                    .foregroundColor(.white.opacity(0.7))
-                    .textProtected()
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(Stations.displayName(for: station))
+                        .font(.body)
+                        .foregroundColor(.white.opacity(0.7))
+                        .textProtected()
 
-                if let code = Stations.getStationCode(station),
-                   let system = Stations.primarySystem(forStationCode: code) {
-                    SystemBadge(system: system)
+                    if noRouteOrigin == nil,
+                       let code = Stations.getStationCode(station),
+                       let system = Stations.primarySystem(forStationCode: code) {
+                        SystemBadge(system: system)
+                    }
                 }
 
-                Spacer()
+                if let originName = noRouteOrigin {
+                    Text("No route from \(Stations.displayName(for: originName))")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
+                }
             }
+
+            Spacer()
 
             if let code = Stations.getStationCode(station) {
                 StationIconView(
@@ -367,51 +407,68 @@ struct DestinationPickerView: View {
 // MARK: - Favorite Destination Button
 struct FavoriteDestinationButton: View {
     let station: FavoriteStation
-    var isDimmed: Bool = false
+    /// When set, the button renders dimmed with a "No route from {origin}" subtitle
+    /// and the tap callback is suppressed so the row is visually inert.
+    var noRouteOrigin: String? = nil
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
 
+    private var isDimmed: Bool { noRouteOrigin != nil }
+
     var body: some View {
-        Button {
-            onTap()
-        } label: {
-            HStack {
+        if noRouteOrigin != nil {
+            // Inert: no Button wrapper means no row-level tap handling. The heart
+            // icon is its own Button so users can still unfavorite the station.
+            rowContent
+        } else {
+            Button(action: onTap) {
+                rowContent
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(Stations.displayName(for: station.name))
                     .font(.callout)
                     .fontWeight(.medium)
                     .foregroundColor(.white.opacity(isDimmed ? 0.7 : 1.0))
                     .textProtected()
 
-                if isDimmed, let system = Stations.primarySystem(forStationCode: station.id) {
-                    SystemBadge(system: system)
-                }
-
-                Spacer()
-
-                // Station icon - shows home/work icon or interactive heart
-                StationIconView(
-                    stationCode: station.id,
-                    isStationFavorited: appState.isStationFavorited(code: station.id),
-                    iconFont: TrackRatTheme.IconSize.medium
-                ) {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        appState.toggleFavoriteStation(code: station.id, name: station.name)
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let originName = noRouteOrigin {
+                    Text("No route from \(Stations.displayName(for: originName))")
+                        .font(.caption2)
+                        .foregroundColor(.white.opacity(0.5))
                 }
             }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.white.opacity(isDimmed ? 0.08 : 0.15))
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(.white.opacity(isDimmed ? 0.12 : 0.2), lineWidth: 1)
-                    )
-            )
+
+            Spacer()
+
+            // Station icon - shows home/work icon or interactive heart
+            StationIconView(
+                stationCode: station.id,
+                isStationFavorited: appState.isStationFavorited(code: station.id),
+                iconFont: TrackRatTheme.IconSize.medium
+            ) {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    appState.toggleFavoriteStation(code: station.id, name: station.name)
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
         }
-        .buttonStyle(.plain)
+        .padding()
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.white.opacity(isDimmed ? 0.08 : 0.15))
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(.white.opacity(isDimmed ? 0.12 : 0.2), lineWidth: 1)
+                )
+        )
     }
 }
 
