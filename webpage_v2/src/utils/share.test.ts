@@ -59,6 +59,42 @@ describe('share', () => {
     const result = await share(data);
     expect(result).toBe(false);
   });
+
+  it('uses legacy execCommand fallback when navigator.clipboard is unavailable', async () => {
+    const mockTextarea = {
+      value: '',
+      style: {} as CSSStyleDeclaration,
+      select: vi.fn(),
+    };
+    vi.stubGlobal('navigator', {});
+    vi.spyOn(document, 'createElement').mockReturnValue(mockTextarea as unknown as HTMLElement);
+    vi.spyOn(document.body, 'appendChild').mockImplementation(() => mockTextarea as unknown as Node);
+    vi.spyOn(document.body, 'removeChild').mockImplementation(() => mockTextarea as unknown as Node);
+    document.execCommand = vi.fn().mockReturnValue(true);
+
+    const result = await share(data);
+
+    expect(result).toBe(true);
+    expect(mockTextarea.value).toBe('https://example.com');
+    expect(mockTextarea.select).toHaveBeenCalled();
+    expect(document.execCommand).toHaveBeenCalledWith('copy');
+    expect(document.body.removeChild).toHaveBeenCalled();
+  });
+
+  it('returns false when all share/clipboard methods fail', async () => {
+    vi.stubGlobal('navigator', {});
+    vi.spyOn(document, 'createElement').mockReturnValue({
+      value: '',
+      style: {} as CSSStyleDeclaration,
+      select: vi.fn(),
+    } as unknown as HTMLElement);
+    vi.spyOn(document.body, 'appendChild').mockImplementation(() => {
+      throw new Error('DOM error');
+    });
+
+    const result = await share(data);
+    expect(result).toBe(false);
+  });
 });
 
 describe('buildTrainShareData', () => {
