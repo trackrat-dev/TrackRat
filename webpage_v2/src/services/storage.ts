@@ -31,7 +31,7 @@ class StorageService {
       }
       return parsed as T;
     } catch {
-      localStorage.removeItem(key);
+      try { localStorage.removeItem(key); } catch { /* storage inaccessible */ }
       return null;
     }
   }
@@ -52,7 +52,7 @@ class StorageService {
   // Recent Trips
   getRecentTrips(): TripPair[] {
     const trips = this.readData<TripPair[]>(RECENT_TRIPS_KEY);
-    if (!trips) return [];
+    if (!Array.isArray(trips)) return [];
     return trips.map((trip) => ({
       ...trip,
       lastUsed: new Date(trip.lastUsed),
@@ -87,7 +87,7 @@ class StorageService {
   // Favorite Routes
   getFavoriteRoutes(): TripPair[] {
     const routes = this.readData<TripPair[]>(FAVORITE_ROUTES_KEY);
-    if (!routes) return [];
+    if (!Array.isArray(routes)) return [];
     return routes.map((route) => ({
       ...route,
       lastUsed: new Date(route.lastUsed),
@@ -118,7 +118,7 @@ class StorageService {
   // Favorite Stations
   getFavoriteStations(): FavoriteStation[] {
     const favorites = this.readData<FavoriteStation[]>(FAVORITES_KEY);
-    if (!favorites) return [];
+    if (!Array.isArray(favorites)) return [];
     return favorites.map((fav) => ({
       ...fav,
       addedDate: new Date(fav.addedDate),
@@ -134,7 +134,7 @@ class StorageService {
       addedDate: new Date(),
     };
 
-    favorites.push(newFavorite);
+    favorites.unshift(newFavorite);
     this.writeData(FAVORITES_KEY, favorites, evictOldest);
   }
 
@@ -155,7 +155,8 @@ class StorageService {
 
   // Preferred Transit Systems
   getPreferredSystems(): TransitSystem[] {
-    return this.readData<TransitSystem[]>(SYSTEMS_KEY) ?? [];
+    const systems = this.readData<TransitSystem[]>(SYSTEMS_KEY);
+    return Array.isArray(systems) ? systems : [];
   }
 
   savePreferredSystems(systems: TransitSystem[]): void {
@@ -190,7 +191,7 @@ class StorageService {
   // Trip History
   getTripHistory(): TripHistoryEntry[] {
     const entries = this.readData<TripHistoryEntry[]>(TRIP_HISTORY_KEY);
-    if (!entries) return [];
+    if (!Array.isArray(entries)) return [];
     return entries.map((entry) => ({
       ...entry,
       viewedAt: new Date(entry.viewedAt),
