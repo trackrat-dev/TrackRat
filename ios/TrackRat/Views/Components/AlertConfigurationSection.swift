@@ -344,15 +344,15 @@ struct AlertConfigurationSection: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
-                // Time window presets (directly below day picker)
-                timePresetRow
-
-                if activeTimePreset == .custom || showCustomTime {
-                    customTimeWindow
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
                 if hasDaysSelected {
+                    // Time window presets (directly below day picker)
+                    timePresetRow
+
+                    if activeTimePreset == .custom || showCustomTime {
+                        customTimeWindow
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
                     Divider().opacity(0.3)
 
                     // Alert types
@@ -601,7 +601,7 @@ struct AlertConfigurationSection: View {
 
     private var dayPresetRow: some View {
         HStack(spacing: 8) {
-            presetButton("None", bitmask: 0)
+            presetButton("Never", bitmask: 0)
             presetButton("Every Day", bitmask: 127)
 
             Button {
