@@ -1381,3 +1381,29 @@ class TestGetScheduledDeparturesTimeFrom:
         target_date = date(2026, 4, 23)
         cutoff = PT.localize(datetime.combine(target_date, time(8, 0)))
         assert GTFSService._gtfs_time_cutoff(cutoff, target_date, "BART") == "08:00:00"
+
+    def test_gtfs_time_cutoff_spring_forward_uses_wall_clock(self):
+        """On spring-forward day, 08:00 EDT must produce 08:00:00, not 07:00:00.
+
+        Spring forward 2026: March 8. Midnight is EST (-05:00), but 08:00 is
+        EDT (-04:00). Physical elapsed time is 7 hours, but the GTFS wall-clock
+        time is 08:00:00.
+        """
+        target_date = date(2026, 3, 8)
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
+        assert (
+            GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:00:00"
+        )
+
+    def test_gtfs_time_cutoff_fall_back_uses_wall_clock(self):
+        """On fall-back day, 08:00 EST must produce 08:00:00, not 09:00:00.
+
+        Fall back 2026: November 1. Midnight is EDT (-04:00), but 08:00 is
+        EST (-05:00). Physical elapsed time is 9 hours, but the GTFS wall-clock
+        time is 08:00:00.
+        """
+        target_date = date(2026, 11, 1)
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
+        assert (
+            GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:00:00"
+        )

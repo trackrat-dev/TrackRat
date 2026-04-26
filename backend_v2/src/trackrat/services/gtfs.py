@@ -780,11 +780,13 @@ class GTFSService:
         """
         tz = PROVIDER_TIMEZONE.get(data_source, ET)
         target_midnight = tz.localize(datetime.combine(target_date, time(0, 0)))
-        delta_seconds = int((time_from - target_midnight).total_seconds())
-        if delta_seconds <= 0:
+        if time_from <= target_midnight:
             return None
-        hours, rem = divmod(delta_seconds, 3600)
-        minutes, seconds = divmod(rem, 60)
+        local_time = time_from.astimezone(tz)
+        day_offset = (local_time.date() - target_date).days
+        hours = local_time.hour + day_offset * 24
+        minutes = local_time.minute
+        seconds = local_time.second
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
     async def get_active_service_ids(
