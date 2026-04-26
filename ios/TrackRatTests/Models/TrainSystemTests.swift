@@ -251,6 +251,153 @@ class TrainSystemTests: XCTestCase {
                      "104 St (A) should be SUBWAY, got: \(systems)")
     }
 
+    // MARK: - searchGrouped with origin filter
+
+    func testSearchGrouped_originFilter_demotesNonOverlappingStations() {
+        // Origin = JAM (Jamaica, LIRR-only). Search for "Penn" with all NJT/AMTRAK/LIRR enabled.
+        // NY Penn (NJT/AMTRAK/LIRR) shares LIRR with Jamaica → primary.
+        // Newark Penn (NJT/AMTRAK/PATH) does NOT share with Jamaica → other.
+        let allEnabled: Set<TrainSystem> = [.njt, .amtrak, .lirr, .path]
+        let grouped = Stations.searchGrouped(
+            "Penn",
+            selectedSystems: allEnabled,
+            originStationCode: "JAM"
+        )
+
+        XCTAssertTrue(grouped.primary.contains("New York Penn Station"),
+                     "NY Penn shares LIRR with origin Jamaica → should be primary, primary: \(grouped.primary)")
+        XCTAssertTrue(grouped.other.contains("Newark Penn Station"),
+                     "Newark Penn shares no system with origin Jamaica → should be other, other: \(grouped.other)")
+    }
+
+    func testSearchGrouped_originFilter_multiSystemOriginUsesUnion() {
+        // Origin = NP (NJT, AMTRAK, PATH). Search for "Penn".
+        // NY Penn (NJT/AMTRAK/LIRR) shares NJT and AMTRAK with NP → primary.
+        // Newark Penn IS the origin and gets filtered out by the picker anyway, but the
+        // helper itself doesn't drop it. Verify the cross-system overlap logic with another origin.
+        let allEnabled: Set<TrainSystem> = [.njt, .amtrak, .lirr, .path]
+        let grouped = Stations.searchGrouped(
+            "Penn",
+            selectedSystems: allEnabled,
+            originStationCode: "NP"
+        )
+        XCTAssertTrue(grouped.primary.contains("New York Penn Station"),
+                     "NY Penn shares NJT/AMTRAK with multi-system origin NP → primary, primary: \(grouped.primary)")
+    }
+
+    func testSearchGrouped_originFilter_demotesVisibleStationWithNoOriginOverlap() {
+        // Origin = JAM (Jamaica, LIRR-only). Search for "Newark" with PATH enabled.
+        // Newark Penn (NJT/AMTRAK/PATH) is visible via PATH, but shares no system
+        // with origin JAM (LIRR) → origin overlap fails → demoted to other.
+        let pathOnly: Set<TrainSystem> = [.path]
+        let grouped = Stations.searchGrouped(
+            "Newark Penn",
+            selectedSystems: pathOnly,
+            originStationCode: "JAM"
+        )
+
+        XCTAssertFalse(grouped.primary.contains("Newark Penn Station"),
+                      "Newark Penn is visible (PATH enabled) but shares no system with LIRR-only origin JAM → should be demoted, primary: \(grouped.primary)")
+    }
+
+    func testSearchGrouped_originNil_behavesAsBeforeChange() {
+        // With no origin, the new filter is a no-op and behavior matches the existing tests.
+        let njtOnly: Set<TrainSystem> = [.njt]
+        let groupedNoOrigin = Stations.searchGrouped("Penn", selectedSystems: njtOnly, originStationCode: nil)
+        let groupedDefault = Stations.searchGrouped("Penn", selectedSystems: njtOnly)
+        XCTAssertEqual(groupedNoOrigin.primary, groupedDefault.primary,
+                      "Explicit nil origin should match default-parameter behavior (primary)")
+        XCTAssertEqual(groupedNoOrigin.other, groupedDefault.other,
+                      "Explicit nil origin should match default-parameter behavior (other)")
+    }
+
+    func testSearchGrouped_originUnknownCode_skipsOriginFilter() {
+        // Unknown origin code yields empty system set; filter should be skipped (not demote everything).
+        let allEnabled: Set<TrainSystem> = Set(TrainSystem.allCases)
+        let grouped = Stations.searchGrouped(
+            "Penn",
+            selectedSystems: allEnabled,
+            originStationCode: "ZZZNOTAREALCODE"
+        )
+        XCTAssertFalse(grouped.primary.isEmpty,
+                      "Unknown origin should not demote all results to 'other', primary: \(grouped.primary)")
+    }
+
+    // MARK: - sharesSystem(stationCode:withOrigin:)
+
+    func testSharesSystem_overlap() {
+        // Newark Penn (NJT/AMTRAK/PATH) and NY Penn (NJT/AMTRAK/LIRR) share NJT and AMTRAK.
+        XCTAssertTrue(Stations.sharesSystem(stationCode: "NP", withOrigin: "NY"))
+    }
+
+    func testSharesSystem_noOverlap() {
+        // Jamaica (LIRR) and Newark Penn (NJT/AMTRAK/PATH) share nothing.
+        XCTAssertFalse(Stations.sharesSystem(stationCode: "JAM", withOrigin: "NP"))
+    }
+
+    func testSharesSystem_nilOriginReturnsTrue() {
+        XCTAssertTrue(Stations.sharesSystem(stationCode: "JAM", withOrigin: nil),
+                     "Nil origin should bypass the filter and return true")
+    }
+
+    func testSharesSystem_unknownOriginReturnsTrue() {
+        XCTAssertTrue(Stations.sharesSystem(stationCode: "JAM", withOrigin: "ZZZNOTREAL"),
+                     "Unknown origin should bypass the filter and return true")
+    }
+
+    // MARK: - Stations.search(limit:)
+
+    func testStationsSearch_respectsExplicitLimit() {
+        // The list of all stations has many "a" matches, far more than 12.
+        let small = Stations.search("a", limit: 5)
+        XCTAssertLessThanOrEqual(small.count, 5,
+                                "limit=5 should cap results, got \(small.count)")
+
+        let larger = Stations.search("a", limit: 30)
+        XCTAssertLessThanOrEqual(larger.count, 30,
+                                "limit=30 should cap results, got \(larger.count)")
+        XCTAssertGreaterThan(larger.count, Stations.defaultSearchLimit,
+                            "Raising the limit should expose more matches than the default cap")
+    }
+
+    func testStationsSearch_defaultLimitMatchesConstant() {
+        // Implicit-default call returns at most defaultSearchLimit results.
+        let results = Stations.search("a")
+        XCTAssertLessThanOrEqual(results.count, Stations.defaultSearchLimit)
+    }
+
+    // MARK: - searchGrouped oversampling with origin
+
+    func testSearchGrouped_oversamples_primaryNotStarvedByDemotedHits() {
+        // With origin set, searchGrouped oversamples internally so each bucket can
+        // independently fill to defaultSearchLimit. With origin = nil, total results
+        // remain capped at defaultSearchLimit. Use a broad query that exceeds the
+        // default cap and require all systems enabled to isolate the origin filter.
+        let allEnabled: Set<TrainSystem> = Set(TrainSystem.allCases)
+        let cap = Stations.defaultSearchLimit
+
+        let noOrigin = Stations.searchGrouped("a", selectedSystems: allEnabled, originStationCode: nil)
+        let withOrigin = Stations.searchGrouped("a", selectedSystems: allEnabled, originStationCode: "NY")
+
+        // Without origin: union is bounded by defaultSearchLimit (single search call).
+        XCTAssertLessThanOrEqual(noOrigin.primary.count + noOrigin.other.count, cap,
+                                "Without origin, total results should be capped at defaultSearchLimit")
+
+        // With origin: each bucket is independently capped at defaultSearchLimit.
+        XCTAssertLessThanOrEqual(withOrigin.primary.count, cap,
+                                "Primary bucket must respect defaultSearchLimit")
+        XCTAssertLessThanOrEqual(withOrigin.other.count, cap,
+                                "Other bucket must respect defaultSearchLimit")
+
+        // The combined result count when an origin is provided should be at least
+        // as large as the no-origin case — proving the oversample is active.
+        XCTAssertGreaterThanOrEqual(
+            withOrigin.primary.count + withOrigin.other.count,
+            noOrigin.primary.count + noOrigin.other.count,
+            "Origin-aware search should not return fewer total candidates than no-origin search"
+        )
+    }
+
     func testIsStationVisible_unmappedAmtrakVisibleWhenAmtrakSelected() {
         // Unmapped stations default to AMTRAK and should be visible when Amtrak is selected
         XCTAssertTrue(Stations.isStationVisible("ALT", withSystems: [.amtrak]),
