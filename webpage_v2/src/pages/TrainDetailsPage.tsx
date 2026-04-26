@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { TrainDetails, StationPredictionSupport } from '../types';
 import { apiService } from '../services/api';
+import { usePolling } from '../utils/usePolling';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
@@ -33,34 +34,30 @@ export function TrainDetailsPage() {
   const [supportedStations, setSupportedStations] = useState<StationPredictionSupport[]>([]);
   const savedHistoryKeyRef = useRef<string | null>(null);
 
-  const fetchTrainDetails = async () => {
+  const fetchTrainDetails = useCallback(async (signal?: AbortSignal) => {
     if (!trainId) return;
 
     try {
-      setError(null);
       const response = await apiService.getTrainDetails(
         trainId,
         journeyDate || getTodayDateString(),
         {
           dataSource,
           fromStation: from,
+          signal,
         }
       );
       setTrain(response.train);
+      setError(null);
       setLoading(false);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Failed to load train details');
       setLoading(false);
     }
-  };
+  }, [trainId, journeyDate, dataSource, from]);
 
-  useEffect(() => {
-    fetchTrainDetails();
-
-    // Poll every 30 seconds
-    const interval = setInterval(fetchTrainDetails, 30000);
-    return () => clearInterval(interval);
-  }, [trainId, journeyDate, dataSource]);
+  usePolling(fetchTrainDetails, [trainId, journeyDate, dataSource, from]);
 
   // Fetch supported stations for track predictions (once, cached by API service)
   useEffect(() => {
@@ -161,7 +158,7 @@ export function TrainDetailsPage() {
   }
 
   if (error || !train) {
-    return <ErrorMessage message={error || 'Train not found'} onRetry={fetchTrainDetails} />;
+    return <ErrorMessage message={error || 'Train not found'} onRetry={() => fetchTrainDetails()} />;
   }
 
   // Check if we should show track predictions
