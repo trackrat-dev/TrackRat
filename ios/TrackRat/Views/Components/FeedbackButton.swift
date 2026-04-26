@@ -241,11 +241,23 @@ struct FeedbackSheet: View {
                 .fontWeight(.bold)
                 .foregroundColor(.white)
 
-            Text("Your feedback helps make TrackRat\nbetter for everyone.")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
+            VStack(spacing: 12) {
+                Text("Your feedback has been filed as a GitHub issue. Follow it to stay in touch and get updates.")
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+
+                Link(destination: URL(string: "https://github.com/trackrat-dev/TrackRat/issues?q=is%3Aissue+label%3Auser-feedback+sort%3Acreated-desc")!) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.forward.square")
+                        Text("View on GitHub")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.orange)
+                }
+            }
+            .padding(.horizontal, 20)
 
             Spacer()
 
