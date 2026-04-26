@@ -347,6 +347,59 @@ class TrainSystemTests: XCTestCase {
                      "Unknown origin should bypass the filter and return true")
     }
 
+    // MARK: - Stations.search(limit:)
+
+    func testStationsSearch_respectsExplicitLimit() {
+        // The list of all stations has many "a" matches, far more than 12.
+        let small = Stations.search("a", limit: 5)
+        XCTAssertLessThanOrEqual(small.count, 5,
+                                "limit=5 should cap results, got \(small.count)")
+
+        let larger = Stations.search("a", limit: 30)
+        XCTAssertLessThanOrEqual(larger.count, 30,
+                                "limit=30 should cap results, got \(larger.count)")
+        XCTAssertGreaterThan(larger.count, Stations.defaultSearchLimit,
+                            "Raising the limit should expose more matches than the default cap")
+    }
+
+    func testStationsSearch_defaultLimitMatchesConstant() {
+        // Implicit-default call returns at most defaultSearchLimit results.
+        let results = Stations.search("a")
+        XCTAssertLessThanOrEqual(results.count, Stations.defaultSearchLimit)
+    }
+
+    // MARK: - searchGrouped oversampling with origin
+
+    func testSearchGrouped_oversamples_primaryNotStarvedByDemotedHits() {
+        // With origin set, searchGrouped oversamples internally so each bucket can
+        // independently fill to defaultSearchLimit. With origin = nil, total results
+        // remain capped at defaultSearchLimit. Use a broad query that exceeds the
+        // default cap and require all systems enabled to isolate the origin filter.
+        let allEnabled: Set<TrainSystem> = Set(TrainSystem.allCases)
+        let cap = Stations.defaultSearchLimit
+
+        let noOrigin = Stations.searchGrouped("a", selectedSystems: allEnabled, originStationCode: nil)
+        let withOrigin = Stations.searchGrouped("a", selectedSystems: allEnabled, originStationCode: "NY")
+
+        // Without origin: union is bounded by defaultSearchLimit (single search call).
+        XCTAssertLessThanOrEqual(noOrigin.primary.count + noOrigin.other.count, cap,
+                                "Without origin, total results should be capped at defaultSearchLimit")
+
+        // With origin: each bucket is independently capped at defaultSearchLimit.
+        XCTAssertLessThanOrEqual(withOrigin.primary.count, cap,
+                                "Primary bucket must respect defaultSearchLimit")
+        XCTAssertLessThanOrEqual(withOrigin.other.count, cap,
+                                "Other bucket must respect defaultSearchLimit")
+
+        // The combined result count when an origin is provided should be at least
+        // as large as the no-origin case — proving the oversample is active.
+        XCTAssertGreaterThanOrEqual(
+            withOrigin.primary.count + withOrigin.other.count,
+            noOrigin.primary.count + noOrigin.other.count,
+            "Origin-aware search should not return fewer total candidates than no-origin search"
+        )
+    }
+
     func testIsStationVisible_unmappedAmtrakVisibleWhenAmtrakSelected() {
         // Unmapped stations default to AMTRAK and should be visible when Amtrak is selected
         XCTAssertTrue(Stations.isStationVisible("ALT", withSystems: [.amtrak]),

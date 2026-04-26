@@ -3,16 +3,21 @@ import CoreLocation
 import MapKit
 
 struct Stations {
-    static func search(_ query: String) -> [String] {
+    /// Default cap on station search results — enough for a typical scrollable list
+    /// without overwhelming the picker. Callers that classify results into multiple
+    /// buckets (e.g., `searchGrouped`) may oversample with a higher `limit`.
+    static let defaultSearchLimit = 12
+
+    static func search(_ query: String, limit: Int = defaultSearchLimit) -> [String] {
         guard !query.isEmpty else { return [] }
         let q = query.lowercased()
         let prefixMatches = all.filter { $0.lowercased().hasPrefix(q) }
         let substringMatches = all.filter {
             !$0.lowercased().hasPrefix(q) && $0.lowercased().contains(q)
         }
-        return Array((prefixMatches + substringMatches).prefix(12))
+        return Array((prefixMatches + substringMatches).prefix(limit))
     }
-    
+
    static func getStationCode(_ stationName: String) -> String? { 
         // First try exact match
         if let code = stationCodes[stationName] {

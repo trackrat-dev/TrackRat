@@ -173,12 +173,19 @@ extension Stations {
     /// in `primary`; stations that don't are demoted to `other` (treated the same as
     /// stations on a system the user hasn't activated). When the origin is unknown or
     /// has no mapped systems, the origin filter is skipped.
+    ///
+    /// To prevent the origin filter from starving the primary bucket (the underlying
+    /// `search` cap is shared between matched and demoted candidates), this oversamples
+    /// the search when an origin is provided and re-caps each bucket independently.
     static func searchGrouped(
         _ query: String,
         selectedSystems: Set<TrainSystem>,
         originStationCode: String? = nil
     ) -> (primary: [String], other: [String]) {
-        let all = search(query)
+        let cap = Stations.defaultSearchLimit
+        // Oversample so demoted hits don't crowd out quality primary candidates.
+        let searchLimit = originStationCode == nil ? cap : cap * 3
+        let all = search(query, limit: searchLimit)
         let originSystems = originStationCode.map(systemStringsForStation) ?? []
         var primary: [String] = []
         var other: [String] = []
@@ -192,8 +199,11 @@ extension Stations {
             } else {
                 other.append(name)
             }
+            // Stop early once both buckets are full — avoids extra work on
+            // common queries where the oversample yields more than we'll show.
+            if primary.count >= cap && other.count >= cap { break }
         }
-        return (primary, other)
+        return (Array(primary.prefix(cap)), Array(other.prefix(cap)))
     }
 
     /// Returns true if the station shares at least one train system with the given origin.

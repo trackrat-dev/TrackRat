@@ -47,11 +47,14 @@ struct DestinationPickerView: View {
     }
 
     // Splits demoted search results into two reasons so each gets the right UX:
-    //   - systemDisabled: in user's selectedSystems would fix it → tap opens settings
-    //   - noRoute: no train system overlap with origin → inert, with explanatory subtitle
-    // No-route wins if both are true (changing settings can't fix a no-route destination).
+    //   - systemDisabled: station's system isn't in the user's enabled systems →
+    //     tap opens settings so the user can enable it.
+    //   - noRoute: station's system IS enabled but doesn't share with the origin →
+    //     inert, with explanatory subtitle.
+    // System-disabled wins when both apply — enabling the system is the
+    // discoverable next step; if it still doesn't reach this origin, the user
+    // sees the noRoute reason on the next pass.
     private var demotedSearchResults: (systemDisabled: [String], noRoute: [String]) {
-        let origin = appState.departureStationCode
         var systemDisabled: [String] = []
         var noRoute: [String] = []
         for name in searchResults.otherSystemStations {
@@ -59,10 +62,12 @@ struct DestinationPickerView: View {
                 systemDisabled.append(name)
                 continue
             }
-            if Stations.sharesSystem(stationCode: code, withOrigin: origin) {
-                systemDisabled.append(name)
-            } else {
+            if Stations.isStationVisible(code, withSystems: appState.selectedSystems) {
+                // Station's system is enabled, so it must be in `other` because
+                // it doesn't share a system with the origin.
                 noRoute.append(name)
+            } else {
+                systemDisabled.append(name)
             }
         }
         return (systemDisabled, noRoute)
