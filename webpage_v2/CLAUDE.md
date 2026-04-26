@@ -243,7 +243,6 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 
 ### Time Formatting
 - `formatTime()` - "3:45 PM"
-- `formatTimeAgo()` - "2 minutes ago"
 - `formatDate()` - "Jan 15, 2025"
 - `getDelayMinutes()` - Calculate delay from scheduled vs actual
 - `isToday()` - Check if date string is today
