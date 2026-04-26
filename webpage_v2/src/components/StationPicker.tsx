@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Station } from '../types';
 import { searchStations, getGroupedPrimaryStations, SYSTEM_ORDER, SYSTEM_NAMES } from '../data/stations';
 import { useAppStore } from '../store/appStore';
@@ -13,10 +13,47 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Station[]>([]);
   const { preferredSystems, toggleSystem, loadPreferredSystems } = useAppStore();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadPreferredSystems();
   }, [loadPreferredSystems]);
+
+  // Body scroll lock
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  // Escape-to-close and focus trap
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      onClose();
+      return;
+    }
+    if (e.key === 'Tab' && dialogRef.current) {
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }, [onClose]);
+
+  // Auto-focus search input
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
 
   const activeFilter = preferredSystems.length > 0 ? preferredSystems : undefined;
 
@@ -45,12 +82,20 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
   const isSearching = query.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 bg-text-primary/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="stationpicker-title"
+      onKeyDown={handleKeyDown}
+      className="fixed inset-0 bg-text-primary/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center"
+    >
       <div className="bg-surface w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl max-h-[80vh] flex flex-col">
         <div className="p-4 border-b border-text-muted/20 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-text-primary">{title}</h2>
+          <h2 id="stationpicker-title" className="text-xl font-semibold text-text-primary">{title}</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-text-secondary hover:text-text-primary text-2xl leading-none"
           >
             ×
@@ -59,11 +104,11 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
 
         <div className="p-4 border-b border-text-muted/20">
           <input
+            ref={searchInputRef}
             type="text"
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
             placeholder="Search stations..."
-            autoFocus
             className="w-full px-4 py-3 bg-background border border-text-muted/30 rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent mb-3"
           />
           {/* System filter chips */}
