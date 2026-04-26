@@ -153,7 +153,8 @@ export function TripDetailsPage() {
     if (!trip) return;
     storageService.saveViewedTripOption(trip);
     // Persist view history once per trip identity, not on every poll.
-  }, [legIds, trip]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legIds]);
 
   const fetchAllLegDetails = useCallback(async (signal?: AbortSignal) => {
     if (!trip) return;

@@ -102,6 +102,11 @@ export function TrainListPage() {
   // Future-dated views show only scheduled data, so polling is meaningless.
   usePolling(fetchTrains, [from, to, selectedDate], { enabled: !isViewingFutureDate });
 
+  // One-shot fetch for future dates (usePolling skips entirely when disabled).
+  useEffect(() => {
+    if (isViewingFutureDate) fetchTrains();
+  }, [isViewingFutureDate, fetchTrains]);
+
   // One-shot side effects on route change (recent trips, route summary)
   useEffect(() => {
     if (fromStation && toStation) {
