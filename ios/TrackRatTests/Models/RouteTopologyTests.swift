@@ -276,6 +276,22 @@ class RouteTopologyTests: XCTestCase {
         XCTAssertFalse(expanded.contains("JAM"), "Port Washington Branch does not pass through Jamaica")
     }
 
+    /// When hub-chained legs share trunk stations beyond the hub (e.g. NY→GCT where
+    /// both legs traverse FHL/KGN), the overlap must be collapsed so no station
+    /// appears twice. Repeated stations break filterSegmentsForRoute which uses firstIndex.
+    func testExpandStationCodesCollapsesTrunkOverlapOnHubChain() {
+        let expanded = RouteTopology.expandStationCodes(["NY", "GCT"], dataSource: "LIRR")
+
+        XCTAssertEqual(expanded.first, "NY", "Should start at NY")
+        XCTAssertEqual(expanded.last, "GCT", "Should end at GCT")
+
+        let uniqueCount = Set(expanded).count
+        XCTAssertEqual(
+            uniqueCount, expanded.count,
+            "No station should appear twice after overlap collapse, got: \(expanded)"
+        )
+    }
+
     /// Systems with no hub configured fall back to [from, to] when no route
     /// contains both stations — same behavior as before this change.
     func testExpandStationCodesNoHubFallsBackToPair() {

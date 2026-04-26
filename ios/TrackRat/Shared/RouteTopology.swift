@@ -1029,13 +1029,23 @@ struct RouteTopology {
 
     /// Bridges `from`→`to` by chaining through a hub station when no single route
     /// contains both. Returns nil if no hub connects them in two legs.
+    /// Collapses overlapping trunk stations that appear in both legs beyond the hub.
     private static func intermediatesViaHub(from: String, to: String, dataSource: String) -> [String]? {
         for hub in hubStations(for: dataSource) where hub != from && hub != to {
             guard let leg1 = getIntermediateStations(from: from, to: hub, dataSource: dataSource),
                   let leg2 = getIntermediateStations(from: hub, to: to, dataSource: dataSource) else {
                 continue
             }
-            return leg1 + leg2.dropFirst()
+            let tail = Array(leg2.dropFirst())
+            var result = leg1
+            for code in tail {
+                if let existing = result.lastIndex(of: code) {
+                    result = Array(result[...existing])
+                } else {
+                    result.append(code)
+                }
+            }
+            return result
         }
         return nil
     }
