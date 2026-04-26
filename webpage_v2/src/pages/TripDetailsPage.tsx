@@ -8,7 +8,7 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TransferIndicator } from '../components/TransferTripCard';
-import { formatTime, formatTimeAgo } from '../utils/date';
+import { formatTime } from '../utils/date';
 import { buildTrainUrl, parseTripParam } from '../utils/routes';
 import { storageService } from '../services/storage';
 
@@ -85,7 +85,7 @@ function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: Tra
 
         {train?.data_freshness?.last_updated && (
           <div className="text-xs text-text-muted mt-2">
-            {train.data_source} • Updated {formatTimeAgo(train.data_freshness.last_updated)}
+            {train.data_source} • Updated at {formatTime(train.data_freshness.last_updated)}
           </div>
         )}
       </div>

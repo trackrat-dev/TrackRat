@@ -10,7 +10,7 @@ import { TransferTripCard } from '../components/TransferTripCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { getStationByCode } from '../data/stations';
-import { formatTimeAgo, getTodayDateString } from '../utils/date';
+import { formatTime, getTodayDateString } from '../utils/date';
 import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
 import { usePolling } from '../utils/usePolling';
 
@@ -194,7 +194,7 @@ export function TrainListPage() {
         <div className="flex items-center justify-center gap-4 mt-2">
           {lastUpdated && (
             <span className="text-sm text-text-muted">
-              Updated {formatTimeAgo(lastUpdated.toISOString())}
+              Updated at {formatTime(lastUpdated.toISOString())}
             </span>
           )}
           {directRouteDataSource && !isTransferSearch && (

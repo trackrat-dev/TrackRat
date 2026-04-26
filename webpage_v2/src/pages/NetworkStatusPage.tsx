@@ -4,7 +4,7 @@ import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse } from '.
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
-import { formatTimeAgo } from '../utils/date';
+import { formatTime } from '../utils/date';
 import { usePolling } from '../utils/usePolling';
 
 const SYSTEM_LABELS: Record<string, string> = {
@@ -115,7 +115,7 @@ export function NetworkStatusPage() {
         <h2 className="text-2xl font-bold text-text-primary text-center">Network Status</h2>
         {generatedAt && (
           <div className="text-sm text-text-muted mt-1 text-center">
-            Updated {formatTimeAgo(new Date(generatedAt).toISOString())}
+            Updated at {formatTime(new Date(generatedAt).toISOString())}
           </div>
         )}
       </div>

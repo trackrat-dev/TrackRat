@@ -13,7 +13,7 @@ import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { HistoricalPerformance } from '../components/HistoricalPerformance';
 import { SimilarTrainsPanel } from '../components/SimilarTrainsPanel';
 import { storageService } from '../services/storage';
-import { getTodayDateString, formatTimeAgo, isToday, formatDate } from '../utils/date';
+import { getTodayDateString, formatTime, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
 
 export function TrainDetailsPage() {
@@ -230,7 +230,7 @@ export function TrainDetailsPage() {
             </span>
           )}
           {train.data_freshness?.last_updated && (
-            <span>Updated {formatTimeAgo(train.data_freshness.last_updated)}</span>
+            <span>Updated at {formatTime(train.data_freshness.last_updated)}</span>
           )}
         </div>
       </div>
