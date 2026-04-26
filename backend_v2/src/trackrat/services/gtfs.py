@@ -764,6 +764,31 @@ class GTFSService:
         tz = PROVIDER_TIMEZONE.get(data_source, ET) if data_source else ET
         return tz.localize(base_dt)
 
+    @staticmethod
+    def _gtfs_time_cutoff(
+        time_from: datetime, target_date: date, data_source: str
+    ) -> str | None:
+        """Convert a `time_from` datetime into a GTFS HH:MM:SS cutoff string.
+
+        GTFS departure_time values are zero-padded local clock times, with
+        hours possibly >= 24 for overnight trips. They sort lexicographically
+        in the same order as the wall-clock times they represent, so a string
+        comparison `departure_time >= cutoff` filters correctly.
+
+        Returns None when time_from is at or before the start of target_date
+        in the provider's timezone (no rows on target_date can be excluded).
+        """
+        tz = PROVIDER_TIMEZONE.get(data_source, ET)
+        target_midnight = tz.localize(datetime.combine(target_date, time(0, 0)))
+        if time_from <= target_midnight:
+            return None
+        local_time = time_from.astimezone(tz)
+        day_offset = (local_time.date() - target_date).days
+        hours = local_time.hour + day_offset * 24
+        minutes = local_time.minute
+        seconds = local_time.second
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
     async def get_active_service_ids(
         self, db: AsyncSession, data_source: str, target_date: date
     ) -> set[str]:
@@ -1310,23 +1335,19 @@ class GTFSService:
 
         for data_source, service_ids in all_services.items():
             source_departures = await self._query_departures_for_source(
-                db, data_source, service_ids, from_station, to_station, target_date
+                db,
+                data_source,
+                service_ids,
+                from_station,
+                to_station,
+                target_date,
+                time_from,
             )
             departures.extend(source_departures)
 
         # Sort by departure time
         # Use timezone-aware constant for safe comparison with ET-localized times
         departures.sort(key=lambda d: d.departure.scheduled_time or DATETIME_MAX_ET)
-
-        # Drop departures before time_from so `limit` counts trains from the
-        # requested window rather than always from the start of the day.
-        if time_from is not None:
-            departures = [
-                d
-                for d in departures
-                if d.departure.scheduled_time is not None
-                and d.departure.scheduled_time >= time_from
-            ]
 
         # Apply limit
         departures = departures[:limit]
@@ -1359,9 +1380,26 @@ class GTFSService:
         from_station: str,
         to_station: str | None,
         target_date: date,
+        time_from: datetime | None = None,
     ) -> list[TrainDeparture]:
         """Query GTFS tables for departures from a specific data source."""
         departures: list[TrainDeparture] = []
+
+        # Translate time_from into a GTFS HH:MM:SS cutoff so we can filter in
+        # SQL. Without this, the LIMIT below truncates high-frequency providers
+        # (SUBWAY) to overnight-only departures sorted by clock time.
+        time_from_cutoff = (
+            self._gtfs_time_cutoff(time_from, target_date, data_source)
+            if time_from is not None
+            else None
+        )
+        where_clauses = [
+            GTFSTrip.data_source == data_source,
+            GTFSTrip.service_id.in_(service_ids),
+            GTFSStopTime.station_code.in_(expand_station_codes(from_station)),
+        ]
+        if time_from_cutoff is not None:
+            where_clauses.append(GTFSStopTime.departure_time >= time_from_cutoff)
 
         # Find trips that have the from_station
         # We need to join trips -> stop_times to find matching trips
@@ -1381,13 +1419,7 @@ class GTFSService:
             )
             .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
             .join(GTFSStopTime, GTFSTrip.id == GTFSStopTime.trip_id)
-            .where(
-                and_(
-                    GTFSTrip.data_source == data_source,
-                    GTFSTrip.service_id.in_(service_ids),
-                    GTFSStopTime.station_code.in_(expand_station_codes(from_station)),
-                )
-            )
+            .where(and_(*where_clauses))
             .order_by(GTFSStopTime.departure_time)
             # Cap results to avoid fetching hundreds of trips for high-volume
             # providers like SUBWAY. Callers apply their own limit (typically
