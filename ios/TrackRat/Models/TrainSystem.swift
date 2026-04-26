@@ -167,22 +167,42 @@ extension Stations {
 
     /// Search stations grouped by active system membership.
     /// Returns stations matching selected systems first, then stations on other systems.
+    ///
+    /// When `originStationCode` is provided and resolves to a known set of systems,
+    /// stations are also required to share at least one system with the origin to land
+    /// in `primary`; stations that don't are demoted to `other` (treated the same as
+    /// stations on a system the user hasn't activated). When the origin is unknown or
+    /// has no mapped systems, the origin filter is skipped.
     static func searchGrouped(
         _ query: String,
-        selectedSystems: Set<TrainSystem>
+        selectedSystems: Set<TrainSystem>,
+        originStationCode: String? = nil
     ) -> (primary: [String], other: [String]) {
         let all = search(query)
+        let originSystems = originStationCode.map(systemStringsForStation) ?? []
         var primary: [String] = []
         var other: [String] = []
         for name in all {
             guard let code = getStationCode(name) else { continue }
-            if isStationVisible(code, withSystems: selectedSystems) {
+            let visible = isStationVisible(code, withSystems: selectedSystems)
+            let originOverlap = originSystems.isEmpty
+                || !originSystems.isDisjoint(with: systemStringsForStation(code))
+            if visible && originOverlap {
                 primary.append(name)
             } else {
                 other.append(name)
             }
         }
         return (primary, other)
+    }
+
+    /// Returns true if the station shares at least one train system with the given origin.
+    /// Returns true when the origin is nil or has no mapped systems (no filtering applied).
+    static func sharesSystem(stationCode: String, withOrigin originStationCode: String?) -> Bool {
+        guard let origin = originStationCode else { return true }
+        let originSystems = systemStringsForStation(origin)
+        guard !originSystems.isEmpty else { return true }
+        return !originSystems.isDisjoint(with: systemStringsForStation(stationCode))
     }
 
     /// Returns the primary train system for a station (for badge display).

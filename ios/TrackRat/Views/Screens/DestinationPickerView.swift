@@ -10,7 +10,11 @@ struct DestinationPickerView: View {
     @State private var showSettingsForTrainSystems = false
 
     private var searchResults: (stations: [String], otherSystemStations: [String]) {
-        let grouped = Stations.searchGrouped(searchText, selectedSystems: appState.selectedSystems)
+        let grouped = Stations.searchGrouped(
+            searchText,
+            selectedSystems: appState.selectedSystems,
+            originStationCode: appState.departureStationCode
+        )
 
         return (
             grouped.primary.filter { $0 != appState.selectedDeparture },
@@ -23,6 +27,23 @@ struct DestinationPickerView: View {
         return appState.favoriteStations.filter { station in
             station.id != appState.departureStationCode
         }
+    }
+
+    // Favorites split by whether they share a train system with the origin.
+    // Non-matching favorites are demoted below, treated the same as stations
+    // on a system the user hasn't activated.
+    private var favoritesByOriginOverlap: (matching: [FavoriteStation], otherSystem: [FavoriteStation]) {
+        let origin = appState.departureStationCode
+        var matching: [FavoriteStation] = []
+        var other: [FavoriteStation] = []
+        for station in favoriteStations {
+            if Stations.sharesSystem(stationCode: station.id, withOrigin: origin) {
+                matching.append(station)
+            } else {
+                other.append(station)
+            }
+        }
+        return (matching, other)
     }
     
     // Computed property for dynamic spacing - keep consistent spacing
@@ -186,12 +207,29 @@ struct DestinationPickerView: View {
                         
                         // Favorite stations - show when not typing in search
                         if !favoriteStations.isEmpty && !isSearching {
+                            let split = favoritesByOriginOverlap
                             VStack(alignment: .leading, spacing: 16) {
-                                ForEach(favoriteStations) { station in
+                                ForEach(split.matching) { station in
                                     FavoriteDestinationButton(station: station) {
                                         selectDestination(station.name)
                                     }
                                     .padding(.horizontal)
+                                }
+
+                                if !split.otherSystem.isEmpty {
+                                    Text("Other systems — edit your train systems to use")
+                                        .font(.caption)
+                                        .foregroundColor(.white.opacity(0.5))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 20)
+                                        .padding(.top, 4)
+
+                                    ForEach(split.otherSystem) { station in
+                                        FavoriteDestinationButton(station: station, isDimmed: true) {
+                                            showSettingsForTrainSystems = true
+                                        }
+                                        .padding(.horizontal)
+                                    }
                                 }
                             }
                             .padding(.top, 8)
@@ -329,10 +367,10 @@ struct DestinationPickerView: View {
 // MARK: - Favorite Destination Button
 struct FavoriteDestinationButton: View {
     let station: FavoriteStation
+    var isDimmed: Bool = false
     let onTap: () -> Void
     @EnvironmentObject private var appState: AppState
-    
-    
+
     var body: some View {
         Button {
             onTap()
@@ -341,8 +379,12 @@ struct FavoriteDestinationButton: View {
                 Text(Stations.displayName(for: station.name))
                     .font(.callout)
                     .fontWeight(.medium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.white.opacity(isDimmed ? 0.7 : 1.0))
                     .textProtected()
+
+                if isDimmed, let system = Stations.primarySystem(forStationCode: station.id) {
+                    SystemBadge(system: system)
+                }
 
                 Spacer()
 
@@ -362,10 +404,10 @@ struct FavoriteDestinationButton: View {
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(.white.opacity(0.15))
+                    .fill(.white.opacity(isDimmed ? 0.08 : 0.15))
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(.white.opacity(0.2), lineWidth: 1)
+                            .stroke(.white.opacity(isDimmed ? 0.12 : 0.2), lineWidth: 1)
                     )
             )
         }

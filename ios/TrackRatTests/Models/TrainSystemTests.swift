@@ -251,6 +251,102 @@ class TrainSystemTests: XCTestCase {
                      "104 St (A) should be SUBWAY, got: \(systems)")
     }
 
+    // MARK: - searchGrouped with origin filter
+
+    func testSearchGrouped_originFilter_demotesNonOverlappingStations() {
+        // Origin = JAM (Jamaica, LIRR-only). Search for "Penn" with all NJT/AMTRAK/LIRR enabled.
+        // NY Penn (NJT/AMTRAK/LIRR) shares LIRR with Jamaica → primary.
+        // Newark Penn (NJT/AMTRAK/PATH) does NOT share with Jamaica → other.
+        let allEnabled: Set<TrainSystem> = [.njt, .amtrak, .lirr, .path]
+        let grouped = Stations.searchGrouped(
+            "Penn",
+            selectedSystems: allEnabled,
+            originStationCode: "JAM"
+        )
+
+        XCTAssertTrue(grouped.primary.contains("New York Penn Station"),
+                     "NY Penn shares LIRR with origin Jamaica → should be primary, primary: \(grouped.primary)")
+        XCTAssertTrue(grouped.other.contains("Newark Penn Station"),
+                     "Newark Penn shares no system with origin Jamaica → should be other, other: \(grouped.other)")
+    }
+
+    func testSearchGrouped_originFilter_multiSystemOriginUsesUnion() {
+        // Origin = NP (NJT, AMTRAK, PATH). Search for "Penn".
+        // NY Penn (NJT/AMTRAK/LIRR) shares NJT and AMTRAK with NP → primary.
+        // Newark Penn IS the origin and gets filtered out by the picker anyway, but the
+        // helper itself doesn't drop it. Verify the cross-system overlap logic with another origin.
+        let allEnabled: Set<TrainSystem> = [.njt, .amtrak, .lirr, .path]
+        let grouped = Stations.searchGrouped(
+            "Penn",
+            selectedSystems: allEnabled,
+            originStationCode: "NP"
+        )
+        XCTAssertTrue(grouped.primary.contains("New York Penn Station"),
+                     "NY Penn shares NJT/AMTRAK with multi-system origin NP → primary, primary: \(grouped.primary)")
+    }
+
+    func testSearchGrouped_originFilter_disabledSystemTakesPrecedence() {
+        // Origin = NY Penn (NJT/AMTRAK/LIRR). Search for "Newark" with only PATH enabled.
+        // Newark Penn (NJT/AMTRAK/PATH) shares no system with origin NY (no NJT/AMTRAK/LIRR
+        // overlap with PATH-only selectedSystems on Newark either; both filters demote it).
+        let pathOnly: Set<TrainSystem> = [.path]
+        let grouped = Stations.searchGrouped(
+            "Newark Penn",
+            selectedSystems: pathOnly,
+            originStationCode: "NY"
+        )
+
+        // Newark Penn fails both filters: shares PATH with origin NY? No — NY has NJT/AMTRAK/LIRR.
+        // So origin overlap fails → demoted regardless of selectedSystems.
+        XCTAssertFalse(grouped.primary.contains("Newark Penn Station"),
+                      "Newark Penn does not share a system with NY origin → should not be primary")
+    }
+
+    func testSearchGrouped_originNil_behavesAsBeforeChange() {
+        // With no origin, the new filter is a no-op and behavior matches the existing tests.
+        let njtOnly: Set<TrainSystem> = [.njt]
+        let groupedNoOrigin = Stations.searchGrouped("Penn", selectedSystems: njtOnly, originStationCode: nil)
+        let groupedDefault = Stations.searchGrouped("Penn", selectedSystems: njtOnly)
+        XCTAssertEqual(groupedNoOrigin.primary, groupedDefault.primary,
+                      "Explicit nil origin should match default-parameter behavior (primary)")
+        XCTAssertEqual(groupedNoOrigin.other, groupedDefault.other,
+                      "Explicit nil origin should match default-parameter behavior (other)")
+    }
+
+    func testSearchGrouped_originUnknownCode_skipsOriginFilter() {
+        // Unknown origin code yields empty system set; filter should be skipped (not demote everything).
+        let allEnabled: Set<TrainSystem> = Set(TrainSystem.allCases)
+        let grouped = Stations.searchGrouped(
+            "Penn",
+            selectedSystems: allEnabled,
+            originStationCode: "ZZZNOTAREALCODE"
+        )
+        XCTAssertFalse(grouped.primary.isEmpty,
+                      "Unknown origin should not demote all results to 'other', primary: \(grouped.primary)")
+    }
+
+    // MARK: - sharesSystem(stationCode:withOrigin:)
+
+    func testSharesSystem_overlap() {
+        // Newark Penn (NJT/AMTRAK/PATH) and NY Penn (NJT/AMTRAK/LIRR) share NJT and AMTRAK.
+        XCTAssertTrue(Stations.sharesSystem(stationCode: "NP", withOrigin: "NY"))
+    }
+
+    func testSharesSystem_noOverlap() {
+        // Jamaica (LIRR) and Newark Penn (NJT/AMTRAK/PATH) share nothing.
+        XCTAssertFalse(Stations.sharesSystem(stationCode: "JAM", withOrigin: "NP"))
+    }
+
+    func testSharesSystem_nilOriginReturnsTrue() {
+        XCTAssertTrue(Stations.sharesSystem(stationCode: "JAM", withOrigin: nil),
+                     "Nil origin should bypass the filter and return true")
+    }
+
+    func testSharesSystem_unknownOriginReturnsTrue() {
+        XCTAssertTrue(Stations.sharesSystem(stationCode: "JAM", withOrigin: "ZZZNOTREAL"),
+                     "Unknown origin should bypass the filter and return true")
+    }
+
     func testIsStationVisible_unmappedAmtrakVisibleWhenAmtrakSelected() {
         // Unmapped stations default to AMTRAK and should be visible when Amtrak is selected
         XCTAssertTrue(Stations.isStationVisible("ALT", withSystems: [.amtrak]),
