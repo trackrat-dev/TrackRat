@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
-import { getStationByCode, searchStations, SYSTEM_NAMES, SYSTEM_ORDER } from '../data/stations';
+import { getStationByCode, searchStations, searchStationsPartitioned, SYSTEM_NAMES, SYSTEM_ORDER } from '../data/stations';
 import { Station, TransitSystem } from '../types';
 import { storageService } from '../services/storage';
 import { getSuggestedRoute } from '../utils/ratsense';
@@ -54,16 +54,12 @@ export function TripSelectionPage() {
     recentTrips,
   }), [homeStation, workStation, recentTrips]);
   const activeSystems = preferredSystems.length > 0 ? preferredSystems : undefined;
-  const stationResults = useMemo(
-    () => searchStations(searchQuery, activeSystems),
-    [searchQuery, activeSystems]
-  );
-  const otherSystemStationResults = useMemo(() => {
-    if (!searchQuery.trim() || !activeSystems) return [];
-
-    const primaryCodes = new Set(stationResults.map((station) => station.code));
-    return searchStations(searchQuery).filter((station) => !primaryCodes.has(station.code));
-  }, [searchQuery, activeSystems, stationResults]);
+  const { stationResults, otherSystemStationResults } = useMemo(() => {
+    if (!searchQuery.trim()) return { stationResults: [], otherSystemStationResults: [] };
+    if (!activeSystems) return { stationResults: searchStations(searchQuery), otherSystemStationResults: [] };
+    const { matched, other } = searchStationsPartitioned(searchQuery, activeSystems);
+    return { stationResults: matched, otherSystemStationResults: other };
+  }, [searchQuery, activeSystems]);
   const favoriteStationCodes = useMemo(
     () => new Set(favoriteStations.map((station) => station.id)),
     [favoriteStations]
