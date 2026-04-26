@@ -423,7 +423,7 @@ struct RouteStatusView: View {
                 .cornerRadius(12)
 
                 // Legend intentionally omitted — map colors are self-explanatory
-            } else if viewModel.mapError != nil {
+            } else {
                 ContentUnavailableView("Map Unavailable", systemImage: "map", description: Text("Could not load congestion data"))
                     .frame(height: 200)
             }
@@ -1038,7 +1038,6 @@ final class RouteStatusViewModel: ObservableObject {
     @Published var journeyStations: [JourneyStation] = []
     @Published var mapRegion = MKCoordinateRegion()
     @Published var isLoadingMap = true
-    @Published var mapError: String?
 
     // Service alerts
     @Published var serviceAlerts: [V2ServiceAlert] = []
@@ -1168,7 +1167,6 @@ final class RouteStatusViewModel: ObservableObject {
         journeyStations = []
         mapRegion = MKCoordinateRegion()
         isLoadingMap = true
-        mapError = nil
         serviceAlerts = []
         isLoadingServiceAlerts = true
         upcomingTrains = []
