@@ -36,11 +36,10 @@ export async function share(data: ShareData): Promise<boolean> {
       return true;
     }
   } catch (error) {
-    // User cancelled share or clipboard failed
     if (error instanceof Error && error.name === 'AbortError') {
-      // User cancelled, not an error
       return false;
     }
+    console.warn('Share failed:', error);
     return false;
   }
 }

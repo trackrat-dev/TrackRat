@@ -4,6 +4,7 @@ import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
 import { LoadingSpinner } from '../components/LoadingSpinner';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { TrainCard } from '../components/TrainCard';
 import { TransferTripCard } from '../components/TransferTripCard';
@@ -215,13 +216,15 @@ export function TrainListPage() {
 
       {/* Route map (lazy-loaded) */}
       {fromStation && toStation && (
-        <Suspense fallback={null}>
-          <RouteMap
-            fromStation={fromStation}
-            toStation={toStation}
-            lineColor={trains[0]?.line.color}
-          />
-        </Suspense>
+        <ErrorBoundary key={`${from}-${to}`} fallback={null}>
+          <Suspense fallback={null}>
+            <RouteMap
+              fromStation={fromStation}
+              toStation={toStation}
+              lineColor={trains[0]?.line.color}
+            />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       {/* Route summary (direct routes only) */}
@@ -323,7 +326,7 @@ export function TrainListPage() {
         <div className="space-y-3">
           {filteredTrains.map((train) => (
             <TrainCard
-              key={train.train_id}
+              key={`direct-${train.train_id}-${train.journey_date}`}
               train={train}
               onClick={() => navigate(buildTrainUrl({
                 trainId: train.train_id,
@@ -339,7 +342,7 @@ export function TrainListPage() {
           ))}
           {filteredTransferTrips.map((trip) => (
             <TransferTripCard
-              key={trip.legs.map(l => l.train_id).join('-')}
+              key={`transfer-${trip.legs.map(l => `${l.train_id}:${l.journey_date}`).join('|')}`}
               trip={trip}
               onClick={() => navigate(buildTripUrl(trip))}
             />
