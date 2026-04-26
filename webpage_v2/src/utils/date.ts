@@ -1,18 +1,9 @@
-import { format, formatDistance, parseISO, isToday as fnsIsToday } from 'date-fns';
+import { format, parseISO, isToday as fnsIsToday } from 'date-fns';
 
 export function formatTime(dateString: string): string {
   try {
     const date = parseISO(dateString);
     return format(date, 'h:mm a');
-  } catch {
-    return 'N/A';
-  }
-}
-
-export function formatTimeAgo(dateString: string): string {
-  try {
-    const date = parseISO(dateString);
-    return formatDistance(date, new Date(), { addSuffix: true });
   } catch {
     return 'N/A';
   }
