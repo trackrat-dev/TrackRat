@@ -285,21 +285,19 @@ class TrainSystemTests: XCTestCase {
                      "NY Penn shares NJT/AMTRAK with multi-system origin NP → primary, primary: \(grouped.primary)")
     }
 
-    func testSearchGrouped_originFilter_disabledSystemTakesPrecedence() {
-        // Origin = NY Penn (NJT/AMTRAK/LIRR). Search for "Newark" with only PATH enabled.
-        // Newark Penn (NJT/AMTRAK/PATH) shares no system with origin NY (no NJT/AMTRAK/LIRR
-        // overlap with PATH-only selectedSystems on Newark either; both filters demote it).
+    func testSearchGrouped_originFilter_demotesVisibleStationWithNoOriginOverlap() {
+        // Origin = JAM (Jamaica, LIRR-only). Search for "Newark" with PATH enabled.
+        // Newark Penn (NJT/AMTRAK/PATH) is visible via PATH, but shares no system
+        // with origin JAM (LIRR) → origin overlap fails → demoted to other.
         let pathOnly: Set<TrainSystem> = [.path]
         let grouped = Stations.searchGrouped(
             "Newark Penn",
             selectedSystems: pathOnly,
-            originStationCode: "NY"
+            originStationCode: "JAM"
         )
 
-        // Newark Penn fails both filters: shares PATH with origin NY? No — NY has NJT/AMTRAK/LIRR.
-        // So origin overlap fails → demoted regardless of selectedSystems.
         XCTAssertFalse(grouped.primary.contains("Newark Penn Station"),
-                      "Newark Penn does not share a system with NY origin → should not be primary")
+                      "Newark Penn is visible (PATH enabled) but shares no system with LIRR-only origin JAM → should be demoted, primary: \(grouped.primary)")
     }
 
     func testSearchGrouped_originNil_behavesAsBeforeChange() {
