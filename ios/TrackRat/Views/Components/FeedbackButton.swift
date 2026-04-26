@@ -242,7 +242,7 @@ struct FeedbackSheet: View {
                 .foregroundColor(.white)
 
             VStack(spacing: 12) {
-                Text("Your feedback has been filed as a GitHub issue. Follow it to stay in touch and get updates.")
+                Text("Your feedback will be tracked as a GitHub issue shortly. Follow it there to stay in touch and get updates.")
                     .font(.subheadline)
                     .foregroundColor(.white.opacity(0.7))
                     .multilineTextAlignment(.center)
