@@ -428,16 +428,20 @@ struct TripSelectionView: View {
 
     @ViewBuilder
     private func stationSearchRow(station: String) -> some View {
+        let code = Stations.getStationCode(station)
+        let displayName = code.map { Stations.displayName(for: $0) } ?? station
+        let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
-            HStack {
-                Text(station)
+            HStack(spacing: 6) {
+                Text(displayName)
                     .font(.body)
                     .foregroundColor(.white)
                     .textProtected()
+                SubwayLineChips(lines: lines, size: 14)
                 Spacer()
             }
 
-            if let code = Stations.getStationCode(station) {
+            if let code {
                 StationIconView(
                     stationCode: code,
                     isStationFavorited: appState.isStationFavorited(code: code)
@@ -463,22 +467,27 @@ struct TripSelectionView: View {
 
     @ViewBuilder
     private func otherSystemStationRow(station: String) -> some View {
+        let code = Stations.getStationCode(station)
+        let displayName = code.map { Stations.displayName(for: $0) } ?? station
+        let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
-            HStack {
-                Text(station)
+            HStack(spacing: 6) {
+                Text(displayName)
                     .font(.body)
                     .foregroundColor(.white.opacity(0.7))
                     .textProtected()
 
-                if let code = Stations.getStationCode(station),
-                   let system = Stations.primarySystem(forStationCode: code) {
+                SubwayLineChips(lines: lines, size: 14)
+                    .opacity(0.7)
+
+                if let code, let system = Stations.primarySystem(forStationCode: code) {
                     SystemBadge(system: system)
                 }
 
                 Spacer()
             }
 
-            if let code = Stations.getStationCode(station) {
+            if let code {
                 StationIconView(
                     stationCode: code,
                     isStationFavorited: appState.isStationFavorited(code: code)
@@ -755,10 +764,12 @@ struct FavoriteStationButton: View {
             onTap()
         } label: {
             HStack {
-                Text(Stations.displayName(for: station.name))
+                Text(Stations.displayName(for: station.id))
                     .font(.callout)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
+
+                SubwayLineChips(lines: SubwayLines.lines(forStationCode: station.id), size: 14)
 
                 Spacer()
 

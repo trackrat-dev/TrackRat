@@ -796,7 +796,12 @@ private struct FavoriteStationRow: View {
 
     private var stationName: String? {
         guard let code = stationCode else { return nil }
-        return Stations.stationName(forCode: code) ?? Stations.displayName(for: code)
+        return Stations.displayName(for: code)
+    }
+
+    private var subwayLines: [String] {
+        guard let code = stationCode else { return [] }
+        return SubwayLines.lines(forStationCode: code)
     }
 
     private var iconName: String? {
@@ -821,6 +826,7 @@ private struct FavoriteStationRow: View {
                     .font(.subheadline)
                     .foregroundColor(.white)
                     .lineLimit(1)
+                SubwayLineChips(lines: subwayLines, size: 13)
             } else if label != nil {
                 Text("Not set")
                     .font(.subheadline)

@@ -437,11 +437,15 @@ struct FavoriteDestinationButton: View {
     private var rowContent: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(Stations.displayName(for: station.name))
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white.opacity(isDimmed ? 0.7 : 1.0))
-                    .textProtected()
+                HStack(spacing: 6) {
+                    Text(Stations.displayName(for: station.id))
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white.opacity(isDimmed ? 0.7 : 1.0))
+                        .textProtected()
+                    SubwayLineChips(lines: SubwayLines.lines(forStationCode: station.id), size: 14)
+                        .opacity(isDimmed ? 0.7 : 1.0)
+                }
 
                 if let originName = noRouteOrigin {
                     Text("No route from \(Stations.displayName(for: originName))")

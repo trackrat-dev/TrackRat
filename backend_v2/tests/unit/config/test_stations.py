@@ -99,15 +99,17 @@ class TestStationMapping:
         # Function should either return the code itself or a default
         assert result is not None
 
-    def test_canal_st_bridge_platform_lists_n_and_q(self):
-        """SQ01 is the BMT Broadway bridge platform at Canal St, shared by
-        the Q (always) and the N (via Manhattan Bridge during weekday daytime).
-        MTA's GTFS static feed only lists Q, but users boarding an N train
-        here expect to see N in the displayed name."""
-        assert SUBWAY_STATION_NAMES["SQ01"] == "Canal St (N/Q)"
-        assert get_station_name("SQ01") == "Canal St (N/Q)"
-        # Sibling tunnel platform stays untouched
-        assert SUBWAY_STATION_NAMES["SR23"] == "Canal St (N/R/W)"
+    def test_canal_st_platforms_have_clean_names(self):
+        """Subway station names no longer carry parenthetical route suffixes —
+        clients render colored line bullets next to the name via the
+        `SubwayLineChips` component (iOS) for visual disambiguation between
+        same-name platforms. The `(N/Q)` / `(N/R/W)` tags this used to assert
+        moved out of the name string and into the chip layer; SQ01's "(N)"
+        chip continues to be sourced from the manual additions in
+        `scripts/generate_subway_data.py:MANUAL_STATION_ROUTE_ADDITIONS`."""
+        assert SUBWAY_STATION_NAMES["SQ01"] == "Canal St"
+        assert get_station_name("SQ01") == "Canal St"
+        assert SUBWAY_STATION_NAMES["SR23"] == "Canal St"
 
     def test_mapping_completeness(self):
         """Test that all expected stations are mapped."""
@@ -963,118 +965,55 @@ class TestSubwayGTFSStopMapping:
             f"letters/numbers:\n" + "\n".join(f"  {v}" for v in violations)
         )
 
-    def test_subway_station_names_known_a_line_labels(self):
-        """Verify specific A-line stations have correct route labels.
+    def test_subway_station_names_no_parenthetical_route_suffix(self):
+        """Subway station names should be clean — no `(A)`, `(1/2/3)` etc. tails.
+        Clients render colored line bullets next to the name for disambiguation.
 
-        SA63 (104 St on A line) and SA64 (111 St on A line) should have '(A)' suffix,
-        not their station codes.
-        """
-        assert (
-            SUBWAY_STATION_NAMES["SA63"] == "104 St (A)"
-        ), f"SA63 should be '104 St (A)' but got '{SUBWAY_STATION_NAMES['SA63']}'"
-        assert (
-            SUBWAY_STATION_NAMES["SA64"] == "111 St (A)"
-        ), f"SA64 should be '111 St (A)' but got '{SUBWAY_STATION_NAMES['SA64']}'"
-
-    def test_subway_route_topology_consistent_with_station_name_suffixes(self):
-        """For every (route, station) pair declared in route_topology, if the
-        station's display name carries a route suffix in parentheses, that
-        suffix must include every line_code the route uses.
-
-        Catches the class of bug where a station is wired into a route but its
-        displayed name doesn't advertise the route letter — for instance, a
-        future regression that drops 'N' from 'Canal St (N/Q)' while SUBWAY_N
-        still lists SQ01, or any analogous mis-edit on other routes.
-
-        Stations with no parenthetical suffix are skipped: those are
-        unambiguous single-line-group stations and don't need disambiguation.
-
-        Normalizations applied (mirroring generate_subway_data.py logic):
-        - Express variants (line_code ending in 'X' e.g. '6X') are stripped by
-          the generator's `_format_route_suffix` and therefore never appear in
-          display names. Skip these line_codes.
-        - Shuttles use 'S' in display names but 'FS'/'GS' line_codes in
-          topology.
-        - Staten Island Railway uses 'SIR' in display names but 'SI'
-          line_code.
+        The bug class this guards against (e.g. SA63 leaking the raw code as
+        `'104 St (SA63)'`) is now caught earlier: clean names mean the
+        generator's collision-suffix code path is no longer in use, so a
+        regression that brings it back would also bring back a parenthetical.
         """
         import re
 
+        bullet_suffix = re.compile(r"\s*\([A-Z0-9/]+\)\s*$")
+        violations = [
+            f"{code}: {name}"
+            for code, name in SUBWAY_STATION_NAMES.items()
+            if bullet_suffix.search(name)
+        ]
+        assert not violations, (
+            "Subway station names should not carry parenthetical suffixes:\n"
+            + "\n".join(f"  {v}" for v in violations)
+        )
+
+    def test_subway_route_topology_stations_all_in_station_names(self):
+        """Every station code referenced by a subway route must have a name in
+        `SUBWAY_STATION_NAMES`. Without this, a stop on that route would render
+        as the bare code in clients.
+
+        (This test previously also checked that parenthetical route suffixes
+        on the displayed name matched the route topology. Since names are now
+        stripped of those suffixes — clients use `SubwayLineChips` for visual
+        disambiguation, and chip data derives directly from route topology by
+        construction — the suffix-matching half no longer applies. The
+        underlying invariant it guarded against, route topology and displayed
+        lines drifting apart, is now structurally impossible: chips ARE the
+        topology.)
+        """
         from trackrat.config.route_topology import ALL_ROUTES
 
-        line_code_display = {"FS": "S", "GS": "S", "SI": "SIR"}
-
-        # Known (route_id, station_code) pairs where the display-name suffix
-        # does not include a route's line_code. Each entry is an open bug of
-        # the same class as SQ01/N (MTA GTFS static underreports service
-        # patterns that genuinely share the platform), OR a bug in the
-        # route_topology that lists a station the route doesn't actually
-        # serve. Both need human triage: the fix path differs.
-        #
-        # Entries should be REMOVED from this allowlist as each case is
-        # resolved — either by updating SUBWAY_STATION_NAMES (and the
-        # generator's MANUAL_STATION_ROUTE_ADDITIONS) or by pruning the
-        # station from the route in route_topology.py.
-        #
-        # New entries should NOT be added without investigation. The point of
-        # this test is to catch the class of bug the user reported about
-        # Canal St showing "(Q)" on an N train.
-        known_open_issues: set[tuple[str, str]] = {
-            # 5 train rush-hour Brooklyn extension (runs on 2-line tracks to
-            # Flatbush Av during AM/PM peaks). Real service — station names
-            # should add "5".
-            ("subway-5", "S244"),
-            ("subway-5", "S236"),
-            ("subway-5", "S235"),
-            ("subway-5", "S423"),
-            # 5 train off-peak/weekend local claim on Lexington Av. Less
-            # well-documented than the Brooklyn extension — the 5 normally
-            # runs express on Lex. May indicate route_topology is wrong and
-            # these entries should be pruned from SUBWAY_5.stations instead
-            # of added to station names. Needs verification against MTA
-            # service schedules.
-            ("subway-5", "S639"),
-            ("subway-5", "S638"),
-            ("subway-5", "S633"),
-            ("subway-5", "S627"),
-        }
-
-        suffix_re = re.compile(r"\s*\(([A-Z0-9/]+)\)\s*$")
-        mismatches: list[str] = []
-
+        missing: list[str] = []
         for route in ALL_ROUTES:
             if route.data_source != "SUBWAY":
                 continue
-            # Mirror generator: drop X-express variants, remap shuttles/SIR.
-            required = {
-                line_code_display.get(lc, lc)
-                for lc in route.line_codes
-                if not lc.endswith("X")
-            }
-            if not required:
-                continue
             for code in route.stations:
-                if (route.id, code) in known_open_issues:
-                    continue
-                name = SUBWAY_STATION_NAMES.get(code)
-                if not name:
-                    continue
-                match = suffix_re.search(name)
-                if not match:
-                    continue
-                listed = set(match.group(1).split("/"))
-                missing = required - listed
-                if missing:
-                    mismatches.append(
-                        f"  {route.id}: station {code} = {name!r}, "
-                        f"suffix omits {sorted(missing)}"
-                    )
+                if code not in SUBWAY_STATION_NAMES:
+                    missing.append(f"  {route.id}: station {code}")
 
-        assert not mismatches, (
-            "route_topology lists stations whose display-name suffix does "
-            "not include the route's line_code(s). Either fix "
-            "SUBWAY_STATION_NAMES (the station actually serves that route) "
-            "or remove the station from the route topology:\n" + "\n".join(mismatches)
+        assert not missing, (
+            "Subway route topology references stations missing from "
+            "SUBWAY_STATION_NAMES:\n" + "\n".join(missing)
         )
 
 

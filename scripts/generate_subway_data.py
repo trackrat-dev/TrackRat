@@ -823,15 +823,21 @@ def main():
     complexes = build_station_complexes(data["transfers"], stations)
     print(f"Found {len(complexes)} station complexes (multi-platform groups)")
 
-    # Build station routes mapping (used for name collision resolution)
+    # Build station routes mapping (kept for downstream tooling; no longer used
+    # for name disambiguation — clients render colored line bullets next to
+    # station names via SubwayLineChips, so suffixes are not needed in display).
     station_routes = build_station_routes(data["trips"], data["stop_times"], stations)
 
-    # Resolve backend name collisions (GTFS names like "104 St" that lack route suffixes)
-    resolve_backend_name_collisions(stations, station_routes)
+    # Strip route suffixes that GTFS bakes into stop names (e.g. "8 Av (N/W)").
+    # Disambiguation between same-name stations is handled visually by
+    # `SubwayLineChips` in the iOS client and the analogous web component;
+    # storing them in the data layer just creates noise.
+    for s in stations:
+        s["name"] = strip_route_suffix(s["name"])
 
-    # Build consolidated stations for iOS
+    # Build consolidated stations for iOS (already stripped via strip_route_suffix
+    # inside build_consolidated_stations).
     consolidated = build_consolidated_stations(stations, complexes)
-    resolve_name_collisions(consolidated, station_routes)
     print(f"Consolidated to {len(consolidated)} station entries "
           f"({len(stations) - len(consolidated)} fewer than raw GTFS)")
 

@@ -121,8 +121,32 @@ struct Stations {
         case "Washington Union Station":
             return "Washington Union"
         default:
-            return normalizedName
+            return strippingSubwayRouteSuffix(normalizedName)
         }
+    }
+
+    /// Strips parenthetical route disambiguators that the backend's subway data
+    /// inherits from MTA's GTFS feed (e.g., `"8 Av (N/W)"` → `"8 Av"`,
+    /// `"Cathedral Pkwy (110 St) - 1"` → `"Cathedral Pkwy (110 St)"`).
+    ///
+    /// Disambiguation between same-name stations on different lines is handled
+    /// visually by `SubwayLineChips`, so the suffix is line-noise in the UI.
+    /// The pattern matches only single-character bullets (digits 1–7, single
+    /// uppercase letters) so multi-letter tags like `"(BART)"` and `"(SIR)"`
+    /// stay untouched.
+    private static func strippingSubwayRouteSuffix(_ name: String) -> String {
+        // Single subway bullet, optionally slash-separated: e.g. "1", "N/W", "1/A/B/C".
+        let bulletPattern = "[1-7A-Z](/[1-7A-Z])*"
+        var stripped = name
+        // " - <bullets>" tail (e.g., "Cathedral Pkwy (110 St) - 1").
+        if let range = stripped.range(of: #" - \#(bulletPattern)$"#, options: .regularExpression) {
+            stripped.removeSubrange(range)
+        }
+        // " (<bullets>)" tail (e.g., "8 Av (N/W)", "23 St (1/2)").
+        if let range = stripped.range(of: #" \(\#(bulletPattern)\)$"#, options: .regularExpression) {
+            stripped.removeSubrange(range)
+        }
+        return stripped
     }
 
     // MARK: - Station to Train System Mapping

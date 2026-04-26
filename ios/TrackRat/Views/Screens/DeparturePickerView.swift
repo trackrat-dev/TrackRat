@@ -355,19 +355,23 @@ struct DeparturePickerView: View {
 
     @ViewBuilder
     private func stationRow(_ station: String) -> some View {
+        let code = Stations.getStationCode(station)
+        let displayName = code.map { Stations.displayName(for: $0) } ?? station
+        let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
-            HStack {
-                Text(station)
+            HStack(spacing: 6) {
+                Text(displayName)
                     .font(.body)
                     .foregroundColor(.white)
                     .textProtected()
+                SubwayLineChips(lines: lines, size: 14)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(TrackRatTheme.IconSize.xsmall)
                     .foregroundColor(.white.opacity(0.6))
             }
 
-            if let code = Stations.getStationCode(station) {
+            if let code {
                 StationIconView(
                     stationCode: code,
                     isStationFavorited: appState.isStationFavorited(code: code)
@@ -407,15 +411,20 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var otherSystemStationResultsView: some View {
         ForEach(searchResults.otherSystemStations, id: \.self) { station in
+            let code = Stations.getStationCode(station)
+            let displayName = code.map { Stations.displayName(for: $0) } ?? station
+            let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
             HStack {
-                HStack {
-                    Text(station)
+                HStack(spacing: 6) {
+                    Text(displayName)
                         .font(.body)
                         .foregroundColor(.white.opacity(0.7))
                         .textProtected()
 
-                    if let code = Stations.getStationCode(station),
-                       let system = Stations.primarySystem(forStationCode: code) {
+                    SubwayLineChips(lines: lines, size: 14)
+                        .opacity(0.7)
+
+                    if let code, let system = Stations.primarySystem(forStationCode: code) {
                         SystemBadge(system: system)
                     }
 
@@ -425,7 +434,7 @@ struct DeparturePickerView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
 
-                if let code = Stations.getStationCode(station) {
+                if let code {
                     StationIconView(
                         stationCode: code,
                         isStationFavorited: appState.isStationFavorited(code: code)
