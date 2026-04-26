@@ -30,6 +30,10 @@ class LineDiscoveryModel: ObservableObject {
 
         guard !commonSystems.isEmpty else { return }
 
+        // Snapshot the user-facing selection up front so we can detect mid-flight edits.
+        // Late preference writes must not stomp on toggles the user makes while the API is in-flight.
+        let initialEnabledLineIds = enabledLineIds
+
         do {
             let trains = try await APIService.shared.searchTrains(
                 fromStationCode: from,
@@ -67,7 +71,7 @@ class LineDiscoveryModel: ObservableObject {
             // Silently fail — line selection simply won't appear
         }
 
-        // Load saved preference
+        // Load saved preference. Only apply it if the user hasn't already toggled lines while we waited.
         let deviceId = AlertSubscriptionService.shared.deviceId
         do {
             let pref = try await APIService.shared.fetchRoutePreference(
@@ -87,10 +91,11 @@ class LineDiscoveryModel: ObservableObject {
                     }
                 }
             }
-            enabledLineIds = lineIds
+            if enabledLineIds == initialEnabledLineIds {
+                enabledLineIds = lineIds
+            }
         } catch {
-            // No saved preference — default to all enabled (empty set)
-            enabledLineIds = []
+            // No saved preference — leave whatever the user has, including the "all enabled" default (empty set).
         }
     }
 
@@ -129,11 +134,20 @@ struct DirectionalAlertConfigurationSheet: View {
     @StateObject private var lineDiscovery = LineDiscoveryModel()
     @State private var directions: [DirectionDraft]
     @State private var showingPaywall = false
+    /// Snapshot of `isPro` taken on first appearance. Stabilizes the i>0 branch against transient
+    /// StoreKit refreshes (e.g., scenePhase=.active triggers refreshOnForeground which can briefly
+    /// reset subscriptionStatus to .notSubscribed). Only upgrades (false→true) are honored so a
+    /// mid-flow paywall purchase still unlocks the second direction.
+    @State private var isProSticky: Bool? = nil
     private let onSave: ([RouteAlertSubscription]) -> Void
 
     init(directions: [DirectionDraft], onSave: @escaping ([RouteAlertSubscription]) -> Void) {
         _directions = State(initialValue: directions)
         self.onSave = onSave
+    }
+
+    private var effectiveIsPro: Bool {
+        isProSticky ?? subscriptionService.isPro
     }
 
     /// Station pair from the first non-subscribed direction (for line discovery).
@@ -145,6 +159,12 @@ struct DirectionalAlertConfigurationSheet: View {
             }
         }
         return nil
+    }
+
+    /// Hashable key for `.task(id:)` so discovery only re-fires when the station pair changes.
+    private var stationPairKey: String {
+        guard let pair = stationPair else { return "" }
+        return "\(pair.from)|\(pair.to)"
     }
 
     private var canSave: Bool {
@@ -168,7 +188,7 @@ struct DirectionalAlertConfigurationSheet: View {
                         ForEach(0..<directions.count, id: \.self) { i in
                             if directions[i].alreadySubscribed {
                                 alreadySubscribedBanner(label: directions[i].label)
-                            } else if i > 0 && !subscriptionService.isPro {
+                            } else if i > 0 && !effectiveIsPro {
                                 proLockedDirectionBanner(label: directions[i].label)
                             } else {
                                 AlertConfigurationSection(
@@ -194,7 +214,7 @@ struct DirectionalAlertConfigurationSheet: View {
                                 .filter { index, draft in
                                     !draft.alreadySubscribed
                                     && draft.subscription.activeDays != 0
-                                    && (index == 0 || subscriptionService.isPro)
+                                    && (index == 0 || effectiveIsPro)
                                 }
                                 .map(\.element.subscription)
                             onSave(enabledSubs)
@@ -209,7 +229,17 @@ struct DirectionalAlertConfigurationSheet: View {
                         .disabled(!canSave)
                     }
                 }
-                .task {
+                .onAppear {
+                    if isProSticky == nil {
+                        isProSticky = subscriptionService.isPro
+                    }
+                }
+                .onChange(of: subscriptionService.isPro) { _, newValue in
+                    if newValue {
+                        isProSticky = true
+                    }
+                }
+                .task(id: stationPairKey) {
                     if let pair = stationPair {
                         await lineDiscovery.discover(from: pair.from, to: pair.to)
                     }
