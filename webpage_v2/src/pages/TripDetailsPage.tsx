@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { TripOption, TripLeg, TrainDetails } from '../types';
 import { apiService } from '../services/api';
+import { usePolling } from '../utils/usePolling';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
@@ -150,32 +151,39 @@ export function TripDetailsPage() {
 
   useEffect(() => {
     if (!trip) return;
-
     storageService.saveViewedTripOption(trip);
-
-    const fetchAllLegDetails = async () => {
-      const results = await Promise.all(
-        trip.legs.map(leg =>
-          apiService.getTrainDetails(
-            leg.train_id,
-            leg.journey_date,
-            {
-              dataSource: leg.data_source,
-              fromStation: leg.boarding.code,
-            }
-          )
-            .then(res => res.train)
-            .catch(() => null)
-        )
-      );
-      setLegDetails(results);
-      setLoading(false);
-    };
-
-    fetchAllLegDetails();
-    const interval = setInterval(fetchAllLegDetails, 30000);
-    return () => clearInterval(interval);
+    // Persist view history once per trip identity, not on every poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [legIds]);
+
+  const fetchAllLegDetails = useCallback(async (signal?: AbortSignal) => {
+    if (!trip) return;
+    const results = await Promise.all(
+      trip.legs.map(leg =>
+        apiService.getTrainDetails(
+          leg.train_id,
+          leg.journey_date,
+          {
+            dataSource: leg.data_source,
+            fromStation: leg.boarding.code,
+            signal,
+          }
+        )
+          .then(res => res.train)
+          .catch((err) => {
+            if (err instanceof DOMException && err.name === 'AbortError') throw err;
+            return null;
+          })
+      )
+    );
+    setLegDetails(results);
+    setLoading(false);
+    // legIds captures all reactive bits of the legs; including `trip` directly
+    // would needlessly re-fire on equal-but-different references.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legIds]);
+
+  usePolling(fetchAllLegDetails, [legIds], { enabled: !!trip });
 
   // Early returns after all hooks
   if (!trip) {

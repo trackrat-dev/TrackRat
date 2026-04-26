@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
@@ -12,6 +12,7 @@ import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { getStationByCode } from '../data/stations';
 import { formatTimeAgo, getTodayDateString } from '../utils/date';
 import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
+import { usePolling } from '../utils/usePolling';
 
 const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ default: m.RouteMap })));
 
@@ -65,12 +66,11 @@ export function TrainListPage() {
     return departureWithBuffer < now;
   };
 
-  const fetchTrains = async () => {
+  const fetchTrains = useCallback(async (signal?: AbortSignal) => {
     if (!from || !to) return;
 
     try {
-      setError(null);
-      const response = await apiService.searchTrips(from, to, 50, selectedDate || undefined);
+      const response = await apiService.searchTrips(from, to, 50, selectedDate || undefined, signal);
 
       // Split response into direct and transfer trips
       const directTrips = response.trips.filter(t => t.is_direct);
@@ -88,34 +88,42 @@ export function TrainListPage() {
       setTrains(sorted);
       setTransferTrips(transferTripsResult);
       setIsTransferSearch(transferTripsResult.length > 0 && directTrips.length === 0);
-
       setLastUpdated(new Date());
+      setError(null);
       setLoading(false);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Failed to load trains');
       setLoading(false);
     }
-  };
+  }, [from, to, selectedDate]);
 
+  // Polling: visibility-aware, aborts in-flight on unmount/dep change.
+  // Future-dated views show only scheduled data, so polling is meaningless.
+  usePolling(fetchTrains, [from, to, selectedDate], { enabled: !isViewingFutureDate });
+
+  // One-shot fetch for future dates (usePolling skips entirely when disabled).
   useEffect(() => {
-    fetchTrains();
+    if (isViewingFutureDate) fetchTrains();
+  }, [isViewingFutureDate, fetchTrains]);
 
-    // Save to recent trips once on mount, not every poll cycle
+  // One-shot side effects on route change (recent trips, route summary)
+  useEffect(() => {
     if (fromStation && toStation) {
       addRecentTrip(fromStation, toStation);
     }
+    if (!from || !to) return;
 
-    // Fetch summary once on mount (not polled) - only for direct routes
-    if (from && to) {
-      apiService.getRouteSummary(from, to).then(setSummary);
-    }
-
-    // Poll every 30 seconds — but not for future dates (no real-time data)
-    if (!isViewingFutureDate) {
-      const interval = setInterval(fetchTrains, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [from, to, selectedDate]);
+    const controller = new AbortController();
+    apiService.getRouteSummary(from, to, controller.signal)
+      .then(setSummary)
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      });
+    return () => controller.abort();
+    // fromStation/toStation are derived from from/to and need not be deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to]);
 
   const filteredTrains = useMemo(() => {
     if (!trainFilter.trim()) return trains;
@@ -271,7 +279,7 @@ export function TrainListPage() {
 
       <div className="flex gap-2 mb-4">
         <button
-          onClick={fetchTrains}
+          onClick={() => fetchTrains()}
           disabled={loading}
           className="py-3 px-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
         >
@@ -306,7 +314,7 @@ export function TrainListPage() {
       {loading && !hasResults ? (
         <LoadingSpinner />
       ) : error ? (
-        <ErrorMessage message={error} onRetry={fetchTrains} />
+        <ErrorMessage message={error} onRetry={() => fetchTrains()} />
       ) : isEmpty ? (
         <div className="text-center py-12 text-text-muted">
           {trainFilter ? 'No matching trains' : 'No trains found for this route'}

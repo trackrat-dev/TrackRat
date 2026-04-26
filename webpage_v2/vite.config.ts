@@ -38,15 +38,23 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,gif,webp,woff,woff2}'],
+        // Static-ish lookup data is the only API response safe to serve from
+        // cache: the predictions/supported-stations list rarely changes.
+        // Real-time endpoints (trips/search, trains/*, predictions/track,
+        // predictions/delay, routes/congestion, routes/summary, routes/history,
+        // alerts/service, trains/*/history) MUST NOT be cached by the service
+        // worker — a 5-minute-stale departure board is worse than no data,
+        // and the in-app polling layer already handles transient failures.
         runtimeCaching: [
           {
-            urlPattern: /^https:\/\/(apiv2|staging\.apiv2)\.trackrat\.net\/api\/v2\/.*/i,
+            urlPattern: /^https:\/\/(apiv2|staging\.apiv2)\.trackrat\.net\/api\/v2\/predictions\/supported-stations/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'trackrat-api-cache',
+              cacheName: 'trackrat-supported-stations-cache',
+              networkTimeoutSeconds: 5,
               expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 5 * 60 // 5 minutes
+                maxEntries: 4,
+                maxAgeSeconds: 24 * 60 * 60 // 24 hours
               },
               cacheableResponse: {
                 statuses: [0, 200]
