@@ -208,7 +208,7 @@ export function TrainListPage() {
 
       {/* Route map (lazy-loaded) */}
       {fromStation && toStation && (
-        <ErrorBoundary fallback={null}>
+        <ErrorBoundary key={`${from}-${to}`} fallback={null}>
           <Suspense fallback={null}>
             <RouteMap
               fromStation={fromStation}
