@@ -1611,7 +1611,12 @@ const _searchIndex: StationSearchEntry[] = STATIONS.map(s => ({
   haystack: `${s.code.toLowerCase()} ${s.name.toLowerCase()}`,
 }));
 
-const _stationsByCode = new Map<string, Station>(STATIONS.map(s => [s.code, s]));
+const _stationsByCode = new Map<string, Station>();
+for (const s of STATIONS) {
+  if (!_stationsByCode.has(s.code)) {
+    _stationsByCode.set(s.code, s);
+  }
+}
 
 // Primary stations per system (shown in grouped view when not searching)
 export const PRIMARY_STATIONS: Record<TransitSystem, string[]> = {
@@ -1674,13 +1679,19 @@ export function searchStationsPartitioned(
   const q = query.toLowerCase();
   const matched: Station[] = [];
   const other: Station[] = [];
+  const matchedCodes = new Set<string>();
   for (const entry of _searchIndex) {
     if (matched.length >= limit && other.length >= limit) break;
     if (!entry.haystack.includes(q)) continue;
     if (entry.station.system && systems.includes(entry.station.system)) {
-      if (matched.length < limit) matched.push(entry.station);
+      if (matched.length < limit) {
+        matched.push(entry.station);
+        matchedCodes.add(entry.station.code);
+      }
     } else {
-      if (other.length < limit) other.push(entry.station);
+      if (other.length < limit && !matchedCodes.has(entry.station.code)) {
+        other.push(entry.station);
+      }
     }
   }
   return { matched, other };

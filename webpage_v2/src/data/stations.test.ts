@@ -41,6 +41,16 @@ describe('getStationByCode', () => {
     expect(getStationByCode('ZZZZZ_NONEXISTENT')).toBeUndefined();
   });
 
+  it('returns first STATIONS entry for duplicate codes (BOS, BBY, PVD)', () => {
+    for (const code of ['BOS', 'BBY', 'PVD']) {
+      const byMap = getStationByCode(code);
+      const byFind = STATIONS.find(s => s.code === code);
+      expect(byMap).toBeDefined();
+      expect(byFind).toBeDefined();
+      expect(byMap!.system).toBe(byFind!.system);
+    }
+  });
+
   it('returns correct station for each system', () => {
     const cases: [string, string][] = [
       ['NP', 'NJT'],
