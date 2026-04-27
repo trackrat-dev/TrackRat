@@ -53,7 +53,6 @@ struct RouteStatusView: View {
                     if viewModel.filterLoaded {
                         lineSelectionSection
                     }
-                    operationsSummarySection
                     historySections
                     alertSubscriptionSection
                     departuresSection
@@ -428,16 +427,6 @@ struct RouteStatusView: View {
                     .frame(height: 200)
             }
         }
-    }
-
-    // MARK: - Operations Summary Section
-
-    private var operationsSummarySection: some View {
-        OperationsSummaryView(
-            scope: isSystemWideContext ? .network : .route,
-            fromStation: context.effectiveFromStation,
-            toStation: context.effectiveToStation
-        )
     }
 
     // MARK: - Service Alerts Section
