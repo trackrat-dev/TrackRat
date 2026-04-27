@@ -432,12 +432,18 @@ struct RouteStatusView: View {
 
     // MARK: - Operations Summary Section
 
+    /// Hidden for frequency-first systems (Subway, PATH, PATCO, WMATA, BART)
+    /// where the body degenerates to a headway sentence already shown by the
+    /// Frequency stat in Route Performance below.
+    @ViewBuilder
     private var operationsSummarySection: some View {
-        OperationsSummaryView(
-            scope: isSystemWideContext ? .network : .route,
-            fromStation: context.effectiveFromStation,
-            toStation: context.effectiveToStation
-        )
+        if preferredMode != .health {
+            OperationsSummaryView(
+                scope: isSystemWideContext ? .network : .route,
+                fromStation: context.effectiveFromStation,
+                toStation: context.effectiveToStation
+            )
+        }
     }
 
     // MARK: - Service Alerts Section
