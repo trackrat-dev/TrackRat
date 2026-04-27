@@ -80,7 +80,9 @@
 		B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINSEL01000000000000A1 /* LineSelectionView.swift */; };
 		B1LINSEL02000000000000A1 /* LineSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINSEL01000000000000A1 /* LineSelectionView.swift */; };
 		B1SUBLNS01000000000000A1 /* SubwayLines.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBLNS01000000000000A1 /* SubwayLines.swift */; };
+		B1SUBLNS02000000000000A1 /* SubwayLines.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBLNS01000000000000A1 /* SubwayLines.swift */; };
 		B1SUBCHP01000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
+		B1SUBCHP02000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
 		B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */; };
@@ -794,6 +796,8 @@
 				8DA494D9EB3E4FFD97C93AB7 /* AlertConfigurationSection.swift in Sources */,
 				B1LINSEL02000000000000A1 /* LineSelectionView.swift in Sources */,
 				B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */,
+				B1SUBLNS02000000000000A1 /* SubwayLines.swift in Sources */,
+				B1SUBCHP02000000000000A1 /* SubwayLineChips.swift in Sources */,
 				B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
