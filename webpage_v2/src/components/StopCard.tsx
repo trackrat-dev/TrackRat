@@ -1,10 +1,12 @@
 import { Stop } from '../types';
 import { formatTime, getDelayMinutes } from '../utils/date';
+import { SubwayLineChips } from './SubwayLineChips';
 
 interface StopCardProps {
   stop: Stop;
   isOrigin?: boolean;
   isDestination?: boolean;
+  currentLine?: string;
 }
 
 /**
@@ -22,7 +24,7 @@ function getBestTime(
   return null;
 }
 
-export function StopCard({ stop, isOrigin = false, isDestination = false }: StopCardProps) {
+export function StopCard({ stop, isOrigin = false, isDestination = false, currentLine }: StopCardProps) {
   const arrivalBest = getBestTime(stop.scheduled_arrival, stop.updated_arrival, stop.actual_arrival);
   const departureBest = getBestTime(stop.scheduled_departure, stop.updated_departure, stop.actual_departure);
 
@@ -33,7 +35,10 @@ export function StopCard({ stop, isOrigin = false, isDestination = false }: Stop
     <div className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4">
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
-          <div className="font-semibold text-text-primary">{stop.station.name}</div>
+          <div className="font-semibold text-text-primary flex items-center gap-1.5">
+            {stop.station.name}
+            <SubwayLineChips stationCode={stop.station.code} excludeLine={currentLine} />
+          </div>
           <div className="text-sm text-text-muted">{stop.station.code}</div>
         </div>
         {stop.track && (

@@ -9,6 +9,7 @@ import { getSuggestedRoute } from '../utils/ratsense';
 import { buildTrainUrl } from '../utils/routes';
 import { getTrainSearchCandidates, inferTrainSearchSystem } from '../utils/trainSearch';
 import { APIRequestError, apiService } from '../services/api';
+import { SubwayLineChips } from '../components/SubwayLineChips';
 
 export function TripSelectionPage() {
   const navigate = useNavigate();
@@ -298,8 +299,9 @@ export function TripSelectionPage() {
           className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 text-left hover:bg-surface transition-all"
         >
           <div className="text-sm text-text-muted mb-1">From</div>
-          <div className="text-lg font-semibold text-text-primary">
+          <div className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
             {selectedDeparture ? selectedDeparture.name : 'Choose a station'}
+            {selectedDeparture?.system === 'SUBWAY' && <SubwayLineChips stationCode={selectedDeparture.code} />}
           </div>
           {selectedDeparture && (
             <div className="text-sm text-text-muted mt-1">{selectedDeparture.code}</div>
@@ -311,8 +313,9 @@ export function TripSelectionPage() {
           className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 text-left hover:bg-surface transition-all"
         >
           <div className="text-sm text-text-muted mb-1">To</div>
-          <div className="text-lg font-semibold text-text-primary">
+          <div className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
             {selectedDestination ? selectedDestination.name : 'Choose a station'}
+            {selectedDestination?.system === 'SUBWAY' && <SubwayLineChips stationCode={selectedDestination.code} />}
           </div>
           {selectedDestination && (
             <div className="text-sm text-text-muted mt-1">{selectedDestination.code}</div>
@@ -437,7 +440,10 @@ export function TripSelectionPage() {
                 }}
                 className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-3 text-left hover:bg-surface transition-all"
               >
-                <div className="font-medium text-sm text-text-primary">{station.name}</div>
+                <div className="font-medium text-sm text-text-primary flex items-center gap-1">
+                  {station.name}
+                  <SubwayLineChips stationCode={station.id} size={14} />
+                </div>
                 <div className="text-xs text-text-muted mt-1">{station.id}</div>
               </button>
             ))}
@@ -500,7 +506,10 @@ function SearchResultSection({
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="font-medium text-text-primary">{station.name}</div>
+                <div className="font-medium text-text-primary flex items-center gap-1.5">
+                  {station.name}
+                  {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
+                </div>
                 <div className="text-sm text-text-muted">{station.code}</div>
               </div>
               {station.system && (
