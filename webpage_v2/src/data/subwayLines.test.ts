@@ -142,6 +142,31 @@ describe('linesForStationCode', () => {
     expect(lines).toContain('A');
     expect(lines).toContain('4');
   });
+
+  it('returns union across Chambers St-WTC / Fulton / Oculus complex', () => {
+    // S228 (Chambers St-WTC, 2/3), S138 (WTC Cortlandt, 1),
+    // SA36 (Chambers St, A/C/E via shared platform), SE01 (World Trade Center, E),
+    // SR25 (Cortlandt St, N/R/W), PWC (PATH WTC).
+    const codes = ['S228', 'S138', 'SA36', 'SE01', 'SR25', 'PWC'];
+    const lineSets = codes.map(c => linesForStationCode(c));
+    for (let i = 1; i < lineSets.length; i++) {
+      expect(lineSets[i]).toEqual(lineSets[0]);
+    }
+    expect(lineSets[0]).toContain('1');
+    expect(lineSets[0]).toContain('2');
+    expect(lineSets[0]).toContain('3');
+    expect(lineSets[0]).toContain('A');
+    expect(lineSets[0]).toContain('E');
+    expect(lineSets[0]).toContain('N');
+  });
+
+  it('returns union across Livonia Av (L) / Junius St (3) complex', () => {
+    const linesS254 = linesForStationCode('S254');
+    const linesSL26 = linesForStationCode('SL26');
+    expect(linesS254).toEqual(linesSL26);
+    expect(linesS254).toContain('3');
+    expect(linesS254).toContain('L');
+  });
 });
 
 describe('transferLinesForStationCode', () => {
