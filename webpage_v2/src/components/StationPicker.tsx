@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Station } from '../types';
 import { searchStations, getGroupedPrimaryStations, SYSTEM_ORDER, SYSTEM_NAMES } from '../data/stations';
 import { useAppStore } from '../store/appStore';
+import { SubwayLineChips } from './SubwayLineChips';
 
 interface StationPickerProps {
   title: string;
@@ -148,7 +149,10 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium text-text-primary">{station.name}</div>
+                        <div className="font-medium text-text-primary flex items-center gap-1.5">
+                          {station.name}
+                          {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
+                        </div>
                         <div className="text-sm text-text-muted">{station.code}</div>
                       </div>
                       {station.system && (
@@ -175,7 +179,10 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
                         onClick={() => handleSelect(station)}
                         className="w-full px-4 py-3 text-left hover:bg-background transition-colors"
                       >
-                        <div className="font-medium text-text-primary">{station.name}</div>
+                        <div className="font-medium text-text-primary flex items-center gap-1.5">
+                          {station.name}
+                          {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
+                        </div>
                         <div className="text-sm text-text-muted">{station.code}</div>
                       </button>
                     ))}

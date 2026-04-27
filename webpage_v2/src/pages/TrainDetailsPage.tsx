@@ -288,6 +288,7 @@ export function TrainDetailsPage() {
             stop={stop}
             isOrigin={from ? stop.station.code.toUpperCase() === from.toUpperCase() : false}
             isDestination={to ? stop.station.code.toUpperCase() === to.toUpperCase() : false}
+            currentLine={train.data_source === 'SUBWAY' ? train.line.code : undefined}
           />
         ))}
       </div>

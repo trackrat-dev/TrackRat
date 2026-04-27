@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
 import { Station } from '../types';
+import { SubwayLineChips } from '../components/SubwayLineChips';
 
 export function FavoritesPage() {
   const navigate = useNavigate();
@@ -154,7 +155,10 @@ export function FavoritesPage() {
               className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 flex items-center justify-between"
             >
               <div>
-                <div className="font-semibold text-lg text-text-primary">{station.name}</div>
+                <div className="font-semibold text-lg text-text-primary flex items-center gap-1.5">
+                  {station.name}
+                  <SubwayLineChips stationCode={station.id} />
+                </div>
                 <div className="text-sm text-text-muted">{station.id}</div>
               </div>
               <button
@@ -193,8 +197,9 @@ function ProfileStationCard({
   return (
     <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
       <div className="text-sm text-text-muted mb-1">{label}</div>
-      <div className="font-semibold text-text-primary">
+      <div className="font-semibold text-text-primary flex items-center gap-1.5">
         {station ? station.name : 'Not set'}
+        {station?.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
       </div>
       {station && (
         <div className="text-sm text-text-muted mt-1">{station.code}</div>
