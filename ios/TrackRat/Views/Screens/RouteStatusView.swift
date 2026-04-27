@@ -53,6 +53,7 @@ struct RouteStatusView: View {
                     if viewModel.filterLoaded {
                         lineSelectionSection
                     }
+                    operationsSummarySection
                     historySections
                     alertSubscriptionSection
                     departuresSection
@@ -426,6 +427,22 @@ struct RouteStatusView: View {
                 ContentUnavailableView("Map Unavailable", systemImage: "map", description: Text("Could not load congestion data"))
                     .frame(height: 200)
             }
+        }
+    }
+
+    // MARK: - Operations Summary Section
+
+    /// Hidden for frequency-first systems (Subway, PATH, PATCO, WMATA, BART)
+    /// where the body degenerates to a headway sentence already shown by the
+    /// Frequency stat in Route Performance below.
+    @ViewBuilder
+    private var operationsSummarySection: some View {
+        if preferredMode != .health {
+            OperationsSummaryView(
+                scope: isSystemWideContext ? .network : .route,
+                fromStation: context.effectiveFromStation,
+                toStation: context.effectiveToStation
+            )
         }
     }
 
