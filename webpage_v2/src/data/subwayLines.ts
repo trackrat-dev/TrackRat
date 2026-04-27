@@ -67,10 +67,11 @@ const STATION_COMPLEXES: string[][] = [
 ];
 
 export function displayBullet(lineCode: string): string {
-  if (lineCode === 'FS' || lineCode === 'GS' || lineCode === 'H') return 'S';
-  if (lineCode === 'SI') return 'SI';
-  if (lineCode.length === 2 && lineCode[1] === 'X') return lineCode[0];
-  return lineCode.toUpperCase();
+  const code = lineCode.toUpperCase();
+  if (code === 'FS' || code === 'GS' || code === 'H') return 'S';
+  if (code === 'SI') return 'SI';
+  if (code.length === 2 && code[1] === 'X') return code[0];
+  return code;
 }
 
 function bulletSortRank(bullet: string): number {

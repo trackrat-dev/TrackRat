@@ -29,6 +29,15 @@ describe('displayBullet', () => {
     expect(displayBullet('A')).toBe('A');
     expect(displayBullet('1')).toBe('1');
   });
+
+  it('handles lowercase inputs correctly', () => {
+    expect(displayBullet('fs')).toBe('S');
+    expect(displayBullet('gs')).toBe('S');
+    expect(displayBullet('h')).toBe('S');
+    expect(displayBullet('7x')).toBe('7');
+    expect(displayBullet('si')).toBe('SI');
+    expect(displayBullet('a')).toBe('A');
+  });
 });
 
 describe('sortBullets', () => {
