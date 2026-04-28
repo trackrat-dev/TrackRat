@@ -90,6 +90,23 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Short label for compact station chips (analogous to subway line letters).
+    var chipLabel: String {
+        switch self {
+        case .njt: return "NJT"
+        case .amtrak: return "AMK"
+        case .path: return "PATH"
+        case .patco: return "PATCO"
+        case .lirr: return "LIRR"
+        case .mnr: return "MNR"
+        case .subway: return "SUB"
+        case .metra: return "MTR"
+        case .wmata: return "DC"
+        case .bart: return "BART"
+        case .mbta: return "MBTA"
+        }
+    }
+
     /// Whether this system is in beta (shown as label in UI)
     var isBeta: Bool {
         switch self {
