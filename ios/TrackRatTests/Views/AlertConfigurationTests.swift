@@ -208,6 +208,47 @@ class AlertConfigurationTests: XCTestCase {
         }
     }
 
+    // MARK: - Free Tier Alert Limit
+
+    func testFreeRouteAlertLimit_isOne() {
+        XCTAssertEqual(SubscriptionService.freeRouteAlertLimit, 1,
+                       "Free tier should allow exactly 1 route alert subscription")
+    }
+
+    func testIsSystemWide_trueWhenNoLineOrStationOrTrain() {
+        let sub = RouteAlertSubscription(dataSource: "NJT")
+        XCTAssertTrue(sub.isSystemWide,
+                      "Subscription with only dataSource should be system-wide")
+        XCTAssertNil(sub.lineId, "System-wide subscription should have nil lineId")
+        XCTAssertNil(sub.fromStationCode, "System-wide subscription should have nil fromStationCode")
+        XCTAssertNil(sub.toStationCode, "System-wide subscription should have nil toStationCode")
+        XCTAssertNil(sub.trainId, "System-wide subscription should have nil trainId")
+    }
+
+    func testIsSystemWide_falseWhenLineIdSet() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor", direction: "NY"
+        )
+        XCTAssertFalse(sub.isSystemWide,
+                       "Subscription with lineId should not be system-wide")
+    }
+
+    func testIsSystemWide_falseWhenStationPairSet() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR"
+        )
+        XCTAssertFalse(sub.isSystemWide,
+                       "Subscription with station pair should not be system-wide")
+    }
+
+    func testIsSystemWide_falseWhenTrainIdSet() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", trainId: "3254", trainName: "NJT 3254"
+        )
+        XCTAssertFalse(sub.isSystemWide,
+                       "Subscription with trainId should not be system-wide")
+    }
+
     // MARK: - Copy Settings
 
     func testCommuteScenario_copySettingsPreservesTimePreset() {

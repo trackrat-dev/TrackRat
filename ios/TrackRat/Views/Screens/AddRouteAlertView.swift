@@ -29,6 +29,9 @@ struct AddRouteAlertView: View {
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
+    // Paywall
+    @State private var showingPaywall = false
+
     // Mode selection
     @State private var alertMode: AlertMode = .route
 
@@ -60,6 +63,9 @@ struct AddRouteAlertView: View {
                 }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .routeAlerts)
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .directional(let data):
@@ -86,7 +92,11 @@ struct AddRouteAlertView: View {
     }
 
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else { return }
+        guard !atAlertLimit else {
+            activeSheet = nil
+            showingPaywall = true
+            return
+        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -98,7 +108,11 @@ struct AddRouteAlertView: View {
     }
 
     private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else { return }
+        guard !atAlertLimit else {
+            activeSheet = nil
+            showingPaywall = true
+            return
+        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -188,6 +202,11 @@ struct AddRouteAlertView: View {
     }
 
     private func openSystemAlertSheet(for system: TrainSystem) {
+        if atAlertLimit {
+            showingPaywall = true
+            return
+        }
+
         let alreadyExists = alertService.subscriptions.contains {
             $0.isSystemWide && $0.dataSource == system.rawValue
         }
@@ -254,6 +273,10 @@ struct AddRouteAlertView: View {
             // Add button
             if let from = fromStation, let to = toStation {
                 Button {
+                    if atAlertLimit {
+                        showingPaywall = true
+                        return
+                    }
                     let fromCode = from.code
                     let toCode = to.code
                     let fromSystems = Stations.systemStringsForStation(fromCode)
