@@ -202,11 +202,6 @@ struct AddRouteAlertView: View {
     }
 
     private func openSystemAlertSheet(for system: TrainSystem) {
-        if atAlertLimit {
-            showingPaywall = true
-            return
-        }
-
         let alreadyExists = alertService.subscriptions.contains {
             $0.isSystemWide && $0.dataSource == system.rawValue
         }
@@ -214,6 +209,11 @@ struct AddRouteAlertView: View {
         if alreadyExists {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             showConfirmation("Already subscribed")
+            return
+        }
+
+        if atAlertLimit {
+            showingPaywall = true
             return
         }
 
