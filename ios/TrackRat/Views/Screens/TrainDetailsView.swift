@@ -59,7 +59,17 @@ struct TrainDetailsView: View {
 
     private var trainNavigationTitle: String {
         guard let train = viewModel.train else { return "Loading..." }
-        return train.displayLabel
+        return train.displayDestination
+    }
+
+    @ViewBuilder
+    private var trainTitleAccessory: some View {
+        if let train = viewModel.train, train.dataSource == "SUBWAY" {
+            SubwayLineChips(
+                lines: [SubwayLines.displayBullet(forLineCode: train.line.code)],
+                size: 22
+            )
+        }
     }
 
     var body: some View {
@@ -70,6 +80,7 @@ struct TrainDetailsView: View {
                 title: trainNavigationTitle,
                 showBackButton: !isSheet,
                 showCloseButton: false,
+                titleAccessory: { trainTitleAccessory },
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
                         if let train = viewModel.train,

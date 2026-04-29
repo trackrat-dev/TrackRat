@@ -413,8 +413,16 @@ struct TrainCard: View {
                         .font(.caption)
                 }
 
-                HStack(spacing: 4) {
-                    Text(train.displayLabel)
+                HStack(spacing: 6) {
+                    if train.dataSource == "SUBWAY" {
+                        SubwayLineChips(
+                            lines: [SubwayLines.displayBullet(forLineCode: train.line.code)],
+                            size: 20
+                        )
+                        .opacity(isCancelled || hasDeparted ? 0.5 : 1.0)
+                    }
+
+                    Text(train.displayDestination)
                         .font(.headline)
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)

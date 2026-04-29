@@ -20,6 +20,7 @@ class TrainV2Tests: XCTestCase {
         isCompleted: Bool = false,
         observationType: String? = nil,
         dataSource: String = "NJT",
+        lineCode: String = "NEC",
         stops: [StopV2]? = nil
     ) -> TrainV2 {
         let departure = StationTiming(
@@ -40,7 +41,7 @@ class TrainV2Tests: XCTestCase {
             track: nil
         )
 
-        let line = LineInfo(code: "NEC", name: "Northeast Corridor", color: "#FF6B00")
+        let line = LineInfo(code: lineCode, name: "Northeast Corridor", color: "#FF6B00")
 
         return TrainV2(
             trainId: trainId,
@@ -748,5 +749,81 @@ class TrainV2Tests: XCTestCase {
             "Banner must only appear for explicitly SCHEDULED trains")
 
         print("  ✅ nil observationType hides banner")
+    }
+
+    // MARK: - displayDestination
+
+    func testDisplayDestination_subway_stripsLineParenthetical() {
+        print("🚇 Testing displayDestination for SUBWAY drops the embedded '(line)' prefix")
+
+        let train = createTestTrainV2(
+            destinationName: "Astoria-Ditmars Blvd",
+            dataSource: "SUBWAY",
+            lineCode: "N"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - displayDestination: \(train.displayDestination)")
+        XCTAssertEqual(train.displayLabel, "(N) Astoria-Ditmars Blvd",
+            "Sanity check: displayLabel still embeds the line for callers that need a flat string")
+        XCTAssertEqual(train.displayDestination, "Astoria-Ditmars Blvd",
+            "displayDestination must omit '(line)' so the chip can render the bullet separately")
+    }
+
+    func testDisplayDestination_subwayExpress_chipNormalizationIsOrthogonal() {
+        print("🚇 Testing displayDestination for SUBWAY express line (e.g., 7X) preserves destination only")
+
+        // The chip layer normalizes "7X" → "7" via SubwayLines.displayBullet(forLineCode:);
+        // the destination string itself should not depend on that.
+        let train = createTestTrainV2(
+            destinationName: "Flushing-Main St",
+            dataSource: "SUBWAY",
+            lineCode: "7X"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - displayDestination: \(train.displayDestination)")
+        XCTAssertEqual(train.displayDestination, "Flushing-Main St",
+            "displayDestination is just the destination regardless of express variant code")
+    }
+
+    func testDisplayDestination_njt_matchesDisplayLabel() {
+        print("🚆 Testing displayDestination for NJT mirrors displayLabel ('Train N')")
+
+        let train = createTestTrainV2(
+            trainId: "3838",
+            observationType: "OBSERVED",
+            dataSource: "NJT"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - displayDestination: \(train.displayDestination)")
+        XCTAssertEqual(train.displayDestination, train.displayLabel,
+            "Non-subway providers don't embed a parenthetical line, so displayDestination == displayLabel")
+        XCTAssertEqual(train.displayDestination, "Train 3838",
+            "Sanity check: OBSERVED NJT renders as 'Train {id}'")
+    }
+
+    func testDisplayDestination_syntheticIdSources_matchDisplayLabel() {
+        print("🚉 Testing displayDestination for synthetic-ID providers mirrors displayLabel (the destination)")
+
+        // PATH/PATCO/LIRR/MNR show just the destination from displayLabel, so
+        // displayDestination should be identical — there's no parenthetical to strip.
+        let syntheticSources = ["PATH", "PATCO", "LIRR", "MNR"]
+
+        for source in syntheticSources {
+            let train = createTestTrainV2(
+                trainId: "TRIP-1",
+                destinationName: "World Trade Center",
+                observationType: "OBSERVED",
+                dataSource: source
+            )
+
+            print("  - \(source): displayLabel=\"\(train.displayLabel)\" displayDestination=\"\(train.displayDestination)\"")
+            XCTAssertEqual(train.displayDestination, train.displayLabel,
+                "\(source) has no parenthetical to strip; displayDestination must equal displayLabel")
+            XCTAssertEqual(train.displayDestination, "World Trade Center",
+                "Sanity check: \(source) shows the destination name")
+        }
     }
 }

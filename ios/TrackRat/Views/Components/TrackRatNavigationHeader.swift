@@ -2,7 +2,10 @@ import SwiftUI
 
 /// Reusable navigation header that replaces the system navigation bar
 /// to prevent layout shift issues on initial load.
-struct TrackRatNavigationHeader<TrailingContent: View>: View {
+///
+/// `titleAccessory` renders inline before the title (e.g., a `SubwayLineChips`
+/// bullet). It defaults to `EmptyView` so callers that don't need it can omit it.
+struct TrackRatNavigationHeader<TitleAccessory: View, TrailingContent: View>: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
 
@@ -11,6 +14,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
     var showBackButton: Bool = true
     var showCloseButton: Bool = true
     var onBackAction: (() -> Void)? = nil
+    var titleAccessory: () -> TitleAccessory
     var trailingContent: (() -> TrailingContent)?
 
     init(
@@ -19,6 +23,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
         showBackButton: Bool = true,
         showCloseButton: Bool = true,
         onBackAction: (() -> Void)? = nil,
+        @ViewBuilder titleAccessory: @escaping () -> TitleAccessory,
         @ViewBuilder trailingContent: @escaping () -> TrailingContent
     ) {
         self.title = title
@@ -26,6 +31,7 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
         self.showBackButton = showBackButton
         self.showCloseButton = showCloseButton
         self.onBackAction = onBackAction
+        self.titleAccessory = titleAccessory
         self.trailingContent = trailingContent
     }
 
@@ -33,11 +39,14 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
         ZStack {
             // Center title - truly centered regardless of leading/trailing content
             VStack(spacing: 0) {
-                Text(title)
-                    .font(TrackRatTheme.Typography.title3)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                HStack(spacing: 6) {
+                    titleAccessory()
+                    Text(title)
+                        .font(TrackRatTheme.Typography.title3)
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.caption2)
@@ -91,8 +100,48 @@ struct TrackRatNavigationHeader<TrailingContent: View>: View {
     }
 }
 
-// Convenience initializer for headers without trailing content
+// Convenience: trailing content only (no title accessory)
+extension TrackRatNavigationHeader where TitleAccessory == EmptyView {
+    init(
+        title: String,
+        subtitle: String? = nil,
+        showBackButton: Bool = true,
+        showCloseButton: Bool = true,
+        onBackAction: (() -> Void)? = nil,
+        @ViewBuilder trailingContent: @escaping () -> TrailingContent
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.showBackButton = showBackButton
+        self.showCloseButton = showCloseButton
+        self.onBackAction = onBackAction
+        self.titleAccessory = { EmptyView() }
+        self.trailingContent = trailingContent
+    }
+}
+
+// Convenience: title accessory only (no trailing content)
 extension TrackRatNavigationHeader where TrailingContent == EmptyView {
+    init(
+        title: String,
+        subtitle: String? = nil,
+        showBackButton: Bool = true,
+        showCloseButton: Bool = true,
+        onBackAction: (() -> Void)? = nil,
+        @ViewBuilder titleAccessory: @escaping () -> TitleAccessory
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.showBackButton = showBackButton
+        self.showCloseButton = showCloseButton
+        self.onBackAction = onBackAction
+        self.titleAccessory = titleAccessory
+        self.trailingContent = nil
+    }
+}
+
+// Convenience: neither title accessory nor trailing content
+extension TrackRatNavigationHeader where TitleAccessory == EmptyView, TrailingContent == EmptyView {
     init(
         title: String,
         subtitle: String? = nil,
@@ -105,6 +154,7 @@ extension TrackRatNavigationHeader where TrailingContent == EmptyView {
         self.showBackButton = showBackButton
         self.showCloseButton = showCloseButton
         self.onBackAction = onBackAction
+        self.titleAccessory = { EmptyView() }
         self.trailingContent = nil
     }
 }

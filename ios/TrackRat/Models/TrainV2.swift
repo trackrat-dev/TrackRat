@@ -659,6 +659,13 @@ extension TrainV2 {
         return observationType == "SCHEDULED" ? "Train TBD" : "Train \(trainId)"
     }
 
+    /// User-facing label without the parenthetical line code that `displayLabel`
+    /// embeds for subway. Use this when the line is rendered separately (e.g.,
+    /// next to a `SubwayLineChips` bullet); otherwise use `displayLabel`.
+    var displayDestination: String {
+        return dataSource == "SUBWAY" ? destination : displayLabel
+    }
+
     /// True when displayLabel returns "Train TBD" — a scheduled-only train
     /// from a provider that uses public train numbers (NJT, Amtrak).
     var hasUnconfirmedTrainNumber: Bool {
