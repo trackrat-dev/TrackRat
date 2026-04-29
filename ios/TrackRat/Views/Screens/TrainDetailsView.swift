@@ -170,6 +170,12 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
+                            // Explain "Train TBD" — scheduled-only NJT/Amtrak trains not yet
+                            // seen in the live feed. Self-clears once observationType flips.
+                            if train.hasUnconfirmedTrainNumber {
+                                ScheduledTrainInfoBanner()
+                            }
+
                             // Train performance summary (similar trains + historical)
                             // Hide after train departs from user's origin station
                             if let originCode = appState.departureStationCode,
@@ -547,6 +553,25 @@ struct CombinedDetailsCard: View {
 }
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
+
+// MARK: - Scheduled Train Info Banner
+struct ScheduledTrainInfoBanner: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundColor(.white.opacity(0.6))
+            Text("This train is on the published schedule but hasn't appeared in the live feed yet. The train number will be confirmed once it becomes active.")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(8)
+    }
+}
 
 // MARK: - Stop Row V2
 struct StopRowV2: View {
