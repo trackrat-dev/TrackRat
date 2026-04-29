@@ -658,4 +658,12 @@ extension TrainV2 {
         }
         return observationType == "SCHEDULED" ? "Train TBD" : "Train \(trainId)"
     }
+
+    /// True when displayLabel returns "Train TBD" — a scheduled-only train
+    /// from a provider that uses public train numbers (NJT, Amtrak).
+    var hasUnconfirmedTrainNumber: Bool {
+        return observationType == "SCHEDULED"
+            && dataSource != "SUBWAY"
+            && !usesSyntheticTrainId
+    }
 }
