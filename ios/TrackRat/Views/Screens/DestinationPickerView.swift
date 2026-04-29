@@ -294,14 +294,14 @@ struct DestinationPickerView: View {
         let code = Stations.getStationCode(station)
         HStack {
             HStack(spacing: 6) {
-                Text(Stations.displayName(for: station))
-                    .font(.body)
-                    .foregroundColor(.white)
-                    .textProtected()
-                if let code {
-                    SubwayLineChips(lines: SubwayLines.lines(forStationCode: code), size: 14)
-                    SystemChips(stationCode: code, size: 14)
-                }
+                StationNameWithBadges(
+                    name: Stations.displayName(for: station),
+                    stationCode: code,
+                    subwayLines: code.map { SubwayLines.lines(forStationCode: $0) } ?? [],
+                    font: .body,
+                    foregroundColor: .white,
+                    chipSize: 14
+                )
                 Spacer()
             }
 
@@ -334,20 +334,19 @@ struct DestinationPickerView: View {
     /// below the station name.
     @ViewBuilder
     private func otherSystemDestinationSearchRow(station: String, noRouteOrigin: String? = nil) -> some View {
+        let code = Stations.getStationCode(station)
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(Stations.displayName(for: station))
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.7))
-                        .textProtected()
-
-                    if let code = Stations.getStationCode(station) {
-                        SubwayLineChips(lines: SubwayLines.lines(forStationCode: code), size: 14)
-                            .opacity(0.7)
-                        SystemChips(stationCode: code, size: 14)
-                            .opacity(0.7)
-                    }
+                    StationNameWithBadges(
+                        name: Stations.displayName(for: station),
+                        stationCode: code,
+                        subwayLines: code.map { SubwayLines.lines(forStationCode: $0) } ?? [],
+                        font: .body,
+                        foregroundColor: .white.opacity(0.7),
+                        chipSize: 14,
+                        badgeOpacity: 0.7
+                    )
                 }
 
                 if let originName = noRouteOrigin {
@@ -443,15 +442,15 @@ struct FavoriteDestinationButton: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(Stations.displayName(for: station.id))
-                        .font(.callout)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white.opacity(isDimmed ? 0.7 : 1.0))
-                        .textProtected()
-                    SubwayLineChips(lines: SubwayLines.lines(forStationCode: station.id), size: 14)
-                        .opacity(isDimmed ? 0.7 : 1.0)
-                    SystemChips(stationCode: station.id, size: 14)
-                        .opacity(isDimmed ? 0.7 : 1.0)
+                    StationNameWithBadges(
+                        name: Stations.displayName(for: station.id),
+                        stationCode: station.id,
+                        subwayLines: SubwayLines.lines(forStationCode: station.id),
+                        font: .callout.weight(.medium),
+                        foregroundColor: .white.opacity(isDimmed ? 0.7 : 1.0),
+                        chipSize: 14,
+                        badgeOpacity: isDimmed ? 0.7 : 1.0
+                    )
                 }
 
                 if let originName = noRouteOrigin {

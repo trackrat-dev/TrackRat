@@ -341,12 +341,14 @@ struct DeparturePickerView: View {
         let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
             HStack(spacing: 6) {
-                Text(displayName)
-                    .font(.body)
-                    .foregroundColor(.white)
-                    .textProtected()
-                SubwayLineChips(lines: lines, size: 14)
-                if let code { SystemChips(stationCode: code, size: 14) }
+                StationNameWithBadges(
+                    name: displayName,
+                    stationCode: code,
+                    subwayLines: lines,
+                    font: .body,
+                    foregroundColor: .white,
+                    chipSize: 14
+                )
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(TrackRatTheme.IconSize.xsmall)
@@ -398,14 +400,15 @@ struct DeparturePickerView: View {
             let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
             HStack {
                 HStack(spacing: 6) {
-                    Text(displayName)
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.7))
-                        .textProtected()
-
-                    SubwayLineChips(lines: lines, size: 14)
-                        .opacity(0.7)
-                    if let code { SystemChips(stationCode: code, size: 14).opacity(0.7) }
+                    StationNameWithBadges(
+                        name: displayName,
+                        stationCode: code,
+                        subwayLines: lines,
+                        font: .body,
+                        foregroundColor: .white.opacity(0.7),
+                        chipSize: 14,
+                        badgeOpacity: 0.7
+                    )
 
                     Spacer()
                     Image(systemName: "chevron.right")
