@@ -447,6 +447,16 @@ class TestGetSubwayLinesAtStation:
         assert "L" in lines, "S635 is equivalent to SL03 which is on L"
         assert "N" in lines, "S635 is equivalent to SR20 which is on N/Q/R/W"
 
+    def test_penn_station_subway_lines_from_rail_code(self):
+        """NY should include 34 St-Penn subway lines through station equivalence."""
+        lines = get_subway_lines_at_station("NY")
+        assert {"1", "2", "3", "A", "C", "E"} <= set(lines)
+
+    def test_grand_central_subway_lines_from_rail_code(self):
+        """GCT should include Grand Central-42 St subway lines through equivalence."""
+        lines = get_subway_lines_at_station("GCT")
+        assert {"4", "5", "6", "7", "GS"} <= set(lines)
+
     def test_unknown_station_returns_empty(self):
         """Unknown station returns empty frozenset."""
         lines = get_subway_lines_at_station("ZZZZZ")
@@ -454,5 +464,5 @@ class TestGetSubwayLinesAtStation:
 
     def test_non_subway_station_returns_empty(self):
         """Non-subway station (NJT) returns empty frozenset."""
-        lines = get_subway_lines_at_station("NY")
+        lines = get_subway_lines_at_station("TR")
         assert lines == frozenset()

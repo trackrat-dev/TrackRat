@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
@@ -107,6 +107,14 @@ def _filter_unreasonable_durations(trips: list[TripOption]) -> list[TripOption]:
     return [t for t in trips if t.total_duration_minutes <= max_reasonable]
 
 
+def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
+    """Get line codes for a station and its physical-equivalent codes."""
+    lines: set[str] = set()
+    for code in expand_station_codes(station_code):
+        lines.update(get_station_lines(code, system))
+    return frozenset(lines)
+
+
 def _find_relevant_transfer_points(
     from_systems: set[str],
     to_systems: set[str],
@@ -144,8 +152,8 @@ def _find_relevant_transfer_points(
     if from_station and to_station:
         common_systems = from_systems & to_systems
         for system in common_systems:
-            origin_lines = get_station_lines(from_station, system)
-            dest_lines = get_station_lines(to_station, system)
+            origin_lines = _get_station_lines_expanded(from_station, system)
+            dest_lines = _get_station_lines_expanded(to_station, system)
             if origin_lines and dest_lines:
                 for tp in get_intra_system_transfers(system):
                     # One side must share lines with origin, other with dest
@@ -217,7 +225,7 @@ def _orient_transfer(
     """
     # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
-        origin_lines = get_station_lines(from_station, tp.system_a)
+        origin_lines = _get_station_lines_expanded(from_station, tp.system_a)
         if tp.lines_a & origin_lines:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
