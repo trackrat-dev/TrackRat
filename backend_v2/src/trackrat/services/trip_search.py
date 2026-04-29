@@ -39,7 +39,7 @@ from trackrat.utils.time import now_et
 logger = get_logger(__name__)
 
 # Maximum number of departure queries per transfer search to keep response fast
-MAX_TRANSFER_QUERIES = 6
+MAX_TRANSFER_QUERIES = 12
 
 # Minimum number of minutes after arrival to allow for catching the next train
 # (in addition to the transfer point's walk_minutes)
@@ -167,6 +167,39 @@ def _find_relevant_transfer_points(
     return transfers
 
 
+def _rank_transfer_points(
+    transfers: list[TransferPoint],
+    from_station: str,
+    to_station: str,
+    from_systems: set[str],
+    to_systems: set[str],
+) -> list[TransferPoint]:
+    """Rank transfer points so truncation is deterministic and direction-symmetric.
+
+    Sorting keys (ascending = better):
+    1. same_station transfers first (in-station is faster than walking)
+    2. walk_minutes ascending (shorter walks preferred)
+    3. stable tiebreaker on station/system codes (ensures identical ordering
+       regardless of which direction the search runs)
+    """
+
+    def _sort_key(tp: TransferPoint) -> tuple[int, int, str, str, str, str]:
+        # Canonical alphabetical order of the two sides for direction symmetry
+        side_a = (tp.station_a, tp.system_a)
+        side_b = (tp.station_b, tp.system_b)
+        canonical = tuple(sorted([side_a, side_b]))
+        return (
+            0 if tp.same_station else 1,
+            tp.walk_minutes,
+            canonical[0][0],
+            canonical[0][1],
+            canonical[1][0],
+            canonical[1][1],
+        )
+
+    return sorted(transfers, key=_sort_key)
+
+
 def _orient_transfer(
     tp: TransferPoint,
     from_systems: set[str],
@@ -287,6 +320,12 @@ async def search_trips(
     )
     if not transfer_points:
         return _empty_response(from_station, to_station, "no_transfer_points")
+
+    # Rank transfer points deterministically so that truncation produces the
+    # same result regardless of search direction (A→B vs B→A).
+    transfer_points = _rank_transfer_points(
+        transfer_points, from_station, to_station, from_systems, to_systems
+    )
 
     # Prepare transfer point queries — orient each transfer point up front
     # Limit to MAX_TRANSFER_QUERIES / 2 transfer points (each needs 2 queries)
