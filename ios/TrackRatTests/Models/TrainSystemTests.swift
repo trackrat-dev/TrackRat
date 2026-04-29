@@ -177,31 +177,6 @@ class TrainSystemTests: XCTestCase {
                             "Should have at least some results for '\(query)'")
     }
 
-    // MARK: - primarySystem
-
-    func testPrimarySystem_newarkPenn() {
-        // Newark Penn has NJT, AMTRAK, PATH — primarySystem should return one of them
-        let system = Stations.primarySystem(forStationCode: "NP")
-        XCTAssertNotNil(system, "Newark Penn should have a primary system")
-        let validSystems: Set<TrainSystem> = [.njt, .amtrak, .path]
-        XCTAssertTrue(validSystems.contains(system!),
-                     "Newark Penn primary system should be NJT, AMTRAK, or PATH, got: \(system!)")
-    }
-
-    func testPrimarySystem_lirrStation() {
-        // Jamaica (JM) is LIRR
-        let system = Stations.primarySystem(forStationCode: "JAM")
-        XCTAssertNotNil(system, "Jamaica should have a primary system")
-        XCTAssertEqual(system, .lirr, "Jamaica primary system should be LIRR, got: \(String(describing: system))")
-    }
-
-    func testPrimarySystem_deterministic() {
-        // Same station should always return the same primary system
-        let system1 = Stations.primarySystem(forStationCode: "NP")
-        let system2 = Stations.primarySystem(forStationCode: "NP")
-        XCTAssertEqual(system1, system2, "primarySystem should be deterministic")
-    }
-
     // MARK: - systemsForStation
 
     func testSystemsForStation_multiSystem() {
@@ -459,9 +434,14 @@ class TrainSystemTests: XCTestCase {
     }
 
     func testSystemChips_pureSubwayStation_isEmpty() {
-        // A pure subway station should have no non-subway systems
-        let subwayCode = "TSQ"  // Times Sq-42 St
-        let systems = Stations.systemsForStation(subwayCode).filter { $0 != .subway }
+        // S127 = Times Sq-42 St, a real subway-only station code. We assert the
+        // unfiltered set contains .subway so a future code change that returns
+        // [] for unknown codes can't make this test pass vacuously.
+        let subwayCode = "S127"
+        let unfiltered = Stations.systemsForStation(subwayCode)
+        XCTAssertTrue(unfiltered.contains(.subway),
+                     "S127 (Times Sq-42 St) should include .subway, got: \(unfiltered)")
+        let systems = unfiltered.filter { $0 != .subway }
         XCTAssertTrue(systems.isEmpty,
                      "Pure subway station \(subwayCode) should have no non-subway systems, got: \(systems)")
     }

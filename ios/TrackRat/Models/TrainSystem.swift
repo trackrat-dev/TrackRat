@@ -231,11 +231,6 @@ extension Stations {
         guard !originSystems.isEmpty else { return true }
         return !originSystems.isDisjoint(with: systemStringsForStation(stationCode))
     }
-
-    /// Returns the primary train system for a station (for badge display).
-    static func primarySystem(forStationCode code: String) -> TrainSystem? {
-        systemsForStation(code).min(by: { $0.displayName < $1.displayName })
-    }
 }
 
 // MARK: - Per-System Default Map Regions

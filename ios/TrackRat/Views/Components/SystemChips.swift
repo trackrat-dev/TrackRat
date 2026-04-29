@@ -60,7 +60,7 @@ struct SystemChips: View {
         HStack(spacing: 6) {
             Text("Times Sq-42 St")
             SubwayLineChips(lines: ["1", "2", "3", "7", "N", "Q", "R", "W", "S"])
-            SystemChips(stationCode: "TSQ")
+            SystemChips(stationCode: "S127")
         }
     }
     .padding()
