@@ -125,3 +125,42 @@ resource "google_logging_metric" "train_follows" {
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
+
+# =============================================================================
+# PROVIDER AUTH FAILURE METRIC
+# Tracks: upstream transit-provider responses whose body contains
+# "Invalid token" (NJT, WMATA, MBTA, Metra all surface this on bad credentials).
+# Drives the "Provider API Auth Failure" alert in monitoring.tf.
+# Scoped to this environment's GCE instances by hostname prefix so staging
+# deployments don't trigger the production alert.
+# =============================================================================
+resource "google_logging_metric" "provider_auth_failures" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "provider_auth_failures"
+  description = "Upstream transit-provider API auth failures (token invalid/expired)"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.level=\"error\"",
+    "jsonPayload.error=~\"Invalid token\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "logger"
+      value_type  = "STRING"
+      description = "Module emitting the error"
+    }
+  }
+
+  label_extractors = {
+    "logger" = "EXTRACT(jsonPayload.logger)"
+  }
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}

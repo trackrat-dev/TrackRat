@@ -73,3 +73,38 @@ resource "google_monitoring_alert_policy" "api_unavailable" {
 
   depends_on = [google_project_service.apis["monitoring.googleapis.com"]]
 }
+
+# Alert policy - fires when upstream-provider auth failures exceed threshold.
+# Backed by google_logging_metric.provider_auth_failures (see metrics.tf).
+# Threshold of 3 failures over 5 minutes debounces against one-off blips
+# while still firing within ~5 minutes of a genuine token expiry.
+resource "google_monitoring_alert_policy" "provider_auth_failure" {
+  count = var.environment == "production" ? 1 : 0
+
+  display_name = "Provider API Auth Failure"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Invalid token errors detected"
+
+    condition_threshold {
+      filter          = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.provider_auth_failures[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 2
+      duration        = "0s"
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_SUM"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email[0].name]
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  depends_on = [google_project_service.apis["monitoring.googleapis.com"]]
+}
