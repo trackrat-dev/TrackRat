@@ -15,6 +15,7 @@ from tests.fixtures.amtrak_api_responses import (
     AMTRAK_FULL_RESPONSE,
     API_ERROR_RESPONSE,
     TRAIN_MISSING_OBJECT_ID,
+    TRAIN_NULL_TIMESTAMPS,
 )
 
 
@@ -172,6 +173,63 @@ class TestAmtrakClient:
         train = result["63"][0]
         assert train.trainID == "63-5"
         assert train.objectID is None  # Should be None for missing field
+
+    async def test_null_timestamps_parsed_successfully(self, client):
+        """Test that trains with null createdAt/updatedAt are parsed without error.
+
+        Regression test for issue #1061: the Amtrak upstream API intermittently
+        returns null for createdAt/updatedAt on long-distance and seasonal trains.
+        Previously these were required str fields, causing Pydantic to reject the
+        entire train record silently.
+        """
+        response_with_null_timestamps = {"50": [TRAIN_NULL_TIMESTAMPS]}
+
+        mock_session = AsyncMock()
+        mock_resp = AsyncMock()
+        mock_resp.json = Mock(return_value=response_with_null_timestamps)
+        mock_resp.raise_for_status = Mock(return_value=None)
+        mock_resp.text = str(response_with_null_timestamps)
+        mock_session.get.return_value = mock_resp
+        client._session = mock_session
+
+        result = await client.get_all_trains()
+
+        assert "50" in result, f"Train 50 should be parsed; got keys: {list(result.keys())}"
+        train = result["50"][0]
+        assert isinstance(train, AmtrakTrainData)
+        assert train.trainID == "50-5"
+        assert train.routeName == "Cardinal"
+        assert train.createdAt is None
+        assert train.updatedAt is None
+        assert train.trainState == "Predeparture"
+
+    async def test_null_timestamps_no_warning_logged(self, client):
+        """Verify null-timestamp trains don't trigger failed_to_parse_train warnings."""
+        from structlog.testing import LogCapture
+        import structlog
+
+        cap = LogCapture()
+        structlog.configure(processors=[cap])
+
+        response_with_null_timestamps = {"50": [TRAIN_NULL_TIMESTAMPS]}
+
+        mock_session = AsyncMock()
+        mock_resp = AsyncMock()
+        mock_resp.json = Mock(return_value=response_with_null_timestamps)
+        mock_resp.raise_for_status = Mock(return_value=None)
+        mock_resp.text = str(response_with_null_timestamps)
+        mock_session.get.return_value = mock_resp
+        client._session = mock_session
+
+        await client.get_all_trains()
+
+        parse_failures = [
+            e for e in cap.entries if e.get("event") == "failed_to_parse_train"
+        ]
+        assert len(parse_failures) == 0, (
+            f"Null-timestamp trains should not emit failed_to_parse_train; "
+            f"got: {parse_failures}"
+        )
 
     async def test_get_train_by_id_from_cache(self, client, mock_response):
         """Test retrieving specific train by ID from cache."""
