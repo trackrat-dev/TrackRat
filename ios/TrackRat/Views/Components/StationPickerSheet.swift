@@ -108,13 +108,15 @@ struct StationPickerSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(displayName)
-                            .font(.headline)
-                            .foregroundColor(isDisabled ? .white.opacity(0.4) : .white)
-                        SubwayLineChips(lines: lines, size: 14)
-                            .opacity(isDisabled ? 0.4 : 1)
-                        SystemChips(stationCode: station.code, size: 14)
-                            .opacity(isDisabled ? 0.4 : 1)
+                        StationNameWithBadges(
+                            name: displayName,
+                            stationCode: station.code,
+                            subwayLines: lines,
+                            font: .headline,
+                            foregroundColor: isDisabled ? .white.opacity(0.4) : .white,
+                            chipSize: 14,
+                            badgeOpacity: isDisabled ? 0.4 : 1
+                        )
                     }
 
                     if isDisabled {
@@ -148,14 +150,15 @@ struct StationPickerSheet: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(displayName)
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.7))
-
-                        SubwayLineChips(lines: lines, size: 14)
-                            .opacity(0.7)
-                        SystemChips(stationCode: station.code, size: 14)
-                            .opacity(0.7)
+                        StationNameWithBadges(
+                            name: displayName,
+                            stationCode: station.code,
+                            subwayLines: lines,
+                            font: .headline,
+                            foregroundColor: .white.opacity(0.7),
+                            chipSize: 14,
+                            badgeOpacity: 0.7
+                        )
                     }
 
                     Text("Edit your train systems to use this station")

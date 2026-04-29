@@ -733,11 +733,14 @@ struct StopRowV2: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(Stations.displayName(for: stop.stationName))
-                        .font(.subheadline)
-                        .foregroundColor(textColor)
-
-                    SubwayLineChips(lines: stationLineBullets, size: 14)
+                    StationNameWithBadges(
+                        name: Stations.displayName(for: stop.stationName),
+                        subwayLines: stationLineBullets,
+                        font: .subheadline,
+                        foregroundColor: textColor,
+                        chipSize: 14,
+                        includeSystemChips: false
+                    )
 
                     if isCancelled {
                         Text("🚫")

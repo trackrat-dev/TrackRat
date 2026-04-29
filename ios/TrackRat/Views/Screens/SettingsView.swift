@@ -828,12 +828,14 @@ private struct FavoriteStationRow: View {
             }
 
             if let name = stationName, let code = stationCode {
-                Text(name)
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                SubwayLineChips(lines: subwayLines, size: 13)
-                SystemChips(stationCode: code, size: 13)
+                StationNameWithBadges(
+                    name: name,
+                    stationCode: code,
+                    subwayLines: subwayLines,
+                    font: .subheadline,
+                    foregroundColor: .white,
+                    chipSize: 13
+                )
             } else if label != nil {
                 Text("Not set")
                     .font(.subheadline)

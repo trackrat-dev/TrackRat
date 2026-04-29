@@ -433,12 +433,14 @@ struct TripSelectionView: View {
         let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
             HStack(spacing: 6) {
-                Text(displayName)
-                    .font(.body)
-                    .foregroundColor(.white)
-                    .textProtected()
-                SubwayLineChips(lines: lines, size: 14)
-                if let code { SystemChips(stationCode: code, size: 14) }
+                StationNameWithBadges(
+                    name: displayName,
+                    stationCode: code,
+                    subwayLines: lines,
+                    font: .body,
+                    foregroundColor: .white,
+                    chipSize: 14
+                )
                 Spacer()
             }
 
@@ -473,14 +475,15 @@ struct TripSelectionView: View {
         let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
             HStack(spacing: 6) {
-                Text(displayName)
-                    .font(.body)
-                    .foregroundColor(.white.opacity(0.7))
-                    .textProtected()
-
-                SubwayLineChips(lines: lines, size: 14)
-                    .opacity(0.7)
-                if let code { SystemChips(stationCode: code, size: 14).opacity(0.7) }
+                StationNameWithBadges(
+                    name: displayName,
+                    stationCode: code,
+                    subwayLines: lines,
+                    font: .body,
+                    foregroundColor: .white.opacity(0.7),
+                    chipSize: 14,
+                    badgeOpacity: 0.7
+                )
 
                 Spacer()
             }
@@ -762,13 +765,14 @@ struct FavoriteStationButton: View {
             onTap()
         } label: {
             HStack {
-                Text(Stations.displayName(for: station.id))
-                    .font(.callout)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
-
-                SubwayLineChips(lines: SubwayLines.lines(forStationCode: station.id), size: 14)
-                SystemChips(stationCode: station.id, size: 14)
+                StationNameWithBadges(
+                    name: Stations.displayName(for: station.id),
+                    stationCode: station.id,
+                    subwayLines: SubwayLines.lines(forStationCode: station.id),
+                    font: .callout.weight(.medium),
+                    foregroundColor: .white,
+                    chipSize: 14
+                )
 
                 Spacer()
 
