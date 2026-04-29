@@ -85,7 +85,7 @@ resource "google_monitoring_alert_policy" "provider_auth_failure" {
   combiner     = "OR"
 
   conditions {
-    display_name = "Invalid token errors detected"
+    display_name = "Provider auth errors detected"
 
     condition_threshold {
       filter          = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.provider_auth_failures[0].name}\""
@@ -94,8 +94,9 @@ resource "google_monitoring_alert_policy" "provider_auth_failure" {
       duration        = "0s"
 
       aggregations {
-        alignment_period   = "300s"
-        per_series_aligner = "ALIGN_SUM"
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
       }
     }
   }

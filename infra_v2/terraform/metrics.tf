@@ -128,8 +128,7 @@ resource "google_logging_metric" "train_follows" {
 
 # =============================================================================
 # PROVIDER AUTH FAILURE METRIC
-# Tracks: upstream transit-provider responses whose body contains
-# "Invalid token" (NJT, WMATA, MBTA, Metra all surface this on bad credentials).
+# Tracks: upstream transit-provider auth failures in structured collector logs.
 # Drives the "Provider API Auth Failure" alert in monitoring.tf.
 # Scoped to this environment's GCE instances by hostname prefix so staging
 # deployments don't trigger the production alert.
@@ -142,8 +141,14 @@ resource "google_logging_metric" "provider_auth_failures" {
   filter = join(" AND ", [
     "logName=\"projects/${var.project_id}/logs/cos_containers\"",
     "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
-    "jsonPayload.level=\"error\"",
-    "jsonPayload.error=~\"Invalid token\"",
+    "jsonPayload.level=~\"(error|warning)\"",
+    format("(%s)", join(" OR ", [
+      "(jsonPayload.event=\"njt_api_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
+      "(jsonPayload.event=\"metra_feed_http_error\" AND (jsonPayload.extra.status_code=401 OR jsonPayload.extra.status_code=403))",
+      "(jsonPayload.event=~\"wmata_(predictions|jit)_api_failed\" AND jsonPayload.error=~\"(401|403|Unauthorized|Forbidden)\")",
+      "(jsonPayload.event=~\"HTTP error fetching MBTA GTFS-RT feed.*(401|403|Unauthorized|Forbidden)\")",
+      "jsonPayload.error=~\"Invalid token|authentication failed\"",
+    ])),
   ])
 
   metric_descriptor {
