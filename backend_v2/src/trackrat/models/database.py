@@ -295,6 +295,10 @@ class LiveActivityToken(Base):
     train_number = Column(String(30), nullable=False)  # PATH IDs are ~21 chars
     origin_code = Column(String(10), nullable=False)  # e.g., "NY"
     destination_code = Column(String(10), nullable=False)  # e.g., "WAS"
+    # Disambiguates journeys when train_number collides across systems.
+    # Nullable so older clients that never sent it still receive updates
+    # (with the legacy "first-match wins" behavior).
+    data_source = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True))  # Auto-expire after journey
     is_active = Column(Boolean, default=True, nullable=False)

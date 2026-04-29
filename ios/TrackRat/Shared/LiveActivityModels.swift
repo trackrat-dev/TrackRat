@@ -182,6 +182,8 @@ struct TrainActivityAttributes: ActivityAttributes {
     let departureTime: Date
     let scheduledArrivalTime: Date?
     let theme: String // Theme name as string (blue, black, white)
+    // Optional so Activities started before this field was added can still decode
+    let dataSource: String?
 }
 
 // MARK: - Supporting Data Models

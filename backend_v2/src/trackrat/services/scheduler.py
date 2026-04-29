@@ -2944,16 +2944,19 @@ class SchedulerService:
                         logger.debug("no_active_live_activity_tokens")
                         return
 
-                    # Group by train number for efficiency
-                    trains_to_update: dict[str, list[Any]] = {}
+                    # Group by (train_number, data_source). When a train_id
+                    # collides across systems (e.g. NJT and Amtrak), grouping
+                    # only by train_number routes both groups' updates to
+                    # whichever journey the unfiltered query happens to return.
+                    # data_source is None for tokens registered by older iOS
+                    # clients that never sent it; those keep the legacy
+                    # unfiltered behavior.
+                    trains_to_update: dict[tuple[str, str | None], list[Any]] = {}
                     for token in active_tokens:
-                        if (
-                            token.train_number
-                            and token.train_number not in trains_to_update
-                        ):
-                            trains_to_update[token.train_number] = []
-                        if token.train_number:
-                            trains_to_update[token.train_number].append(token)
+                        if not token.train_number:
+                            continue
+                        key = (token.train_number, token.data_source)
+                        trains_to_update.setdefault(key, []).append(token)
 
                     logger.info(
                         "live_activity_tokens_found",
@@ -2970,16 +2973,21 @@ class SchedulerService:
                         return
 
                     # Update each train's Live Activities
-                    for train_number, tokens in trains_to_update.items():
-                        # Get latest journey for this train
+                    for (train_number, data_source), tokens in trains_to_update.items():
+                        # Get latest journey for this train. Filter by
+                        # data_source when the token has one to avoid picking
+                        # the wrong journey on cross-system train_id collisions.
+                        journey_filters = [
+                            TrainJourney.train_id == train_number,
+                            TrainJourney.journey_date == now_et().date(),
+                        ]
+                        if data_source:
+                            journey_filters.append(
+                                TrainJourney.data_source == data_source
+                            )
                         journey_stmt = (
                             select(TrainJourney)
-                            .where(
-                                and_(
-                                    TrainJourney.train_id == train_number,
-                                    TrainJourney.journey_date == now_et().date(),
-                                )
-                            )
+                            .where(and_(*journey_filters))
                             .options(
                                 # Live Activity status calc reads journey.stops
                                 # and journey.snapshots[-1].train_status; the
@@ -3129,6 +3137,7 @@ class SchedulerService:
                                                 train_number,
                                                 journey.journey_date,
                                                 force_refresh=True,
+                                                data_source=data_source,
                                             )
                                         )
 

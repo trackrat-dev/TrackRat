@@ -828,28 +828,32 @@ final class APIService: ObservableObject {
     
     // MARK: - Live Activity Token Registration (V2)
     
-    func registerLiveActivityToken(pushToken: String, activityId: String, trainNumber: String, originCode: String, destinationCode: String) async throws {
+    func registerLiveActivityToken(pushToken: String, activityId: String, trainNumber: String, originCode: String, destinationCode: String, dataSource: String? = nil) async throws {
         // Create V2 endpoint
         let endpoint = "/v2/live-activities/register"
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError.invalidURL
         }
-        
-        // Create request body matching new backend
+
+        // Create request body matching new backend.
+        // data_source disambiguates trains that share an ID across transit systems.
         struct RegisterRequest: Encodable {
             let push_token: String
             let activity_id: String
             let train_number: String
             let origin_code: String
             let destination_code: String
+            let data_source: String?
         }
-        
+
+        let normalizedDataSource = (dataSource?.isEmpty ?? true) ? nil : dataSource
         let body = RegisterRequest(
             push_token: pushToken,
             activity_id: activityId,
             train_number: trainNumber,
             origin_code: originCode,
-            destination_code: destinationCode
+            destination_code: destinationCode,
+            data_source: normalizedDataSource
         )
         
         // Create request

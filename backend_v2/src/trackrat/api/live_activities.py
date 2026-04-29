@@ -31,6 +31,10 @@ class RegisterRequest(BaseModel):
     train_number: str
     origin_code: str
     destination_code: str
+    # Disambiguates journeys when train_number collides across transit systems
+    # (e.g. NJT and Amtrak both running 1989). Optional for back-compat with
+    # older iOS clients that don't send it.
+    data_source: str | None = None
 
 
 class RegisterResponse(BaseModel):
@@ -65,6 +69,7 @@ async def register_live_activity(
         token.train_number = request.train_number
         token.origin_code = request.origin_code
         token.destination_code = request.destination_code
+        token.data_source = request.data_source
         token.expires_at = expires_at
         token.is_active = True
     else:
@@ -75,6 +80,7 @@ async def register_live_activity(
             train_number=request.train_number,
             origin_code=request.origin_code,
             destination_code=request.destination_code,
+            data_source=request.data_source,
             expires_at=expires_at,
             is_active=True,
         )
@@ -87,6 +93,7 @@ async def register_live_activity(
         train_number=request.train_number,
         origin=request.origin_code,
         destination=request.destination_code,
+        data_source=request.data_source,
     )
 
     return RegisterResponse(expires_at=expires_at)
