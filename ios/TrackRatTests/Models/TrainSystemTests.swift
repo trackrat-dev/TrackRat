@@ -404,7 +404,7 @@ class TrainSystemTests: XCTestCase {
         XCTAssertEqual(TrainSystem.patco.chipLabel, "PATCO")
         XCTAssertEqual(TrainSystem.lirr.chipLabel, "LIRR")
         XCTAssertEqual(TrainSystem.mnr.chipLabel, "MNR")
-        XCTAssertEqual(TrainSystem.subway.chipLabel, "SUB")
+        XCTAssertEqual(TrainSystem.subway.chipLabel, "NYC")
         XCTAssertEqual(TrainSystem.metra.chipLabel, "MTR")
         XCTAssertEqual(TrainSystem.wmata.chipLabel, "DC")
         XCTAssertEqual(TrainSystem.bart.chipLabel, "BART")

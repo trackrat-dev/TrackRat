@@ -200,7 +200,10 @@ struct SettingsSection: View {
                             .padding(.vertical, 8)
                     }
 
-                    let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
+                    let sortedSystems = TrainSystem.allCases.sorted {
+                        if $0.isBeta != $1.isBeta { return !$0.isBeta }
+                        return $0.displayName < $1.displayName
+                    }
                     ForEach(sortedSystems, id: \.self) { system in
                         let isSelected = appState.isSystemSelected(system)
                         let atFreeLimit = !subscriptionService.isPro
@@ -223,7 +226,10 @@ struct SettingsSection: View {
                 } else {
                     let selectedSystems = TrainSystem.allCases
                         .filter { appState.isSystemSelected($0) }
-                        .sorted { $0.displayName < $1.displayName }
+                        .sorted {
+                            if $0.isBeta != $1.isBeta { return !$0.isBeta }
+                            return $0.displayName < $1.displayName
+                        }
 
                     if !selectedSystems.isEmpty {
                         Divider()
@@ -1244,10 +1250,14 @@ private struct TrainSystemRow: View {
 
     private var rowContent: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(system.displayName + (system.isBeta ? " (beta)" : ""))
+            HStack(spacing: 8) {
+                SystemPill(system: system, size: 22)
+                Text(system.displayName)
                     .font(.subheadline)
                     .foregroundColor(.white)
+                if system.isBeta {
+                    BetaPill()
+                }
 
                 Spacer()
 

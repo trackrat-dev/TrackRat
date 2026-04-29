@@ -219,15 +219,7 @@ struct OnboardingView: View {
                         Text("Additional Systems")
                             .font(.headline)
                             .foregroundColor(.white.opacity(0.7))
-                        Text("beta")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(.orange.opacity(0.2))
-                            )
+                        BetaPill()
                     }
                 }
                 .tint(.white.opacity(0.5))
@@ -645,15 +637,7 @@ struct SystemSelectionCard: View {
                         .font(.headline)
                         .foregroundColor(.white)
                     if system.isBeta {
-                        Text("beta")
-                            .font(.caption2)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(.orange.opacity(0.2))
-                            )
+                        BetaPill()
                     }
                 }
 

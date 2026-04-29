@@ -1,5 +1,18 @@
 import SwiftUI
 
+/// Stylized "beta" badge shown next to systems still in development.
+struct BetaPill: View {
+    var body: some View {
+        Text("beta")
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .foregroundColor(.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(.orange.opacity(0.2)))
+    }
+}
+
 /// A single compact colored pill identifying one transit system.
 /// Currently renders the short `chipLabel` over the system's brand color;
 /// designed so a future logo asset can replace the text without touching

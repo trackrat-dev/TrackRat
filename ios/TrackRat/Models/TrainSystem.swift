@@ -57,13 +57,13 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Brand color for the system
     var color: String {
         switch self {
-        case .njt: return "#004D6E"   // NJ Transit blue
+        case .njt: return "#F5853E"   // NJ Transit orange
         case .amtrak: return "#004B87" // Amtrak blue
-        case .path: return "#FF5722"  // PATH orange
-        case .patco: return "#0072CE" // PATCO blue
+        case .path: return "#0072CE"  // PATH blue
+        case .patco: return "#CC0C3B" // PATCO red
         case .lirr: return "#0039A6"  // MTA LIRR blue
-        case .mnr: return "#0039A6"   // MTA Metro-North blue
-        case .subway: return "#0039A6"  // MTA blue
+        case .mnr: return "#000000"   // MTA Metro-North black
+        case .subway: return "#EE352E"  // NYC Subway red
         case .metra: return "#00558A"  // Metra blue
         case .wmata: return "#004E8C"  // WMATA blue
         case .bart: return "#009BDA"   // BART blue
@@ -99,7 +99,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .patco: return "PATCO"
         case .lirr: return "LIRR"
         case .mnr: return "MNR"
-        case .subway: return "SUB"
+        case .subway: return "NYC"
         case .metra: return "MTR"
         case .wmata: return "DC"
         case .bart: return "BART"
