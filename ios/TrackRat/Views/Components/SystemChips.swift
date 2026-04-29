@@ -1,5 +1,27 @@
 import SwiftUI
 
+/// A single compact colored pill identifying one transit system.
+/// Currently renders the short `chipLabel` over the system's brand color;
+/// designed so a future logo asset can replace the text without touching
+/// callers.
+struct SystemPill: View {
+    let system: TrainSystem
+    var size: CGFloat = 14
+
+    var body: some View {
+        let bg = Color(hex: system.color) ?? .gray
+        Text(system.chipLabel)
+            .font(.system(size: size * 0.55, weight: .heavy, design: .rounded))
+            .foregroundColor(.white)
+            .padding(.horizontal, size * 0.28)
+            .frame(height: size)
+            .background(
+                RoundedRectangle(cornerRadius: size * 0.25)
+                    .fill(bg)
+            )
+    }
+}
+
 /// Renders compact colored pills showing which non-subway transit systems
 /// serve a station (e.g., "NJT", "AMK", "PATH"). Analogous to
 /// `SubwayLineChips` but for commuter/intercity rail systems.
@@ -20,26 +42,12 @@ struct SystemChips: View {
         if !systems.isEmpty {
             HStack(spacing: 3) {
                 ForEach(systems) { system in
-                    chip(for: system)
+                    SystemPill(system: system, size: size)
                 }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("systems: \(systems.map(\.displayName).joined(separator: ", "))")
         }
-    }
-
-    @ViewBuilder
-    private func chip(for system: TrainSystem) -> some View {
-        let bg = Color(hex: system.color) ?? .gray
-        Text(system.chipLabel)
-            .font(.system(size: size * 0.55, weight: .heavy, design: .rounded))
-            .foregroundColor(.white)
-            .padding(.horizontal, size * 0.28)
-            .frame(height: size)
-            .background(
-                RoundedRectangle(cornerRadius: size * 0.25)
-                    .fill(bg)
-            )
     }
 }
 
@@ -61,6 +69,10 @@ struct SystemChips: View {
             Text("Times Sq-42 St")
             SubwayLineChips(lines: ["1", "2", "3", "7", "N", "Q", "R", "W", "S"])
             SystemChips(stationCode: "S127")
+        }
+        HStack(spacing: 6) {
+            Text("NJ Transit")
+            SystemPill(system: .njt, size: 22)
         }
     }
     .padding()
