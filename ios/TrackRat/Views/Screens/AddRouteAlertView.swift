@@ -28,6 +28,9 @@ struct AddRouteAlertView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
 
+    // Paywall
+    @State private var showingPaywall = false
+
     // Mode selection
     @State private var alertMode: AlertMode = .route
 
@@ -59,6 +62,9 @@ struct AddRouteAlertView: View {
                 }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .routeAlerts)
+        }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .directional(let data):
@@ -85,7 +91,11 @@ struct AddRouteAlertView: View {
     }
 
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else { return }
+        guard !atAlertLimit else {
+            activeSheet = nil
+            showingPaywall = true
+            return
+        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -97,7 +107,11 @@ struct AddRouteAlertView: View {
     }
 
     private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else { return }
+        guard !atAlertLimit else {
+            activeSheet = nil
+            showingPaywall = true
+            return
+        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -197,6 +211,11 @@ struct AddRouteAlertView: View {
             return
         }
 
+        if atAlertLimit {
+            showingPaywall = true
+            return
+        }
+
         let sub = RouteAlertSubscription(dataSource: system.rawValue)
         activeSheet = .system(DirectionalSheetData(directions: [
             DirectionDraft(
@@ -253,6 +272,10 @@ struct AddRouteAlertView: View {
             // Add button
             if let from = fromStation, let to = toStation {
                 Button {
+                    if atAlertLimit {
+                        showingPaywall = true
+                        return
+                    }
                     let fromCode = from.code
                     let toCode = to.code
                     let fromSystems = Stations.systemStringsForStation(fromCode)
