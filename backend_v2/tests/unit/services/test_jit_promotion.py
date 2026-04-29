@@ -17,7 +17,9 @@ import pytest
 
 from trackrat.models.database import TrainJourney
 from trackrat.services.departure import (
+    _BACKGROUND_REFRESH_CONCURRENCY,
     DepartureService,
+    _background_refresh_station,
     _refreshing_stations,
 )
 from trackrat.utils.time import now_et
@@ -303,3 +305,78 @@ class TestRunInlineJitRefresh:
         # _run_inline_jit_refresh should not be called due to guard,
         # but verify the guard condition works
         assert "SO" in _refreshing_stations
+
+
+class TestBackgroundRefreshSemaphore:
+    """The module-level semaphore caps concurrent JIT refreshes so an NJT
+    slowdown cannot exhaust the DB connection pool by spawning one
+    in-flight refresh per discoverable station."""
+
+    @pytest.mark.asyncio
+    async def test_concurrent_refreshes_capped_at_semaphore_limit(self):
+        """Launching many concurrent refreshes must never run more than
+        _BACKGROUND_REFRESH_CONCURRENCY at the same time.
+
+        Regression guard for issue #1040: previously _background_refresh_station
+        had no global concurrency cap and could spawn ~21 concurrent NJT
+        refreshes during an upstream slowdown.
+        """
+        in_flight = 0
+        peak_in_flight = 0
+        gate = asyncio.Event()
+
+        async def fake_ensure_fresh(*args, **kwargs):
+            nonlocal in_flight, peak_in_flight
+            in_flight += 1
+            peak_in_flight = max(peak_in_flight, in_flight)
+            try:
+                await gate.wait()
+            finally:
+                in_flight -= 1
+
+        # get_session is an async context manager; provide a stub that yields
+        # any object since _ensure_fresh_station_data is fully mocked.
+        class _FakeSessionCtx:
+            async def __aenter__(self):
+                return Mock()
+
+            async def __aexit__(self, *exc):
+                return None
+
+        service = DepartureService.__new__(DepartureService)
+        service._ensure_fresh_station_data = AsyncMock(side_effect=fake_ensure_fresh)
+        target_date = now_et().date()
+        # Fire 3x the cap to ensure contention.
+        n_tasks = _BACKGROUND_REFRESH_CONCURRENCY * 3
+
+        with patch(
+            "trackrat.services.departure.get_session",
+            return_value=_FakeSessionCtx(),
+        ):
+            tasks = [
+                asyncio.create_task(
+                    _background_refresh_station(
+                        service,
+                        f"S{i:02d}",
+                        target_date,
+                        skip_individual_refresh=True,
+                        hide_departed=False,
+                    )
+                )
+                for i in range(n_tasks)
+            ]
+            # Let the tasks reach the gate. A short sleep is enough; the
+            # semaphore-allowed ones will be inside fake_ensure_fresh, the
+            # rest will be parked on the semaphore.
+            for _ in range(20):
+                await asyncio.sleep(0)
+            # Confirm the cap is honored before releasing.
+            assert peak_in_flight == _BACKGROUND_REFRESH_CONCURRENCY, (
+                f"expected peak {_BACKGROUND_REFRESH_CONCURRENCY}, "
+                f"saw {peak_in_flight} after {n_tasks} concurrent launches"
+            )
+            gate.set()
+            await asyncio.gather(*tasks)
+
+        # All tasks eventually run.
+        assert service._ensure_fresh_station_data.await_count == n_tasks
