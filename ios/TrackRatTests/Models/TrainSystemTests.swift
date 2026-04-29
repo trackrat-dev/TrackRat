@@ -177,31 +177,6 @@ class TrainSystemTests: XCTestCase {
                             "Should have at least some results for '\(query)'")
     }
 
-    // MARK: - primarySystem
-
-    func testPrimarySystem_newarkPenn() {
-        // Newark Penn has NJT, AMTRAK, PATH — primarySystem should return one of them
-        let system = Stations.primarySystem(forStationCode: "NP")
-        XCTAssertNotNil(system, "Newark Penn should have a primary system")
-        let validSystems: Set<TrainSystem> = [.njt, .amtrak, .path]
-        XCTAssertTrue(validSystems.contains(system!),
-                     "Newark Penn primary system should be NJT, AMTRAK, or PATH, got: \(system!)")
-    }
-
-    func testPrimarySystem_lirrStation() {
-        // Jamaica (JM) is LIRR
-        let system = Stations.primarySystem(forStationCode: "JAM")
-        XCTAssertNotNil(system, "Jamaica should have a primary system")
-        XCTAssertEqual(system, .lirr, "Jamaica primary system should be LIRR, got: \(String(describing: system))")
-    }
-
-    func testPrimarySystem_deterministic() {
-        // Same station should always return the same primary system
-        let system1 = Stations.primarySystem(forStationCode: "NP")
-        let system2 = Stations.primarySystem(forStationCode: "NP")
-        XCTAssertEqual(system1, system2, "primarySystem should be deterministic")
-    }
-
     // MARK: - systemsForStation
 
     func testSystemsForStation_multiSystem() {
@@ -404,5 +379,90 @@ class TrainSystemTests: XCTestCase {
                      "Unmapped Amtrak station should be visible when Amtrak selected")
         XCTAssertFalse(Stations.isStationVisible("ALT", withSystems: [.njt]),
                       "Unmapped Amtrak station should NOT be visible when only NJT selected")
+    }
+
+    // MARK: - chipLabel
+
+    func testChipLabel_allCasesHaveNonEmptyLabel() {
+        for system in TrainSystem.allCases {
+            XCTAssertFalse(system.chipLabel.isEmpty,
+                          "\(system.rawValue) should have a non-empty chipLabel")
+        }
+    }
+
+    func testChipLabel_compactLength() {
+        for system in TrainSystem.allCases {
+            XCTAssertLessThanOrEqual(system.chipLabel.count, 5,
+                                    "\(system.rawValue).chipLabel should be ≤5 chars for compact display, got: '\(system.chipLabel)' (\(system.chipLabel.count) chars)")
+        }
+    }
+
+    func testChipLabel_knownValues() {
+        XCTAssertEqual(TrainSystem.njt.chipLabel, "NJT")
+        XCTAssertEqual(TrainSystem.amtrak.chipLabel, "AMK")
+        XCTAssertEqual(TrainSystem.path.chipLabel, "PATH")
+        XCTAssertEqual(TrainSystem.patco.chipLabel, "PATCO")
+        XCTAssertEqual(TrainSystem.lirr.chipLabel, "LIRR")
+        XCTAssertEqual(TrainSystem.mnr.chipLabel, "MNR")
+        XCTAssertEqual(TrainSystem.subway.chipLabel, "SUB")
+        XCTAssertEqual(TrainSystem.metra.chipLabel, "MTR")
+        XCTAssertEqual(TrainSystem.wmata.chipLabel, "DC")
+        XCTAssertEqual(TrainSystem.bart.chipLabel, "BART")
+        XCTAssertEqual(TrainSystem.mbta.chipLabel, "MBTA")
+    }
+
+    func testChipLabel_uniqueAcrossSystems() {
+        let labels = TrainSystem.allCases.map(\.chipLabel)
+        let uniqueLabels = Set(labels)
+        XCTAssertEqual(labels.count, uniqueLabels.count,
+                      "All chipLabels should be unique, duplicates found: \(labels)")
+    }
+
+    // MARK: - SystemChips logic (non-subway filtering)
+
+    func testSystemChips_multiSystemStation_excludesSubway() {
+        // NY Penn serves NJT, AMTRAK, LIRR (no subway) — all should appear
+        let systems = Stations.systemsForStation("NY").filter { $0 != .subway }
+        XCTAssertFalse(systems.isEmpty,
+                      "NY Penn should have non-subway systems, got empty")
+        XCTAssertFalse(systems.contains(.subway),
+                      "SystemChips should filter out subway")
+        XCTAssertTrue(systems.contains(.njt),
+                     "NY Penn non-subway systems should include NJT, got: \(systems)")
+        XCTAssertTrue(systems.contains(.amtrak),
+                     "NY Penn non-subway systems should include AMTRAK, got: \(systems)")
+    }
+
+    func testSystemChips_pureSubwayStation_isEmpty() {
+        // S127 = Times Sq-42 St, a real subway-only station code. We assert the
+        // unfiltered set contains .subway so a future code change that returns
+        // [] for unknown codes can't make this test pass vacuously.
+        let subwayCode = "S127"
+        let unfiltered = Stations.systemsForStation(subwayCode)
+        XCTAssertTrue(unfiltered.contains(.subway),
+                     "S127 (Times Sq-42 St) should include .subway, got: \(unfiltered)")
+        let systems = unfiltered.filter { $0 != .subway }
+        XCTAssertTrue(systems.isEmpty,
+                     "Pure subway station \(subwayCode) should have no non-subway systems, got: \(systems)")
+    }
+
+    func testSystemChips_singleSystemStation() {
+        // Jamaica (JAM) is LIRR-only
+        let systems = Stations.systemsForStation("JAM").filter { $0 != .subway }
+        XCTAssertEqual(systems.count, 1,
+                      "Jamaica should have exactly 1 non-subway system, got: \(systems)")
+        XCTAssertTrue(systems.contains(.lirr),
+                     "Jamaica non-subway system should be LIRR, got: \(systems)")
+    }
+
+    func testSystemChips_sortOrder_deterministic() {
+        let systems1 = Stations.systemsForStation("NP")
+            .filter { $0 != .subway }
+            .sorted { $0.chipLabel < $1.chipLabel }
+        let systems2 = Stations.systemsForStation("NP")
+            .filter { $0 != .subway }
+            .sorted { $0.chipLabel < $1.chipLabel }
+        XCTAssertEqual(systems1.map(\.chipLabel), systems2.map(\.chipLabel),
+                      "SystemChips sort order should be deterministic")
     }
 }

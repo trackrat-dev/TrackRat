@@ -1,24 +1,5 @@
 import SwiftUI
 
-/// Small colored pill showing which transit system a station belongs to.
-/// Used in search results to identify stations from non-active systems.
-struct SystemBadge: View {
-    let system: TrainSystem
-
-    var body: some View {
-        Text(system.displayName)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill((Color(hex: system.color) ?? .gray).opacity(0.7))
-            )
-    }
-}
-
 /// A view that displays the appropriate icon for a station based on whether it's a home station, work station, or regular favorite
 struct StationIconView: View {
     let stationCode: String
@@ -365,6 +346,7 @@ struct DeparturePickerView: View {
                     .foregroundColor(.white)
                     .textProtected()
                 SubwayLineChips(lines: lines, size: 14)
+                if let code { SystemChips(stationCode: code, size: 14) }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(TrackRatTheme.IconSize.xsmall)
@@ -423,10 +405,7 @@ struct DeparturePickerView: View {
 
                     SubwayLineChips(lines: lines, size: 14)
                         .opacity(0.7)
-
-                    if let code, let system = Stations.primarySystem(forStationCode: code) {
-                        SystemBadge(system: system)
-                    }
+                    if let code { SystemChips(stationCode: code, size: 14).opacity(0.7) }
 
                     Spacer()
                     Image(systemName: "chevron.right")

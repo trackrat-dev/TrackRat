@@ -291,16 +291,21 @@ struct DestinationPickerView: View {
 
     @ViewBuilder
     private func destinationSearchRow(station: String) -> some View {
+        let code = Stations.getStationCode(station)
         HStack {
-            HStack {
+            HStack(spacing: 6) {
                 Text(Stations.displayName(for: station))
                     .font(.body)
                     .foregroundColor(.white)
                     .textProtected()
+                if let code {
+                    SubwayLineChips(lines: SubwayLines.lines(forStationCode: code), size: 14)
+                    SystemChips(stationCode: code, size: 14)
+                }
                 Spacer()
             }
 
-            if let code = Stations.getStationCode(station) {
+            if let code {
                 StationIconView(
                     stationCode: code,
                     isStationFavorited: appState.isStationFavorited(code: code)
@@ -324,10 +329,9 @@ struct DestinationPickerView: View {
         )
     }
 
-    /// Demoted search row. When `noRouteOrigin` is provided, shows
-    /// "No route from {origin}" below the station name in place of the
-    /// SystemBadge — used when the destination doesn't share a system with
-    /// the selected origin (a state the user can't fix in settings).
+    /// Demoted search row for stations on systems the user hasn't activated.
+    /// When `noRouteOrigin` is provided, shows "No route from {origin}"
+    /// below the station name.
     @ViewBuilder
     private func otherSystemDestinationSearchRow(station: String, noRouteOrigin: String? = nil) -> some View {
         HStack {
@@ -338,10 +342,11 @@ struct DestinationPickerView: View {
                         .foregroundColor(.white.opacity(0.7))
                         .textProtected()
 
-                    if noRouteOrigin == nil,
-                       let code = Stations.getStationCode(station),
-                       let system = Stations.primarySystem(forStationCode: code) {
-                        SystemBadge(system: system)
+                    if let code = Stations.getStationCode(station) {
+                        SubwayLineChips(lines: SubwayLines.lines(forStationCode: code), size: 14)
+                            .opacity(0.7)
+                        SystemChips(stationCode: code, size: 14)
+                            .opacity(0.7)
                     }
                 }
 
@@ -444,6 +449,8 @@ struct FavoriteDestinationButton: View {
                         .foregroundColor(.white.opacity(isDimmed ? 0.7 : 1.0))
                         .textProtected()
                     SubwayLineChips(lines: SubwayLines.lines(forStationCode: station.id), size: 14)
+                        .opacity(isDimmed ? 0.7 : 1.0)
+                    SystemChips(stationCode: station.id, size: 14)
                         .opacity(isDimmed ? 0.7 : 1.0)
                 }
 

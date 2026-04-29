@@ -113,6 +113,8 @@ struct StationPickerSheet: View {
                             .foregroundColor(isDisabled ? .white.opacity(0.4) : .white)
                         SubwayLineChips(lines: lines, size: 14)
                             .opacity(isDisabled ? 0.4 : 1)
+                        SystemChips(stationCode: station.code, size: 14)
+                            .opacity(isDisabled ? 0.4 : 1)
                     }
 
                     if isDisabled {
@@ -152,10 +154,8 @@ struct StationPickerSheet: View {
 
                         SubwayLineChips(lines: lines, size: 14)
                             .opacity(0.7)
-
-                        if let system = Stations.primarySystem(forStationCode: station.code) {
-                            SystemBadge(system: system)
-                        }
+                        SystemChips(stationCode: station.code, size: 14)
+                            .opacity(0.7)
                     }
 
                     Text("Edit your train systems to use this station")

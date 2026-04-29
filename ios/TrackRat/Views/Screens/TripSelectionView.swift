@@ -438,6 +438,7 @@ struct TripSelectionView: View {
                     .foregroundColor(.white)
                     .textProtected()
                 SubwayLineChips(lines: lines, size: 14)
+                if let code { SystemChips(stationCode: code, size: 14) }
                 Spacer()
             }
 
@@ -479,10 +480,7 @@ struct TripSelectionView: View {
 
                 SubwayLineChips(lines: lines, size: 14)
                     .opacity(0.7)
-
-                if let code, let system = Stations.primarySystem(forStationCode: code) {
-                    SystemBadge(system: system)
-                }
+                if let code { SystemChips(stationCode: code, size: 14).opacity(0.7) }
 
                 Spacer()
             }
@@ -770,6 +768,7 @@ struct FavoriteStationButton: View {
                     .foregroundColor(.white)
 
                 SubwayLineChips(lines: SubwayLines.lines(forStationCode: station.id), size: 14)
+                SystemChips(stationCode: station.id, size: 14)
 
                 Spacer()
 

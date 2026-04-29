@@ -83,6 +83,8 @@
 		B1SUBLNS02000000000000A1 /* SubwayLines.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBLNS01000000000000A1 /* SubwayLines.swift */; };
 		B1SUBCHP01000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
 		B1SUBCHP02000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
+		B1SYSCHP01000000000000A1 /* SystemChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SYSCHP01000000000000A1 /* SystemChips.swift */; };
+		B1SYSCHP02000000000000A1 /* SystemChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SYSCHP01000000000000A1 /* SystemChips.swift */; };
 		B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */; };
@@ -248,6 +250,7 @@
 		F1SHIMR001000000000000A1 /* ShimmerRect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShimmerRect.swift; path = TrackRat/Views/Components/ShimmerRect.swift; sourceTree = "<group>"; };
 		F1SUBLNS01000000000000A1 /* SubwayLines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLines.swift; path = TrackRat/Shared/SubwayLines.swift; sourceTree = "<group>"; };
 		F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLineChips.swift; path = TrackRat/Views/Components/SubwayLineChips.swift; sourceTree = "<group>"; };
+		F1SYSCHP01000000000000A1 /* SystemChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SystemChips.swift; path = TrackRat/Views/Components/SystemChips.swift; sourceTree = "<group>"; };
 		F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LineSelectionViewTests.swift; path = TrackRatTests/Views/LineSelectionViewTests.swift; sourceTree = "<group>"; };
 		A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityService.swift; path = Services/LiveActivityService.swift; sourceTree = "<group>"; };
 		A18E54412DEB893100AB2B74 /* LiveActivityControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityControls.swift; path = Views/Components/LiveActivityControls.swift; sourceTree = "<group>"; };
@@ -379,6 +382,7 @@
 				F1SHIMR001000000000000A1 /* ShimmerRect.swift */,
 				F1SUBLNS01000000000000A1 /* SubwayLines.swift */,
 				F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */,
+				F1SYSCHP01000000000000A1 /* SystemChips.swift */,
 				A1D88F602F27083000111466 /* RouteTopology.swift */,
 				B11DC1018BF600000001 /* RouteShapes.swift */,
 				A12C31402F1DA61700CAF76D /* PaywallView.swift */,
@@ -743,6 +747,7 @@
 				B11DC1018BF600000004 /* RouteShapes.swift in Sources */,
 				B1SUBLNS01000000000000A1 /* SubwayLines.swift in Sources */,
 				B1SUBCHP01000000000000A1 /* SubwayLineChips.swift in Sources */,
+				B1SYSCHP01000000000000A1 /* SystemChips.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */,
 				B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */,
@@ -798,6 +803,7 @@
 				B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */,
 				B1SUBLNS02000000000000A1 /* SubwayLines.swift in Sources */,
 				B1SUBCHP02000000000000A1 /* SubwayLineChips.swift in Sources */,
+				B1SYSCHP02000000000000A1 /* SystemChips.swift in Sources */,
 				B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
