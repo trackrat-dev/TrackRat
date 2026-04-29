@@ -68,6 +68,14 @@ _refreshing_stations: set[str] = set()
 # can be silently garbage collected. See: https://docs.python.org/3/library/asyncio-task.html#creating-tasks
 _background_tasks: set[asyncio.Task[None]] = set()
 
+# Cap concurrent JIT refresh tasks. Each refresh holds a DB session for the
+# duration of an upstream HTTP call; without a ceiling, an NJT slowdown can
+# spawn one task per discoverable station (~21) and exhaust the connection
+# pool, cascading into 503s on unrelated endpoints. Sized to leave headroom
+# for collectors and API handlers in the 30-connection pool.
+_BACKGROUND_REFRESH_CONCURRENCY = 4
+_background_refresh_semaphore = asyncio.Semaphore(_BACKGROUND_REFRESH_CONCURRENCY)
+
 # NJT line code normalization for deduplication.
 # Canonical codes are uppercase (NE, NC, GL, MO, MA, etc.) matching route_topology.py.
 # This map handles old mixed-case codes from pre-2026-03 collectors and DB records.
@@ -1743,16 +1751,20 @@ async def _background_refresh_station(
     Errors are logged but never propagated — the caller already served
     whatever data was in the DB, matching the existing graceful-degradation
     behavior when JIT fails.
+
+    Acquires _background_refresh_semaphore so concurrent refreshes can't
+    monopolize the DB connection pool during NJT slowdowns.
     """
     try:
-        async with get_session() as db:
-            await service._ensure_fresh_station_data(
-                db,
-                station_code,
-                target_date,
-                skip_individual_refresh,
-                hide_departed,
-            )
+        async with _background_refresh_semaphore:
+            async with get_session() as db:
+                await service._ensure_fresh_station_data(
+                    db,
+                    station_code,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
+                )
         logger.info("background_jit_refresh_complete", station_code=station_code)
     except Exception as e:
         logger.warning(

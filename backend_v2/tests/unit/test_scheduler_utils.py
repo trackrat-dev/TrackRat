@@ -210,7 +210,7 @@ class TestRunWithFreshnessCheckSimplified:
                 tzinfo=timezone.utc
             )
 
-            # Task function fails, but function should return False (current behavior)
+            # Task function fails, function returns False
             result = await run_with_freshness_check(
                 db=mock_db,
                 task_name="test_task",
@@ -218,17 +218,13 @@ class TestRunWithFreshnessCheckSimplified:
                 task_func=mock_task_func,
             )
 
-            # Current implementation returns False on task failures
             assert result is False
 
         # Verify task was attempted
         mock_task_func.assert_called_once()
 
-        # Verify database was rolled back due to failure
-        # Note: Current implementation calls rollback twice:
-        # 1. Inner handler (task execution failure)
-        # 2. Outer handler (re-raised as freshness check error)
-        assert mock_db.rollback.call_count == 2
+        # Verify database was rolled back exactly once (task execution failure)
+        assert mock_db.rollback.call_count == 1
         mock_db.commit.assert_not_called()
 
         # Verify success metrics were NOT updated
@@ -444,8 +440,7 @@ class TestRunWithFreshnessCheckTimeout:
                 tzinfo=timezone.utc
             )
 
-            # The inner except catches TimeoutError but re-raises it.
-            # The outer except catches it and returns False.
+            # TimeoutError is caught and converted to return False.
             result = await run_with_freshness_check(
                 db=mock_db,
                 task_name="test_task",
@@ -456,8 +451,8 @@ class TestRunWithFreshnessCheckTimeout:
 
         # Task should not succeed
         assert result is False
-        # DB should be rolled back (inner handler + outer handler)
-        assert mock_db.rollback.call_count == 2
+        # DB should be rolled back exactly once (timeout handler)
+        assert mock_db.rollback.call_count == 1
         mock_db.commit.assert_not_called()
 
     @pytest.mark.asyncio
@@ -519,6 +514,82 @@ class TestRunWithFreshnessCheckTimeout:
         assert result is True
         task_func.assert_called_once()
         mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_timeout_does_not_double_log_as_freshness_error(self, mock_db):
+        """A timed-out task must log task_execution_timed_out exactly once
+        and must NOT also log task_freshness_check_error.
+
+        Regression guard for issue #1040: previously the inner TimeoutError
+        handler logged + raised, and the outer Exception handler caught the
+        re-raised TimeoutError and logged a misleading second event.
+        """
+        import asyncio
+
+        self._setup_stale_task(mock_db)
+
+        async def slow_task():
+            await asyncio.sleep(10)
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with patch("trackrat.utils.scheduler_utils.logger") as mock_logger:
+                await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=slow_task,
+                    timeout_seconds=1,
+                )
+
+                logged_events = [
+                    call.args[0] for call in mock_logger.error.call_args_list
+                ]
+                assert logged_events.count("task_execution_timed_out") == 1
+                assert "task_freshness_check_error" not in logged_events
+
+    @pytest.mark.asyncio
+    async def test_task_failure_does_not_double_log_as_freshness_error(self, mock_db):
+        """A failing task must log task_execution_failed exactly once and
+        must NOT also log task_freshness_check_error.
+
+        Regression guard for issue #1040.
+        """
+        self._setup_stale_task(mock_db)
+
+        async def failing_task():
+            raise RuntimeError("boom")
+
+        with patch("trackrat.utils.scheduler_utils.datetime") as mock_datetime:
+            from datetime import timezone
+
+            current_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            mock_datetime.now.return_value = current_time
+            mock_datetime.min.replace.return_value = datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+
+            with patch("trackrat.utils.scheduler_utils.logger") as mock_logger:
+                result = await run_with_freshness_check(
+                    db=mock_db,
+                    task_name="test_task",
+                    minimum_interval_seconds=60,
+                    task_func=failing_task,
+                )
+
+                assert result is False
+                logged_events = [
+                    call.args[0] for call in mock_logger.error.call_args_list
+                ]
+                assert logged_events.count("task_execution_failed") == 1
+                assert "task_freshness_check_error" not in logged_events
 
     @pytest.mark.asyncio
     async def test_timeout_logs_duration(self, mock_db):
