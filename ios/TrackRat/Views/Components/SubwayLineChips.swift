@@ -143,7 +143,7 @@ private struct StationNameBadgesLayout: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard subviews.count == 2 else { return .zero }
 
-        let proposedWidth = proposal.width ?? idealWidth(for: subviews)
+        let proposedWidth = resolvedWidth(proposal.width, fallback: idealWidth(for: subviews))
         let sizes = measuredSizes(for: subviews, width: proposedWidth)
 
         return CGSize(
@@ -155,7 +155,8 @@ private struct StationNameBadgesLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard subviews.count == 2 else { return }
 
-        let sizes = measuredSizes(for: subviews, width: bounds.width)
+        let width = resolvedWidth(bounds.width, fallback: idealWidth(for: subviews))
+        let sizes = measuredSizes(for: subviews, width: width)
         let nameY = bounds.minY + (bounds.height - sizes.name.height) / 2
         let badgesY = bounds.minY + (bounds.height - sizes.badges.height) / 2
 
@@ -168,6 +169,13 @@ private struct StationNameBadgesLayout: Layout {
             at: CGPoint(x: bounds.minX + sizes.name.width + sizes.spacing, y: badgesY),
             proposal: ProposedViewSize(width: sizes.badges.width, height: sizes.badges.height)
         )
+    }
+
+    private func resolvedWidth(_ width: CGFloat?, fallback: CGFloat) -> CGFloat {
+        guard let width, width.isFinite else {
+            return fallback.isFinite ? max(0, fallback) : 0
+        }
+        return max(0, width)
     }
 
     private func measuredSizes(for subviews: Subviews, width: CGFloat) -> (name: CGSize, badges: CGSize, spacing: CGFloat) {
