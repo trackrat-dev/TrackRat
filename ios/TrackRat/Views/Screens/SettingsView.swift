@@ -1251,7 +1251,6 @@ private struct TrainSystemRow: View {
     private var rowContent: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                SystemPill(system: system, size: 22)
                 Text(system.displayName)
                     .font(.subheadline)
                     .foregroundColor(.white)
