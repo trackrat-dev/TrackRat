@@ -592,14 +592,11 @@ struct StopRowV2: View {
         return stop.rawStatus?.amtrakStatus == "CANCELLED"
     }
 
-    /// Subway bullets for lines a rider can transfer to at this stop —
-    /// every line serving the station's complex except the one currently riding.
-    /// Empty for non-subway trains and stops where no transfers are available.
-    private var transferLineBullets: [String] {
+    /// Subway bullets for every line serving this stop's station complex.
+    /// Empty for non-subway trains.
+    private var stationLineBullets: [String] {
         guard train.dataSource == "SUBWAY" else { return [] }
-        let allLines = SubwayLines.lines(forStationCode: stop.stationCode)
-        let currentBullet = SubwayLines.displayBullet(forLineCode: train.line.code)
-        return allLines.filter { $0 != currentBullet }
+        return SubwayLines.lines(forStationCode: stop.stationCode)
     }
     
     // Helper to determine if this is the origin station (first stop)
@@ -740,7 +737,7 @@ struct StopRowV2: View {
                         .font(.subheadline)
                         .foregroundColor(textColor)
 
-                    SubwayLineChips(lines: transferLineBullets, size: 14)
+                    SubwayLineChips(lines: stationLineBullets, size: 14)
 
                     if isCancelled {
                         Text("🚫")
