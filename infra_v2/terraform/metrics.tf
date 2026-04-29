@@ -125,3 +125,47 @@ resource "google_logging_metric" "train_follows" {
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
+
+# =============================================================================
+# PROVIDER AUTH FAILURE METRIC
+# Tracks: upstream transit-provider auth failures in structured collector logs.
+# Drives the "Provider API Auth Failure" alert in monitoring.tf.
+# Scoped to this environment's GCE instances by hostname prefix so staging
+# deployments don't trigger the production alert.
+# =============================================================================
+resource "google_logging_metric" "provider_auth_failures" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "provider_auth_failures"
+  description = "Upstream transit-provider API auth failures (token invalid/expired)"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.level=~\"(error|warning)\"",
+    format("(%s)", join(" OR ", [
+      "(jsonPayload.event=\"njt_api_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
+      "(jsonPayload.event=\"metra_feed_http_error\" AND (jsonPayload.extra.status_code=401 OR jsonPayload.extra.status_code=403))",
+      "(jsonPayload.event=~\"wmata_(predictions|jit)_api_failed\" AND jsonPayload.error=~\"(401|403|Unauthorized|Forbidden)\")",
+      "(jsonPayload.event=~\"HTTP error fetching MBTA GTFS-RT feed.*(401|403|Unauthorized|Forbidden)\")",
+      "jsonPayload.error=~\"Invalid token|authentication failed\"",
+    ])),
+  ])
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "logger"
+      value_type  = "STRING"
+      description = "Module emitting the error"
+    }
+  }
+
+  label_extractors = {
+    "logger" = "EXTRACT(jsonPayload.logger)"
+  }
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}
