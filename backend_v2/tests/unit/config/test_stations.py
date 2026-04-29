@@ -685,8 +685,8 @@ class TestStationEquivalences:
                 f"expected all of {sorted(expected_ts)}"
             )
 
-        # Grand Central-42 St: includes S901/GS shuttle
-        expected_gc = {"S631", "S723", "S901"}
+        # Grand Central-42 St: includes GCT commuter rail and S901/GS shuttle
+        expected_gc = {"GCT", "S631", "S723", "S901"}
         for code in expected_gc:
             result = expand_station_codes(code)
             assert set(result) == expected_gc, (
@@ -713,7 +713,7 @@ class TestStationEquivalences:
             ({"S119", "SA18"}, "103 St West Side (1 + A/B/C)"),
             ({"S120", "SA19"}, "96 St West Side (1/2/3 + A/B/C)"),
             ({"S126", "SA25"}, "50 St (1/2 + A/C/E)"),
-            ({"S128", "SA28"}, "34 St-Penn Station (1/2/3 + A/C/E)"),
+            ({"NY", "S128", "SA28"}, "Penn Station / 34 St-Penn Station"),
             (
                 {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},
                 "Canal St (1/2 + 4/6 + A/C/E + J/Z + Q + N/R/W)",
@@ -788,6 +788,32 @@ class TestStationEquivalences:
             f"Expected WTC cross-system complex {sorted(wtc_expected)} not found in "
             f"STATION_EQUIVALENCE_GROUPS"
         )
+
+    @pytest.mark.parametrize(
+        "expected_codes,description",
+        [
+            ({"NY", "S128", "SA28"}, "Penn Station / 34 St-Penn Station"),
+            (
+                {"GCT", "S631", "S723", "S901"},
+                "Grand Central Terminal / Grand Central-42 St",
+            ),
+        ],
+    )
+    def test_cross_system_rail_subway_complexes_in_equivalence_groups(
+        self, expected_codes, description
+    ):
+        """Major rail hubs should expand to connected subway complexes."""
+        found = False
+        for group in STATION_EQUIVALENCE_GROUPS:
+            if expected_codes.issubset(group):
+                found = True
+                break
+        assert found, (
+            f"Expected {description} complex {sorted(expected_codes)} not found in "
+            f"STATION_EQUIVALENCE_GROUPS"
+        )
+        for code in expected_codes:
+            assert set(expand_station_codes(code)) == expected_codes
 
     def test_unified_complexes_canonical_code_deterministic(self):
         """canonical_station_code is the same for all members of unified complexes."""

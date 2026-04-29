@@ -39,6 +39,7 @@ from trackrat.services.trip_search import (
     _filter_unreasonable_durations,
     _find_relevant_transfer_points,
     _get_best_time,
+    _get_station_lines_expanded,
     _make_direct_trip,
     _orient_transfer,
     _rank_transfer_points,
@@ -226,6 +227,37 @@ class TestFindRelevantTransferPoints:
             for tp in transfers
         ]
         assert len(keys) == len(set(keys)), "Duplicate transfers found"
+
+    def test_penn_station_rail_to_subway_transfer_found(self):
+        """NJT should transfer to the 34 St-Penn subway complex at NY Penn."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"SUBWAY"}, from_station="TR", to_station="S128"
+        )
+        station_pairs = {frozenset({tp.station_a, tp.station_b}) for tp in transfers}
+        assert frozenset({"NY", "S128"}) in station_pairs
+        assert frozenset({"NY", "SA28"}) in station_pairs
+
+    def test_grand_central_rail_to_subway_transfer_found(self):
+        """MNR should transfer to the Grand Central-42 St subway complex at GCT."""
+        transfers = _find_relevant_transfer_points(
+            {"MNR"}, {"SUBWAY"}, from_station="MSTM", to_station="S631"
+        )
+        station_pairs = {frozenset({tp.station_a, tp.station_b}) for tp in transfers}
+        assert frozenset({"GCT", "S631"}) in station_pairs
+        assert frozenset({"GCT", "S723"}) in station_pairs
+        assert frozenset({"GCT", "S901"}) in station_pairs
+
+
+class TestStationLinesExpanded:
+    """Test line lookup across physical station equivalences."""
+
+    def test_penn_station_rail_code_expands_to_subway_lines(self):
+        lines = _get_station_lines_expanded("NY", "SUBWAY")
+        assert {"1", "2", "3", "A", "C", "E"} <= set(lines)
+
+    def test_grand_central_rail_code_expands_to_subway_lines(self):
+        lines = _get_station_lines_expanded("GCT", "SUBWAY")
+        assert {"4", "5", "6", "7", "GS"} <= set(lines)
 
 
 class TestOrientTransfer:
