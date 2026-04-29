@@ -144,10 +144,10 @@ resource "google_logging_metric" "provider_auth_failures" {
     "jsonPayload.level=~\"(error|warning)\"",
     format("(%s)", join(" OR ", [
       "(jsonPayload.event=\"njt_api_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
-      "(jsonPayload.event=\"metra_feed_http_error\" AND (jsonPayload.extra.status_code=401 OR jsonPayload.extra.status_code=403))",
+      "(jsonPayload.event=\"metra_feed_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
+      "(jsonPayload.event=\"mbta_feed_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
       "(jsonPayload.event=~\"wmata_(predictions|jit)_api_failed\" AND jsonPayload.error=~\"(401|403|Unauthorized|Forbidden)\")",
-      "(jsonPayload.event=~\"HTTP error fetching MBTA GTFS-RT feed.*(401|403|Unauthorized|Forbidden)\")",
-      "jsonPayload.error=~\"Invalid token|authentication failed\"",
+      "(jsonPayload.event=\"task_execution_failed\" AND jsonPayload.task=~\"(metra|wmata|mbta)_collection\" AND jsonPayload.error=~\"(401|403|Unauthorized|Forbidden|Invalid token|authentication failed)\")",
     ])),
   ])
 

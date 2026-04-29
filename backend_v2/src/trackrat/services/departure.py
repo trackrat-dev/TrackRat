@@ -99,8 +99,8 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
 )
 
 # Per-source minutes before departure to hide SCHEDULED trains that weren't discovered.
-# Sized to each provider's discovery cadence — must be less than the discovery interval
-# so SCHEDULED trains remain visible for at least one cycle before being filtered out.
+# Sized to each provider's discovery cadence with a small buffer, so SCHEDULED trains
+# remain visible through at least one missed discovery cycle before being filtered out.
 SCHEDULED_VISIBILITY_THRESHOLDS: dict[str, int] = {
     "NJT": 15,  # 30-min discovery
     "AMTRAK": 15,  # 30-min discovery

@@ -6,7 +6,6 @@ Uses Metra's official GTFS-RT feed with query-parameter token authentication
 compatibility if Metra changes endpoints.
 """
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,8 +18,9 @@ from trackrat.config.stations.metra import (
     METRA_GTFS_STOP_TO_INTERNAL_MAP,
     METRA_ROUTES,
 )
+from trackrat.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MetraArrival(BaseModel):
@@ -263,10 +263,8 @@ class MetraClient:
             status = e.response.status_code
             logger.error(
                 "metra_feed_http_error",
-                extra={
-                    "status_code": status,
-                    "auth_method": self._auth_method,
-                },
+                status_code=status,
+                auth_method=self._auth_method,
             )
             if status in (401, 403):
                 raise MetraFetchError(
@@ -277,7 +275,7 @@ class MetraClient:
         except httpx.HTTPError as e:
             logger.error(
                 "metra_feed_network_error",
-                extra={"error_type": type(e).__name__},
+                error_type=type(e).__name__,
             )
             raise MetraFetchError(
                 f"Network error fetching Metra GTFS-RT feed: {type(e).__name__}"

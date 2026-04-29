@@ -5,7 +5,6 @@ Uses MBTA's CDN-hosted GTFS-RT protobuf feed (no auth required).
 Only processes Commuter Rail trips (route_id starting with "CR-" or "CapeFlyer").
 """
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,8 +17,9 @@ from trackrat.config.stations import (
     MBTA_GTFS_STOP_TO_INTERNAL_MAP,
     MBTA_ROUTES,
 )
+from trackrat.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MbtaArrival(BaseModel):
@@ -208,11 +208,26 @@ class MBTAClient:
             logger.info(f"Fetched {len(arrivals)} MBTA CR arrivals from GTFS-RT feed")
             return arrivals
 
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "mbta_feed_http_error",
+                status_code=e.response.status_code,
+                error=str(e),
+            )
+            return self._cache or []
         except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching MBTA GTFS-RT feed: {e}")
+            logger.error(
+                "mbta_feed_network_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return self._cache or []
         except Exception as e:
-            logger.error(f"Error parsing MBTA GTFS-RT feed: {e}")
+            logger.error(
+                "mbta_feed_parse_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return self._cache or []
 
     async def get_station_arrivals(self, station_code: str) -> list[MbtaArrival]:
