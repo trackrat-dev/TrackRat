@@ -195,37 +195,38 @@ final class SubscriptionService: ObservableObject {
         isLoading = false
     }
 
-    /// Check current subscription status
+    /// Check current subscription status.
+    /// Only re-publishes when the status actually changes — `@Published` fires
+    /// `objectWillChange` on every assignment regardless of equality, and this
+    /// runs on every scenePhase=.active, cascading rebuilds across all observers.
     func checkSubscriptionStatus() async {
-        var foundActiveSubscription = false
+        var newStatus: SubscriptionStatus = .notSubscribed
 
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try checkVerified(result)
 
-                if productIds.contains(transaction.productID) {
-                    // Check if subscription is still valid
-                    if let expirationDate = transaction.expirationDate {
-                        if expirationDate > Date() {
-                            let isTrialPeriod = transaction.offer?.type == .introductory
-                            subscriptionStatus = .subscribed(
-                                expirationDate: expirationDate,
-                                isTrialPeriod: isTrialPeriod
-                            )
-                            foundActiveSubscription = true
-                            print("Active subscription found, expires: \(expirationDate)")
-                            break
-                        }
-                    }
+                if productIds.contains(transaction.productID),
+                   let expirationDate = transaction.expirationDate,
+                   expirationDate > Date() {
+                    let isTrialPeriod = transaction.offer?.type == .introductory
+                    newStatus = .subscribed(
+                        expirationDate: expirationDate,
+                        isTrialPeriod: isTrialPeriod
+                    )
+                    print("Active subscription found, expires: \(expirationDate)")
+                    break
                 }
             } catch {
                 print("Transaction verification failed: \(error)")
             }
         }
 
-        if !foundActiveSubscription {
-            subscriptionStatus = .notSubscribed
-            print("No active subscription found")
+        if newStatus != subscriptionStatus {
+            subscriptionStatus = newStatus
+            if case .notSubscribed = newStatus {
+                print("No active subscription found")
+            }
         }
     }
 

@@ -27,7 +27,6 @@ struct AddRouteAlertView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     // Mode selection
     @State private var alertMode: AlertMode = .route
@@ -81,7 +80,7 @@ struct AddRouteAlertView: View {
     // MARK: - Save Subscriptions
 
     private var atAlertLimit: Bool {
-        !subscriptionService.isPro
+        !SubscriptionService.shared.isPro
             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
     }
 
