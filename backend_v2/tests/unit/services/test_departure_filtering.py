@@ -1013,9 +1013,11 @@ class TestDepartureFilterQuery:
 class TestStaleScheduledFiltering:
     """Tests for filtering SCHEDULED trains close to departure time.
 
-    SCHEDULED trains from systems with real-time data (NJT, Amtrak, PATH)
-    should be hidden when they're within 15 minutes of departure and
-    haven't been upgraded to OBSERVED by the discovery system.
+    SCHEDULED trains from systems with real-time data are hidden when within
+    their per-source threshold of departure and haven't been upgraded to
+    OBSERVED by discovery. Thresholds are sized to each provider's discovery
+    cadence: 15 min for NJT/Amtrak (30-min discovery), 5 min for PATH/LIRR/
+    MNR/SUBWAY/BART/MBTA/METRA (4-min discovery), 4 min for WMATA (3-min).
 
     PATCO trains (schedule-only) should never be filtered since there's
     no real-time system to discover them.
@@ -1106,7 +1108,7 @@ class TestStaleScheduledFiltering:
         ), "SCHEDULED Amtrak train within threshold should be filtered"
 
     def test_filter_scheduled_path_within_threshold(self):
-        """SCHEDULED PATH train within 15 min of departure should be filtered."""
+        """SCHEDULED PATH train within 5-min threshold should be filtered."""
         service = DepartureService()
         now = now_et()
 
@@ -1115,7 +1117,7 @@ class TestStaleScheduledFiltering:
                 train_id="PATH-123",
                 data_source="PATH",
                 observation_type="SCHEDULED",
-                minutes_until_departure=10,  # Within threshold
+                minutes_until_departure=3,  # Within PATH threshold (5 min)
             )
         ]
 
@@ -1123,7 +1125,28 @@ class TestStaleScheduledFiltering:
 
         assert (
             len(result) == 0
-        ), "SCHEDULED PATH train within threshold should be filtered"
+        ), "SCHEDULED PATH train within 5-min threshold should be filtered"
+
+    def test_keep_scheduled_path_outside_threshold(self):
+        """SCHEDULED PATH train at 6 min (outside 5-min threshold) should be kept."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="PATH-456",
+                data_source="PATH",
+                observation_type="SCHEDULED",
+                minutes_until_departure=6,  # Outside PATH threshold (5 min)
+            )
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 1, (
+            "SCHEDULED PATH train at 6 min should be kept (PATH threshold is 5 min)"
+        )
+        assert result[0].train_id == "PATH-456"
 
     def test_keep_scheduled_patco_within_threshold(self):
         """SCHEDULED PATCO train within 15 min should NOT be filtered (no real-time API)."""
@@ -1183,31 +1206,34 @@ class TestStaleScheduledFiltering:
         assert result[0].train_id == "1234"
 
     def test_mixed_departures_filtering(self):
-        """Test filtering with a mix of different departure types."""
+        """Test filtering with a mix of different departure types and per-source thresholds."""
         service = DepartureService()
         now = now_et()
 
         departures = [
-            # Should be filtered: SCHEDULED NJT within threshold (15 min)
+            # Should be filtered: SCHEDULED NJT within 15-min threshold
             self._create_departure("1001", "NJT", "SCHEDULED", 5),
             # Should be kept: OBSERVED NJT within threshold
             self._create_departure("1002", "NJT", "OBSERVED", 5),
-            # Should be filtered: SCHEDULED AMTRAK within threshold
+            # Should be filtered: SCHEDULED AMTRAK within 15-min threshold
             self._create_departure("A1003", "AMTRAK", "SCHEDULED", 10),
             # Should be kept: SCHEDULED NJT outside threshold
             self._create_departure("1004", "NJT", "SCHEDULED", 60),
-            # Should be kept: SCHEDULED PATCO within threshold (no real-time)
+            # Should be kept: SCHEDULED PATCO (no real-time API)
             self._create_departure("P1005", "PATCO", "SCHEDULED", 5),
-            # Should be filtered: SCHEDULED PATH within threshold
+            # Should be kept: SCHEDULED PATH at 10 min, outside 5-min threshold
             self._create_departure("PATH-1006", "PATH", "SCHEDULED", 10),
+            # Should be filtered: SCHEDULED PATH at 3 min, within 5-min threshold
+            self._create_departure("PATH-1007", "PATH", "SCHEDULED", 3),
         ]
 
         result = service._filter_stale_scheduled_trains(departures, now)
 
-        # Should keep: 1002 (observed), 1004 (outside threshold), P1005 (PATCO)
-        assert len(result) == 3
+        # Should keep: 1002 (observed), 1004 (outside NJT threshold),
+        #   P1005 (PATCO), PATH-1006 (outside PATH 5-min threshold)
+        assert len(result) == 4
         result_ids = {d.train_id for d in result}
-        assert result_ids == {"1002", "1004", "P1005"}
+        assert result_ids == {"1002", "1004", "P1005", "PATH-1006"}
 
     def test_boundary_at_exactly_threshold(self):
         """Train departing exactly at threshold boundary should be kept."""
@@ -1248,3 +1274,120 @@ class TestStaleScheduledFiltering:
         result = service._filter_stale_scheduled_trains(departures, now)
 
         assert len(result) == 0, "Train just under threshold should be filtered"
+
+    def test_njt_threshold_unchanged_at_14_min(self):
+        """Regression: NJT still uses 15-min threshold — 14 min is filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure("NJT-1", "NJT", "SCHEDULED", 14),
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+        assert len(result) == 0, "NJT SCHEDULED at 14 min should be filtered (threshold=15)"
+
+    def test_path_boundary_at_exactly_5_min(self):
+        """PATH train at exactly 5-min threshold should be kept (< not <=)."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure("PATH-B", "PATH", "SCHEDULED", 5),
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+        assert len(result) == 1, "PATH at exactly 5 min should be kept"
+
+    def test_path_boundary_at_4_min(self):
+        """PATH train at 4 min (under 5-min threshold) should be filtered."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure("PATH-C", "PATH", "SCHEDULED", 4),
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+        assert len(result) == 0, "PATH at 4 min should be filtered (threshold=5)"
+
+    def test_wmata_uses_4_min_threshold(self):
+        """WMATA uses 4-min threshold (3-min discovery cycle)."""
+        service = DepartureService()
+        now = now_et()
+
+        kept = [self._create_departure("WMATA-K", "WMATA", "SCHEDULED", 4)]
+        filtered = [self._create_departure("WMATA-F", "WMATA", "SCHEDULED", 3)]
+
+        result_kept = service._filter_stale_scheduled_trains(kept, now)
+        assert len(result_kept) == 1, "WMATA at 4 min should be kept (threshold=4)"
+
+        result_filtered = service._filter_stale_scheduled_trains(filtered, now)
+        assert len(result_filtered) == 0, "WMATA at 3 min should be filtered (threshold=4)"
+
+    def test_subway_uses_5_min_threshold(self):
+        """SUBWAY uses 5-min threshold (4-min discovery cycle)."""
+        service = DepartureService()
+        now = now_et()
+
+        kept = [self._create_departure("SUB-K", "SUBWAY", "SCHEDULED", 6)]
+        filtered = [self._create_departure("SUB-F", "SUBWAY", "SCHEDULED", 3)]
+
+        result_kept = service._filter_stale_scheduled_trains(kept, now)
+        assert len(result_kept) == 1, "SUBWAY at 6 min should be kept (threshold=5)"
+
+        result_filtered = service._filter_stale_scheduled_trains(filtered, now)
+        assert len(result_filtered) == 0, "SUBWAY at 3 min should be filtered (threshold=5)"
+
+    def test_lirr_uses_5_min_threshold(self):
+        """LIRR uses 5-min threshold (4-min discovery cycle)."""
+        service = DepartureService()
+        now = now_et()
+
+        kept = [self._create_departure("LIRR-K", "LIRR", "SCHEDULED", 6)]
+        filtered = [self._create_departure("LIRR-F", "LIRR", "SCHEDULED", 4)]
+
+        result_kept = service._filter_stale_scheduled_trains(kept, now)
+        assert len(result_kept) == 1, "LIRR at 6 min should be kept (threshold=5)"
+
+        result_filtered = service._filter_stale_scheduled_trains(filtered, now)
+        assert len(result_filtered) == 0, "LIRR at 4 min should be filtered (threshold=5)"
+
+    def test_mnr_uses_5_min_threshold(self):
+        """MNR uses 5-min threshold (4-min discovery cycle)."""
+        service = DepartureService()
+        now = now_et()
+
+        kept = [self._create_departure("MNR-K", "MNR", "SCHEDULED", 7)]
+        filtered = [self._create_departure("MNR-F", "MNR", "SCHEDULED", 4)]
+
+        result_kept = service._filter_stale_scheduled_trains(kept, now)
+        assert len(result_kept) == 1, "MNR at 7 min should be kept (threshold=5)"
+
+        result_filtered = service._filter_stale_scheduled_trains(filtered, now)
+        assert len(result_filtered) == 0, "MNR at 4 min should be filtered (threshold=5)"
+
+    def test_per_source_thresholds_in_single_batch(self):
+        """Different providers apply their own thresholds in the same filter call."""
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            # PATH at 6 min: kept (threshold=5)
+            self._create_departure("PATH-1", "PATH", "SCHEDULED", 6),
+            # NJT at 6 min: filtered (threshold=15)
+            self._create_departure("NJT-1", "NJT", "SCHEDULED", 6),
+            # WMATA at 6 min: kept (threshold=4)
+            self._create_departure("WMATA-1", "WMATA", "SCHEDULED", 6),
+            # AMTRAK at 6 min: filtered (threshold=15)
+            self._create_departure("AMT-1", "AMTRAK", "SCHEDULED", 6),
+            # SUBWAY at 6 min: kept (threshold=5)
+            self._create_departure("SUB-1", "SUBWAY", "SCHEDULED", 6),
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+        result_ids = {d.train_id for d in result}
+
+        assert result_ids == {"PATH-1", "WMATA-1", "SUB-1"}, (
+            f"Expected PATH/WMATA/SUBWAY kept at 6 min, NJT/AMTRAK filtered. Got: {result_ids}"
+        )

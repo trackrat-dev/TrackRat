@@ -98,12 +98,22 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
     {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"}
 )
 
-# Minutes before departure to hide SCHEDULED trains that weren't discovered.
-# If a train hasn't been OBSERVED by this point, it's likely not running
-# or we can't provide reliable information about it.
-# Must be less than the discovery interval (30min) so SCHEDULED trains remain
-# visible for at least one discovery cycle before being filtered out.
-SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
+# Per-source minutes before departure to hide SCHEDULED trains that weren't discovered.
+# Sized to each provider's discovery cadence — must be less than the discovery interval
+# so SCHEDULED trains remain visible for at least one cycle before being filtered out.
+SCHEDULED_VISIBILITY_THRESHOLDS: dict[str, int] = {
+    "NJT": 15,  # 30-min discovery
+    "AMTRAK": 15,  # 30-min discovery
+    "PATH": 5,  # 4-min discovery
+    "LIRR": 5,  # 4-min discovery
+    "MNR": 5,  # 4-min discovery
+    "SUBWAY": 5,  # 4-min discovery
+    "BART": 5,  # 4-min discovery
+    "MBTA": 5,  # 4-min discovery
+    "METRA": 5,  # 4-min discovery
+    "WMATA": 4,  # 3-min discovery
+}
+DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
 # All supported data sources for departure queries.
 ALL_DATA_SOURCES: list[str] = [
@@ -924,7 +934,9 @@ class DepartureService:
         """
         current_time = now_et()
         threshold = current_time + timedelta(
-            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+            minutes=SCHEDULED_VISIBILITY_THRESHOLDS.get(
+                "NJT", DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+            )
         )
         cutoff_time = current_time - timedelta(seconds=60)
         from_codes = expand_station_codes(from_station)
@@ -1696,12 +1708,9 @@ class DepartureService:
         Returns:
             Filtered list with stale SCHEDULED trains removed
         """
-        threshold = current_time + timedelta(
-            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
-        )
-
         result = []
         filtered_count = 0
+        filtered_by_source: dict[str, int] = {}
 
         for dep in departures:
             # Always show OBSERVED trains - we have real-time data
@@ -1714,16 +1723,26 @@ class DepartureService:
                 result.append(dep)
                 continue
 
+            # Per-source threshold sized to the provider's discovery cadence
+            threshold_minutes = SCHEDULED_VISIBILITY_THRESHOLDS.get(
+                dep.data_source, DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+            )
+            threshold = current_time + timedelta(minutes=threshold_minutes)
+
             # For real-time systems: hide SCHEDULED trains if departure is imminent
             scheduled_time = dep.departure.scheduled_time
             if scheduled_time and scheduled_time < threshold:
                 filtered_count += 1
+                filtered_by_source[dep.data_source] = (
+                    filtered_by_source.get(dep.data_source, 0) + 1
+                )
                 logger.debug(
                     "filtering_stale_scheduled_train",
                     train_id=dep.train_id,
                     data_source=dep.data_source,
                     scheduled_time=scheduled_time.isoformat(),
                     threshold=threshold.isoformat(),
+                    threshold_minutes=threshold_minutes,
                 )
                 continue
 
@@ -1733,7 +1752,7 @@ class DepartureService:
             logger.info(
                 "filtered_stale_scheduled_trains",
                 count=filtered_count,
-                threshold_minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES,
+                by_source=filtered_by_source,
             )
 
         return result
