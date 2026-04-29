@@ -632,7 +632,6 @@ struct SystemSelectionCard: View {
             HStack(spacing: 12) {
                 // System info
                 HStack(spacing: 6) {
-                    SystemPill(system: system, size: 22)
                     Text(system.displayName)
                         .font(.headline)
                         .foregroundColor(.white)
