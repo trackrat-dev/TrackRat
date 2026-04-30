@@ -755,7 +755,8 @@ struct StopRowV2: View {
                         font: .subheadline,
                         foregroundColor: textColor,
                         chipSize: 14,
-                        includeSystemChips: false
+                        includeSystemChips: false,
+                        textBehavior: .natural
                     )
 
                     if isCancelled {

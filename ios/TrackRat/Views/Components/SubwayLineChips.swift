@@ -48,6 +48,13 @@ struct SubwayLineChips: View {
     }
 }
 
+enum StationNameTextBehavior {
+    /// Search and picker rows should stay compact beside trailing controls.
+    case protectedSingleLine
+    /// Train detail stop rows should match plain `Text` sizing and wrapping.
+    case natural
+}
+
 /// Station labels with their transit badges. The badge area is constrained to
 /// half of the available width and wraps, so the station name keeps priority.
 struct StationNameWithBadges: View {
@@ -59,42 +66,60 @@ struct StationNameWithBadges: View {
     var chipSize: CGFloat = 14
     var badgeOpacity: Double = 1
     var includeSystemChips: Bool = true
+    var textBehavior: StationNameTextBehavior = .protectedSingleLine
 
-    var body: some View {
-        // Don't wrap the Text in `.frame(maxWidth: .infinity)`: that makes its
-        // ideal-width report `.infinity`, which collapses the layout's resolved
-        // nameWidth to 0 and erases the station name whenever there are no
-        // badges (e.g. non-subway stops in TrainDetailsView).
-        StationNameBadgesLayout(spacing: 6) {
-            Text(name)
-                .font(font)
-                .foregroundColor(foregroundColor)
-                .textProtected()
-
-            StationBadges(
-                stationCode: stationCode,
-                subwayLines: subwayLines,
-                size: chipSize,
-                includeSystemChips: includeSystemChips
-            )
-            .opacity(badgeOpacity)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct StationBadges: View {
-    let stationCode: String?
-    let subwayLines: [String]
-    var size: CGFloat
-    var includeSystemChips: Bool
-
-    private var systems: [TrainSystem] {
+    private var systemBadges: [TrainSystem] {
         guard includeSystemChips, let stationCode else { return [] }
         return Stations.systemsForStation(stationCode)
             .filter { $0 != .subway }
             .sorted { $0.chipLabel < $1.chipLabel }
     }
+
+    private var hasBadges: Bool {
+        !subwayLines.isEmpty || !systemBadges.isEmpty
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if hasBadges {
+            StationNameBadgesLayout(spacing: 6) {
+                stationText
+
+                StationBadges(
+                    subwayLines: subwayLines,
+                    systems: systemBadges,
+                    size: chipSize
+                )
+                .opacity(badgeOpacity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            // Keep plain station labels out of the badge layout entirely.
+            stationText
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var stationText: some View {
+        switch textBehavior {
+        case .protectedSingleLine:
+            Text(name)
+                .font(font)
+                .foregroundColor(foregroundColor)
+                .textProtected()
+        case .natural:
+            Text(name)
+                .font(font)
+                .foregroundColor(foregroundColor)
+        }
+    }
+}
+
+private struct StationBadges: View {
+    let subwayLines: [String]
+    let systems: [TrainSystem]
+    var size: CGFloat
 
     var body: some View {
         if !subwayLines.isEmpty || !systems.isEmpty {
