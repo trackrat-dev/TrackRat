@@ -429,18 +429,28 @@ class AmtrakPatternScheduler:
         if len(journeys) < self.MIN_STOP_CONSENSUS_RUNS:
             return None
 
-        runs: list[list[JourneyStop]] = []
+        runs: list[list[tuple[str, JourneyStop]]] = []
         for journey in journeys:
             stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             if stops and self._scheduled_time_for_order(stops[0]):
-                runs.append(stops)
+                canonical_stops = []
+                seen_station_codes = set()
+                for stop in stops:
+                    station_code = self._canonical_amtrak_station_code(
+                        stop.station_code
+                    )
+                    if station_code in seen_station_codes:
+                        continue
+                    seen_station_codes.add(station_code)
+                    canonical_stops.append((station_code, stop))
+                runs.append(canonical_stops)
 
         if len(runs) < self.MIN_STOP_CONSENSUS_RUNS:
             return None
 
-        common_station_codes = set(stop.station_code for stop in runs[0])
+        common_station_codes = set(station_code for station_code, _stop in runs[0])
         for stops in runs[1:]:
-            common_station_codes &= {stop.station_code for stop in stops}
+            common_station_codes &= {station_code for station_code, _stop in stops}
 
         if not common_station_codes:
             return None
@@ -458,11 +468,11 @@ class AmtrakPatternScheduler:
             station_name = get_station_name(station_code)
 
             for stops in runs:
-                origin_time = self._scheduled_time_for_order(stops[0])
+                origin_time = self._scheduled_time_for_order(stops[0][1])
                 if origin_time is None:
                     continue
 
-                stop = next(s for s in stops if s.station_code == station_code)
+                stop = next(s for code, s in stops if code == station_code)
                 sequence_values.append(stop.stop_sequence or 0)
                 station_name = stop.station_name or station_name
                 if stop.scheduled_arrival:
@@ -482,6 +492,11 @@ class AmtrakPatternScheduler:
 
         templates.sort(key=lambda s: (s["sequence"], s["station_code"]))
         return templates
+
+    @staticmethod
+    def _canonical_amtrak_station_code(station_code: str) -> str:
+        """Canonicalize raw Amtrak station codes to TrackRat internal codes."""
+        return map_amtrak_station_code(station_code) or station_code
 
     @staticmethod
     def _has_required_station_codes(

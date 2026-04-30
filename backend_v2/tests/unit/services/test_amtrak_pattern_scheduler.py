@@ -393,6 +393,47 @@ async def test_create_scheduled_journeys_excludes_one_off_stop(pattern_scheduler
     assert [s.station_code for s in stops] == ["NY", "PH", "WS"]
 
 
+def test_consensus_stop_templates_canonicalize_amtrak_station_aliases(
+    pattern_scheduler,
+):
+    """Raw/internal Amtrak stop aliases should intersect as the same route."""
+    raw_base = ET.localize(datetime(2024, 1, 18, 7, 35))
+    internal_base = ET.localize(datetime(2024, 1, 11, 7, 35))
+
+    def stop(
+        code: str, name: str, sequence: int, base_time: datetime, minutes: int
+    ) -> MagicMock:
+        return MagicMock(
+            station_code=code,
+            station_name=name,
+            stop_sequence=sequence,
+            scheduled_departure=base_time + timedelta(minutes=minutes),
+            scheduled_arrival=base_time + timedelta(minutes=minutes),
+        )
+
+    raw_journey = MagicMock()
+    raw_journey.stops = [
+        stop("NYP", "New York Penn Station", 0, raw_base, 0),
+        stop("PHL", "Philadelphia 30th Street", 1, raw_base, 66),
+        stop("WAS", "Washington Union Station", 2, raw_base, 175),
+    ]
+
+    internal_journey = MagicMock()
+    internal_journey.stops = [
+        stop("NY", "New York Penn Station", 0, internal_base, 0),
+        stop("PH", "Philadelphia 30th Street", 1, internal_base, 66),
+        stop("WS", "Washington Union Station", 2, internal_base, 175),
+    ]
+
+    templates = pattern_scheduler._build_consensus_stop_templates(
+        [raw_journey, internal_journey],
+        {"NYP", "WAS"},
+    )
+
+    assert templates is not None
+    assert [t["station_code"] for t in templates] == ["NY", "PH", "WS"]
+
+
 @pytest.mark.asyncio
 async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
     """Test fallback to origin-only stop when no recent OBSERVED journey exists."""

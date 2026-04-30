@@ -339,6 +339,27 @@ def set_stop_track(
     )
 
 
+def group_candidate_trips_by_overlap(
+    arrivals: list[Any], journey_station_codes: set[str]
+) -> dict[str, list[Any]]:
+    """Group full live trips that share at least one station with a journey.
+
+    Callers use this before fuzzy matching so candidate stop-set comparison sees
+    the entire visible trip, including stops that are not on the stored journey.
+    """
+    trips: dict[str, list[Any]] = {}
+    for arrival in arrivals:
+        if arrival.trip_id not in trips:
+            trips[arrival.trip_id] = []
+        trips[arrival.trip_id].append(arrival)
+
+    return {
+        trip_id: trip_arrivals
+        for trip_id, trip_arrivals in trips.items()
+        if {arrival.station_code for arrival in trip_arrivals} & journey_station_codes
+    }
+
+
 def select_matching_trip(
     matching_trips: dict[str, list[Any]],
     journey: TrainJourney,
@@ -349,13 +370,18 @@ def select_matching_trip(
     """Select the live trip that should refresh an existing GTFS-RT journey.
 
     Exact train-id matches are trusted even when the feed only contains a
-    subset of the route. Fuzzy matches are intentionally stricter: if the
-    candidate stop set differs from the existing journey, we reject it and let
-    the normal collector path create/update the new trip row instead.
+    subset of the route, and only stored journey stops are returned for update.
+    Fuzzy matches are intentionally stricter: if the candidate stop set differs
+    from the existing journey, we reject it and let the normal collector path
+    create/update the new trip row instead.
     """
     for trip_id_candidate, trip_arrivals in matching_trips.items():
         if make_train_id(trip_id_candidate) == journey.train_id:
-            return trip_arrivals
+            return [
+                arrival
+                for arrival in trip_arrivals
+                if arrival.station_code in journey_station_codes
+            ]
 
     best_trip: list[Any] | None = None
     best_overlap = 0

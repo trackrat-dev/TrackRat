@@ -17,6 +17,7 @@ from trackrat.collectors.mta_common import (
     JOURNEY_UPDATE_LOAD_OPTIONS,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     select_matching_trip,
     update_journey_metadata,
     update_stop_departure_status,
@@ -453,14 +454,9 @@ class BARTCollector:
         # Find arrivals that match this journey's stops
         journey_station_codes = {s.station_code for s in journey.stops}
 
-        # Group by trip_id
-        matching_trips: dict[str, list[BartArrival]] = {}
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
         best_trip = select_matching_trip(
             matching_trips,

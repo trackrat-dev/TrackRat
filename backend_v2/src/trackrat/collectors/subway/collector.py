@@ -25,6 +25,7 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_subway_origin,
     select_matching_trip,
     set_stop_track,
@@ -520,14 +521,9 @@ class SubwayCollector:
         arrivals = await self.client.get_feed_arrivals(journey.line_code or "")
 
         journey_station_codes = {s.station_code for s in journey.stops}
-        matching_trips: dict[str, list[SubwayArrival]] = {}
-
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
         route_id = journey.line_code or ""
         best_trip = select_matching_trip(

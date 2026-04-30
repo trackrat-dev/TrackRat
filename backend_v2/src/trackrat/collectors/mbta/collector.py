@@ -18,6 +18,7 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_missing_origin,
     select_matching_trip,
     update_journey_metadata,
@@ -510,13 +511,9 @@ class MBTACollector:
         arrivals = await self.client.get_all_arrivals()
         journey_station_codes = {s.station_code for s in journey.stops}
 
-        matching_trips: dict[str, list[MbtaArrival]] = {}
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
         best_trip = select_matching_trip(
             matching_trips,
