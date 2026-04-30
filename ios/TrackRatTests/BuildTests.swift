@@ -121,4 +121,44 @@ class StationNameWithBadgesLayoutTests: XCTestCase {
         let fitted = host.sizeThatFits(in: CGSize(width: 320, height: .greatestFiniteMagnitude))
         XCTAssertGreaterThan(fitted.height, 10, "Subway stop with chips must also render with positive height")
     }
+
+    func testNaturalTextBehaviorKeepsTrainDetailsStationNamesUnscaled() {
+        let stationName = "Princeton Junction Station With A Long Display Name"
+        let width: CGFloat = 120
+
+        let protected = StationNameWithBadges(
+            name: stationName,
+            subwayLines: [],
+            font: .subheadline,
+            chipSize: 14,
+            includeSystemChips: false
+        )
+        .frame(width: width)
+
+        let natural = StationNameWithBadges(
+            name: stationName,
+            subwayLines: [],
+            font: .subheadline,
+            chipSize: 14,
+            includeSystemChips: false,
+            textBehavior: .natural
+        )
+        .frame(width: width)
+
+        let protectedHeight = fittedHeight(for: protected, width: width)
+        let naturalHeight = fittedHeight(for: natural, width: width)
+
+        XCTAssertGreaterThan(
+            naturalHeight,
+            protectedHeight + 6,
+            "TrainDetailsView station names should keep the old natural Text behavior instead of shrinking like protected picker rows"
+        )
+    }
+
+    private func fittedHeight<V: View>(for view: V, width: CGFloat) -> CGFloat {
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: width, height: 200)
+        host.view.layoutIfNeeded()
+        return host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+    }
 }
