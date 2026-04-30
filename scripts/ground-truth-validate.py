@@ -941,16 +941,49 @@ def run_validation_loop(
                 time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
                 detail = ""
                 if verbose and tr_departures:
-                    nearest = min(
-                        tr_departures,
-                        key=lambda tr: abs((tr.departure_time - gt.expected_time).total_seconds()),
+                    # If GT has a trip_id, prefer reporting the TR record with the
+                    # same train_id (even if outside tolerance) — that's the actually
+                    # comparable train. Falling back to nearest-by-time alone is
+                    # misleading when frequencies are short, since the "nearest" may
+                    # be a completely different physical train.
+                    id_matched = (
+                        [tr for tr in tr_departures if gt.train_id and tr.train_id == gt.train_id]
+                        if gt.train_id
+                        else []
                     )
-                    nearest_delta = int((nearest.departure_time - gt.expected_time).total_seconds())
-                    nearest_time = nearest.departure_time.astimezone(et).strftime("%H:%M:%S")
-                    detail = (
-                        f"Nearest TR: {nearest.train_id} @ {nearest_time} "
-                        f"({chr(0x394)} {format_delta(abs(nearest_delta))}, {nearest.observation_type})"
-                    )
+                    if id_matched:
+                        match = min(
+                            id_matched,
+                            key=lambda tr: abs(
+                                (tr.departure_time - gt.expected_time).total_seconds()
+                            ),
+                        )
+                        match_delta = int((match.departure_time - gt.expected_time).total_seconds())
+                        match_time = match.departure_time.astimezone(et).strftime("%H:%M:%S")
+                        detail = (
+                            f"Same-trip TR: {match.train_id} @ {match_time} "
+                            f"({chr(0x394)} {format_delta(abs(match_delta))}, "
+                            f"{match.observation_type})"
+                        )
+                    else:
+                        nearest = min(
+                            tr_departures,
+                            key=lambda tr: abs(
+                                (tr.departure_time - gt.expected_time).total_seconds()
+                            ),
+                        )
+                        nearest_delta = int(
+                            (nearest.departure_time - gt.expected_time).total_seconds()
+                        )
+                        nearest_time = nearest.departure_time.astimezone(et).strftime("%H:%M:%S")
+                        # Label clearly: this is closest-by-time on the route, NOT
+                        # necessarily the same train. The trip_id didn't match (or GT
+                        # has no trip_id), so the delta is the gap to a different train.
+                        detail = (
+                            f"Closest-by-time TR (different train): {nearest.train_id} "
+                            f"@ {nearest_time} ({chr(0x394)} {format_delta(abs(nearest_delta))}, "
+                            f"{nearest.observation_type})"
+                        )
                 # Downgrade far-future trains to WARN: the collector may not have
                 # discovered them yet (e.g. PATH collects every 4 min).
                 if gt.minutes_away > far_future_minutes:
