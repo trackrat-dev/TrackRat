@@ -29,7 +29,7 @@ const STATION_COMPLEXES: string[][] = [
   ['S120', 'SA19'],
   ['S125', 'SA24'],
   ['S126', 'SA25'],
-  ['S128', 'SA28'],
+  ['S128', 'SA28', 'NY'],          // 34 St-Penn Station ↔ NJT/Amtrak/LIRR Penn Station
   ['S127', 'S725', 'SA27', 'SR16', 'S902'],
   ['S132', 'SD19', 'SL02'],
   ['S135', 'S639', 'SA34', 'SM20', 'SQ01', 'SR23'],
@@ -45,7 +45,7 @@ const STATION_COMPLEXES: string[][] = [
   ['S414', 'SD11'],
   ['S629', 'SB08', 'SR11'],
   ['S630', 'SF11'],
-  ['S631', 'S723', 'S901'],
+  ['S631', 'S723', 'S901', 'GCT'], // Grand Central-42 St ↔ MNR/LIRR Grand Central (incl. GS shuttle)
   ['S635', 'SL03', 'SR20'],
   ['S637', 'SD21'],
   ['S640', 'SM21'],

@@ -363,6 +363,24 @@ class StationsTests: XCTestCase {
                      "NHV and MNHV should be equivalent (New Haven)")
     }
 
+    func testAreEquivalentStationsCommuterRailToSubway() {
+        // Penn Station: NJT/Amtrak/LIRR (NY) ↔ Subway 34 St-Penn (S128, SA28)
+        XCTAssertTrue(Stations.areEquivalentStations("NY", "S128"),
+                     "NY and S128 should be equivalent (Penn Station)")
+        XCTAssertTrue(Stations.areEquivalentStations("NY", "SA28"),
+                     "NY and SA28 should be equivalent (Penn Station)")
+        XCTAssertTrue(Stations.areEquivalentStations("S128", "NY"),
+                     "Equivalence should be symmetric")
+
+        // Grand Central: MNR/LIRR (GCT) ↔ Subway Grand Central-42 St (S631, S723, S901)
+        XCTAssertTrue(Stations.areEquivalentStations("GCT", "S631"),
+                     "GCT and S631 should be equivalent (Grand Central)")
+        XCTAssertTrue(Stations.areEquivalentStations("GCT", "S723"),
+                     "GCT and S723 should be equivalent (Grand Central)")
+        XCTAssertTrue(Stations.areEquivalentStations("GCT", "S901"),
+                     "GCT and S901 should be equivalent (Grand Central, GS shuttle)")
+    }
+
     func testAreEquivalentStationsNonEquivalent() {
         // Different stations should not be equivalent
         XCTAssertFalse(Stations.areEquivalentStations("S635", "SG29"),
