@@ -59,6 +59,10 @@ struct StationNameWithBadges: View {
     var chipSize: CGFloat = 14
     var badgeOpacity: Double = 1
     var includeSystemChips: Bool = true
+    /// When true, the name uses `textProtected()` (one line, scales to 75%).
+    /// Set false to render at the full font size with no line limit, matching
+    /// callers whose original plain `Text` had neither modifier.
+    var protectText: Bool = true
 
     var body: some View {
         // Don't wrap the Text in `.frame(maxWidth: .infinity)`: that makes its
@@ -69,7 +73,8 @@ struct StationNameWithBadges: View {
             Text(name)
                 .font(font)
                 .foregroundColor(foregroundColor)
-                .textProtected()
+                .lineLimit(protectText ? 1 : nil)
+                .minimumScaleFactor(protectText ? 0.75 : 1.0)
 
             StationBadges(
                 stationCode: stationCode,
