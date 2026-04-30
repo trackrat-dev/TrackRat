@@ -61,12 +61,15 @@ struct StationNameWithBadges: View {
     var includeSystemChips: Bool = true
 
     var body: some View {
+        // Don't wrap the Text in `.frame(maxWidth: .infinity)`: that makes its
+        // ideal-width report `.infinity`, which collapses the layout's resolved
+        // nameWidth to 0 and erases the station name whenever there are no
+        // badges (e.g. non-subway stops in TrainDetailsView).
         StationNameBadgesLayout(spacing: 6) {
             Text(name)
                 .font(font)
                 .foregroundColor(foregroundColor)
                 .textProtected()
-                .frame(maxWidth: .infinity, alignment: .leading)
 
             StationBadges(
                 stationCode: stationCode,
