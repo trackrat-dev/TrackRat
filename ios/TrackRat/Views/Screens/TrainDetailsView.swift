@@ -740,6 +740,90 @@ struct StopRowV2: View {
         return "" // Don't show anything for on-time or 1 minute early
     }
     
+    private var stopTimes: (arrival: String?, departure: String?) {
+        let display = enhancedTimeDisplay
+        return (display.arrival, display.departure)
+    }
+
+    private var hasTimingText: Bool {
+        let times = stopTimes
+        return times.arrival != nil || times.departure != nil
+    }
+
+    @ViewBuilder
+    private var stationHeader: some View {
+        HStack(spacing: 6) {
+            Text(Stations.displayName(for: stop.stationName))
+                .font(.subheadline)
+                .foregroundColor(textColor)
+
+            if isCancelled {
+                Text("🚫")
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var timingText: some View {
+        let times = stopTimes
+
+        VStack(alignment: .leading, spacing: 2) {
+            if let arrivalText = times.arrival {
+                Text(arrivalText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(timeColor)
+            }
+
+            if let departureText = times.departure {
+                Text(departureText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(timeColor)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stationAndTiming: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            stationHeader
+
+            if hasTimingText {
+                timingText
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var layoutTimingText: some View {
+        if hasTimingText {
+            timingText
+        } else {
+            Color.clear.frame(width: 0, height: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var stationContent: some View {
+        if stationLineBullets.isEmpty {
+            stationAndTiming
+        } else {
+            StopTextBadgesLayout(spacing: 6) {
+                stationHeader
+                layoutTimingText
+
+                SubwayLineChips(
+                    lines: stationLineBullets,
+                    size: 14,
+                    rowAlignment: .trailing,
+                    rowDistribution: .balanced
+                )
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // Stop indicator
@@ -747,42 +831,8 @@ struct StopRowV2: View {
                 .fill(stopColor)
                 .frame(width: 12, height: 12)
             
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    StationNameWithBadges(
-                        name: Stations.displayName(for: stop.stationName),
-                        subwayLines: stationLineBullets,
-                        font: .subheadline,
-                        foregroundColor: textColor,
-                        chipSize: 14,
-                        includeSystemChips: false,
-                        textBehavior: .natural
-                    )
-
-                    if isCancelled {
-                        Text("🚫")
-                            .font(.subheadline)
-                    }
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    if let arrivalText = enhancedTimeDisplay.arrival {
-                        Text(arrivalText)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(timeColor)
-                    }
-                    
-                    if let departureText = enhancedTimeDisplay.departure {
-                        Text(departureText)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(timeColor)
-                    }
-                }
-            }
-            
-            Spacer()
+            stationContent
+                .frame(maxWidth: .infinity, alignment: .leading)
             
             // Show prediction if available and samples > 0
             if let predictedArrival = stop.predictedArrival,
@@ -857,6 +907,92 @@ struct StopRowV2: View {
         if isCancelled { return .clear }
         if isNextImportantStation { return Color(red: 1.0, green: 0.584, blue: 0.0).opacity(0.1) }
         return .clear
+    }
+}
+
+private struct StopTextBadgesLayout: Layout {
+    var spacing: CGFloat
+    var textSpacing: CGFloat = 4
+    var maxBadgeWidthRatio: CGFloat = 0.5
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 3 else { return .zero }
+
+        let proposedWidth = resolvedWidth(proposal.width, fallback: idealWidth(for: subviews))
+        let sizes = measuredSizes(for: subviews, width: proposedWidth)
+
+        return CGSize(
+            width: proposedWidth,
+            height: max(sizes.textHeight, sizes.badges.height)
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else { return }
+
+        let width = resolvedWidth(bounds.width, fallback: idealWidth(for: subviews))
+        let sizes = measuredSizes(for: subviews, width: width)
+        let centeredBadgeY = bounds.minY + (sizes.header.height - sizes.badges.height) / 2
+        let badgesY = sizes.badges.height <= sizes.header.height ? centeredBadgeY : bounds.minY
+
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            proposal: ProposedViewSize(width: sizes.textWidth, height: sizes.header.height)
+        )
+
+        subviews[1].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY + sizes.header.height + sizes.textSpacing),
+            proposal: ProposedViewSize(width: sizes.textWidth, height: sizes.timing.height)
+        )
+
+        subviews[2].place(
+            at: CGPoint(x: bounds.maxX - sizes.badges.width, y: badgesY),
+            proposal: ProposedViewSize(width: sizes.badges.width, height: sizes.badges.height)
+        )
+    }
+
+    private func measuredSizes(
+        for subviews: Subviews,
+        width: CGFloat
+    ) -> (header: CGSize, timing: CGSize, badges: CGSize, textWidth: CGFloat, textHeight: CGFloat, textSpacing: CGFloat) {
+        let unconstrainedBadges = subviews[2].sizeThatFits(.unspecified)
+        let hasBadges = unconstrainedBadges.width > 0 && unconstrainedBadges.height > 0
+        let activeSpacing = hasBadges ? spacing : 0
+        let contentWidth = max(0, width - activeSpacing)
+        let badgeMaxWidth = hasBadges ? contentWidth * maxBadgeWidthRatio : 0
+        let badges = hasBadges
+            ? subviews[2].sizeThatFits(ProposedViewSize(width: badgeMaxWidth, height: nil))
+            : .zero
+        let badgeWidth = min(badges.width, badgeMaxWidth)
+        let textWidth = hasBadges ? max(0, contentWidth - badgeWidth) : width
+        let header = subviews[0].sizeThatFits(ProposedViewSize(width: textWidth, height: nil))
+        let timing = subviews[1].sizeThatFits(ProposedViewSize(width: textWidth, height: nil))
+        let activeTextSpacing = timing.width > 0 && timing.height > 0 ? textSpacing : 0
+        let textHeight = header.height + activeTextSpacing + timing.height
+
+        return (
+            CGSize(width: textWidth, height: header.height),
+            CGSize(width: textWidth, height: timing.height),
+            CGSize(width: badgeWidth, height: badges.height),
+            textWidth,
+            textHeight,
+            activeTextSpacing
+        )
+    }
+
+    private func resolvedWidth(_ width: CGFloat?, fallback: CGFloat) -> CGFloat {
+        guard let width, width.isFinite else {
+            return fallback.isFinite ? max(0, fallback) : 0
+        }
+        return max(0, width)
+    }
+
+    private func idealWidth(for subviews: Subviews) -> CGFloat {
+        let header = subviews[0].sizeThatFits(.unspecified)
+        let timing = subviews[1].sizeThatFits(.unspecified)
+        let badges = subviews[2].sizeThatFits(.unspecified)
+        let activeSpacing = badges.width > 0 && badges.height > 0 ? spacing : 0
+        return max(header.width, timing.width) + activeSpacing + badges.width
     }
 }
 
