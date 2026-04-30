@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import get_station_name, map_amtrak_station_code
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.settings import get_settings
@@ -439,8 +439,9 @@ class AmtrakPatternScheduler:
         if not common_station_codes:
             return None
 
-        required_station_codes = required_station_codes or set()
-        if not required_station_codes <= common_station_codes:
+        if not self._has_required_station_codes(
+            common_station_codes, required_station_codes or set()
+        ):
             return None
 
         templates = []
@@ -475,6 +476,20 @@ class AmtrakPatternScheduler:
 
         templates.sort(key=lambda s: (s["sequence"], s["station_code"]))
         return templates
+
+    @staticmethod
+    def _has_required_station_codes(
+        station_codes: set[str], required_station_codes: set[str]
+    ) -> bool:
+        """Check required stops while tolerating raw/internal Amtrak aliases."""
+        for required_code in required_station_codes:
+            aliases = {required_code}
+            internal_code = map_amtrak_station_code(required_code)
+            if internal_code:
+                aliases.add(internal_code)
+            if not aliases & station_codes:
+                return False
+        return True
 
     @staticmethod
     def _median_number(values: list[int]) -> float:
