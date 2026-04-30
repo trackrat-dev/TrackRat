@@ -421,10 +421,15 @@ struct CombinedDetailsCard: View {
     
     /// Check if train is boarding specifically at the user's origin station
     private var isBoardingAtOrigin: Bool {
+        // Subway has no track assignments and no meaningful boarding window
+        if train.dataSource == "SUBWAY" {
+            return false
+        }
+
         guard let departureCode = appState.departureStationCode else {
             return false
         }
-        
+
         // Simple track-based boarding detection
         return train.isBoardingAtStation(departureCode)
     }
