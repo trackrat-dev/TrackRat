@@ -4,16 +4,16 @@ Unit tests for Amtrak journey collector.
 Tests the journey collection logic for Amtrak trains.
 """
 
+from datetime import date, datetime
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, Mock, MagicMock, patch
-from datetime import datetime, date
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.factories.amtrak import create_amtrak_station_data, create_amtrak_train_data
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
-from trackrat.models.api import AmtrakTrainData, AmtrakStationData
 from trackrat.models.database import TrainJourney
 from trackrat.utils.time import ET
-from tests.factories.amtrak import create_amtrak_train_data, create_amtrak_station_data
 
 
 @pytest.fixture
@@ -535,3 +535,144 @@ class TestComputeEstimatedTime:
         """Test that None scheduled with empty comment returns None."""
         result = AmtrakJourneyCollector._compute_estimated_time(None, "")
         assert result is None
+
+
+class TestAmtrakOrphanStopRemoval:
+    """Verifies that stops absent from the live API response are deleted.
+
+    Regression test for the case where the pattern scheduler creates a
+    SCHEDULED journey by copying stops from a prior OBSERVED journey, and
+    those stops include stations the train no longer stops at on this run
+    (e.g., Acela 2107 with a stale Metropark stop). Without cleanup, the
+    stale stop persists with wrong times after SCHEDULED -> OBSERVED.
+    """
+
+    @pytest.mark.asyncio
+    async def test_convert_removes_stops_not_in_api(self, db_session):
+        """SCHEDULED journey with stale MP stop drops it on first observation."""
+        from sqlalchemy import select
+
+        from trackrat.models.database import JourneyStop
+
+        journey_collector = AmtrakJourneyCollector()
+
+        # Seed a SCHEDULED journey that includes a stale Metropark stop.
+        # Mirrors what AmtrakPatternScheduler creates from past observations.
+        sched_dep_ny = ET.localize(datetime(2026, 4, 30, 7, 35, 0))
+        stale_mp_arrival = ET.localize(datetime(2026, 4, 30, 6, 56, 0))
+
+        journey = TrainJourney(
+            train_id="2107",
+            journey_date=date(2026, 4, 30),
+            data_source="AMTRAK",
+            observation_type="SCHEDULED",
+            line_code="AM",
+            line_name="Amtrak",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            destination="Washington Union",
+            scheduled_departure=sched_dep_ny,
+            has_complete_journey=False,
+            stops_count=3,
+            update_count=1,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        for seq, code, name, sched in [
+            (0, "NY", "New York Penn Station", sched_dep_ny),
+            (
+                1,
+                "MP",
+                "Metropark",
+                stale_mp_arrival,
+            ),  # The stale stop the API never returns
+            (
+                2,
+                "PH",
+                "Philadelphia",
+                ET.localize(datetime(2026, 4, 30, 8, 41, 0)),
+            ),
+        ]:
+            db_session.add(
+                JourneyStop(
+                    journey_id=journey.id,
+                    station_code=code,
+                    station_name=name,
+                    stop_sequence=seq,
+                    scheduled_arrival=sched,
+                    scheduled_departure=sched,
+                    has_departed_station=False,
+                )
+            )
+        await db_session.flush()
+
+        # Now mimic the live API response for Acela 2107: NYP, NWK, PHL, WAS.
+        # No Metropark — Acelas don't stop there.
+        train_data = create_amtrak_train_data(
+            train_id="2107-30",
+            train_num="2107",
+            route="Acela",
+            train_state="Predeparture",
+            stations=[
+                create_amtrak_station_data(
+                    code="NYP",
+                    name="New York Penn",
+                    sch_arr="2026-04-30T07:35:00-04:00",
+                    sch_dep="2026-04-30T07:35:00-04:00",
+                    actual_arr="2026-04-30T07:35:00-04:00",
+                    actual_dep="2026-04-30T07:35:00-04:00",
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="NWK",
+                    name="Newark Penn",
+                    sch_arr="2026-04-30T07:49:00-04:00",
+                    sch_dep="2026-04-30T07:50:00-04:00",
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="PHL",
+                    name="Philadelphia",
+                    sch_arr="2026-04-30T08:41:00-04:00",
+                    sch_dep="2026-04-30T08:43:00-04:00",
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr="2026-04-30T10:30:00-04:00",
+                    sch_dep="2026-04-30T10:30:00-04:00",
+                    status="Enroute",
+                ),
+            ],
+        )
+
+        result = await journey_collector._convert_to_journey(db_session, train_data)
+        await db_session.flush()
+
+        assert result is not None
+        assert result.observation_type == "OBSERVED"
+
+        # Verify the surviving stops are exactly the stations from the API,
+        # with sequential indices and no stale Metropark.
+        stops = (
+            (
+                await db_session.execute(
+                    select(JourneyStop)
+                    .where(JourneyStop.journey_id == result.id)
+                    .order_by(JourneyStop.stop_sequence)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        codes = [s.station_code for s in stops]
+        assert (
+            "MP" not in codes
+        ), f"Stale Metropark stop should have been deleted; got {codes}"
+        assert codes == ["NY", "NP", "PH", "WS"]
+
+        # Ensure stop_sequence is contiguous (no gaps from deleted stops)
+        assert [s.stop_sequence for s in stops] == [0, 1, 2, 3]
