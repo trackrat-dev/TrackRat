@@ -2094,7 +2094,9 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S120", "SA19"},  # 96 St West Side (1/2/3 + A/B/C)
     {"S125", "SA24"},  # 59 St-Columbus Circle
     {"S126", "SA25"},  # 50 St (1/2 + A/C/E)
-    {"S128", "SA28"},  # 34 St-Penn Station (1/2/3 + A/C/E)
+    # NOTE: 34 St-Penn Station is defined in common.py STATION_EQUIVALENCE_GROUPS
+    # as {"NY", "S128", "SA28"} to include the NJT/Amtrak/LIRR Penn Station code.
+    # Do not duplicate here.
     {
         "S127",
         "S725",
@@ -2124,7 +2126,9 @@ SUBWAY_STATION_COMPLEXES: list[set[str]] = [
     {"S414", "SD11"},  # 161 St-Yankee Stadium
     {"S629", "SB08", "SR11"},  # 59 St / Lexington Av/59 St / Lexington Av/63 St
     {"S630", "SF11"},  # 51 St / Lexington Av/53 St
-    {"S631", "S723", "S901"},  # Grand Central-42 St (includes GS shuttle)
+    # NOTE: Grand Central-42 St is defined in common.py STATION_EQUIVALENCE_GROUPS
+    # as {"GCT", "S631", "S723", "S901"} to include the MNR/LIRR Grand Central code
+    # (includes the GS shuttle). Do not duplicate here.
     {"S635", "SL03", "SR20"},  # 14 St-Union Sq
     {"S637", "SD21"},  # Bleecker St / Broadway-Lafayette St
     {"S640", "SM21"},  # Brooklyn Bridge-City Hall / Chambers St
