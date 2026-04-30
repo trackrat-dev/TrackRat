@@ -307,9 +307,9 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         assert len(stops) == 5
         assert journey.stops_count == 5
 
-        # Verify station codes match the full route
+        # Verify station codes match the canonicalized full route
         station_codes = [s.station_code for s in stops]
-        assert station_codes == ["NYP", "NWK", "TRE", "PH", "WS"]
+        assert station_codes == ["NY", "NP", "TR", "PH", "WS"]
 
         # Verify time offset was applied correctly
         assert stops[0].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 5))
