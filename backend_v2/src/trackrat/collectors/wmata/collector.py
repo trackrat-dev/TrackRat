@@ -124,7 +124,12 @@ class WMATACollector:
         try:
             predictions = await self.client.get_all_predictions()
         except Exception as e:
-            logger.error("wmata_predictions_api_failed", error=str(e))
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
+            logger.error(
+                "wmata_predictions_api_failed",
+                error=str(e),
+                status_code=status_code,
+            )
             return {
                 "data_source": "WMATA",
                 "error": str(e),
@@ -202,10 +207,12 @@ class WMATACollector:
         try:
             predictions = await self.client.get_all_predictions()
         except Exception as e:
+            status_code = getattr(getattr(e, "response", None), "status_code", None)
             logger.warning(
                 "wmata_jit_api_failed",
                 train_id=journey.train_id,
                 error=str(e),
+                status_code=status_code,
             )
             journey.api_error_count = (journey.api_error_count or 0) + 1
             if journey.api_error_count >= 3:
