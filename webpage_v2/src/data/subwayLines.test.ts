@@ -92,7 +92,7 @@ describe('linesForStationCode', () => {
   });
 
   it('returns empty array for non-subway station code', () => {
-    expect(linesForStationCode('NY')).toEqual([]);
+    expect(linesForStationCode('TR')).toEqual([]);
     expect(linesForStationCode('NONEXISTENT')).toEqual([]);
   });
 
@@ -166,6 +166,29 @@ describe('linesForStationCode', () => {
     expect(linesS254).toEqual(linesSL26);
     expect(linesS254).toContain('3');
     expect(linesS254).toContain('L');
+  });
+
+  it('returns union across Penn Station / 34 St-Penn complex', () => {
+    // S128 (1/2/3), SA28 (A/C/E), NY (NJT/Amtrak/LIRR Penn Station).
+    const codes = ['S128', 'SA28', 'NY'];
+    const lineSets = codes.map(c => linesForStationCode(c));
+    for (let i = 1; i < lineSets.length; i++) {
+      expect(lineSets[i]).toEqual(lineSets[0]);
+    }
+    expect(lineSets[0]).toContain('1');
+    expect(lineSets[0]).toContain('A');
+  });
+
+  it('returns union across Grand Central / Grand Central-42 St complex', () => {
+    // S631 (4/5/6), S723 (7), S901 (GS shuttle), GCT (MNR/LIRR Grand Central).
+    const codes = ['S631', 'S723', 'S901', 'GCT'];
+    const lineSets = codes.map(c => linesForStationCode(c));
+    for (let i = 1; i < lineSets.length; i++) {
+      expect(lineSets[i]).toEqual(lineSets[0]);
+    }
+    expect(lineSets[0]).toContain('4');
+    expect(lineSets[0]).toContain('7');
+    expect(lineSets[0]).toContain('S');
   });
 });
 

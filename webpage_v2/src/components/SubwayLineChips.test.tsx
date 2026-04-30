@@ -4,8 +4,20 @@ import { SubwayLineChips } from './SubwayLineChips';
 
 describe('SubwayLineChips', () => {
   it('renders nothing for a non-subway station code', () => {
-    const { container } = render(<SubwayLineChips stationCode="NY" />);
+    const { container } = render(<SubwayLineChips stationCode="TR" />);
     expect(container.innerHTML).toBe('');
+  });
+
+  it('renders subway transfer chips for commuter rail hubs', () => {
+    // Penn Station (NY) and Grand Central (GCT) connect to subway complexes
+    // via station equivalence; chips advertise the available transfers.
+    const { rerender } = render(<SubwayLineChips stationCode="NY" />);
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('A')).toBeInTheDocument();
+
+    rerender(<SubwayLineChips stationCode="GCT" />);
+    expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
   });
 
   it('renders chips for a subway station', () => {

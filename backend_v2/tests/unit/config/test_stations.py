@@ -579,7 +579,7 @@ class TestStationEquivalences:
 
     def test_expand_station_codes_without_equivalent(self):
         """expand_station_codes returns single-element list for non-shared stations."""
-        non_shared_codes = ["NY", "TR", "PHO", "MWPL", "JAM"]
+        non_shared_codes = ["TR", "PHO", "MWPL", "JAM"]
         for code in non_shared_codes:
             result = expand_station_codes(code)
             assert result == [
@@ -758,7 +758,6 @@ class TestStationEquivalences:
             {"S119", "SA18"},  # 103 St West
             {"S120", "SA19"},  # 96 St West
             {"S126", "SA25"},  # 50 St
-            {"S128", "SA28"},  # 34 St-Penn Station
             {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},  # Canal St
             {"S208", "S503"},  # Gun Hill Rd
             {"S211", "S504"},  # Pelham Pkwy
