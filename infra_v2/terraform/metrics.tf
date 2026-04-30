@@ -144,9 +144,13 @@ resource "google_logging_metric" "provider_auth_failures" {
     "jsonPayload.level=~\"(error|warning)\"",
     format("(%s)", join(" OR ", [
       "(jsonPayload.event=\"njt_api_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
+      # NJT returns HTTP 200 with a null body when the API token is invalid (see
+      # collectors/njt/client.py:345). The daily getStationSchedule call is the
+      # canonical authenticated request and its non-list response surfaces here.
+      "(jsonPayload.event=\"invalid_schedule_response_type\" AND jsonPayload.response_type=\"NoneType\")",
       "(jsonPayload.event=\"metra_feed_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
       "(jsonPayload.event=\"mbta_feed_http_error\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403))",
-      "(jsonPayload.event=~\"wmata_(predictions|jit)_api_failed\" AND jsonPayload.error=~\"(401|403|Unauthorized|Forbidden)\")",
+      "(jsonPayload.event=~\"wmata_(predictions|jit)_api_failed\" AND (jsonPayload.status_code=401 OR jsonPayload.status_code=403 OR jsonPayload.error=~\"(401|403|Unauthorized|Forbidden)\"))",
       "(jsonPayload.event=\"task_execution_failed\" AND jsonPayload.task=~\"(metra|wmata|mbta)_collection\" AND jsonPayload.error=~\"(401|403|Unauthorized|Forbidden|Invalid token|authentication failed)\")",
     ])),
   ])
