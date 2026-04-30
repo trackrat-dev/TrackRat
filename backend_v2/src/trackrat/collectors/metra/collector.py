@@ -19,6 +19,7 @@ from trackrat.collectors.mta_common import (
     build_complete_stops,
     check_journey_completed,
     infer_missing_origin,
+    select_matching_trip,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -477,7 +478,7 @@ class MetraCollector:
             await session.flush()
             now = now_for_provider(DATA_SOURCE)
             update_stop_departure_status(created_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
             # Analyze segments for congestion data
@@ -519,7 +520,7 @@ class MetraCollector:
             )
             journey_stops = list(stop_result.scalars().all())
             update_stop_departure_status(journey_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
             # Analyze segments for congestion data
@@ -563,37 +564,13 @@ class MetraCollector:
                 matching_trips[arr.trip_id] = []
             matching_trips[arr.trip_id].append(arr)
 
-        # Exact match: regenerate train_id from each candidate trip_id
-        best_trip: list[MetraArrival] | None = None
-        for trip_id_candidate, trip_arrivals in matching_trips.items():
-            if _generate_train_id(trip_id_candidate) == journey.train_id:
-                best_trip = trip_arrivals
-                break
-
-        # Fuzzy fallback: station overlap + time proximity
-        if best_trip is None:
-            best_overlap = 0
-            best_time_diff = float("inf")
-
-            for trip_arrivals in matching_trips.values():
-                trip_stations = {a.station_code for a in trip_arrivals}
-                overlap = len(trip_stations & journey_station_codes)
-
-                time_diff = float("inf")
-                if journey.scheduled_departure:
-                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                    time_diff = abs(
-                        (
-                            first_arr.arrival_time - journey.scheduled_departure
-                        ).total_seconds()
-                    )
-
-                if overlap > best_overlap or (
-                    overlap == best_overlap and time_diff < best_time_diff
-                ):
-                    best_overlap = overlap
-                    best_time_diff = time_diff
-                    best_trip = trip_arrivals
+        best_trip = select_matching_trip(
+            matching_trips,
+            journey,
+            journey_station_codes,
+            _generate_train_id,
+            DATA_SOURCE,
+        )
 
         if not best_trip:
             logger.debug(f"No matching Metra trip found for journey {journey.train_id}")
@@ -633,7 +610,7 @@ class MetraCollector:
         )
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
-        update_journey_metadata(journey, now)
+        update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated Metra journey {journey.train_id}")

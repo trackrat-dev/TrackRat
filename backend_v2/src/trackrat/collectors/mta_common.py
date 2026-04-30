@@ -9,6 +9,7 @@ Follows the patterns established in the PATH collector.
 """
 
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -338,6 +339,76 @@ def set_stop_track(
     )
 
 
+def select_matching_trip(
+    matching_trips: dict[str, list[Any]],
+    journey: TrainJourney,
+    journey_station_codes: set[str],
+    make_train_id: Callable[[str], str],
+    data_source: str,
+) -> list[Any] | None:
+    """Select the live trip that should refresh an existing GTFS-RT journey.
+
+    Exact train-id matches are trusted even when the feed only contains a
+    subset of the route. Fuzzy matches are intentionally stricter: if the
+    candidate stop set differs from the existing journey, we reject it and let
+    the normal collector path create/update the new trip row instead.
+    """
+    for trip_id_candidate, trip_arrivals in matching_trips.items():
+        if make_train_id(trip_id_candidate) == journey.train_id:
+            return trip_arrivals
+
+    best_trip: list[Any] | None = None
+    best_overlap = 0
+    best_time_diff = float("inf")
+    scheduled_departure = getattr(journey, "scheduled_departure", None)
+
+    for trip_arrivals in matching_trips.values():
+        trip_stations = {a.station_code for a in trip_arrivals}
+        overlap = len(trip_stations & journey_station_codes)
+
+        time_diff = float("inf")
+        if isinstance(scheduled_departure, datetime):
+            first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
+            time_diff = abs(
+                (first_arr.arrival_time - scheduled_departure).total_seconds()
+            )
+
+        if overlap > best_overlap or (
+            overlap == best_overlap and time_diff < best_time_diff
+        ):
+            best_overlap = overlap
+            best_time_diff = time_diff
+            best_trip = trip_arrivals
+
+    if not best_trip:
+        return None
+
+    trip_station_codes = {a.station_code for a in best_trip}
+    if trip_station_codes != journey_station_codes:
+        logger.warning(
+            "mta_fuzzy_trip_rejected_stop_set_mismatch",
+            extra={
+                "data_source": data_source,
+                "train_id": journey.train_id,
+                "journey_stations": sorted(journey_station_codes),
+                "candidate_stations": sorted(trip_station_codes),
+                "overlap": len(trip_station_codes & journey_station_codes),
+            },
+        )
+        return None
+
+    logger.info(
+        "mta_fuzzy_trip_matched",
+        extra={
+            "data_source": data_source,
+            "train_id": journey.train_id,
+            "station_count": len(trip_station_codes),
+            "time_diff_seconds": best_time_diff,
+        },
+    )
+    return best_trip
+
+
 def update_stop_departure_status(stops: list[JourneyStop], now: datetime) -> None:
     """Infer departure status for MTA stops based on actual/scheduled times.
 
@@ -409,15 +480,20 @@ def update_stop_departure_status(stops: list[JourneyStop], now: datetime) -> Non
                 )
 
 
-def update_journey_metadata(journey: TrainJourney, now: datetime) -> None:
+def update_journey_metadata(
+    journey: TrainJourney, now: datetime, stops: list[JourneyStop] | None = None
+) -> None:
     """Update journey freshness tracking fields.
 
     Args:
         journey: The journey to update.
         now: Current time (timezone-aware, Eastern).
+        stops: Current stop collection, if available.
     """
     journey.last_updated_at = now
     journey.update_count = (journey.update_count or 0) + 1
+    if stops is not None:
+        journey.stops_count = len(stops)
 
 
 def check_journey_completed(journey: TrainJourney, stops: list[JourneyStop]) -> None:

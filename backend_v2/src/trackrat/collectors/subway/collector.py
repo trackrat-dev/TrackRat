@@ -26,6 +26,7 @@ from trackrat.collectors.mta_common import (
     build_complete_stops,
     check_journey_completed,
     infer_subway_origin,
+    select_matching_trip,
     set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
@@ -473,7 +474,7 @@ class SubwayCollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
             logger.debug(f"Discovered subway train {train_id}")
@@ -502,7 +503,7 @@ class SubwayCollector:
             now = now_et()
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
             logger.debug(f"Updated subway train {train_id}")
@@ -528,42 +529,14 @@ class SubwayCollector:
                 matching_trips[arr.trip_id] = []
             matching_trips[arr.trip_id].append(arr)
 
-        # Exact match: re-hash each candidate trip_id and compare against
-        # the stored train_id. This avoids the fuzzy matching bug where
-        # non-branching lines (e.g., L) have identical station sets for
-        # every trip, causing the fuzzy matcher to pick the wrong train.
-        best_trip: list[SubwayArrival] | None = None
         route_id = journey.line_code or ""
-        for trip_id_candidate, trip_arrivals in matching_trips.items():
-            if _generate_train_id(trip_id_candidate, route_id) == journey.train_id:
-                best_trip = trip_arrivals
-                break
-
-        # Fuzzy fallback: if the trip_id changed (rare), fall back to
-        # station overlap + time proximity.
-        if best_trip is None:
-            best_overlap = 0
-            best_time_diff = float("inf")
-
-            for trip_arrivals in matching_trips.values():
-                trip_stations = {a.station_code for a in trip_arrivals}
-                overlap = len(trip_stations & journey_station_codes)
-
-                time_diff = float("inf")
-                if journey.scheduled_departure:
-                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                    time_diff = abs(
-                        (
-                            first_arr.arrival_time - journey.scheduled_departure
-                        ).total_seconds()
-                    )
-
-                if overlap > best_overlap or (
-                    overlap == best_overlap and time_diff < best_time_diff
-                ):
-                    best_overlap = overlap
-                    best_time_diff = time_diff
-                    best_trip = trip_arrivals
+        best_trip = select_matching_trip(
+            matching_trips,
+            journey,
+            journey_station_codes,
+            lambda trip_id: _generate_train_id(trip_id, route_id),
+            "SUBWAY",
+        )
 
         if not best_trip:
             logger.debug(
@@ -592,7 +565,7 @@ class SubwayCollector:
         now = now_et()
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
-        update_journey_metadata(journey, now)
+        update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated subway journey {journey.train_id}")

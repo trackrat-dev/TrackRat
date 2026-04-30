@@ -38,6 +38,8 @@ class AmtrakPatternScheduler:
     MIN_OCCURRENCES = 2  # Train must appear at least 2 times in the past 3 weeks
     EXPECTED_WEEKS = 3  # Number of weeks we expect to see in lookback period
     TIME_VARIANCE_THRESHOLD = 35  # Minutes - if times vary by more, don't schedule
+    STOP_CONSENSUS_RUNS = 5  # Recent matching runs used to infer scheduled stops
+    MIN_STOP_CONSENSUS_RUNS = 2  # Avoid trusting a one-off route variant
 
     async def generate_daily_schedules(self, target_date: date) -> dict[str, Any]:
         """
@@ -374,43 +376,162 @@ class AmtrakPatternScheduler:
 
         return patterns
 
-    async def _get_recent_journey_stops(
-        self, session: "AsyncSession", train_number: str
-    ) -> list[JourneyStop] | None:
-        """Fetch stops from the most recent complete OBSERVED journey for a train.
-
-        Used to populate SCHEDULED records with full route stops instead of
-        just the origin station, so they appear in departure queries from
-        any station on the route.
-
-        Args:
-            session: Database session
-            train_number: Base train number (e.g., "2150")
-
-        Returns:
-            Sorted list of stops from the most recent journey, or None
-        """
+    async def _get_recent_matching_journeys(
+        self,
+        session: "AsyncSession",
+        pattern: dict[str, Any],
+        target_date: date,
+    ) -> list[TrainJourney]:
+        """Fetch recent complete OBSERVED journeys for the same train and route."""
+        target_dow = (target_date.weekday() + 1) % 7
+        lookback_start = target_date - timedelta(days=self.LOOKBACK_DAYS)
         stmt = (
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
             .where(
                 and_(
-                    TrainJourney.train_id == train_number,
+                    TrainJourney.train_id == pattern["train_number"],
                     TrainJourney.data_source == "AMTRAK",
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),
+                    TrainJourney.is_cancelled.is_(False),
+                    TrainJourney.origin_station_code == pattern["origin"],
+                    TrainJourney.terminal_station_code == pattern["terminal"],
+                    TrainJourney.journey_date >= lookback_start,
+                    TrainJourney.journey_date < target_date,
+                    func.extract("dow", TrainJourney.journey_date) == target_dow,
                 )
             )
             .order_by(TrainJourney.journey_date.desc())
-            .limit(1)
+            .limit(self.STOP_CONSENSUS_RUNS)
         )
 
         result = await session.execute(stmt)
-        recent_journey = result.scalar_one_or_none()
+        return list(result.scalars().all())
 
-        if recent_journey and recent_journey.stops:
-            return sorted(recent_journey.stops, key=lambda s: s.stop_sequence or 0)
-        return None
+    @staticmethod
+    def _scheduled_time_for_order(stop: JourneyStop) -> datetime | None:
+        """Return the best scheduled time for ordering and offsets."""
+        return stop.scheduled_departure or stop.scheduled_arrival
+
+    def _build_consensus_stop_templates(
+        self,
+        journeys: list[TrainJourney],
+        required_station_codes: set[str] | None = None,
+    ) -> list[dict[str, Any]] | None:
+        """Build route stop templates from stations present in every sample run."""
+        if len(journeys) < self.MIN_STOP_CONSENSUS_RUNS:
+            return None
+
+        runs: list[list[JourneyStop]] = []
+        for journey in journeys:
+            stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            if stops and self._scheduled_time_for_order(stops[0]):
+                runs.append(stops)
+
+        if len(runs) < self.MIN_STOP_CONSENSUS_RUNS:
+            return None
+
+        common_station_codes = set(stop.station_code for stop in runs[0])
+        for stops in runs[1:]:
+            common_station_codes &= {stop.station_code for stop in stops}
+
+        if not common_station_codes:
+            return None
+
+        required_station_codes = required_station_codes or set()
+        if not required_station_codes <= common_station_codes:
+            return None
+
+        templates = []
+        for station_code in common_station_codes:
+            sequence_values = []
+            arrival_offsets = []
+            departure_offsets = []
+            station_name = get_station_name(station_code)
+
+            for stops in runs:
+                origin_time = self._scheduled_time_for_order(stops[0])
+                if origin_time is None:
+                    continue
+
+                stop = next(s for s in stops if s.station_code == station_code)
+                sequence_values.append(stop.stop_sequence or 0)
+                station_name = stop.station_name or station_name
+                if stop.scheduled_arrival:
+                    arrival_offsets.append(stop.scheduled_arrival - origin_time)
+                if stop.scheduled_departure:
+                    departure_offsets.append(stop.scheduled_departure - origin_time)
+
+            templates.append(
+                {
+                    "station_code": station_code,
+                    "station_name": station_name,
+                    "sequence": self._median_number(sequence_values),
+                    "arrival_offset": self._median_timedelta(arrival_offsets),
+                    "departure_offset": self._median_timedelta(departure_offsets),
+                }
+            )
+
+        templates.sort(key=lambda s: (s["sequence"], s["station_code"]))
+        return templates
+
+    @staticmethod
+    def _median_number(values: list[int]) -> float:
+        """Calculate median for numeric stop sequence values."""
+        if not values:
+            return 0
+        sorted_values = sorted(values)
+        mid = len(sorted_values) // 2
+        if len(sorted_values) % 2:
+            return float(sorted_values[mid])
+        return (sorted_values[mid - 1] + sorted_values[mid]) / 2
+
+    @staticmethod
+    def _median_timedelta(values: list[timedelta]) -> timedelta | None:
+        """Calculate median for stop time offsets."""
+        if not values:
+            return None
+        sorted_values = sorted(values)
+        mid = len(sorted_values) // 2
+        if len(sorted_values) % 2:
+            return sorted_values[mid]
+        return sorted_values[mid - 1] + (
+            sorted_values[mid] - sorted_values[mid - 1]
+        ) / 2
+
+    def _origin_only_stop(
+        self,
+        journey: TrainJourney,
+        pattern: dict[str, Any],
+        scheduled_departure: datetime,
+    ) -> list[JourneyStop]:
+        """Build the safe fallback stop list when no stable route is known."""
+        return [
+            JourneyStop(
+                journey=journey,
+                station_code=pattern["origin"],
+                station_name=get_station_name(pattern["origin"]),
+                stop_sequence=0,
+                scheduled_departure=scheduled_departure,
+                scheduled_arrival=scheduled_departure,
+                has_departed_station=False,
+            )
+        ]
+
+    @staticmethod
+    def _normalize_stop_sequences(stops: list[JourneyStop]) -> list[JourneyStop]:
+        """Return stops with contiguous sequences before inserting scheduled rows."""
+        ordered_stops = sorted(
+            stops,
+            key=lambda s: (
+                s.stop_sequence if s.stop_sequence is not None else 10**9,
+                s.station_code,
+            ),
+        )
+        for sequence, stop in enumerate(ordered_stops):
+            stop.stop_sequence = sequence
+        return ordered_stops
 
     async def _build_scheduled_stops(
         self,
@@ -419,11 +540,11 @@ class AmtrakPatternScheduler:
         pattern: dict[str, Any],
         scheduled_departure: datetime,
     ) -> list[JourneyStop]:
-        """Build stops for a SCHEDULED journey from the most recent OBSERVED journey.
+        """Build stops for a SCHEDULED journey from recent OBSERVED consensus.
 
-        Copies the full stop list from a recent OBSERVED journey and adjusts
-        all times to the target date using the pattern's median departure.
-        Falls back to a single origin stop if no recent journey is available.
+        Uses stations present across recent matching OBSERVED journeys rather
+        than copying one run. This prevents one-off stops from appearing in
+        future SCHEDULED rows before the train is live and reconciled.
 
         Args:
             session: Database session
@@ -434,63 +555,37 @@ class AmtrakPatternScheduler:
         Returns:
             List of JourneyStop objects for the scheduled journey
         """
-        recent_stops = await self._get_recent_journey_stops(
-            session, pattern["train_number"]
+        recent_journeys = await self._get_recent_matching_journeys(
+            session, pattern, scheduled_departure.date()
+        )
+        stop_templates = self._build_consensus_stop_templates(
+            recent_journeys,
+            {pattern["origin"], pattern["terminal"]},
         )
 
-        if not recent_stops:
+        if not stop_templates:
             logger.debug(
-                "no_recent_stops_for_pattern",
+                "no_consensus_stops_for_pattern",
                 train_number=pattern["train_number"],
+                sample_count=len(recent_journeys),
             )
-            return [
-                JourneyStop(
-                    journey=journey,
-                    station_code=pattern["origin"],
-                    station_name=get_station_name(pattern["origin"]),
-                    stop_sequence=0,
-                    scheduled_departure=scheduled_departure,
-                    scheduled_arrival=scheduled_departure,
-                    has_departed_station=False,
-                )
-            ]
-
-        # Calculate time offset: shift from recent journey's origin to target departure
-        ref_departure = recent_stops[0].scheduled_departure
-        if not ref_departure:
-            logger.debug(
-                "no_reference_departure_time",
-                train_number=pattern["train_number"],
-            )
-            return [
-                JourneyStop(
-                    journey=journey,
-                    station_code=pattern["origin"],
-                    station_name=get_station_name(pattern["origin"]),
-                    stop_sequence=0,
-                    scheduled_departure=scheduled_departure,
-                    scheduled_arrival=scheduled_departure,
-                    has_departed_station=False,
-                )
-            ]
-
-        time_offset = scheduled_departure - ref_departure
+            return self._origin_only_stop(journey, pattern, scheduled_departure)
 
         stops = []
-        for i, ref_stop in enumerate(recent_stops):
+        for i, template in enumerate(stop_templates):
             stop = JourneyStop(
                 journey=journey,
-                station_code=ref_stop.station_code,
-                station_name=ref_stop.station_name,
+                station_code=template["station_code"],
+                station_name=template["station_name"],
                 stop_sequence=i,
                 scheduled_departure=(
-                    ref_stop.scheduled_departure + time_offset
-                    if ref_stop.scheduled_departure
+                    scheduled_departure + template["departure_offset"]
+                    if template["departure_offset"] is not None
                     else None
                 ),
                 scheduled_arrival=(
-                    ref_stop.scheduled_arrival + time_offset
-                    if ref_stop.scheduled_arrival
+                    scheduled_departure + template["arrival_offset"]
+                    if template["arrival_offset"] is not None
                     else None
                 ),
                 has_departed_station=False,
@@ -498,9 +593,10 @@ class AmtrakPatternScheduler:
             stops.append(stop)
 
         logger.debug(
-            "built_scheduled_stops_from_recent",
+            "built_scheduled_stops_from_consensus",
             train_number=pattern["train_number"],
             stop_count=len(stops),
+            sample_count=len(recent_journeys),
             stations=[s.station_code for s in stops],
         )
 
@@ -580,7 +676,7 @@ class AmtrakPatternScheduler:
                     update_count=1,
                 )
 
-                # Build stops from most recent OBSERVED journey for full route coverage
+                # Build stops from recent OBSERVED consensus for route coverage
                 stops = await self._build_scheduled_stops(
                     session, journey, pattern, scheduled_departure
                 )
@@ -624,7 +720,7 @@ class AmtrakPatternScheduler:
         async with get_session() as session:
             for item in scheduled_journeys:
                 journey = item["journey"]
-                stops = item["stops"]
+                stops = self._normalize_stop_sequences(item["stops"])
 
                 try:
                     # Check for existing SCHEDULED record
