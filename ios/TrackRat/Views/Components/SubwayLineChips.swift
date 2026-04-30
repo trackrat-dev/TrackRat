@@ -14,10 +14,17 @@ struct SubwayLineChips: View {
     /// `.subheadline` text. Use a smaller value in tight contexts (e.g. compact
     /// list rows) or larger in headers.
     var size: CGFloat = 16
+    var rowAlignment: WrappingRowAlignment = .leading
+    var rowDistribution: WrappingRowDistribution = .greedy
 
     var body: some View {
         if !lines.isEmpty {
-            WrappingHStackLayout(spacing: 3, rowSpacing: 3) {
+            WrappingHStackLayout(
+                spacing: 3,
+                rowSpacing: 3,
+                rowAlignment: rowAlignment,
+                rowDistribution: rowDistribution
+            ) {
                 ForEach(lines, id: \.self) { line in
                     SubwayLineChip(line: line, size: size)
                 }
@@ -46,6 +53,16 @@ struct SubwayLineChips: View {
         let brightness = (Double(r) * 299 + Double(g) * 587 + Double(b) * 114) / 1000
         return brightness > 150 ? .black : .white
     }
+}
+
+enum WrappingRowAlignment {
+    case leading
+    case trailing
+}
+
+enum WrappingRowDistribution {
+    case greedy
+    case balanced
 }
 
 enum StationNameTextBehavior {
@@ -237,6 +254,8 @@ private struct StationNameBadgesLayout: Layout {
 private struct WrappingHStackLayout: Layout {
     var spacing: CGFloat
     var rowSpacing: CGFloat
+    var rowAlignment: WrappingRowAlignment = .leading
+    var rowDistribution: WrappingRowDistribution = .greedy
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let rows = rows(for: subviews, maxWidth: proposal.width)
@@ -249,6 +268,13 @@ private struct WrappingHStackLayout: Layout {
 
         for row in rows.items {
             var x = bounds.minX
+            switch rowAlignment {
+            case .leading:
+                break
+            case .trailing:
+                x = bounds.maxX - row.width
+            }
+
             for item in row.items {
                 subviews[item.index].place(
                     at: CGPoint(x: x, y: y),
@@ -261,24 +287,17 @@ private struct WrappingHStackLayout: Layout {
     }
 
     private func rows(for subviews: Subviews, maxWidth: CGFloat?) -> (items: [Row], width: CGFloat, height: CGFloat) {
-        let availableWidth = maxWidth ?? .greatestFiniteMagnitude
-        var rows: [Row] = []
-        var current = Row()
-
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            let nextWidth = current.items.isEmpty ? size.width : current.width + spacing + size.width
-
-            if !current.items.isEmpty && nextWidth > availableWidth {
-                rows.append(current)
-                current = Row()
-            }
-
-            current.append(Item(index: index, size: size), spacing: spacing)
+        let availableWidth = maxWidth.flatMap { $0.isFinite ? max(0, $0) : nil } ?? .greatestFiniteMagnitude
+        let measuredItems = subviews.indices.map { index in
+            Item(index: index, size: subviews[index].sizeThatFits(.unspecified))
         }
 
-        if !current.items.isEmpty {
-            rows.append(current)
+        let rows: [Row]
+        switch rowDistribution {
+        case .greedy:
+            rows = greedyRows(for: measuredItems, availableWidth: availableWidth)
+        case .balanced:
+            rows = balancedRows(for: measuredItems, availableWidth: availableWidth)
         }
 
         let width = min(rows.map(\.width).max() ?? 0, availableWidth)
@@ -287,6 +306,65 @@ private struct WrappingHStackLayout: Layout {
         } + CGFloat(max(0, rows.count - 1)) * rowSpacing
 
         return (rows, width, height)
+    }
+
+    private func greedyRows(for items: [Item], availableWidth: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+
+        for item in items {
+            let nextWidth = current.items.isEmpty ? item.size.width : current.width + spacing + item.size.width
+
+            if !current.items.isEmpty && nextWidth > availableWidth {
+                rows.append(current)
+                current = Row()
+            }
+
+            current.append(item, spacing: spacing)
+        }
+
+        if !current.items.isEmpty {
+            rows.append(current)
+        }
+
+        return rows
+    }
+
+    private func balancedRows(for items: [Item], availableWidth: CGFloat) -> [Row] {
+        let greedy = greedyRows(for: items, availableWidth: availableWidth)
+        guard greedy.count > 1 else { return greedy }
+
+        for rowCount in greedy.count...items.count {
+            let rows = rowsWithEvenCounts(for: items, rowCount: rowCount)
+            if rows.allSatisfy({ $0.width <= availableWidth }) {
+                return rows
+            }
+        }
+
+        return greedy
+    }
+
+    private func rowsWithEvenCounts(for items: [Item], rowCount: Int) -> [Row] {
+        guard rowCount > 0 else { return [] }
+
+        let baseCount = items.count / rowCount
+        let extraRows = items.count % rowCount
+        var rows: [Row] = []
+        var index = 0
+
+        for rowIndex in 0..<rowCount {
+            let count = baseCount + (rowIndex < extraRows ? 1 : 0)
+            guard count > 0 else { continue }
+
+            var row = Row()
+            for item in items[index..<(index + count)] {
+                row.append(item, spacing: spacing)
+            }
+            rows.append(row)
+            index += count
+        }
+
+        return rows
     }
 
     private struct Item {
