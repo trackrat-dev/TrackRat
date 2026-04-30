@@ -140,7 +140,12 @@ private struct StationBadges: View {
 
     var body: some View {
         if !subwayLines.isEmpty || !systems.isEmpty {
-            WrappingHStackLayout(spacing: 3, rowSpacing: 3) {
+            WrappingHStackLayout(
+                spacing: 3,
+                rowSpacing: 3,
+                rowAlignment: .trailing,
+                rowDistribution: .balanced
+            ) {
                 ForEach(subwayLines, id: \.self) { line in
                     SubwayLineChip(line: line, size: size)
                 }
@@ -211,7 +216,7 @@ private struct StationNameBadgesLayout: Layout {
         )
 
         subviews[1].place(
-            at: CGPoint(x: bounds.minX + sizes.name.width + sizes.spacing, y: badgesY),
+            at: CGPoint(x: bounds.maxX - sizes.badges.width, y: badgesY),
             proposal: ProposedViewSize(width: sizes.badges.width, height: sizes.badges.height)
         )
     }
