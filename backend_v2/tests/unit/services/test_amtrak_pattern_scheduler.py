@@ -173,6 +173,33 @@ async def test_high_variance_filter(pattern_scheduler):
 
 
 @pytest.mark.asyncio
+async def test_recent_matching_journeys_filters_amtrak_station_aliases(
+    pattern_scheduler,
+):
+    """Historical route samples should match raw/internal Amtrak station aliases."""
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
+
+    await pattern_scheduler._get_recent_matching_journeys(
+        session,
+        {
+            "train_number": "2150",
+            "origin": "NYP",
+            "terminal": "WAS",
+        },
+        date(2024, 1, 25),
+    )
+
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "origin_station_code IN ('NY', 'NYP')" in compiled
+    assert "terminal_station_code IN ('WAS', 'WS')" in compiled
+
+
+@pytest.mark.asyncio
 async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
     """SCHEDULED journeys use a stable stop list from multiple recent runs."""
     target_date = date(2024, 1, 25)

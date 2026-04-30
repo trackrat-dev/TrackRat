@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.config.stations import get_station_name, map_amtrak_station_code
+from trackrat.config.stations import (
+    get_station_name,
+    map_amtrak_station_code,
+    map_internal_to_amtrak_code,
+)
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.settings import get_settings
@@ -385,6 +389,8 @@ class AmtrakPatternScheduler:
         """Fetch recent complete OBSERVED journeys for the same train and route."""
         target_dow = (target_date.weekday() + 1) % 7
         lookback_start = target_date - timedelta(days=self.LOOKBACK_DAYS)
+        origin_codes = sorted(self._station_code_aliases(pattern["origin"]))
+        terminal_codes = sorted(self._station_code_aliases(pattern["terminal"]))
         stmt = (
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
@@ -395,8 +401,8 @@ class AmtrakPatternScheduler:
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),
                     TrainJourney.is_cancelled.is_(False),
-                    TrainJourney.origin_station_code == pattern["origin"],
-                    TrainJourney.terminal_station_code == pattern["terminal"],
+                    TrainJourney.origin_station_code.in_(origin_codes),
+                    TrainJourney.terminal_station_code.in_(terminal_codes),
                     TrainJourney.journey_date >= lookback_start,
                     TrainJourney.journey_date < target_date,
                     func.extract("dow", TrainJourney.journey_date) == target_dow,
@@ -483,13 +489,22 @@ class AmtrakPatternScheduler:
     ) -> bool:
         """Check required stops while tolerating raw/internal Amtrak aliases."""
         for required_code in required_station_codes:
-            aliases = {required_code}
-            internal_code = map_amtrak_station_code(required_code)
-            if internal_code:
-                aliases.add(internal_code)
+            aliases = AmtrakPatternScheduler._station_code_aliases(required_code)
             if not aliases & station_codes:
                 return False
         return True
+
+    @staticmethod
+    def _station_code_aliases(station_code: str) -> set[str]:
+        """Return raw/internal Amtrak aliases for a station code."""
+        aliases = {station_code}
+        internal_code = map_amtrak_station_code(station_code)
+        if internal_code:
+            aliases.add(internal_code)
+        amtrak_code = map_internal_to_amtrak_code(station_code)
+        if amtrak_code:
+            aliases.add(amtrak_code)
+        return aliases
 
     @staticmethod
     def _median_number(values: list[int]) -> float:
