@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// Tracks the wider of the leading/trailing content widths so the centered
+/// title can pad symmetrically and never overlap either side.
+private struct NavSideWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Reusable navigation header that replaces the system navigation bar
 /// to prevent layout shift issues on initial load.
 ///
@@ -16,6 +25,8 @@ struct TrackRatNavigationHeader<TitleAccessory: View, TrailingContent: View>: Vi
     var onBackAction: (() -> Void)? = nil
     var titleAccessory: () -> TitleAccessory
     var trailingContent: (() -> TrailingContent)?
+
+    @State private var sideWidth: CGFloat = 0
 
     init(
         title: String,
@@ -55,7 +66,7 @@ struct TrackRatNavigationHeader<TitleAccessory: View, TrailingContent: View>: Vi
                         .minimumScaleFactor(0.75)
                 }
             }
-            .padding(.horizontal, 60)
+            .padding(.horizontal, sideWidth + 8)
 
             // Leading and trailing content
             HStack {
@@ -74,6 +85,7 @@ struct TrackRatNavigationHeader<TitleAccessory: View, TrailingContent: View>: Vi
                             .frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.plain)
+                    .background(sideWidthReader)
                 }
 
                 Spacer()
@@ -82,6 +94,7 @@ struct TrackRatNavigationHeader<TitleAccessory: View, TrailingContent: View>: Vi
                 if let trailingContent = trailingContent {
                     trailingContent()
                         .frame(height: 44)
+                        .background(sideWidthReader)
                 } else if showCloseButton {
                     Button {
                         dismiss()
@@ -92,11 +105,19 @@ struct TrackRatNavigationHeader<TitleAccessory: View, TrailingContent: View>: Vi
                             .frame(minWidth: 44, minHeight: 44)
                     }
                     .buttonStyle(.plain)
+                    .background(sideWidthReader)
                 }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .onPreferenceChange(NavSideWidthKey.self) { sideWidth = $0 }
+    }
+
+    private var sideWidthReader: some View {
+        GeometryReader { geo in
+            Color.clear.preference(key: NavSideWidthKey.self, value: geo.size.width)
+        }
     }
 }
 
