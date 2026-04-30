@@ -11,9 +11,11 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_direction_from_terminals,
     infer_missing_origin,
     infer_subway_origin,
+    select_matching_trip,
     set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
@@ -311,6 +313,157 @@ class TestUpdateJourneyMetadata:
 
         assert journey.update_count == 1
 
+    def test_refreshes_stops_count_when_stops_are_provided(self):
+        """Should keep journey metadata aligned with the current stop collection."""
+        now = datetime.now(timezone.utc)
+        journey = MagicMock(spec=TrainJourney)
+        journey.update_count = 0
+        journey.stops_count = 99
+
+        update_journey_metadata(journey, now, [MagicMock(), MagicMock()])
+
+        assert journey.stops_count == 2
+
+
+class TestSelectMatchingTrip:
+    """Tests for GTFS-RT exact/fuzzy trip selection."""
+
+    def test_grouping_preserves_candidate_extra_stops(self):
+        """Candidate trip grouping must keep stops outside the stored journey."""
+        now = datetime.now(timezone.utc)
+        arrivals = [
+            _make_arrival("JAM", now, trip_id="new_trip"),
+            _make_arrival("NY", now + timedelta(minutes=10), trip_id="new_trip"),
+            _make_arrival("ATL", now + timedelta(minutes=20), trip_id="new_trip"),
+            _make_arrival("GCT", now, trip_id="other_trip"),
+        ]
+
+        matching_trips = group_candidate_trips_by_overlap(arrivals, {"JAM", "NY"})
+
+        assert set(matching_trips) == {"new_trip"}
+        assert [a.station_code for a in matching_trips["new_trip"]] == [
+            "JAM",
+            "NY",
+            "ATL",
+        ]
+
+    def test_rejects_fuzzy_match_with_extra_candidate_stop(self):
+        """Fuzzy fallback must see and reject added route-variant stops."""
+        now = datetime.now(timezone.utc)
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "L999"
+        journey.scheduled_departure = now
+
+        arrivals = [
+            _make_arrival("JAM", now + timedelta(seconds=30), trip_id="new_trip"),
+            _make_arrival("NY", now + timedelta(minutes=10), trip_id="new_trip"),
+            _make_arrival("ATL", now + timedelta(minutes=20), trip_id="new_trip"),
+        ]
+        matching_trips = group_candidate_trips_by_overlap(arrivals, {"JAM", "NY"})
+
+        result = select_matching_trip(
+            matching_trips,
+            journey,
+            {"JAM", "NY"},
+            lambda _trip_id: "L123",
+            "LIRR",
+        )
+
+        assert result is None
+
+    def test_exact_match_allows_partial_live_stop_set(self):
+        """Exact trip-id matches can refresh even when RT omits passed stops."""
+        now = datetime.now(timezone.utc)
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "L123"
+        journey.scheduled_departure = now
+
+        candidate = [
+            _make_arrival("JAM", now + timedelta(minutes=5)),
+            _make_arrival("NY", now + timedelta(minutes=20)),
+        ]
+        matching_trips = {"trip_123": candidate}
+
+        result = select_matching_trip(
+            matching_trips,
+            journey,
+            {"GCT", "JAM", "NY"},
+            lambda trip_id: "L123" if trip_id == "trip_123" else "L999",
+            "LIRR",
+        )
+
+        assert [arrival.station_code for arrival in result or []] == ["JAM", "NY"]
+
+    def test_exact_match_ignores_extra_live_stops_when_updating(self):
+        """Exact matches should not widen the stored journey during updates."""
+        now = datetime.now(timezone.utc)
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "L123"
+        journey.scheduled_departure = now
+
+        candidate = [
+            _make_arrival("JAM", now + timedelta(minutes=5)),
+            _make_arrival("NY", now + timedelta(minutes=20)),
+            _make_arrival("ATL", now + timedelta(minutes=35)),
+        ]
+        matching_trips = {"trip_123": candidate}
+
+        result = select_matching_trip(
+            matching_trips,
+            journey,
+            {"JAM", "NY"},
+            lambda trip_id: "L123" if trip_id == "trip_123" else "L999",
+            "LIRR",
+        )
+
+        assert [arrival.station_code for arrival in result or []] == ["JAM", "NY"]
+
+    def test_rejects_fuzzy_match_with_different_stop_set(self):
+        """Fuzzy trip-id fallback must not mutate a journey for another variant."""
+        now = datetime.now(timezone.utc)
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "L999"
+        journey.scheduled_departure = now
+
+        candidate = [
+            _make_arrival("JAM", now + timedelta(seconds=30)),
+            _make_arrival("ATL", now + timedelta(minutes=10)),
+        ]
+        matching_trips = {"new_trip": candidate}
+
+        result = select_matching_trip(
+            matching_trips,
+            journey,
+            {"JAM", "NY"},
+            lambda _trip_id: "L123",
+            "LIRR",
+        )
+
+        assert result is None
+
+    def test_accepts_fuzzy_match_with_same_stop_set(self):
+        """Fuzzy fallback remains available for true trip-id reassignment."""
+        now = datetime.now(timezone.utc)
+        journey = MagicMock(spec=TrainJourney)
+        journey.train_id = "L999"
+        journey.scheduled_departure = now
+
+        candidate = [
+            _make_arrival("JAM", now + timedelta(seconds=30)),
+            _make_arrival("NY", now + timedelta(minutes=10)),
+        ]
+        matching_trips = {"new_trip": candidate}
+
+        result = select_matching_trip(
+            matching_trips,
+            journey,
+            {"JAM", "NY"},
+            lambda _trip_id: "L123",
+            "LIRR",
+        )
+
+        assert result is candidate
+
 
 class TestCheckJourneyCompleted:
     """Tests for check_journey_completed()."""
@@ -417,9 +570,11 @@ def _make_arrival(
     departure_time: datetime | None = None,
     delay_seconds: int = 0,
     track: str | None = None,
+    trip_id: str = "trip",
 ) -> MagicMock:
     """Create a mock GTFS-RT arrival (LirrArrival/MnrArrival compatible)."""
     arr = MagicMock()
+    arr.trip_id = trip_id
     arr.station_code = station_code
     arr.arrival_time = arrival_time
     arr.departure_time = departure_time

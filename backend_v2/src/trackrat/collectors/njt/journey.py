@@ -1509,27 +1509,30 @@ class JourneyCollector(BaseJourneyCollector):
         # Flush changes so newly created/updated stops are visible in the database
         await session.flush()
 
-        # Delete phantom stops that don't appear in API response
-        # This removes schedule-generated placeholder stops that don't match reality
+        # Delete phantom stops that don't appear in the API response.
+        # This removes schedule-generated placeholder stops that don't match reality.
         api_station_codes = {stop_data.STATION_2CHAR for stop_data in stops_data}
-        stmt = select(JourneyStop).where(JourneyStop.journey_id == journey.id)
-        result = await session.execute(stmt)
-        all_stops = list(result.scalars().all())
-
-        for stop in all_stops:
-            if stop.station_code not in api_station_codes:
+        if api_station_codes:
+            deleted = cast(
+                CursorResult[tuple[()]],
+                await session.execute(
+                    delete(JourneyStop).where(
+                        and_(
+                            JourneyStop.journey_id == journey.id,
+                            JourneyStop.station_code.notin_(api_station_codes),
+                        )
+                    ).execution_options(synchronize_session="fetch")
+                ),
+            )
+            phantom_count = deleted.rowcount or 0
+            if phantom_count:
                 logger.warning(
-                    "deleting_phantom_stop",
+                    "deleted_phantom_stops",
                     journey_id=journey.id,
                     train_id=journey.train_id,
-                    station_code=stop.station_code,
-                    stop_sequence=stop.stop_sequence,
-                    had_scheduled_times=bool(
-                        stop.scheduled_arrival or stop.scheduled_departure
-                    ),
-                    had_actual_times=bool(stop.actual_departure or stop.actual_arrival),
+                    count=phantom_count,
+                    api_station_codes=sorted(api_station_codes),
                 )
-                await session.delete(stop)
 
         # Re-sequence all stops for this journey to ensure consistency
         await self._resequence_stops(session, journey)

@@ -19,7 +19,9 @@ from trackrat.collectors.mta_common import (
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_missing_origin,
+    select_matching_trip,
     set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
@@ -487,7 +489,7 @@ class LIRRCollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
             logger.debug(f"Discovered LIRR train {train_id}")
@@ -520,7 +522,7 @@ class LIRRCollector:
             now = now_et()
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
             logger.debug(f"Updated LIRR train {train_id}")
@@ -547,52 +549,17 @@ class LIRRCollector:
         # Find arrivals that match this journey's stops
         journey_station_codes = {s.station_code for s in journey.stops}
 
-        # Find arrivals that might be part of this journey
-        # Match by origin station and approximate departure time
-        matching_trips: dict[str, list[LirrArrival]] = {}
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
-
-        # Exact match: regenerate train_id from each candidate trip_id
-        # and compare against the stored train_id. This avoids the fuzzy
-        # matching bug where trains on the same branch with identical
-        # station sets and close departure times get swapped.
-        best_trip: list[LirrArrival] | None = None
-        for trip_id_candidate, trip_arrivals in matching_trips.items():
-            if _generate_train_id(trip_id_candidate) == journey.train_id:
-                best_trip = trip_arrivals
-                break
-
-        # Fuzzy fallback: if the trip_id changed (rare), fall back to
-        # station overlap + time proximity.
-        if best_trip is None:
-            best_overlap = 0
-            best_time_diff = float("inf")
-
-            for trip_arrivals in matching_trips.values():
-                trip_stations = {a.station_code for a in trip_arrivals}
-                overlap = len(trip_stations & journey_station_codes)
-
-                time_diff = float("inf")
-                if journey.scheduled_departure:
-                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                    time_diff = abs(
-                        (
-                            first_arr.arrival_time - journey.scheduled_departure
-                        ).total_seconds()
-                    )
-
-                if overlap > best_overlap or (
-                    overlap == best_overlap and time_diff < best_time_diff
-                ):
-                    best_overlap = overlap
-                    best_time_diff = time_diff
-                    best_trip = trip_arrivals
+        best_trip = select_matching_trip(
+            matching_trips,
+            journey,
+            journey_station_codes,
+            _generate_train_id,
+            "LIRR",
+        )
 
         if not best_trip:
             logger.debug(f"No matching LIRR trip found for journey {journey.train_id}")
@@ -633,7 +600,7 @@ class LIRRCollector:
         )
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
-        update_journey_metadata(journey, now)
+        update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated LIRR journey {journey.train_id}")
