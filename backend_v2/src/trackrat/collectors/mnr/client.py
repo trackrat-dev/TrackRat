@@ -18,8 +18,14 @@ from trackrat.config.stations import (
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
     MNR_ROUTES,
 )
+from trackrat.utils.sanitize import validate_track
 
 logger = logging.getLogger(__name__)
+
+# Phase-broken HTTP timeout. Bounds a hung TCP connect or stalled TLS handshake
+# independently from read time so an unreachable MTA host can't consume the
+# scheduler's 480s budget waiting on a scalar read timeout.
+_DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
 
 
 class MnrArrival(BaseModel):
@@ -50,13 +56,17 @@ class MNRClient:
     Uses a 30-second cache to minimize API calls.
     """
 
-    def __init__(self, timeout: float = 30.0) -> None:
+    def __init__(self, timeout: httpx.Timeout | float | None = None) -> None:
         """Initialize Metro-North client.
 
         Args:
-            timeout: HTTP request timeout in seconds
+            timeout: httpx.Timeout instance or scalar seconds. Defaults to a
+                phase-broken timeout (connect=5s, read=15s, write=5s, pool=5s)
+                so a hung TCP connect can't hold the whole collector.
         """
-        self.timeout = timeout
+        self.timeout: httpx.Timeout | float = (
+            timeout if timeout is not None else _DEFAULT_TIMEOUT
+        )
         self._session: httpx.AsyncClient | None = None
         self._cache: list[MnrArrival] | None = None
         self._cache_time: datetime | None = None
@@ -172,8 +182,15 @@ class MNRClient:
                             continue
                         arrival_time = departure_time
 
-                    # Extract track from MTA Railroad GTFS-RT extension (field 1005)
-                    track = extract_mta_track(stu)
+                    # Extract track from MTA Railroad GTFS-RT extension (field 1005),
+                    # then reject values that aren't in the station's known track set
+                    # (protects against occasional bad frames in MTA's feed).
+                    track = validate_track(
+                        station_code,
+                        extract_mta_track(stu),
+                        data_source="MNR",
+                        train_id=trip_id,
+                    )
 
                     arrivals.append(
                         MnrArrival(

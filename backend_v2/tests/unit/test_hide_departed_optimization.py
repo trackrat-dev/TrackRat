@@ -39,6 +39,7 @@ class TestHideDepartedOptimization:
         session.add = Mock()
         session.refresh = AsyncMock()
         session.get = AsyncMock(return_value=None)
+        session.begin_nested = MagicMock(return_value=AsyncMock())
 
         return session
 

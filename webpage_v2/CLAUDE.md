@@ -243,7 +243,6 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 
 ### Time Formatting
 - `formatTime()` - "3:45 PM"
-- `formatTimeAgo()` - "2 minutes ago"
 - `formatDate()` - "Jan 15, 2025"
 - `getDelayMinutes()` - Calculate delay from scheduled vs actual
 - `isToday()` - Check if date string is today
@@ -262,7 +261,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 - **In-Memory Cache**: No IndexedDB, clears on refresh
 - **LocalStorage Only**: No backend user preferences
 - **Static Station List**: No dynamic station API calls
-- **No Code Splitting**: Small enough to ship as single bundle
+- **Minimal Code Splitting**: `React.lazy()` used for heavy components (e.g., RouteMap)
 
 ## Data Model
 

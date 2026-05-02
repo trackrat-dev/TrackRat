@@ -5,21 +5,25 @@ Uses the MNRClient to fetch GTFS-RT data and creates/updates TrainJourney record
 Follows the same pattern as the LIRR collector for consistency.
 """
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from trackrat.collectors.mnr.client import MnrArrival, MNRClient
 from trackrat.collectors.mta_common import (
+    JOURNEY_UPDATE_LOAD_OPTIONS,
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_direction_from_terminals,
     infer_missing_origin,
+    select_matching_trip,
+    set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -34,6 +38,11 @@ from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import ET, now_et
 
 logger = logging.getLogger(__name__)
+
+# Outer bound on the feed fetch. Generous relative to the per-phase timeouts in
+# MNRClient, but still leaves the bulk of the 480s scheduler budget for DB
+# work when the upstream MTA endpoint is degraded.
+_FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
 
 def _generate_train_id(trip_id: str) -> str:
@@ -116,8 +125,22 @@ class MNRCollector:
         try:
             collection_start = now_et()
 
-            # Fetch all arrivals
-            arrivals = await self.client.get_all_arrivals()
+            # Fetch all arrivals. Wrap in wait_for so an upstream MTA outage
+            # (hung connects, stalled reads beyond the phase timeouts) can't
+            # consume the whole 480s scheduler budget — we bail with empty
+            # stats and pick it up next cycle (~4 min).
+            try:
+                arrivals = await asyncio.wait_for(
+                    self.client.get_all_arrivals(),
+                    timeout=_FEED_FETCH_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "mnr_feed_fetch_timed_out | timeout_s=%.1f",
+                    _FEED_FETCH_TIMEOUT_SECONDS,
+                )
+                return stats
+
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:
@@ -137,16 +160,19 @@ class MNRCollector:
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             trips_in_batch = 0
+            analyzed_journeys: list[TrainJourney] = []
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
-                        result = await self._process_trip(
+                        result, journey = await self._process_trip(
                             session, trip_id, trip_arrivals
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
+                        if journey is not None and journey.id is not None:
+                            analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing MNR trip {trip_id}: {e}")
                     stats["errors"] += 1
@@ -162,6 +188,12 @@ class MNRCollector:
                     f"MNR collection: all {stats['errors']} trips failed, "
                     f"no successful discoveries or updates"
                 )
+
+            # Batched segment analysis for all processed journeys. Moving this
+            # out of the per-trip loop eliminates the O(trips * stops)
+            # per-segment SELECTs that dominate per-cycle cost.
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
             # Expire active OBSERVED journeys not seen in this collection cycle.
             today = collection_start.date()
@@ -202,7 +234,7 @@ class MNRCollector:
 
     async def _process_trip(
         self, session: AsyncSession, trip_id: str, arrivals: list[MnrArrival]
-    ) -> str | None:
+    ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
 
@@ -215,10 +247,13 @@ class MNRCollector:
             arrivals: List of arrivals for this trip
 
         Returns:
-            "discovered", "updated", or None
+            Tuple of (result_type, journey) where result_type is
+            "discovered", "updated", or None. The journey reference is
+            returned so the caller can batch post-processing (e.g.,
+            TransitAnalyzer) after the per-trip loop completes.
         """
         if not arrivals:
-            return None
+            return None, None
 
         # Sort arrivals by time to get stop sequence
         arrivals.sort(key=lambda a: a.arrival_time)
@@ -256,16 +291,7 @@ class MNRCollector:
                 TrainJourney.journey_date == journey_date,
                 TrainJourney.data_source == "MNR",
             )
-            .options(
-                selectinload(TrainJourney.stops),
-                # Load all delete-orphan collections to prevent
-                # greenlet_spawn errors during flush orphan checks
-                selectinload(TrainJourney.snapshots),
-                selectinload(TrainJourney.segment_times),
-                selectinload(TrainJourney.dwell_times),
-                selectinload(TrainJourney.progress),
-                selectinload(TrainJourney.progress_snapshots),
-            )
+            .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
         )
         journey = existing.scalar_one_or_none()
 
@@ -322,7 +348,7 @@ class MNRCollector:
                     trip_id,
                     effective_stop_count,
                 )
-                return None
+                return None, None
 
             # Compute scheduled times
             if merged_stops:
@@ -454,31 +480,22 @@ class MNRCollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Discovered MNR train {train_id}")
-            return "discovered"
+            return "discovered", journey
 
         else:
             # Update existing journey — arrival_time is already the predicted time
             journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
-            # Update stops
+            # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries).
+            # journey.stops was loaded via selectinload on the existence check above.
+            stops_by_code = {s.station_code: s for s in journey.stops}
             for arr in arrivals:
-                # Find existing stop
-                stop_result = await session.execute(
-                    select(JourneyStop).where(
-                        JourneyStop.journey_id == journey.id,
-                        JourneyStop.station_code == arr.station_code,
-                    )
-                )
-                existing_stop = stop_result.scalar_one_or_none()
+                existing_stop = stops_by_code.get(arr.station_code)
 
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
@@ -487,29 +504,20 @@ class MNRCollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
-                    if arr.track:
-                        if not existing_stop.track:
-                            existing_stop.track_assigned_at = now_et()
-                        existing_stop.track = arr.track
+                    set_stop_track(
+                        existing_stop, arr.track, "MNR", journey.train_id, now_et()
+                    )
 
-            # Update departure status and journey metadata
+            # Update departure status and journey metadata using the in-memory
+            # stops collection — no re-query needed.
             now = now_et()
-            stop_result = await session.execute(
-                select(JourneyStop)
-                .where(JourneyStop.journey_id == journey.id)
-                .order_by(JourneyStop.stop_sequence)
-            )
-            journey_stops = list(stop_result.scalars().all())
+            journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Updated MNR train {train_id}")
-            return "updated"
+            return "updated", journey
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
@@ -532,51 +540,17 @@ class MNRCollector:
         # Find arrivals that match this journey's stops
         journey_station_codes = {s.station_code for s in journey.stops}
 
-        # Find arrivals that might be part of this journey
-        matching_trips: dict[str, list[MnrArrival]] = {}
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
-
-        # Exact match: regenerate train_id from each candidate trip_id
-        # and compare against the stored train_id. This avoids the fuzzy
-        # matching bug where trains on the same line with identical
-        # station sets and close departure times get swapped.
-        best_trip: list[MnrArrival] | None = None
-        for trip_id_candidate, trip_arrivals in matching_trips.items():
-            if _generate_train_id(trip_id_candidate) == journey.train_id:
-                best_trip = trip_arrivals
-                break
-
-        # Fuzzy fallback: if the trip_id changed (rare), fall back to
-        # station overlap + time proximity.
-        if best_trip is None:
-            best_overlap = 0
-            best_time_diff = float("inf")
-
-            for trip_arrivals in matching_trips.values():
-                trip_stations = {a.station_code for a in trip_arrivals}
-                overlap = len(trip_stations & journey_station_codes)
-
-                time_diff = float("inf")
-                if journey.scheduled_departure:
-                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                    time_diff = abs(
-                        (
-                            first_arr.arrival_time - journey.scheduled_departure
-                        ).total_seconds()
-                    )
-
-                if overlap > best_overlap or (
-                    overlap == best_overlap and time_diff < best_time_diff
-                ):
-                    best_overlap = overlap
-                    best_time_diff = time_diff
-                    best_trip = trip_arrivals
+        best_trip = select_matching_trip(
+            matching_trips,
+            journey,
+            journey_station_codes,
+            _generate_train_id,
+            "MNR",
+        )
 
         if not best_trip:
             logger.debug(f"No matching MNR trip found for journey {journey.train_id}")
@@ -599,10 +573,7 @@ class MNRCollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
-                if arr.track:
-                    if not stop.track:
-                        stop.track_assigned_at = now_et()
-                    stop.track = arr.track
+                set_stop_track(stop, arr.track, "MNR", journey.train_id, now_et())
 
         # Update journey-level times — arrival_time is already the predicted time
         first_stop = min(best_trip, key=lambda a: a.arrival_time)
@@ -620,7 +591,7 @@ class MNRCollector:
         )
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
-        update_journey_metadata(journey, now)
+        update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated MNR journey {journey.train_id}")

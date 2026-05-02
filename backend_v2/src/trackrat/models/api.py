@@ -455,8 +455,8 @@ class AmtrakTrainData(BaseModel):
     trainState: str
     velocity: float
     statusMsg: str = ""
-    createdAt: str
-    updatedAt: str
+    createdAt: str | None = None
+    updatedAt: str | None = None
     lastValTS: str | None = None
     objectID: int | None = None
     provider: str = "Amtrak"

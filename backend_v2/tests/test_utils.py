@@ -19,7 +19,8 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
     ET,
 )
-from trackrat.utils.sanitize import sanitize_track
+from trackrat.utils.sanitize import sanitize_track, validate_track
+from trackrat.config.station_configs import get_valid_tracks
 
 
 def test_now_et():
@@ -361,3 +362,107 @@ def test_sanitize_track_real_world_cases():
     # Numbers at various positions
     assert sanitize_track("Running on 4") == "4"
     assert sanitize_track("Goes to 2B") == "2B"
+
+
+# ---------------------------------------------------------------------------
+# get_valid_tracks (station_configs)
+# ---------------------------------------------------------------------------
+
+
+def test_get_valid_tracks_configured_pair_returns_frozenset():
+    """Configured (station, data_source) pairs return a frozenset of tracks."""
+    tracks = get_valid_tracks("GCT", "LIRR")
+    assert isinstance(tracks, frozenset)
+    # All 12 LIRR Madison tracks (3 levels x 4 tracks)
+    assert tracks == frozenset(
+        {
+            "201",
+            "202",
+            "203",
+            "204",
+            "301",
+            "302",
+            "303",
+            "304",
+            "401",
+            "402",
+            "403",
+            "404",
+        }
+    )
+
+
+def test_get_valid_tracks_unconfigured_pair_returns_none():
+    """Unconfigured (station, data_source) pairs return None (no validation)."""
+    # GCT MNR is not in VALIDATED_TRACKS (our prediction list is partial)
+    assert get_valid_tracks("GCT", "MNR") is None
+    # Random station
+    assert get_valid_tracks("NOT_A_STATION", "LIRR") is None
+    # Right station, wrong data source
+    assert get_valid_tracks("GCT", "NJT") is None
+
+
+# ---------------------------------------------------------------------------
+# validate_track
+# ---------------------------------------------------------------------------
+
+
+def test_validate_track_none_or_empty_returns_none():
+    """Empty input is always dropped (no warning emitted)."""
+    assert validate_track("GCT", None, "LIRR") is None
+    assert validate_track("GCT", "", "LIRR") is None
+
+
+def test_validate_track_accepts_known_valid_track():
+    """Track in the configured set passes through unchanged."""
+    assert validate_track("GCT", "301", "LIRR") == "301"
+    assert validate_track("GCT", "204", "LIRR") == "204"
+    assert validate_track("GCT", "404", "LIRR") == "404"
+
+
+def test_validate_track_rejects_implausible_track_at_validated_pair():
+    """The reported bug: LIRR reporting track '1' at GCT must be rejected."""
+    assert validate_track("GCT", "1", "LIRR", train_id="L1664") is None
+    # Also rejects other values not in the set
+    assert validate_track("GCT", "13", "LIRR") is None  # that's an MNR track
+    assert validate_track("GCT", "205", "LIRR") is None  # not a real GCM track
+
+
+def test_validate_track_passes_through_unconfigured_pair():
+    """Without a configured validation set, values pass through unchanged."""
+    # GCT MNR: we haven't enumerated all MNR tracks, so no validation fires
+    assert validate_track("GCT", "13", "MNR") == "13"
+    assert validate_track("GCT", "41", "MNR") == "41"  # would be rejected by MNR list
+    # Random station
+    assert validate_track("XYZ", "99", "NJT") == "99"
+    # Subway (no validation configured)
+    assert validate_track("S631", "1", "SUBWAY") == "1"
+
+
+def test_validate_track_rejection_emits_warning(caplog):
+    """Rejections log a structured warning so feed quality is observable."""
+    import logging
+
+    caplog.set_level(logging.WARNING)
+    result = validate_track("GCT", "1", "LIRR", train_id="L1664")
+    assert result is None
+    # Find our warning (structlog routes through stdlib logging in tests)
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(
+        "track_value_implausible" in m for m in messages
+    ), f"Expected 'track_value_implausible' warning; got: {messages}"
+
+
+def test_validate_track_accepts_every_track_in_each_validated_set():
+    """Every track we've enumerated for validation must pass its own check.
+
+    Guards against typos in VALIDATED_TRACKS that would silently reject
+    legitimate tracks.
+    """
+    from trackrat.config.station_configs import VALIDATED_TRACKS
+
+    assert VALIDATED_TRACKS, "Expected at least one (station, data_source) entry"
+    for (station, data_source), tracks in VALIDATED_TRACKS.items():
+        assert tracks, f"Empty track set for {station}/{data_source}"
+        for track in tracks:
+            assert validate_track(station, track, data_source) == track

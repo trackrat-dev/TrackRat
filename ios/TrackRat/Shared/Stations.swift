@@ -3,16 +3,21 @@ import CoreLocation
 import MapKit
 
 struct Stations {
-    static func search(_ query: String) -> [String] {
+    /// Default cap on station search results — enough for a typical scrollable list
+    /// without overwhelming the picker. Callers that classify results into multiple
+    /// buckets (e.g., `searchGrouped`) may oversample with a higher `limit`.
+    static let defaultSearchLimit = 12
+
+    static func search(_ query: String, limit: Int = defaultSearchLimit) -> [String] {
         guard !query.isEmpty else { return [] }
         let q = query.lowercased()
         let prefixMatches = all.filter { $0.lowercased().hasPrefix(q) }
         let substringMatches = all.filter {
             !$0.lowercased().hasPrefix(q) && $0.lowercased().contains(q)
         }
-        return Array((prefixMatches + substringMatches).prefix(12))
+        return Array((prefixMatches + substringMatches).prefix(limit))
     }
-    
+
    static func getStationCode(_ stationName: String) -> String? { 
         // First try exact match
         if let code = stationCodes[stationName] {
@@ -116,8 +121,32 @@ struct Stations {
         case "Washington Union Station":
             return "Washington Union"
         default:
-            return normalizedName
+            return strippingSubwayRouteSuffix(normalizedName)
         }
+    }
+
+    /// Strips parenthetical route disambiguators that the backend's subway data
+    /// inherits from MTA's GTFS feed (e.g., `"8 Av (N/W)"` → `"8 Av"`,
+    /// `"Cathedral Pkwy (110 St) - 1"` → `"Cathedral Pkwy (110 St)"`).
+    ///
+    /// Disambiguation between same-name stations on different lines is handled
+    /// visually by `SubwayLineChips`, so the suffix is line-noise in the UI.
+    /// The pattern matches only single-character bullets (digits 1–7, single
+    /// uppercase letters) so multi-letter tags like `"(BART)"` and `"(SIR)"`
+    /// stay untouched.
+    private static func strippingSubwayRouteSuffix(_ name: String) -> String {
+        // Single subway bullet, optionally slash-separated: e.g. "1", "N/W", "1/A/B/C".
+        let bulletPattern = "[1-7A-Z](/[1-7A-Z])*"
+        var stripped = name
+        // " - <bullets>" tail (e.g., "Cathedral Pkwy (110 St) - 1").
+        if let range = stripped.range(of: #" - \#(bulletPattern)$"#, options: .regularExpression) {
+            stripped.removeSubrange(range)
+        }
+        // " (<bullets>)" tail (e.g., "8 Av (N/W)", "23 St (1/2)").
+        if let range = stripped.range(of: #" \(\#(bulletPattern)\)$"#, options: .regularExpression) {
+            stripped.removeSubrange(range)
+        }
+        return stripped
     }
 
     // MARK: - Station to Train System Mapping

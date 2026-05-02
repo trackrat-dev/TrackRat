@@ -11,12 +11,16 @@ Tests the pure logic functions used in trip composition:
 - _empty_response: empty response construction
 """
 
-from datetime import date, datetime, timedelta
-
-import pytest
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from trackrat.config.transfer_points import get_transfer_points
+import pytest
+
+from trackrat.config.transfer_points import (
+    TransferPoint,
+    get_systems_serving_station,
+    get_transfer_points,
+)
 from trackrat.models.api import (
     DataFreshness,
     LineInfo,
@@ -27,17 +31,18 @@ from trackrat.models.api import (
     TransferInfo,
     TripLeg,
     TripOption,
-    TripSearchResponse,
 )
-from trackrat.config.transfer_points import get_systems_serving_station
 from trackrat.services.trip_search import (
+    MAX_TRANSFER_QUERIES,
     _departure_to_leg,
     _empty_response,
     _filter_unreasonable_durations,
     _find_relevant_transfer_points,
     _get_best_time,
+    _get_station_lines_expanded,
     _make_direct_trip,
     _orient_transfer,
+    _rank_transfer_points,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -222,6 +227,37 @@ class TestFindRelevantTransferPoints:
             for tp in transfers
         ]
         assert len(keys) == len(set(keys)), "Duplicate transfers found"
+
+    def test_penn_station_rail_to_subway_transfer_found(self):
+        """NJT should transfer to the 34 St-Penn subway complex at NY Penn."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"SUBWAY"}, from_station="TR", to_station="S128"
+        )
+        station_pairs = {frozenset({tp.station_a, tp.station_b}) for tp in transfers}
+        assert frozenset({"NY", "S128"}) in station_pairs
+        assert frozenset({"NY", "SA28"}) in station_pairs
+
+    def test_grand_central_rail_to_subway_transfer_found(self):
+        """MNR should transfer to the Grand Central-42 St subway complex at GCT."""
+        transfers = _find_relevant_transfer_points(
+            {"MNR"}, {"SUBWAY"}, from_station="MSTM", to_station="S631"
+        )
+        station_pairs = {frozenset({tp.station_a, tp.station_b}) for tp in transfers}
+        assert frozenset({"GCT", "S631"}) in station_pairs
+        assert frozenset({"GCT", "S723"}) in station_pairs
+        assert frozenset({"GCT", "S901"}) in station_pairs
+
+
+class TestStationLinesExpanded:
+    """Test line lookup across physical station equivalences."""
+
+    def test_penn_station_rail_code_expands_to_subway_lines(self):
+        lines = _get_station_lines_expanded("NY", "SUBWAY")
+        assert {"1", "2", "3", "A", "C", "E"} <= set(lines)
+
+    def test_grand_central_rail_code_expands_to_subway_lines(self):
+        lines = _get_station_lines_expanded("GCT", "SUBWAY")
+        assert {"4", "5", "6", "7", "GS"} <= set(lines)
 
 
 class TestOrientTransfer:
@@ -891,7 +927,6 @@ class TestDirectTripFallthroughBehavior:
                 continue
 
             # Find all `if` guards that lead to a return with search_type="direct"
-            source_lines = source.splitlines()
             for child in ast.walk(node):
                 if not isinstance(child, ast.If):
                     continue
@@ -911,3 +946,161 @@ class TestDirectTripFallthroughBehavior:
                     )
                     break
             break
+
+
+class TestRankTransferPoints:
+    """Test transfer point ranking for deterministic, direction-symmetric truncation."""
+
+    def _make_tp(
+        self,
+        station_a: str = "NY",
+        system_a: str = "NJT",
+        station_b: str = "PWC",
+        system_b: str = "PATH",
+        walk_minutes: int = 5,
+        same_station: bool = False,
+    ) -> TransferPoint:
+        return TransferPoint(
+            station_a=station_a,
+            system_a=system_a,
+            station_b=station_b,
+            system_b=system_b,
+            walk_meters=walk_minutes * 80.0,
+            walk_minutes=walk_minutes,
+            same_station=same_station,
+        )
+
+    def test_same_station_preferred_over_walk(self):
+        """same_station transfers should rank before walk transfers."""
+        walk = self._make_tp(station_a="HB", station_b="PHO", walk_minutes=5, same_station=False)
+        same = self._make_tp(station_a="NP", station_b="PNK", walk_minutes=5, same_station=True)
+        ranked = _rank_transfer_points(
+            [walk, same], "TR", "PWC", {"NJT"}, {"PATH"}
+        )
+        assert ranked[0].same_station is True
+        assert ranked[1].same_station is False
+
+    def test_shorter_walk_preferred(self):
+        """Shorter walk_minutes should rank before longer."""
+        long_walk = self._make_tp(station_a="AA", station_b="BB", walk_minutes=10, same_station=False)
+        short_walk = self._make_tp(station_a="CC", station_b="DD", walk_minutes=3, same_station=False)
+        ranked = _rank_transfer_points(
+            [long_walk, short_walk], "TR", "PWC", {"NJT"}, {"PATH"}
+        )
+        assert ranked[0].walk_minutes == 3
+        assert ranked[1].walk_minutes == 10
+
+    def test_direction_symmetric_ordering(self):
+        """Ranking must produce identical order regardless of search direction.
+
+        This is the core property that fixes issue #1062: reversing from/to
+        stations and their system sets must not change which TPs survive truncation.
+        """
+        tp1 = self._make_tp(station_a="NP", system_a="NJT", station_b="PNK", system_b="PATH",
+                            walk_minutes=5, same_station=True)
+        tp2 = self._make_tp(station_a="HB", system_a="NJT", station_b="PHO", system_b="PATH",
+                            walk_minutes=7, same_station=False)
+        tp3 = self._make_tp(station_a="NY", system_a="NJT", station_b="S128", system_b="SUBWAY",
+                            walk_minutes=5, same_station=False)
+
+        forward = _rank_transfer_points(
+            [tp1, tp2, tp3], "TR", "PWC", {"NJT", "AMTRAK"}, {"PATH", "SUBWAY"}
+        )
+        reverse = _rank_transfer_points(
+            [tp1, tp2, tp3], "PWC", "TR", {"PATH", "SUBWAY"}, {"NJT", "AMTRAK"}
+        )
+        # Exact same ordering regardless of direction
+        assert [tp.station_a for tp in forward] == [tp.station_a for tp in reverse]
+        assert [tp.station_b for tp in forward] == [tp.station_b for tp in reverse]
+
+    def test_stable_tiebreaker_on_station_codes(self):
+        """When same_station and walk_minutes are equal, sort by canonical station/system codes."""
+        tp_a = self._make_tp(station_a="BB", system_a="X", station_b="AA", system_b="Y",
+                             walk_minutes=5, same_station=False)
+        tp_b = self._make_tp(station_a="AA", system_a="X", station_b="CC", system_b="Y",
+                             walk_minutes=5, same_station=False)
+        ranked = _rank_transfer_points(
+            [tp_a, tp_b], "Z1", "Z2", {"X"}, {"Y"}
+        )
+        # Canonical order: tp_a has sorted pair (AA,Y),(BB,X); tp_b has (AA,X),(CC,Y)
+        # (AA,X) < (AA,Y) so tp_b comes first
+        assert ranked[0] is tp_b
+        assert ranked[1] is tp_a
+
+    def test_empty_input(self):
+        """Ranking an empty list should return an empty list."""
+        assert _rank_transfer_points([], "A", "B", {"NJT"}, {"PATH"}) == []
+
+    def test_single_element(self):
+        """Single-element list is returned unchanged."""
+        tp = self._make_tp()
+        result = _rank_transfer_points([tp], "A", "B", {"NJT"}, {"PATH"})
+        assert len(result) == 1
+        assert result[0] is tp
+
+
+class TestMaxTransferQueriesIncreased:
+    """Verify MAX_TRANSFER_QUERIES is large enough to avoid aggressive truncation."""
+
+    def test_max_transfer_queries_at_least_12(self):
+        """Issue #1062: cap of 6 (3 TPs) was too aggressive. Must be >= 12."""
+        assert MAX_TRANSFER_QUERIES >= 12
+
+    def test_max_transfer_points_at_least_6(self):
+        """With MAX_TRANSFER_QUERIES=12, at least 6 transfer points are evaluated."""
+        assert MAX_TRANSFER_QUERIES // 2 >= 6
+
+
+class TestTransferPointSymmetryIntegration:
+    """Integration test using real transfer point data to verify direction symmetry.
+
+    Uses the actual route topology to confirm that _find_relevant_transfer_points
+    followed by _rank_transfer_points produces the same ranked list regardless
+    of which direction the search runs.
+    """
+
+    @pytest.mark.parametrize(
+        "station_a,station_b",
+        [
+            ("TR", "PWC"),   # NJT → PATH (Trenton to World Trade Center)
+            ("HB", "P33"),   # NJT/PATH hub → PATH (Hoboken area)
+            ("NP", "PHO"),   # NJT Newark → PATH Hoboken
+        ],
+        ids=["trenton-to-wtc", "hoboken-to-33rd", "newark-to-hoboken-path"],
+    )
+    def test_ranked_transfer_points_are_direction_symmetric(self, station_a: str, station_b: str):
+        """Forward and reverse searches must produce identically ranked TPs.
+
+        This catches the root cause of issue #1062: set iteration order in
+        _find_relevant_transfer_points changes with direction, but after ranking
+        the order must be identical.
+        """
+        from trackrat.config.transfer_points import get_systems_serving_station
+
+        sys_a = get_systems_serving_station(station_a)
+        sys_b = get_systems_serving_station(station_b)
+
+        if not sys_a or not sys_b:
+            pytest.skip(f"No systems found for {station_a} or {station_b}")
+
+        fwd_tps = _find_relevant_transfer_points(sys_a, sys_b, station_a, station_b)
+        rev_tps = _find_relevant_transfer_points(sys_b, sys_a, station_b, station_a)
+
+        fwd_ranked = _rank_transfer_points(fwd_tps, station_a, station_b, sys_a, sys_b)
+        rev_ranked = _rank_transfer_points(rev_tps, station_b, station_a, sys_b, sys_a)
+
+        # Both directions should find the same transfer points (possibly in different
+        # initial order), and after ranking they must be in identical order.
+        fwd_keys = [
+            frozenset({(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)})
+            for tp in fwd_ranked
+        ]
+        rev_keys = [
+            frozenset({(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)})
+            for tp in rev_ranked
+        ]
+        assert fwd_keys == rev_keys, (
+            f"Direction-dependent ordering detected for {station_a}↔{station_b}.\n"
+            f"Forward:  {[(tp.station_a, tp.system_a, tp.station_b, tp.system_b) for tp in fwd_ranked]}\n"
+            f"Reverse:  {[(tp.station_a, tp.system_a, tp.station_b, tp.system_b) for tp in rev_ranked]}"
+        )

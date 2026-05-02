@@ -5,22 +5,23 @@ Tests unified NYC Subway train discovery, journey updates,
 full-replacement expiration logic, and JIT updates.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trackrat.collectors.subway.client import (
+    _ROUTE_TO_FEED,
+    SubwayArrival,
+    SubwayClient,
+)
 from trackrat.collectors.subway.collector import (
     SubwayCollector,
     _generate_train_id,
 )
-from trackrat.collectors.subway.client import (
-    SubwayArrival,
-    SubwayClient,
-    _ROUTE_TO_FEED,
-)
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.time import ET
 
 # =============================================================================
 # HELPER FUNCTION TESTS
@@ -182,7 +183,7 @@ class TestSubwayCollectorCollect:
         self, collector, mock_client, mock_session
     ):
         """Test arrivals are grouped by trip_id for processing."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         arrivals = [
             SubwayArrival(
                 station_code="S127",
@@ -233,13 +234,14 @@ class TestSubwayCollectorCollect:
         # Mock _process_trip to track calls without hitting DB
         process_calls = []
 
-        async def mock_process_trip(session, trip_id, trip_arrivals):
+        async def mock_process_trip(session, trip_id, trip_arrivals, existing):
             process_calls.append((trip_id, len(trip_arrivals)))
             return "discovered", len(process_calls)
 
         collector._process_trip = mock_process_trip
 
-        # Mock stale journey query (for expiration logic)
+        # Mock both the bulk-load query and the stale-expiration query
+        # (both call session.execute and iterate .scalars()).
         mock_stale_result = MagicMock()
         mock_stale_result.scalars.return_value = iter([])
         mock_session.execute.return_value = mock_stale_result
@@ -255,6 +257,74 @@ class TestSubwayCollectorCollect:
         assert "trip_1" in trip_ids
         assert "trip_2" in trip_ids
         mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_collect_bulk_loads_existing_journeys_once(
+        self, collector, mock_client, mock_session
+    ):
+        """collect() must bulk-load existing journeys in a single query
+        BEFORE the per-trip loop, and pass the resolved journey (or None)
+        into _process_trip. Regression guard for the per-trip SELECT
+        pattern that was a primary driver of subway_collection timeouts.
+        """
+        now = datetime.now(UTC)
+        arrivals = [
+            SubwayArrival(
+                station_code="S127",
+                gtfs_stop_id="127S",
+                trip_id="t1",
+                route_id="1",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id="01 0100+ SFR",
+                is_assigned=True,
+            ),
+            SubwayArrival(
+                station_code="SA41",
+                gtfs_stop_id="A41S",
+                trip_id="t2",
+                route_id="A",
+                direction_id=1,
+                headsign=None,
+                arrival_time=now,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+                nyct_train_id="05 0500+ FAR",
+                is_assigned=True,
+            ),
+        ]
+        mock_client.get_all_arrivals.return_value = (arrivals, {"1234567S", "ACE"})
+
+        # Pre-existing journey for t1 (train_id matches _generate_train_id("t1", "1"))
+        existing = MagicMock(spec=TrainJourney)
+        existing.train_id = _generate_train_id("t1", "1")
+        existing.journey_date = now.astimezone(ET).date()
+
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = [existing]
+        mock_session.execute.return_value = mock_result
+
+        process_calls: list[tuple[str, TrainJourney | None]] = []
+
+        async def mock_process_trip(session, trip_id, trip_arrivals, existing_journey):
+            process_calls.append((trip_id, existing_journey))
+            return "discovered", None
+
+        collector._process_trip = mock_process_trip
+
+        await collector.collect(mock_session)
+
+        by_trip = dict(process_calls)
+        assert by_trip["t1"] is existing, "pre-existing journey should be passed in"
+        assert by_trip["t2"] is None, "unseen trip should get None"
+        # Exactly one SELECT for the bulk journey lookup (the second call
+        # is the stale-expiration query); both hit mock_session.execute.
+        assert mock_session.execute.call_count == 2
 
 
 # =============================================================================
@@ -296,7 +366,7 @@ class TestSubwayCollectorProcessTrip:
     @pytest.fixture
     def sample_arrivals(self):
         """Create sample arrivals for a subway trip."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return [
             SubwayArrival(
                 station_code="S127",
@@ -333,17 +403,12 @@ class TestSubwayCollectorProcessTrip:
         self, collector, mock_session, sample_arrivals
     ):
         """Test _process_trip creates new journey and returns ('discovered', id)."""
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        with patch("trackrat.collectors.subway.collector.TransitAnalyzer") as mock_ta:
-            mock_ta.return_value.analyze_new_segments = AsyncMock()
-            result, journey_id = await collector._process_trip(
-                mock_session, "131800_1..S03R", sample_arrivals
-            )
+        result, journey = await collector._process_trip(
+            mock_session, "131800_1..S03R", sample_arrivals, None
+        )
 
         assert result == "discovered"
+        assert journey is not None
         assert mock_session.add.call_count >= 1
         mock_session.flush.assert_called()
 
@@ -359,43 +424,29 @@ class TestSubwayCollectorProcessTrip:
         existing_journey.data_source = "SUBWAY"
         existing_journey.stops = []
 
-        # First execute returns existing journey, subsequent ones return stops
-        mock_result_journey = MagicMock()
-        mock_result_journey.scalar_one_or_none.return_value = existing_journey
-        mock_result_stop = MagicMock()
-        mock_result_stop.scalar_one_or_none.return_value = None
-        mock_result_stops_list = MagicMock()
-        mock_result_stops_list.scalars.return_value.all.return_value = []
-        mock_session.execute.side_effect = [
-            mock_result_journey,  # Journey lookup
-            mock_result_stop,  # Stop 1 lookup
-            mock_result_stop,  # Stop 2 lookup
-            mock_result_stops_list,  # Get all stops for update
-        ]
-
-        with patch("trackrat.collectors.subway.collector.TransitAnalyzer") as mock_ta:
-            mock_ta.return_value.analyze_new_segments = AsyncMock()
-            result, journey_id = await collector._process_trip(
-                mock_session, "131800_1..S03R", sample_arrivals
-            )
+        result, journey = await collector._process_trip(
+            mock_session, "131800_1..S03R", sample_arrivals, existing_journey
+        )
 
         assert result == "updated"
-        assert journey_id == 42
+        assert journey is existing_journey
 
     @pytest.mark.asyncio
     async def test_process_trip_returns_none_for_empty_arrivals(
         self, collector, mock_session
     ):
         """Test _process_trip returns (None, None) for empty arrivals list."""
-        result, journey_id = await collector._process_trip(mock_session, "trip_123", [])
+        result, journey = await collector._process_trip(
+            mock_session, "trip_123", [], None
+        )
 
         assert result is None
-        assert journey_id is None
+        assert journey is None
 
     @pytest.mark.asyncio
     async def test_process_trip_sorts_arrivals_by_time(self, collector, mock_session):
         """Test arrivals are sorted by arrival time to determine origin."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Intentionally out of order
         arrivals = [
             SubwayArrival(
@@ -428,15 +479,12 @@ class TestSubwayCollectorProcessTrip:
             ),
         ]
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = mock_result
-
-        with patch("trackrat.collectors.subway.collector.TransitAnalyzer") as mock_ta:
-            mock_ta.return_value.analyze_new_segments = AsyncMock()
-            result, _ = await collector._process_trip(mock_session, "trip_1", arrivals)
+        result, journey = await collector._process_trip(
+            mock_session, "trip_1", arrivals, None
+        )
 
         assert result == "discovered"
+        assert journey is not None
 
 
 # =============================================================================
@@ -509,7 +557,7 @@ class TestSubwayCollectorJourneyDetails:
         self, collector, mock_client, mock_session
     ):
         """Test JIT update selects the trip with highest station overlap."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         journey = MagicMock(spec=TrainJourney)
         journey.id = 1
@@ -623,7 +671,7 @@ class TestSubwayCollectorJourneyDetails:
         a newer train closer to origin), but trip_correct is the actual train.
         The JIT must pick trip_correct via exact hash match.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         trip_correct = "074850_L..S"
         trip_wrong = "075200_L..S"
 
@@ -751,7 +799,7 @@ class TestSubwayCollectorJourneyDetails:
         """When the original trip_id is no longer in the feed (rare: MTA
         reassignment), the JIT falls back to fuzzy matching by station overlap
         and time proximity."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Journey has a hash from a trip_id that's no longer in the feed
         journey = MagicMock(spec=TrainJourney)
@@ -905,7 +953,7 @@ class TestSubwayFeedResilience:
         the current arrivals. It should be preserved (not expired) because
         we can't distinguish 'train gone' from 'feed unavailable'.
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # Return arrivals only from 1234567S feed (NQRW failed)
         arrivals = [
@@ -928,7 +976,7 @@ class TestSubwayFeedResilience:
         mock_client.get_all_arrivals.return_value = (arrivals, {"1234567S"})
 
         # Mock _process_trip to return a discovered journey
-        async def mock_process_trip(session, trip_id, trip_arrivals):
+        async def mock_process_trip(session, trip_id, trip_arrivals, existing):
             return "discovered", 100
 
         collector._process_trip = mock_process_trip
@@ -943,8 +991,10 @@ class TestSubwayFeedResilience:
         stale_journey.api_error_count = 0
         stale_journey.last_updated_at = now - timedelta(minutes=2)
 
+        # Use a list so both session.execute queries (bulk-load + stale
+        # expiration) can iterate .scalars() independently.
         mock_stale_result = MagicMock()
-        mock_stale_result.scalars.return_value = iter([stale_journey])
+        mock_stale_result.scalars.return_value = [stale_journey]
         mock_session.execute.return_value = mock_stale_result
 
         result = await collector.collect(mock_session)
@@ -965,7 +1015,7 @@ class TestSubwayFeedResilience:
         current arrivals and was recently active. It should be expired
         (full-replacement semantics).
         """
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         arrivals = [
             SubwayArrival(
@@ -989,7 +1039,7 @@ class TestSubwayFeedResilience:
             {"1234567S", "ACE"},
         )
 
-        async def mock_process_trip(session, trip_id, trip_arrivals):
+        async def mock_process_trip(session, trip_id, trip_arrivals, existing):
             return "discovered", 300
 
         collector._process_trip = mock_process_trip
@@ -1006,8 +1056,12 @@ class TestSubwayFeedResilience:
         # Recently active: 2 minutes ago (within 30-min replacement window)
         stale_journey.last_updated_at = now - timedelta(minutes=2)
 
+        # collect() now runs two session.execute queries that iterate
+        # .scalars(): a bulk-load for existing journeys (new in A.1 perf
+        # fix) and the stale-expiration query. Use a list so each call
+        # gets a fresh iterator.
         mock_stale_result = MagicMock()
-        mock_stale_result.scalars.return_value = iter([stale_journey])
+        mock_stale_result.scalars.return_value = [stale_journey]
         mock_session.execute.return_value = mock_stale_result
 
         result = await collector.collect(mock_session)
@@ -1094,3 +1148,55 @@ class TestGtfsFeedUrl:
         assert (
             "supplemented" in SUBWAY_GTFS_STATIC_URL
         ), f"Expected supplemented feed URL, got: {SUBWAY_GTFS_STATIC_URL}"
+
+
+class TestSubwayCollectorFailFast:
+    """Tests for subway fail-fast on upstream 5xx / hang (#960)."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(self, mock_session):
+        """If the upstream feeds hang indefinitely, the collector must bail
+        quickly via asyncio.wait_for. Subway is hit hardest by hangs because
+        it fans out to 8 feeds — any one stalled feed can hold the whole
+        gather() until each per-feed timeout expires.
+        """
+        import asyncio as _asyncio
+
+        hang_event = _asyncio.Event()
+
+        async def hang_forever():
+            await hang_event.wait()
+            return ([], set())
+
+        hung_client = AsyncMock(spec=SubwayClient)
+        hung_client.get_all_arrivals = hang_forever
+        hung_client.close = AsyncMock()
+
+        with patch("trackrat.collectors.subway.collector.GTFSService"):
+            collector = SubwayCollector(client=hung_client)
+
+        with patch(
+            "trackrat.collectors.subway.collector._FEED_FETCH_TIMEOUT_SECONDS",
+            0.05,
+        ):
+            import time
+
+            t0 = time.monotonic()
+            result = await collector.collect(mock_session)
+            elapsed = time.monotonic() - t0
+
+        assert elapsed < 1.0, f"collect() took {elapsed:.2f}s — fail-fast broken"
+        assert result["total_arrivals"] == 0
+        assert result["discovered"] == 0
+        assert result["updated"] == 0
+        mock_session.commit.assert_not_called()

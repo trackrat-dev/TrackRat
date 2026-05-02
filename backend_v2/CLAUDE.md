@@ -309,6 +309,8 @@ The APScheduler runs in-process and handles:
 - **Safe intervals**: Tasks use 90% of scheduled interval with 2-minute buffer to prevent over-execution
 - **Row-level locking**: PostgreSQL `WITH FOR UPDATE SKIP LOCKED` prevents race conditions
 - **Instance tracking**: GCE instance hostname tracked for debugging
+- **Task-level timeouts**: Each collector task has a timeout of 2x its scheduled interval; stuck tasks are cancelled via `asyncio.TimeoutError`
+- **Batch commits**: GTFS-RT collectors commit every 50 trips, preserving partial progress if a task hits its timeout
 
 ### 5. Advanced Service Architecture
 
@@ -370,9 +372,10 @@ The system now includes comprehensive transit time analysis:
    - Run tests: `poetry run pytest tests/`
 
 2. **Database Changes**:
-   - Create migration: `alembic revision -m "description"`
-   - Edit migration file in `db/migrations/versions/`
-   - **NOTE**: Migrations run automatically during application startup (after backup restore)
+   - Create migration: `poetry run alembic revision -m "description"` — this generates a unique 12-char hex revision ID for you. **Never hand-write a migration file with a made-up or placeholder revision ID** (e.g. `a1b2c3d4e5f6`). Duplicate IDs cause Alembic to refuse to load the tree and the backend crash-loops on startup.
+   - Edit the generated file in `db/migrations/versions/` (upgrade/downgrade bodies only; leave the `revision =` / `down_revision =` lines alone).
+   - Before committing, verify the tree is valid: `poetry run alembic heads` must print exactly one head, and `poetry run alembic upgrade head --sql >/dev/null` must succeed. These two commands catch duplicate revision IDs and broken chains that application tests won't.
+   - **NOTE**: Migrations run automatically during application startup (after backup restore). A broken migration tree = staging/prod crash loop.
 
 3. **Collector Changes**:
    - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py, schedule.py)
@@ -461,6 +464,9 @@ TRACKRAT_GCS_BACKUP_BUCKET=your-backup-bucket
 TRACKRAT_DISCOVERY_INTERVAL_MINUTES=30           # Train discovery frequency
 TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES=15      # Journey collection frequency
 TRACKRAT_DATA_STALENESS_SECONDS=60               # JIT refresh threshold
+TRACKRAT_HOT_DATA_STALENESS_SECONDS=20           # JIT refresh threshold for near-departure trains
+TRACKRAT_HOT_TRAIN_WINDOW_MINUTES=15             # How close to departure triggers aggressive refresh
+TRACKRAT_HOT_TRAIN_UPDATE_INTERVAL_SECONDS=120   # Update interval for near-departure trains
 
 # Validation Settings (optional)
 TRACKRAT_INTERNAL_API_URL=http://localhost:8000  # Internal API for validation
@@ -470,8 +476,18 @@ TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY=20      # Max missing trains to verify
 TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS=true  # Database-aggregated patterns
 TRACKRAT_ENABLE_SQL_LOGGING=false                    # SQLAlchemy query logging
 
+# Server Settings (optional)
+TRACKRAT_DEBUG=false                             # Enable debug mode
+TRACKRAT_API_HOST=0.0.0.0                        # API bind host
+TRACKRAT_API_PORT=8000                           # API bind port
+TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on startup
+TRACKRAT_BACKUP_INTERVAL_SECONDS=3600            # GCS backup frequency
+
+# APNS Auth Key Content (alternative to file path)
+APNS_AUTH_KEY=                                   # Raw P8 key content (fallback if APNS_AUTH_KEY_PATH unavailable)
+
 # GCE Instance Configuration (for horizontal scaling)
-# Instance hostname is automatically set by GCE MIG
+# K_REVISION is automatically set by GCE MIG (used for instance tracking)
 ```
 
 ### Settings Management

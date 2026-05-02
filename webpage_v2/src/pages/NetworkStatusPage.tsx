@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
-import { formatTimeAgo } from '../utils/date';
+import { formatTime } from '../utils/date';
+import { usePolling } from '../utils/usePolling';
 
 const SYSTEM_LABELS: Record<string, string> = {
   NJT: 'NJ Transit',
@@ -66,28 +67,26 @@ export function NetworkStatusPage() {
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [expandedSystem, setExpandedSystem] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (signal?: AbortSignal) => {
     try {
-      setError(null);
       const [congestion, networkSummary] = await Promise.all([
-        apiService.getCongestion(),
-        apiService.getNetworkSummary(),
+        apiService.getCongestion(signal),
+        apiService.getNetworkSummary(signal),
       ]);
       setSegments(congestion.aggregated_segments);
       setGeneratedAt(congestion.generated_at);
       setSummary(networkSummary);
+      setError(null);
       setLoading(false);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Failed to load network status');
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000); // Refresh every 60 seconds
-    return () => clearInterval(interval);
   }, []);
+
+  // Network congestion updates less frequently than per-route data.
+  usePolling(fetchData, [], { intervalMs: 60_000 });
 
   const { systemGroups, orderedSystems } = useMemo(() => {
     const groups: Record<string, SegmentCongestion[]> = {};
@@ -108,7 +107,7 @@ export function NetworkStatusPage() {
   }, [segments]);
 
   if (loading && segments.length === 0) return <LoadingSpinner />;
-  if (error) return <ErrorMessage message={error} onRetry={fetchData} />;
+  if (error) return <ErrorMessage message={error} onRetry={() => fetchData()} />;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -116,7 +115,7 @@ export function NetworkStatusPage() {
         <h2 className="text-2xl font-bold text-text-primary text-center">Network Status</h2>
         {generatedAt && (
           <div className="text-sm text-text-muted mt-1 text-center">
-            Updated {formatTimeAgo(new Date(generatedAt).toISOString())}
+            Updated at {formatTime(new Date(generatedAt).toISOString())}
           </div>
         )}
       </div>

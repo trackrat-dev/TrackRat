@@ -19,6 +19,8 @@ class TrainV2Tests: XCTestCase {
         isCancelled: Bool = false,
         isCompleted: Bool = false,
         observationType: String? = nil,
+        dataSource: String = "NJT",
+        lineCode: String = "NEC",
         stops: [StopV2]? = nil
     ) -> TrainV2 {
         let departure = StationTiming(
@@ -39,7 +41,7 @@ class TrainV2Tests: XCTestCase {
             track: nil
         )
 
-        let line = LineInfo(code: "NEC", name: "Northeast Corridor", color: "#FF6B00")
+        let line = LineInfo(code: lineCode, name: "Northeast Corridor", color: "#FF6B00")
 
         return TrainV2(
             trainId: trainId,
@@ -53,7 +55,7 @@ class TrainV2Tests: XCTestCase {
             observationType: observationType,
             isCancelled: isCancelled,
             isCompleted: isCompleted,
-            dataSource: "NJT",
+            dataSource: dataSource,
             stops: stops
         )
     }
@@ -643,5 +645,185 @@ class TrainV2Tests: XCTestCase {
         XCTAssertTrue(hasAlreadyDeparted, "Train that departed 30 minutes ago should be detected as departed")
 
         print("  ✅ Already departed detection test passed")
+    }
+
+    // MARK: - hasUnconfirmedTrainNumber
+
+    func testHasUnconfirmedTrainNumber_scheduledNJT_isTrue() {
+        print("📋 Testing hasUnconfirmedTrainNumber for SCHEDULED NJT train (the 'Train TBD' case)")
+
+        let train = createTestTrainV2(
+            trainId: "3838",
+            observationType: "SCHEDULED",
+            dataSource: "NJT"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - hasUnconfirmedTrainNumber: \(train.hasUnconfirmedTrainNumber)")
+        XCTAssertEqual(train.displayLabel, "Train TBD",
+            "Sanity check: SCHEDULED NJT train should render as 'Train TBD'")
+        XCTAssertTrue(train.hasUnconfirmedTrainNumber,
+            "SCHEDULED NJT train must trigger the info banner")
+
+        print("  ✅ SCHEDULED NJT triggers banner")
+    }
+
+    func testHasUnconfirmedTrainNumber_observedNJT_isFalse() {
+        print("✅ Testing hasUnconfirmedTrainNumber for OBSERVED NJT train (banner must clear)")
+
+        let train = createTestTrainV2(
+            trainId: "3838",
+            observationType: "OBSERVED",
+            dataSource: "NJT"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - hasUnconfirmedTrainNumber: \(train.hasUnconfirmedTrainNumber)")
+        XCTAssertEqual(train.displayLabel, "Train 3838",
+            "Sanity check: OBSERVED NJT train shows confirmed number")
+        XCTAssertFalse(train.hasUnconfirmedTrainNumber,
+            "Banner must self-clear once train flips to OBSERVED")
+
+        print("  ✅ OBSERVED NJT hides banner")
+    }
+
+    func testHasUnconfirmedTrainNumber_syntheticIdSources_isFalse() {
+        print("🚇 Testing hasUnconfirmedTrainNumber suppressed for synthetic-ID providers")
+
+        // PATH/PATCO/LIRR/MNR/SUBWAY/etc. never render "Train TBD" so the banner
+        // would be off-topic — verify it stays hidden even when SCHEDULED.
+        let syntheticSources = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "BART", "MBTA", "METRA", "WMATA"]
+
+        for source in syntheticSources {
+            let train = createTestTrainV2(
+                trainId: "TRIP-1",
+                observationType: "SCHEDULED",
+                dataSource: source
+            )
+
+            print("  - \(source): displayLabel=\"\(train.displayLabel)\", hasUnconfirmedTrainNumber=\(train.hasUnconfirmedTrainNumber)")
+            XCTAssertNotEqual(train.displayLabel, "Train TBD",
+                "Sanity check: \(source) does not use 'Train TBD' label")
+            XCTAssertFalse(train.hasUnconfirmedTrainNumber,
+                "\(source) is synthetic-ID — banner must not appear")
+        }
+
+        print("  ✅ All synthetic-ID sources suppress banner")
+    }
+
+    func testHasUnconfirmedTrainNumber_scheduledAmtrak_isTrue() {
+        print("🚆 Testing hasUnconfirmedTrainNumber for SCHEDULED Amtrak train")
+
+        let train = createTestTrainV2(
+            trainId: "172",
+            observationType: "SCHEDULED",
+            dataSource: "AMTRAK"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - hasUnconfirmedTrainNumber: \(train.hasUnconfirmedTrainNumber)")
+        XCTAssertEqual(train.displayLabel, "Train TBD",
+            "Sanity check: Amtrak shares NJT-style numeric IDs and shows 'Train TBD' when scheduled")
+        XCTAssertTrue(train.hasUnconfirmedTrainNumber,
+            "SCHEDULED Amtrak train must trigger the banner")
+
+        print("  ✅ SCHEDULED Amtrak triggers banner")
+    }
+
+    func testHasUnconfirmedTrainNumber_nilObservationType_isFalse() {
+        print("⚠️  Testing hasUnconfirmedTrainNumber when observationType is nil")
+
+        // Older / partial records with no observationType should not trigger the banner;
+        // displayLabel falls through to "Train \(trainId)" so the explanation would be misleading.
+        let train = createTestTrainV2(
+            trainId: "3838",
+            observationType: nil,
+            dataSource: "NJT"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - hasUnconfirmedTrainNumber: \(train.hasUnconfirmedTrainNumber)")
+        XCTAssertEqual(train.displayLabel, "Train 3838",
+            "Sanity check: nil observationType shows the trainId, not 'TBD'")
+        XCTAssertFalse(train.hasUnconfirmedTrainNumber,
+            "Banner must only appear for explicitly SCHEDULED trains")
+
+        print("  ✅ nil observationType hides banner")
+    }
+
+    // MARK: - displayDestination
+
+    func testDisplayDestination_subway_stripsLineParenthetical() {
+        print("🚇 Testing displayDestination for SUBWAY drops the embedded '(line)' prefix")
+
+        let train = createTestTrainV2(
+            destinationName: "Astoria-Ditmars Blvd",
+            dataSource: "SUBWAY",
+            lineCode: "N"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - displayDestination: \(train.displayDestination)")
+        XCTAssertEqual(train.displayLabel, "(N) Astoria-Ditmars Blvd",
+            "Sanity check: displayLabel still embeds the line for callers that need a flat string")
+        XCTAssertEqual(train.displayDestination, "Astoria-Ditmars Blvd",
+            "displayDestination must omit '(line)' so the chip can render the bullet separately")
+    }
+
+    func testDisplayDestination_subwayExpress_chipNormalizationIsOrthogonal() {
+        print("🚇 Testing displayDestination for SUBWAY express line (e.g., 7X) preserves destination only")
+
+        // The chip layer normalizes "7X" → "7" via SubwayLines.displayBullet(forLineCode:);
+        // the destination string itself should not depend on that.
+        let train = createTestTrainV2(
+            destinationName: "Flushing-Main St",
+            dataSource: "SUBWAY",
+            lineCode: "7X"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - displayDestination: \(train.displayDestination)")
+        XCTAssertEqual(train.displayDestination, "Flushing-Main St",
+            "displayDestination is just the destination regardless of express variant code")
+    }
+
+    func testDisplayDestination_njt_matchesDisplayLabel() {
+        print("🚆 Testing displayDestination for NJT mirrors displayLabel ('Train N')")
+
+        let train = createTestTrainV2(
+            trainId: "3838",
+            observationType: "OBSERVED",
+            dataSource: "NJT"
+        )
+
+        print("  - displayLabel: \(train.displayLabel)")
+        print("  - displayDestination: \(train.displayDestination)")
+        XCTAssertEqual(train.displayDestination, train.displayLabel,
+            "Non-subway providers don't embed a parenthetical line, so displayDestination == displayLabel")
+        XCTAssertEqual(train.displayDestination, "Train 3838",
+            "Sanity check: OBSERVED NJT renders as 'Train {id}'")
+    }
+
+    func testDisplayDestination_syntheticIdSources_matchDisplayLabel() {
+        print("🚉 Testing displayDestination for synthetic-ID providers mirrors displayLabel (the destination)")
+
+        // PATH/PATCO/LIRR/MNR show just the destination from displayLabel, so
+        // displayDestination should be identical — there's no parenthetical to strip.
+        let syntheticSources = ["PATH", "PATCO", "LIRR", "MNR"]
+
+        for source in syntheticSources {
+            let train = createTestTrainV2(
+                trainId: "TRIP-1",
+                destinationName: "World Trade Center",
+                observationType: "OBSERVED",
+                dataSource: source
+            )
+
+            print("  - \(source): displayLabel=\"\(train.displayLabel)\" displayDestination=\"\(train.displayDestination)\"")
+            XCTAssertEqual(train.displayDestination, train.displayLabel,
+                "\(source) has no parenthetical to strip; displayDestination must equal displayLabel")
+            XCTAssertEqual(train.displayDestination, "World Trade Center",
+                "Sanity check: \(source) shows the destination name")
+        }
     }
 }

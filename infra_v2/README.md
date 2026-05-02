@@ -42,7 +42,7 @@ Simplified GCP infrastructure using Managed Instance Groups with Container-Optim
                    │                                                          │
                    │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
                    │  │Secret Manager│  │  Artifact    │  │  GCS Deploy  │   │
-                   │  │  (5 secrets) │  │  Registry    │  │    Bucket    │   │
+                   │  │  (8 secrets) │  │  Registry    │  │    Bucket    │   │
                    │  └──────────────┘  └──────────────┘  └──────────────┘   │
                    └──────────────────────────────────────────────────────────┘
 ```
@@ -58,6 +58,9 @@ gcloud secrets create trackrat-njt-api-token --data-file=-
 gcloud secrets create trackrat-apns-team-id --data-file=-
 gcloud secrets create trackrat-apns-key-id --data-file=-
 gcloud secrets create trackrat-apns-bundle-id --data-file=-
+gcloud secrets create trackrat-apns-auth-key --data-file=-
+gcloud secrets create trackrat-wmata-api-key --data-file=-
+gcloud secrets create trackrat-metra-api-token --data-file=-
 ```
 
 ### Terraform State Bucket
@@ -121,7 +124,7 @@ gcloud builds submit --config=cloudbuild.yaml .
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
 | `machine_type` | t2d-standard-2 | VM machine type |
-| `disk_size_gb` | 20 | Persistent disk size |
+| `disk_size_gb` | 40 | Persistent disk size |
 | `snapshot_retention_days` | 35 | Snapshot retention period |
 
 **Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability.

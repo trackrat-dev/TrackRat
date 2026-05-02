@@ -11,14 +11,16 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from trackrat.collectors.mbta.client import MbtaArrival, MBTAClient
 from trackrat.collectors.mta_common import (
+    JOURNEY_UPDATE_LOAD_OPTIONS,
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_missing_origin,
+    select_matching_trip,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -263,16 +265,7 @@ class MBTACollector:
                 TrainJourney.journey_date == journey_date,
                 TrainJourney.data_source == "MBTA",
             )
-            .options(
-                selectinload(TrainJourney.stops),
-                # Load all delete-orphan collections to prevent
-                # greenlet_spawn errors during flush orphan checks
-                selectinload(TrainJourney.snapshots),
-                selectinload(TrainJourney.segment_times),
-                selectinload(TrainJourney.dwell_times),
-                selectinload(TrainJourney.progress),
-                selectinload(TrainJourney.progress_snapshots),
-            )
+            .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
         )
         journey = existing.scalar_one_or_none()
 
@@ -450,7 +443,7 @@ class MBTACollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
             # Analyze segments for congestion data
@@ -495,7 +488,7 @@ class MBTACollector:
             )
             journey_stops = list(stop_result.scalars().all())
             update_stop_departure_status(journey_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
             transit_analyzer = TransitAnalyzer()
@@ -518,45 +511,17 @@ class MBTACollector:
         arrivals = await self.client.get_all_arrivals()
         journey_station_codes = {s.station_code for s in journey.stops}
 
-        matching_trips: dict[str, list[MbtaArrival]] = {}
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
-        # Exact match by train_id
-        best_trip: list[MbtaArrival] | None = None
-        for trip_id_candidate, trip_arrivals in matching_trips.items():
-            if _generate_train_id(trip_id_candidate) == journey.train_id:
-                best_trip = trip_arrivals
-                break
-
-        # Fuzzy fallback
-        if best_trip is None:
-            best_overlap = 0
-            best_time_diff = float("inf")
-
-            for trip_arrivals in matching_trips.values():
-                trip_stations = {a.station_code for a in trip_arrivals}
-                overlap = len(trip_stations & journey_station_codes)
-
-                time_diff = float("inf")
-                if journey.scheduled_departure:
-                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                    time_diff = abs(
-                        (
-                            first_arr.arrival_time - journey.scheduled_departure
-                        ).total_seconds()
-                    )
-
-                if overlap > best_overlap or (
-                    overlap == best_overlap and time_diff < best_time_diff
-                ):
-                    best_overlap = overlap
-                    best_time_diff = time_diff
-                    best_trip = trip_arrivals
+        best_trip = select_matching_trip(
+            matching_trips,
+            journey,
+            journey_station_codes,
+            _generate_train_id,
+            "MBTA",
+        )
 
         if not best_trip:
             logger.debug(f"No matching MBTA trip found for journey {journey.train_id}")
@@ -597,7 +562,7 @@ class MBTACollector:
         )
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
-        update_journey_metadata(journey, now)
+        update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated MBTA journey {journey.train_id}")

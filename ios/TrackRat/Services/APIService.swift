@@ -92,7 +92,23 @@ final class APIService: ObservableObject {
         }
         return decoder
     }()
-    
+
+    /// For a future `selectedDate`, project today's wall-clock time-of-day (ET)
+    /// onto it so the backend's limit-50 window lands around the user's current
+    /// commute time rather than always at midnight. Returns nil for today or
+    /// past dates so the existing today-path behavior is unchanged.
+    static func timeFromForFutureDate(_ selectedDate: Date, now: Date = Date()) -> Date? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
+        guard let selectedStart = calendar.dateInterval(of: .day, for: selectedDate)?.start,
+              let todayStart = calendar.dateInterval(of: .day, for: now)?.start,
+              selectedStart > todayStart else {
+            return nil
+        }
+        let timeOfDay = now.timeIntervalSince(todayStart)
+        return selectedStart.addingTimeInterval(timeOfDay)
+    }
+
     // MARK: - Train Search
 
     struct DepartureSearchResult {
@@ -158,7 +174,49 @@ final class APIService: ObservableObject {
         )
         return result.trains
     }
-    
+
+    /// Fetch recently-departed trains from origin -> destination, sorted most-recent-first.
+    /// Includes cancellations and completed journeys within the given window.
+    func searchRecentTrains(fromStationCode: String, toStationCode: String? = nil, windowMinutes: Int = 120, dataSources: Set<TrainSystem>? = nil) async throws -> [TrainV2] {
+        guard var components = URLComponents(string: "\(baseURL)/v2/trains/recent-departures") else {
+            throw APIError.invalidURL
+        }
+
+        var queryItems = [
+            URLQueryItem(name: "from", value: fromStationCode),
+            URLQueryItem(name: "window_minutes", value: String(windowMinutes)),
+            URLQueryItem(name: "limit", value: APIService.DEPARTURE_LIMIT),
+        ]
+
+        if let toStationCode = toStationCode {
+            queryItems.append(URLQueryItem(name: "to", value: toStationCode))
+        }
+
+        if let dataSources = dataSources, !dataSources.isEmpty {
+            queryItems.append(URLQueryItem(name: "data_sources", value: dataSources.apiDataSources))
+        }
+
+        components.queryItems = queryItems
+
+        guard let url = components.url else {
+            throw APIError.invalidURL
+        }
+
+        return try await executeWithRetry {
+            let (data, _) = try await self.session.data(from: url)
+            do {
+                let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
+                return response.departures.map { self.adaptV2DepartureToTrainV2($0) }
+            } catch {
+                print("🔴 V2 DECODING ERROR (searchRecentTrains): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw error
+            }
+        }
+    }
+
     // MARK: - Service Alerts
 
     func fetchServiceAlerts(dataSource: String) async throws -> [V2ServiceAlert] {
@@ -240,10 +298,20 @@ final class APIService: ObservableObject {
         ]
 
         if let date = date {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
-            formatter.timeZone = TimeZone(identifier: "America/New_York")
-            queryItems.append(URLQueryItem(name: "date", value: formatter.string(from: date)))
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd"
+            dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
+            queryItems.append(URLQueryItem(name: "date", value: dateFormatter.string(from: date)))
+
+            // For future dates, anchor the backend's `limit` window to the
+            // user's current time-of-day on the selected day. Without this,
+            // high-frequency providers (e.g. SUBWAY) return only the pre-dawn
+            // sliver of the day because all 50 returned trains fall before sunrise.
+            if let futureTimeFrom = Self.timeFromForFutureDate(date) {
+                let isoFormatter = ISO8601DateFormatter()
+                isoFormatter.formatOptions = [.withInternetDateTime]
+                queryItems.append(URLQueryItem(name: "time_from", value: isoFormatter.string(from: futureTimeFrom)))
+            }
         }
 
         if let dataSources = dataSources, !dataSources.isEmpty {
@@ -760,28 +828,32 @@ final class APIService: ObservableObject {
     
     // MARK: - Live Activity Token Registration (V2)
     
-    func registerLiveActivityToken(pushToken: String, activityId: String, trainNumber: String, originCode: String, destinationCode: String) async throws {
+    func registerLiveActivityToken(pushToken: String, activityId: String, trainNumber: String, originCode: String, destinationCode: String, dataSource: String? = nil) async throws {
         // Create V2 endpoint
         let endpoint = "/v2/live-activities/register"
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError.invalidURL
         }
-        
-        // Create request body matching new backend
+
+        // Create request body matching new backend.
+        // data_source disambiguates trains that share an ID across transit systems.
         struct RegisterRequest: Encodable {
             let push_token: String
             let activity_id: String
             let train_number: String
             let origin_code: String
             let destination_code: String
+            let data_source: String?
         }
-        
+
+        let normalizedDataSource = (dataSource?.isEmpty ?? true) ? nil : dataSource
         let body = RegisterRequest(
             push_token: pushToken,
             activity_id: activityId,
             train_number: trainNumber,
             origin_code: originCode,
-            destination_code: destinationCode
+            destination_code: destinationCode,
+            data_source: normalizedDataSource
         )
         
         // Create request

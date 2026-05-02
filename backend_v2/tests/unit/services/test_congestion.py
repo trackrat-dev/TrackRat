@@ -13,7 +13,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import TrainJourney
-from trackrat.services.congestion import CongestionAnalyzer, SegmentCongestion
+from trackrat.services.congestion import (
+    CongestionAnalyzer,
+    SegmentCongestion,
+    _stop_pairs_cte,
+)
 
 
 class TestSegmentCongestion:
@@ -678,3 +682,116 @@ class TestCongestionAnalyzer:
         segment = results[0]
         # Should only use valid positive transit times
         assert segment.sample_count == 2  # Only the valid 15 and 20 minute segments
+
+    def test_stop_pairs_cte_includes_cutoff_time_filter(self):
+        """The stop_pairs CTE must filter by last_updated_at >= :cutoff_time
+        so PostgreSQL prunes journeys before the expensive LEAD() window
+        function runs. Without this, high-volume providers like SUBWAY
+        materialize millions of rows and hit the 30s statement timeout.
+        """
+        sql = _stop_pairs_cte("")
+        assert "last_updated_at >= :cutoff_time" in sql
+        assert "journey_date >= CURRENT_DATE" in sql
+        assert "LEAD(js.station_code) OVER w" in sql
+
+    def test_stop_pairs_cte_includes_data_source_filter(self):
+        """When a data_source filter is provided, it must appear in the CTE."""
+        sql_with_ds = _stop_pairs_cte("AND tj_pre.data_source = :data_source")
+        assert "tj_pre.data_source = :data_source" in sql_with_ds
+
+        sql_without_ds = _stop_pairs_cte("")
+        assert "data_source" not in sql_without_ds
+
+    @pytest.mark.asyncio
+    async def test_aggregated_congestion_sql_has_cutoff_in_stop_pairs(
+        self, congestion_analyzer, mock_db
+    ):
+        """The aggregated congestion query must push cutoff_time into the
+        stop_pairs CTE — not just segment_data. This is the fix for the
+        statement timeout on high-volume providers (SUBWAY).
+        """
+        mock_result = Mock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+        congestion_analyzer._cache.clear()
+
+        await congestion_analyzer.get_network_congestion_optimized(
+            mock_db, time_window_hours=3, data_source="SUBWAY"
+        )
+
+        main_sql = next(
+            (
+                str(call.args[0])
+                for call in mock_db.execute.call_args_list
+                if "stop_pairs" in str(call.args[0])
+            ),
+            None,
+        )
+        assert main_sql is not None, "stop_pairs query was not executed"
+        # The cutoff_time filter must be inside the stop_pairs CTE definition
+        # (before the closing parenthesis of the CTE), not just in segment_data
+        stop_pairs_section = main_sql.split("stop_pairs AS")[1].split(
+            "segment_data AS"
+        )[0]
+        assert "last_updated_at >= :cutoff_time" in stop_pairs_section, (
+            "cutoff_time filter missing from stop_pairs CTE — "
+            "this causes statement timeouts for high-volume providers"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("max_per_segment", [10, 0])
+    async def test_individual_segments_sql_has_cutoff_in_stop_pairs(
+        self, congestion_analyzer, mock_db, max_per_segment
+    ):
+        """Both branches of get_individual_segments_optimized (with and
+        without per-route limiting) must push cutoff_time into stop_pairs.
+        """
+        mock_result = Mock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        await congestion_analyzer.get_individual_segments_optimized(
+            mock_db, max_per_segment=max_per_segment, data_source="SUBWAY"
+        )
+
+        main_sql = next(
+            (
+                str(call.args[0])
+                for call in mock_db.execute.call_args_list
+                if "stop_pairs" in str(call.args[0])
+            ),
+            None,
+        )
+        assert main_sql is not None, "stop_pairs query was not executed"
+        stop_pairs_section = main_sql.split("stop_pairs AS")[1].split(
+            "segment_data AS"
+        )[0]
+        assert "last_updated_at >= :cutoff_time" in stop_pairs_section, (
+            f"cutoff_time filter missing from stop_pairs CTE "
+            f"(max_per_segment={max_per_segment})"
+        )
+
+    @pytest.mark.asyncio
+    async def test_individual_segments_sets_statement_timeout(
+        self, congestion_analyzer, mock_db
+    ):
+        """get_individual_segments_optimized must set a statement timeout
+        to guard against runaway queries, just like the aggregated method.
+        """
+        mock_result = Mock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+
+        await congestion_analyzer.get_individual_segments_optimized(
+            mock_db, data_source="SUBWAY"
+        )
+
+        timeout_calls = [
+            call
+            for call in mock_db.execute.call_args_list
+            if "statement_timeout" in str(call.args[0])
+        ]
+        assert len(timeout_calls) >= 1, (
+            "get_individual_segments_optimized must SET LOCAL statement_timeout "
+            "before executing the query"
+        )

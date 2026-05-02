@@ -221,6 +221,23 @@ def safe_datetime_subtract(dt1: datetime, dt2: datetime) -> timedelta:
     return dt1_normalized - dt2_normalized
 
 
+MAX_FUTURE_DAYS = 60
+MIN_VALID_DATE = date(2020, 1, 1)
+
+
+def validate_journey_date(journey_date: date) -> bool:
+    """Check whether a journey_date is within a plausible range.
+
+    Rejects dates before 2020-01-01 or more than 60 days in the future.
+    NJT schedules cover a 27-hour window, so anything beyond ~30 days
+    is necessarily garbage from a parsing error.
+    """
+    today = now_et().date()
+    return journey_date >= MIN_VALID_DATE and journey_date <= today + timedelta(
+        days=MAX_FUTURE_DAYS
+    )
+
+
 def is_stale(last_updated: datetime, max_age_seconds: int) -> bool:
     """Check if data is stale with timezone safety.
 

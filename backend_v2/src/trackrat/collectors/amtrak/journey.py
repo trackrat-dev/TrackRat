@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, cast
 
 from sqlalchemy import and_, delete, select
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -289,6 +290,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             stop_sequence = 0
             last_tracked_code = origin_code
             new_stops = []  # Track processed stops for metadata updates
+            api_station_codes: set[str] = set()
             time_corrections = 0
 
             for amtrak_stop in train_data.stations:
@@ -298,6 +300,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
                 # Update terminal station
                 last_tracked_code = internal_code
+                api_station_codes.add(internal_code)
 
                 # Parse times
                 sched_arr = (
@@ -370,6 +373,31 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     train_id=train_id,
                     corrections=time_corrections,
                 )
+
+            # Remove stops that are no longer in the Amtrak API response.
+            # SCHEDULED journeys created by the pattern scheduler copy stops from
+            # the most recent OBSERVED journey, which may include stations the
+            # train doesn't actually stop at on this run. Without this cleanup
+            # those stale stops persist with incorrect times.
+            if journey.id and api_station_codes:
+                deleted = cast(
+                    CursorResult[tuple[()]],
+                    await session.execute(
+                        delete(JourneyStop).where(
+                            and_(
+                                JourneyStop.journey_id == journey.id,
+                                JourneyStop.station_code.notin_(api_station_codes),
+                            )
+                        )
+                    ),
+                )
+                stale_count = deleted.rowcount or 0
+                if stale_count:
+                    logger.info(
+                        "amtrak_stale_stops_removed",
+                        train_id=train_id,
+                        count=stale_count,
+                    )
 
             # Update terminal station and other fields using our local data
             journey.terminal_station_code = last_tracked_code
@@ -565,12 +593,15 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         # Update stops
         stop_sequence = 0
         tracked_stops = []
+        api_station_codes: set[str] = set()
         time_corrections = 0
 
         for amtrak_stop in train_data.stations:
             internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
             if not internal_code:
                 continue
+
+            api_station_codes.add(internal_code)
 
             # Find existing stop or create new
             existing_stop = await session.scalar(
@@ -704,6 +735,31 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 train_id=journey.train_id,
                 corrections=time_corrections,
             )
+
+        # Remove stops that are no longer in the Amtrak API response.
+        # SCHEDULED journeys created by the pattern scheduler copy stops from
+        # the most recent OBSERVED journey, which may include stations the
+        # train doesn't actually stop at on this run. Without this cleanup
+        # those stale stops persist with incorrect times.
+        if api_station_codes:
+            deleted = cast(
+                CursorResult[tuple[()]],
+                await session.execute(
+                    delete(JourneyStop).where(
+                        and_(
+                            JourneyStop.journey_id == journey.id,
+                            JourneyStop.station_code.notin_(api_station_codes),
+                        )
+                    )
+                ),
+            )
+            stale_count = deleted.rowcount or 0
+            if stale_count:
+                logger.info(
+                    "amtrak_stale_stops_removed",
+                    train_id=journey.train_id,
+                    count=stale_count,
+                )
 
         # Update journey metadata
         journey.stops_count = len(tracked_stops)

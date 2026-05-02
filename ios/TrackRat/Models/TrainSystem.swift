@@ -57,13 +57,13 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Brand color for the system
     var color: String {
         switch self {
-        case .njt: return "#004D6E"   // NJ Transit blue
+        case .njt: return "#B61D8E"   // NJ Transit magenta
         case .amtrak: return "#004B87" // Amtrak blue
-        case .path: return "#FF5722"  // PATH orange
-        case .patco: return "#0072CE" // PATCO blue
+        case .path: return "#0072CE"  // PATH blue
+        case .patco: return "#CC0C3B" // PATCO red
         case .lirr: return "#0039A6"  // MTA LIRR blue
-        case .mnr: return "#0039A6"   // MTA Metro-North blue
-        case .subway: return "#0039A6"  // MTA blue
+        case .mnr: return "#000000"   // MTA Metro-North black
+        case .subway: return "#00933C"  // NYC Subway green (4/5/6 Lexington Av Local/Express)
         case .metra: return "#00558A"  // Metra blue
         case .wmata: return "#004E8C"  // WMATA blue
         case .bart: return "#009BDA"   // BART blue
@@ -87,6 +87,23 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
             return true
         case .patco:
             return false
+        }
+    }
+
+    /// Short label for compact station chips (analogous to subway line letters).
+    var chipLabel: String {
+        switch self {
+        case .njt: return "NJT"
+        case .amtrak: return "AMK"
+        case .path: return "PATH"
+        case .patco: return "PATCO"
+        case .lirr: return "LIRR"
+        case .mnr: return "MNR"
+        case .subway: return "NYC"
+        case .metra: return "MTR"
+        case .wmata: return "DC"
+        case .bart: return "BART"
+        case .mbta: return "MBTA"
         }
     }
 
@@ -167,27 +184,52 @@ extension Stations {
 
     /// Search stations grouped by active system membership.
     /// Returns stations matching selected systems first, then stations on other systems.
+    ///
+    /// When `originStationCode` is provided and resolves to a known set of systems,
+    /// stations are also required to share at least one system with the origin to land
+    /// in `primary`; stations that don't are demoted to `other` (treated the same as
+    /// stations on a system the user hasn't activated). When the origin is unknown or
+    /// has no mapped systems, the origin filter is skipped.
+    ///
+    /// To prevent the origin filter from starving the primary bucket (the underlying
+    /// `search` cap is shared between matched and demoted candidates), this oversamples
+    /// the search when an origin is provided and re-caps each bucket independently.
     static func searchGrouped(
         _ query: String,
-        selectedSystems: Set<TrainSystem>
+        selectedSystems: Set<TrainSystem>,
+        originStationCode: String? = nil
     ) -> (primary: [String], other: [String]) {
-        let all = search(query)
+        let cap = Stations.defaultSearchLimit
+        // Oversample so demoted hits don't crowd out quality primary candidates.
+        let searchLimit = originStationCode == nil ? cap : cap * 3
+        let all = search(query, limit: searchLimit)
+        let originSystems = originStationCode.map(systemStringsForStation) ?? []
         var primary: [String] = []
         var other: [String] = []
         for name in all {
             guard let code = getStationCode(name) else { continue }
-            if isStationVisible(code, withSystems: selectedSystems) {
+            let visible = isStationVisible(code, withSystems: selectedSystems)
+            let originOverlap = originSystems.isEmpty
+                || !originSystems.isDisjoint(with: systemStringsForStation(code))
+            if visible && originOverlap {
                 primary.append(name)
             } else {
                 other.append(name)
             }
+            // Stop early once both buckets are full — avoids extra work on
+            // common queries where the oversample yields more than we'll show.
+            if primary.count >= cap && other.count >= cap { break }
         }
-        return (primary, other)
+        return (Array(primary.prefix(cap)), Array(other.prefix(cap)))
     }
 
-    /// Returns the primary train system for a station (for badge display).
-    static func primarySystem(forStationCode code: String) -> TrainSystem? {
-        systemsForStation(code).min(by: { $0.displayName < $1.displayName })
+    /// Returns true if the station shares at least one train system with the given origin.
+    /// Returns true when the origin is nil or has no mapped systems (no filtering applied).
+    static func sharesSystem(stationCode: String, withOrigin originStationCode: String?) -> Bool {
+        guard let origin = originStationCode else { return true }
+        let originSystems = systemStringsForStation(origin)
+        guard !originSystems.isEmpty else { return true }
+        return !originSystems.isDisjoint(with: systemStringsForStation(stationCode))
     }
 }
 

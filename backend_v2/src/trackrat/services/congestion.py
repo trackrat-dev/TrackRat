@@ -90,6 +90,37 @@ __all__ = [
 ]
 
 
+def _stop_pairs_cte(ds_filter: str) -> str:
+    """Generate the stop_pairs CTE with cutoff_time pushdown.
+
+    Filters on tj_pre.last_updated_at >= :cutoff_time so PostgreSQL prunes
+    journeys before the expensive LEAD() window function runs.
+    Requires :cutoff_time in the query's params dict.
+    """
+    return f"""stop_pairs AS (
+        SELECT
+            js.journey_id,
+            js.station_code as from_station,
+            js.actual_departure as from_actual_departure,
+            js.actual_arrival as from_actual_arrival,
+            js.updated_departure as from_updated_departure,
+            js.updated_arrival as from_updated_arrival,
+            js.scheduled_departure as from_scheduled_departure,
+            LEAD(js.station_code) OVER w as to_station,
+            LEAD(js.actual_arrival) OVER w as to_actual_arrival,
+            LEAD(js.updated_arrival) OVER w as to_updated_arrival,
+            LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
+            LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
+        FROM journey_stops js
+        JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
+        WHERE js.station_code IS NOT NULL
+          AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
+          AND tj_pre.last_updated_at >= :cutoff_time
+          {ds_filter}
+        WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
+    )"""
+
+
 class CongestionAnalyzer:
     """Analyzes route congestion in real-time from journey data."""
 
@@ -406,32 +437,7 @@ class CongestionAnalyzer:
         # SQL query that calculates segment times and aggregates in database
         # This replaces loading thousands of objects into Python memory
         query = text(f"""
-        WITH stop_pairs AS (
-            -- Pair each stop with its next stop using LEAD window function.
-            -- Pre-filter by journey_date to avoid scanning the entire history.
-            -- Handles non-consecutive stop_sequence values (common in GTFS
-            -- static data from MTA feeds like MNR/LIRR) by ordering by
-            -- stop_sequence and taking the actual next mapped stop.
-            SELECT
-                js.journey_id,
-                js.station_code as from_station,
-                js.actual_departure as from_actual_departure,
-                js.actual_arrival as from_actual_arrival,
-                js.updated_departure as from_updated_departure,
-                js.updated_arrival as from_updated_arrival,
-                js.scheduled_departure as from_scheduled_departure,
-                LEAD(js.station_code) OVER w as to_station,
-                LEAD(js.actual_arrival) OVER w as to_actual_arrival,
-                LEAD(js.updated_arrival) OVER w as to_updated_arrival,
-                LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
-                LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
-            FROM journey_stops js
-            JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
-            WHERE js.station_code IS NOT NULL
-              AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-              {ds_filter}
-            WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
-        ),
+        WITH {_stop_pairs_cte(ds_filter)},
         segment_data AS (
             -- Calculate segment transit times from paired stops.
             -- Only use real-time data (actual/updated) for transit time calculation.
@@ -535,12 +541,16 @@ class CongestionAnalyzer:
                     COUNT(DISTINCT stt.journey_id) as day_count
                 FROM segment_transit_times stt
                 WHERE stt.departure_time >= NOW() - INTERVAL '30 days'
-                  AND stt.hour_of_day = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/New_York'))
+                  -- Cast EXTRACT results to integer to match hour_of_day/day_of_week
+                  -- column types. Without the cast, PostgreSQL implicitly casts the
+                  -- integer column to numeric at filter time, which prevents
+                  -- idx_segment_baseline from being used (#989).
+                  AND stt.hour_of_day = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'America/New_York'))::integer
                   -- Match weekday vs weekend
                   -- EXTRACT(DOW) uses Sun=0,Sat=6; Python weekday() uses Mon=0,Sat=5,Sun=6
                   AND (
-                      (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) IN (0, 6) AND stt.day_of_week IN (5, 6))
-                      OR (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York')) NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
+                      (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York'))::integer IN (0, 6) AND stt.day_of_week IN (5, 6))
+                      OR (EXTRACT(DOW FROM (NOW() AT TIME ZONE 'America/New_York'))::integer NOT IN (0, 6) AND stt.day_of_week NOT IN (5, 6))
                   )
                   {ds_filter_stt}
                 GROUP BY stt.from_station_code, stt.to_station_code, stt.data_source, stt.departure_time::date
@@ -725,28 +735,7 @@ class CongestionAnalyzer:
         if max_per_segment > 0:
             # With per-route limiting using ROW_NUMBER()
             query = text(f"""
-            WITH stop_pairs AS (
-                -- Pre-filter by journey_date to avoid scanning entire history
-                SELECT
-                    js.journey_id,
-                    js.station_code as from_station,
-                    js.actual_departure as from_actual_departure,
-                    js.actual_arrival as from_actual_arrival,
-                    js.updated_departure as from_updated_departure,
-                    js.updated_arrival as from_updated_arrival,
-                    js.scheduled_departure as from_scheduled_departure,
-                    LEAD(js.station_code) OVER w as to_station,
-                    LEAD(js.actual_arrival) OVER w as to_actual_arrival,
-                    LEAD(js.updated_arrival) OVER w as to_updated_arrival,
-                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
-                    LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
-                FROM journey_stops js
-                JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
-                WHERE js.station_code IS NOT NULL
-                  AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-                  {ds_filter}
-                WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
-            ),
+            WITH {_stop_pairs_cte(ds_filter)},
             segment_data AS (
                 -- Calculate individual train segments between adjacent stops.
                 -- Only real-time data (actual/updated) used; scheduled times excluded
@@ -827,28 +816,7 @@ class CongestionAnalyzer:
         else:
             # No per-route limiting - return ALL individual segments
             query = text(f"""
-            WITH stop_pairs AS (
-                -- Pre-filter by journey_date to avoid scanning entire history
-                SELECT
-                    js.journey_id,
-                    js.station_code as from_station,
-                    js.actual_departure as from_actual_departure,
-                    js.actual_arrival as from_actual_arrival,
-                    js.updated_departure as from_updated_departure,
-                    js.updated_arrival as from_updated_arrival,
-                    js.scheduled_departure as from_scheduled_departure,
-                    LEAD(js.station_code) OVER w as to_station,
-                    LEAD(js.actual_arrival) OVER w as to_actual_arrival,
-                    LEAD(js.updated_arrival) OVER w as to_updated_arrival,
-                    LEAD(js.scheduled_arrival) OVER w as to_scheduled_arrival,
-                    LEAD(js.scheduled_departure) OVER w as to_scheduled_departure
-                FROM journey_stops js
-                JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
-                WHERE js.station_code IS NOT NULL
-                  AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-                  {ds_filter}
-                WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
-            ),
+            WITH {_stop_pairs_cte(ds_filter)},
             segment_data AS (
                 -- Calculate individual train segments between adjacent stops.
                 -- Only real-time data (actual/updated) used; scheduled times excluded
@@ -930,6 +898,7 @@ class CongestionAnalyzer:
         if max_per_segment > 0:
             seg_params["max_per_segment"] = max_per_segment
 
+        await db.execute(text("SET LOCAL statement_timeout = '30000'"))
         query_start = now_et()
         result = await db.execute(query, seg_params)
         rows = result.fetchall()

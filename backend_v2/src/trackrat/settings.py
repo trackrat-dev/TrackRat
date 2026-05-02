@@ -78,8 +78,16 @@ class Settings(BaseSettings):
                 break
         return v
 
-    # Metra API
-    metra_api_token: str = Field(default="", description="Metra GTFS-RT API token")
+    # Metra API — prefer username/password (Basic Auth); fall back to legacy token
+    metra_api_token: str = Field(
+        default="", description="Metra GTFS-RT API token (legacy query-param auth)"
+    )
+    metra_api_username: str = Field(
+        default="", description="Metra GTFS-RT API username (HTTP Basic Auth)"
+    )
+    metra_api_password: str = Field(
+        default="", description="Metra GTFS-RT API password (HTTP Basic Auth)"
+    )
 
     @field_validator("metra_api_token", mode="before")
     @classmethod
@@ -88,6 +96,22 @@ class Settings(BaseSettings):
         if v:
             return v
         return os.environ.get("METRA_API_TOKEN", "")
+
+    @field_validator("metra_api_username", mode="before")
+    @classmethod
+    def load_metra_api_username(cls, v: str) -> str:
+        """Load Metra API username from env vars."""
+        if v:
+            return v
+        return os.environ.get("METRA_API_USERNAME", "")
+
+    @field_validator("metra_api_password", mode="before")
+    @classmethod
+    def load_metra_api_password(cls, v: str) -> str:
+        """Load Metra API password from env vars."""
+        if v:
+            return v
+        return os.environ.get("METRA_API_PASSWORD", "")
 
     # MBTA API
     mbta_api_key: str = Field(default="", description="MBTA API key")
@@ -123,6 +147,13 @@ class Settings(BaseSettings):
     hot_train_update_interval_seconds: int = Field(
         default=120,
         description="Update interval for trains departing soon (seconds)",
+        ge=30,
+    )
+
+    # Retention Settings
+    retention_days: int = Field(
+        default=120,
+        description="Days to retain train journey data before cleanup (min 30)",
         ge=30,
     )
 

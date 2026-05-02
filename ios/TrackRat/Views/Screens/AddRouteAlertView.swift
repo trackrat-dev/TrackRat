@@ -6,11 +6,30 @@ private enum AlertMode: String, CaseIterable {
     case system = "System"
 }
 
+/// Single source of truth for which secondary sheet is currently presented.
+/// Replaces three separate `.sheet` modifiers — stacked sheets on the same view are a known
+/// SwiftUI footgun and were a likely contributor to mid-edit reset flakiness.
+private enum ActiveAlertSheet: Identifiable {
+    case directional(DirectionalSheetData)
+    case system(DirectionalSheetData)
+    case trainSystems
+
+    var id: String {
+        switch self {
+        case .directional(let data): return "directional-\(data.id)"
+        case .system(let data): return "system-\(data.id)"
+        case .trainSystems: return "trainSystems"
+        }
+    }
+}
+
 struct AddRouteAlertView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
+
+    // Paywall
+    @State private var showingPaywall = false
 
     // Mode selection
     @State private var alertMode: AlertMode = .route
@@ -22,12 +41,8 @@ struct AddRouteAlertView: View {
     @State private var toStation: Station? = nil
     @State private var confirmationMessage: String? = nil
 
-    // System-wide state
-    @State private var systemAlertSheetData: DirectionalSheetData? = nil
-
-    // Customization sheet state
-    @State private var directionalSheetData: DirectionalSheetData? = nil
-    @State private var showTrainSystemSettings = false
+    // Unified secondary-sheet state
+    @State private var activeSheet: ActiveAlertSheet? = nil
 
     /// User's selected systems that support real-time alerts.
     private var alertCapableSystems: Set<TrainSystem> {
@@ -47,36 +62,44 @@ struct AddRouteAlertView: View {
                 }
         }
         .preferredColorScheme(.dark)
-        .sheet(item: $directionalSheetData) { data in
-            DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
-                saveDirectionalSubscriptions(subs)
-            }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallView(context: .routeAlerts)
         }
-        .sheet(item: $systemAlertSheetData) { data in
-            DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
-                saveSystemSubscription(subs)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .directional(let data):
+                DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
+                    saveDirectionalSubscriptions(subs)
+                }
+            case .system(let data):
+                DirectionalAlertConfigurationSheet(directions: data.directions) { subs in
+                    saveSystemSubscription(subs)
+                }
+            case .trainSystems:
+                SettingsView(editTrainSystems: true)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
-        }
-        .sheet(isPresented: $showTrainSystemSettings) {
-            SettingsView(editTrainSystems: true)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
         }
     }
 
     // MARK: - Save Subscriptions
 
     private var atAlertLimit: Bool {
-        !subscriptionService.isPro
+        !SubscriptionService.shared.isPro
             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
     }
 
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else { return }
+        guard !atAlertLimit else {
+            activeSheet = nil
+            showingPaywall = true
+            return
+        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        directionalSheetData = nil
+        activeSheet = nil
         withAnimation {
             fromStation = nil
             toStation = nil
@@ -84,11 +107,15 @@ struct AddRouteAlertView: View {
     }
 
     private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else { return }
+        guard !atAlertLimit else {
+            activeSheet = nil
+            showingPaywall = true
+            return
+        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        systemAlertSheetData = nil
+        activeSheet = nil
     }
 
     // MARK: - Alert Content
@@ -156,7 +183,7 @@ struct AddRouteAlertView: View {
                     if isActive {
                         openSystemAlertSheet(for: system)
                     } else {
-                        showTrainSystemSettings = true
+                        activeSheet = .trainSystems
                     }
                 } label: {
                     Text(system.displayName)
@@ -184,14 +211,19 @@ struct AddRouteAlertView: View {
             return
         }
 
+        if atAlertLimit {
+            showingPaywall = true
+            return
+        }
+
         let sub = RouteAlertSubscription(dataSource: system.rawValue)
-        systemAlertSheetData = DirectionalSheetData(directions: [
+        activeSheet = .system(DirectionalSheetData(directions: [
             DirectionDraft(
                 label: "\(system.displayName) System Alerts",
                 subscription: sub,
                 alreadySubscribed: false
             ),
-        ])
+        ]))
     }
 
     // MARK: - Route Mode (Station-Pair Picker)
@@ -240,6 +272,10 @@ struct AddRouteAlertView: View {
             // Add button
             if let from = fromStation, let to = toStation {
                 Button {
+                    if atAlertLimit {
+                        showingPaywall = true
+                        return
+                    }
                     let fromCode = from.code
                     let toCode = to.code
                     let fromSystems = Stations.systemStringsForStation(fromCode)
@@ -270,7 +306,7 @@ struct AddRouteAlertView: View {
                         let subBA = RouteAlertSubscription(
                             dataSource: dataSource, fromStationCode: toCode, toStationCode: fromCode
                         )
-                        directionalSheetData = DirectionalSheetData(directions: [
+                        activeSheet = .directional(DirectionalSheetData(directions: [
                             DirectionDraft(
                                 label: "To \(Stations.displayName(for: toCode))",
                                 subscription: subAB,
@@ -281,7 +317,7 @@ struct AddRouteAlertView: View {
                                 subscription: subBA,
                                 alreadySubscribed: existsBA
                             ),
-                        ])
+                        ]))
                     }
                 } label: {
                     Text("Add Alert")

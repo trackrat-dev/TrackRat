@@ -1,9 +1,29 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { storageService } from './storage';
+import { TrainDetails } from '../types';
 
 beforeEach(() => {
   localStorage.clear();
+  vi.restoreAllMocks();
 });
+
+function makeMinimalTrain(id: string, fromCode = 'A', toCode = 'B'): TrainDetails {
+  return {
+    train_id: id,
+    journey_date: '2026-04-01',
+    line: { code: 'NEC', name: 'Northeast Corridor', color: '#f60' },
+    route: { origin: 'Station A', destination: 'Station B', origin_code: fromCode, destination_code: toCode },
+    stops: [
+      { station: { code: fromCode, name: 'Station A' }, stop_sequence: 1, scheduled_departure: '2026-04-01T08:00:00-04:00', has_departed_station: false },
+      { station: { code: toCode, name: 'Station B' }, stop_sequence: 2, scheduled_arrival: '2026-04-01T09:00:00-04:00', has_departed_station: false },
+    ],
+    data_freshness: { last_updated: '2026-04-01T07:55:00-04:00', age_seconds: 0, update_count: 1, collection_method: null },
+    data_source: 'NJT',
+    observation_type: 'OBSERVED',
+    is_cancelled: false,
+    is_completed: false,
+  } as TrainDetails;
+}
 
 describe('Recent Trips', () => {
   it('returns empty array when no trips stored', () => {
@@ -157,6 +177,19 @@ describe('Favorite Routes', () => {
 
     expect(storageService.getFavoriteRoutes()).toEqual([]);
   });
+
+  it('limits to 10 favorite routes', () => {
+    for (let i = 0; i < 15; i++) {
+      storageService.saveFavoriteRoute({
+        departureCode: `FROM${i}`,
+        departureName: `Station ${i}`,
+        destinationCode: `TO${i}`,
+        destinationName: `Destination ${i}`,
+      });
+    }
+
+    expect(storageService.getFavoriteRoutes()).toHaveLength(10);
+  });
 });
 
 describe('Commute Profile', () => {
@@ -182,36 +215,7 @@ describe('Commute Profile', () => {
 
 describe('Trip History', () => {
   it('stores viewed trains with replay links', () => {
-    storageService.saveViewedTrainTrip({
-      train_id: '3515',
-      journey_date: '2026-04-01',
-      line: { code: 'NEC', name: 'Northeast Corridor', color: '#f60' },
-      route: {
-        origin: 'Trenton',
-        destination: 'New York Penn Station',
-        origin_code: 'TR',
-        destination_code: 'NY',
-      },
-      stops: [
-        {
-          station: { code: 'TR', name: 'Trenton' },
-          stop_sequence: 1,
-          scheduled_departure: '2026-04-01T08:00:00-04:00',
-          has_departed_station: false,
-        },
-        {
-          station: { code: 'NY', name: 'New York Penn Station' },
-          stop_sequence: 2,
-          scheduled_arrival: '2026-04-01T09:00:00-04:00',
-          has_departed_station: false,
-        },
-      ],
-      data_freshness: { last_updated: '2026-04-01T07:55:00-04:00', age_seconds: 0, update_count: 1, collection_method: null },
-      data_source: 'NJT',
-      observation_type: 'OBSERVED',
-      is_cancelled: false,
-      is_completed: false,
-    });
+    storageService.saveViewedTrainTrip(makeMinimalTrain('3515', 'TR', 'NY'));
 
     const history = storageService.getTripHistory();
     expect(history).toHaveLength(1);
@@ -278,6 +282,24 @@ describe('Trip History', () => {
     expect(history[0].kind).toBe('trip');
     expect(history[0].href).toContain('/trip?trip=');
   });
+
+  it('limits to 50 entries', () => {
+    for (let i = 0; i < 55; i++) {
+      storageService.saveViewedTrainTrip(makeMinimalTrain(`train${i}`));
+    }
+
+    expect(storageService.getTripHistory()).toHaveLength(50);
+  });
+
+  it('deduplicates by id, keeping most recent view', () => {
+    storageService.saveViewedTrainTrip(makeMinimalTrain('3515'));
+    storageService.saveViewedTrainTrip(makeMinimalTrain('9999'));
+    storageService.saveViewedTrainTrip(makeMinimalTrain('3515'));
+
+    const history = storageService.getTripHistory();
+    expect(history).toHaveLength(2);
+    expect(history[0].trainId).toBe('3515');
+  });
 });
 
 describe('Last Route', () => {
@@ -314,5 +336,220 @@ describe('Last Route', () => {
     localStorage.setItem('trackrat:lastRoute', 'broken');
 
     expect(storageService.getLastRoute()).toBeNull();
+  });
+});
+
+describe('Preferred Systems', () => {
+  it('returns empty array when no systems stored', () => {
+    expect(storageService.getPreferredSystems()).toEqual([]);
+  });
+
+  it('saves and retrieves preferred systems', () => {
+    storageService.savePreferredSystems(['NJT', 'AMTRAK', 'PATH']);
+
+    const systems = storageService.getPreferredSystems();
+    expect(systems).toEqual(['NJT', 'AMTRAK', 'PATH']);
+  });
+
+  it('overwrites previous systems', () => {
+    storageService.savePreferredSystems(['NJT']);
+    storageService.savePreferredSystems(['AMTRAK', 'PATH']);
+
+    expect(storageService.getPreferredSystems()).toEqual(['AMTRAK', 'PATH']);
+  });
+
+  it('returns empty array on corrupted data', () => {
+    localStorage.setItem('trackrat:systems', '{{bad');
+
+    expect(storageService.getPreferredSystems()).toEqual([]);
+  });
+});
+
+describe('Schema versioning', () => {
+  it('reads legacy unversioned recent trips', () => {
+    localStorage.setItem('trackrat:recentTrips', JSON.stringify([
+      {
+        id: 'NY-NP',
+        departureCode: 'NY',
+        departureName: 'New York Penn Station',
+        destinationCode: 'NP',
+        destinationName: 'Newark Penn Station',
+        lastUsed: '2026-01-15T00:00:00.000Z',
+      },
+    ]));
+
+    const trips = storageService.getRecentTrips();
+    expect(trips).toHaveLength(1);
+    expect(trips[0].departureCode).toBe('NY');
+    expect(trips[0].lastUsed).toBeInstanceOf(Date);
+  });
+
+  it('reads legacy unversioned last route', () => {
+    localStorage.setItem('trackrat:lastRoute', JSON.stringify({
+      from: { code: 'NY', name: 'New York' },
+      to: { code: 'NP', name: 'Newark' },
+    }));
+
+    const route = storageService.getLastRoute();
+    expect(route?.from.code).toBe('NY');
+    expect(route?.to.code).toBe('NP');
+  });
+
+  it('reads legacy unversioned preferred systems', () => {
+    localStorage.setItem('trackrat:systems', JSON.stringify(['NJT', 'PATH']));
+
+    expect(storageService.getPreferredSystems()).toEqual(['NJT', 'PATH']);
+  });
+
+  it('reads legacy unversioned home station', () => {
+    localStorage.setItem('trackrat:homeStation', JSON.stringify({
+      code: 'NY',
+      name: 'New York Penn Station',
+    }));
+
+    expect(storageService.getHomeStation()?.code).toBe('NY');
+  });
+
+  it('reads versioned data correctly', () => {
+    localStorage.setItem('trackrat:recentTrips', JSON.stringify({
+      v: 1,
+      data: [{
+        id: 'NY-NP',
+        departureCode: 'NY',
+        departureName: 'New York Penn Station',
+        destinationCode: 'NP',
+        destinationName: 'Newark Penn Station',
+        lastUsed: '2026-01-15T00:00:00.000Z',
+      }],
+    }));
+
+    const trips = storageService.getRecentTrips();
+    expect(trips).toHaveLength(1);
+    expect(trips[0].departureCode).toBe('NY');
+  });
+
+  it('writes versioned envelope on save', () => {
+    storageService.saveLastRoute(
+      { code: 'NY', name: 'New York' },
+      { code: 'NP', name: 'Newark' }
+    );
+
+    const raw = JSON.parse(localStorage.getItem('trackrat:lastRoute')!);
+    expect(raw.v).toBe(1);
+    expect(raw.data.from.code).toBe('NY');
+    expect(raw.data.to.code).toBe('NP');
+  });
+
+  it('clears corrupted data and returns null', () => {
+    localStorage.setItem('trackrat:lastRoute', 'not-valid-json!!!');
+
+    const route = storageService.getLastRoute();
+    expect(route).toBeNull();
+    expect(localStorage.getItem('trackrat:lastRoute')).toBeNull();
+  });
+
+  it('clears corrupted data and returns empty array for list keys', () => {
+    localStorage.setItem('trackrat:recentTrips', '\x00\x01binary');
+
+    const trips = storageService.getRecentTrips();
+    expect(trips).toEqual([]);
+    expect(localStorage.getItem('trackrat:recentTrips')).toBeNull();
+  });
+});
+
+describe('QuotaExceededError handling', () => {
+  it('evicts oldest entries on quota exceeded for list keys', () => {
+    for (let i = 0; i < 8; i++) {
+      storageService.saveRecentTrip({
+        departureCode: `FROM${i}`,
+        departureName: `Station ${i}`,
+        destinationCode: `TO${i}`,
+        destinationName: `Destination ${i}`,
+      });
+    }
+    expect(storageService.getRecentTrips()).toHaveLength(8);
+
+    let callCount = 0;
+    const originalSetItem = localStorage.setItem.bind(localStorage);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string, value: string) => {
+      callCount++;
+      if (callCount === 1) {
+        throw new DOMException('quota exceeded', 'QuotaExceededError');
+      }
+      originalSetItem(key, value);
+    });
+
+    storageService.saveRecentTrip({
+      departureCode: 'NEW',
+      departureName: 'New Station',
+      destinationCode: 'DEST',
+      destinationName: 'New Dest',
+    });
+
+    vi.restoreAllMocks();
+    const trips = storageService.getRecentTrips();
+    expect(trips.length).toBeGreaterThan(0);
+    expect(trips.length).toBeLessThanOrEqual(8);
+  });
+
+  it('fails silently on quota exceeded for singleton keys', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    expect(() => {
+      storageService.saveLastRoute(
+        { code: 'NY', name: 'New York' },
+        { code: 'NP', name: 'Newark' }
+      );
+    }).not.toThrow();
+
+    expect(() => {
+      storageService.savePreferredSystems(['NJT', 'AMTRAK']);
+    }).not.toThrow();
+
+    expect(() => {
+      storageService.setHomeStation({ code: 'NY', name: 'New York' });
+    }).not.toThrow();
+  });
+
+  it('fails silently on quota exceeded for trip history', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    expect(() => {
+      storageService.saveViewedTrainTrip(makeMinimalTrain('3515'));
+    }).not.toThrow();
+  });
+
+  it('fails silently when both initial write and eviction retry fail', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    expect(() => {
+      for (let i = 0; i < 5; i++) {
+        storageService.saveRecentTrip({
+          departureCode: `FROM${i}`,
+          departureName: `Station ${i}`,
+          destinationCode: `TO${i}`,
+          destinationName: `Destination ${i}`,
+        });
+      }
+    }).not.toThrow();
+  });
+
+  it('handles non-quota DOMException errors silently', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('security error', 'SecurityError');
+    });
+
+    expect(() => {
+      storageService.saveLastRoute(
+        { code: 'NY', name: 'New York' },
+        { code: 'NP', name: 'Newark' }
+      );
+    }).not.toThrow();
   });
 });

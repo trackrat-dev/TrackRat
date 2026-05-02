@@ -1299,3 +1299,111 @@ class TestGetStaticStopTimesLirrFallback:
         assert len(find_calls) == 2
         assert find_calls[0] == ("9999_2026-02-24", "trip_id")
         assert find_calls[1] == ("9999", "train_id")
+
+
+class TestGetScheduledDeparturesTimeFrom:
+    """Tests for `time_from` filtering in get_scheduled_departures().
+
+    High-frequency providers like SUBWAY would otherwise return only the
+    overnight sliver of the day because the per-source SQL caps at 250 rows
+    sorted by departure clock time. The fix pushes the cutoff into SQL via
+    `_query_departures_for_source(..., time_from=...)`.
+    """
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    @pytest.mark.asyncio
+    async def test_time_from_passed_to_query(self):
+        """get_scheduled_departures must thread time_from down to the SQL query."""
+        target_date = date(2026, 4, 23)
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
+        mock_db = AsyncMock()
+        query_mock = AsyncMock(return_value=[])
+
+        with (
+            patch.object(
+                self.service, "get_active_service_ids", return_value={"WD_SUBWAY"}
+            ),
+            patch.object(self.service, "_query_departures_for_source", query_mock),
+        ):
+            await self.service.get_scheduled_departures(
+                db=mock_db,
+                from_station="S127",
+                to_station=None,
+                target_date=target_date,
+                limit=5,
+                data_sources=["SUBWAY"],
+                time_from=cutoff,
+            )
+
+        assert query_mock.await_count == 1
+        # time_from is the 7th positional arg
+        assert query_mock.await_args.args[6] == cutoff
+
+    def test_gtfs_time_cutoff_returns_none_before_target_midnight(self):
+        """Cutoff at or before target_date midnight means no SQL filter is needed."""
+        target_date = date(2026, 4, 23)
+        # Cutoff one second before midnight ET — entire target_date is >= cutoff.
+        cutoff = ET.localize(datetime.combine(target_date, time(0, 0))) - timedelta(
+            seconds=1
+        )
+        assert GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") is None
+
+    def test_gtfs_time_cutoff_formats_local_time_of_day(self):
+        """Cutoff during target_date returns zero-padded HH:MM:SS in agency tz."""
+        target_date = date(2026, 4, 23)
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 5, 30)))
+        assert (
+            GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:05:30"
+        )
+
+    def test_gtfs_time_cutoff_overnight_uses_24_plus_hours(self):
+        """Cutoff after midnight on the next day yields a >24:00:00 GTFS time.
+
+        GTFS represents 1:30 AM the day after a service date as 25:30:00, and
+        the cutoff string must use the same convention so lexicographic
+        comparison against stored departure_time values works.
+        """
+        target_date = date(2026, 4, 23)
+        # 1:30 AM ET on the day after target_date.
+        cutoff = ET.localize(
+            datetime.combine(target_date + timedelta(days=1), time(1, 30))
+        )
+        assert (
+            GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "25:30:00"
+        )
+
+    def test_gtfs_time_cutoff_uses_provider_timezone(self):
+        """A BART cutoff at 08:00 PT must produce 08:00:00, not the ET equivalent."""
+        from trackrat.utils.time import PT
+
+        target_date = date(2026, 4, 23)
+        cutoff = PT.localize(datetime.combine(target_date, time(8, 0)))
+        assert GTFSService._gtfs_time_cutoff(cutoff, target_date, "BART") == "08:00:00"
+
+    def test_gtfs_time_cutoff_spring_forward_uses_wall_clock(self):
+        """On spring-forward day, 08:00 EDT must produce 08:00:00, not 07:00:00.
+
+        Spring forward 2026: March 8. Midnight is EST (-05:00), but 08:00 is
+        EDT (-04:00). Physical elapsed time is 7 hours, but the GTFS wall-clock
+        time is 08:00:00.
+        """
+        target_date = date(2026, 3, 8)
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
+        assert (
+            GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:00:00"
+        )
+
+    def test_gtfs_time_cutoff_fall_back_uses_wall_clock(self):
+        """On fall-back day, 08:00 EST must produce 08:00:00, not 09:00:00.
+
+        Fall back 2026: November 1. Midnight is EDT (-04:00), but 08:00 is
+        EST (-05:00). Physical elapsed time is 9 hours, but the GTFS wall-clock
+        time is 08:00:00.
+        """
+        target_date = date(2026, 11, 1)
+        cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
+        assert (
+            GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:00:00"
+        )

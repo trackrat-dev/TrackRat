@@ -99,6 +99,18 @@ class TestStationMapping:
         # Function should either return the code itself or a default
         assert result is not None
 
+    def test_canal_st_platforms_have_clean_names(self):
+        """Subway station names no longer carry parenthetical route suffixes —
+        clients render colored line bullets next to the name via the
+        `SubwayLineChips` component (iOS) for visual disambiguation between
+        same-name platforms. The `(N/Q)` / `(N/R/W)` tags this used to assert
+        moved out of the name string and into the chip layer; SQ01's "(N)"
+        chip continues to be sourced from the manual additions in
+        `scripts/generate_subway_data.py:MANUAL_STATION_ROUTE_ADDITIONS`."""
+        assert SUBWAY_STATION_NAMES["SQ01"] == "Canal St"
+        assert get_station_name("SQ01") == "Canal St"
+        assert SUBWAY_STATION_NAMES["SR23"] == "Canal St"
+
     def test_mapping_completeness(self):
         """Test that all expected stations are mapped."""
         expected_internal_codes = [
@@ -567,7 +579,7 @@ class TestStationEquivalences:
 
     def test_expand_station_codes_without_equivalent(self):
         """expand_station_codes returns single-element list for non-shared stations."""
-        non_shared_codes = ["NY", "TR", "PHO", "MWPL", "JAM"]
+        non_shared_codes = ["TR", "PHO", "MWPL", "JAM"]
         for code in non_shared_codes:
             result = expand_station_codes(code)
             assert result == [
@@ -673,8 +685,8 @@ class TestStationEquivalences:
                 f"expected all of {sorted(expected_ts)}"
             )
 
-        # Grand Central-42 St: includes S901/GS shuttle
-        expected_gc = {"S631", "S723", "S901"}
+        # Grand Central-42 St: includes GCT commuter rail and S901/GS shuttle
+        expected_gc = {"GCT", "S631", "S723", "S901"}
         for code in expected_gc:
             result = expand_station_codes(code)
             assert set(result) == expected_gc, (
@@ -701,7 +713,7 @@ class TestStationEquivalences:
             ({"S119", "SA18"}, "103 St West Side (1 + A/B/C)"),
             ({"S120", "SA19"}, "96 St West Side (1/2/3 + A/B/C)"),
             ({"S126", "SA25"}, "50 St (1/2 + A/C/E)"),
-            ({"S128", "SA28"}, "34 St-Penn Station (1/2/3 + A/C/E)"),
+            ({"NY", "S128", "SA28"}, "Penn Station / 34 St-Penn Station"),
             (
                 {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},
                 "Canal St (1/2 + 4/6 + A/C/E + J/Z + Q + N/R/W)",
@@ -746,7 +758,6 @@ class TestStationEquivalences:
             {"S119", "SA18"},  # 103 St West
             {"S120", "SA19"},  # 96 St West
             {"S126", "SA25"},  # 50 St
-            {"S128", "SA28"},  # 34 St-Penn Station
             {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},  # Canal St
             {"S208", "S503"},  # Gun Hill Rd
             {"S211", "S504"},  # Pelham Pkwy
@@ -776,6 +787,32 @@ class TestStationEquivalences:
             f"Expected WTC cross-system complex {sorted(wtc_expected)} not found in "
             f"STATION_EQUIVALENCE_GROUPS"
         )
+
+    @pytest.mark.parametrize(
+        "expected_codes,description",
+        [
+            ({"NY", "S128", "SA28"}, "Penn Station / 34 St-Penn Station"),
+            (
+                {"GCT", "S631", "S723", "S901"},
+                "Grand Central Terminal / Grand Central-42 St",
+            ),
+        ],
+    )
+    def test_cross_system_rail_subway_complexes_in_equivalence_groups(
+        self, expected_codes, description
+    ):
+        """Major rail hubs should expand to connected subway complexes."""
+        found = False
+        for group in STATION_EQUIVALENCE_GROUPS:
+            if expected_codes.issubset(group):
+                found = True
+                break
+        assert found, (
+            f"Expected {description} complex {sorted(expected_codes)} not found in "
+            f"STATION_EQUIVALENCE_GROUPS"
+        )
+        for code in expected_codes:
+            assert set(expand_station_codes(code)) == expected_codes
 
     def test_unified_complexes_canonical_code_deterministic(self):
         """canonical_station_code is the same for all members of unified complexes."""
@@ -953,18 +990,56 @@ class TestSubwayGTFSStopMapping:
             f"letters/numbers:\n" + "\n".join(f"  {v}" for v in violations)
         )
 
-    def test_subway_station_names_known_a_line_labels(self):
-        """Verify specific A-line stations have correct route labels.
+    def test_subway_station_names_no_parenthetical_route_suffix(self):
+        """Subway station names should be clean — no `(A)`, `(1/2/3)` etc. tails.
+        Clients render colored line bullets next to the name for disambiguation.
 
-        SA63 (104 St on A line) and SA64 (111 St on A line) should have '(A)' suffix,
-        not their station codes.
+        The bug class this guards against (e.g. SA63 leaking the raw code as
+        `'104 St (SA63)'`) is now caught earlier: clean names mean the
+        generator's collision-suffix code path is no longer in use, so a
+        regression that brings it back would also bring back a parenthetical.
         """
-        assert (
-            SUBWAY_STATION_NAMES["SA63"] == "104 St (A)"
-        ), f"SA63 should be '104 St (A)' but got '{SUBWAY_STATION_NAMES['SA63']}'"
-        assert (
-            SUBWAY_STATION_NAMES["SA64"] == "111 St (A)"
-        ), f"SA64 should be '111 St (A)' but got '{SUBWAY_STATION_NAMES['SA64']}'"
+        import re
+
+        bullet_suffix = re.compile(r"\s*\([A-Z0-9/]+\)\s*$")
+        violations = [
+            f"{code}: {name}"
+            for code, name in SUBWAY_STATION_NAMES.items()
+            if bullet_suffix.search(name)
+        ]
+        assert not violations, (
+            "Subway station names should not carry parenthetical suffixes:\n"
+            + "\n".join(f"  {v}" for v in violations)
+        )
+
+    def test_subway_route_topology_stations_all_in_station_names(self):
+        """Every station code referenced by a subway route must have a name in
+        `SUBWAY_STATION_NAMES`. Without this, a stop on that route would render
+        as the bare code in clients.
+
+        (This test previously also checked that parenthetical route suffixes
+        on the displayed name matched the route topology. Since names are now
+        stripped of those suffixes — clients use `SubwayLineChips` for visual
+        disambiguation, and chip data derives directly from route topology by
+        construction — the suffix-matching half no longer applies. The
+        underlying invariant it guarded against, route topology and displayed
+        lines drifting apart, is now structurally impossible: chips ARE the
+        topology.)
+        """
+        from trackrat.config.route_topology import ALL_ROUTES
+
+        missing: list[str] = []
+        for route in ALL_ROUTES:
+            if route.data_source != "SUBWAY":
+                continue
+            for code in route.stations:
+                if code not in SUBWAY_STATION_NAMES:
+                    missing.append(f"  {route.id}: station {code}")
+
+        assert not missing, (
+            "Subway route topology references stations missing from "
+            "SUBWAY_STATION_NAMES:\n" + "\n".join(missing)
+        )
 
 
 class TestMNRGTFSStopMapping:

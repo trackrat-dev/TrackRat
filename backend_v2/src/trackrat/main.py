@@ -4,6 +4,7 @@ Main FastAPI application for TrackRat V2.
 This module sets up the FastAPI app with all routers, middleware, and lifecycle events.
 """
 
+import json
 import time
 import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
@@ -26,6 +27,7 @@ from trackrat.api import (
     predictions,
     route_preferences,
     routes,
+    share,
     trains,
     trips,
     validation,
@@ -307,6 +309,7 @@ app.include_router(live_activities.router, include_in_schema=False)
 app.include_router(predictions.router)
 app.include_router(route_preferences.router, include_in_schema=False)
 app.include_router(routes.router)
+app.include_router(share.router)
 app.include_router(trains.router)
 app.include_router(trips.router)
 app.include_router(validation.router, include_in_schema=False)
@@ -333,3 +336,37 @@ async def root() -> dict[str, str]:
         "docs": "/docs",
         "health": "/health",
     }
+
+
+# Apple Universal Links: tells iOS that taps on apiv2.trackrat.net/share/train/*
+# should open the TrackRat iOS app instead of Safari. The app's entitlement must
+# include `applinks:apiv2.trackrat.net` for Apple to fetch this file.
+_AASA_PAYLOAD: dict[str, object] = {
+    "applinks": {
+        "details": [
+            {
+                "appIDs": ["D5RZZ55J9R.net.trackrat.TrackRat"],
+                "components": [
+                    {
+                        "/": "/share/train/*",
+                        "comment": "Share-link previews open in the iOS app",
+                    },
+                ],
+            }
+        ]
+    }
+}
+
+
+@app.get("/.well-known/apple-app-site-association", include_in_schema=False)
+async def apple_app_site_association() -> Response:
+    """Serve the AASA file for Universal Link routing.
+
+    Must be served over HTTPS without redirects with ``Content-Type: application/json``
+    (Apple's crawler is strict about both).
+    """
+    return Response(
+        content=json.dumps(_AASA_PAYLOAD),
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )

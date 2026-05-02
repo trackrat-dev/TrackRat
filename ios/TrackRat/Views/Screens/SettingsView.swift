@@ -200,7 +200,10 @@ struct SettingsSection: View {
                             .padding(.vertical, 8)
                     }
 
-                    let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
+                    let sortedSystems = TrainSystem.allCases.sorted {
+                        if $0.isBeta != $1.isBeta { return !$0.isBeta }
+                        return $0.displayName < $1.displayName
+                    }
                     ForEach(sortedSystems, id: \.self) { system in
                         let isSelected = appState.isSystemSelected(system)
                         let atFreeLimit = !subscriptionService.isPro
@@ -223,7 +226,10 @@ struct SettingsSection: View {
                 } else {
                     let selectedSystems = TrainSystem.allCases
                         .filter { appState.isSystemSelected($0) }
-                        .sorted { $0.displayName < $1.displayName }
+                        .sorted {
+                            if $0.isBeta != $1.isBeta { return !$0.isBeta }
+                            return $0.displayName < $1.displayName
+                        }
 
                     if !selectedSystems.isEmpty {
                         Divider()
@@ -796,7 +802,12 @@ private struct FavoriteStationRow: View {
 
     private var stationName: String? {
         guard let code = stationCode else { return nil }
-        return Stations.stationName(forCode: code) ?? Stations.displayName(for: code)
+        return Stations.displayName(for: code)
+    }
+
+    private var subwayLines: [String] {
+        guard let code = stationCode else { return [] }
+        return SubwayLines.lines(forStationCode: code)
     }
 
     private var iconName: String? {
@@ -816,11 +827,15 @@ private struct FavoriteStationRow: View {
                     .frame(width: 24)
             }
 
-            if let name = stationName {
-                Text(name)
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-                    .lineLimit(1)
+            if let name = stationName, let code = stationCode {
+                StationNameWithBadges(
+                    name: name,
+                    stationCode: code,
+                    subwayLines: subwayLines,
+                    font: .subheadline,
+                    foregroundColor: .white,
+                    chipSize: 13
+                )
             } else if label != nil {
                 Text("Not set")
                     .font(.subheadline)
@@ -1237,10 +1252,13 @@ private struct TrainSystemRow: View {
 
     private var rowContent: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(system.displayName + (system.isBeta ? " (beta)" : ""))
+            HStack(spacing: 8) {
+                Text(system.displayName)
                     .font(.subheadline)
                     .foregroundColor(.white)
+                if system.isBeta {
+                    BetaPill()
+                }
 
                 Spacer()
 

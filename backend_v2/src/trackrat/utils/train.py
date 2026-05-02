@@ -106,3 +106,17 @@ def get_train_data_source(train_id: str) -> str:
         Data source: "AMTRAK" or "NJT" (default fallback)
     """
     return "AMTRAK" if is_amtrak_train(train_id) else "NJT"
+
+
+def is_njt_stop_cancelled(status: str | None) -> bool:
+    """True if an NJT STOP_STATUS value indicates a cancellation.
+
+    NJT's getTrainStopList API returns both spellings in practice — sometimes
+    within the same train's stop list. Observed on production train #3830 on
+    2026-04-16: the origin stop was "CANCELED" (American) while all 14 other
+    stops were "CANCELLED" (British). Normalize both here so no caller has to
+    remember.
+    """
+    if not status:
+        return False
+    return status.strip().upper() in ("CANCELLED", "CANCELED")

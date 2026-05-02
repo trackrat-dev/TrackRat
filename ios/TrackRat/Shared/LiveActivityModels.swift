@@ -69,14 +69,20 @@ struct TrainActivityAttributes: ActivityAttributes {
             return Int(interval / 60)
         }
         
+        /// Whether to show boarding state: track assigned, not departed, and within 15 minutes of departure
+        var isBoarding: Bool {
+            guard trackDisplay != nil, !hasTrainDeparted else { return false }
+            guard let minutes = minutesUntilDeparture else { return true }
+            return minutes <= 15
+        }
+
         /// Display text for compact leading area
         var compactLeadingText: String {
             if hasTrainDeparted {
                 return "Arriving"
-            } else if trackDisplay != nil {
+            } else if isBoarding {
                 return "Boarding"
-            }
-            else {
+            } else {
                 return "Departing"
             }
         }
@@ -93,7 +99,7 @@ struct TrainActivityAttributes: ActivityAttributes {
                         return "late"
                     }
                 }
-            } else if trackDisplay != nil {
+            } else if isBoarding {
                 return trackDisplay!
             } else {
                 if let minutes = minutesUntilDeparture {
@@ -111,7 +117,7 @@ struct TrainActivityAttributes: ActivityAttributes {
         
         /// Track display with "T" prefix
         var trackDisplay: String? {
-            guard let track = track else { return nil }
+            guard let track = track, !track.isEmpty else { return nil }
             return "T\(track)"
         }
         
@@ -176,6 +182,8 @@ struct TrainActivityAttributes: ActivityAttributes {
     let departureTime: Date
     let scheduledArrivalTime: Date?
     let theme: String // Theme name as string (blue, black, white)
+    // Optional so Activities started before this field was added can still decode
+    let dataSource: String?
 }
 
 // MARK: - Supporting Data Models

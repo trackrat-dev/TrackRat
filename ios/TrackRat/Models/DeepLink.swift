@@ -18,26 +18,29 @@ struct DeepLink {
     /// Create a deep link from URL components
     init?(url: URL) {
         // Expected formats:
-        // Universal Links: https://trackrat.net/train/{train_id}?date={YYYY-MM-DD}&from={station_code}&to={station_code}
-        // Custom URL Scheme: trackrat://train/{train_id}?date={YYYY-MM-DD}&from={station_code}&to={station_code}
+        // Legacy Universal Link:  https://trackrat.net/train/{id}?date=&from=&to=
+        // Share Universal Link:   https://apiv2.trackrat.net/share/train/{id}?date=&from=&to=
+        // Custom URL Scheme:      trackrat://train/{id}?date=&from=&to=
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
             return nil
         }
-        
+
         // Validate scheme and host
-        let isUniversalLink = (components.scheme == "https" || components.scheme == "http") &&
-                             (components.host == "trackrat.net" || components.host == "www.trackrat.net")
+        let isHTTPS = components.scheme == "https" || components.scheme == "http"
+        let isLegacyUniversalLink = isHTTPS &&
+                                    (components.host == "trackrat.net" || components.host == "www.trackrat.net")
+        let isShareUniversalLink = isHTTPS && components.host == "apiv2.trackrat.net"
         let isCustomScheme = components.scheme == "trackrat"
-        
-        guard isUniversalLink || isCustomScheme else {
+
+        guard isLegacyUniversalLink || isShareUniversalLink || isCustomScheme else {
             return nil
         }
-        
+
         // Extract train ID from path
         let pathComponents = components.path.components(separatedBy: "/")
-        
+
         // For custom URL scheme, the path might be "train/{id}" or "/train/{id}" or host could be "train"
-        // For Universal Links, it's "/train/{id}"
+        // For Universal Links, it's "/train/{id}" (legacy) or "/share/train/{id}" (share preview).
         let trainIndex: Int
         if isCustomScheme {
             // Handle format: "trackrat://train/A174" (train is host, A174 is path)
@@ -52,8 +55,16 @@ struct DeepLink {
             } else {
                 return nil
             }
+        } else if isShareUniversalLink {
+            // Share Universal Link: "https://apiv2.trackrat.net/share/train/123"
+            guard pathComponents.count >= 4,
+                  pathComponents[1] == "share",
+                  pathComponents[2] == "train" else {
+                return nil
+            }
+            trainIndex = 3
         } else {
-            // Universal Link: "https://trackrat.net/train/123"
+            // Legacy Universal Link: "https://trackrat.net/train/123"
             guard pathComponents.count >= 3,
                   pathComponents[1] == "train" else {
                 return nil
@@ -86,12 +97,16 @@ struct DeepLink {
         self.toStationCode = queryItems.first(where: { $0.name == "to" })?.value
     }
     
-    /// Generate URL for sharing
+    /// Generate URL for sharing.
+    ///
+    /// Emits the rich-preview share URL on apiv2.trackrat.net, which serves
+    /// OG-tagged HTML so iMessage and other unfurlers can render a preview,
+    /// then redirects (and Universal-Links into this app) on tap.
     func generateURL() -> URL? {
         var components = URLComponents()
         components.scheme = "https"
-        components.host = "trackrat.net"
-        components.path = "/train/\(trainId)"
+        components.host = "apiv2.trackrat.net"
+        components.path = "/share/train/\(trainId)"
         
         var queryItems: [URLQueryItem] = []
         
@@ -119,18 +134,15 @@ struct DeepLink {
         return components.url
     }
     
-    /// Generate share text for the train
-    func generateShareText(trainLine: String? = nil, destinationName: String? = nil) -> String {
-        var text = "Check out train \(trainId)"
-        
-        if let line = trainLine {
-            text += " (\(line))"
-        }
-        
-        if let fromCode = fromStationCode,
-           let fromName = Stations.stationName(forCode: fromCode) {
-            text += " from \(Stations.displayName(for: fromName))"
-        }
+    /// Generate share text for the train.
+    ///
+    /// Format: ``"View NJT 7801 to Trenton"``. Bound by the share-preview
+    /// card design — short, scannable, and the same shape the OG image
+    /// renders so the message reads naturally even if the rich preview
+    /// fails to load on the recipient's device.
+    func generateShareText(dataSource: String? = nil, destinationName: String? = nil) -> String {
+        let prefix = dataSource.map { "\($0) " } ?? ""
+        var text = "View \(prefix)\(trainId)"
 
         if let destName = destinationName {
             text += " to \(destName)"
@@ -138,7 +150,7 @@ struct DeepLink {
                   let toName = Stations.stationName(forCode: toCode) {
             text += " to \(Stations.displayName(for: toName))"
         }
-        
+
         return text
     }
 }

@@ -112,6 +112,7 @@ class TestSchedulerService:
                 ("route_alert_evaluation", IntervalTrigger, {"minutes": 5}),
                 ("morning_digest_evaluation", IntervalTrigger, {"minutes": 5}),
                 ("service_alerts_collection", IntervalTrigger, {"minutes": 15}),
+                ("retention_cleanup", CronTrigger, {"hour": 3, "minute": 30}),
             ]
 
             assert mock_add_job.call_count == len(expected_jobs)
@@ -410,6 +411,120 @@ class TestSchedulerService:
                             mock_apns_service.send_live_activity_update.assert_called_once_with(
                                 "token1", {"test": "content"}
                             )
+
+    @pytest.mark.asyncio
+    async def test_update_live_activities_groups_by_data_source(
+        self, scheduler_service, mock_apns_service
+    ):
+        """Issue #1050: tokens with the same train_number but different
+        data_source must each get their own journey lookup. Otherwise the
+        unfiltered journey query returns whichever row sorts first and both
+        users get push updates for the wrong train."""
+        scheduler_service.apns_service = mock_apns_service
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine") as mock_create_engine,
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_create_engine.return_value = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                # Two tokens, same train_number, different transit systems.
+                njt_token = Mock(
+                    push_token="njt-tok",
+                    activity_id="njt-act",
+                    train_number="1989",
+                    origin_code="NY",
+                    destination_code="MP",
+                    data_source="NJT",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=None,
+                )
+                amtrak_token = Mock(
+                    push_token="amtrak-tok",
+                    activity_id="amtrak-act",
+                    train_number="1989",
+                    origin_code="NYP",
+                    destination_code="WAS",
+                    data_source="AMTRAK",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=None,
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [njt_token, amtrak_token]
+
+                # Each scalar() call returns a journey shaped to the matching
+                # data_source, so we can verify the right token gets the right
+                # journey (verifying grouping AND filtering both worked).
+                njt_journey = Mock(
+                    train_id="1989",
+                    data_source="NJT",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=False,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+                amtrak_journey = Mock(
+                    train_id="1989",
+                    data_source="AMTRAK",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=False,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                # First call (NJT group) returns NJT journey, second (AMTRAK) returns AMTRAK
+                mock_sync_session.scalar.side_effect = [njt_journey, amtrak_journey]
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                # Capture which (token, journey) pair the content-state calc sees.
+                captured_pairs = []
+
+                def capture_pair(journey, token, _session):
+                    captured_pairs.append((token.data_source, journey.data_source))
+                    return {"test": "content"}
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    side_effect=capture_pair,
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                # Two groups => two journey lookups (the bug was a single lookup).
+                assert mock_sync_session.scalar.call_count == 2
+
+                # NJT token paired with NJT journey, AMTRAK with AMTRAK.
+                # If grouping by data_source had been removed, both tokens
+                # would share whichever journey was returned first.
+                assert ("NJT", "NJT") in captured_pairs
+                assert ("AMTRAK", "AMTRAK") in captured_pairs
 
     @pytest.mark.asyncio
     async def test_precompute_congestion_cache(self, scheduler_service):

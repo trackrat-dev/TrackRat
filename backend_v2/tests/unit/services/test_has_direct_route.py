@@ -70,6 +70,20 @@ class TestHasDirectRoute:
         Searching PNK to TR on NJT should find NJT NEC via the NP equivalence."""
         assert _has_direct_route("PNK", "TR", ["NJT"]) is True
 
+    def test_penn_subway_equivalence_finds_njt_route(self):
+        """34 St-Penn subway platforms should resolve to NY for NJT routes."""
+        assert _has_direct_route("TR", "S128", ["NJT"]) is True
+        assert _has_direct_route("TR", "SA28", ["NJT"]) is True
+
+    def test_grand_central_subway_equivalence_finds_mnr_route(self):
+        """Grand Central subway platforms should resolve to GCT for MNR routes."""
+        assert _has_direct_route("MSTM", "S631", ["MNR"]) is True
+        assert _has_direct_route("MSTM", "S723", ["MNR"]) is True
+
+    def test_union_square_is_not_grand_central_equivalent(self):
+        """S635 is 14 St-Union Sq, not Grand Central."""
+        assert _has_direct_route("MSTM", "S635", ["MNR"]) is False
+
     def test_lirr_route(self):
         """JAM (Jamaica) and BTA (Babylon) are on the LIRR Babylon branch."""
         assert _has_direct_route("JAM", "BTA", ["LIRR"]) is True

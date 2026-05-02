@@ -5,6 +5,7 @@ Ensures scheduled tasks only run once across multiple Cloud Run replicas.
 """
 
 import asyncio
+import contextlib
 import os
 import time
 from collections.abc import Awaitable, Callable
@@ -100,6 +101,9 @@ async def run_with_freshness_check(
     now = datetime.now(UTC)
     instance_id = os.getenv("K_REVISION", "local")  # Cloud Run revision ID
 
+    # Phase 1: acquire lock, check freshness, claim the task.
+    # Errors here are database-level (connection lost, statement timeout, etc.)
+    # and are reported as task_freshness_check_error.
     try:
         # Ensure the task record exists atomically (idempotent upsert).
         # This prevents UniqueViolationError when multiple replicas
@@ -192,68 +196,8 @@ async def run_with_freshness_check(
         task_run.last_attempt = now
         task_run.last_instance_id = instance_id
 
-        # Execute the task while holding the database lock
-        # This prevents other replicas from running the same task simultaneously
-        start_time = time.time()
-        try:
-            if timeout_seconds is not None:
-                await asyncio.wait_for(task_func(), timeout=timeout_seconds)
-            else:
-                await task_func()
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            # Update success metrics in the same transaction
-            task_run.last_successful_run = now
-            current_count = task_run.run_count or 0  # Handle None case gracefully
-            task_run.run_count = current_count + 1
-            task_run.last_duration_ms = duration_ms
-
-            # Update rolling average (90% old, 10% new)
-            if task_run.average_duration_ms:
-                task_run.average_duration_ms = int(
-                    task_run.average_duration_ms * 0.9 + duration_ms * 0.1
-                )
-            else:
-                task_run.average_duration_ms = duration_ms
-
-            # Commit the entire transaction (releases the lock)
-            await db.commit()
-
-            logger.info(
-                "task_completed_successfully",
-                task=task_name,
-                duration_ms=duration_ms,
-                instance=instance_id,
-            )
-            return True
-
-        except TimeoutError:
-            duration_ms = int((time.time() - start_time) * 1000)
-            await db.rollback()
-            logger.error(
-                "task_execution_timed_out",
-                task=task_name,
-                timeout_seconds=timeout_seconds,
-                duration_ms=duration_ms,
-                instance=instance_id,
-            )
-            raise
-
-        except Exception as e:
-            await db.rollback()
-            logger.error(
-                "task_execution_failed",
-                task=task_name,
-                error=str(e) or repr(e),
-                error_type=type(e).__name__,
-                instance=instance_id,
-                exc_info=True,
-            )
-            # Re-raise so the scheduler knows the task failed
-            raise
-
     except Exception as e:
-        # Catch any database-level errors
+        # Database-level errors during lock acquisition / freshness check.
         await db.rollback()
         logger.error(
             "task_freshness_check_error",
@@ -264,6 +208,79 @@ async def run_with_freshness_check(
         )
         # If we can't check freshness, don't run the task (fail safe)
         return False
+
+    except BaseException:
+        # CancelledError, KeyboardInterrupt, SystemExit bypass except Exception.
+        # Rollback to release the FOR UPDATE lock and avoid idle-in-transaction.
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        raise
+
+    # Phase 2: execute the task while holding the database lock.
+    # Errors here are task-level (timeout, task_func raised) and are reported
+    # exactly once via task_execution_timed_out or task_execution_failed.
+    start_time = time.time()
+    try:
+        if timeout_seconds is not None:
+            await asyncio.wait_for(task_func(), timeout=timeout_seconds)
+        else:
+            await task_func()
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Update success metrics in the same transaction
+        task_run.last_successful_run = now
+        current_count = task_run.run_count or 0  # Handle None case gracefully
+        task_run.run_count = current_count + 1
+        task_run.last_duration_ms = duration_ms
+
+        # Update rolling average (90% old, 10% new)
+        if task_run.average_duration_ms:
+            task_run.average_duration_ms = int(
+                task_run.average_duration_ms * 0.9 + duration_ms * 0.1
+            )
+        else:
+            task_run.average_duration_ms = duration_ms
+
+        # Commit the entire transaction (releases the lock)
+        await db.commit()
+
+        logger.info(
+            "task_completed_successfully",
+            task=task_name,
+            duration_ms=duration_ms,
+            instance=instance_id,
+        )
+        return True
+
+    except TimeoutError:
+        duration_ms = int((time.time() - start_time) * 1000)
+        await db.rollback()
+        logger.error(
+            "task_execution_timed_out",
+            task=task_name,
+            timeout_seconds=timeout_seconds,
+            duration_ms=duration_ms,
+            instance=instance_id,
+        )
+        return False
+
+    except Exception as e:
+        await db.rollback()
+        logger.error(
+            "task_execution_failed",
+            task=task_name,
+            error=str(e) or repr(e),
+            error_type=type(e).__name__,
+            instance=instance_id,
+            exc_info=True,
+        )
+        return False
+
+    except BaseException:
+        # CancelledError, KeyboardInterrupt, SystemExit bypass except Exception.
+        with contextlib.suppress(Exception):
+            await db.rollback()
+        raise
 
 
 def calculate_task_timeout(scheduled_minutes: int) -> int:

@@ -1,11 +1,11 @@
 """
 Metra GTFS-RT client for fetching real-time train data.
 
-Uses Metra's official GTFS-RT feed with API token authentication.
-Follows the same pattern as the LIRR client.
+Uses Metra's official GTFS-RT feed with query-parameter token authentication
+(gtfspublic.metrarr.com). Supports optional HTTP Basic Auth for forward
+compatibility if Metra changes endpoints.
 """
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,8 +18,9 @@ from trackrat.config.stations.metra import (
     METRA_GTFS_STOP_TO_INTERNAL_MAP,
     METRA_ROUTES,
 )
+from trackrat.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MetraArrival(BaseModel):
@@ -42,37 +43,72 @@ class MetraArrival(BaseModel):
         arbitrary_types_allowed = True
 
 
+class MetraFetchError(Exception):
+    """Raised when the Metra GTFS-RT feed fetch fails."""
+
+
 class MetraClient:
     """
     Client for fetching Metra real-time data from GTFS-RT feed.
 
     Parses GTFS-RT protobuf format and converts to our internal models.
     Uses a 30-second cache to minimize API calls.
-    Requires TRACKRAT_METRA_API_TOKEN environment variable.
+
+    Auth: query-parameter token by default (current gtfspublic.metrarr.com API).
+    If username/password are set, uses HTTP Basic Auth instead.
     """
 
-    def __init__(self, api_token: str | None = None, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        api_token: str | None = None,
+        api_username: str | None = None,
+        api_password: str | None = None,
+        timeout: float = 30.0,
+    ) -> None:
         """Initialize Metra client.
 
         Args:
-            api_token: Metra API token. If None, reads from settings.
+            api_token: Metra API token (query-param auth). If None, reads from settings.
+            api_username: Metra API username for Basic Auth. If None, reads from settings.
+            api_password: Metra API password for Basic Auth. If None, reads from settings.
             timeout: HTTP request timeout in seconds
         """
         self.timeout = timeout
-        if api_token is None:
+
+        if api_token is None and api_username is None:
             from trackrat.settings import get_settings
 
-            api_token = get_settings().metra_api_token
-        self._api_token = api_token
+            settings = get_settings()
+            api_token = settings.metra_api_token
+            api_username = settings.metra_api_username
+            api_password = settings.metra_api_password
+
+        # Prefer Basic Auth when username/password are explicitly set
+        if api_username and api_password:
+            self._auth: httpx.BasicAuth | None = httpx.BasicAuth(
+                api_username, api_password
+            )
+            self._api_token = ""
+            self._auth_method = "basic"
+        else:
+            self._auth = None
+            self._api_token = api_token or ""
+            self._auth_method = "query_param"
+
         self._session: httpx.AsyncClient | None = None
         self._cache: list[MetraArrival] | None = None
         self._cache_time: datetime | None = None
         self._cache_ttl = 30  # seconds
 
-        if not self._api_token:
+        if not self.has_credentials:
             logger.warning(
-                "TRACKRAT_METRA_API_TOKEN not set — Metra collection will be skipped"
+                "Metra API credentials not set — Metra collection will be skipped"
             )
+
+    @property
+    def has_credentials(self) -> bool:
+        """Whether valid credentials are configured."""
+        return bool(self._api_token) or self._auth is not None
 
     @property
     def session(self) -> httpx.AsyncClient:
@@ -80,6 +116,7 @@ class MetraClient:
         if self._session is None:
             self._session = httpx.AsyncClient(
                 timeout=self.timeout,
+                auth=self._auth,
                 headers={
                     "User-Agent": "TrackRat/2.0 (Metra Real-time Tracker)",
                     "Accept": "application/x-protobuf",
@@ -116,6 +153,12 @@ class MetraClient:
         """Get route info (line_code, name, color) for a route ID."""
         return METRA_ROUTES.get(route_id)
 
+    def _build_url(self) -> str:
+        """Build the feed URL, appending the token as a query param if needed."""
+        if self._auth_method == "query_param" and self._api_token:
+            return f"{METRA_GTFS_RT_FEED_URL}?api_token={self._api_token}"
+        return METRA_GTFS_RT_FEED_URL
+
     async def get_all_arrivals(self) -> list[MetraArrival]:
         """
         Fetch and parse all Metra arrivals from GTFS-RT feed.
@@ -124,18 +167,21 @@ class MetraClient:
 
         Returns:
             List of MetraArrival objects for all upcoming stops.
-            Empty list if API token is not configured.
+
+        Raises:
+            ValueError: If API credentials are not configured.
+            MetraFetchError: If the HTTP request fails (propagated to caller).
         """
-        if not self._api_token:
+        if not self.has_credentials:
             raise ValueError(
-                "TRACKRAT_METRA_API_TOKEN not configured — cannot fetch Metra data"
+                "Metra API credentials not configured — cannot fetch Metra data"
             )
 
         if self._is_cache_valid():
             return self._cache or []
 
         try:
-            url = f"{METRA_GTFS_RT_FEED_URL}?api_token={self._api_token}"
+            url = self._build_url()
             response = await self.session.get(url)
             response.raise_for_status()
 
@@ -214,16 +260,31 @@ class MetraClient:
             return arrivals
 
         except httpx.HTTPStatusError as e:
+            status = e.response.status_code
             logger.error(
-                f"HTTP error fetching Metra GTFS-RT feed: {e.response.status_code}"
+                "metra_feed_http_error",
+                status_code=status,
+                auth_method=self._auth_method,
             )
-            return self._cache or []
+            if status in (401, 403):
+                raise MetraFetchError(
+                    f"Metra API authentication failed (HTTP {status}). "
+                    f"Check credentials (auth_method={self._auth_method})."
+                ) from e
+            raise MetraFetchError(f"Metra GTFS-RT feed returned HTTP {status}") from e
         except httpx.HTTPError as e:
-            logger.error(f"HTTP error fetching Metra GTFS-RT feed: {type(e).__name__}")
-            return self._cache or []
+            logger.error(
+                "metra_feed_network_error",
+                error_type=type(e).__name__,
+            )
+            raise MetraFetchError(
+                f"Network error fetching Metra GTFS-RT feed: {type(e).__name__}"
+            ) from e
+        except MetraFetchError:
+            raise
         except Exception as e:
             logger.error(f"Error parsing Metra GTFS-RT feed: {e}")
-            return self._cache or []
+            raise MetraFetchError(f"Error parsing Metra GTFS-RT feed: {e}") from e
 
     async def get_station_arrivals(self, station_code: str) -> list[MetraArrival]:
         """

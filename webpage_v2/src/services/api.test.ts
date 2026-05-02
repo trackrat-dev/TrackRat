@@ -28,7 +28,8 @@ describe('getTrainDetails', () => {
     await api.getTrainDetails('3515', '2025-01-15');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/trains/3515?date=2025-01-15')
+      expect.stringContaining('/trains/3515?date=2025-01-15'),
+      expect.anything()
     );
   });
 
@@ -38,7 +39,8 @@ describe('getTrainDetails', () => {
     await api.getTrainDetails('3515', '2025-01-15', { dataSource: 'NJT' });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('data_source=NJT')
+      expect.stringContaining('data_source=NJT'),
+      expect.anything()
     );
   });
 
@@ -48,7 +50,8 @@ describe('getTrainDetails', () => {
     await api.getTrainDetails('3515', '2025-01-15', { fromStation: 'TR' });
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('from_station=TR')
+      expect.stringContaining('from_station=TR'),
+      expect.anything()
     );
   });
 
@@ -67,7 +70,8 @@ describe('getTrainDetails', () => {
     await api.getTrainDetails('A/B');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/trains/A%2FB')
+      expect.stringContaining('/trains/A%2FB'),
+      expect.anything()
     );
   });
 
@@ -126,7 +130,7 @@ describe('searchTrips', () => {
 
     await api.searchTrips('NY', 'NP', 25);
 
-    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('limit=25'));
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('limit=25'), expect.anything());
   });
 
   it('appends date parameter when provided', async () => {
@@ -134,7 +138,7 @@ describe('searchTrips', () => {
 
     await api.searchTrips('NY', 'NP', 50, '2025-03-28');
 
-    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('date=2025-03-28'));
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('date=2025-03-28'), expect.anything());
   });
 
   it('omits date parameter when not provided', async () => {
@@ -142,7 +146,7 @@ describe('searchTrips', () => {
 
     await api.searchTrips('NY', 'NP');
 
-    expect(mockFetch).toHaveBeenCalledWith(expect.not.stringContaining('date='));
+    expect(mockFetch).toHaveBeenCalledWith(expect.not.stringContaining('date='), expect.anything());
   });
 
   it('encodes station codes', async () => {
@@ -179,7 +183,8 @@ describe('getRouteSummary', () => {
     await api.getRouteSummary('NY', 'NP');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('scope=route&from_station=NY&to_station=NP')
+      expect.stringContaining('scope=route&from_station=NY&to_station=NP'),
+      expect.anything()
     );
   });
 });
@@ -292,7 +297,8 @@ describe('getCongestion', () => {
     await api.getCongestion();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/routes/congestion')
+      expect.stringContaining('/routes/congestion'),
+      expect.anything()
     );
   });
 });
@@ -304,7 +310,8 @@ describe('getNetworkSummary', () => {
     await api.getNetworkSummary();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('scope=network')
+      expect.stringContaining('scope=network'),
+      expect.anything()
     );
   });
 
@@ -323,7 +330,8 @@ describe('getServiceAlerts', () => {
     await api.getServiceAlerts('SUBWAY');
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('data_source=SUBWAY')
+      expect.stringContaining('data_source=SUBWAY'),
+      expect.anything()
     );
   });
 
@@ -343,7 +351,8 @@ describe('getServiceAlerts', () => {
     await api.getServiceAlerts();
 
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringMatching(/\/alerts\/service$/)
+      expect.stringMatching(/\/alerts\/service$/),
+      expect.anything()
     );
   });
 });
@@ -442,5 +451,60 @@ describe('caching behavior', () => {
     await api.searchTrips('NY', 'NP');
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops cached entry after a subsequent error so retries hit network', async () => {
+    // First call: succeeds and is cached
+    mockFetch.mockReturnValueOnce(jsonResponse({ stations: [{ code: 'NY' }], total_predictions_enabled: 1 }));
+    await api.getSupportedStations();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+
+    // Manually expire the cached entry by stubbing Date.now ahead of the cache window
+    const realNow = Date.now;
+    const expired = realNow() + 121_000;
+    Date.now = () => expired;
+    try {
+      // Next call hits network because cache window passed; this fails
+      mockFetch.mockReturnValueOnce(jsonResponse(null, 500));
+      await expect(api.getSupportedStations()).rejects.toThrow('Failed to fetch data');
+
+      // The error must invalidate the cache; the *next* call must hit network again,
+      // not return the original (now-stale) success.
+      mockFetch.mockReturnValueOnce(jsonResponse({ stations: [{ code: 'NP' }], total_predictions_enabled: 2 }));
+      const result = await api.getSupportedStations();
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result.total_predictions_enabled).toBe(2);
+    } finally {
+      Date.now = realNow;
+    }
+  });
+});
+
+describe('abort handling', () => {
+  it('rethrows AbortError unchanged when caller signal aborts', async () => {
+    const controller = new AbortController();
+    mockFetch.mockImplementation((_url: string, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const err = new DOMException('Aborted', 'AbortError');
+          reject(err);
+        });
+      });
+    });
+
+    const promise = api.searchTrips('NY', 'NP', 50, undefined, controller.signal);
+    controller.abort();
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('passes the combined signal to fetch', async () => {
+    const controller = new AbortController();
+    mockFetch.mockReturnValue(jsonResponse({ trips: [], metadata: {} }));
+
+    await api.searchTrips('NY', 'NP', 50, undefined, controller.signal);
+
+    const init = mockFetch.mock.calls[0][1] as RequestInit;
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 });

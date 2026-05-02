@@ -2,6 +2,7 @@ import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSumma
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
+const REQUEST_TIMEOUT_MS = 15000; // Hard cap so a stalled fetch never blocks polling
 
 interface CacheEntry<T> {
   data: T;
@@ -18,10 +19,18 @@ export class APIRequestError extends Error {
   }
 }
 
+/** Combine a caller-supplied signal (if any) with a timeout signal. */
+function combineSignals(external?: AbortSignal): AbortSignal {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  if (!external) return timeout;
+  // AbortSignal.any aborts as soon as any input aborts (caller unmount OR timeout)
+  return AbortSignal.any([external, timeout]);
+}
+
 export class APIService {
   private cache = new Map<string, CacheEntry<unknown>>();
 
-  private async fetch<T>(url: string, useCache = true): Promise<T> {
+  private async fetch<T>(url: string, useCache = true, signal?: AbortSignal): Promise<T> {
     const cacheKey = url;
 
     // Check cache
@@ -33,7 +42,7 @@ export class APIService {
     }
 
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: combineSignals(signal) });
 
       if (!response.ok) {
         throw new APIRequestError(`Failed to fetch data: ${response.status} ${response.statusText}`, response.status);
@@ -51,6 +60,20 @@ export class APIService {
 
       return data as T;
     } catch (error) {
+      // Drop any stale cache entry so a subsequent retry actually hits the network
+      // rather than continuing to serve a now-suspect cached response.
+      this.cache.delete(cacheKey);
+
+      // Preserve AbortError so callers (e.g. polling hooks) can distinguish
+      // intentional cancellation from real failures.
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      // AbortSignal.timeout fires a TimeoutError DOMException — surface it as a
+      // user-facing failure, but with a clearer message.
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        throw new APIRequestError('Request timed out');
+      }
       if (error instanceof APIRequestError) {
         throw error;
       }
@@ -64,7 +87,7 @@ export class APIService {
   async getTrainDetails(
     trainId: string,
     date?: string,
-    options?: { dataSource?: string; fromStation?: string }
+    options?: { dataSource?: string; fromStation?: string; signal?: AbortSignal }
   ): Promise<TrainDetailsResponse> {
     const dateParam = date || new Date().toISOString().split('T')[0];
     const searchParams = new URLSearchParams({ date: dateParam });
@@ -72,7 +95,7 @@ export class APIService {
     if (options?.fromStation) searchParams.set('from_station', options.fromStation);
     const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}?${searchParams.toString()}`;
     // Don't cache train details - always fetch fresh
-    return this.fetch<TrainDetailsResponse>(url, false);
+    return this.fetch<TrainDetailsResponse>(url, false, options?.signal);
   }
 
   async findTrainByNumber(
@@ -97,18 +120,19 @@ export class APIService {
     }
   }
 
-  async searchTrips(from: string, to: string, limit = 50, date?: string): Promise<TripSearchResponse> {
+  async searchTrips(from: string, to: string, limit = 50, date?: string, signal?: AbortSignal): Promise<TripSearchResponse> {
     let url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
     if (date) url += `&date=${encodeURIComponent(date)}`;
-    return this.fetch<TripSearchResponse>(url, false); // Don't cache — 30s polling needs fresh data
+    return this.fetch<TripSearchResponse>(url, false, signal); // Don't cache — 30s polling needs fresh data
   }
 
-  async getRouteSummary(from: string, to: string): Promise<OperationsSummaryResponse | null> {
+  async getRouteSummary(from: string, to: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
     try {
       const url = `${BASE_URL}/routes/summary?scope=route&from_station=${encodeURIComponent(from)}&to_station=${encodeURIComponent(to)}`;
-      return await this.fetch<OperationsSummaryResponse>(url);
-    } catch {
-      // Fail silently - summary is optional
+      return await this.fetch<OperationsSummaryResponse>(url, true, signal);
+    } catch (err) {
+      // Re-throw aborts so callers can ignore them; swallow real failures (summary is optional)
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
       return null;
     }
   }
@@ -186,16 +210,17 @@ export class APIService {
     }
   }
 
-  async getCongestion(): Promise<CongestionResponse> {
+  async getCongestion(signal?: AbortSignal): Promise<CongestionResponse> {
     const url = `${BASE_URL}/routes/congestion`;
-    return this.fetch<CongestionResponse>(url);
+    return this.fetch<CongestionResponse>(url, true, signal);
   }
 
-  async getNetworkSummary(): Promise<OperationsSummaryResponse | null> {
+  async getNetworkSummary(signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
     try {
       const url = `${BASE_URL}/routes/summary?scope=network`;
-      return await this.fetch<OperationsSummaryResponse>(url);
-    } catch {
+      return await this.fetch<OperationsSummaryResponse>(url, true, signal);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
       return null;
     }
   }

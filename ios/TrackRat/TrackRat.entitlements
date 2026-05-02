@@ -12,6 +12,7 @@
 	<array>
 		<string>applinks:trackrat.net</string>
 		<string>applinks:www.trackrat.net</string>
+		<string>applinks:apiv2.trackrat.net</string>
 	</array>
 </dict>
 </plist>

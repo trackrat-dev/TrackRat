@@ -5,7 +5,7 @@
 SwiftUI app for tracking trains across 11 transit systems: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA (DC Metro). Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, multi-leg trip search, and Pro subscription.
 
 - **iOS 18.0+** deployment target
-- **Xcode 15.0+** required
+- **Xcode 16.0+** required
 
 ## Architecture
 
@@ -28,10 +28,11 @@ TrackRat/
 ├── App/              # TrackRatApp.swift, AppState
 ├── Views/
 │   ├── Screens/      # 16 screen-level views
-│   └── Components/   # 23 reusable UI components
-├── Models/           # Data models, API responses, DeepLink, CompletedTrip
+│   ├── Components/   # 23 reusable UI components
+│   └── Paywall/      # PaywallView, ProFeatureLockView
+├── Models/           # Train, TrainV2, V2APIModels, TrainSystem, TripOption, CompletedTrip, DeepLink
 ├── Services/         # 14 singleton services
-├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels
+├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
 └── Resources/        # Assets, Info.plist
@@ -135,14 +136,12 @@ Physical device recommended for:
 - Live Activity behavior
 - Performance profiling
 
-Use `LiveActivityDebugView` for testing Live Activity states in simulator.
-
 ## Important Notes
 
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
 - Pro subscription offers 1-week free trial via Apple introductory offer
-- `debugOverrideEnabled = true` gives all users Pro features during soft launch
+- `debugOverrideEnabled` in SubscriptionService controls Pro feature override (defaults to `false`)
 
 ---
 

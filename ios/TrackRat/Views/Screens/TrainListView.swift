@@ -413,8 +413,16 @@ struct TrainCard: View {
                         .font(.caption)
                 }
 
-                HStack(spacing: 4) {
-                    Text(train.displayLabel)
+                HStack(spacing: 6) {
+                    if train.dataSource == "SUBWAY" {
+                        SubwayLineChips(
+                            lines: [SubwayLines.displayBullet(forLineCode: train.line.code)],
+                            size: 20
+                        )
+                        .opacity(isCancelled || hasDeparted ? 0.5 : 1.0)
+                    }
+
+                    Text(train.displayDestination)
                         .font(.headline)
                         .foregroundColor(isCancelled || hasDeparted ? .black.opacity(0.5) : (isBoardingAtOrigin ? .white : .black))
                         .strikethrough(isCancelled)
@@ -552,6 +560,22 @@ class TrainListViewModel: ObservableObject {
             return time1 < time2
         }
     }
+
+    /// Drop trains outside the "next 6 hours" live-board window. Skipped for
+    /// future dates — on those days every train is >6 h from wall-clock now,
+    /// so the filter would wipe the entire response.
+    func filterUpcomingTrains(_ trains: [TrainV2], fromStationCode: String, date: Date) -> [TrainV2] {
+        guard Calendar.current.isDateInToday(date) else { return trains }
+
+        let sixHoursFromNow = Date().addingTimeInterval(6 * 60 * 60)
+        return trains.filter { train in
+            if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
+                return minutesAgo <= 10
+            }
+            let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
+            return departureTime <= sixHoursFromNow
+        }
+    }
     
     // Initializer for dependency injection
     @MainActor
@@ -601,16 +625,7 @@ class TrainListViewModel: ObservableObject {
             } else {
                 // Direct results: convert to TrainV2 for existing UI
                 let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
-                let sixHoursFromNow = Date().addingTimeInterval(6 * 60 * 60)
-
-                let filteredTrains = fetchedTrains.filter { train in
-                    let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                    let isWithinTimeWindow = departureTime <= sixHoursFromNow
-                    if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
-                        return minutesAgo <= 10
-                    }
-                    return isWithinTimeWindow
-                }
+                let filteredTrains = filterUpcomingTrains(fetchedTrains, fromStationCode: fromStationCode, date: date)
 
                 let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
                 trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
@@ -657,17 +672,7 @@ class TrainListViewModel: ObservableObject {
                 isTransferSearch = true
             } else {
                 let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
-                let sixHoursFromNow = Date().addingTimeInterval(6 * 60 * 60)
-
-                let filteredTrains = fetchedTrains.filter { train in
-                    let departureTime = train.getDepartureTime(fromStationCode: fromStationCode) ?? Date.distantFuture
-                    let isWithinTimeWindow = departureTime <= sixHoursFromNow
-                    if let minutesAgo = train.minutesSinceDeparture(fromStationCode: fromStationCode) {
-                        return minutesAgo <= 10
-                    }
-                    return isWithinTimeWindow
-                }
-
+                let filteredTrains = filterUpcomingTrains(fetchedTrains, fromStationCode: fromStationCode, date: date)
                 let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
                 let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
 

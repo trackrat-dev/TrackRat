@@ -52,29 +52,29 @@ android/app/src/main/java/com/trackrat/android/
 ├── MainActivity.kt              # Single activity entry point
 ├── TrackRatApp.kt              # Application class with Hilt
 ├── data/
-│   ├── api/                    # Retrofit API interface
+│   ├── api/                    # Retrofit API interface, adapters (HtmlEntityDecoder, ZonedDateTimeAdapter)
 │   ├── mappers/                # TrainMappers
 │   ├── models/                 # Data models (TrainV2, StatusV2, etc.)
-│   ├── preferences/            # DataStore preferences
+│   ├── preferences/            # DataStore preferences, EnvironmentManager
 │   ├── repository/             # Data repository pattern
 │   ├── services/               # TrackPrediction, BackendHealth
 │   └── Stations.kt             # Station data
 ├── di/                         # Hilt DI modules
 ├── navigation/                 # TrackRatDestinations, Navigator
-├── services/                   # TrainTrackingService, RatSense, Notifications
+├── services/                   # TrainTrackingService, RatSense, Notifications, TrackingStateRepository, TrainUpdateReceiver
 ├── ui/
 │   ├── advanced/               # Advanced config screen
 │   ├── components/             # Reusable UI (BottomSheet, Loading, etc.)
 │   ├── destinationselection/   # Destination picker
 │   ├── favorites/              # Favorite stations
-│   ├── map/                    # MapContainerScreen, congestion
+│   ├── map/                    # MapContainerScreen, MapContainerViewModel, PolylineHitDetector
 │   ├── onboarding/             # Onboarding flow
-│   ├── profile/                # Settings screens
+│   ├── profile/                # Settings screens, components/ (ProfileActionRow, ProfileSectionCard)
 │   ├── stationselection/       # Origin picker
 │   ├── theme/                  # Material3 theme, colors, typography
 │   ├── traindetail/            # Journey details
 │   └── trainlist/              # Departure list
-└── utils/                      # Constants, Stations, Helpers
+└── utils/                      # Constants, HapticFeedbackHelper, ShareService, ErrorUtils
 ```
 
 ## API Integration

@@ -1005,14 +1005,18 @@ struct RouteTopology {
 
     /// Expands a list of station codes to include all intermediate stations from route topology.
     /// For each consecutive pair in the input, fills in any skipped stations.
+    /// When a pair isn't on the same route, chains through known hub stations
+    /// (e.g., LIRR Penn → Huntington bridges via Jamaica).
     static func expandStationCodes(_ stopCodes: [String], dataSource: String) -> [String] {
         guard stopCodes.count >= 2 else { return stopCodes }
 
         var expanded: [String] = []
         for i in 0..<(stopCodes.count - 1) {
-            let intermediates = getIntermediateStations(
-                from: stopCodes[i], to: stopCodes[i + 1], dataSource: dataSource
-            ) ?? [stopCodes[i], stopCodes[i + 1]]
+            let from = stopCodes[i]
+            let to = stopCodes[i + 1]
+            let intermediates = getIntermediateStations(from: from, to: to, dataSource: dataSource)
+                ?? intermediatesViaHub(from: from, to: to, dataSource: dataSource)
+                ?? [from, to]
 
             if expanded.isEmpty {
                 expanded.append(contentsOf: intermediates)
@@ -1021,6 +1025,40 @@ struct RouteTopology {
             }
         }
         return expanded
+    }
+
+    /// Bridges `from`→`to` by chaining through a hub station when no single route
+    /// contains both. Returns nil if no hub connects them in two legs.
+    /// Collapses overlapping trunk stations that appear in both legs beyond the hub.
+    private static func intermediatesViaHub(from: String, to: String, dataSource: String) -> [String]? {
+        for hub in hubStations(for: dataSource) where hub != from && hub != to {
+            guard let leg1 = getIntermediateStations(from: from, to: hub, dataSource: dataSource),
+                  let leg2 = getIntermediateStations(from: hub, to: to, dataSource: dataSource) else {
+                continue
+            }
+            let tail = Array(leg2.dropFirst())
+            var result = leg1
+            for code in tail {
+                if let existing = result.lastIndex(of: code) {
+                    result = Array(result[...existing])
+                } else {
+                    result.append(code)
+                }
+            }
+            return result
+        }
+        return nil
+    }
+
+    /// Hub stations where multiple branches converge. Used to bridge cross-branch
+    /// station pairs whose path isn't on any single route in `allRoutes`.
+    /// LIRR's branches all meet at Jamaica (except the Port Washington Branch,
+    /// which already includes NY/GCT directly).
+    private static func hubStations(for dataSource: String) -> [String] {
+        switch dataSource {
+        case "LIRR": return ["JAM"]
+        default: return []
+        }
     }
 
     // MARK: - Unique Stations

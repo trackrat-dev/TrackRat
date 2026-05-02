@@ -173,8 +173,35 @@ async def test_high_variance_filter(pattern_scheduler):
 
 
 @pytest.mark.asyncio
+async def test_recent_matching_journeys_filters_amtrak_station_aliases(
+    pattern_scheduler,
+):
+    """Historical route samples should match raw/internal Amtrak station aliases."""
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
+
+    await pattern_scheduler._get_recent_matching_journeys(
+        session,
+        {
+            "train_number": "2150",
+            "origin": "NYP",
+            "terminal": "WAS",
+        },
+        date(2024, 1, 25),
+    )
+
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "origin_station_code IN ('NY', 'NYP')" in compiled
+    assert "terminal_station_code IN ('WAS', 'WS')" in compiled
+
+
+@pytest.mark.asyncio
 async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
-    """Test that SCHEDULED journeys copy full stop list from recent OBSERVED journey."""
+    """SCHEDULED journeys use a stable stop list from multiple recent runs."""
     target_date = date(2024, 1, 25)
 
     patterns = [
@@ -191,56 +218,64 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         }
     ]
 
-    # Build a mock recent OBSERVED journey with full stops
-    recent_journey = MagicMock()
-    recent_journey.stops = [
-        MagicMock(
-            station_code="NYP",
-            station_name="New York Penn Station",
-            stop_sequence=0,
-            scheduled_departure=ET.localize(datetime(2024, 1, 22, 15, 3)),
-            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 15, 3)),
-        ),
-        MagicMock(
-            station_code="NWK",
-            station_name="Newark Penn Station",
-            stop_sequence=1,
-            scheduled_departure=ET.localize(datetime(2024, 1, 22, 15, 22)),
-            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 15, 20)),
-        ),
-        MagicMock(
-            station_code="TRE",
-            station_name="Trenton",
-            stop_sequence=2,
-            scheduled_departure=ET.localize(datetime(2024, 1, 22, 15, 55)),
-            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 15, 53)),
-        ),
-        MagicMock(
-            station_code="PH",
-            station_name="Philadelphia 30th Street",
-            stop_sequence=3,
-            scheduled_departure=ET.localize(datetime(2024, 1, 22, 16, 25)),
-            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 16, 22)),
-        ),
-        MagicMock(
-            station_code="WS",
-            station_name="Washington Union Station",
-            stop_sequence=4,
-            scheduled_departure=None,
-            scheduled_arrival=ET.localize(datetime(2024, 1, 22, 18, 30)),
-        ),
+    def make_recent_journey(journey_date: date, origin_minute: int) -> MagicMock:
+        origin_departure = ET.localize(
+            datetime.combine(journey_date, time(15, origin_minute))
+        )
+        recent_journey = MagicMock()
+        recent_journey.journey_date = journey_date
+        recent_journey.stops = [
+            MagicMock(
+                station_code="NYP",
+                station_name="New York Penn Station",
+                stop_sequence=0,
+                scheduled_departure=origin_departure,
+                scheduled_arrival=origin_departure,
+            ),
+            MagicMock(
+                station_code="NWK",
+                station_name="Newark Penn Station",
+                stop_sequence=1,
+                scheduled_departure=origin_departure + timedelta(minutes=19),
+                scheduled_arrival=origin_departure + timedelta(minutes=17),
+            ),
+            MagicMock(
+                station_code="TRE",
+                station_name="Trenton",
+                stop_sequence=2,
+                scheduled_departure=origin_departure + timedelta(minutes=52),
+                scheduled_arrival=origin_departure + timedelta(minutes=50),
+            ),
+            MagicMock(
+                station_code="PH",
+                station_name="Philadelphia 30th Street",
+                stop_sequence=3,
+                scheduled_departure=origin_departure + timedelta(minutes=82),
+                scheduled_arrival=origin_departure + timedelta(minutes=79),
+            ),
+            MagicMock(
+                station_code="WS",
+                station_name="Washington Union Station",
+                stop_sequence=4,
+                scheduled_departure=None,
+                scheduled_arrival=origin_departure + timedelta(minutes=207),
+            ),
+        ]
+        return recent_journey
+
+    recent_journeys = [
+        make_recent_journey(date(2024, 1, 18), 3),
+        make_recent_journey(date(2024, 1, 11), 7),
     ]
 
     with patch(
         "trackrat.services.amtrak_pattern_scheduler.get_session"
     ) as mock_session:
-        # First execute call: check for existing journey (returns None)
-        # Second execute call: fetch recent journey with stops
         mock_no_existing = MagicMock()
         mock_no_existing.scalars.return_value.first.return_value = None
 
         mock_recent_result = MagicMock()
-        mock_recent_result.scalar_one_or_none.return_value = recent_journey
+        mock_recent_result.scalars.return_value.all.return_value = recent_journeys
 
         mock_execute = AsyncMock(side_effect=[mock_no_existing, mock_recent_result])
         mock_session.return_value.__aenter__.return_value.execute = mock_execute
@@ -268,17 +303,15 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
             datetime.combine(target_date, time(15, 5))
         )
 
-        # Should have all 5 stops from the recent journey, not just origin
+        # Should have all 5 stops from the stable route, not just origin
         assert len(stops) == 5
         assert journey.stops_count == 5
 
-        # Verify station codes match the full route
+        # Verify station codes match the canonicalized full route
         station_codes = [s.station_code for s in stops]
-        assert station_codes == ["NYP", "NWK", "TRE", "PH", "WS"]
+        assert station_codes == ["NY", "NP", "TR", "PH", "WS"]
 
         # Verify time offset was applied correctly
-        # Recent origin departed at 15:03, pattern median is 15:05 -> offset = +2 min
-        # (plus 3-day date shift from Jan 22 to Jan 25)
         assert stops[0].scheduled_departure == ET.localize(datetime(2024, 1, 25, 15, 5))
         assert stops[1].scheduled_departure == ET.localize(
             datetime(2024, 1, 25, 15, 24)
@@ -294,6 +327,111 @@ async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
         # Verify arrivals also shifted
         assert stops[0].scheduled_arrival == ET.localize(datetime(2024, 1, 25, 15, 5))
         assert stops[4].scheduled_arrival == ET.localize(datetime(2024, 1, 25, 18, 32))
+
+
+@pytest.mark.asyncio
+async def test_create_scheduled_journeys_excludes_one_off_stop(pattern_scheduler):
+    """A stop from only one historical run should not leak into SCHEDULED rows."""
+    target_date = date(2024, 1, 25)
+    patterns = [
+        {
+            "train_number": "2107",
+            "median_departure": time(7, 35),
+            "occurrence_count": 2,
+            "origin": "NY",
+            "destination": "Washington Union Station",
+            "terminal": "WS",
+            "line_name": "Acela",
+            "time_variance": 1.0,
+            "sample_dates": ["2024-01-11", "2024-01-18"],
+        }
+    ]
+
+    def stop(code: str, seq: int, journey_date: date, minutes: int) -> MagicMock:
+        base_time = ET.localize(datetime.combine(journey_date, time(7, 35)))
+        return MagicMock(
+            station_code=code,
+            station_name=code,
+            stop_sequence=seq,
+            scheduled_departure=base_time + timedelta(minutes=minutes),
+            scheduled_arrival=base_time + timedelta(minutes=minutes),
+        )
+
+    one_off = MagicMock()
+    one_off.journey_date = date(2024, 1, 18)
+    one_off.stops = [
+        stop("NY", 0, one_off.journey_date, 0),
+        stop("MP", 1, one_off.journey_date, 21),
+        stop("PH", 2, one_off.journey_date, 66),
+        stop("WS", 3, one_off.journey_date, 175),
+    ]
+
+    normal = MagicMock()
+    normal.journey_date = date(2024, 1, 11)
+    normal.stops = [
+        stop("NY", 0, normal.journey_date, 0),
+        stop("PH", 1, normal.journey_date, 66),
+        stop("WS", 2, normal.journey_date, 175),
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        mock_no_existing = MagicMock()
+        mock_no_existing.scalars.return_value.first.return_value = None
+        mock_recent_result = MagicMock()
+        mock_recent_result.scalars.return_value.all.return_value = [one_off, normal]
+        mock_session.return_value.__aenter__.return_value.execute = AsyncMock(
+            side_effect=[mock_no_existing, mock_recent_result]
+        )
+
+        scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
+            patterns, target_date
+        )
+
+    stops = scheduled_journeys[0]["stops"]
+    assert [s.station_code for s in stops] == ["NY", "PH", "WS"]
+
+
+def test_consensus_stop_templates_canonicalize_amtrak_station_aliases(
+    pattern_scheduler,
+):
+    """Raw/internal Amtrak stop aliases should intersect as the same route."""
+    raw_base = ET.localize(datetime(2024, 1, 18, 7, 35))
+    internal_base = ET.localize(datetime(2024, 1, 11, 7, 35))
+
+    def stop(
+        code: str, name: str, sequence: int, base_time: datetime, minutes: int
+    ) -> MagicMock:
+        return MagicMock(
+            station_code=code,
+            station_name=name,
+            stop_sequence=sequence,
+            scheduled_departure=base_time + timedelta(minutes=minutes),
+            scheduled_arrival=base_time + timedelta(minutes=minutes),
+        )
+
+    raw_journey = MagicMock()
+    raw_journey.stops = [
+        stop("NYP", "New York Penn Station", 0, raw_base, 0),
+        stop("PHL", "Philadelphia 30th Street", 1, raw_base, 66),
+        stop("WAS", "Washington Union Station", 2, raw_base, 175),
+    ]
+
+    internal_journey = MagicMock()
+    internal_journey.stops = [
+        stop("NY", "New York Penn Station", 0, internal_base, 0),
+        stop("PH", "Philadelphia 30th Street", 1, internal_base, 66),
+        stop("WS", "Washington Union Station", 2, internal_base, 175),
+    ]
+
+    templates = pattern_scheduler._build_consensus_stop_templates(
+        [raw_journey, internal_journey],
+        {"NYP", "WAS"},
+    )
+
+    assert templates is not None
+    assert [t["station_code"] for t in templates] == ["NY", "PH", "WS"]
 
 
 @pytest.mark.asyncio
@@ -318,12 +456,11 @@ async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
     with patch(
         "trackrat.services.amtrak_pattern_scheduler.get_session"
     ) as mock_session:
-        # First: no existing journey; Second: no recent journey found
         mock_no_existing = MagicMock()
         mock_no_existing.scalars.return_value.first.return_value = None
 
         mock_no_recent = MagicMock()
-        mock_no_recent.scalar_one_or_none.return_value = None
+        mock_no_recent.scalars.return_value.all.return_value = []
 
         mock_execute = AsyncMock(side_effect=[mock_no_existing, mock_no_recent])
         mock_session.return_value.__aenter__.return_value.execute = mock_execute

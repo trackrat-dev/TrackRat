@@ -193,15 +193,16 @@ TrackRatTests/                   # Test suite
 ├── Models/                     # Model tests
 ├── Services/                   # Service tests
 ├── ViewModels/                 # ViewModel tests
+├── Views/                      # View tests (AlertConfiguration, LineSelection)
 ├── TestUtilities/              # Test helpers
-└── TestFixtures/               # JSON fixtures
+└── TestFixtures/               # Swift test data (TrainTestData)
 ```
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - macOS 14.0+ (Sonoma or later)
-- Xcode 15.0+
+- Xcode 16.0+
 - iOS 18.0+ deployment target
 - Apple Developer account (for device testing)
 
@@ -288,7 +289,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 - Use `async/await` for asynchronous code
 
 ### Debugging Tips
-1. **Live Activities**: Use `LiveActivityDebugView` for testing states
+1. **Live Activities**: Test on physical device; use Console.app for APNS logs
 2. **Push Notifications**: Monitor Console.app for APNS logs
 3. **Network Requests**: Enable network debugging in Xcode
 4. **Memory Leaks**: Use Instruments to detect retain cycles
@@ -318,7 +319,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 ### Data Protection
 - **No User Accounts**: No personal data stored
 - **Local Storage Only**: Preferences in UserDefaults
-- **No Tracking**: No analytics or advertising SDKs
+- **No Third-Party SDKs**: No analytics or advertising SDKs; anonymous usage stats sent to backend only
 - **Secure Communication**: HTTPS for all API calls
 
 ### Permissions Required

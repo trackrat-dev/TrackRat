@@ -215,4 +215,87 @@ class RouteTopologyTests: XCTestCase {
         XCTAssertFalse(RouteTopology.allStationCodes.isEmpty, "Should have station codes across all routes")
         XCTAssertGreaterThan(RouteTopology.allStationCodes.count, 50, "Should have substantial number of station codes")
     }
+
+    // MARK: - expandStationCodes (hub chaining)
+
+    /// Regression test for the NYP→Huntington route alert map.
+    /// No single LIRR route contains both NY and LHUN (Port Washington has NY but
+    /// not LHUN; Port Jefferson has LHUN starting at JAM). The expander must
+    /// bridge through Jamaica so the route alert's congestion-segment filter
+    /// matches every adjacent NY-WDD-...-JAM-LMIN-...-CSH-LHUN segment.
+    func testExpandStationCodesBridgesNYPToHuntingtonViaJamaica() {
+        let expanded = RouteTopology.expandStationCodes(["NY", "LHUN"], dataSource: "LIRR")
+
+        XCTAssertEqual(expanded.first, "NY", "Expansion should preserve the starting station")
+        XCTAssertEqual(expanded.last, "LHUN", "Expansion should preserve the ending station")
+        XCTAssertTrue(expanded.contains("JAM"), "Expansion must pass through Jamaica hub")
+        XCTAssertGreaterThan(
+            expanded.count, 2,
+            "NY→LHUN crosses two LIRR branches; hub chaining should yield more than the [from, to] fallback"
+        )
+
+        // Spot-check a few intermediate stops on each leg so segment filtering will match.
+        // Leg 1 (NY → JAM via Belmont/Greenport prefix): WDD, FHL, KGN
+        XCTAssertTrue(expanded.contains("WDD"), "Should include Woodside on the NY→JAM leg")
+        XCTAssertTrue(expanded.contains("KGN"), "Should include Kew Gardens on the NY→JAM leg")
+        // Leg 2 (JAM → LHUN on Port Jefferson Branch): LMIN, LHVL, SYT, CSH
+        XCTAssertTrue(expanded.contains("LMIN"), "Should include Mineola on the JAM→LHUN leg")
+        XCTAssertTrue(expanded.contains("CSH"), "Should include Cold Spring Harbor on the JAM→LHUN leg")
+    }
+
+    func testExpandStationCodesBridgesReverseHuntingtonToNYP() {
+        let expanded = RouteTopology.expandStationCodes(["LHUN", "NY"], dataSource: "LIRR")
+
+        XCTAssertEqual(expanded.first, "LHUN", "Reverse expansion should start at LHUN")
+        XCTAssertEqual(expanded.last, "NY", "Reverse expansion should end at NY")
+        XCTAssertTrue(expanded.contains("JAM"), "Reverse expansion must also pass through Jamaica hub")
+        XCTAssertGreaterThan(expanded.count, 2, "Reverse cross-branch pair should also be hub-chained")
+    }
+
+    /// Same-branch pairs must keep working without hub chaining (no regression).
+    /// JAM→LHUN sits entirely on the Port Jefferson Branch.
+    func testExpandStationCodesSameBranchUnchanged() {
+        let expanded = RouteTopology.expandStationCodes(["JAM", "LHUN"], dataSource: "LIRR")
+
+        XCTAssertEqual(expanded.first, "JAM")
+        XCTAssertEqual(expanded.last, "LHUN")
+        // Port Jefferson Branch JAM→LHUN: JAM, LMIN, LHVL, SYT, CSH, LHUN
+        XCTAssertEqual(
+            expanded, ["JAM", "LMIN", "LHVL", "SYT", "CSH", "LHUN"],
+            "Same-branch JAM→LHUN should expand using Port Jefferson Branch only, no hub detour"
+        )
+    }
+
+    /// Bridging only happens when no single route contains both stations.
+    /// NY→PWS is entirely on the Port Washington Branch and must not detour through JAM.
+    func testExpandStationCodesPortWashingtonNotRoutedViaJamaica() {
+        let expanded = RouteTopology.expandStationCodes(["NY", "PWS"], dataSource: "LIRR")
+
+        XCTAssertEqual(expanded.first, "NY")
+        XCTAssertEqual(expanded.last, "PWS")
+        XCTAssertFalse(expanded.contains("JAM"), "Port Washington Branch does not pass through Jamaica")
+    }
+
+    /// When hub-chained legs share trunk stations beyond the hub (e.g. NY→GCT where
+    /// both legs traverse FHL/KGN), the overlap must be collapsed so no station
+    /// appears twice. Repeated stations break filterSegmentsForRoute which uses firstIndex.
+    func testExpandStationCodesCollapsesTrunkOverlapOnHubChain() {
+        let expanded = RouteTopology.expandStationCodes(["NY", "GCT"], dataSource: "LIRR")
+
+        XCTAssertEqual(expanded.first, "NY", "Should start at NY")
+        XCTAssertEqual(expanded.last, "GCT", "Should end at GCT")
+
+        let uniqueCount = Set(expanded).count
+        XCTAssertEqual(
+            uniqueCount, expanded.count,
+            "No station should appear twice after overlap collapse, got: \(expanded)"
+        )
+    }
+
+    /// Systems with no hub configured fall back to [from, to] when no route
+    /// contains both stations — same behavior as before this change.
+    func testExpandStationCodesNoHubFallsBackToPair() {
+        let expanded = RouteTopology.expandStationCodes(["NY", "FAKE_STATION"], dataSource: "NJT")
+        XCTAssertEqual(expanded, ["NY", "FAKE_STATION"], "No-hub system with unmatched pair returns inputs unchanged")
+    }
 }

@@ -270,11 +270,12 @@ class TestMNRCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result = await collector._process_trip(
+        result, journey = await collector._process_trip(
             mock_session, "trip_123456", sample_arrivals
         )
 
         assert result == "discovered"
+        assert journey is not None
         # Should add journey and stops
         assert mock_session.add.call_count >= 1
         mock_session.flush.assert_called()
@@ -283,83 +284,80 @@ class TestMNRCollectorProcessTrip:
     async def test_process_trip_updates_existing_journey(
         self, collector, mock_session, sample_arrivals
     ):
-        """Test _process_trip updates existing journey."""
-        # Mock existing journey
+        """Test _process_trip updates an existing journey without issuing
+        per-arrival JourneyStop SELECTs (uses the eagerly-loaded stops)."""
+        now = datetime.now(timezone.utc)
+        # Station codes must match sample_arrivals (GCT, M125).
+        mock_stop_gct = MagicMock(spec=JourneyStop)
+        mock_stop_gct.station_code = "GCT"
+        mock_stop_gct.track = None
+        mock_stop_gct.actual_departure = now
+        mock_stop_gct.actual_arrival = now
+        mock_stop_gct.scheduled_arrival = now
+        mock_stop_gct.has_departed_station = False
+        mock_stop_gct.departure_source = None
+        mock_stop_gct.stop_sequence = 1
+        mock_stop_m125 = MagicMock(spec=JourneyStop)
+        mock_stop_m125.station_code = "M125"
+        mock_stop_m125.track = None
+        mock_stop_m125.actual_departure = None
+        mock_stop_m125.actual_arrival = now + timedelta(minutes=30)
+        mock_stop_m125.scheduled_arrival = now + timedelta(minutes=30)
+        mock_stop_m125.has_departed_station = False
+        mock_stop_m125.departure_source = None
+        mock_stop_m125.stop_sequence = 2
+
         existing_journey = MagicMock(spec=TrainJourney)
         existing_journey.id = 1
         existing_journey.train_id = "M123456"
         existing_journey.data_source = "MNR"
+        existing_journey.stops = [mock_stop_gct, mock_stop_m125]
 
-        # Mock existing stops (one per sample arrival) with attributes needed
-        # by update_stop_departure_status and the track assignment logic
-        now = datetime.now(timezone.utc)
-        mock_stop_1 = MagicMock(spec=JourneyStop)
-        mock_stop_1.track = None
-        mock_stop_1.actual_departure = now
-        mock_stop_1.actual_arrival = now
-        mock_stop_1.scheduled_arrival = now
-        mock_stop_1.has_departed_station = False
-        mock_stop_1.departure_source = None
-        mock_stop_1.stop_sequence = 1
-        mock_stop_2 = MagicMock(spec=JourneyStop)
-        mock_stop_2.track = None
-        mock_stop_2.actual_departure = None
-        mock_stop_2.actual_arrival = now + timedelta(minutes=30)
-        mock_stop_2.scheduled_arrival = now + timedelta(minutes=30)
-        mock_stop_2.has_departed_station = False
-        mock_stop_2.departure_source = None
-        mock_stop_2.stop_sequence = 2
-
-        # First execute returns journey, next two return stops,
-        # then all-stops query for departure status update
         journey_result = MagicMock()
         journey_result.scalar_one_or_none.return_value = existing_journey
 
-        stop_result_1 = MagicMock()
-        stop_result_1.scalar_one_or_none.return_value = mock_stop_1
-
-        stop_result_2 = MagicMock()
-        stop_result_2.scalar_one_or_none.return_value = mock_stop_2
-
-        all_stops_result = MagicMock()
-        all_stops_scalars = MagicMock()
-        all_stops_scalars.all.return_value = [mock_stop_1, mock_stop_2]
-        all_stops_result.scalars.return_value = all_stops_scalars
-
-        # Remaining calls (transit analyzer etc.) return empty results
         empty_result = MagicMock()
         empty_scalars = MagicMock()
         empty_scalars.all.return_value = []
         empty_result.scalars.return_value = empty_scalars
         empty_result.scalar_one_or_none.return_value = None
+        empty_result.scalar.return_value = None
 
         mock_session.execute = AsyncMock(
-            side_effect=[
-                journey_result,
-                stop_result_1,
-                stop_result_2,
-                all_stops_result,
-                empty_result,
-                empty_result,
-                empty_result,
-                empty_result,
-            ]
+            side_effect=[journey_result] + [empty_result] * 10
         )
 
-        result = await collector._process_trip(
+        result, journey = await collector._process_trip(
             mock_session, "trip_123456", sample_arrivals
         )
 
         assert result == "updated"
+        assert journey is existing_journey
+        # Stops must be updated in memory — actual_arrival assigned from the arrivals
+        assert mock_stop_gct.actual_arrival == sample_arrivals[0].arrival_time
+        assert mock_stop_m125.actual_arrival == sample_arrivals[1].arrival_time
+        # The N+1 SELECT pattern emitted one `select(JourneyStop).where(
+        # journey_id, station_code)` per arrival. Its query shape must not
+        # be issued anymore.
+        per_arrival_select_calls = [
+            call
+            for call in mock_session.execute.call_args_list
+            if "station_code =" in str(call).replace("\n", " ")
+            and "stop_sequence" not in str(call).replace("\n", " ")
+        ]
+        assert (
+            len(per_arrival_select_calls) == 0
+        ), f"N+1 query pattern detected: {per_arrival_select_calls}"
 
     @pytest.mark.asyncio
     async def test_process_trip_returns_none_for_empty_arrivals(
         self, collector, mock_session
     ):
-        """Test _process_trip returns None for empty arrivals list."""
-        result = await collector._process_trip(mock_session, "trip_123", [])
+        """Test _process_trip returns (None, None) for empty arrivals list."""
+        result, journey = await collector._process_trip(mock_session, "trip_123", [])
 
         assert result is None
+        assert journey is None
 
     @pytest.mark.asyncio
     async def test_process_trip_sorts_arrivals_by_time(self, collector, mock_session):
@@ -397,9 +395,12 @@ class TestMNRCollectorProcessTrip:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        result = await collector._process_trip(mock_session, "trip_123", arrivals)
+        result, journey = await collector._process_trip(
+            mock_session, "trip_123", arrivals
+        )
 
         assert result == "discovered"
+        assert journey is not None
         # Origin should be GCT (earlier time)
         # This is implicitly tested by the journey being created correctly
 
@@ -745,3 +746,52 @@ class TestMNRCollectorRun:
             assert "discovered" in result
             assert "updated" in result
             assert "errors" in result
+
+
+class TestMNRCollectorFailFast:
+    """Tests for MNR fail-fast on upstream 5xx / hang (#960)."""
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        session.rollback = AsyncMock()
+        return session
+
+    @pytest.mark.asyncio
+    async def test_collect_bails_when_feed_fetch_hangs_past_timeout(self, mock_session):
+        """If the upstream feed hangs indefinitely, the collector must bail
+        quickly via asyncio.wait_for instead of consuming the scheduler budget.
+        """
+        import asyncio as _asyncio
+
+        hang_event = _asyncio.Event()
+
+        async def hang_forever():
+            await hang_event.wait()
+            return []
+
+        hung_client = AsyncMock(spec=MNRClient)
+        hung_client.get_all_arrivals = hang_forever
+        hung_client.close = AsyncMock()
+
+        collector = MNRCollector(client=hung_client)
+
+        with patch(
+            "trackrat.collectors.mnr.collector._FEED_FETCH_TIMEOUT_SECONDS",
+            0.05,
+        ):
+            import time
+
+            t0 = time.monotonic()
+            result = await collector.collect(mock_session)
+            elapsed = time.monotonic() - t0
+
+        assert elapsed < 1.0, f"collect() took {elapsed:.2f}s — fail-fast broken"
+        assert result["total_arrivals"] == 0
+        assert result["discovered"] == 0
+        assert result["updated"] == 0
+        mock_session.commit.assert_not_called()

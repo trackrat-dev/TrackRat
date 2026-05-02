@@ -253,3 +253,237 @@ async def test_empty_journey(mock_session):
 
     # Should not add any objects
     assert len(mock_session.added_objects) == 0
+
+
+# =============================================================================
+# Bulk segment analysis tests (issue #958)
+# =============================================================================
+
+
+def _make_journey(journey_id: int, data_source: str, line_code: str) -> TrainJourney:
+    """Build a TrainJourney with three consecutive stops at 15-minute spacing.
+
+    All stops have actual arrival/departure times set, so two consecutive
+    segments are analyzable. Stops are attached to the journey via `stops`
+    so that callers which want to pre-populate stops can still do so;
+    ``analyze_new_segments_bulk`` itself fetches stops from the DB.
+    """
+    base_time = datetime(2026, 4, 23, 8, 0, 0)
+    journey = TrainJourney(
+        id=journey_id,
+        train_id=f"T{journey_id}",
+        journey_date=base_time.date(),
+        data_source=data_source,
+        line_code=line_code,
+    )
+    journey.stops = [
+        JourneyStop(
+            journey_id=journey_id,
+            station_code="A",
+            stop_sequence=0,
+            scheduled_departure=base_time,
+            actual_departure=base_time,
+        ),
+        JourneyStop(
+            journey_id=journey_id,
+            station_code="B",
+            stop_sequence=1,
+            scheduled_arrival=base_time + timedelta(minutes=15),
+            scheduled_departure=base_time + timedelta(minutes=15),
+            actual_arrival=base_time + timedelta(minutes=15),
+            actual_departure=base_time + timedelta(minutes=15),
+        ),
+        JourneyStop(
+            journey_id=journey_id,
+            station_code="C",
+            stop_sequence=2,
+            scheduled_arrival=base_time + timedelta(minutes=30),
+            actual_arrival=base_time + timedelta(minutes=30),
+        ),
+    ]
+    return journey
+
+
+def _setup_bulk_mocks(
+    mock_session,
+    stops_by_journey: dict[int, list[JourneyStop]],
+    existing_tuples: list[tuple[int, str, str]],
+) -> None:
+    """Wire up two sequential execute() results: existing segments, then stops.
+
+    The bulk method issues exactly two queries; this fixture mirrors that
+    contract so a test failure tied to an extra query surfaces immediately.
+    """
+    existing_result = MagicMock()
+    existing_result.all = MagicMock(return_value=existing_tuples)
+
+    stops_flat = [s for stops in stops_by_journey.values() for s in stops]
+    stops_scalars = MagicMock()
+    stops_scalars.__iter__ = lambda self: iter(stops_flat)
+    stops_result = MagicMock()
+    stops_result.scalars = MagicMock(return_value=stops_scalars)
+
+    mock_session.execute = AsyncMock(side_effect=[existing_result, stops_result])
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_empty_list_returns_zero(mock_session):
+    """Empty input must not issue any DB queries."""
+    analyzer = TransitAnalyzer()
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [])
+    assert created == 0
+    mock_session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_no_ids_returns_zero(mock_session):
+    """Journeys without IDs (not yet flushed) must be skipped entirely."""
+    analyzer = TransitAnalyzer()
+    j = TrainJourney(train_id="T0", data_source="SUBWAY", line_code="1")
+    # Intentionally no id assigned; simulates a journey that wasn't flushed.
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j])
+    assert created == 0
+    mock_session.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_creates_segments_for_multiple_journeys(mock_session):
+    """Processes multiple journeys in two queries total."""
+    j1 = _make_journey(1, "SUBWAY", "1")
+    j2 = _make_journey(2, "LIRR", "BBR")
+    _setup_bulk_mocks(
+        mock_session,
+        stops_by_journey={1: j1.stops, 2: j2.stops},
+        existing_tuples=[],
+    )
+
+    analyzer = TransitAnalyzer()
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j1, j2])
+
+    # Two consecutive segments per journey, no existing records -> 4 total.
+    assert created == 4
+    segments = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segments) == 4
+    # Bulk method must issue exactly two queries regardless of journey count.
+    assert mock_session.execute.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_skips_existing_segments(mock_session):
+    """Segments already recorded in the DB must not be re-created."""
+    j1 = _make_journey(1, "MNR", "HDN")
+    # Both A->B and B->C are already recorded, so nothing new should be created.
+    _setup_bulk_mocks(
+        mock_session,
+        stops_by_journey={1: j1.stops},
+        existing_tuples=[(1, "A", "B"), (1, "B", "C")],
+    )
+
+    analyzer = TransitAnalyzer()
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j1])
+
+    assert created == 0
+    segments = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segments) == 0
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_skips_journeys_with_too_few_stops(mock_session):
+    """Journeys with fewer than 2 stops must be skipped silently."""
+    j1 = _make_journey(1, "SUBWAY", "6")
+    short = TrainJourney(
+        id=2,
+        train_id="T2",
+        journey_date=datetime(2026, 4, 23).date(),
+        data_source="SUBWAY",
+        line_code="6",
+    )
+    # A fresh stop bound to journey 2 — reusing a stop from j1 would wrongly
+    # inflate j1's stop list since journey_id is what groups stops.
+    short.stops = [
+        JourneyStop(
+            journey_id=2,
+            station_code="A",
+            stop_sequence=0,
+            scheduled_departure=datetime(2026, 4, 23, 8, 0, 0),
+            actual_departure=datetime(2026, 4, 23, 8, 0, 0),
+        )
+    ]
+
+    _setup_bulk_mocks(
+        mock_session,
+        stops_by_journey={1: j1.stops, 2: short.stops},
+        existing_tuples=[],
+    )
+
+    analyzer = TransitAnalyzer()
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j1, short])
+
+    # Only the 3-stop journey should yield segments.
+    assert created == 2
+    segments = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segments) == 2
+    assert {s.journey_id for s in segments} == {1}
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_respects_existing_per_journey(mock_session):
+    """Existing set is scoped by journey_id; identical segments on different
+    journeys must still each be created."""
+    j1 = _make_journey(1, "LIRR", "BBR")
+    j2 = _make_journey(2, "LIRR", "BBR")
+    # j1's A->B is already recorded, j2's isn't.
+    _setup_bulk_mocks(
+        mock_session,
+        stops_by_journey={1: j1.stops, 2: j2.stops},
+        existing_tuples=[(1, "A", "B")],
+    )
+
+    analyzer = TransitAnalyzer()
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j1, j2])
+
+    # j1 -> B->C only, j2 -> A->B + B->C -> 3 total.
+    assert created == 3
+    segments = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    created_keys = {
+        (s.journey_id, s.from_station_code, s.to_station_code) for s in segments
+    }
+    assert created_keys == {(1, "B", "C"), (2, "A", "B"), (2, "B", "C")}
+
+
+@pytest.mark.asyncio
+async def test_bulk_analyzer_deduplicates_same_journey_appearing_twice(mock_session):
+    """If the same journey appears more than once in the input list (e.g.,
+    because a train ID showed up in multiple GTFS-RT feeds), its segments
+    must only be created once — the in-memory known_existing set must be
+    updated after each insert to prevent duplicates."""
+    j1 = _make_journey(1, "SUBWAY", "1")
+
+    _setup_bulk_mocks(
+        mock_session,
+        stops_by_journey={1: j1.stops},
+        existing_tuples=[],
+    )
+
+    analyzer = TransitAnalyzer()
+    # Pass the same journey twice to simulate a duplicate in the collector list.
+    created = await analyzer.analyze_new_segments_bulk(mock_session, [j1, j1])
+
+    # Should create exactly 2 segments (A->B, B->C), not 4.
+    assert created == 2
+    segments = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segments) == 2
+    created_keys = [
+        (s.journey_id, s.from_station_code, s.to_station_code) for s in segments
+    ]
+    assert sorted(created_keys) == [(1, "A", "B"), (1, "B", "C")]

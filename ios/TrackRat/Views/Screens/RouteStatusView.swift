@@ -55,7 +55,7 @@ struct RouteStatusView: View {
                     }
                     operationsSummarySection
                     historySections
-                    upcomingTrainsSection
+                    departuresSection
                     serviceAlertsSection
                     alertSubscriptionSection
                 }
@@ -63,6 +63,7 @@ struct RouteStatusView: View {
                 .animation(.easeInOut(duration: 0.3), value: viewModel.filterLoaded)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingMap)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingUpcomingTrains)
+                .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingRecentTrains)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingServiceAlerts)
             }
             .background(Color(.systemGroupedBackground))
@@ -363,38 +364,42 @@ struct RouteStatusView: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 
-    /// Upcoming Trains skeleton matching the actual train row layout
-    private var upcomingTrainsSkeletonSection: some View {
+    /// Departures skeleton: two muted "past" rows, a Now divider, two "future" rows.
+    private var departuresSkeletonSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             ShimmerRect(width: 140, height: 20)
 
             ForEach(0..<2, id: \.self) { _ in
-                HStack(spacing: 12) {
-                    // Line color bar
-                    ShimmerRect(width: 4, height: 40, cornerRadius: 2)
+                skeletonTrainRow.opacity(0.55)
+            }
 
-                    // Train info
-                    VStack(alignment: .leading, spacing: 4) {
-                        ShimmerRect(width: 90, height: 16)
-                        ShimmerRect(width: 60, height: 12)
-                    }
+            NowDivider()
 
-                    Spacer()
-
-                    // Time and delay
-                    VStack(alignment: .trailing, spacing: 4) {
-                        ShimmerRect(width: 60, height: 16)
-                        ShimmerRect(width: 50, height: 12)
-                    }
-                }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 10)
-                .background(RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.secondarySystemGroupedBackground)))
+            ForEach(0..<2, id: \.self) { _ in
+                skeletonTrainRow
             }
         }
         .padding()
         .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+    }
+
+    private var skeletonTrainRow: some View {
+        HStack(spacing: 12) {
+            ShimmerRect(width: 4, height: 40, cornerRadius: 2)
+            VStack(alignment: .leading, spacing: 4) {
+                ShimmerRect(width: 90, height: 16)
+                ShimmerRect(width: 60, height: 12)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 4) {
+                ShimmerRect(width: 60, height: 16)
+                ShimmerRect(width: 50, height: 12)
+            }
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color(.secondarySystemGroupedBackground)))
     }
 
 
@@ -418,7 +423,7 @@ struct RouteStatusView: View {
                 .cornerRadius(12)
 
                 // Legend intentionally omitted — map colors are self-explanatory
-            } else if viewModel.mapError != nil {
+            } else {
                 ContentUnavailableView("Map Unavailable", systemImage: "map", description: Text("Could not load congestion data"))
                     .frame(height: 200)
             }
@@ -427,12 +432,18 @@ struct RouteStatusView: View {
 
     // MARK: - Operations Summary Section
 
+    /// Hidden for frequency-first systems (Subway, PATH, PATCO, WMATA, BART)
+    /// where the body degenerates to a headway sentence already shown by the
+    /// Frequency stat in Route Performance below.
+    @ViewBuilder
     private var operationsSummarySection: some View {
-        OperationsSummaryView(
-            scope: isSystemWideContext ? .network : .route,
-            fromStation: context.effectiveFromStation,
-            toStation: context.effectiveToStation
-        )
+        if preferredMode != .health {
+            OperationsSummaryView(
+                scope: isSystemWideContext ? .network : .route,
+                fromStation: context.effectiveFromStation,
+                toStation: context.effectiveToStation
+            )
+        }
     }
 
     // MARK: - Service Alerts Section
@@ -481,24 +492,49 @@ struct RouteStatusView: View {
         }
     }
 
-    // MARK: - Upcoming Trains Section
+    // MARK: - Departures Section
 
+    /// Unified timeline of recently-departed and upcoming trains around a "Now" divider.
+    /// Past trains are reversed so the section reads chronologically top-to-bottom and
+    /// rendered with reduced opacity to keep visual focus on what's coming next.
     @ViewBuilder
-    private var upcomingTrainsSection: some View {
-        if viewModel.isLoadingUpcomingTrains {
-            upcomingTrainsSkeletonSection
-        } else if !viewModel.upcomingTrains.isEmpty {
+    private var departuresSection: some View {
+        if viewModel.isLoadingUpcomingTrains || viewModel.isLoadingRecentTrains {
+            departuresSkeletonSection
+        } else if !viewModel.upcomingTrains.isEmpty || !viewModel.recentTrains.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Upcoming Trains")
+                Text("Departures")
                     .font(.headline)
 
+                // Past: oldest at top, most-recent just above the Now divider.
+                ForEach(Array(viewModel.recentTrains.prefix(3).reversed())) { train in
+                    Button {
+                        selectedTrain = train
+                    } label: {
+                        TrainRow(train: train, dataSource: train.dataSource)
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(0.55)
+                }
+
+                NowDivider()
+
+                // Future: soonest first.
                 ForEach(viewModel.upcomingTrains.prefix(3)) { train in
                     Button {
                         selectedTrain = train
                     } label: {
-                        UpcomingTrainRow(train: train, dataSource: train.dataSource)
+                        TrainRow(train: train, dataSource: train.dataSource)
                     }
                     .buttonStyle(.plain)
+                }
+
+                if viewModel.upcomingTrains.isEmpty {
+                    Text("No more trains scheduled")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 4)
                 }
 
                 if context.effectiveFromStation != nil && context.effectiveToStation != nil {
@@ -889,9 +925,38 @@ private struct ServiceAlertCard: View {
     }
 }
 
-// MARK: - Upcoming Train Row
+// MARK: - Now Divider
 
-private struct UpcomingTrainRow: View {
+/// Thin orange hairline with a centered "NOW · h:mm a" pill, used to separate past and
+/// future rows in the unified Departures section. Updates each minute.
+private struct NowDivider: View {
+    @State private var now: Date = Date()
+    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    private var timeString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h:mm a"
+        formatter.timeZone = TimeZone(identifier: "America/New_York")
+        return formatter.string(from: now)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle().fill(.orange).frame(height: 1)
+            Text("NOW · \(timeString)")
+                .font(.caption2.bold())
+                .foregroundColor(.orange)
+                .fixedSize()
+            Rectangle().fill(.orange).frame(height: 1)
+        }
+        .padding(.vertical, 2)
+        .onReceive(timer) { now = $0 }
+    }
+}
+
+// MARK: - Train Row
+
+private struct TrainRow: View {
     let train: TrainV2
     let dataSource: String
 
@@ -943,8 +1008,9 @@ private struct UpcomingTrainRow: View {
     }
 
     private var departureTimeString: String {
-        let time = train.departure.updatedTime ?? train.departure.scheduledTime
-        guard let time = time else { return "--" }
+        guard let time = train.departure.updatedTime ?? train.departure.scheduledTime else {
+            return "--"
+        }
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         formatter.timeZone = TimeZone(identifier: "America/New_York")
@@ -978,7 +1044,6 @@ final class RouteStatusViewModel: ObservableObject {
     @Published var journeyStations: [JourneyStation] = []
     @Published var mapRegion = MKCoordinateRegion()
     @Published var isLoadingMap = true
-    @Published var mapError: String?
 
     // Service alerts
     @Published var serviceAlerts: [V2ServiceAlert] = []
@@ -987,6 +1052,13 @@ final class RouteStatusViewModel: ObservableObject {
     // Upcoming trains
     @Published var upcomingTrains: [TrainV2] = []
     @Published var isLoadingUpcomingTrains = true
+
+    // Recent trains (already departed within the recent window)
+    @Published var recentTrains: [TrainV2] = []
+    @Published var isLoadingRecentTrains = true
+
+    /// Minutes of history for the Recent Trains section.
+    static let recentTrainsWindowMinutes = 120
 
     // History overall loading state (true until first period loads)
     @Published var isLoadingHistory = true
@@ -1101,11 +1173,12 @@ final class RouteStatusViewModel: ObservableObject {
         journeyStations = []
         mapRegion = MKCoordinateRegion()
         isLoadingMap = true
-        mapError = nil
         serviceAlerts = []
         isLoadingServiceAlerts = true
         upcomingTrains = []
         isLoadingUpcomingTrains = true
+        recentTrains = []
+        isLoadingRecentTrains = true
         isLoadingHistory = true
         historyBySystem = [:]
         discoveredSystems = []
@@ -1137,6 +1210,7 @@ final class RouteStatusViewModel: ObservableObject {
             }
             group.addTask { await self.loadServiceAlerts() }
             group.addTask { await self.loadUpcomingTrains() }
+            group.addTask { await self.loadRecentTrains() }
         }
     }
 
@@ -1461,6 +1535,45 @@ final class RouteStatusViewModel: ObservableObject {
             upcomingTrains = Array(filtered.prefix(5))
         } catch {
             print("⚠️ Failed to load upcoming trains: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Recent Trains
+
+    private func loadRecentTrains() async {
+        isLoadingRecentTrains = true
+        defer { isLoadingRecentTrains = false }
+
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else { return }
+        do {
+            let systemsToFetch: Set<TrainSystem>
+            if enabledSystems.isEmpty {
+                systemsToFetch = TrainSystem(rawValue: context.dataSource).map { Set([$0]) } ?? []
+            } else {
+                systemsToFetch = Set(enabledSystems.compactMap { TrainSystem(rawValue: $0) })
+            }
+
+            let trains = try await APIService.shared.searchRecentTrains(
+                fromStationCode: from,
+                toStationCode: to,
+                windowMinutes: Self.recentTrainsWindowMinutes,
+                dataSources: systemsToFetch
+            )
+
+            // Filter by enabled lines (matches loadUpcomingTrains behavior)
+            let filtered: [TrainV2]
+            if enabledLineIds.isEmpty {
+                filtered = trains
+            } else {
+                filtered = trains.filter { train in
+                    enabledLineIds.contains("\(train.dataSource):\(train.line.code)")
+                }
+            }
+
+            recentTrains = Array(filtered.prefix(5))
+        } catch {
+            print("⚠️ Failed to load recent trains: \(error.localizedDescription)")
         }
     }
 

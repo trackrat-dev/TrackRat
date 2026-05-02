@@ -1,18 +1,9 @@
-import { format, formatDistance, parseISO, isToday as fnsIsToday } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 export function formatTime(dateString: string): string {
   try {
     const date = parseISO(dateString);
     return format(date, 'h:mm a');
-  } catch {
-    return 'N/A';
-  }
-}
-
-export function formatTimeAgo(dateString: string): string {
-  try {
-    const date = parseISO(dateString);
-    return formatDistance(date, new Date(), { addSuffix: true });
   } catch {
     return 'N/A';
   }
@@ -37,13 +28,9 @@ export function getTodayDateString(): string {
 }
 
 export function isToday(dateString: string): boolean {
-  try {
-    const date = parseISO(dateString);
-    if (Number.isNaN(date.getTime())) return true; // default to "today" if parsing fails
-    return fnsIsToday(date);
-  } catch {
-    return true;
-  }
+  const bare = dateString.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(bare)) return true;
+  return bare === getTodayDateString();
 }
 
 export function formatDate(dateString: string): string {

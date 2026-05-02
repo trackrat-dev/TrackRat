@@ -76,8 +76,8 @@ poetry run uvicorn trackrat.main:app --reload
 
 **No additional steps needed!** The background scheduler starts automatically when you run the application:
 
-- **Daily 4:00 AM ET**: NJT 27-hour schedule collection
-- **Daily 4:30 AM ET**: Amtrak pattern-based schedule generation
+- **Daily 12:30 AM ET**: NJT 27-hour schedule collection
+- **Daily 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Every 30 minutes**: Train discovery for NJT and Amtrak
 - **Every 15 minutes**: Journey collection for active NJT/Amtrak trains
 - **Every 4 minutes**: PATH train collection (unified discovery + updates)
@@ -349,9 +349,9 @@ The V2 backend includes a comprehensive test suite covering core functionality:
 poetry run pytest -v
 
 # Run specific test categories
-poetry run pytest tests/test_basic.py -v           # Core functionality only
-poetry run pytest tests/test_config.py -v         # Configuration tests
-poetry run pytest tests/test_utils.py -v          # Utility function tests
+poetry run pytest tests/unit/ -v                  # Unit tests (collectors, api, services, config)
+poetry run pytest tests/integration/ -v           # Integration tests
+poetry run pytest tests/e2e/ -v                   # End-to-end tests
 
 # Run with coverage report
 poetry run pytest --cov=trackrat --cov-report=html
@@ -393,19 +393,19 @@ poetry run alembic downgrade -1
 The system uses a sophisticated multi-phase approach:
 
 #### 1. Schedule Generation (Daily)
-- **NJT Schedule Collection** (4:00 AM ET)
+- **NJT Schedule Collection** (12:30 AM ET)
   - Fetches 27-hour schedule data in single API call
   - Creates SCHEDULED journey records for all trains
   - Updates to OBSERVED when trains appear in discovery
 
-- **Amtrak Pattern Analysis** (4:30 AM ET)
+- **Amtrak Pattern Analysis** (12:45 AM ET)
   - Analyzes 22 days of historical patterns
   - Identifies trains that run regularly (≥2 times in 3 weeks)
   - Generates SCHEDULED records for expected trains
 
 #### 2. Train Discovery (Every 30 minutes for NJT/Amtrak)
 - Polls major stations for active trains
-- NJT: NY, NP, PJ, TR, LB, PL, DN stations
+- NJT: 21 stations (NY, NP, TR, LB, PL, DN, MP, HB, HG, GL, ND, BU, HQ, DV, JA, RA, ST, SV, RW, WW, HN)
 - Amtrak: Major corridor stations
 - Updates journey status from SCHEDULED to OBSERVED
 
@@ -429,7 +429,7 @@ The system uses a sophisticated multi-phase approach:
 - Full trip_id used as train ID (not truncated)
 
 #### PATCO Collection (Schedule-based only)
-- Uses GTFS static schedules from SEPTA feed
+- Uses GTFS static schedules from National RTAP feed
 - 14 stations from Lindenwold to 15-16th & Locust
 - No real-time API available; times are scheduled only
 

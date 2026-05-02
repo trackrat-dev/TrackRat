@@ -9,7 +9,7 @@ interface RouteDefinition {
 }
 
 // Auto-generated from backend route_topology.py
-const ROUTES: RouteDefinition[] = [
+export const ROUTES: RouteDefinition[] = [
   { id: 'njt-nec', name: 'Northeast Corridor', dataSource: 'NJT', lineCodes: ["NE"], stations: ["NY", "SE", "NP", "NA", "NZ", "EZ", "LI", "RH", "MP", "MU", "ED", "NB", "JA", "PJ", "HL", "TR"] },
   { id: 'njt-njcl', name: 'North Jersey Coast Line', dataSource: 'NJT', lineCodes: ["NC"], stations: ["NY", "SE", "NP", "NA", "NZ", "EZ", "LI", "RH", "AV", "WB", "PE", "CH", "AM", "HZ", "MI", "RB", "LS", "MK", "LB", "EL", "AH", "AP", "BB", "BS", "LA", "SQ", "PP", "BH"] },
   { id: 'njt-me-morristown', name: 'Morris & Essex (Morristown)', dataSource: 'NJT', lineCodes: ["ME"], stations: ["HB", "SE", "NP", "ND", "BU", "EO", "OG", "HI", "MT", "SO", "MW", "MB", "RT", "ST", "CM", "MA", "CN", "MR", "MX", "TB", "DV", "DO", "HV", "HP", "NT", "OL", "HQ"] },

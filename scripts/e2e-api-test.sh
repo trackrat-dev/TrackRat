@@ -643,7 +643,7 @@ done
 
 echo -e "${BOLD}Trip Search API (bidirectional)...${NC}"
 
-TRIP_ET_HOUR=$(TZ=America/New_York date +%H)
+TRIP_ET_HOUR=$(TZ=America/New_York date +%-H)
 
 # Test a single trip search direction.
 # Returns 0 on success, 1 on failure.

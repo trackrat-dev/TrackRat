@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import TrackRat
 
 class BuildTests: XCTestCase {
@@ -65,5 +66,99 @@ class BuildTests: XCTestCase {
         // Test that LiveActivityService can be instantiated
         let liveActivityService = LiveActivityService.shared
         XCTAssertNotNil(liveActivityService)
+    }
+}
+
+/// Regression tests for `StationNameWithBadges`. The component's custom
+/// `StationNameBadgesLayout` once collapsed to zero size when the badge
+/// subview was empty — i.e. on every non-subway stop in TrainDetailsView —
+/// because the inner `Text` was wrapped in `.frame(maxWidth: .infinity)`,
+/// making its ideal width report `.infinity` and the layout's defensive
+/// `resolvedWidth` clamp return 0. These tests host the view in a flexible
+/// HStack (the same arrangement that exercises the unspecified-proposal
+/// measurement pass) and assert the rendered size is non-zero.
+@MainActor
+class StationNameWithBadgesLayoutTests: XCTestCase {
+
+    func testRendersNameWhenBadgesAreEmpty() {
+        let view = HStack(spacing: 12) {
+            StationNameWithBadges(
+                name: "Princeton Junction",
+                subwayLines: [],
+                font: .subheadline,
+                chipSize: 14,
+                includeSystemChips: false
+            )
+            Spacer()
+        }
+
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 100)
+        host.view.layoutIfNeeded()
+
+        let fitted = host.sizeThatFits(in: CGSize(width: 320, height: .greatestFiniteMagnitude))
+        XCTAssertGreaterThan(
+            fitted.height, 10,
+            "Station name with no badges must contribute non-zero height (regression: TrainDetailsView non-subway stops rendered no station name)"
+        )
+    }
+
+    func testRendersNameWhenBadgesArePresent() {
+        let view = HStack(spacing: 12) {
+            StationNameWithBadges(
+                name: "Times Sq-42 St",
+                subwayLines: ["1", "2", "3", "N", "Q", "R"],
+                font: .subheadline,
+                chipSize: 14
+            )
+            Spacer()
+        }
+
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 100)
+        host.view.layoutIfNeeded()
+
+        let fitted = host.sizeThatFits(in: CGSize(width: 320, height: .greatestFiniteMagnitude))
+        XCTAssertGreaterThan(fitted.height, 10, "Subway stop with chips must also render with positive height")
+    }
+
+    func testNaturalTextBehaviorKeepsTrainDetailsStationNamesUnscaled() {
+        let stationName = "Princeton Junction Station With A Long Display Name"
+        let width: CGFloat = 120
+
+        let protected = StationNameWithBadges(
+            name: stationName,
+            subwayLines: [],
+            font: .subheadline,
+            chipSize: 14,
+            includeSystemChips: false
+        )
+        .frame(width: width)
+
+        let natural = StationNameWithBadges(
+            name: stationName,
+            subwayLines: [],
+            font: .subheadline,
+            chipSize: 14,
+            includeSystemChips: false,
+            textBehavior: .natural
+        )
+        .frame(width: width)
+
+        let protectedHeight = fittedHeight(for: protected, width: width)
+        let naturalHeight = fittedHeight(for: natural, width: width)
+
+        XCTAssertGreaterThan(
+            naturalHeight,
+            protectedHeight + 6,
+            "TrainDetailsView station names should keep the old natural Text behavior instead of shrinking like protected picker rows"
+        )
+    }
+
+    private func fittedHeight<V: View>(for view: V, width: CGFloat) -> CGFloat {
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: width, height: 200)
+        host.view.layoutIfNeeded()
+        return host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
     }
 }

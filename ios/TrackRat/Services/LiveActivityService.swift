@@ -89,7 +89,8 @@ class LiveActivityService: ObservableObject {
             destinationStationCode: destinationCode,
             departureTime: train.getDepartureTime(fromStationCode: originCode) ?? train.departureTime,
             scheduledArrivalTime: scheduledArrivalTime,
-            theme: "black"
+            theme: "black",
+            dataSource: train.dataSource
         )
         
         // Determine if train has departed user's origin
@@ -247,10 +248,12 @@ class LiveActivityService: ObservableObject {
         guard let activity = currentActivity else { return }
 
         do {
-            // Fetch train details
+            // Fetch train details. Pass dataSource so the backend can
+            // disambiguate when train IDs collide across transit systems.
             let train = try await APIService.shared.fetchTrainDetails(
                 id: activity.attributes.trainId,
-                fromStationCode: activity.attributes.originStationCode
+                fromStationCode: activity.attributes.originStationCode,
+                dataSource: activity.attributes.dataSource
             )
 
             // Cache the fresh train data for instant loading in TrainDetailsView
@@ -428,7 +431,8 @@ class LiveActivityService: ObservableObject {
                         activityId: activity.id,
                         trainNumber: train.trainId,
                         originCode: originCode,
-                        destinationCode: destinationCode
+                        destinationCode: destinationCode,
+                        dataSource: train.dataSource
                     )
                     print("✅ Live Activity token registration successful")
                 } catch {

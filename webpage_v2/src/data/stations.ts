@@ -1600,6 +1600,24 @@ const _STATIONS_RAW: any[] = [
 ];
 export const STATIONS: Station[] = _STATIONS_RAW.sort((a, b) => a.name.localeCompare(b.name));
 
+// Pre-computed search index: lowercase name+code built once at module load
+interface StationSearchEntry {
+  station: Station;
+  haystack: string; // `${code_lower} ${name_lower}`
+}
+
+const _searchIndex: StationSearchEntry[] = STATIONS.map(s => ({
+  station: s,
+  haystack: `${s.code.toLowerCase()} ${s.name.toLowerCase()}`,
+}));
+
+const _stationsByCode = new Map<string, Station>();
+for (const s of STATIONS) {
+  if (!_stationsByCode.has(s.code)) {
+    _stationsByCode.set(s.code, s);
+  }
+}
+
 // Primary stations per system (shown in grouped view when not searching)
 export const PRIMARY_STATIONS: Record<TransitSystem, string[]> = {
   NJT: ['NY', 'NP', 'HB', 'SE', 'MP', 'PJ', 'HL', 'TR', 'LB', 'PF', 'DN', 'RA'],
@@ -1635,19 +1653,48 @@ export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUB
 
 // Helper functions
 export function getStationByCode(code: string): Station | undefined {
-  return STATIONS.find(s => s.code === code);
+  return _stationsByCode.get(code);
 }
 
-export function searchStations(query: string, systems?: TransitSystem[]): Station[] {
-  if (!query) return [];
+export function searchStations(query: string, systems?: TransitSystem[], limit = 15): Station[] {
+  if (!query.trim()) return [];
   const q = query.toLowerCase();
   const hasFilter = systems && systems.length > 0;
-  return STATIONS
-    .filter(s =>
-      (s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)) &&
-      (!hasFilter || (s.system && systems!.includes(s.system)))
-    )
-    .slice(0, 15);
+  const results: Station[] = [];
+  for (const entry of _searchIndex) {
+    if (results.length >= limit) break;
+    if (!entry.haystack.includes(q)) continue;
+    if (hasFilter && (!entry.station.system || !systems!.includes(entry.station.system))) continue;
+    results.push(entry.station);
+  }
+  return results;
+}
+
+export function searchStationsPartitioned(
+  query: string,
+  systems: TransitSystem[],
+  limit = 15,
+): { matched: Station[]; other: Station[] } {
+  if (!query.trim() || systems.length === 0) return { matched: [], other: [] };
+  const q = query.toLowerCase();
+  const matched: Station[] = [];
+  const other: Station[] = [];
+  const matchedCodes = new Set<string>();
+  for (const entry of _searchIndex) {
+    if (matched.length >= limit && other.length >= limit) break;
+    if (!entry.haystack.includes(q)) continue;
+    if (entry.station.system && systems.includes(entry.station.system)) {
+      if (matched.length < limit) {
+        matched.push(entry.station);
+        matchedCodes.add(entry.station.code);
+      }
+    } else {
+      if (other.length < limit && !matchedCodes.has(entry.station.code)) {
+        other.push(entry.station);
+      }
+    }
+  }
+  return { matched, other };
 }
 
 export function getGroupedPrimaryStations(systems?: TransitSystem[]): { system: TransitSystem; name: string; stations: Station[] }[] {

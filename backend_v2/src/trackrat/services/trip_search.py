@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
@@ -39,7 +39,7 @@ from trackrat.utils.time import now_et
 logger = get_logger(__name__)
 
 # Maximum number of departure queries per transfer search to keep response fast
-MAX_TRANSFER_QUERIES = 6
+MAX_TRANSFER_QUERIES = 12
 
 # Minimum number of minutes after arrival to allow for catching the next train
 # (in addition to the transfer point's walk_minutes)
@@ -107,6 +107,14 @@ def _filter_unreasonable_durations(trips: list[TripOption]) -> list[TripOption]:
     return [t for t in trips if t.total_duration_minutes <= max_reasonable]
 
 
+def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
+    """Get line codes for a station and its physical-equivalent codes."""
+    lines: set[str] = set()
+    for code in expand_station_codes(station_code):
+        lines.update(get_station_lines(code, system))
+    return frozenset(lines)
+
+
 def _find_relevant_transfer_points(
     from_systems: set[str],
     to_systems: set[str],
@@ -144,8 +152,8 @@ def _find_relevant_transfer_points(
     if from_station and to_station:
         common_systems = from_systems & to_systems
         for system in common_systems:
-            origin_lines = get_station_lines(from_station, system)
-            dest_lines = get_station_lines(to_station, system)
+            origin_lines = _get_station_lines_expanded(from_station, system)
+            dest_lines = _get_station_lines_expanded(to_station, system)
             if origin_lines and dest_lines:
                 for tp in get_intra_system_transfers(system):
                     # One side must share lines with origin, other with dest
@@ -167,6 +175,39 @@ def _find_relevant_transfer_points(
     return transfers
 
 
+def _rank_transfer_points(
+    transfers: list[TransferPoint],
+    from_station: str,
+    to_station: str,
+    from_systems: set[str],
+    to_systems: set[str],
+) -> list[TransferPoint]:
+    """Rank transfer points so truncation is deterministic and direction-symmetric.
+
+    Sorting keys (ascending = better):
+    1. same_station transfers first (in-station is faster than walking)
+    2. walk_minutes ascending (shorter walks preferred)
+    3. stable tiebreaker on station/system codes (ensures identical ordering
+       regardless of which direction the search runs)
+    """
+
+    def _sort_key(tp: TransferPoint) -> tuple[int, int, str, str, str, str]:
+        # Canonical alphabetical order of the two sides for direction symmetry
+        side_a = (tp.station_a, tp.system_a)
+        side_b = (tp.station_b, tp.system_b)
+        canonical = tuple(sorted([side_a, side_b]))
+        return (
+            0 if tp.same_station else 1,
+            tp.walk_minutes,
+            canonical[0][0],
+            canonical[0][1],
+            canonical[1][0],
+            canonical[1][1],
+        )
+
+    return sorted(transfers, key=_sort_key)
+
+
 def _orient_transfer(
     tp: TransferPoint,
     from_systems: set[str],
@@ -184,7 +225,7 @@ def _orient_transfer(
     """
     # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
-        origin_lines = get_station_lines(from_station, tp.system_a)
+        origin_lines = _get_station_lines_expanded(from_station, tp.system_a)
         if tp.lines_a & origin_lines:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
@@ -287,6 +328,12 @@ async def search_trips(
     )
     if not transfer_points:
         return _empty_response(from_station, to_station, "no_transfer_points")
+
+    # Rank transfer points deterministically so that truncation produces the
+    # same result regardless of search direction (A→B vs B→A).
+    transfer_points = _rank_transfer_points(
+        transfer_points, from_station, to_station, from_systems, to_systems
+    )
 
     # Prepare transfer point queries — orient each transfer point up front
     # Limit to MAX_TRANSFER_QUERIES / 2 transfer points (each needs 2 queries)

@@ -59,7 +59,17 @@ struct TrainDetailsView: View {
 
     private var trainNavigationTitle: String {
         guard let train = viewModel.train else { return "Loading..." }
-        return train.displayLabel
+        return train.displayDestination
+    }
+
+    @ViewBuilder
+    private var trainTitleAccessory: some View {
+        if let train = viewModel.train, train.dataSource == "SUBWAY" {
+            SubwayLineChips(
+                lines: [SubwayLines.displayBullet(forLineCode: train.line.code)],
+                size: 22
+            )
+        }
     }
 
     var body: some View {
@@ -70,6 +80,7 @@ struct TrainDetailsView: View {
                 title: trainNavigationTitle,
                 showBackButton: !isSheet,
                 showCloseButton: false,
+                titleAccessory: { trainTitleAccessory },
                 trailingContent: {
                     HStack(alignment: .center, spacing: 12) {
                         if let train = viewModel.train,
@@ -170,6 +181,12 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
+                            // Explain "Train TBD" — scheduled-only NJT/Amtrak trains not yet
+                            // seen in the live feed. Self-clears once observationType flips.
+                            if train.hasUnconfirmedTrainNumber {
+                                ScheduledTrainInfoBanner()
+                            }
+
                             // Train performance summary (similar trains + historical)
                             // Hide after train departs from user's origin station
                             if let originCode = appState.departureStationCode,
@@ -404,10 +421,15 @@ struct CombinedDetailsCard: View {
     
     /// Check if train is boarding specifically at the user's origin station
     private var isBoardingAtOrigin: Bool {
+        // Subway has no track assignments and no meaningful boarding window
+        if train.dataSource == "SUBWAY" {
+            return false
+        }
+
         guard let departureCode = appState.departureStationCode else {
             return false
         }
-        
+
         // Simple track-based boarding detection
         return train.isBoardingAtStation(departureCode)
     }
@@ -548,6 +570,25 @@ struct CombinedDetailsCard: View {
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
 
+// MARK: - Scheduled Train Info Banner
+struct ScheduledTrainInfoBanner: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundColor(.white.opacity(0.6))
+            Text("This train is on the published schedule but hasn't appeared in the live feed yet. The train number will be confirmed once it becomes active.")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.08))
+        .cornerRadius(8)
+    }
+}
+
 // MARK: - Stop Row V2
 struct StopRowV2: View {
     let stop: StopV2
@@ -565,6 +606,13 @@ struct StopRowV2: View {
     // Helper to check if this stop is cancelled
     private var isCancelled: Bool {
         return stop.rawStatus?.amtrakStatus == "CANCELLED"
+    }
+
+    /// Subway bullets for every line serving this stop's station complex.
+    /// Empty for non-subway trains.
+    private var stationLineBullets: [String] {
+        guard train.dataSource == "SUBWAY" else { return [] }
+        return SubwayLines.lines(forStationCode: stop.stationCode)
     }
     
     // Helper to determine if this is the origin station (first stop)
@@ -692,6 +740,90 @@ struct StopRowV2: View {
         return "" // Don't show anything for on-time or 1 minute early
     }
     
+    private var stopTimes: (arrival: String?, departure: String?) {
+        let display = enhancedTimeDisplay
+        return (display.arrival, display.departure)
+    }
+
+    private var hasTimingText: Bool {
+        let times = stopTimes
+        return times.arrival != nil || times.departure != nil
+    }
+
+    @ViewBuilder
+    private var stationHeader: some View {
+        HStack(spacing: 6) {
+            Text(Stations.displayName(for: stop.stationName))
+                .font(.subheadline)
+                .foregroundColor(textColor)
+
+            if isCancelled {
+                Text("🚫")
+                    .font(.subheadline)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var timingText: some View {
+        let times = stopTimes
+
+        VStack(alignment: .leading, spacing: 2) {
+            if let arrivalText = times.arrival {
+                Text(arrivalText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(timeColor)
+            }
+
+            if let departureText = times.departure {
+                Text(departureText)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(timeColor)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var stationAndTiming: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            stationHeader
+
+            if hasTimingText {
+                timingText
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var layoutTimingText: some View {
+        if hasTimingText {
+            timingText
+        } else {
+            Color.clear.frame(width: 0, height: 0)
+        }
+    }
+
+    @ViewBuilder
+    private var stationContent: some View {
+        if stationLineBullets.isEmpty {
+            stationAndTiming
+        } else {
+            StopTextBadgesLayout(spacing: 6) {
+                stationHeader
+                layoutTimingText
+
+                SubwayLineChips(
+                    lines: stationLineBullets,
+                    size: 14,
+                    rowAlignment: .trailing,
+                    rowDistribution: .balanced
+                )
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             // Stop indicator
@@ -699,36 +831,8 @@ struct StopRowV2: View {
                 .fill(stopColor)
                 .frame(width: 12, height: 12)
             
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(Stations.displayName(for: stop.stationName))
-                        .font(.subheadline)
-                        .foregroundColor(textColor)
-                    
-                    if isCancelled {
-                        Text("🚫")
-                            .font(.subheadline)
-                    }
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    if let arrivalText = enhancedTimeDisplay.arrival {
-                        Text(arrivalText)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(timeColor)
-                    }
-                    
-                    if let departureText = enhancedTimeDisplay.departure {
-                        Text(departureText)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(timeColor)
-                    }
-                }
-            }
-            
-            Spacer()
+            stationContent
+                .frame(maxWidth: .infinity, alignment: .leading)
             
             // Show prediction if available and samples > 0
             if let predictedArrival = stop.predictedArrival,
@@ -803,6 +907,92 @@ struct StopRowV2: View {
         if isCancelled { return .clear }
         if isNextImportantStation { return Color(red: 1.0, green: 0.584, blue: 0.0).opacity(0.1) }
         return .clear
+    }
+}
+
+private struct StopTextBadgesLayout: Layout {
+    var spacing: CGFloat
+    var textSpacing: CGFloat = 4
+    var maxBadgeWidthRatio: CGFloat = 0.5
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 3 else { return .zero }
+
+        let proposedWidth = resolvedWidth(proposal.width, fallback: idealWidth(for: subviews))
+        let sizes = measuredSizes(for: subviews, width: proposedWidth)
+
+        return CGSize(
+            width: proposedWidth,
+            height: max(sizes.textHeight, sizes.badges.height)
+        )
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 3 else { return }
+
+        let width = resolvedWidth(bounds.width, fallback: idealWidth(for: subviews))
+        let sizes = measuredSizes(for: subviews, width: width)
+        let centeredBadgeY = bounds.minY + (sizes.header.height - sizes.badges.height) / 2
+        let badgesY = sizes.badges.height <= sizes.header.height ? centeredBadgeY : bounds.minY
+
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            proposal: ProposedViewSize(width: sizes.textWidth, height: sizes.header.height)
+        )
+
+        subviews[1].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY + sizes.header.height + sizes.textSpacing),
+            proposal: ProposedViewSize(width: sizes.textWidth, height: sizes.timing.height)
+        )
+
+        subviews[2].place(
+            at: CGPoint(x: bounds.maxX - sizes.badges.width, y: badgesY),
+            proposal: ProposedViewSize(width: sizes.badges.width, height: sizes.badges.height)
+        )
+    }
+
+    private func measuredSizes(
+        for subviews: Subviews,
+        width: CGFloat
+    ) -> (header: CGSize, timing: CGSize, badges: CGSize, textWidth: CGFloat, textHeight: CGFloat, textSpacing: CGFloat) {
+        let unconstrainedBadges = subviews[2].sizeThatFits(.unspecified)
+        let hasBadges = unconstrainedBadges.width > 0 && unconstrainedBadges.height > 0
+        let activeSpacing = hasBadges ? spacing : 0
+        let contentWidth = max(0, width - activeSpacing)
+        let badgeMaxWidth = hasBadges ? contentWidth * maxBadgeWidthRatio : 0
+        let badges = hasBadges
+            ? subviews[2].sizeThatFits(ProposedViewSize(width: badgeMaxWidth, height: nil))
+            : .zero
+        let badgeWidth = min(badges.width, badgeMaxWidth)
+        let textWidth = hasBadges ? max(0, contentWidth - badgeWidth) : width
+        let header = subviews[0].sizeThatFits(ProposedViewSize(width: textWidth, height: nil))
+        let timing = subviews[1].sizeThatFits(ProposedViewSize(width: textWidth, height: nil))
+        let activeTextSpacing = timing.width > 0 && timing.height > 0 ? textSpacing : 0
+        let textHeight = header.height + activeTextSpacing + timing.height
+
+        return (
+            CGSize(width: textWidth, height: header.height),
+            CGSize(width: textWidth, height: timing.height),
+            CGSize(width: badgeWidth, height: badges.height),
+            textWidth,
+            textHeight,
+            activeTextSpacing
+        )
+    }
+
+    private func resolvedWidth(_ width: CGFloat?, fallback: CGFloat) -> CGFloat {
+        guard let width, width.isFinite else {
+            return fallback.isFinite ? max(0, fallback) : 0
+        }
+        return max(0, width)
+    }
+
+    private func idealWidth(for subviews: Subviews) -> CGFloat {
+        let header = subviews[0].sizeThatFits(.unspecified)
+        let timing = subviews[1].sizeThatFits(.unspecified)
+        let badges = subviews[2].sizeThatFits(.unspecified)
+        let activeSpacing = badges.width > 0 && badges.height > 0 ? spacing : 0
+        return max(header.width, timing.width) + activeSpacing + badges.width
     }
 }
 
@@ -979,23 +1169,18 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
-        // PRIORITY 1: Check cache first (will have full train data with stops from previous visits)
-        // Skip stale cache (>60s) to avoid showing outdated data when resuming from background
-        // (e.g., tapping Live Activity after app was suspended — polling timer doesn't fire in background)
+        // PRIORITY 1: Render any non-expired cache instantly, reconcile in background.
+        // The 5-minute isExpired ceiling in TrainCacheService bounds staleness; the
+        // background refresh corrects any drift. Critical for Live Activity taps: the
+        // Activity's ContentState has progress info but no stops array, so the cache
+        // (written by LiveActivityService.fetchAndUpdateTrain) is the only instant
+        // source of departed-stops state.
         if !trainIdentifier.isEmpty,
-           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate),
-           cached.ageSeconds <= 60 {
-            // Load from cache immediately - NO loading indicator
+           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
             print("📦 Loading from cache (\(cached.ageSeconds)s old) - instant display")
             train = cached.train
             updateComputedProperties()
-
-            // Only fetch fresh data in background if cache is older than 30 seconds
-            if cached.ageSeconds > 30 {
-                await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
-            } else {
-                print("📦 Cache is fresh (\(cached.ageSeconds)s old) - skipping background refresh")
-            }
+            await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             return
         }
 
@@ -1373,8 +1558,11 @@ struct SegmentedTrackPredictionView: View {
                 }
 
                 // Penn Station waiting guide link for NY departures
-                if isDepartingFromNYPenn && showWaitingLink {
-                    PennStationWaitingLink(isAmtrak: train.trainId.hasPrefix("A"))
+                // Only Amtrak and NJ Transit have authored guide content; other systems
+                // (e.g., LIRR) also depart from NY Penn but would be shown the wrong guide.
+                if isDepartingFromNYPenn && showWaitingLink &&
+                    (train.dataSource == "AMTRAK" || train.dataSource == "NJT") {
+                    PennStationWaitingLink(isAmtrak: train.dataSource == "AMTRAK")
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }

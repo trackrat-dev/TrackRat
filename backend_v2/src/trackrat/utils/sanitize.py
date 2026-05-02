@@ -8,6 +8,8 @@ import re
 
 from structlog import get_logger
 
+from trackrat.config.station_configs import get_valid_tracks
+
 logger = get_logger(__name__)
 
 
@@ -69,3 +71,46 @@ def sanitize_track(track_value: str | None) -> str | None:
         sanitized=truncated,
     )
     return truncated
+
+
+def validate_track(
+    station_code: str,
+    track: str | None,
+    data_source: str,
+    train_id: str | None = None,
+) -> str | None:
+    """Reject implausible track values; pass through where we lack a full list.
+
+    For (station, data_source) pairs with an exhaustive track list in
+    ``VALIDATED_TRACKS`` (``station_configs.py``), reject any value not in the
+    set. For all others, return the track unchanged. This protects against
+    occasional bad frames in upstream feeds (notably MTA GTFS-RT) while
+    avoiding false rejections where our list might be incomplete.
+
+    On rejection, logs a structured ``track_value_implausible`` warning so feed
+    quality issues are visible.
+
+    Args:
+        station_code: The station where the track is being reported.
+        track: The track value from the upstream feed (may be None/empty).
+        data_source: Transit system ("LIRR", "MNR", "SUBWAY", ...). Used both
+            for lookup and for log correlation.
+        train_id: Optional train identifier for log correlation.
+
+    Returns:
+        ``track`` if valid (or if no validation set is configured for this
+        station+data_source), ``None`` if the value is implausible or empty.
+    """
+    if not track:
+        return None
+    valid = get_valid_tracks(station_code, data_source)
+    if valid is None or track in valid:
+        return track
+    logger.warning(
+        "track_value_implausible",
+        station_code=station_code,
+        track=track,
+        data_source=data_source,
+        train_id=train_id,
+    )
+    return None

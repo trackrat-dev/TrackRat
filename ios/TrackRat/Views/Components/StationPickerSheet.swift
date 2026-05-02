@@ -96,6 +96,8 @@ struct StationPickerSheet: View {
     @ViewBuilder
     private func stationRow(_ station: Station) -> some View {
         let isDisabled = disabledStation?.code == station.code
+        let displayName = Stations.displayName(for: station.code)
+        let lines = SubwayLines.lines(forStationCode: station.code)
 
         Button {
             if !isDisabled {
@@ -105,9 +107,17 @@ struct StationPickerSheet: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(station.name)
-                        .font(.headline)
-                        .foregroundColor(isDisabled ? .white.opacity(0.4) : .white)
+                    HStack(spacing: 6) {
+                        StationNameWithBadges(
+                            name: displayName,
+                            stationCode: station.code,
+                            subwayLines: lines,
+                            font: .headline,
+                            foregroundColor: isDisabled ? .white.opacity(0.4) : .white,
+                            chipSize: 14,
+                            badgeOpacity: isDisabled ? 0.4 : 1
+                        )
+                    }
 
                     if isDisabled {
                         Text("Already selected")
@@ -131,19 +141,24 @@ struct StationPickerSheet: View {
 
     @ViewBuilder
     private func inactiveSystemStationRow(_ station: Station) -> some View {
+        let displayName = Stations.displayName(for: station.code)
+        let lines = SubwayLines.lines(forStationCode: station.code)
+
         Button {
             onInactiveStationSelected?(station)
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
-                        Text(station.name)
-                            .font(.headline)
-                            .foregroundColor(.white.opacity(0.7))
-
-                        if let system = Stations.primarySystem(forStationCode: station.code) {
-                            SystemBadge(system: system)
-                        }
+                        StationNameWithBadges(
+                            name: displayName,
+                            stationCode: station.code,
+                            subwayLines: lines,
+                            font: .headline,
+                            foregroundColor: .white.opacity(0.7),
+                            chipSize: 14,
+                            badgeOpacity: 0.7
+                        )
                     }
 
                     Text("Edit your train systems to use this station")

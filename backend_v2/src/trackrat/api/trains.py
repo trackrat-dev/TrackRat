@@ -15,7 +15,11 @@ from structlog import get_logger
 
 from trackrat.api.utils import handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.config.stations import canonical_station_code, expand_station_codes
+from trackrat.config.stations import (
+    STATION_NAMES,
+    canonical_station_code,
+    expand_station_codes,
+)
 from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
     DataFreshness,
@@ -215,6 +219,65 @@ async def get_departures(
     return response
 
 
+@router.get("/recent-departures", response_model=DeparturesResponse)
+@handle_errors
+async def get_recent_departures(
+    from_station: str = Query(
+        ...,
+        alias="from",
+        min_length=2,
+        max_length=10,
+        description="Departure station code",
+    ),
+    to_station: str | None = Query(
+        None,
+        alias="to",
+        min_length=2,
+        max_length=10,
+        description="Arrival station code",
+    ),
+    window_minutes: int = Query(
+        120,
+        ge=1,
+        le=240,
+        description="Minutes to look back for recently-departed trains",
+    ),
+    data_sources: str | None = Query(
+        None,
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
+    ),
+    limit: int = Query(50, le=1000, description="Maximum results"),
+    db: AsyncSession = Depends(get_db),
+) -> DeparturesResponse:
+    """Get recently-departed trains from a station.
+
+    Mirrors /departures but returns trains whose scheduled departure from the
+    origin station was in the past ``window_minutes``, including cancellations
+    and completed journeys. Results are sorted most-recent-first.
+    """
+    logger.info(
+        "get_recent_departures_request",
+        from_station=from_station,
+        to_station=to_station,
+        window_minutes=window_minutes,
+        data_sources=data_sources,
+    )
+
+    source_list: list[str] | None = None
+    if data_sources:
+        source_list = [s.strip().upper() for s in data_sources.split(",") if s.strip()]
+
+    service = DepartureService()
+    return await service.get_recent_departures(
+        db,
+        from_station,
+        to_station,
+        window_minutes=window_minutes,
+        limit=limit,
+        data_sources=source_list,
+    )
+
+
 @router.get("/{train_id}", response_model=TrainDetailsResponse)
 @handle_errors
 async def get_train_details(
@@ -384,7 +447,9 @@ async def get_train_details(
         stop_detail = StopDetails(
             station=SimpleStationInfo(
                 code=stop.station_code,
-                name=stop.station_name,
+                name=STATION_NAMES.get(stop.station_code)
+                or stop.station_name
+                or stop.station_code,
             ),
             stop_sequence=stop.stop_sequence or 0,
             scheduled_arrival=stop.scheduled_arrival,

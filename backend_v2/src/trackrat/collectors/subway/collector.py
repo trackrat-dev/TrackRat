@@ -11,20 +11,24 @@ Key differences from LIRR/MNR:
 - 8 feeds fetched concurrently via SubwayClient
 """
 
+import asyncio
 import hashlib
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from trackrat.collectors.mta_common import (
+    JOURNEY_UPDATE_LOAD_OPTIONS,
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
+    group_candidate_trips_by_overlap,
     infer_subway_origin,
+    select_matching_trip,
+    set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -48,6 +52,11 @@ logger = logging.getLogger(__name__)
 # Subway full-replacement window: if a journey was updated within this
 # window but is missing from the current feed, expire it immediately.
 _REPLACEMENT_WINDOW = timedelta(minutes=30)
+
+# Outer bound on the multi-feed fetch. Generous relative to the per-feed phase
+# timeouts, but still leaves the bulk of the 480s scheduler budget for DB work
+# when the upstream MTA endpoints are degraded.
+_FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
 
 def _generate_train_id(trip_id: str, route_id: str) -> str:
@@ -107,8 +116,22 @@ class SubwayCollector:
         try:
             collection_start = now_et()
 
-            # Fetch all arrivals from all 8 feeds
-            arrivals, succeeded_feeds = await self.client.get_all_arrivals()
+            # Fetch all arrivals from all 8 feeds. Wrap in wait_for so that an
+            # upstream MTA outage (hung connects, stalled reads beyond the
+            # phase timeouts) can't consume the whole 480s scheduler budget —
+            # we bail with empty stats and pick it up next cycle (~4 min).
+            try:
+                arrivals, succeeded_feeds = await asyncio.wait_for(
+                    self.client.get_all_arrivals(),
+                    timeout=_FEED_FETCH_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "subway_feed_fetch_timed_out | timeout_s=%.1f",
+                    _FEED_FETCH_TIMEOUT_SECONDS,
+                )
+                return stats
+
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:
@@ -124,23 +147,62 @@ class SubwayCollector:
 
             logger.info(f"Found {len(trips)} subway trips in GTFS-RT feeds")
 
+            # Pre-compute the (train_id, journey_date) key for every trip so
+            # we can bulk-load matching journeys in one query. Without this,
+            # each _process_trip did its own SELECT + 6-way selectinload —
+            # ~500 trips × 7 round-trips per cycle. See issue #962 context.
+            trip_meta: list[tuple[str, str, date, list[SubwayArrival]]] = (
+                []
+            )  # (trip_id, train_id, journey_date, arrivals)
+            for trip_id, trip_arrivals in trips.items():
+                if not trip_arrivals:
+                    continue
+                first_arrival = min(trip_arrivals, key=lambda a: a.arrival_time)
+                tid = _generate_train_id(trip_id, first_arrival.route_id)
+                jd = first_arrival.arrival_time.astimezone(ET).date()
+                trip_meta.append((trip_id, tid, jd, trip_arrivals))
+
+            existing_by_key: dict[tuple[str, date], TrainJourney] = {}
+            if trip_meta:
+                train_ids = {m[1] for m in trip_meta}
+                journey_dates = {m[2] for m in trip_meta}
+                existing_q = await session.execute(
+                    select(TrainJourney)
+                    .where(
+                        TrainJourney.data_source == "SUBWAY",
+                        TrainJourney.train_id.in_(train_ids),
+                        TrainJourney.journey_date.in_(journey_dates),
+                    )
+                    .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
+                )
+                existing_by_key = {
+                    (j.train_id, j.journey_date): j
+                    for j in existing_q.scalars()
+                    if j.train_id is not None and j.journey_date is not None
+                }
+
             # Process each trip inside a savepoint, committing in batches
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             seen_journey_ids: set[int] = set()
+            analyzed_journeys: list[TrainJourney] = []
             trips_in_batch = 0
-            for trip_id, trip_arrivals in trips.items():
+            for trip_id, tid, jd, trip_arrivals in trip_meta:
                 try:
                     async with session.begin_nested():
-                        result, journey_id = await self._process_trip(
-                            session, trip_id, trip_arrivals
+                        result, journey = await self._process_trip(
+                            session,
+                            trip_id,
+                            trip_arrivals,
+                            existing_by_key.get((tid, jd)),
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
-                        if journey_id:
-                            seen_journey_ids.add(journey_id)
+                        if journey is not None and journey.id is not None:
+                            seen_journey_ids.add(journey.id)
+                            analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing subway trip {trip_id}: {e}")
                     stats["errors"] += 1
@@ -154,6 +216,13 @@ class SubwayCollector:
                 raise RuntimeError(
                     f"Subway collection: all {stats['errors']} trips failed"
                 )
+
+            # Batched segment analysis for all processed journeys. Moving this
+            # out of the per-trip loop reduces O(trips * stops) per-segment
+            # SELECTs to two total queries regardless of fleet size — critical
+            # for subway's ~500 trips per cycle.
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
             # Full-replacement expiration: subway feeds are complete snapshots,
             # so any active journey NOT in the current feed should be expired
@@ -206,14 +275,27 @@ class SubwayCollector:
         return stats
 
     async def _process_trip(
-        self, session: AsyncSession, trip_id: str, arrivals: list[SubwayArrival]
-    ) -> tuple[str | None, int | None]:
+        self,
+        session: AsyncSession,
+        trip_id: str,
+        arrivals: list[SubwayArrival],
+        existing_journey: TrainJourney | None,
+    ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
 
+        Args:
+            existing_journey: Pre-fetched TrainJourney for this (train_id,
+                journey_date, data_source) key, or None if no existing
+                record. The caller bulk-loads these before the per-trip
+                loop so we avoid ~500 per-trip SELECTs per cycle; see
+                collect().
+
         Returns:
-            Tuple of (result_type, journey_id) where result_type is
-            "discovered", "updated", or None
+            Tuple of (result_type, journey) where result_type is
+            "discovered", "updated", or None. The journey reference is
+            returned so the caller can batch post-processing (e.g.,
+            TransitAnalyzer) after the per-trip loop completes.
         """
         if not arrivals:
             return None, None
@@ -243,26 +325,7 @@ class SubwayCollector:
         arrival_et = first_arrival.arrival_time.astimezone(ET)
         journey_date = arrival_et.date()
 
-        # Check if journey already exists
-        existing = await session.execute(
-            select(TrainJourney)
-            .where(
-                TrainJourney.train_id == train_id,
-                TrainJourney.journey_date == journey_date,
-                TrainJourney.data_source == "SUBWAY",
-            )
-            .options(
-                selectinload(TrainJourney.stops),
-                # Load all delete-orphan collections to prevent
-                # greenlet_spawn errors during flush orphan checks
-                selectinload(TrainJourney.snapshots),
-                selectinload(TrainJourney.segment_times),
-                selectinload(TrainJourney.dwell_times),
-                selectinload(TrainJourney.progress),
-                selectinload(TrainJourney.progress_snapshots),
-            )
-        )
-        journey = existing.scalar_one_or_none()
+        journey = existing_journey
 
         if journey is None:
             # Try GTFS static backfill
@@ -412,14 +475,11 @@ class SubwayCollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Discovered subway train {train_id}")
-            return "discovered", journey.id
+            return "discovered", journey
 
         else:
             # Update existing journey
@@ -437,20 +497,18 @@ class SubwayCollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
-                    if arr.track:
-                        existing_stop.track = arr.track
+                    set_stop_track(
+                        existing_stop, arr.track, "SUBWAY", journey.train_id, now_et()
+                    )
 
             now = now_et()
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
-            update_journey_metadata(journey, now)
+            update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Updated subway train {train_id}")
-            return "updated", journey.id
+            return "updated", journey
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
@@ -463,51 +521,18 @@ class SubwayCollector:
         arrivals = await self.client.get_feed_arrivals(journey.line_code or "")
 
         journey_station_codes = {s.station_code for s in journey.stops}
-        matching_trips: dict[str, list[SubwayArrival]] = {}
+        matching_trips = group_candidate_trips_by_overlap(
+            arrivals, journey_station_codes
+        )
 
-        for arr in arrivals:
-            if arr.station_code not in journey_station_codes:
-                continue
-            if arr.trip_id not in matching_trips:
-                matching_trips[arr.trip_id] = []
-            matching_trips[arr.trip_id].append(arr)
-
-        # Exact match: re-hash each candidate trip_id and compare against
-        # the stored train_id. This avoids the fuzzy matching bug where
-        # non-branching lines (e.g., L) have identical station sets for
-        # every trip, causing the fuzzy matcher to pick the wrong train.
-        best_trip: list[SubwayArrival] | None = None
         route_id = journey.line_code or ""
-        for trip_id_candidate, trip_arrivals in matching_trips.items():
-            if _generate_train_id(trip_id_candidate, route_id) == journey.train_id:
-                best_trip = trip_arrivals
-                break
-
-        # Fuzzy fallback: if the trip_id changed (rare), fall back to
-        # station overlap + time proximity.
-        if best_trip is None:
-            best_overlap = 0
-            best_time_diff = float("inf")
-
-            for trip_arrivals in matching_trips.values():
-                trip_stations = {a.station_code for a in trip_arrivals}
-                overlap = len(trip_stations & journey_station_codes)
-
-                time_diff = float("inf")
-                if journey.scheduled_departure:
-                    first_arr = min(trip_arrivals, key=lambda a: a.arrival_time)
-                    time_diff = abs(
-                        (
-                            first_arr.arrival_time - journey.scheduled_departure
-                        ).total_seconds()
-                    )
-
-                if overlap > best_overlap or (
-                    overlap == best_overlap and time_diff < best_time_diff
-                ):
-                    best_overlap = overlap
-                    best_time_diff = time_diff
-                    best_trip = trip_arrivals
+        best_trip = select_matching_trip(
+            matching_trips,
+            journey,
+            journey_station_codes,
+            lambda trip_id: _generate_train_id(trip_id, route_id),
+            "SUBWAY",
+        )
 
         if not best_trip:
             logger.debug(
@@ -526,8 +551,7 @@ class SubwayCollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
-                if arr.track:
-                    stop.track = arr.track
+                set_stop_track(stop, arr.track, "SUBWAY", journey.train_id, now_et())
 
         first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)
@@ -537,7 +561,7 @@ class SubwayCollector:
         now = now_et()
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
-        update_journey_metadata(journey, now)
+        update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
         logger.debug(f"JIT updated subway journey {journey.train_id}")

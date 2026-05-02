@@ -60,12 +60,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedDeparture: station });
     const dest = get().selectedDestination;
     if (station && dest) {
-      try {
-        storageService.saveLastRoute(
-          { code: station.code, name: station.name },
-          { code: dest.code, name: dest.name }
-        );
-      } catch { /* localStorage may be unavailable */ }
+      storageService.saveLastRoute(
+        { code: station.code, name: station.name },
+        { code: dest.code, name: dest.name }
+      );
     }
   },
 
@@ -73,12 +71,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedDestination: station });
     const dep = get().selectedDeparture;
     if (dep && station) {
-      try {
-        storageService.saveLastRoute(
-          { code: dep.code, name: dep.name },
-          { code: station.code, name: station.name }
-        );
-      } catch { /* localStorage may be unavailable */ }
+      storageService.saveLastRoute(
+        { code: dep.code, name: dep.name },
+        { code: station.code, name: station.name }
+      );
     }
   },
 
@@ -98,14 +94,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Recent Trips
   addRecentTrip: (from, to) => {
-    try {
-      storageService.saveRecentTrip({
-        departureCode: from.code,
-        departureName: from.name,
-        destinationCode: to.code,
-        destinationName: to.name,
-      });
-    } catch { /* localStorage may be unavailable */ }
+    storageService.saveRecentTrip({
+      departureCode: from.code,
+      departureName: from.name,
+      destinationCode: to.code,
+      destinationName: to.name,
+    });
     get().loadRecentTrips();
   },
 
@@ -156,13 +150,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Commute Profile
   setHomeStation: (station) => {
-    storageService.setHomeStation(station);
     set({ homeStation: station });
+    storageService.setHomeStation(station);
   },
 
   setWorkStation: (station) => {
-    storageService.setWorkStation(station);
     set({ workStation: station });
+    storageService.setWorkStation(station);
   },
 
   loadCommuteProfile: () => {

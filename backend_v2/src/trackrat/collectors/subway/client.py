@@ -22,8 +22,14 @@ from trackrat.config.stations import (
     SUBWAY_GTFS_RT_FEED_URLS,
     map_subway_gtfs_stop,
 )
+from trackrat.utils.sanitize import validate_track
 
 logger = logging.getLogger(__name__)
+
+# Phase-broken HTTP timeout. Bounds a hung TCP connect or stalled TLS handshake
+# independently from read time so an unreachable MTA host can't consume the
+# scheduler's 480s budget waiting on a scalar read timeout.
+_DEFAULT_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
 
 # Maps each GTFS route_id to its feed group key in SUBWAY_GTFS_RT_FEED_URLS
 _ROUTE_TO_FEED: dict[str, str] = {
@@ -105,8 +111,10 @@ class SubwayClient:
     Uses a 30-second per-feed cache to minimize API calls.
     """
 
-    def __init__(self, timeout: float = 30.0) -> None:
-        self.timeout = timeout
+    def __init__(self, timeout: httpx.Timeout | float | None = None) -> None:
+        self.timeout: httpx.Timeout | float = (
+            timeout if timeout is not None else _DEFAULT_TIMEOUT
+        )
         self._session: httpx.AsyncClient | None = None
         self._cache: dict[str, list[SubwayArrival]] = {}
         self._cache_times: dict[str, datetime] = {}
@@ -217,11 +225,21 @@ class SubwayClient:
                             continue
                         arrival_time = departure_time
 
-                    # Extract track from NYCT StopTimeUpdate extension
-                    track: str | None = None
+                    # Extract track from NYCT StopTimeUpdate extension, then reject
+                    # values outside the station's known track set (no-op for stations
+                    # without configured tracks, which is most subway stations today).
+                    raw_track: str | None = None
                     nyct_stu = extract_nyct_stop_time_update(stu)
                     if nyct_stu:
-                        track = nyct_stu["actual_track"] or nyct_stu["scheduled_track"]
+                        raw_track = (
+                            nyct_stu["actual_track"] or nyct_stu["scheduled_track"]
+                        )
+                    track = validate_track(
+                        station_code,
+                        raw_track,
+                        data_source="SUBWAY",
+                        train_id=trip_id,
+                    )
 
                     arrivals.append(
                         SubwayArrival(

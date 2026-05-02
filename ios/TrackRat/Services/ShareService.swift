@@ -24,7 +24,7 @@ class ShareService {
         return deepLink.generateURL()
     }
 
-    /// Generate share text for a train
+    /// Generate share text for a train (e.g. ``"View NJT 7801 to Trenton"``).
     func createShareText(
         for train: TrainV2,
         fromStationCode: String?,
@@ -37,9 +37,9 @@ class ShareService {
             fromStationCode: fromStationCode,
             toStationCode: toStationCode
         )
-        
+
         return deepLink.generateShareText(
-            trainLine: train.line.name,
+            dataSource: train.dataSource,
             destinationName: destinationName
         )
     }
@@ -106,7 +106,16 @@ struct ShareButton: View {
                 fromStationCode: fromStationCode,
                 destinationName: destinationName
             ) {
-                ShareSheetView(items: [url])
+                // Pass both the descriptive text and the URL as activity
+                // items. iMessage typically still renders the rich preview
+                // for the URL, but the text gives recipients a readable
+                // message even if the preview is gated behind "tap to load".
+                let text = ShareService.shared.createShareText(
+                    for: train,
+                    fromStationCode: fromStationCode,
+                    destinationName: destinationName
+                )
+                ShareSheetView(items: [text, url])
             }
         }
     }

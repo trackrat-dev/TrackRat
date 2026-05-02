@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import noload, selectinload
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
@@ -36,9 +36,28 @@ from trackrat.utils.time import (
     parse_njt_time,
     safe_datetime_subtract,
 )
-from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
+from trackrat.utils.train import (
+    get_effective_observation_type,
+    is_amtrak_train,
+    is_njt_stop_cancelled,
+)
 
 logger = get_logger(__name__)
+
+# Loader options for the NJT JIT refresh path. Must load `stops` (merged by
+# NJT journey collector) and `snapshots` (cleared and rewritten by
+# JourneyCollector.create_journey_snapshot). The other 3 delete-orphan child
+# collections aren't touched in this path, so noload() skips the orphan-check
+# lazy-loads that would otherwise trigger greenlet_spawn errors in async
+# context — at much lower per-journey cost than a defensive selectinload.
+_NJT_REFRESH_LOAD_OPTIONS = (
+    selectinload(TrainJourney.stops),
+    selectinload(TrainJourney.snapshots),
+    noload(TrainJourney.segment_times),
+    noload(TrainJourney.dwell_times),
+    noload(TrainJourney.progress),
+    noload(TrainJourney.progress_snapshots),
+)
 
 # Tracks station codes currently being refreshed in background tasks.
 # Prevents duplicate concurrent JIT refreshes for the same station.
@@ -48,6 +67,14 @@ _refreshing_stations: set[str] = set()
 # asyncio.create_task only holds a weak reference; without this set, tasks
 # can be silently garbage collected. See: https://docs.python.org/3/library/asyncio-task.html#creating-tasks
 _background_tasks: set[asyncio.Task[None]] = set()
+
+# Cap concurrent JIT refresh tasks. Each refresh holds a DB session for the
+# duration of an upstream HTTP call; without a ceiling, an NJT slowdown can
+# spawn one task per discoverable station (~21) and exhaust the connection
+# pool, cascading into 503s on unrelated endpoints. Sized to leave headroom
+# for collectors and API handlers in the 30-connection pool.
+_BACKGROUND_REFRESH_CONCURRENCY = 4
+_background_refresh_semaphore = asyncio.Semaphore(_BACKGROUND_REFRESH_CONCURRENCY)
 
 # NJT line code normalization for deduplication.
 # Canonical codes are uppercase (NE, NC, GL, MO, MA, etc.) matching route_topology.py.
@@ -71,12 +98,22 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
     {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"}
 )
 
-# Minutes before departure to hide SCHEDULED trains that weren't discovered.
-# If a train hasn't been OBSERVED by this point, it's likely not running
-# or we can't provide reliable information about it.
-# Must be less than the discovery interval (30min) so SCHEDULED trains remain
-# visible for at least one discovery cycle before being filtered out.
-SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
+# Per-source minutes before departure to hide SCHEDULED trains that weren't discovered.
+# Sized to each provider's discovery cadence with a small buffer, so SCHEDULED trains
+# remain visible through at least one missed discovery cycle before being filtered out.
+SCHEDULED_VISIBILITY_THRESHOLDS: dict[str, int] = {
+    "NJT": 15,  # 30-min discovery
+    "AMTRAK": 15,  # 30-min discovery
+    "PATH": 5,  # 4-min discovery
+    "LIRR": 5,  # 4-min discovery
+    "MNR": 5,  # 4-min discovery
+    "SUBWAY": 5,  # 4-min discovery
+    "BART": 5,  # 4-min discovery
+    "MBTA": 5,  # 4-min discovery
+    "METRA": 5,  # 4-min discovery
+    "WMATA": 4,  # 3-min discovery
+}
+DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
 # All supported data sources for departure queries.
 ALL_DATA_SOURCES: list[str] = [
@@ -183,6 +220,7 @@ class DepartureService:
         # For future dates, use GTFS static schedule data
         if target_date > today:
             from trackrat.services.gtfs import GTFSService
+            from trackrat.utils.time import ensure_timezone_aware
 
             gtfs_service = GTFSService()
             logger.info(
@@ -191,6 +229,11 @@ class DepartureService:
                 from_station=from_station,
                 to_station=to_station,
             )
+            # Normalize time_from to ET-aware so comparisons with parsed
+            # GTFS times (always ET-aware) don't raise TypeError.
+            aware_time_from = (
+                ensure_timezone_aware(time_from) if time_from is not None else None
+            )
             response = await gtfs_service.get_scheduled_departures(
                 db=db,
                 from_station=from_station,
@@ -198,6 +241,7 @@ class DepartureService:
                 target_date=target_date,
                 limit=limit,
                 data_sources=data_sources,
+                time_from=aware_time_from,
             )
             if data_sources:
                 response.departures = [
@@ -327,7 +371,6 @@ class DepartureService:
                 jit_ran_inline = await self._run_inline_jit_refresh(
                     from_station,
                     target_date,
-                    skip_individual_refresh,
                     hide_departed,
                 )
             if not jit_ran_inline:
@@ -576,6 +619,182 @@ class DepartureService:
             },
         )
 
+    async def get_recent_departures(
+        self,
+        db: AsyncSession,
+        from_station: str,
+        to_station: str | None = None,
+        window_minutes: int = 120,
+        limit: int = 50,
+        data_sources: list[str] | None = None,
+    ) -> DeparturesResponse:
+        """Get recently-departed trains from a station.
+
+        Returns trains whose scheduled departure from the origin station was
+        within the last ``window_minutes``, including cancellations and
+        completed journeys. Sorted by scheduled departure, most recent first.
+
+        Unlike ``get_departures``, this intentionally bypasses the
+        ``is_expired`` / ``is_completed`` / ``hide_departed`` filters so that
+        finished trips remain visible. No JIT refresh or GTFS merge — the
+        data is historical.
+        """
+        now = now_et()
+        window_start = now - timedelta(minutes=window_minutes)
+
+        # journey_date range spans yesterday→today to handle overnight journeys
+        # scheduled before midnight for trains observed past midnight.
+        journey_date_filter = and_(
+            TrainJourney.journey_date >= (window_start.date() - timedelta(days=1)),
+            TrainJourney.journey_date <= now.date(),
+        )
+
+        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        from_codes = expand_station_codes(from_station)
+        to_codes = expand_station_codes(to_station) if to_station else []
+
+        recent_filters = [
+            JourneyStop.scheduled_departure >= window_start,
+            JourneyStop.scheduled_departure < now,
+            journey_date_filter,
+            TrainJourney.data_source.in_(allowed_sources),
+            # A train counts as "recent" if it actually left the origin or
+            # was cancelled. Excludes SCHEDULED trains that never ran and
+            # weren't marked as cancelled (no useful signal for the user).
+            or_(
+                JourneyStop.has_departed_station.is_(True),
+                TrainJourney.is_cancelled.is_(True),
+            ),
+        ]
+
+        stmt = (
+            select(TrainJourney)
+            .join(
+                JourneyStop,
+                and_(
+                    JourneyStop.journey_id == TrainJourney.id,
+                    JourneyStop.station_code.in_(from_codes),
+                ),
+            )
+            .where(and_(*recent_filters))
+            .options(selectinload(TrainJourney.stops))
+            .order_by(JourneyStop.scheduled_departure.desc())
+        )
+
+        result = await db.execute(stmt)
+        journeys = list(result.scalars().unique().all())
+
+        # Deduplicate by train_id (same logic as get_departures): keeps the
+        # first (most-recent) occurrence per train_id.
+        seen_train_ids: set[str] = set()
+        unique_journeys: list[TrainJourney] = []
+        for journey in journeys:
+            train_id = journey.train_id
+            if train_id and train_id not in seen_train_ids:
+                seen_train_ids.add(train_id)
+                unique_journeys.append(journey)
+
+        departures: list[TrainDeparture] = []
+        for journey in unique_journeys:
+            from_stop = None
+            to_stop = None
+            for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
+                if stop.station_code in from_codes and not from_stop:
+                    from_stop = stop
+                elif to_station and stop.station_code in to_codes and from_stop:
+                    if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
+                        to_stop = stop
+                        break
+
+            if not from_stop or (to_station and not to_stop):
+                continue
+
+            train_position = self._calculate_train_position(journey)
+            departure = TrainDeparture(
+                train_id=journey.train_id,
+                journey_date=journey.journey_date,
+                line=LineInfo(
+                    code=journey.line_code or "UNK",
+                    name=journey.line_name or journey.line_code or "Unknown",
+                    color=(journey.line_color or "#000000").strip(),
+                ),
+                destination=journey.destination,
+                departure=StationInfo(
+                    code=from_station,
+                    name=get_station_name(from_station),
+                    scheduled_time=from_stop.scheduled_departure
+                    or from_stop.scheduled_arrival,
+                    # See get_departures for max() rationale re: NJT semantics.
+                    updated_time=(
+                        max(from_stop.updated_departure, from_stop.updated_arrival)
+                        if from_stop.updated_departure and from_stop.updated_arrival
+                        else from_stop.updated_departure or from_stop.updated_arrival
+                    ),
+                    actual_time=from_stop.actual_departure or from_stop.actual_arrival,
+                    track=from_stop.track,
+                ),
+                arrival=(
+                    StationInfo(
+                        code=to_station,
+                        name=get_station_name(to_station),
+                        scheduled_time=to_stop.scheduled_arrival
+                        or to_stop.scheduled_departure,
+                        updated_time=to_stop.updated_arrival
+                        or to_stop.updated_departure,
+                        actual_time=to_stop.actual_arrival or to_stop.actual_departure,
+                        track=to_stop.track,
+                    )
+                    if to_stop and to_station
+                    else None
+                ),
+                train_position=train_position,
+                data_freshness=DataFreshness(
+                    last_updated=journey.last_updated_at or journey.first_seen_at,
+                    age_seconds=int(
+                        safe_datetime_subtract(
+                            now_et(),
+                            journey.last_updated_at
+                            or journey.first_seen_at
+                            or now_et(),
+                        ).total_seconds()
+                    ),
+                    update_count=journey.update_count,
+                ),
+                data_source=journey.data_source,
+                observation_type=get_effective_observation_type(journey),
+                is_cancelled=journey.is_cancelled,
+                cancellation_reason=journey.cancellation_reason,
+                is_expired=journey.is_expired or False,
+            )
+            departures.append(departure)
+
+        limited_departures = departures[:limit]
+
+        has_direct_route = True
+        if to_station:
+            has_direct_route = _has_direct_route(
+                from_station, to_station, allowed_sources
+            )
+
+        return DeparturesResponse(
+            departures=limited_departures,
+            has_direct_route=has_direct_route,
+            metadata={
+                "from_station": {
+                    "code": from_station,
+                    "name": get_station_name(from_station),
+                },
+                "to_station": (
+                    {"code": to_station, "name": get_station_name(to_station)}
+                    if to_station
+                    else None
+                ),
+                "count": len(limited_departures),
+                "window_minutes": window_minutes,
+                "generated_at": now.isoformat(),
+            },
+        )
+
     def _calculate_train_position(self, journey: TrainJourney) -> TrainPosition:
         """
         Calculate current train position.
@@ -715,7 +934,9 @@ class DepartureService:
         """
         current_time = now_et()
         threshold = current_time + timedelta(
-            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+            minutes=SCHEDULED_VISIBILITY_THRESHOLDS.get(
+                "NJT", DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+            )
         )
         cutoff_time = current_time - timedelta(seconds=60)
         from_codes = expand_station_codes(from_station)
@@ -746,7 +967,6 @@ class DepartureService:
         self,
         from_station: str,
         target_date: date,
-        skip_individual_refresh: bool,
         hide_departed: bool,
     ) -> bool:
         """Run JIT station refresh inline, waiting up to 10 seconds.
@@ -755,6 +975,12 @@ class DepartureService:
         query sees promoted trains.  If the refresh doesn't finish in time the
         task keeps running in the background and the request proceeds with
         whatever data is in the DB.
+
+        The second pass (per-train getTrainStopList refresh of trains past
+        their scheduled time) is always skipped on the inline path: it adds
+        up to 50 sequential NJT API calls, which blows the 10s inline budget,
+        and the user-visible upcoming trains have already been refreshed
+        by the bulk getTrainSchedule call in the first pass.
 
         Returns True if the refresh completed (caller can skip the background
         trigger), False otherwise.
@@ -765,8 +991,8 @@ class DepartureService:
                 self,
                 from_station,
                 target_date,
-                skip_individual_refresh,
-                hide_departed,
+                skip_individual_refresh=True,
+                hide_departed=hide_departed,
             ),
             name=f"inline_jit_{from_station}",
         )
@@ -928,16 +1154,7 @@ class DepartureService:
                                 TrainJourney.data_source == "NJT",
                             )
                         )
-                        .options(
-                            selectinload(TrainJourney.stops),
-                            # Load all delete-orphan collections to prevent
-                            # greenlet_spawn errors during flush orphan checks
-                            selectinload(TrainJourney.snapshots),
-                            selectinload(TrainJourney.segment_times),
-                            selectinload(TrainJourney.dwell_times),
-                            selectinload(TrainJourney.progress),
-                            selectinload(TrainJourney.progress_snapshots),
-                        )
+                        .options(*_NJT_REFRESH_LOAD_OPTIONS)
                         .order_by(TrainJourney.id)
                     )
                     result = await db.execute(stmt)
@@ -1104,17 +1321,7 @@ class DepartureService:
                         TrainJourney.is_cancelled.is_not(True),
                     )
                 )
-                # Eagerly load all delete-orphan collections to prevent
-                # greenlet_spawn errors during flush/commit orphan checks.
-                # Must match the selectinloads in refresh_journey below.
-                .options(
-                    selectinload(TrainJourney.stops),
-                    selectinload(TrainJourney.snapshots),
-                    selectinload(TrainJourney.segment_times),
-                    selectinload(TrainJourney.dwell_times),
-                    selectinload(TrainJourney.progress),
-                    selectinload(TrainJourney.progress_snapshots),
-                )
+                .options(*_NJT_REFRESH_LOAD_OPTIONS)
                 .limit(50)
             )
             remaining_stale = list(remaining_stale_result.scalars().unique().all())
@@ -1145,16 +1352,7 @@ class DepartureService:
                         result = await db.execute(
                             select(TrainJourney)
                             .where(TrainJourney.id == jid)
-                            .options(
-                                selectinload(TrainJourney.stops),
-                                # Load all delete-orphan collections to prevent
-                                # greenlet_spawn errors during flush orphan checks
-                                selectinload(TrainJourney.snapshots),
-                                selectinload(TrainJourney.segment_times),
-                                selectinload(TrainJourney.dwell_times),
-                                selectinload(TrainJourney.progress),
-                                selectinload(TrainJourney.progress_snapshots),
-                            )
+                            .options(*_NJT_REFRESH_LOAD_OPTIONS)
                             .execution_options(populate_existing=True)
                         )
                         fresh = result.scalar_one_or_none()
@@ -1162,7 +1360,8 @@ class DepartureService:
                             await njt_collector.collect_journey_details(db, fresh)
 
                     try:
-                        await retry_on_deadlock(db, refresh_journey)
+                        async with db.begin_nested():
+                            await retry_on_deadlock(db, refresh_journey)
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
@@ -1218,6 +1417,14 @@ class DepartureService:
         multiple sessions (e.g., cache precomputation vs user request).
         """
 
+        # Build lookup from eagerly-loaded stops to avoid N+1 queries and
+        # prevent greenlet_spawn errors from fetching stops outside the ORM
+        # collection (session.get() after pg_insert creates objects not tracked
+        # in journey.stops, causing orphan-check lazy loads during flush).
+        stops_by_code: dict[str, JourneyStop] = {
+            s.station_code: s for s in journey.stops if s.station_code is not None
+        }
+
         # First pass: find the furthest departed stop for sequential inference.
         # NJT's DEPARTED flag is inconsistent across API calls — a later stop
         # can show DEPARTED=YES while an earlier one shows NO, even though the
@@ -1232,35 +1439,33 @@ class DepartureService:
             if not station_code:
                 continue
 
-            # Upsert: insert or fetch existing stop (race-safe)
-            stmt = (
-                pg_insert(JourneyStop)
-                .values(
-                    journey_id=journey.id,
-                    station_code=station_code,
-                    station_name=stop_data.get("STATIONNAME", ""),
-                    stop_sequence=i,
+            stop = stops_by_code.get(station_code)
+            if stop is None:
+                # Not in eagerly-loaded collection — insert via raw SQL for
+                # concurrent-update safety, then re-fetch.
+                stmt = (
+                    pg_insert(JourneyStop)
+                    .values(
+                        journey_id=journey.id,
+                        station_code=station_code,
+                        station_name=stop_data.get("STATIONNAME", ""),
+                        stop_sequence=i,
+                    )
+                    .on_conflict_do_nothing(constraint="unique_journey_stop")
                 )
-                .on_conflict_do_nothing(constraint="unique_journey_stop")
-                .returning(JourneyStop.id)
-            )
-            result = await session.execute(stmt)
-            inserted_id = result.scalar_one_or_none()
+                await session.execute(stmt)
 
-            if inserted_id:
-                # New row inserted — fetch the ORM object
-                stop = await session.get(JourneyStop, inserted_id)
-            else:
-                # Already existed — fetch by unique key
-                existing = await session.execute(
+                result = await session.execute(
                     select(JourneyStop).where(
                         JourneyStop.journey_id == journey.id,
                         JourneyStop.station_code == station_code,
                     )
                 )
-                stop = existing.scalar_one()
+                stop = result.scalar_one()
+                journey.stops.append(stop)
+                stops_by_code[station_code] = stop
 
-            assert stop is not None  # Just inserted or fetched by unique key
+            assert stop is not None
 
             # Update scheduled times from immutable SCHED_*_DATE fields.
             # Only set if not already populated (preserves schedule-collector values).
@@ -1303,8 +1508,7 @@ class DepartureService:
             stop.raw_njt_departed_flag = departed
 
             # Cancelled stops never physically departed
-            stop_status = (stop_data.get("STOP_STATUS") or "").upper()
-            is_stop_cancelled = stop_status == "CANCELLED"
+            is_stop_cancelled = is_njt_stop_cancelled(stop_data.get("STOP_STATUS"))
 
             if is_stop_cancelled:
                 if not stop.has_departed_station:
@@ -1504,12 +1708,9 @@ class DepartureService:
         Returns:
             Filtered list with stale SCHEDULED trains removed
         """
-        threshold = current_time + timedelta(
-            minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
-        )
-
         result = []
         filtered_count = 0
+        filtered_by_source: dict[str, int] = {}
 
         for dep in departures:
             # Always show OBSERVED trains - we have real-time data
@@ -1522,16 +1723,26 @@ class DepartureService:
                 result.append(dep)
                 continue
 
+            # Per-source threshold sized to the provider's discovery cadence
+            threshold_minutes = SCHEDULED_VISIBILITY_THRESHOLDS.get(
+                dep.data_source, DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES
+            )
+            threshold = current_time + timedelta(minutes=threshold_minutes)
+
             # For real-time systems: hide SCHEDULED trains if departure is imminent
             scheduled_time = dep.departure.scheduled_time
             if scheduled_time and scheduled_time < threshold:
                 filtered_count += 1
+                filtered_by_source[dep.data_source] = (
+                    filtered_by_source.get(dep.data_source, 0) + 1
+                )
                 logger.debug(
                     "filtering_stale_scheduled_train",
                     train_id=dep.train_id,
                     data_source=dep.data_source,
                     scheduled_time=scheduled_time.isoformat(),
                     threshold=threshold.isoformat(),
+                    threshold_minutes=threshold_minutes,
                 )
                 continue
 
@@ -1541,7 +1752,7 @@ class DepartureService:
             logger.info(
                 "filtered_stale_scheduled_trains",
                 count=filtered_count,
-                threshold_minutes=SCHEDULED_VISIBILITY_THRESHOLD_MINUTES,
+                by_source=filtered_by_source,
             )
 
         return result
@@ -1559,16 +1770,20 @@ async def _background_refresh_station(
     Errors are logged but never propagated — the caller already served
     whatever data was in the DB, matching the existing graceful-degradation
     behavior when JIT fails.
+
+    Acquires _background_refresh_semaphore so concurrent refreshes can't
+    monopolize the DB connection pool during NJT slowdowns.
     """
     try:
-        async with get_session() as db:
-            await service._ensure_fresh_station_data(
-                db,
-                station_code,
-                target_date,
-                skip_individual_refresh,
-                hide_departed,
-            )
+        async with _background_refresh_semaphore:
+            async with get_session() as db:
+                await service._ensure_fresh_station_data(
+                    db,
+                    station_code,
+                    target_date,
+                    skip_individual_refresh,
+                    hide_departed,
+                )
         logger.info("background_jit_refresh_complete", station_code=station_code)
     except Exception as e:
         logger.warning(

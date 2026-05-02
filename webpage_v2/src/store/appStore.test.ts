@@ -43,8 +43,8 @@ describe('station selection', () => {
     useAppStore.getState().setDestination(NP);
 
     const stored = JSON.parse(localStorage.getItem('trackrat:lastRoute') || 'null');
-    expect(stored.from.code).toBe('NY');
-    expect(stored.to.code).toBe('NP');
+    expect(stored.data.from.code).toBe('NY');
+    expect(stored.data.to.code).toBe('NP');
   });
 
   it('does not save last route when only departure set', () => {
@@ -58,8 +58,8 @@ describe('station selection', () => {
     useAppStore.getState().setDeparture(NY);
 
     const stored = JSON.parse(localStorage.getItem('trackrat:lastRoute') || 'null');
-    expect(stored.from.code).toBe('NY');
-    expect(stored.to.code).toBe('NP');
+    expect(stored.data.from.code).toBe('NY');
+    expect(stored.data.to.code).toBe('NP');
   });
 });
 

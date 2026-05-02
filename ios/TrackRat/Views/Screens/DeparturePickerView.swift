@@ -1,24 +1,5 @@
 import SwiftUI
 
-/// Small colored pill showing which transit system a station belongs to.
-/// Used in search results to identify stations from non-active systems.
-struct SystemBadge: View {
-    let system: TrainSystem
-
-    var body: some View {
-        Text(system.displayName)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .foregroundColor(.white.opacity(0.9))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4)
-                    .fill((Color(hex: system.color) ?? .gray).opacity(0.7))
-            )
-    }
-}
-
 /// A view that displays the appropriate icon for a station based on whether it's a home station, work station, or regular favorite
 struct StationIconView: View {
     let stationCode: String
@@ -355,19 +336,26 @@ struct DeparturePickerView: View {
 
     @ViewBuilder
     private func stationRow(_ station: String) -> some View {
+        let code = Stations.getStationCode(station)
+        let displayName = code.map { Stations.displayName(for: $0) } ?? station
+        let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
         HStack {
-            HStack {
-                Text(station)
-                    .font(.body)
-                    .foregroundColor(.white)
-                    .textProtected()
+            HStack(spacing: 6) {
+                StationNameWithBadges(
+                    name: displayName,
+                    stationCode: code,
+                    subwayLines: lines,
+                    font: .body,
+                    foregroundColor: .white,
+                    chipSize: 14
+                )
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(TrackRatTheme.IconSize.xsmall)
                     .foregroundColor(.white.opacity(0.6))
             }
 
-            if let code = Stations.getStationCode(station) {
+            if let code {
                 StationIconView(
                     stationCode: code,
                     isStationFavorited: appState.isStationFavorited(code: code)
@@ -407,17 +395,20 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var otherSystemStationResultsView: some View {
         ForEach(searchResults.otherSystemStations, id: \.self) { station in
+            let code = Stations.getStationCode(station)
+            let displayName = code.map { Stations.displayName(for: $0) } ?? station
+            let lines = code.map { SubwayLines.lines(forStationCode: $0) } ?? []
             HStack {
-                HStack {
-                    Text(station)
-                        .font(.body)
-                        .foregroundColor(.white.opacity(0.7))
-                        .textProtected()
-
-                    if let code = Stations.getStationCode(station),
-                       let system = Stations.primarySystem(forStationCode: code) {
-                        SystemBadge(system: system)
-                    }
+                HStack(spacing: 6) {
+                    StationNameWithBadges(
+                        name: displayName,
+                        stationCode: code,
+                        subwayLines: lines,
+                        font: .body,
+                        foregroundColor: .white.opacity(0.7),
+                        chipSize: 14,
+                        badgeOpacity: 0.7
+                    )
 
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -425,7 +416,7 @@ struct DeparturePickerView: View {
                         .foregroundColor(.white.opacity(0.4))
                 }
 
-                if let code = Stations.getStationCode(station) {
+                if let code {
                     StationIconView(
                         stationCode: code,
                         isStationFavorited: appState.isStationFavorited(code: code)

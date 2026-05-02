@@ -296,3 +296,50 @@ def get_prediction_enabled_stations() -> list[str]:
         for code, config in STATION_PREDICTION_CONFIGS.items()
         if code != "_default" and config.get("predictions_enabled", False)
     ]
+
+
+def get_valid_tracks(station_code: str, data_source: str) -> frozenset[str] | None:
+    """Return the full set of valid tracks for a (station, data_source), or None.
+
+    Distinct from the per-station ``tracks`` lists above, which enumerate tracks
+    with enough historical coverage to *predict*. This set enumerates every
+    *legal* track so that clearly bogus feed values (e.g., LIRR reporting track
+    "1" at Grand Central Madison) can be rejected before they reach users.
+
+    Returns ``None`` when the (station, data_source) pair has no configured
+    validation set, so callers pass the value through unchanged. We enable
+    validation only where we can fully enumerate the tracks — partial lists
+    would false-reject legitimate tracks.
+
+    Args:
+        station_code: Station code (e.g., 'GCT').
+        data_source: Transit system (e.g., 'LIRR', 'MNR', 'SUBWAY').
+
+    Returns:
+        frozenset of valid track strings, or None if not configured.
+    """
+    return VALIDATED_TRACKS.get((station_code, data_source))
+
+
+# Explicit, complete track sets for validation at the feed-ingest boundary.
+# Only add a (station, data_source) entry when the list is exhaustive —
+# partial lists cause false rejections of legitimate tracks.
+VALIDATED_TRACKS: dict[tuple[str, str], frozenset[str]] = {
+    # Grand Central Madison — LIRR terminal on three levels, 4 tracks per level.
+    ("GCT", "LIRR"): frozenset(
+        {
+            "201",
+            "202",
+            "203",
+            "204",
+            "301",
+            "302",
+            "303",
+            "304",
+            "401",
+            "402",
+            "403",
+            "404",
+        }
+    ),
+}

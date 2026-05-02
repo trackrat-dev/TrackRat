@@ -122,6 +122,7 @@ struct FeedbackSheet: View {
     @State private var message = ""
     @State private var isSubmitting = false
     @State private var showingConfirmation = false
+    @State private var submissionFailed = false
     @State private var iconScale: CGFloat = 0.5
     @State private var iconOpacity: Double = 0
     @FocusState private var isTextFieldFocused: Bool
@@ -217,7 +218,7 @@ struct FeedbackSheet: View {
         VStack(spacing: 20) {
             Spacer()
 
-            Image(systemName: mode.confirmationIcon)
+            Image(systemName: submissionFailed ? "exclamationmark.triangle.fill" : mode.confirmationIcon)
                 .font(.system(size: 72))
                 .foregroundStyle(
                     LinearGradient(
@@ -241,11 +242,30 @@ struct FeedbackSheet: View {
                 .fontWeight(.bold)
                 .foregroundColor(.white)
 
-            Text("Your feedback helps make TrackRat\nbetter for everyone.")
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
+            VStack(spacing: 12) {
+                if submissionFailed {
+                    Text("We couldn't send your feedback right now.\nPlease try again later.")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                } else {
+                    Text("Your feedback will be tracked as a GitHub issue shortly.")
+                        .font(.subheadline)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+
+                    Link(destination: URL(string: "https://github.com/trackrat-dev/TrackRat/issues?q=is%3Aissue+label%3Auser-feedback+sort%3Acreated-desc")!) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.up.forward.square")
+                            Text("View on GitHub")
+                        }
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.orange)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
 
             Spacer()
 
@@ -287,6 +307,7 @@ struct FeedbackSheet: View {
 
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    submissionFailed = false
                     withAnimation {
                         showingConfirmation = true
                     }
@@ -295,8 +316,7 @@ struct FeedbackSheet: View {
                 print("Failed to submit feedback: \(error)")
                 await MainActor.run {
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    // Still show confirmation - the feedback attempt was made
-                    // and we don't want to frustrate the user
+                    submissionFailed = true
                     withAnimation {
                         showingConfirmation = true
                     }
