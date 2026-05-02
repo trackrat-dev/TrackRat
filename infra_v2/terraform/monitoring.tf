@@ -78,6 +78,21 @@ resource "google_monitoring_alert_policy" "api_unavailable" {
 # Backed by google_logging_metric.provider_auth_failures (see metrics.tf).
 # Threshold of 3 failures over 5 minutes debounces against one-off blips
 # while still firing within ~5 minutes of a genuine token expiry.
+
+# Newly created log-based metrics aren't immediately queryable by the monitoring
+# backend; the alert policy create call returns 404 until the metric propagates.
+# GCP docs say "up to 10 minutes"; in practice 60s is reliably enough.
+resource "time_sleep" "wait_provider_auth_metric" {
+  count = var.environment == "production" ? 1 : 0
+
+  depends_on      = [google_logging_metric.provider_auth_failures]
+  create_duration = "60s"
+
+  triggers = {
+    metric_name = google_logging_metric.provider_auth_failures[0].name
+  }
+}
+
 resource "google_monitoring_alert_policy" "provider_auth_failure" {
   count = var.environment == "production" ? 1 : 0
 
@@ -107,5 +122,8 @@ resource "google_monitoring_alert_policy" "provider_auth_failure" {
     auto_close = "1800s"
   }
 
-  depends_on = [google_project_service.apis["monitoring.googleapis.com"]]
+  depends_on = [
+    google_project_service.apis["monitoring.googleapis.com"],
+    time_sleep.wait_provider_auth_metric,
+  ]
 }
