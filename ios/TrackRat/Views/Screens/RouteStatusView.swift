@@ -80,6 +80,13 @@ struct RouteStatusView: View {
                                 fromStationCode: context.toStationCode,
                                 toStationCode: context.fromStationCode
                             )
+                            // Persist pending edits before switching direction
+                            for (_, edited) in editedSubscriptions {
+                                alertService.updateSubscription(edited)
+                            }
+                            if !editedSubscriptions.isEmpty {
+                                alertService.syncIfPossible()
+                            }
                             editedSubscriptions = [:]
                             draftSubscription = nil
                             Task { await viewModel.replaceContext(reversed, historyPeriod: selectedHistoryPeriod) }
@@ -95,7 +102,7 @@ struct RouteStatusView: View {
                     }
                 }
             }
-            .task {
+            .task(id: "\(context.fromStationCode ?? "")-\(context.toStationCode ?? "")") {
                 // Initialize draft subscription for alert config if not yet subscribed
                 if matchingSubscriptions.isEmpty && draftSubscription == nil {
                     if let from = context.fromStationCode, let to = context.toStationCode {
