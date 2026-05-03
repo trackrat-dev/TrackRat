@@ -55,62 +55,20 @@ class TrainCacheService {
 
     // MARK: - Cache Key Generation
 
-    /// Generates a simplified cache key using trainNumber + date
-    /// This is the canonical key format - trainNumber uniquely identifies a train for a given day
+    /// Cache key is `trainNumber|YYYY-MM-DD` — trainNumber uniquely identifies a
+    /// train for a given day across all transit systems we support.
     private func generateSimpleCacheKey(trainNumber: String, date: Date) -> String {
         let dateString = Calendar.current.startOfDay(for: date)
             .formatted(.iso8601.year().month().day())
         return "\(trainNumber)|\(dateString)"
     }
 
-    /// Legacy key generation - deprecated, use generateSimpleCacheKey instead
-    /// Kept for reference during migration
-    @available(*, deprecated, message: "Use generateSimpleCacheKey(trainNumber:date:) instead")
-    func generateCacheKey(
-        trainId: String? = nil,
-        trainNumber: String? = nil,
-        date: Date? = nil,
-        fromStation: String? = nil
-    ) -> String {
-        // If we have trainNumber, use simplified key for consistency
-        if let trainNumber = trainNumber {
-            return generateSimpleCacheKey(trainNumber: trainNumber, date: date ?? Date())
-        }
-        // Fallback for legacy trainId-only lookups
-        if let trainId = trainId {
-            let dateString = Calendar.current.startOfDay(for: date ?? Date())
-                .formatted(.iso8601.year().month().day())
-            return "\(trainId)|\(dateString)"
-        }
-        // Should never happen, but provide a key anyway
-        let dateString = Calendar.current.startOfDay(for: date ?? Date())
-            .formatted(.iso8601.year().month().day())
-        return "unknown|\(dateString)"
-    }
-
     // MARK: - Retrieval
 
-    /// Retrieves cached train details using simplified key (trainNumber + date)
+    /// Retrieves cached train details. Returns nil for miss or expired entry.
     func getCachedTrain(trainNumber: String, date: Date = Date()) -> CachedTrain? {
         let cacheKey = generateSimpleCacheKey(trainNumber: trainNumber, date: date)
         return getCachedTrainByKey(cacheKey)
-    }
-
-    /// Legacy retrieval method - now uses simplified key internally
-    @available(*, deprecated, message: "Use getCachedTrain(trainNumber:date:) instead")
-    func getCachedTrain(
-        trainId: String? = nil,
-        trainNumber: String? = nil,
-        date: Date? = nil,
-        fromStation: String? = nil
-    ) -> TrainV2? {
-        // Use trainNumber if available, fall back to trainId
-        let identifier = trainNumber ?? trainId ?? ""
-        guard !identifier.isEmpty else {
-            print("❌ Cache MISS: no identifier provided")
-            return nil
-        }
-        return getCachedTrain(trainNumber: identifier, date: date ?? Date())?.train
     }
 
     /// Internal helper to get cached train by key
@@ -148,8 +106,8 @@ class TrainCacheService {
         return nil
     }
 
-    /// Returns the age of the cache in seconds, or nil if not cached
-    /// PERFORMANCE: Used to determine if we should skip background refresh on cache hit
+    /// Returns the age of the cache in seconds, or nil if not cached. Used to gate
+    /// background refresh and prefetch when the existing entry is already fresh.
     func getCacheAge(trainNumber: String, date: Date = Date()) -> TimeInterval? {
         if let cached = getCachedTrain(trainNumber: trainNumber, date: date) {
             return TimeInterval(cached.ageSeconds)
@@ -157,22 +115,9 @@ class TrainCacheService {
         return nil
     }
 
-    /// Legacy getCacheAge - now uses simplified key internally
-    @available(*, deprecated, message: "Use getCacheAge(trainNumber:date:) instead")
-    func getCacheAge(
-        trainId: String? = nil,
-        trainNumber: String? = nil,
-        date: Date? = nil,
-        fromStation: String? = nil
-    ) -> TimeInterval? {
-        let identifier = trainNumber ?? trainId ?? ""
-        guard !identifier.isEmpty else { return nil }
-        return getCacheAge(trainNumber: identifier, date: date ?? Date())
-    }
-
     // MARK: - Storage
 
-    /// Stores train details using simplified key (trainNumber + date)
+    /// Stores train details using the canonical trainNumber+date key.
     func cacheTrain(_ train: TrainV2, trainNumber: String, date: Date = Date()) {
         let cacheKey = generateSimpleCacheKey(trainNumber: trainNumber, date: date)
 
@@ -197,20 +142,6 @@ class TrainCacheService {
 
             print("💾 Cached train: \(cacheKey)")
         }
-    }
-
-    /// Legacy storage method - now uses simplified key internally
-    @available(*, deprecated, message: "Use cacheTrain(_:trainNumber:date:) instead")
-    func cacheTrain(
-        _ train: TrainV2,
-        trainId: String? = nil,
-        trainNumber: String? = nil,
-        date: Date? = nil,
-        fromStation: String? = nil
-    ) {
-        // Use trainNumber if available, fall back to trainId, then train.trainId
-        let identifier = trainNumber ?? trainId ?? train.trainId
-        cacheTrain(train, trainNumber: identifier, date: date ?? Date())
     }
 
     // MARK: - LRU Cache Management
@@ -248,51 +179,6 @@ class TrainCacheService {
 
     // MARK: - Cache Management
 
-    /// Clears all cached train data
-    func clearAllCache() {
-        memoryCache.removeAll()
-        memoryCacheAccessOrder.removeAll()
-
-        let metadata = getCacheMetadata()
-        for cacheKey in metadata.keys.keys {
-            let persistentKey = cacheKeyPrefix + cacheKey
-            userDefaults.removeObject(forKey: persistentKey)
-        }
-
-        userDefaults.removeObject(forKey: cacheMetadataKey)
-        print("🗑️ Cleared all train cache")
-    }
-
-    /// Removes cache for a specific train using simplified key
-    func clearCache(trainNumber: String, date: Date = Date()) {
-        let cacheKey = generateSimpleCacheKey(trainNumber: trainNumber, date: date)
-
-        memoryCache.removeValue(forKey: cacheKey)
-        memoryCacheAccessOrder.removeAll { $0 == cacheKey }
-
-        let persistentKey = cacheKeyPrefix + cacheKey
-        userDefaults.removeObject(forKey: persistentKey)
-
-        var metadata = getCacheMetadata()
-        metadata.keys.removeValue(forKey: cacheKey)
-        saveCacheMetadata(metadata)
-
-        print("🗑️ Cleared cache: \(cacheKey)")
-    }
-
-    /// Legacy clearCache - now uses simplified key internally
-    @available(*, deprecated, message: "Use clearCache(trainNumber:date:) instead")
-    func clearCache(
-        trainId: String? = nil,
-        trainNumber: String? = nil,
-        date: Date? = nil,
-        fromStation: String? = nil
-    ) {
-        let identifier = trainNumber ?? trainId ?? ""
-        guard !identifier.isEmpty else { return }
-        clearCache(trainNumber: identifier, date: date ?? Date())
-    }
-
     /// Removes expired cache entries from persistent storage
     private func cleanupExpiredCache() {
         var metadata = getCacheMetadata()
@@ -328,21 +214,5 @@ class TrainCacheService {
         if let encoded = try? JSONEncoder().encode(metadata) {
             userDefaults.set(encoded, forKey: cacheMetadataKey)
         }
-    }
-
-    // MARK: - Debug Helpers
-
-    /// Returns cache statistics for debugging
-    func getCacheStats() -> String {
-        let metadata = getCacheMetadata()
-        let memoryCount = memoryCache.count
-        let persistentCount = metadata.keys.count
-
-        return """
-        📊 Cache Stats:
-        - Memory cache: \(memoryCount) entries
-        - Persistent cache: \(persistentCount) entries
-        - Max age: \(Int(maxCacheAge))s
-        """
     }
 }

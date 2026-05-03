@@ -1169,6 +1169,20 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
+        // Auxiliary data (operations summary, delay forecast, track prediction) is fetched
+        // in parallel for every load path — cache hit, existingTrain, and cold network.
+        // Without this, child views observing prefetchedSummary/Forecast/TrackPrediction
+        // would see nil whenever the main train comes from the cache, since the cached
+        // path skipped this fetch.
+        Task {
+            await self.prefetchSecondaryData(
+                trainId: trainNumber ?? "",
+                fromStation: fromStationCode,
+                toStation: toStationCode,
+                journeyDate: journeyDate
+            )
+        }
+
         // PRIORITY 1: Render any non-expired cache instantly, reconcile in background.
         // The 5-minute isExpired ceiling in TrainCacheService bounds staleness; the
         // background refresh corrects any drift. Critical for Live Activity taps: the
@@ -1209,17 +1223,6 @@ class TrainDetailsViewModel: ObservableObject {
         // PRIORITY 3: No cached data and no existing train - show loading indicator and fetch from network
         print("🌐 No cache available - fetching from network")
         isLoading = true
-
-        // Start secondary data fetch in parallel — fire and forget since
-        // child views observe @Published properties and update reactively
-        Task {
-            await self.prefetchSecondaryData(
-                trainId: trainNumber ?? "",
-                fromStation: fromStationCode,
-                toStation: toStationCode,
-                journeyDate: journeyDate
-            )
-        }
 
         do {
             // Use the flexible API method with dataSource for disambiguation

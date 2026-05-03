@@ -119,6 +119,66 @@ class TrainListViewModelTests: XCTestCase {
         XCTAssertNotNil(expressTrains)
     }
 
+    // MARK: - Cache-hit path
+
+    func testLoadTrainsCacheHitSkipsSpinner() async {
+        // Seed the prefetcher cache with a known list. loadTrains must render it
+        // synchronously without ever flipping isLoading to true.
+        Prefetcher.shared.resetForTesting()
+        defer { Prefetcher.shared.resetForTesting() }
+
+        let leg = TripLeg(
+            trainId: "T1",
+            journeyDate: Date(),
+            line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#FF0000"),
+            dataSource: "NJT",
+            destination: "Newark Penn Station",
+            boarding: StationTiming(code: "NY", name: "New York Penn Station",
+                                    scheduledTime: Date().addingTimeInterval(600),
+                                    updatedTime: nil, actualTime: nil, track: nil),
+            alighting: StationTiming(code: "NP", name: "Newark Penn Station",
+                                     scheduledTime: Date().addingTimeInterval(2400),
+                                     updatedTime: nil, actualTime: nil, track: nil),
+            observationType: nil,
+            isCancelled: false,
+            trainPosition: nil
+        )
+        let trip = TripOption(
+            legs: [leg], transfers: [],
+            departureTime: Date().addingTimeInterval(600),
+            arrivalTime: Date().addingTimeInterval(2400),
+            totalDurationMinutes: 30, isDirect: true
+        )
+
+        let date = Date()
+        // Match the systems set the ViewModel will compute. NY/NP are NJT stations,
+        // and effectiveSystems is what TrainListView passes (selected ∪ station-systems).
+        let systems = Stations.effectiveSystems(selected: [.njt],
+                                                fromStationCode: "NY",
+                                                toStationCode: "NP")
+        Prefetcher.shared.injectTripsForTesting([trip],
+                                                from: "NY", to: "NP",
+                                                date: date, systems: systems)
+
+        // Pre-condition: spinner not on, no error.
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNil(viewModel.error)
+
+        await viewModel.loadTrains(destination: "Newark Penn Station",
+                                   fromStationCode: "NY",
+                                   date: date,
+                                   selectedSystems: systems)
+
+        // After loadTrains returns: trains populated from cache, no spinner, no error.
+        // The silent refresh that runs after cache-hit may have failed (no network in
+        // test) — that path catches and logs without setting `error`.
+        XCTAssertEqual(viewModel.trains.count, 1, "Cache-seeded trip must render as one TrainV2")
+        XCTAssertEqual(viewModel.trains.first?.trainId, "T1")
+        XCTAssertFalse(viewModel.isLoading, "Cache-hit path must not flip the spinner on")
+        XCTAssertTrue(viewModel.hasStartedLoading)
+        XCTAssertNil(viewModel.error, "Silent-refresh failures must not surface as user-visible error")
+    }
+
     // MARK: - Helper Method Tests
 
     func testTrainFiltering() {

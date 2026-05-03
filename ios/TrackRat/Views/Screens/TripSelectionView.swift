@@ -338,6 +338,22 @@ struct TripSelectionView: View {
             ratSenseService.updateSuggestion()
             appState.loadRecentTrips()
             appState.loadFavoriteStations()
+
+            // Warm the trips cache for the predicted route so tapping the suggestion
+            // renders the train list instantly. updateSuggestion() above is synchronous
+            // so suggestedJourney is up to date here. effectiveSystems must match what
+            // TrainListView will compute or the cache key won't align.
+            if let s = ratSenseService.suggestedJourney, !liveActivityService.isActivityActive {
+                Prefetcher.shared.prefetchTrips(
+                    from: s.fromStation,
+                    to: s.toStation,
+                    systems: Stations.effectiveSystems(
+                        selected: appState.selectedSystems,
+                        fromStationCode: s.fromStation,
+                        toStationCode: s.toStation
+                    )
+                )
+            }
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
