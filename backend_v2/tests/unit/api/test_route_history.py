@@ -1020,15 +1020,16 @@ class TestArrivalSourceFiltering:
 
 
 @pytest.mark.asyncio
-class TestCutoffTimeFiltersByArrival:
-    """Verify hours-based cutoff filters by destination ARRIVAL time, not origin departure.
+class TestCutoffTimeFiltersByOriginDeparture:
+    """Verify hours-based cutoff filters by ORIGIN DEPARTURE time.
 
-    This was a major bug: "last hour" stats filtered by scheduled_departure at the
-    origin station. Since most trains that departed in the last hour haven't arrived yet,
-    the stats would show "N/A" for on_time_percentage and average_delay_minutes.
+    "Trains in the past hour" means "trains that departed origin in the past hour":
+    in-transit trains are included even though they haven't arrived yet, and routes
+    ending at NJT intermediate stops (where scheduled_arrival is NULL) work correctly.
 
-    The fix filters by the destination stop's arrival time (actual or scheduled), so
-    "last hour" means "trains that arrived at the destination in the last hour".
+    Stats degrade gracefully when arrival data isn't yet available — the stats CTE
+    falls back from arrival-based to departure-based on-time metrics (see
+    `on_time_source` in _calculate_route_stats_sql).
     """
 
     async def _run_stats_with_cutoff(
@@ -1051,58 +1052,15 @@ class TestCutoffTimeFiltersByArrival:
             now=now,
         )
 
-    async def test_recently_arrived_train_included_in_last_hour(
+    async def test_recently_departed_in_transit_train_included(
         self, db_session: AsyncSession
     ):
-        """A train that arrived 30 minutes ago should appear in 'last hour' stats.
+        """A train that departed 30 minutes ago and is still en route is included.
 
-        Train departed 1.5 hours ago (outside the 1-hour window) but arrived
-        30 minutes ago (inside the window). With the old departure-based filter,
-        this train would be excluded. With the arrival-based filter, it's included.
-        """
-        now = BASE_TIME + timedelta(hours=3)
-        cutoff = now - timedelta(hours=1)
-
-        await _create_journey(
-            db_session,
-            train_id="train_arrived_recently",
-            stops=[
-                {
-                    "station_code": "NY",
-                    "stop_sequence": 0,
-                    "scheduled_departure": now - timedelta(hours=1, minutes=30),
-                    "actual_departure": now - timedelta(hours=1, minutes=30),
-                },
-                {
-                    "station_code": "TR",
-                    "stop_sequence": 1,
-                    "scheduled_arrival": now - timedelta(minutes=30),
-                    "actual_arrival": now - timedelta(minutes=25),
-                    "arrival_source": "api_observed",
-                },
-            ],
-        )
-        await db_session.commit()
-
-        result = await self._run_stats_with_cutoff(db_session, cutoff, now)
-
-        assert result["total_journeys"] == 1, (
-            f"Expected 1 journey (arrived 30min ago, within 1h window), "
-            f"got {result['total_journeys']}. The cutoff should filter by "
-            "destination arrival time, not origin departure time."
-        )
-        assert (
-            result["on_time_percentage"] is not None
-        ), "on_time_percentage should not be N/A for a train that already arrived"
-
-    async def test_recently_departed_but_not_arrived_excluded(
-        self, db_session: AsyncSession
-    ):
-        """A train that departed 30 minutes ago but hasn't arrived should NOT appear.
-
-        With the old filter this train would be included (departed within the hour)
-        but produce N/A stats since it has no arrival data. With the new filter,
-        it's correctly excluded because it hasn't arrived yet.
+        This is the user-visible bug: NY -> Hamilton train departed NY 40 min ago
+        but the previous arrival-based filter excluded it (arrival in the future,
+        scheduled_arrival NULL on NJT intermediate stops). Origin-departure filter
+        captures it.
         """
         now = BASE_TIME + timedelta(hours=3)
         cutoff = now - timedelta(hours=1)
@@ -1129,59 +1087,78 @@ class TestCutoffTimeFiltersByArrival:
 
         result = await self._run_stats_with_cutoff(db_session, cutoff, now)
 
-        assert result["total_journeys"] == 0, (
-            f"Expected 0 journeys (train hasn't arrived yet, scheduled_arrival "
-            f"is in the future), got {result['total_journeys']}. Trains still "
-            "en route should not be included in arrival-based stats."
+        assert result["total_journeys"] == 1, (
+            f"Expected 1 journey (departed 30min ago, in transit), got "
+            f"{result['total_journeys']}. Cutoff must filter by origin departure "
+            "so in-transit trains are visible in 'past hour' counts."
+        )
+        # No arrival yet -> stats fall back to departure-based metrics.
+        assert result["on_time_source"] == "departure", (
+            f"With no arrival data, on_time_source should fall back to 'departure'; "
+            f"got {result['on_time_source']!r}."
         )
 
-    async def test_train_arrived_before_cutoff_excluded(self, db_session: AsyncSession):
-        """A train that arrived 2 hours ago should NOT appear in 'last hour' stats."""
-        now = BASE_TIME + timedelta(hours=4)
+    async def test_njt_intermediate_destination_with_null_scheduled_arrival_included(
+        self, db_session: AsyncSession
+    ):
+        """Regression: NY -> Hamilton (NJT intermediate stop) must not silently return 0.
+
+        NJT puts the schedule for non-terminal stops in DEP_TIME (mapped to
+        scheduled_departure), leaving scheduled_arrival NULL. The previous
+        destination-arrival filter dropped every such row.
+        """
+        now = BASE_TIME + timedelta(hours=3)
         cutoff = now - timedelta(hours=1)
 
         await _create_journey(
             db_session,
-            train_id="train_arrived_long_ago",
+            train_id="njt_to_hamilton",
             stops=[
                 {
                     "station_code": "NY",
                     "stop_sequence": 0,
-                    "scheduled_departure": now - timedelta(hours=3),
-                    "actual_departure": now - timedelta(hours=3),
+                    "scheduled_departure": now - timedelta(minutes=40),
+                    "actual_departure": now - timedelta(minutes=40),
+                },
+                {
+                    # NJT intermediate stop: scheduled_arrival left NULL on purpose
+                    "station_code": "HL",
+                    "stop_sequence": 12,
+                    "scheduled_departure": now + timedelta(minutes=21),
+                    "scheduled_arrival": None,
+                    "actual_arrival": None,
                 },
                 {
                     "station_code": "TR",
-                    "stop_sequence": 1,
-                    "scheduled_arrival": now - timedelta(hours=2),
-                    "actual_arrival": now - timedelta(hours=2),
-                    "arrival_source": "api_observed",
+                    "stop_sequence": 13,
+                    "scheduled_departure": now + timedelta(minutes=34),
+                    "scheduled_arrival": None,
+                    "actual_arrival": None,
                 },
             ],
         )
         await db_session.commit()
 
-        result = await self._run_stats_with_cutoff(db_session, cutoff, now)
-
-        assert result["total_journeys"] == 0, (
-            f"Expected 0 journeys (arrived 2h ago, outside 1h window), "
-            f"got {result['total_journeys']}."
+        result = await self._run_stats_with_cutoff(
+            db_session, cutoff, now, from_codes=["NY"], to_codes=["HL"]
         )
 
-    async def test_cutoff_uses_actual_arrival_over_scheduled(
+        assert result["total_journeys"] == 1, (
+            f"Expected 1 journey for NY->HL, got {result['total_journeys']}. "
+            "NJT intermediate stops have NULL scheduled_arrival; origin-departure "
+            "filter must still match."
+        )
+
+    async def test_train_departed_before_cutoff_excluded(
         self, db_session: AsyncSession
     ):
-        """When actual_arrival exists, it should be used for the cutoff filter.
-
-        Train scheduled to arrive 70 minutes ago (outside window) but actually
-        arrived 40 minutes ago (inside window due to delay). Should be included.
-        """
+        """A train that departed 2 hours ago (outside the 1h window) is excluded."""
         now = BASE_TIME + timedelta(hours=4)
         cutoff = now - timedelta(hours=1)
 
         await _create_journey(
             db_session,
-            train_id="train_late_but_recent",
+            train_id="train_departed_long_ago",
             stops=[
                 {
                     "station_code": "NY",
@@ -1192,8 +1169,8 @@ class TestCutoffTimeFiltersByArrival:
                 {
                     "station_code": "TR",
                     "stop_sequence": 1,
-                    "scheduled_arrival": now - timedelta(minutes=70),
-                    "actual_arrival": now - timedelta(minutes=40),
+                    "scheduled_arrival": now - timedelta(hours=1),
+                    "actual_arrival": now - timedelta(hours=1),
                     "arrival_source": "api_observed",
                 },
             ],
@@ -1202,11 +1179,145 @@ class TestCutoffTimeFiltersByArrival:
 
         result = await self._run_stats_with_cutoff(db_session, cutoff, now)
 
-        assert result["total_journeys"] == 1, (
-            f"Expected 1 journey (actual_arrival 40min ago is within 1h window, "
-            f"even though scheduled_arrival was 70min ago), got {result['total_journeys']}. "
-            "COALESCE(actual_arrival, scheduled_arrival) should prefer actual."
+        assert result["total_journeys"] == 0, (
+            f"Expected 0 journeys (departed 2h ago, outside 1h window), got "
+            f"{result['total_journeys']}."
         )
+
+    async def test_cutoff_uses_actual_departure_over_scheduled(
+        self, db_session: AsyncSession
+    ):
+        """COALESCE prefers actual_departure: a late-but-recent departure is included.
+
+        Scheduled to depart 70 minutes ago (outside 1h window), actually departed
+        40 minutes ago (inside window due to upstream delay) — must match.
+        """
+        now = BASE_TIME + timedelta(hours=4)
+        cutoff = now - timedelta(hours=1)
+
+        await _create_journey(
+            db_session,
+            train_id="train_late_departure",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": now - timedelta(minutes=70),
+                    "actual_departure": now - timedelta(minutes=40),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": now + timedelta(minutes=20),
+                    "actual_arrival": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await self._run_stats_with_cutoff(db_session, cutoff, now)
+
+        assert result["total_journeys"] == 1, (
+            f"Expected 1 journey (actual_departure 40min ago is within 1h window, "
+            f"even though scheduled_departure was 70min ago), got "
+            f"{result['total_journeys']}. "
+            "COALESCE(actual_departure, scheduled_departure) should prefer actual."
+        )
+
+    async def test_in_transit_trains_count_in_total_but_skip_arrival_stats(
+        self, db_session: AsyncSession
+    ):
+        """In-transit trains contribute to total_journeys but not to arrival metrics.
+
+        Mix of one arrived (delayed 8 min) and one in-transit train. on_time_source
+        should still be 'arrival' (one train has arrival data) and the arrival
+        average should not be polluted by the en-route train.
+        """
+        now = BASE_TIME + timedelta(hours=3)
+        cutoff = now - timedelta(hours=1)
+
+        await _create_journey(
+            db_session,
+            train_id="arrived_delayed",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": now - timedelta(minutes=50),
+                    "actual_departure": now - timedelta(minutes=50),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": now - timedelta(minutes=10),
+                    "actual_arrival": now - timedelta(minutes=2),
+                    "arrival_source": "api_observed",
+                },
+            ],
+        )
+        await _create_journey(
+            db_session,
+            train_id="still_en_route",
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": now - timedelta(minutes=20),
+                    "actual_departure": now - timedelta(minutes=20),
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": now + timedelta(minutes=40),
+                    "actual_arrival": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await self._run_stats_with_cutoff(db_session, cutoff, now)
+
+        assert (
+            result["total_journeys"] == 2
+        ), f"Both trains should count in total_journeys; got {result['total_journeys']}."
+        assert result["on_time_source"] == "arrival"
+        assert result["average_delay_minutes"] == pytest.approx(8.0, abs=0.1), (
+            f"Average should reflect only the arrived train (8 min delay), not be "
+            f"diluted by the en-route train; got {result['average_delay_minutes']}."
+        )
+
+    async def test_cancelled_train_in_window_counts_via_origin_departure(
+        self, db_session: AsyncSession
+    ):
+        """Cancelled trains keep being filtered by origin departure (unchanged behavior)."""
+        now = BASE_TIME + timedelta(hours=3)
+        cutoff = now - timedelta(hours=1)
+
+        await _create_journey(
+            db_session,
+            train_id="cancelled_recent",
+            is_cancelled=True,
+            stops=[
+                {
+                    "station_code": "NY",
+                    "stop_sequence": 0,
+                    "scheduled_departure": now - timedelta(minutes=20),
+                    "actual_departure": None,
+                },
+                {
+                    "station_code": "TR",
+                    "stop_sequence": 1,
+                    "scheduled_arrival": None,
+                    "actual_arrival": None,
+                },
+            ],
+        )
+        await db_session.commit()
+
+        result = await self._run_stats_with_cutoff(db_session, cutoff, now)
+
+        assert result["total_journeys"] == 1
+        assert result["cancellation_rate"] == 100.0
 
     async def test_no_cutoff_includes_all_journeys(self, db_session: AsyncSession):
         """When cutoff_time is None (days-based query), all journeys are included."""
