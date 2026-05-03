@@ -120,6 +120,8 @@ struct RouteStatusView: View {
                         )
                     }
                 }
+            }
+            .task {
                 await viewModel.loadData(initialPeriod: selectedHistoryPeriod)
             }
             .onDisappear {
