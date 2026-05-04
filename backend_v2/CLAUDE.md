@@ -439,6 +439,8 @@ TRACKRAT_WMATA_API_KEY=your_wmata_developer_api_key
 
 # Metra GTFS-RT API
 TRACKRAT_METRA_API_TOKEN=your_metra_api_token
+TRACKRAT_METRA_API_USERNAME=                     # Metra HTTP Basic Auth (alternative to token)
+TRACKRAT_METRA_API_PASSWORD=                     # Metra HTTP Basic Auth (alternative to token)
 
 # Note: BART uses public GTFS-RT feed - no authentication required
 
@@ -481,7 +483,8 @@ TRACKRAT_DEBUG=false                             # Enable debug mode
 TRACKRAT_API_HOST=0.0.0.0                        # API bind host
 TRACKRAT_API_PORT=8000                           # API bind port
 TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on startup
-TRACKRAT_BACKUP_INTERVAL_SECONDS=3600            # GCS backup frequency
+TRACKRAT_BACKUP_INTERVAL_SECONDS=300             # GCS backup frequency (default 5min)
+TRACKRAT_RETENTION_DAYS=120                      # Days to retain journey data (min 30)
 
 # APNS Auth Key Content (alternative to file path)
 APNS_AUTH_KEY=                                   # Raw P8 key content (fallback if APNS_AUTH_KEY_PATH unavailable)
@@ -753,6 +756,10 @@ The backend is organized into service classes for better maintainability:
 - **TripSearchService** (`services/trip_search.py`): Multi-leg trip search across transit systems
 - **TransferPoints** (`config/transfer_points.py`): Defines transfer connections between transit systems
 - **TripsAPI** (`api/trips.py`): Trip search endpoint
+
+#### Share / Link Previews
+- **ShareAPI** (`api/share.py`): OG meta tag HTML and image endpoints for rich link previews
+- **ShareImageService** (`services/share_image.py`): PNG rendering for share card images
 
 #### Infrastructure
 - **SimpleAPNSService** (`services/apns.py`): Apple Push Notifications for Live Activities and Route Alerts
