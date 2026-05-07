@@ -68,14 +68,30 @@ final class AlertSubscriptionService: ObservableObject {
             if sub.isSystemWide && context.lineId == nil && context.fromStationCode == nil {
                 return true
             }
-            // Match line subscriptions (with direction check when context has a terminal destination)
+            // Match line subscriptions, disambiguating direction when possible.
+            // The subscription's `direction` is the terminus station code of
+            // the intended direction of travel. We infer the context's
+            // direction from the station-pair position on the line route, so
+            // edits at mid-route stations don't silently match the wrong
+            // direction when the user has subscribed to both directions.
             if let lineId = sub.lineId, lineId == context.lineId {
-                if let subDir = sub.direction, let ctxTo = context.toStationCode,
-                   let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
-                    let stations = route.stationCodes
-                    if ctxTo == stations.first || ctxTo == stations.last {
-                        return subDir == ctxTo
-                    }
+                guard let subDir = sub.direction else { return true }
+                guard let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) else {
+                    return true
+                }
+                let stations = route.stationCodes
+                if let ctxFrom = context.fromStationCode,
+                   let ctxTo = context.toStationCode,
+                   let fromIdx = stations.firstIndex(of: ctxFrom),
+                   let toIdx = stations.firstIndex(of: ctxTo),
+                   fromIdx != toIdx {
+                    let inferredTerminus = toIdx > fromIdx ? stations.last : stations.first
+                    return subDir == inferredTerminus
+                }
+                // No from→to pair on the line: fall back to terminus-only check.
+                if let ctxTo = context.toStationCode,
+                   ctxTo == stations.first || ctxTo == stations.last {
+                    return subDir == ctxTo
                 }
                 return true
             }
