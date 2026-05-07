@@ -40,6 +40,7 @@ from trackrat.services.trip_search import (
     _filter_unreasonable_durations,
     _find_relevant_transfer_points,
     _get_best_time,
+    _get_direct_service_systems,
     _get_station_lines_expanded,
     _make_direct_trip,
     _orient_transfer,
@@ -1303,6 +1304,34 @@ class TestFilterCrossSystemDirectTrips:
             f"remaining: {[t.legs[0].data_source for t in result]}"
         )
 
+    def test_direct_service_systems_prefer_exact_station_over_transfer_complex(self):
+        """S128 belongs to the Penn complex, but is directly subway-only."""
+        subway_systems = _get_direct_service_systems("S128")
+        penn_systems = _get_direct_service_systems("NY")
+
+        assert subway_systems == {"SUBWAY"}
+        assert {"NJT", "AMTRAK"}.isdisjoint(subway_systems)
+        assert {"NJT", "AMTRAK"}.issubset(penn_systems)
+
+    def test_direct_service_systems_keep_true_shared_station_aliases(self):
+        """Same-platform aliases still resolve all direct systems."""
+        systems = _get_direct_service_systems("NRO")
+
+        assert {"AMTRAK", "MNR"}.issubset(systems)
+
+    def test_real_direct_lookup_filters_transfer_complex_matches(self):
+        """Regression: expanded station equivalence must not make S128→TR direct."""
+        from_sys = _get_direct_service_systems("S128")
+        to_sys = _get_direct_service_systems("TR")
+
+        trips = [
+            self._make_trip_with_source("NJT"),
+            self._make_trip_with_source("AMTRAK"),
+        ]
+        result = _filter_cross_system_direct_trips(trips, from_sys, to_sys)
+
+        assert result == []
+
     def test_alias_code_resolves_via_equivalence_expansion(self):
         """Alias-only codes (TS, SC) should resolve systems via expansion.
 
@@ -1312,16 +1341,12 @@ class TestFilterCrossSystemDirectTrips:
         Without expansion, from_systems would be empty and all direct trips
         from TS would be incorrectly filtered.
         """
-        from trackrat.config.stations import expand_station_codes
-
         # Direct lookup returns empty for alias codes
         assert get_systems_serving_station("TS") == set()
         assert get_systems_serving_station("SC") == set()
 
-        # But expansion resolves via SE
-        expanded_systems: set[str] = set()
-        for code in expand_station_codes("TS"):
-            expanded_systems |= get_systems_serving_station(code)
+        # But the direct-service helper falls back to expansion for alias-only codes.
+        expanded_systems = _get_direct_service_systems("TS")
         assert (
             "NJT" in expanded_systems
         ), f"TS should resolve to NJT via SE expansion, got {expanded_systems}"

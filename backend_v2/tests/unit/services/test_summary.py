@@ -6,6 +6,7 @@ headline/body generation and metrics calculation.
 """
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -138,6 +139,78 @@ class TestSummaryService:
     def summary_service(self):
         """Create a SummaryService instance for testing."""
         return SummaryService()
+
+    async def test_line_stats_keys_include_data_source_for_network_queries(
+        self, summary_service, mock_db
+    ):
+        """Network summaries must preserve rows whose display keys collide."""
+        rows = [
+            SimpleNamespace(
+                line_key="Unknown",
+                line_name=None,
+                line_code=None,
+                data_source="NJT",
+                train_count=3,
+                on_time_count=2,
+                cancellation_count=1,
+                total_delay_minutes=4.0,
+                arrival_data_count=2,
+            ),
+            SimpleNamespace(
+                line_key="Unknown",
+                line_name=None,
+                line_code=None,
+                data_source="AMTRAK",
+                train_count=5,
+                on_time_count=4,
+                cancellation_count=0,
+                total_delay_minutes=7.0,
+                arrival_data_count=5,
+            ),
+        ]
+        execute_result = Mock()
+        execute_result.all.return_value = rows
+        mock_db.execute.return_value = execute_result
+
+        line_stats = await summary_service._query_line_stats_sql(
+            mock_db,
+            datetime.now(UTC) - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES),
+            data_source=None,
+        )
+
+        assert set(line_stats) == {"NJT:Unknown", "AMTRAK:Unknown"}
+        assert sum(stats.train_count for stats in line_stats.values()) == 8
+        assert line_stats["NJT:Unknown"].data_source == "NJT"
+        assert line_stats["AMTRAK:Unknown"].data_source == "AMTRAK"
+
+    async def test_line_stats_keep_display_key_for_source_filtered_queries(
+        self, summary_service, mock_db
+    ):
+        """Existing per-source callers keep the historical display-key shape."""
+        rows = [
+            SimpleNamespace(
+                line_key="Unknown",
+                line_name=None,
+                line_code=None,
+                data_source="NJT",
+                train_count=3,
+                on_time_count=2,
+                cancellation_count=1,
+                total_delay_minutes=4.0,
+                arrival_data_count=2,
+            )
+        ]
+        execute_result = Mock()
+        execute_result.all.return_value = rows
+        mock_db.execute.return_value = execute_result
+
+        line_stats = await summary_service._query_line_stats_sql(
+            mock_db,
+            datetime.now(UTC) - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES),
+            data_source="NJT",
+        )
+
+        assert set(line_stats) == {"Unknown"}
 
     @pytest.fixture
     def sample_journeys(self):

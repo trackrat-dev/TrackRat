@@ -41,6 +41,15 @@ logger = get_logger(__name__)
 # Maximum number of departure queries per transfer search to keep response fast
 MAX_TRANSFER_QUERIES = 12
 
+_DIRECT_SERVICE_EXACT_ONLY_GROUPS = (
+    frozenset({"NY", "S128", "SA28"}),  # Penn Station / 34 St-Penn Station
+    frozenset({"GCT", "S631", "S723", "S901"}),  # Grand Central / subway
+    frozenset({"PWC", "S138", "S228", "SA36", "SE01", "SR25"}),  # WTC / Oculus
+)
+_DIRECT_SERVICE_EXACT_ONLY_CODES = frozenset(
+    code for group in _DIRECT_SERVICE_EXACT_ONLY_GROUPS for code in group
+)
+
 # Minimum number of minutes after arrival to allow for catching the next train
 # (in addition to the transfer point's walk_minutes)
 CONNECTION_BUFFER_MINUTES = 2
@@ -126,6 +135,22 @@ def _filter_cross_system_direct_trips(
     if not valid_systems:
         return []
     return [t for t in trips if t.legs[0].data_source in valid_systems]
+
+
+def _get_direct_service_systems(station_code: str) -> set[str]:
+    """Return systems that directly serve the requested station code.
+
+    Most station equivalence groups represent the same boarding location across
+    system-specific codes. A few groups are adjacent transfer complexes; those
+    should use exact station systems so walking transfers do not look direct.
+    """
+    if station_code in _DIRECT_SERVICE_EXACT_ONLY_CODES:
+        return set(get_systems_serving_station(station_code))
+
+    systems: set[str] = set()
+    for code in expand_station_codes(station_code):
+        systems |= get_systems_serving_station(code)
+    return systems
 
 
 def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
@@ -288,9 +313,11 @@ async def search_trips(
         data_sources=data_sources,
     )
 
-    # Systems natively serving each endpoint (used for direct-trip filtering
-    # and transfer search below).  Expand equivalence aliases first so that
-    # alias-only codes (e.g. TS → SE) resolve to the canonical station's systems.
+    # Direct-trip filtering should keep true shared-station aliases but avoid
+    # treating adjacent walking-transfer complexes as a single direct station.
+    from_direct_systems = _get_direct_service_systems(from_station)
+    to_direct_systems = _get_direct_service_systems(to_station)
+
     from_systems: set[str] = set()
     for code in expand_station_codes(from_station):
         from_systems |= get_systems_serving_station(code)
@@ -323,7 +350,7 @@ async def search_trips(
     # Filter out cross-system matches that only connected via station equivalence
     # expansion (e.g., Amtrak to NY appearing as "direct" to subway S128).
     direct_trips = _filter_cross_system_direct_trips(
-        direct_trips, from_systems, to_systems
+        direct_trips, from_direct_systems, to_direct_systems
     )
 
     if direct_trips:

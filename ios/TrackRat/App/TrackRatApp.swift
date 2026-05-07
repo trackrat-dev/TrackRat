@@ -331,17 +331,24 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             print("❌ Invalid Live Activity push notification data")
             return
         }
-        
+        let dataSource = trainData["data_source"] as? String
+            ?? trainData["dataSource"] as? String
+
         // Update Live Activity if it matches current activity
         if let currentActivity = LiveActivityService.shared.currentActivity,
-           currentActivity.attributes.trainId == trainId || currentActivity.attributes.trainNumber == trainId {
+           currentActivity.attributes.matchesTrain(
+               trainId: trainId,
+               dataSource: dataSource
+           ) {
             await LiveActivityService.shared.fetchAndUpdateTrain()
             print("✅ Live Activity updated from push notification")
         } else {
             print("ℹ️ Push notification for different train, ignoring")
             print("ℹ️ Expected trainId: \(LiveActivityService.shared.currentActivity?.attributes.trainId ?? "none")")
             print("ℹ️ Expected trainNumber: \(LiveActivityService.shared.currentActivity?.attributes.trainNumber ?? "none")")
+            print("ℹ️ Expected dataSource: \(LiveActivityService.shared.currentActivity?.attributes.dataSource ?? "none")")
             print("ℹ️ Received trainId: \(trainId)")
+            print("ℹ️ Received dataSource: \(dataSource ?? "none")")
         }
     }
     
@@ -996,4 +1003,3 @@ final class AppState: ObservableObject {
     }
 
 }
-

@@ -136,11 +136,15 @@ final class Prefetcher {
         dataSource: String?
     ) {
         guard !trainNumber.isEmpty else { return }
-        if let age = TrainCacheService.shared.getCacheAge(trainNumber: trainNumber, date: date),
+        if let age = TrainCacheService.shared.getCacheAge(
+            trainNumber: trainNumber,
+            date: date,
+            dataSource: dataSource
+        ),
            age < detailsSkipIfFresherThan {
             return
         }
-        let key = trainDetailsKey(trainNumber: trainNumber, date: date)
+        let key = trainDetailsKey(trainNumber: trainNumber, date: date, dataSource: dataSource)
         guard !inFlightDetails.contains(key) else { return }
         inFlightDetails.insert(key)
         Task {
@@ -152,7 +156,12 @@ final class Prefetcher {
                     date: date,
                     dataSource: dataSource
                 )
-                TrainCacheService.shared.cacheTrain(train, trainNumber: trainNumber, date: date)
+                TrainCacheService.shared.cacheTrain(
+                    train,
+                    trainNumber: trainNumber,
+                    date: date,
+                    dataSource: dataSource
+                )
                 Log.debug("Prefetcher: train details warmed for \(trainNumber)")
             } catch {
                 Log.warning("Prefetcher: prefetchTrainDetails failed for \(trainNumber): \(error.localizedDescription)")
@@ -184,10 +193,11 @@ final class Prefetcher {
         return "\(from)|\(to)|\(dateString)|\(systemsCsv)"
     }
 
-    private func trainDetailsKey(trainNumber: String, date: Date) -> String {
+    private func trainDetailsKey(trainNumber: String, date: Date, dataSource: String?) -> String {
         let dateString = Calendar.current.startOfDay(for: date)
             .formatted(.iso8601.year().month().day())
-        return "\(trainNumber)|\(dateString)"
+        let source = dataSource?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return "\(source)|\(trainNumber)|\(dateString)"
     }
 
     // MARK: - Test support
