@@ -165,6 +165,54 @@ class TestRidePathClient:
             await client.get_all_arrivals()
 
     @pytest.mark.asyncio
+    async def test_get_all_arrivals_empty_body_returns_empty_list(self, client):
+        """HTTP 200 with an empty body is treated as a no-data cycle.
+
+        Regression for issue #1125: the RidePATH API occasionally returns
+        HTTP 200 with an empty body. The previous behavior was to call
+        ``response.json()``, which raises ``JSONDecodeError`` and was logged
+        at ERROR level, treating a transient upstream quirk as a collector
+        failure. The fix returns ``[]`` (which the collector handles as a
+        no-op cycle) and logs at WARNING.
+        """
+        mock_response = MagicMock()
+        mock_response.content = b""
+        # If json() is reached, that's a regression — fail loudly.
+        mock_response.json.side_effect = AssertionError(
+            "json() must not be called on an empty body"
+        )
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        arrivals = await client.get_all_arrivals()
+
+        assert arrivals == []
+        # Cache must NOT be populated by an empty cycle, otherwise we'd
+        # serve [] for the cache TTL even after the API recovers.
+        assert client._cache is None
+        assert client._cache_time is None
+
+    @pytest.mark.asyncio
+    async def test_get_all_arrivals_whitespace_body_returns_empty_list(self, client):
+        """HTTP 200 with a whitespace-only body is also treated as no-data."""
+        mock_response = MagicMock()
+        mock_response.content = b"   \n  "
+        mock_response.json.side_effect = AssertionError(
+            "json() must not be called on a whitespace-only body"
+        )
+
+        mock_session = AsyncMock()
+        mock_session.get = AsyncMock(return_value=mock_response)
+        client._session = mock_session
+
+        arrivals = await client.get_all_arrivals()
+
+        assert arrivals == []
+        assert client._cache is None
+
+    @pytest.mark.asyncio
     async def test_get_all_arrivals_unknown_station(self, client):
         """Test that unknown station codes are skipped gracefully."""
         response_data = {
