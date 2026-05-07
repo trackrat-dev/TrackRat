@@ -8,7 +8,7 @@ to collect_journey_details in Phase 3 to avoid a redundant API call.
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
-from trackrat.collectors.njt.journey import JourneyCollector
+from trackrat.collectors.njt.journey import JourneyCollector, JourneyMatchResult
 from trackrat.models.api import NJTransitTrainData
 from trackrat.models.database import TrainJourney
 
@@ -50,7 +50,10 @@ async def test_prefetched_data_skips_api_call():
     # We only care about whether the API call is made or skipped.
     with (
         patch.object(
-            collector, "_is_same_journey", new_callable=AsyncMock, return_value=True
+            collector,
+            "_is_same_journey",
+            new_callable=AsyncMock,
+            return_value=JourneyMatchResult.MATCH,
         ),
         patch.object(
             collector, "enhance_with_departure_board_data", new_callable=AsyncMock
@@ -96,7 +99,10 @@ async def test_without_prefetched_data_calls_api():
 
     with (
         patch.object(
-            collector, "_is_same_journey", new_callable=AsyncMock, return_value=True
+            collector,
+            "_is_same_journey",
+            new_callable=AsyncMock,
+            return_value=JourneyMatchResult.MATCH,
         ),
         patch.object(
             collector, "enhance_with_departure_board_data", new_callable=AsyncMock

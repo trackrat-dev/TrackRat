@@ -5,6 +5,7 @@ Collects complete journey details using the getTrainStopList API.
 """
 
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Any, cast
 
 from sqlalchemy import and_, delete, or_, select, update
@@ -35,6 +36,19 @@ from trackrat.utils.time import (
 from trackrat.utils.train import is_njt_stop_cancelled
 
 logger = get_logger(__name__)
+
+
+class JourneyMatchResult(Enum):
+    """Outcome of validating an NJT API response against a stored journey row.
+
+    Distinguishes "definitely a different journey" from "probably the same
+    journey, just out of sync" so the caller can choose to expire the row or
+    only skip the current update.
+    """
+
+    MATCH = "match"
+    DESTINATION_MISMATCH = "destination_mismatch"
+    DEPARTURE_TIME_MISMATCH = "departure_time_mismatch"
 
 
 def _journey_eager_options() -> list[Any]:
@@ -525,13 +539,19 @@ class JourneyCollector(BaseJourneyCollector):
         session: AsyncSession,
         stored_journey: TrainJourney,
         api_train_data: NJTransitTrainData,
-    ) -> bool:
+    ) -> JourneyMatchResult:
         """
         Verify if API data represents the same journey as our stored record.
 
         Uses key signals to detect journey changes:
-        - Destination must match (after normalization)
-        - First stop departure time should be similar (±10 min tolerance)
+        - Destination must match (after normalization) — strong identity signal
+        - First stop departure time should be similar (±10 min tolerance) —
+          weak signal that flags potential journey swaps but also fires on
+          heavily delayed real-world trains
+
+        Returns a tri-state result so the caller can decide whether to expire
+        the journey row (destination mismatch) or only skip this update
+        (departure-time mismatch).
 
         NOTE: Line code validation removed as it's unreliable across different API calls
         """
@@ -563,7 +583,7 @@ class JourneyCollector(BaseJourneyCollector):
                 ),
                 has_complete_journey=stored_journey.has_complete_journey,
             )
-            return False
+            return JourneyMatchResult.DESTINATION_MISMATCH
 
         # NOTE: Line code check removed - NJT API returns inconsistent line codes
         # between discovery (e.g., "No") and journey details (e.g., "NC")
@@ -732,7 +752,7 @@ class JourneyCollector(BaseJourneyCollector):
                             api_departure_tz_info=str(api_departure.tzinfo),
                             raw_api_dep_time=dep_time,
                         )
-                        return False
+                        return JourneyMatchResult.DEPARTURE_TIME_MISMATCH
         else:
             # Journey doesn't have complete data yet - likely discovered at an intermediate station
             # The journey collector will fix the origin and departure time
@@ -757,7 +777,7 @@ class JourneyCollector(BaseJourneyCollector):
             ),
         )
 
-        return True
+        return JourneyMatchResult.MATCH
 
     async def collect_journey_details(
         self,
@@ -869,8 +889,11 @@ class JourneyCollector(BaseJourneyCollector):
         )
 
         # Verify this API data matches our stored journey
-        if not await self._is_same_journey(session, journey, train_data):
-            # API returned data for a different journey - mark this one as expired
+        match_result = await self._is_same_journey(session, journey, train_data)
+        if match_result is JourneyMatchResult.DESTINATION_MISMATCH:
+            # The API is returning a genuinely different journey under this
+            # train_id (e.g., the row was originally bound to a now-cancelled
+            # run). Mark expired so future passes stop refreshing it.
             journey.is_expired = True
             journey.api_error_count = 99  # High value to prevent retry
 
@@ -904,6 +927,21 @@ class JourneyCollector(BaseJourneyCollector):
                 api_error_count=journey.api_error_count,
             )
 
+            await session.flush()
+            return
+
+        if match_result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH:
+            # Destination matches but the API's first-stop time is outside the
+            # 10-minute tolerance. This is most often a real-world delay rather
+            # than a journey swap, so we skip applying this snapshot but leave
+            # the row valid for the next collection cycle. (`_is_same_journey`
+            # has already logged the detailed `journey_mismatch_departure_time`
+            # warning with full context.)
+            #
+            # Advance freshness metadata so the scheduler doesn't treat this
+            # journey as stale and busy-loop re-collecting it every cycle.
+            journey.last_updated_at = now_et()
+            journey.update_count = (journey.update_count or 0) + 1
             await session.flush()
             return
 
