@@ -1725,6 +1725,17 @@ class DepartureService:
                 result.append(dep)
                 continue
 
+            # Always show cancelled trains. Cancellations created from a SCHEDULED
+            # row (cancelled before promotion to OBSERVED) would otherwise be
+            # filtered out below and disappear from `get_departures` entirely —
+            # while `get_recent_departures` only picks them up after their
+            # scheduled time, leaving a gap where the cancellation appears in
+            # neither list. The upstream SQL preserves cancelled rows precisely
+            # to surface them in the upcoming list, so we honor that here.
+            if dep.is_cancelled:
+                result.append(dep)
+                continue
+
             # Always show SCHEDULED trains from systems without real-time data
             if dep.data_source not in REAL_TIME_DATA_SOURCES:
                 result.append(dep)
