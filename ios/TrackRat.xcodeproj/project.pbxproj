@@ -30,6 +30,8 @@
 		A11A0DBB2F4B83CF00C96DA1 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB72F4B83CF00C96DA1 /* APIService.swift */; };
 		A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */; };
 		A11A0DC12F4B840B00C96DA1 /* AddRouteAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */; };
+		F1TRNROW01000000000000A2 /* TrainRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1TRNROW01000000000000A1 /* TrainRow.swift */; };
+		F1STDETAIL00000000000000A2 /* StationDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1STDETAIL00000000000000A1 /* StationDetailsView.swift */; };
 		A11A2C332E27C1A400B74BB5 /* StaticTrackDistributionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */; };
 		A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5562E25BBC700958ABA /* TrainV2.swift */; };
 		A126E55A2E25BBC700958ABA /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5552E25BBC700958ABA /* DeepLink.swift */; };
@@ -216,6 +218,8 @@
 		A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AlertSubscriptionService.swift; path = TrackRat/Services/AlertSubscriptionService.swift; sourceTree = "<group>"; };
 		A11A0DB72F4B83CF00C96DA1 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = APIService.swift; path = TrackRat/Services/APIService.swift; sourceTree = "<group>"; };
 		A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AddRouteAlertView.swift; path = Views/Screens/AddRouteAlertView.swift; sourceTree = "<group>"; };
+		F1TRNROW01000000000000A1 /* TrainRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainRow.swift; path = Views/Components/TrainRow.swift; sourceTree = "<group>"; };
+		F1STDETAIL00000000000000A1 /* StationDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationDetailsView.swift; path = Views/Screens/StationDetailsView.swift; sourceTree = "<group>"; };
 		A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
 		A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StaticTrackDistributionService.swift; path = Services/StaticTrackDistributionService.swift; sourceTree = "<group>"; };
 		A126E5552E25BBC700958ABA /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLink.swift; path = Models/DeepLink.swift; sourceTree = "<group>"; };
@@ -446,6 +450,8 @@
 				A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */,
 				A1STNPK0012F6000000000001 /* StationPickerSheet.swift */,
 				A1ROUTE0012F5000000000001 /* RouteStatusView.swift */,
+				F1TRNROW01000000000000A1 /* TrainRow.swift */,
+				F1STDETAIL00000000000000A1 /* StationDetailsView.swift */,
 				A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */,
 				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
 				A126E5552E25BBC700958ABA /* DeepLink.swift */,
@@ -738,6 +744,8 @@
 				A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */,
 				A1STNPK0012F6000000000002 /* StationPickerSheet.swift in Sources */,
 				A1ROUTE0012F5000000000002 /* RouteStatusView.swift in Sources */,
+				F1TRNROW01000000000000A2 /* TrainRow.swift in Sources */,
+				F1STDETAIL00000000000000A2 /* StationDetailsView.swift in Sources */,
 				A11A0DC12F4B840B00C96DA1 /* AddRouteAlertView.swift in Sources */,
 				A10E98042DE39F23002F3214 /* TrainListView.swift in Sources */,
 				A183B7E12E6352E80024FADC /* LegacySheetAwareScrollView.swift in Sources */,

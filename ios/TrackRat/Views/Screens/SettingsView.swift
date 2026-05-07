@@ -105,6 +105,11 @@ struct SettingsView: View {
                     }
                 }
             }
+            .navigationDestination(for: NavigationDestination.self) { destination in
+                if case .stationDetails(let stationCode) = destination {
+                    StationDetailsView(stationCode: stationCode)
+                }
+            }
             .navigationBarHidden(true)
             .edgeSwipeBack(path: $navigationPath)
         }
@@ -419,6 +424,7 @@ struct SettingsSection: View {
                         }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
+                    .stationDetailsContextMenu(code: ratSense.getHomeStation(), path: $navigationPath)
 
                     // Work Station
                     FavoriteStationRow(
@@ -440,6 +446,7 @@ struct SettingsSection: View {
                         }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
+                    .stationDetailsContextMenu(code: ratSense.getWorkStation(), path: $navigationPath)
 
                     // Other favorites
                     let homeCode = ratSense.getHomeStation()
@@ -453,7 +460,7 @@ struct SettingsSection: View {
                             stationCode: fav.id,
                             isLast: fav.id == otherFavorites.last?.id && appState.favoriteStations.count >= 10
                         ) {
-                            // Tap does nothing for "other" favorites — they're just listed
+                            navigationPath.append(NavigationDestination.stationDetails(stationCode: fav.id))
                         } onClear: {
                             appState.removeFavoriteStation(code: fav.id)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -848,7 +855,11 @@ private struct FavoriteStationRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                if showControls && label != nil {
+                // Wrap in a Button whenever there's a meaningful tap target:
+                // labelled rows (Home/Work) always tap to repick; unlabelled
+                // ("other") rows only tap when a station is set, since they
+                // navigate to that station's details.
+                if showControls && (label != nil || stationCode != nil) {
                     Button(action: onTap) {
                         rowContent
                             .contentShape(Rectangle())
