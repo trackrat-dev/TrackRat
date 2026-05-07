@@ -316,17 +316,17 @@ async def _calculate_route_stats_sql(
         "track_usage": {},
     }
 
-    # Build time filter clauses for sub-day windows (hours parameter).
-    # dest_time_filter: filters by arrival at destination (used for non-cancelled trains).
-    # origin_time_filter: filters by departure at origin (used for cancelled trains
-    # without destination stops, since they never arrived anywhere).
-    dest_time_filter = ""
+    # Sub-day windows (hours parameter) filter by ORIGIN DEPARTURE time.
+    # "Trains in the past hour" means "trains that departed origin in the
+    # past hour" — captures recently-departed in-transit trains and is
+    # robust to NJT's NULL scheduled_arrival at intermediate stops (NJT
+    # puts the schedule in DEP_TIME at non-terminal stops, so a destination-
+    # arrival filter silently drops every NJT route ending mid-line).
+    # Stats automatically fall back from arrival-based to departure-based
+    # metrics when arrival data is unavailable (see destination_stops vs
+    # origin_stops CTEs and the on_time_source selection below).
     origin_time_filter = ""
     if cutoff_time:
-        dest_time_filter = """
-            AND COALESCE(ts.actual_arrival, ts.scheduled_arrival) >= :cutoff_time
-            AND COALESCE(ts.actual_arrival, ts.scheduled_arrival) <= :now_time
-        """
         origin_time_filter = """
             AND COALESCE(fs.actual_departure, fs.scheduled_departure) >= :cutoff_time
             AND COALESCE(fs.actual_departure, fs.scheduled_departure) <= :now_time
@@ -340,13 +340,11 @@ async def _calculate_route_stats_sql(
     if line_codes:
         line_filter = "AND tj.line_code = ANY(:line_codes)"
 
-    # Build the route_journeys CTE SQL (reused by stats and track queries)
-    # Non-cancelled trains are time-windowed by destination arrival.
-    # Cancelled trains are time-windowed by origin departure — they never
-    # arrived, so dest arrival is NULL (and for NJT intermediate stops even
-    # scheduled_arrival is NULL, since the schedule time lives in
-    # scheduled_departure). Using dest arrival for cancelled trains silently
-    # excludes them, making cancellation_rate read 0% during disruptions.
+    # Build the route_journeys CTE SQL (reused by stats and track queries).
+    # Require an origin stop within the time window plus either a downstream
+    # destination stop (the normal case) or a cancelled journey whose stop
+    # list never finished backfilling (origin-only allowed so disruptions
+    # still register in cancellation_rate).
     route_journeys_cte = f"""
         SELECT tj.id AS journey_id, tj.is_cancelled
         FROM train_journeys tj
@@ -355,41 +353,20 @@ async def _calculate_route_stats_sql(
           AND tj.journey_date <= :end_date
           {train_filter}
           {line_filter}
-          AND (
-              -- Non-cancelled: require stops at both origin and destination,
-              -- time-windowed by destination arrival.
-              (NOT tj.is_cancelled AND EXISTS (
-                  SELECT 1 FROM journey_stops fs
-                  WHERE fs.journey_id = tj.id
-                    AND fs.station_code = ANY(:from_codes)
-                    AND EXISTS (
+          AND EXISTS (
+              SELECT 1 FROM journey_stops fs
+              WHERE fs.journey_id = tj.id
+                AND fs.station_code = ANY(:from_codes)
+                {origin_time_filter}
+                AND (
+                    EXISTS (
                         SELECT 1 FROM journey_stops ts
                         WHERE ts.journey_id = tj.id
                           AND ts.station_code = ANY(:to_codes)
                           AND ts.stop_sequence > fs.stop_sequence
-                          {dest_time_filter}
                     )
-              ))
-              OR
-              -- Cancelled: time-window by origin departure. Require a
-              -- destination stop after origin when the stop list is complete;
-              -- allow origin-only for reconciled SCHEDULED trains where stop
-              -- backfill failed.
-              (tj.is_cancelled AND EXISTS (
-                  SELECT 1 FROM journey_stops fs
-                  WHERE fs.journey_id = tj.id
-                    AND fs.station_code = ANY(:from_codes)
-                    {origin_time_filter}
-                    AND (
-                        NOT tj.has_complete_journey
-                        OR EXISTS (
-                            SELECT 1 FROM journey_stops ts
-                            WHERE ts.journey_id = tj.id
-                              AND ts.station_code = ANY(:to_codes)
-                              AND ts.stop_sequence > fs.stop_sequence
-                        )
-                    )
-              ))
+                    OR (tj.is_cancelled AND NOT tj.has_complete_journey)
+                )
           )
         ORDER BY tj.journey_date DESC
         LIMIT 5000
