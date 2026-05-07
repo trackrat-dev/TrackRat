@@ -326,7 +326,8 @@ class DepartureService:
         # 2. Time-based fallback: scheduled departure > 5 minutes ago
         #    This catches trains where has_departed_station wasn't updated (e.g.,
         #    JIT refresh skips the second pass, or collector hasn't run yet).
-        # Cancelled trains are always shown (they have their own 2-hour window).
+        # Cancelled trains are shown only if their scheduled time is still upcoming,
+        # to avoid duplication with the recent-departures endpoint.
         if hide_departed:
             past_cutoff = now_et() - timedelta(minutes=5)
             departure_filters.append(
@@ -341,8 +342,14 @@ class DepartureService:
                             JourneyStop.scheduled_departure > past_cutoff,
                         ),
                     ),
-                    # Always show cancelled trains
-                    TrainJourney.is_cancelled.is_(True),
+                    # Cancelled trains only if scheduled departure is still upcoming
+                    and_(
+                        TrainJourney.is_cancelled.is_(True),
+                        or_(
+                            JourneyStop.scheduled_departure.is_(None),
+                            JourneyStop.scheduled_departure > past_cutoff,
+                        ),
+                    ),
                 )
             )
 
