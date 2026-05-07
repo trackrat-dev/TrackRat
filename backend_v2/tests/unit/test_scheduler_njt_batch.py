@@ -337,7 +337,6 @@ class TestCollectNJTJourneysBatch:
             # Should handle the error gracefully and not crash
             await scheduler_service.collect_njt_journeys_batch(["3737"])
 
-
     @pytest.mark.asyncio
     async def test_skipped_results_not_counted_as_errors(self, scheduler_service):
         """Skipped results (expired/not-found/disappeared) should not
@@ -383,9 +382,7 @@ class TestCollectNJTJourneysBatch:
             side_effect=mock_collect,
         ):
             with patch.object(scheduler_service, "_running_tasks", {}):
-                with patch(
-                    "trackrat.services.scheduler.logger"
-                ) as mock_logger:
+                with patch("trackrat.services.scheduler.logger") as mock_logger:
                     await scheduler_service.collect_njt_journeys_batch(train_ids)
 
         # Verify batch completion log shows 1 success, 0 errors

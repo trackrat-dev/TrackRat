@@ -1322,9 +1322,9 @@ class TestFilterCrossSystemDirectTrips:
         expanded_systems: set[str] = set()
         for code in expand_station_codes("TS"):
             expanded_systems |= get_systems_serving_station(code)
-        assert "NJT" in expanded_systems, (
-            f"TS should resolve to NJT via SE expansion, got {expanded_systems}"
-        )
+        assert (
+            "NJT" in expanded_systems
+        ), f"TS should resolve to NJT via SE expansion, got {expanded_systems}"
 
         # NJT trip from TS to TR should be kept when using expanded systems
         trips = [self._make_trip_with_source("NJT")]

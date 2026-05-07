@@ -1005,9 +1005,7 @@ class TestCollectJourneyLogging:
             return svc
 
     @pytest.mark.asyncio
-    async def test_collect_journey_logs_debug_on_success(
-        self, scheduler_service
-    ):
+    async def test_collect_journey_logs_debug_on_success(self, scheduler_service):
         """Successful collection should log at DEBUG level."""
         result = {
             "train_id": "1234",
@@ -1106,9 +1104,7 @@ class TestCollectJourneyLogging:
                 mock_logger.error.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_collect_journey_logs_info_on_unsuccessful(
-        self, scheduler_service
-    ):
+    async def test_collect_journey_logs_info_on_unsuccessful(self, scheduler_service):
         """Non-skipped unsuccessful result (e.g. TrainNotFoundError) logs INFO."""
         result = {
             "train_id": "5530",
@@ -1131,9 +1127,7 @@ class TestCollectJourneyLogging:
                 mock_logger.error.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_collect_journey_logs_error_on_none(
-        self, scheduler_service
-    ):
+    async def test_collect_journey_logs_error_on_none(self, scheduler_service):
         """Genuine failure (None) should still log ERROR."""
         with patch.object(
             scheduler_service,

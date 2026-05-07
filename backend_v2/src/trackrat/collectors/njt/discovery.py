@@ -668,9 +668,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                 )
 
                                 if "BACKCOLOR" in train_data:
-                                    journey.line_color = train_data[
-                                        "BACKCOLOR"
-                                    ].strip()
+                                    journey.line_color = train_data["BACKCOLOR"].strip()
 
                                 session.add(journey)
                                 await session.flush()
