@@ -613,41 +613,50 @@ class JourneyCollector(BaseJourneyCollector):
                 if dep_time is not None:
                     api_departure = parse_njt_time(dep_time)
 
-                    # Source stored_departure from the stops table when available.
-                    # journey.scheduled_departure is a denormalized cache that the
-                    # schedule collector overwrites for every station's schedule
-                    # item, so it can drift from the train's actual origin time
-                    # even when origin_station_code is correct. The stops table
-                    # is the authoritative schedule.
-                    stored_departure = stored_journey.scheduled_departure
-
-                    stops_stmt = (
-                        select(JourneyStop)
-                        .where(JourneyStop.journey_id == stored_journey.id)
-                        .order_by(JourneyStop.stop_sequence.asc().nulls_last())
-                        .limit(1)
-                    )
-                    first_db_stop = await session.scalar(stops_stmt)
-
-                    if first_db_stop and first_db_stop.scheduled_departure:
-                        if (
-                            stored_departure is None
-                            or stored_departure != first_db_stop.scheduled_departure
-                        ):
-                            logger.info(
-                                "using_stops_table_departure_for_comparison",
-                                journey_id=stored_journey.id,
-                                train_id=stored_journey.train_id,
-                                first_stop_code=first_db_stop.station_code,
-                                stored_origin=stored_journey.origin_station_code,
-                                stale_departure=(
-                                    stored_departure.isoformat()
-                                    if stored_departure
-                                    else None
-                                ),
-                                corrected_departure=first_db_stop.scheduled_departure.isoformat(),
+                    # The stops table is the more reliable source of truth for a
+                    # given station's scheduled_departure: it is populated each
+                    # collection cycle and frozen once set, so it tracks the
+                    # schedule that was in effect when the stop row was created.
+                    # The journey-record `scheduled_departure` field, by contrast,
+                    # can drift -- e.g. when schedule.py creates the journey before
+                    # NJT returns STOPS data and discovery later populates stops
+                    # from a revised schedule, or when a journey is discovered at
+                    # an intermediate station and origin metadata is never
+                    # corrected. When the journey-record value disagrees with the
+                    # stops table, comparing the API against the stale journey
+                    # field falsely rejects the same journey, marks it expired,
+                    # and prevents update_journey_metadata from ever correcting
+                    # the drift -- a self-perpetuating cycle.
+                    #
+                    # Prefer the stops-table value for the API's first station;
+                    # fall back to the journey record only if no matching stop
+                    # exists in our database.
+                    stored_departure: datetime | None = None
+                    if first_stop.STATION_2CHAR:
+                        db_stop_stmt = select(JourneyStop).where(
+                            and_(
+                                JourneyStop.journey_id == stored_journey.id,
+                                JourneyStop.station_code == first_stop.STATION_2CHAR,
                             )
-                        stored_departure = first_db_stop.scheduled_departure
+                        )
+                        db_stop = await session.scalar(db_stop_stmt)
+                        if db_stop and db_stop.scheduled_departure:
+                            stored_departure = db_stop.scheduled_departure
+                            if (
+                                stored_journey.scheduled_departure is not None
+                                and stored_journey.scheduled_departure
+                                != db_stop.scheduled_departure
+                            ):
+                                logger.info(
+                                    "using_stops_table_departure_for_comparison",
+                                    journey_id=stored_journey.id,
+                                    train_id=stored_journey.train_id,
+                                    api_first_station=first_stop.STATION_2CHAR,
+                                    stops_table_departure=db_stop.scheduled_departure.isoformat(),
+                                    journey_record_departure=stored_journey.scheduled_departure.isoformat(),
+                                )
+                    if stored_departure is None:
+                        stored_departure = stored_journey.scheduled_departure
 
                     if stored_departure is not None:
                         # Ensure stored departure is timezone-aware for comparison

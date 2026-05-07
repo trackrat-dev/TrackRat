@@ -358,7 +358,7 @@ class TestStaleOriginDetection:
             db_session, journey, api_response
         )
 
-        assert result is True, (
+        assert result is JourneyMatchResult.MATCH, (
             "Journey should self-heal via stops table when journey.scheduled_departure "
             "has drifted (the per-station schedule overwrite bug)"
         )
