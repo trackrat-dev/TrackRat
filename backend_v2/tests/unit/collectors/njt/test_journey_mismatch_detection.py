@@ -22,7 +22,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.collectors.njt.journey import JourneyCollector
+from trackrat.collectors.njt.journey import JourneyCollector, JourneyMatchResult
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import ET, now_et
 
@@ -139,13 +139,13 @@ class TestStaleOriginDetection:
             ],
         )
 
-        # Without the fix, this would return False (86 min > 10 min tolerance)
-        # With the fix, it should return True (uses stops table departure)
+        # Without the fix, this would return DEPARTURE_TIME_MISMATCH (86 min > 10 min tolerance)
+        # With the fix, it should return MATCH (uses stops table departure)
         result = await journey_collector._is_same_journey(
             db_session, journey, api_response
         )
 
-        assert result is True, (
+        assert result is JourneyMatchResult.MATCH, (
             "Journey should be recognized as same journey when stops table has "
             "correct origin even if journey.origin_station_code is stale"
         )
@@ -206,12 +206,14 @@ class TestStaleOriginDetection:
             ],
         )
 
-        # Should return False - different destination
+        # Should return DESTINATION_MISMATCH - different destination
         result = await journey_collector._is_same_journey(
             db_session, journey, api_response
         )
 
-        assert result is False, "Different destination should be detected as mismatch"
+        assert (
+            result is JourneyMatchResult.DESTINATION_MISMATCH
+        ), "Different destination should be detected as a destination mismatch"
 
     @pytest.mark.asyncio
     async def test_correct_origin_still_works(
@@ -267,12 +269,14 @@ class TestStaleOriginDetection:
             ],
         )
 
-        # Should return True - everything matches
+        # Should return MATCH - everything matches
         result = await journey_collector._is_same_journey(
             db_session, journey, api_response
         )
 
-        assert result is True, "Matching journey should be recognized"
+        assert (
+            result is JourneyMatchResult.MATCH
+        ), "Matching journey should be recognized"
 
     @pytest.mark.asyncio
     async def test_self_heals_when_journey_departure_drifts_from_stops(
@@ -354,7 +358,7 @@ class TestStaleOriginDetection:
             db_session, journey, api_response
         )
 
-        assert result is True, (
+        assert result is JourneyMatchResult.MATCH, (
             "Journey should self-heal via stops table when journey.scheduled_departure "
             "has drifted (the per-station schedule overwrite bug)"
         )
@@ -403,12 +407,14 @@ class TestStaleOriginDetection:
             ],
         )
 
-        # Should return True - incomplete journey skips departure check
+        # Should return MATCH - incomplete journey skips departure check
         result = await journey_collector._is_same_journey(
             db_session, journey, api_response
         )
 
-        assert result is True, "Incomplete journey should skip departure time check"
+        assert (
+            result is JourneyMatchResult.MATCH
+        ), "Incomplete journey should skip departure time check"
 
     @pytest.mark.asyncio
     async def test_uses_stops_table_when_origin_matches_but_journey_record_is_stale(
@@ -491,7 +497,145 @@ class TestStaleOriginDetection:
             db_session, journey, api_response
         )
 
-        assert result is True, (
+        assert result is JourneyMatchResult.MATCH, (
             "Same journey should be recognized when stops table agrees with API "
             "even though journey.scheduled_departure is stale"
         )
+
+    @pytest.mark.asyncio
+    async def test_delayed_train_reports_departure_time_mismatch(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A heavily delayed train (>10 min vs scheduled origin departure)
+        must surface as DEPARTURE_TIME_MISMATCH rather than a destination
+        mismatch. The caller in collect_journey_details treats this as a
+        soft skip — it must not flag the journey as expired, since that
+        would cause Live Activities for the in-progress trip to receive
+        a premature end push.
+        """
+        scheduled_departure = now_et().replace(
+            hour=15, minute=55, second=0, microsecond=0
+        )
+        api_actual_departure = scheduled_departure + timedelta(minutes=22)
+
+        journey = TrainJourney(
+            train_id="3943",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Stops table reflects the same scheduled origin time so the
+        # stale-origin recovery path is not triggered.
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3943",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_actual_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH, (
+            "A 22-minute departure-time skew with matching destination should "
+            "be reported as DEPARTURE_TIME_MISMATCH so the caller can skip "
+            "the update without permanently expiring the journey row"
+        )
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_details_does_not_expire_on_time_mismatch(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Regression: the journey collector must not set ``is_expired`` /
+        ``api_error_count = 99`` when ``_is_same_journey`` returns
+        DEPARTURE_TIME_MISMATCH. That false-positive expiry was what caused
+        production Live Activities to receive end pushes ~60s after
+        registration for any train running >10 min late.
+        """
+        scheduled_departure = now_et().replace(
+            hour=15, minute=55, second=0, microsecond=0
+        )
+        api_actual_departure = scheduled_departure + timedelta(minutes=22)
+
+        journey = TrainJourney(
+            train_id="3943",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3943",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_actual_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.collect_journey_details(db_session, journey)
+
+        await db_session.refresh(journey)
+        assert (
+            journey.is_expired is False
+        ), "Time-only mismatch must not flag the journey as expired"
+        assert (
+            journey.api_error_count or 0
+        ) == 0, "Time-only mismatch must not bump api_error_count"

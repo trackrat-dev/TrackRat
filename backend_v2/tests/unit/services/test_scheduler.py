@@ -527,6 +527,157 @@ class TestSchedulerService:
                 assert ("AMTRAK", "AMTRAK") in captured_pairs
 
     @pytest.mark.asyncio
+    async def test_update_live_activities_does_not_end_on_is_expired_alone(
+        self, scheduler_service, mock_apns_service
+    ):
+        """Regression: ``is_expired`` is a collector-side bookkeeping flag
+        (e.g., NJT journey-mismatch validator false positives, MTA missing-
+        from-feed timeouts) and can flip while the user's trip is still in
+        progress. It must NOT cause an end push — only ``is_completed`` /
+        ``is_cancelled`` should terminate a Live Activity."""
+        scheduler_service.apns_service = mock_apns_service
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine"),
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                mock_token = Mock(
+                    push_token="token-expired",
+                    activity_id="activity-expired",
+                    train_number="3943",
+                    origin_code="NY",
+                    destination_code="HL",
+                    data_source="AMTRAK",  # bypass NJT track-assignment branch
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=datetime.now(UTC),
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [mock_token]
+
+                # Journey is flagged is_expired (e.g., by validator false
+                # positive) but the trip itself is still in progress.
+                mock_journey = Mock(
+                    train_id="3943",
+                    data_source="AMTRAK",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=False,
+                    is_expired=True,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                mock_sync_session.scalar.return_value = mock_journey
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    return_value={"test": "content"},
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                # Update was sent; end was NOT sent.
+                mock_apns_service.send_live_activity_update.assert_called_once_with(
+                    "token-expired", {"test": "content"}
+                )
+                mock_apns_service.send_live_activity_end.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_update_live_activities_ends_on_is_completed(
+        self, scheduler_service, mock_apns_service
+    ):
+        """``is_completed`` must still terminate a Live Activity."""
+        scheduler_service.apns_service = mock_apns_service
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine"),
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                mock_token = Mock(
+                    push_token="token-done",
+                    activity_id="activity-done",
+                    train_number="3943",
+                    origin_code="NY",
+                    destination_code="HL",
+                    data_source="AMTRAK",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=datetime.now(UTC),
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [mock_token]
+
+                mock_journey = Mock(
+                    train_id="3943",
+                    data_source="AMTRAK",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=True,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                mock_sync_session.scalar.return_value = mock_journey
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    return_value={"test": "content"},
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                mock_apns_service.send_live_activity_end.assert_called_once()
+                mock_apns_service.send_live_activity_update.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_precompute_congestion_cache(self, scheduler_service):
         """Test congestion cache pre-computation."""
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:

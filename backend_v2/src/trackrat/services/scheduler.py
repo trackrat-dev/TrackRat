@@ -3007,21 +3007,16 @@ class SchedulerService:
                             )
                             continue
 
-                        # Check if journey is expired, completed, or cancelled
-                        # If so, send end events to all Live Activities tracking this train
-                        should_end = (
-                            journey.is_expired
-                            or journey.is_completed
-                            or journey.is_cancelled
-                        )
+                        # End the Live Activity only on actual journey termination.
+                        # `is_expired` is a collector-side bookkeeping flag (data feed
+                        # stopped, validator mismatch, yesterday's leftover) and can
+                        # flip transiently while the user's trip is still in progress,
+                        # so it must not drive end-of-activity pushes.
+                        should_end = journey.is_completed or journey.is_cancelled
 
                         if should_end:
                             end_reason = (
-                                "expired"
-                                if journey.is_expired
-                                else (
-                                    "completed" if journey.is_completed else "cancelled"
-                                )
+                                "completed" if journey.is_completed else "cancelled"
                             )
 
                             logger.info(
