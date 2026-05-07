@@ -139,7 +139,7 @@ TrackRat/
 │   │   ├── AddRouteAlertView.swift      # Add route alert
 │   │   └── TripHistoryView.swift        # Trip history
 │   │
-│   └── Components/              # Reusable UI components (23 files)
+│   └── Components/              # Reusable UI components (25 files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
 │       ├── AlertConfigurationSection.swift # Route alert configuration
 │       ├── ConfettiView.swift           # Confetti animation effect
@@ -156,6 +156,8 @@ TrackRat/
 │       ├── StationButton.swift          # Station selection button
 │       ├── StationPickerSheet.swift     # Station picker modal
 │       ├── StationRow.swift             # Station list row
+│       ├── SubwayLineChips.swift        # Subway line badge chips
+│       ├── SystemChips.swift            # Transit system indicator chips
 │       ├── TrackRatLoadingView.swift    # Loading animation
 │       ├── TrackRatMascot.swift         # Animated character
 │       ├── TrackRatNavigationHeader.swift # Navigation header
@@ -175,7 +177,8 @@ TrackRat/
 │   ├── StationDepartures.swift # Station departure configuration
 │   ├── LiveActivityModels.swift # Widget shared types
 │   ├── RouteTopology.swift      # Route definitions for map layers
-│   └── RouteShapes.swift        # Route shape coordinates for map rendering
+│   ├── RouteShapes.swift        # Route shape coordinates for map rendering
+│   └── SubwayLines.swift        # Subway line definitions and color mappings
 │
 ├── Theme/                       # Visual design
 │   └── TrackRatTheme.swift     # Colors and styles

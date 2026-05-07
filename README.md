@@ -178,7 +178,9 @@ npm run build                        # TypeScript compile + Vite build
 
 ```
 GET  /api/v2/trains/departures              # Departures for a route
+GET  /api/v2/trains/recent-departures       # Recent departures (no route filter)
 GET  /api/v2/trains/{train_id}              # Train details with all stops
+GET  /api/v2/trains/{train_id}/history      # Historical train performance
 GET  /api/v2/routes/congestion              # Network congestion data
 GET  /api/v2/predictions/track              # Platform predictions
 GET  /api/v2/predictions/delay              # Delay/cancellation forecasts

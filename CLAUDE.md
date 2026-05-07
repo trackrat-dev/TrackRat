@@ -483,7 +483,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`
 - iOS services: `ios/TrackRat/Services/`
 - iOS models: `ios/TrackRat/Models/`
-- iOS shared: `ios/TrackRat/Shared/` (LiveActivityModels, Stations, StationData, StationDepartures, StationCoordinates, RouteTopology, RouteShapes)
+- iOS shared: `ios/TrackRat/Shared/` (LiveActivityModels, Stations, StationData, StationDepartures, StationCoordinates, RouteTopology, RouteShapes, SubwayLines)
 - iOS utilities: `ios/TrackRat/Utilities/` (Extensions, Logger)
 - iOS theme: `ios/TrackRat/Theme/` (TrackRatTheme)
 - iOS Live Activity: `ios/TrainLiveActivityExtension/`
@@ -493,7 +493,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Web components: `webpage_v2/src/components/`
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
-- Web data: `webpage_v2/src/data/` (routeTopology, stations)
+- Web data: `webpage_v2/src/data/` (routeTopology, stations, subwayLines)
 - Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch)
 - Web types: `webpage_v2/src/types/`
 - Web tests: `webpage_v2/src/` (colocated `*.test.ts` and `*.test.tsx` files, Vitest + React Testing Library)
@@ -509,6 +509,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 ```
 # Train Operations
 /api/v2/trains/departures          # List departures for route
+/api/v2/trains/recent-departures   # Recent departures (no route filter)
 /api/v2/trains/{train_id}          # Train details with all stops
 /api/v2/trains/{train_id}/history  # Historical train performance
 
@@ -555,6 +556,10 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 /health/ready                      # Kubernetes readiness probe
 /scheduler/status                  # APScheduler job status
 /metrics                           # Prometheus metrics
+
+# Share (link previews)
+/share/train/{train_id}            # OG meta tags HTML for link previews
+/share/train/{train_id}/image      # PNG share image generation
 ```
 
 **API Environments:**
