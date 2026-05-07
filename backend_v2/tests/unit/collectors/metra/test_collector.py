@@ -525,9 +525,13 @@ class TestCollectorErrorPropagation:
 class TestConsecutiveEmptyCycles:
     """Tests for consecutive-zero arrival detection.
 
-    When the feed returns 0 arrivals for N consecutive cycles, the collector
-    should raise so the scheduler marks the run as failed, making the problem
-    visible in error logs and health checks.
+    Empty 200s from the upstream Metra feed are a known recurring behavior
+    (daily maintenance gap ~07:30-09:25 UTC). The collector logs WARNING with
+    a running counter so monitoring can alert on sustained outages, but does
+    NOT escalate to ERROR — that would generate spurious daily error noise.
+    Genuine HTTP / auth failures still surface via MetraFetchError.
+
+    See: https://github.com/trackrat-dev/trackrat/issues/1124
     """
 
     @pytest.fixture(autouse=True)
@@ -570,8 +574,14 @@ class TestConsecutiveEmptyCycles:
         assert collector_module._consecutive_empty_cycles == 2
 
     @pytest.mark.asyncio
-    async def test_three_consecutive_empty_cycles_raises(self):
-        """Three consecutive empty cycles should raise RuntimeError."""
+    async def test_three_consecutive_empty_cycles_does_not_raise(self):
+        """Empty cycles never escalate to RuntimeError, regardless of count.
+
+        Daily Metra upstream maintenance gaps produce ~20-30 consecutive empty
+        cycles — escalating those to ERROR generated 89 spurious errors in
+        5 days on production (#1124). The counter still increments for ops
+        visibility but the cycle returns normally.
+        """
         collector_module._consecutive_empty_cycles = 2
 
         client = MagicMock(spec=MetraClient)
@@ -581,8 +591,53 @@ class TestConsecutiveEmptyCycles:
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
-        with pytest.raises(RuntimeError, match="consecutive.*cycles returned 0"):
+        result = await collector.collect(session)
+
+        assert result["total_arrivals"] == 0
+        assert collector_module._consecutive_empty_cycles == 3
+
+    @pytest.mark.asyncio
+    async def test_many_consecutive_empty_cycles_does_not_raise(self):
+        """Even 30 consecutive empty cycles (a typical maintenance gap) must
+        not raise — that was the production bug."""
+        collector_module._consecutive_empty_cycles = 29
+
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        result = await collector.collect(session)
+
+        assert result["total_arrivals"] == 0
+        assert collector_module._consecutive_empty_cycles == 30
+
+    @pytest.mark.asyncio
+    async def test_empty_cycle_logs_counter_for_monitoring(self, caplog):
+        """Empty cycles must emit a WARNING-level log with the running counter
+        so monitoring can alert on sustained outages."""
+        import logging
+
+        collector_module._consecutive_empty_cycles = 4
+
+        client = MagicMock(spec=MetraClient)
+        client.has_credentials = True
+        client._auth_method = "query_param"
+        client.get_all_arrivals = AsyncMock(return_value=[])
+        collector = MetraCollector(client=client)
+        session = AsyncMock()
+
+        with caplog.at_level(logging.WARNING, logger="trackrat.collectors.metra.collector"):
             await collector.collect(session)
+
+        empty_records = [r for r in caplog.records if r.message == "metra_empty_feed"]
+        assert empty_records, "Expected metra_empty_feed warning to be emitted"
+        record = empty_records[-1]
+        assert record.levelno == logging.WARNING
+        assert getattr(record, "consecutive_empty_cycles", None) == 5
+        assert getattr(record, "auth_method", None) == "query_param"
 
     @pytest.mark.asyncio
     async def test_nonempty_cycle_resets_counter(self):
@@ -618,8 +673,3 @@ class TestConsecutiveEmptyCycles:
             pass
 
         assert collector_module._consecutive_empty_cycles == 0
-
-    @pytest.mark.asyncio
-    async def test_threshold_is_configurable(self):
-        """The threshold constant should be accessible and reasonable."""
-        assert collector_module._CONSECUTIVE_EMPTY_THRESHOLD == 3
