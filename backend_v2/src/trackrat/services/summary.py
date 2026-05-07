@@ -9,12 +9,11 @@ Generates brief, human-readable summaries of recent train operations at three sc
 
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 
-from sqlalchemy import and_, case, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -205,31 +204,16 @@ class SummaryService:
 
         cutoff_time = now_et() - timedelta(minutes=SUMMARY_TIME_WINDOW_MINUTES)
 
-        # Query journeys in the time window
-        conditions = [
-            TrainJourney.last_updated_at >= cutoff_time,
-        ]
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
+        line_stats = await self._query_line_stats_sql(db, cutoff_time, data_source)
 
-        stmt = (
-            select(TrainJourney)
-            .where(and_(*conditions))
-            .options(selectinload(TrainJourney.stops))
-        )
-
-        result = await db.execute(stmt)
-        journeys = list(result.scalars().all())
-
+        total_trains = sum(ls.train_count for ls in line_stats.values())
         logger.info(
             "network_summary_query",
-            journey_count=len(journeys),
+            line_count=len(line_stats),
+            total_trains=total_trains,
             time_window_minutes=SUMMARY_TIME_WINDOW_MINUTES,
             data_source=data_source,
         )
-
-        # Calculate per-line statistics
-        line_stats = self._calculate_line_stats(journeys)
 
         # Generate summary
         summary = self._generate_network_summary(line_stats)
@@ -238,6 +222,107 @@ class SummaryService:
         self._cache[cache_key] = (summary, now_et())
 
         return summary
+
+    async def _query_line_stats_sql(
+        self,
+        db: AsyncSession,
+        cutoff_time: datetime,
+        data_source: str | None = None,
+    ) -> dict[str, LineStats]:
+        """Compute per-line stats via SQL aggregation.
+
+        Uses PostgreSQL DISTINCT ON to find each journey's last stop
+        (by stop_sequence), then aggregates delay/on-time/cancellation
+        counts grouped by line. This avoids loading thousands of ORM
+        objects + stops that can exhaust /dev/shm on large result sets.
+        """
+        # Subquery: last stop per journey (highest stop_sequence)
+        last_stops = (
+            select(
+                JourneyStop.journey_id,
+                JourneyStop.actual_arrival,
+                JourneyStop.scheduled_arrival,
+                JourneyStop.arrival_source,
+            )
+            .distinct(JourneyStop.journey_id)
+            .order_by(
+                JourneyStop.journey_id,
+                func.coalesce(JourneyStop.stop_sequence, 0).desc(),
+            )
+            .subquery("last_stops")
+        )
+
+        conditions = [TrainJourney.last_updated_at >= cutoff_time]
+        if data_source:
+            conditions.append(TrainJourney.data_source == data_source)
+
+        line_key_expr = func.coalesce(
+            func.nullif(TrainJourney.line_name, ""),
+            func.nullif(TrainJourney.line_code, ""),
+            "Unknown",
+        )
+
+        # Last stop has real (non-fallback) arrival data
+        has_arrival = and_(
+            TrainJourney.is_cancelled.isnot(True),
+            last_stops.c.actual_arrival.isnot(None),
+            last_stops.c.scheduled_arrival.isnot(None),
+            last_stops.c.arrival_source.is_distinct_from("scheduled_fallback"),
+        )
+
+        delay_minutes = (
+            func.extract(
+                "epoch",
+                last_stops.c.actual_arrival - last_stops.c.scheduled_arrival,
+            )
+            / 60.0
+        )
+
+        stmt = (
+            select(
+                line_key_expr.label("line_key"),
+                TrainJourney.line_name,
+                TrainJourney.line_code,
+                TrainJourney.data_source,
+                func.count().label("train_count"),
+                func.count()
+                .filter(TrainJourney.is_cancelled.is_(True))
+                .label("cancellation_count"),
+                func.count().filter(has_arrival).label("arrival_data_count"),
+                func.count()
+                .filter(and_(has_arrival, delay_minutes <= ON_TIME_THRESHOLD_MINUTES))
+                .label("on_time_count"),
+                func.coalesce(
+                    func.sum(func.greatest(0, delay_minutes)).filter(has_arrival),
+                    0.0,
+                ).label("total_delay_minutes"),
+            )
+            .outerjoin(last_stops, last_stops.c.journey_id == TrainJourney.id)
+            .where(and_(*conditions))
+            .group_by(
+                line_key_expr,
+                TrainJourney.line_name,
+                TrainJourney.line_code,
+                TrainJourney.data_source,
+            )
+        )
+
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        return {
+            row.line_key: LineStats(
+                line_name=row.line_name or row.line_key,
+                line_code=row.line_code or "",
+                train_count=row.train_count,
+                on_time_count=row.on_time_count,
+                cancellation_count=row.cancellation_count,
+                total_delay_minutes=float(row.total_delay_minutes),
+                data_source=row.data_source or "",
+                arrival_data_count=row.arrival_data_count,
+            )
+            for row in rows
+        }
 
     async def get_route_summary(
         self,
@@ -568,83 +653,6 @@ class SummaryService:
         self._cache[cache_key] = (summary, now_et())
 
         return summary
-
-    def _calculate_line_stats(
-        self, journeys: list[TrainJourney]
-    ) -> dict[str, LineStats]:
-        """Calculate statistics grouped by line.
-
-        On-time percentage and average delay use `arrival_data_count` (trains
-        with real arrival data) as the denominator — NOT `train_count`. Trains
-        with scheduled_fallback arrivals or no arrival data (still in progress)
-        are intentionally excluded from both numerator and denominator so they
-        neither inflate nor deflate the metric. This matches the SQL logic in
-        api/routes.py for /routes/history.
-        """
-        stats: dict[str, dict[str, Any]] = defaultdict(
-            lambda: {
-                "line_name": "",
-                "line_code": "",
-                "train_count": 0,
-                "on_time_count": 0,
-                "cancellation_count": 0,
-                "total_delay_minutes": 0.0,
-                "arrival_data_count": 0,
-                "data_source": "",
-            }
-        )
-
-        for journey in journeys:
-            line_key = journey.line_name or journey.line_code or "Unknown"
-            line_data = stats[line_key]
-
-            line_data["line_name"] = journey.line_name or line_key
-            line_data["line_code"] = journey.line_code or ""
-            line_data["data_source"] = journey.data_source
-            line_data["train_count"] += 1
-
-            if journey.is_cancelled:
-                line_data["cancellation_count"] += 1
-                continue
-
-            if not journey.stops:
-                continue
-
-            last_stop = max(journey.stops, key=lambda s: s.stop_sequence or 0)
-            if not (last_stop.actual_arrival and last_stop.scheduled_arrival):
-                # In-progress: no usable arrival data yet. Excluded from OTP.
-                continue
-            if last_stop.arrival_source == "scheduled_fallback":
-                # Collector wrote actual_arrival = scheduled_arrival because the
-                # feed didn't supply a real arrival timestamp. Including this
-                # would always count as on-time (0 delay) and is misleading.
-                # NOTE: Historical stops (before ~March 2026) may have NULL
-                # arrival_source (partial backfill); those still count toward
-                # OTP since we only exclude the explicit "scheduled_fallback"
-                # tag, consistent with api/routes.py and api/trains.py.
-                continue
-
-            delay = (
-                last_stop.actual_arrival - last_stop.scheduled_arrival
-            ).total_seconds() / 60
-            line_data["arrival_data_count"] += 1
-            line_data["total_delay_minutes"] += max(0, delay)
-            if delay <= ON_TIME_THRESHOLD_MINUTES:
-                line_data["on_time_count"] += 1
-
-        return {
-            key: LineStats(
-                line_name=data["line_name"],
-                line_code=data["line_code"],
-                train_count=data["train_count"],
-                on_time_count=data["on_time_count"],
-                cancellation_count=data["cancellation_count"],
-                total_delay_minutes=data["total_delay_minutes"],
-                data_source=data["data_source"],
-                arrival_data_count=data["arrival_data_count"],
-            )
-            for key, data in stats.items()
-        }
 
     def _generate_network_summary(
         self, line_stats: dict[str, LineStats]
