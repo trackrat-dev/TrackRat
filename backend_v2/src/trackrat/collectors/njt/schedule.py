@@ -9,6 +9,7 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import and_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -194,6 +195,15 @@ class NJTScheduleCollector:
                     elif result == "skipped":
                         stats["skipped_observed"] += 1
 
+                except IntegrityError:
+                    # Race: discovery or another collector already created
+                    # this journey concurrently. Treat as a skip.
+                    stats["skipped_observed"] += 1
+                    logger.info(
+                        "schedule_insert_race_skipped",
+                        station_code=station_code,
+                        train_id=item.get("TRAIN_ID"),
+                    )
                 except Exception as e:
                     stats["errors"] += 1
                     logger.error(

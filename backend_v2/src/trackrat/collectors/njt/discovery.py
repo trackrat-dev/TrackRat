@@ -644,56 +644,70 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         # NOTE: We temporarily use the discovery station as origin,
                         # but this might be an intermediate stop. The journey
                         # collector will correct this when it fetches full details.
-                        journey = TrainJourney(
-                            train_id=train_id,
-                            journey_date=journey_date,
-                            line_code=parse_njt_line_code(
-                                train_data.get("LINE", "").strip()
-                            ),
-                            line_name=train_data.get("LINE_NAME", ""),
-                            destination=train_data.get("DESTINATION", "").strip(),
-                            origin_station_code=station_code,
-                            terminal_station_code=station_code,
-                            scheduled_departure=scheduled_departure,
-                            data_source="NJT",
-                            observation_type="OBSERVED",
-                            first_seen_at=now_et(),
-                            last_updated_at=now_et(),
-                            has_complete_journey=False,
-                            update_count=1,
-                        )
+                        try:
+                            async with session.begin_nested():
+                                journey = TrainJourney(
+                                    train_id=train_id,
+                                    journey_date=journey_date,
+                                    line_code=parse_njt_line_code(
+                                        train_data.get("LINE", "").strip()
+                                    ),
+                                    line_name=train_data.get("LINE_NAME", ""),
+                                    destination=train_data.get(
+                                        "DESTINATION", ""
+                                    ).strip(),
+                                    origin_station_code=station_code,
+                                    terminal_station_code=station_code,
+                                    scheduled_departure=scheduled_departure,
+                                    data_source="NJT",
+                                    observation_type="OBSERVED",
+                                    first_seen_at=now_et(),
+                                    last_updated_at=now_et(),
+                                    has_complete_journey=False,
+                                    update_count=1,
+                                )
 
-                        # Extract line color if available
-                        if "BACKCOLOR" in train_data:
-                            journey.line_color = train_data["BACKCOLOR"].strip()
+                                if "BACKCOLOR" in train_data:
+                                    journey.line_color = train_data[
+                                        "BACKCOLOR"
+                                    ].strip()
 
-                        session.add(journey)
-                        await session.flush()  # Ensure journey has ID
-                        new_train_ids.add(train_id)
+                                session.add(journey)
+                                await session.flush()
 
-                        # Update track directly in journey stop
-                        track = train_data.get("TRACK")
-                        if track and station_code:
-                            await self._update_stop_track_if_needed(
-                                session, journey, station_code, track
+                            new_train_ids.add(train_id)
+
+                            track = train_data.get("TRACK")
+                            if track and station_code:
+                                await self._update_stop_track_if_needed(
+                                    session, journey, station_code, track
+                                )
+
+                            stops_data = train_data.get("STOPS") or []
+                            if stops_data:
+                                await self._populate_stop_times_from_discovery(
+                                    session, journey, stops_data
+                                )
+
+                            logger.debug(
+                                "new_journey_discovered",
+                                train_id=train_id,
+                                journey_date=journey_date,
+                                line=journey.line_code,
+                                destination=journey.destination,
+                                departure=scheduled_departure.isoformat(),
+                                track=track,
                             )
-
-                        # Populate real-time stop times from embedded STOPS data
-                        stops_data = train_data.get("STOPS") or []
-                        if stops_data:
-                            await self._populate_stop_times_from_discovery(
-                                session, journey, stops_data
+                        except IntegrityError:
+                            # Race: another process (concurrent discovery
+                            # or schedule collector) already inserted this
+                            # journey. Safe to skip — next cycle will find
+                            # and update the existing journey.
+                            logger.info(
+                                "discovery_insert_race_skipped",
+                                train_id=train_id,
+                                journey_date=journey_date,
                             )
-
-                        logger.debug(
-                            "new_journey_discovered",
-                            train_id=train_id,
-                            journey_date=journey_date,
-                            line=journey.line_code,
-                            destination=journey.destination,
-                            departure=scheduled_departure.isoformat(),
-                            track=track,
-                        )
 
             except Exception as e:
                 logger.error(
