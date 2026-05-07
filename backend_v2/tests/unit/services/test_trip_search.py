@@ -1303,6 +1303,38 @@ class TestFilterCrossSystemDirectTrips:
             f"remaining: {[t.legs[0].data_source for t in result]}"
         )
 
+    def test_alias_code_resolves_via_equivalence_expansion(self):
+        """Alias-only codes (TS, SC) should resolve systems via expansion.
+
+        TS (Secaucus Lower Level) is not in any route topology, so
+        get_systems_serving_station("TS") returns empty. But expanding
+        TS → {TS, SC, SE} and unioning their systems yields {"NJT"} via SE.
+        Without expansion, from_systems would be empty and all direct trips
+        from TS would be incorrectly filtered.
+        """
+        from trackrat.config.stations import expand_station_codes
+
+        # Direct lookup returns empty for alias codes
+        assert get_systems_serving_station("TS") == set()
+        assert get_systems_serving_station("SC") == set()
+
+        # But expansion resolves via SE
+        expanded_systems: set[str] = set()
+        for code in expand_station_codes("TS"):
+            expanded_systems |= get_systems_serving_station(code)
+        assert "NJT" in expanded_systems, (
+            f"TS should resolve to NJT via SE expansion, got {expanded_systems}"
+        )
+
+        # NJT trip from TS to TR should be kept when using expanded systems
+        trips = [self._make_trip_with_source("NJT")]
+        to_sys = get_systems_serving_station("TR")
+        result = _filter_cross_system_direct_trips(trips, expanded_systems, to_sys)
+        assert len(result) == 1, (
+            f"NJT trip from TS (expanded) to TR should be kept. "
+            f"from_systems={expanded_systems}, to_systems={to_sys}"
+        )
+
     def test_ny_to_trenton_keeps_njt_amtrak(self):
         """Sanity check: NY→TR is a normal direct route, nothing should be filtered."""
         from_sys = get_systems_serving_station("NY")

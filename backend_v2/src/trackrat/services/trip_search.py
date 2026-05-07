@@ -289,9 +289,14 @@ async def search_trips(
     )
 
     # Systems natively serving each endpoint (used for direct-trip filtering
-    # and transfer search below).
-    from_systems = get_systems_serving_station(from_station)
-    to_systems = get_systems_serving_station(to_station)
+    # and transfer search below).  Expand equivalence aliases first so that
+    # alias-only codes (e.g. TS → SE) resolve to the canonical station's systems.
+    from_systems: set[str] = set()
+    for code in expand_station_codes(from_station):
+        from_systems |= get_systems_serving_station(code)
+    to_systems: set[str] = set()
+    for code in expand_station_codes(to_station):
+        to_systems |= get_systems_serving_station(code)
 
     # --- Step 1: Try direct service ---
     direct_response = await departure_service.get_departures(
