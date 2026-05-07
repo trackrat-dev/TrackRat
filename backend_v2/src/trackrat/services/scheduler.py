@@ -2104,6 +2104,12 @@ class SchedulerService:
                                     train_id=train_id,
                                     stops_count=retry_result.get("stops_count", 0),
                                 )
+                            elif retry_result and retry_result.get("skipped"):
+                                logger.debug(
+                                    "njt_journey_batch_skipped",
+                                    train_id=train_id,
+                                    reason=retry_result.get("reason"),
+                                )
                             else:
                                 error_count += 1
                                 logger.warning(
@@ -2116,6 +2122,12 @@ class SchedulerService:
                                 "njt_journey_collected",
                                 train_id=train_id,
                                 stops_count=result.get("stops_count", 0),
+                            )
+                        elif result.get("skipped"):
+                            logger.debug(
+                                "njt_journey_batch_skipped",
+                                train_id=train_id,
+                                reason=result.get("reason"),
                             )
                         else:
                             error_count += 1
