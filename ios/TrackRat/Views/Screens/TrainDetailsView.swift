@@ -5,6 +5,8 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: TrainDetailsViewModel
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var alertService = AlertSubscriptionService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
 
@@ -116,15 +118,17 @@ struct TrainDetailsView: View {
                        !destCode.isEmpty,
                        let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
+                        let ds = train.dataSource
+                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: originCode, to: destCode, dataSource: ds)?.id
+                        let routeContext = RouteStatusContext(
+                            dataSource: ds,
+                            lineId: lineId,
+                            fromStationCode: originCode,
+                            toStationCode: destCode
+                        )
+                        let hasActiveAlert = !alertService.subscriptions(for: routeContext).isEmpty
                         Button {
-                            let ds = train.dataSource
-                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: originCode, to: destCode, dataSource: ds)?.id
-                            appState.pendingRouteStatus = RouteStatusContext(
-                                dataSource: ds,
-                                lineId: lineId,
-                                fromStationCode: originCode,
-                                toStationCode: destCode
-                            )
+                            appState.pendingRouteStatus = routeContext
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "bell.badge")
@@ -135,7 +139,8 @@ struct TrainDetailsView: View {
                             .foregroundColor(.white.opacity(0.8))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .background(Capsule().fill(hasActiveAlert ? Color.orange.opacity(0.15) : Color.white.opacity(0.12)))
+                            .overlay(Capsule().stroke(hasActiveAlert ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1.5))
                         }
                         .buttonStyle(.plain)
                     }
@@ -143,6 +148,7 @@ struct TrainDetailsView: View {
                     // Get Updates button (Live Activity)
                     if let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
+                        let isTracking = liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
                         TrackTrainInlineButton(
                             train: train,
                             originCode: originCode,
@@ -155,7 +161,8 @@ struct TrainDetailsView: View {
                         )
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                        .background(Capsule().fill(isTracking ? Color.orange.opacity(0.15) : Color.white.opacity(0.12)))
+                        .overlay(Capsule().stroke(isTracking ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1.5))
                     }
 
                 }

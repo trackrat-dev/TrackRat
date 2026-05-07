@@ -3,6 +3,9 @@ import SwiftUI
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
+    @ObservedObject private var alertService = AlertSubscriptionService.shared
+    // Configuration constants
+    private static let DELAY_THRESHOLD_MINUTES = 6
 
     // Station info passed via init for guaranteed first-frame availability
     private let destination: String
@@ -94,17 +97,17 @@ struct TrainListView: View {
                 HStack(spacing: 12) {
                     // Route alerts button
                     if let destinationCode = Stations.getStationCode(destination) {
+                        let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
+                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
+                        let routeContext = RouteStatusContext(
+                            dataSource: ds,
+                            lineId: lineId,
+                            fromStationCode: departureStationCode,
+                            toStationCode: destinationCode
+                        )
+                        let hasActiveAlert = !alertService.subscriptions(for: routeContext).isEmpty
                         Button {
-                            let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
-                            // For subway, don't set lineId — station pairs are served by multiple lines
-                            // and gtfsRouteIds will infer all relevant lines from the station pair.
-                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
-                            appState.pendingRouteStatus = RouteStatusContext(
-                                dataSource: ds,
-                                lineId: lineId,
-                                fromStationCode: departureStationCode,
-                                toStationCode: destinationCode
-                            )
+                            appState.pendingRouteStatus = routeContext
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "bell.badge")
@@ -115,7 +118,8 @@ struct TrainListView: View {
                             .foregroundColor(.white.opacity(0.8))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .background(Capsule().fill(hasActiveAlert ? Color.orange.opacity(0.15) : Color.white.opacity(0.12)))
+                            .overlay(Capsule().stroke(hasActiveAlert ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1.5))
                         }
                         .buttonStyle(.plain)
                     }
