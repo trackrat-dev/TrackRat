@@ -100,6 +100,26 @@ class TrainCacheService {
         return primaryKey == legacyKey ? [primaryKey] : [primaryKey, legacyKey]
     }
 
+    /// Source-qualified keys (`dataSource|trainNumber|date`) that match the
+    /// requested trainNumber and date. Used as a fallback when a caller looks
+    /// up without a dataSource so we still surface entries cached by newer
+    /// source-aware paths. The leading `|` in the suffix ensures the legacy
+    /// `trainNumber|date` form never matches.
+    private func sourceQualifiedKeysMatching(
+        trainNumber: String,
+        date: Date
+    ) -> [String] {
+        let suffix = "|\(trainNumber)|\(dateCacheKey(for: date))"
+        var keys: Set<String> = []
+        for key in memoryCache.keys where key.hasSuffix(suffix) {
+            keys.insert(key)
+        }
+        for key in getCacheMetadata().keys.keys where key.hasSuffix(suffix) {
+            keys.insert(key)
+        }
+        return Array(keys)
+    }
+
     // MARK: - Retrieval
 
     /// Retrieves cached train details. Returns nil for miss or expired entry.
@@ -121,6 +141,22 @@ class TrainCacheService {
                     continue
                 }
                 return cached
+            }
+        }
+
+        // When the caller doesn't know the data source, also check entries
+        // cached under newer `dataSource|trainNumber|date` keys. Without this,
+        // legacy/source-less navigation paths would deterministically miss
+        // entries written by source-aware paths (Live Activities, Train List,
+        // Prefetcher) for the same train.
+        if requestedSource == nil {
+            for cacheKey in sourceQualifiedKeysMatching(
+                trainNumber: trainNumber,
+                date: date
+            ) {
+                if let cached = getCachedTrainByKey(cacheKey) {
+                    return cached
+                }
             }
         }
         return nil

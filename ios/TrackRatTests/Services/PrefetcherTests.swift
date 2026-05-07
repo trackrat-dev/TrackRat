@@ -276,4 +276,30 @@ final class TrainCacheServiceTests: XCTestCase {
 
         XCTAssertNil(cached)
     }
+
+    func testSourcelessLookupFindsSourceQualifiedCacheEntry() {
+        // Source-aware paths cache under `dataSource|trainNumber|date`. Legacy
+        // call sites that don't pass a dataSource must still surface those
+        // entries; otherwise they'd hit deterministic cache misses and refetch
+        // the same train. Codex review on PR #1136.
+        let date = Date()
+        let train = makeTrain(trainId: "400", dataSource: "NJT")
+
+        cacheService.cacheTrain(
+            train,
+            trainNumber: "400",
+            date: date,
+            dataSource: "NJT"
+        )
+
+        let cached = cacheService.getCachedTrain(
+            trainNumber: "400",
+            date: date,
+            dataSource: nil
+        )
+
+        XCTAssertNotNil(cached, "Source-less lookup should find source-qualified entry")
+        XCTAssertEqual(cached?.train.trainId, "400")
+        XCTAssertEqual(cached?.train.dataSource, "NJT")
+    }
 }
