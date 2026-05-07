@@ -306,8 +306,18 @@ class NJTScheduleCollector:
                 )
                 return "skipped"
 
-            # Update the scheduled journey with latest schedule data
-            existing_journey.scheduled_departure = scheduled_departure
+            # Update the scheduled journey with latest schedule data.
+            # NJT lists the same train in every stop-station's schedule (origin,
+            # intermediates, terminus). Without the earliest-wins guard below,
+            # whichever station is processed last would overwrite the journey's
+            # scheduled_departure with an intermediate/terminal time, leaving
+            # the journey row inconsistent with stops[0]. Guarantee that
+            # scheduled_departure converges on the train's actual origin time.
+            if (
+                existing_journey.scheduled_departure is None
+                or scheduled_departure < existing_journey.scheduled_departure
+            ):
+                existing_journey.scheduled_departure = scheduled_departure
             existing_journey.destination = destination
             existing_journey.line_code = parse_njt_line_code(line)
             existing_journey.line_name = line

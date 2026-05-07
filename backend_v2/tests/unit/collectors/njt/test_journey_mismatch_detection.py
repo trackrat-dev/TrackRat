@@ -279,6 +279,91 @@ class TestStaleOriginDetection:
         ), "Matching journey should be recognized"
 
     @pytest.mark.asyncio
+    async def test_self_heals_when_journey_departure_drifts_from_stops(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """
+        Test that _is_same_journey() trusts the stops table even when
+        origin_station_code is correct but journey.scheduled_departure has
+        drifted.
+
+        Scenario (the production bug seen for ~550 NJT trains/day):
+        - Schedule collector iterates per-station schedules. NJT lists the
+          same train in every stop-station's schedule, so the journey row's
+          scheduled_departure gets overwritten with whichever station was
+          processed last (e.g. the terminus arrival time, ~90 min off the
+          actual NY origin departure).
+        - origin_station_code stays correct ("NY") because schedule.py only
+          assigns it on creation, not update.
+        - Stops table is correct: stop_sequence=0 is NY at 21:35.
+        - API returns first_stop=NY at 21:35.
+        - Without fix: stored=23:05 vs api=21:35 = 5400s > 600s → falsely
+          marked is_expired=True every collection cycle → train vanishes
+          from /trains/departures.
+        - With fix: stops table provides 21:35 → matches API → journey
+          collector self-heals scheduled_departure via update_journey_metadata.
+        """
+        ny_departure = now_et().replace(hour=21, minute=35, second=0, microsecond=0)
+        # Drifted journey time (e.g. terminus arrival), origin_station_code intact
+        drifted_departure = ny_departure + timedelta(minutes=90)
+
+        journey = TrainJourney(
+            train_id="3889",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",  # CORRECT
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=drifted_departure,  # DRIFTED (the bug)
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Stops table reflects the actual schedule
+        ny_stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=ny_departure,
+        )
+        db_session.add(ny_stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3889",
+            line_code="NE",
+            destination="Trenton -SEC",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    ny_departure.strftime(NJT_TIME_FORMAT),
+                ),
+                builder.build_stop(
+                    "TR",
+                    "Trenton",
+                    (ny_departure + timedelta(minutes=90)).strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is True, (
+            "Journey should self-heal via stops table when journey.scheduled_departure "
+            "has drifted (the per-station schedule overwrite bug)"
+        )
+
+    @pytest.mark.asyncio
     async def test_incomplete_journey_skips_departure_check(
         self, db_session: AsyncSession, journey_collector
     ):
