@@ -83,21 +83,26 @@ final class Prefetcher {
             return try await existing.value
         }
         let dataSources: Set<TrainSystem>? = systems.isEmpty ? nil : systems
+        // Task closure body must contain only the network call. Cleanup and
+        // cache write live at function scope so they run *after* the
+        // assignment to inFlightTrips below — guaranteeing concurrent callers
+        // can coalesce on the in-flight entry even if the network call is
+        // mocked/synchronous and would otherwise complete before assignment.
         let task = Task<[TripOption], Error> {
-            // Cleanup runs on task completion regardless of caller cancellation, so a
-            // cancelled awaiter never leaves a stale in-flight entry behind.
-            defer { self.inFlightTrips.removeValue(forKey: key) }
-            let trips = try await self.apiService.searchTrips(
+            try await self.apiService.searchTrips(
                 fromStationCode: from,
                 toStationCode: to,
                 date: date,
                 dataSources: dataSources
             )
-            self.recordTrips(trips, key: key)
-            return trips
         }
         inFlightTrips[key] = task
-        return try await task.value
+        defer { inFlightTrips.removeValue(forKey: key) }
+        // If our caller is cancelled, the throw skips the cache write below —
+        // we don't pollute the cache with a result the caller no longer wants.
+        let trips = try await task.value
+        recordTrips(trips, key: key)
+        return trips
     }
 
     /// Fire-and-forget warmup. Skips if the cache is fresh.
