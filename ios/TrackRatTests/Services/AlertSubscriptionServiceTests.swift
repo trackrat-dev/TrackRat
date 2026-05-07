@@ -387,4 +387,96 @@ class AlertSubscriptionServiceTests: XCTestCase {
         XCTAssertEqual(evening.activeEndMinutes, 1140, "Evening commute ends at 7pm")
         XCTAssertEqual(evening.delayThresholdMinutes, 10, "Evening: less sensitive to delays")
     }
+
+    // MARK: - subscriptions(for:) — Route Context Matching (drives orange highlight in UI)
+
+    func testSubscriptionsFor_matchesLineSubscription() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127
+        )
+        service.addSubscriptions([sub])
+
+        let context = RouteStatusContext(dataSource: "NJT", lineId: "NEC", fromStationCode: "TR", toStationCode: "NY")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertEqual(matches.count, 1, "Should match when lineId matches context lineId")
+        XCTAssertEqual(matches.first?.lineId, "NEC", "Matched subscription should be for NEC line")
+    }
+
+    func testSubscriptionsFor_doesNotMatchDifferentLine() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127
+        )
+        service.addSubscriptions([sub])
+
+        let context = RouteStatusContext(dataSource: "NJT", lineId: "NJCL", fromStationCode: "NY", toStationCode: "LB")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertTrue(matches.isEmpty, "Should not match when lineId differs")
+    }
+
+    func testSubscriptionsFor_doesNotMatchDifferentDataSource() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 127
+        )
+        service.addSubscriptions([sub])
+
+        let context = RouteStatusContext(dataSource: "AMTRAK", lineId: "NEC", fromStationCode: "NY", toStationCode: "WS")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertTrue(matches.isEmpty, "Should not match when dataSource differs even if lineId is same")
+    }
+
+    func testSubscriptionsFor_matchesStationPairSubscription() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
+            activeDays: 127
+        )
+        service.addSubscriptions([sub])
+
+        let context = RouteStatusContext(dataSource: "NJT", lineId: "NEC", fromStationCode: "NY", toStationCode: "TR")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertEqual(matches.count, 1, "Should match station pair subscription by from/to codes")
+    }
+
+    func testSubscriptionsFor_doesNotMatchReverseStationPair() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
+            activeDays: 127
+        )
+        service.addSubscriptions([sub])
+
+        let context = RouteStatusContext(dataSource: "NJT", lineId: "NEC", fromStationCode: "TR", toStationCode: "NY")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertTrue(matches.isEmpty, "Should not match reverse direction station pair (direction-sensitive)")
+    }
+
+    func testSubscriptionsFor_returnsEmptyWhenNoSubscriptions() {
+        let context = RouteStatusContext(dataSource: "NJT", lineId: "NEC", fromStationCode: "NY", toStationCode: "TR")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertTrue(matches.isEmpty, "Should return empty array when no subscriptions exist")
+    }
+
+    func testSubscriptionsFor_returnsMultipleMatches() {
+        let lineSub = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor",
+            direction: "TR", activeDays: 127
+        )
+        let pairSub = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
+            activeDays: 31
+        )
+        service.addSubscriptions([lineSub, pairSub])
+
+        let context = RouteStatusContext(dataSource: "NJT", lineId: "NEC", fromStationCode: "NY", toStationCode: "TR")
+        let matches = service.subscriptions(for: context)
+
+        XCTAssertEqual(matches.count, 2, "Should return both line and station-pair matches for same route")
+    }
 }
