@@ -1614,3 +1614,141 @@ class TestPathCutoffTime:
         # Should use the later train: 35 min + 2 min buffer = 37 min
         expected = current_time + timedelta(minutes=37)
         assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_hide_departed_excludes_past_cancelled_trains(
+        self, db_session: AsyncSession
+    ):
+        """Test that hide_departed=True excludes cancelled trains with past departures.
+
+        Bug fix for issue #1107: Cancelled trains were appearing in both the
+        upcoming departures (below the Now divider) and recent departures (above
+        the Now divider). The fix ensures that the hide_departed carve-out for
+        cancelled trains only applies to future-scheduled cancelled trains.
+        """
+        service = DepartureService()
+        now = now_et()
+
+        # 1. Cancelled train with PAST departure (30 min ago) — should NOT
+        #    appear in upcoming departures when hide_departed=True
+        past_cancelled = TrainJourney(
+            train_id="9901",
+            journey_date=now.date(),
+            data_source="NJT",
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            scheduled_departure=now - timedelta(minutes=30),
+            first_seen_at=now - timedelta(hours=1),
+            last_updated_at=now - timedelta(minutes=25),
+            has_complete_journey=True,
+            update_count=3,
+            is_cancelled=True,
+            cancellation_reason="Equipment issue",
+        )
+        past_cancelled_stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now - timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        past_cancelled.stops = [past_cancelled_stop]
+
+        # 2. Cancelled train with FUTURE departure (1h from now) — should
+        #    appear in upcoming departures even with hide_departed=True
+        future_cancelled = TrainJourney(
+            train_id="9902",
+            journey_date=now.date(),
+            data_source="NJT",
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            scheduled_departure=now + timedelta(hours=1),
+            first_seen_at=now - timedelta(minutes=10),
+            last_updated_at=now - timedelta(minutes=5),
+            has_complete_journey=True,
+            update_count=2,
+            is_cancelled=True,
+            cancellation_reason="Crew shortage",
+        )
+        future_cancelled_stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now + timedelta(hours=1),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        future_cancelled.stops = [future_cancelled_stop]
+
+        # 3. Normal upcoming train (1h 30m from now) — should always appear
+        normal_train = TrainJourney(
+            train_id="9903",
+            journey_date=now.date(),
+            data_source="NJT",
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            scheduled_departure=now + timedelta(hours=1, minutes=30),
+            first_seen_at=now - timedelta(minutes=5),
+            last_updated_at=now,
+            has_complete_journey=True,
+            update_count=1,
+        )
+        normal_stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn Station",
+            scheduled_departure=now + timedelta(hours=1, minutes=30),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        normal_train.stops = [normal_stop]
+
+        db_session.add(past_cancelled)
+        db_session.add(future_cancelled)
+        db_session.add(normal_train)
+        await db_session.commit()
+
+        with patch("trackrat.services.departure.NJTransitClient") as mock_njt_client:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            mock_client.get_train_schedule_with_stops = AsyncMock(
+                return_value={"ITEMS": []}
+            )
+            mock_njt_client.return_value = mock_client
+
+            response = await service.get_departures(
+                db=db_session,
+                from_station="NY",
+                to_station="TR",
+                hide_departed=True,
+            )
+
+        train_ids = {d.train_id for d in response.departures}
+
+        # Past-cancelled train should NOT appear (it belongs in recent-departures)
+        assert "9901" not in train_ids, (
+            "Cancelled train with past departure should not appear in upcoming "
+            "departures when hide_departed=True — it causes duplication with "
+            "the recent-departures list (issue #1107)"
+        )
+
+        # Future-cancelled train SHOULD appear (users need to see upcoming cancellations)
+        assert "9902" in train_ids, (
+            "Cancelled train with future departure should still appear in "
+            "upcoming departures so users are informed of the cancellation"
+        )
+
+        # Normal train should appear
+        assert "9903" in train_ids, "Normal upcoming train should appear"
+
+        # Verify the future-cancelled train has is_cancelled flag
+        future_cancelled_dep = next(
+            d for d in response.departures if d.train_id == "9902"
+        )
+        assert future_cancelled_dep.is_cancelled is True
