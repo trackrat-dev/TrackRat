@@ -937,6 +937,11 @@ class JourneyCollector(BaseJourneyCollector):
             # the row valid for the next collection cycle. (`_is_same_journey`
             # has already logged the detailed `journey_mismatch_departure_time`
             # warning with full context.)
+            #
+            # Advance freshness metadata so the scheduler doesn't treat this
+            # journey as stale and busy-loop re-collecting it every cycle.
+            journey.last_updated_at = now_et()
+            journey.update_count = (journey.update_count or 0) + 1
             await session.flush()
             return
 
