@@ -1244,16 +1244,26 @@ class SchedulerService:
                 self._collect_single_njt_journey_safe(train_id, j_date)
             )
 
-            if result:
-                # Debug level for successful collection
+            if result and result.get("success"):
                 logger.debug(
                     "journey.collection.completed",
                     train_id=train_id,
                     is_completed=result.get("is_completed", False),
                     stops_count=result.get("stops_count", 0),
                 )
+            elif result and result.get("skipped"):
+                logger.debug(
+                    "journey.collection.skipped",
+                    train_id=train_id,
+                    reason=result.get("reason"),
+                )
+            elif result:
+                logger.info(
+                    "journey.collection.unsuccessful",
+                    train_id=train_id,
+                    error=result.get("error"),
+                )
             else:
-                # Error for actual failures
                 logger.error(
                     "journey.collection.failed",
                     train_id=train_id,
@@ -1833,7 +1843,9 @@ class SchedulerService:
             journey_date: The journey date to filter by (defaults to today if not provided)
 
         Returns:
-            Dict with journey info if successful, None if failed
+            Dict with journey info. Keys: success (bool), and optionally
+            skipped (bool) + reason (str) for benign no-ops, or
+            error (str) for handled failures. None only for genuine errors.
         """
         try:
             from sqlalchemy import and_, select
@@ -1867,7 +1879,12 @@ class SchedulerService:
 
             if not row:
                 logger.warning("journey_not_found_sync", train_id=train_id)
-                return None
+                return {
+                    "train_id": train_id,
+                    "success": False,
+                    "skipped": True,
+                    "reason": "journey_not_found",
+                }
 
             journey_id = row.id
             journey_is_expired = row.is_expired
@@ -1875,7 +1892,12 @@ class SchedulerService:
 
             if journey_is_expired:
                 logger.debug("skipping_expired_train_sync", train_id=train_id)
-                return None
+                return {
+                    "train_id": train_id,
+                    "success": False,
+                    "skipped": True,
+                    "reason": "already_expired",
+                }
 
             # ── Phase 2: Call NJT API (no DB connection held) ──
             # Semaphore caps concurrent API calls to prevent overwhelming
@@ -1956,7 +1978,12 @@ class SchedulerService:
                         train_id=train_id,
                         journey_id=journey_id,
                     )
-                    return None
+                    return {
+                        "train_id": train_id,
+                        "success": False,
+                        "skipped": True,
+                        "reason": "journey_disappeared",
+                    }
 
                 collector = JourneyCollector(self.njt_client)
                 await collector.collect_journey_details(
