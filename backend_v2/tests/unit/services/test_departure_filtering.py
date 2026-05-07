@@ -1143,9 +1143,9 @@ class TestStaleScheduledFiltering:
 
         result = service._filter_stale_scheduled_trains(departures, now)
 
-        assert len(result) == 1, (
-            "SCHEDULED PATH train at 6 min should be kept (PATH threshold is 5 min)"
-        )
+        assert (
+            len(result) == 1
+        ), "SCHEDULED PATH train at 6 min should be kept (PATH threshold is 5 min)"
         assert result[0].train_id == "PATH-456"
 
     def test_keep_scheduled_patco_within_threshold(self):
@@ -1285,7 +1285,9 @@ class TestStaleScheduledFiltering:
         ]
 
         result = service._filter_stale_scheduled_trains(departures, now)
-        assert len(result) == 0, "NJT SCHEDULED at 14 min should be filtered (threshold=15)"
+        assert (
+            len(result) == 0
+        ), "NJT SCHEDULED at 14 min should be filtered (threshold=15)"
 
     def test_path_boundary_at_exactly_5_min(self):
         """PATH train at exactly 5-min threshold should be kept (< not <=)."""
@@ -1323,7 +1325,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "WMATA at 4 min should be kept (threshold=4)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "WMATA at 3 min should be filtered (threshold=4)"
+        assert (
+            len(result_filtered) == 0
+        ), "WMATA at 3 min should be filtered (threshold=4)"
 
     def test_subway_uses_5_min_threshold(self):
         """SUBWAY uses 5-min threshold (4-min discovery cycle)."""
@@ -1337,7 +1341,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "SUBWAY at 6 min should be kept (threshold=5)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "SUBWAY at 3 min should be filtered (threshold=5)"
+        assert (
+            len(result_filtered) == 0
+        ), "SUBWAY at 3 min should be filtered (threshold=5)"
 
     def test_lirr_uses_5_min_threshold(self):
         """LIRR uses 5-min threshold (4-min discovery cycle)."""
@@ -1351,7 +1357,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "LIRR at 6 min should be kept (threshold=5)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "LIRR at 4 min should be filtered (threshold=5)"
+        assert (
+            len(result_filtered) == 0
+        ), "LIRR at 4 min should be filtered (threshold=5)"
 
     def test_mnr_uses_5_min_threshold(self):
         """MNR uses 5-min threshold (4-min discovery cycle)."""
@@ -1365,7 +1373,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "MNR at 7 min should be kept (threshold=5)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "MNR at 4 min should be filtered (threshold=5)"
+        assert (
+            len(result_filtered) == 0
+        ), "MNR at 4 min should be filtered (threshold=5)"
 
     def test_per_source_thresholds_in_single_batch(self):
         """Different providers apply their own thresholds in the same filter call."""
@@ -1388,6 +1398,8 @@ class TestStaleScheduledFiltering:
         result = service._filter_stale_scheduled_trains(departures, now)
         result_ids = {d.train_id for d in result}
 
-        assert result_ids == {"PATH-1", "WMATA-1", "SUB-1"}, (
-            f"Expected PATH/WMATA/SUBWAY kept at 6 min, NJT/AMTRAK filtered. Got: {result_ids}"
-        )
+        assert result_ids == {
+            "PATH-1",
+            "WMATA-1",
+            "SUB-1",
+        }, f"Expected PATH/WMATA/SUBWAY kept at 6 min, NJT/AMTRAK filtered. Got: {result_ids}"

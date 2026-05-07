@@ -433,9 +433,11 @@ class AmtrakPatternScheduler:
         for journey in journeys:
             stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             if stops and self._scheduled_time_for_order(stops[0]):
-                canonical_stops = []
-                seen_station_codes = set()
+                canonical_stops: list[tuple[str, JourneyStop]] = []
+                seen_station_codes: set[str] = set()
                 for stop in stops:
+                    if not stop.station_code:
+                        continue
                     station_code = self._canonical_amtrak_station_code(
                         stop.station_code
                     )
@@ -448,9 +450,9 @@ class AmtrakPatternScheduler:
         if len(runs) < self.MIN_STOP_CONSENSUS_RUNS:
             return None
 
-        common_station_codes = set(station_code for station_code, _stop in runs[0])
-        for stops in runs[1:]:
-            common_station_codes &= {station_code for station_code, _stop in stops}
+        common_station_codes = {station_code for station_code, _stop in runs[0]}
+        for run in runs[1:]:
+            common_station_codes &= {station_code for station_code, _stop in run}
 
         if not common_station_codes:
             return None
@@ -467,12 +469,12 @@ class AmtrakPatternScheduler:
             departure_offsets = []
             station_name = get_station_name(station_code)
 
-            for stops in runs:
-                origin_time = self._scheduled_time_for_order(stops[0][1])
+            for run in runs:
+                origin_time = self._scheduled_time_for_order(run[0][1])
                 if origin_time is None:
                     continue
 
-                stop = next(s for code, s in stops if code == station_code)
+                stop = next(s for code, s in run if code == station_code)
                 sequence_values.append(stop.stop_sequence or 0)
                 station_name = stop.station_name or station_name
                 if stop.scheduled_arrival:
@@ -541,9 +543,9 @@ class AmtrakPatternScheduler:
         mid = len(sorted_values) // 2
         if len(sorted_values) % 2:
             return sorted_values[mid]
-        return sorted_values[mid - 1] + (
-            sorted_values[mid] - sorted_values[mid - 1]
-        ) / 2
+        return (
+            sorted_values[mid - 1] + (sorted_values[mid] - sorted_values[mid - 1]) / 2
+        )
 
     def _origin_only_stop(
         self,

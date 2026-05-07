@@ -1511,17 +1511,23 @@ class JourneyCollector(BaseJourneyCollector):
 
         # Delete phantom stops that don't appear in the API response.
         # This removes schedule-generated placeholder stops that don't match reality.
-        api_station_codes = {stop_data.STATION_2CHAR for stop_data in stops_data}
+        api_station_codes = {
+            stop_data.STATION_2CHAR
+            for stop_data in stops_data
+            if stop_data.STATION_2CHAR
+        }
         if api_station_codes:
             deleted = cast(
                 CursorResult[tuple[()]],
                 await session.execute(
-                    delete(JourneyStop).where(
+                    delete(JourneyStop)
+                    .where(
                         and_(
                             JourneyStop.journey_id == journey.id,
                             JourneyStop.station_code.notin_(api_station_codes),
                         )
-                    ).execution_options(synchronize_session="fetch")
+                    )
+                    .execution_options(synchronize_session="fetch")
                 ),
             )
             phantom_count = deleted.rowcount or 0

@@ -972,18 +972,24 @@ class TestRankTransferPoints:
 
     def test_same_station_preferred_over_walk(self):
         """same_station transfers should rank before walk transfers."""
-        walk = self._make_tp(station_a="HB", station_b="PHO", walk_minutes=5, same_station=False)
-        same = self._make_tp(station_a="NP", station_b="PNK", walk_minutes=5, same_station=True)
-        ranked = _rank_transfer_points(
-            [walk, same], "TR", "PWC", {"NJT"}, {"PATH"}
+        walk = self._make_tp(
+            station_a="HB", station_b="PHO", walk_minutes=5, same_station=False
         )
+        same = self._make_tp(
+            station_a="NP", station_b="PNK", walk_minutes=5, same_station=True
+        )
+        ranked = _rank_transfer_points([walk, same], "TR", "PWC", {"NJT"}, {"PATH"})
         assert ranked[0].same_station is True
         assert ranked[1].same_station is False
 
     def test_shorter_walk_preferred(self):
         """Shorter walk_minutes should rank before longer."""
-        long_walk = self._make_tp(station_a="AA", station_b="BB", walk_minutes=10, same_station=False)
-        short_walk = self._make_tp(station_a="CC", station_b="DD", walk_minutes=3, same_station=False)
+        long_walk = self._make_tp(
+            station_a="AA", station_b="BB", walk_minutes=10, same_station=False
+        )
+        short_walk = self._make_tp(
+            station_a="CC", station_b="DD", walk_minutes=3, same_station=False
+        )
         ranked = _rank_transfer_points(
             [long_walk, short_walk], "TR", "PWC", {"NJT"}, {"PATH"}
         )
@@ -996,12 +1002,30 @@ class TestRankTransferPoints:
         This is the core property that fixes issue #1062: reversing from/to
         stations and their system sets must not change which TPs survive truncation.
         """
-        tp1 = self._make_tp(station_a="NP", system_a="NJT", station_b="PNK", system_b="PATH",
-                            walk_minutes=5, same_station=True)
-        tp2 = self._make_tp(station_a="HB", system_a="NJT", station_b="PHO", system_b="PATH",
-                            walk_minutes=7, same_station=False)
-        tp3 = self._make_tp(station_a="NY", system_a="NJT", station_b="S128", system_b="SUBWAY",
-                            walk_minutes=5, same_station=False)
+        tp1 = self._make_tp(
+            station_a="NP",
+            system_a="NJT",
+            station_b="PNK",
+            system_b="PATH",
+            walk_minutes=5,
+            same_station=True,
+        )
+        tp2 = self._make_tp(
+            station_a="HB",
+            system_a="NJT",
+            station_b="PHO",
+            system_b="PATH",
+            walk_minutes=7,
+            same_station=False,
+        )
+        tp3 = self._make_tp(
+            station_a="NY",
+            system_a="NJT",
+            station_b="S128",
+            system_b="SUBWAY",
+            walk_minutes=5,
+            same_station=False,
+        )
 
         forward = _rank_transfer_points(
             [tp1, tp2, tp3], "TR", "PWC", {"NJT", "AMTRAK"}, {"PATH", "SUBWAY"}
@@ -1015,13 +1039,23 @@ class TestRankTransferPoints:
 
     def test_stable_tiebreaker_on_station_codes(self):
         """When same_station and walk_minutes are equal, sort by canonical station/system codes."""
-        tp_a = self._make_tp(station_a="BB", system_a="X", station_b="AA", system_b="Y",
-                             walk_minutes=5, same_station=False)
-        tp_b = self._make_tp(station_a="AA", system_a="X", station_b="CC", system_b="Y",
-                             walk_minutes=5, same_station=False)
-        ranked = _rank_transfer_points(
-            [tp_a, tp_b], "Z1", "Z2", {"X"}, {"Y"}
+        tp_a = self._make_tp(
+            station_a="BB",
+            system_a="X",
+            station_b="AA",
+            system_b="Y",
+            walk_minutes=5,
+            same_station=False,
         )
+        tp_b = self._make_tp(
+            station_a="AA",
+            system_a="X",
+            station_b="CC",
+            system_b="Y",
+            walk_minutes=5,
+            same_station=False,
+        )
+        ranked = _rank_transfer_points([tp_a, tp_b], "Z1", "Z2", {"X"}, {"Y"})
         # Canonical order: tp_a has sorted pair (AA,Y),(BB,X); tp_b has (AA,X),(CC,Y)
         # (AA,X) < (AA,Y) so tp_b comes first
         assert ranked[0] is tp_b
@@ -1062,13 +1096,15 @@ class TestTransferPointSymmetryIntegration:
     @pytest.mark.parametrize(
         "station_a,station_b",
         [
-            ("TR", "PWC"),   # NJT → PATH (Trenton to World Trade Center)
-            ("HB", "P33"),   # NJT/PATH hub → PATH (Hoboken area)
-            ("NP", "PHO"),   # NJT Newark → PATH Hoboken
+            ("TR", "PWC"),  # NJT → PATH (Trenton to World Trade Center)
+            ("HB", "P33"),  # NJT/PATH hub → PATH (Hoboken area)
+            ("NP", "PHO"),  # NJT Newark → PATH Hoboken
         ],
         ids=["trenton-to-wtc", "hoboken-to-33rd", "newark-to-hoboken-path"],
     )
-    def test_ranked_transfer_points_are_direction_symmetric(self, station_a: str, station_b: str):
+    def test_ranked_transfer_points_are_direction_symmetric(
+        self, station_a: str, station_b: str
+    ):
         """Forward and reverse searches must produce identically ranked TPs.
 
         This catches the root cause of issue #1062: set iteration order in
