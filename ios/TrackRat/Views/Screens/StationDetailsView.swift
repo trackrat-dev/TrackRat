@@ -19,7 +19,7 @@ struct StationDetailsView: View {
     }
 
     private var displayName: String { Stations.displayName(for: stationCode) }
-    private var fullName: String { StationData.stationName(forCode: stationCode) ?? displayName }
+    private var fullName: String { Stations.stationName(forCode: stationCode) ?? displayName }
     private var stationSystems: Set<TrainSystem> { Stations.systemsForStation(stationCode) }
     private var hasAlertSupport: Bool { stationSystems.contains { Self.alertSupportedSystems.contains($0) } }
     private var coordinate: CLLocationCoordinate2D? { Stations.getCoordinates(for: stationCode) }
