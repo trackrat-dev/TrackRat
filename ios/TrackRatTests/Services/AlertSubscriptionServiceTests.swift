@@ -350,6 +350,110 @@ class AlertSubscriptionServiceTests: XCTestCase {
                        "Zero subscriptions should be below the free limit")
     }
 
+    // MARK: - subscriptions(for:) Direction Matching
+
+    func testSubscriptionsForContext_lineSubscription_matchesCorrectDirection() {
+        // User has NEC subscriptions for both directions
+        let toNY = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "njt-nec", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 31, digestTimeMinutes: 420
+        )
+        let toTR = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "njt-nec", lineName: "Northeast Corridor",
+            direction: "TR", activeDays: 31, digestTimeMinutes: 480
+        )
+        service.addSubscriptions([toNY, toTR])
+
+        // Context for NY-bound (toStationCode = terminal "NY")
+        let contextToNY = RouteStatusContext(
+            dataSource: "NJT", lineId: "njt-nec",
+            fromStationCode: "TR", toStationCode: "NY"
+        )
+        let matchesNY = service.subscriptions(for: contextToNY)
+        XCTAssertEqual(matchesNY.count, 1, "Should only match the NY-direction subscription")
+        XCTAssertEqual(matchesNY.first?.direction, "NY", "Matched subscription should be NY-bound")
+        XCTAssertEqual(matchesNY.first?.digestTimeMinutes, 420, "Should have NY-direction's digest time")
+
+        // Context for TR-bound (toStationCode = terminal "TR")
+        let contextToTR = RouteStatusContext(
+            dataSource: "NJT", lineId: "njt-nec",
+            fromStationCode: "NY", toStationCode: "TR"
+        )
+        let matchesTR = service.subscriptions(for: contextToTR)
+        XCTAssertEqual(matchesTR.count, 1, "Should only match the TR-direction subscription")
+        XCTAssertEqual(matchesTR.first?.direction, "TR", "Matched subscription should be TR-bound")
+        XCTAssertEqual(matchesTR.first?.digestTimeMinutes, 480, "Should have TR-direction's digest time")
+    }
+
+    func testSubscriptionsForContext_lineSubscription_midRouteContextMatchesBothDirections() {
+        // When context destination is not a terminal, fall back to lineId-only match
+        let toNY = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "njt-nec", lineName: "Northeast Corridor",
+            direction: "NY", activeDays: 31
+        )
+        let toTR = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "njt-nec", lineName: "Northeast Corridor",
+            direction: "TR", activeDays: 31
+        )
+        service.addSubscriptions([toNY, toTR])
+
+        // Mid-route context: destination is NP (Newark), not a terminal
+        let midRouteContext = RouteStatusContext(
+            dataSource: "NJT", lineId: "njt-nec",
+            fromStationCode: "TR", toStationCode: "NP"
+        )
+        let matches = service.subscriptions(for: midRouteContext)
+        XCTAssertEqual(matches.count, 2,
+                       "Mid-route context should match both directions (no terminal filtering)")
+    }
+
+    func testSubscriptionsForContext_stationPair_matchesExactDirectionOnly() {
+        let subAB = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR",
+            activeDays: 31, digestTimeMinutes: 420
+        )
+        let subBA = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "TR", toStationCode: "NY",
+            activeDays: 31, digestTimeMinutes: 480
+        )
+        service.addSubscriptions([subAB, subBA])
+
+        let contextAB = RouteStatusContext(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR"
+        )
+        let matchesAB = service.subscriptions(for: contextAB)
+        XCTAssertEqual(matchesAB.count, 1, "Should only match NY→TR subscription")
+        XCTAssertEqual(matchesAB.first?.fromStationCode, "NY")
+        XCTAssertEqual(matchesAB.first?.digestTimeMinutes, 420,
+                       "Should return the correct direction's digest time")
+
+        let contextBA = RouteStatusContext(
+            dataSource: "NJT", fromStationCode: "TR", toStationCode: "NY"
+        )
+        let matchesBA = service.subscriptions(for: contextBA)
+        XCTAssertEqual(matchesBA.count, 1, "Should only match TR→NY subscription")
+        XCTAssertEqual(matchesBA.first?.fromStationCode, "TR")
+        XCTAssertEqual(matchesBA.first?.digestTimeMinutes, 480,
+                       "Should return the correct direction's digest time")
+    }
+
+    func testSubscriptionsForContext_systemWide_matchesCorrectly() {
+        let sub = RouteAlertSubscription(dataSource: "NJT")
+        service.addSubscriptions([sub])
+
+        let context = RouteStatusContext(dataSource: "NJT")
+        let matches = service.subscriptions(for: context)
+        XCTAssertEqual(matches.count, 1, "System-wide subscription should match system context")
+
+        // System-wide should NOT match when context has specific stations
+        let stationContext = RouteStatusContext(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TR"
+        )
+        let stationMatches = service.subscriptions(for: stationContext)
+        XCTAssertEqual(stationMatches.count, 0,
+                       "System-wide subscription should not match station-specific context")
+    }
+
     // MARK: - Commute Scenario: Independent Direction Configuration
 
     func testCommuteScenario_morningAndEveningDirections() {

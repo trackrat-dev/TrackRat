@@ -68,8 +68,15 @@ final class AlertSubscriptionService: ObservableObject {
             if sub.isSystemWide && context.lineId == nil && context.fromStationCode == nil {
                 return true
             }
-            // Match line subscriptions
+            // Match line subscriptions (with direction check when context has a terminal destination)
             if let lineId = sub.lineId, lineId == context.lineId {
+                if let subDir = sub.direction, let ctxTo = context.toStationCode,
+                   let route = RouteTopology.allRoutes.first(where: { $0.id == lineId }) {
+                    let stations = route.stationCodes
+                    if ctxTo == stations.first || ctxTo == stations.last {
+                        return subDir == ctxTo
+                    }
+                }
                 return true
             }
             // Match station-pair subscriptions (exact direction only)
