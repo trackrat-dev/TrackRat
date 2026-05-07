@@ -969,16 +969,13 @@ class TestDepartureFilterQuery:
 
     @pytest.mark.asyncio
     async def test_hide_departed_filter_allows_cancelled_trains_through(self):
-        """Verify that the hide_departed filter lets cancelled trains pass through.
+        """Verify that the hide_departed filter lets recently-cancelled trains pass.
 
         The hide_departed SQL filter includes:
         - has_departed_station check (primary)
         - scheduled_departure time-based fallback (catches stale flags)
-        - is_cancelled bypass (always show cancelled trains)
-
-        Cancelled trains always have has_departed_station=False, but we
-        explicitly allow them through so the base filter's 2-hour window
-        is the sole gatekeeper for stale cancelled trains.
+        - is_cancelled bypass with scheduled_departure > past_cutoff
+          (show cancelled trains only if their departure is still upcoming)
         """
         from sqlalchemy import and_, or_
         from trackrat.models.database import TrainJourney, JourneyStop
@@ -995,7 +992,13 @@ class TestDepartureFilterQuery:
                     JourneyStop.scheduled_departure > past_cutoff,
                 ),
             ),
-            TrainJourney.is_cancelled.is_(True),
+            and_(
+                TrainJourney.is_cancelled.is_(True),
+                or_(
+                    JourneyStop.scheduled_departure.is_(None),
+                    JourneyStop.scheduled_departure > past_cutoff,
+                ),
+            ),
         )
 
         filter_str = str(filter_expr)
