@@ -44,6 +44,7 @@ from trackrat.services.trip_search import (
     _make_direct_trip,
     _orient_transfer,
     _rank_transfer_points,
+    _systems_for_station,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -1141,6 +1142,52 @@ class TestTransferPointSymmetryIntegration:
             f"Forward:  {[(tp.station_a, tp.system_a, tp.station_b, tp.system_b) for tp in fwd_ranked]}\n"
             f"Reverse:  {[(tp.station_a, tp.system_a, tp.station_b, tp.system_b) for tp in rev_ranked]}"
         )
+
+
+class TestSystemsForStation:
+    """Verify _systems_for_station's hybrid lookup behavior.
+
+    Native codes (codes that appear in a route topology) must return only
+    their native systems — expanding cross-modal equivalence groups would
+    defeat the cross-system direct-trip filter (#1121).  Alias-only codes
+    (codes that are not in any route topology) fall back to expansion so
+    they still resolve to the canonical station's systems.
+    """
+
+    def test_native_code_returns_native_systems_only(self):
+        """S128 (subway) is in subway routes, so expansion must NOT add NJT/AMTRAK/LIRR.
+
+        S128 is in equivalence group {NY, S128, SA28}. Without the alias-only
+        guard, expansion would union systems from NY, polluting the subway
+        code's set with commuter-rail systems and breaking the
+        cross-system direct filter for TR↔S128 etc.
+        """
+        assert _systems_for_station("S128") == {"SUBWAY"}
+
+    def test_native_code_with_cross_modal_equivalence_unaffected(self):
+        """NY (Penn) is shared by NJT/AMTRAK/LIRR; expansion would add SUBWAY.
+
+        We want exactly the systems whose routes call at NY, not the systems
+        of the equivalent subway codes (S128, SA28).
+        """
+        assert _systems_for_station("NY") == {"NJT", "AMTRAK", "LIRR"}
+
+    def test_native_path_code_unaffected_by_njt_amtrak_equivalence(self):
+        """PNK is in {NP, PNK} with NP served by NJT/AMTRAK; expansion would
+        add those to PNK's set and break the PATH↔commuter-rail direct filter.
+        """
+        assert _systems_for_station("PNK") == {"PATH"}
+
+    def test_alias_only_code_falls_back_to_expansion(self):
+        """TS (Secaucus Lower Level) is alias-only and must resolve to NJT via SE."""
+        # Precondition: TS is genuinely alias-only.
+        assert get_systems_serving_station("TS") == set()
+        # Fallback expansion picks up SE → NJT.
+        assert "NJT" in _systems_for_station("TS")
+
+    def test_unknown_code_returns_empty(self):
+        """A completely unknown code returns empty (no native, no expansion)."""
+        assert _systems_for_station("ZZZZ_NOT_A_STATION") == set()
 
 
 class TestFilterCrossSystemDirectTrips:

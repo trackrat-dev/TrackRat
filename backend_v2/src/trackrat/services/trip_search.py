@@ -128,6 +128,25 @@ def _filter_cross_system_direct_trips(
     return [t for t in trips if t.legs[0].data_source in valid_systems]
 
 
+def _systems_for_station(code: str) -> set[str]:
+    """Return the transit systems natively serving a station code.
+
+    Falls back to equivalence-group expansion only for alias-only codes (codes
+    that aren't in any route topology, e.g. TS for Secaucus Lower Level).  For
+    codes that are in a route topology, returns just the native systems —
+    expanding cross-modal equivalence groups (e.g. {NY, S128, SA28}) would
+    defeat the cross-system direct-trip filter by adding commuter-rail systems
+    to a subway code's system set.
+    """
+    direct = get_systems_serving_station(code)
+    if direct:
+        return direct
+    expanded: set[str] = set()
+    for equivalent in expand_station_codes(code):
+        expanded |= get_systems_serving_station(equivalent)
+    return expanded
+
+
 def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
     """Get line codes for a station and its physical-equivalent codes."""
     lines: set[str] = set()
@@ -289,14 +308,10 @@ async def search_trips(
     )
 
     # Systems natively serving each endpoint (used for direct-trip filtering
-    # and transfer search below).  Expand equivalence aliases first so that
-    # alias-only codes (e.g. TS → SE) resolve to the canonical station's systems.
-    from_systems: set[str] = set()
-    for code in expand_station_codes(from_station):
-        from_systems |= get_systems_serving_station(code)
-    to_systems: set[str] = set()
-    for code in expand_station_codes(to_station):
-        to_systems |= get_systems_serving_station(code)
+    # and transfer search below).  Equivalence-group expansion is applied only
+    # for alias-only codes; see _systems_for_station.
+    from_systems = _systems_for_station(from_station)
+    to_systems = _systems_for_station(to_station)
 
     # --- Step 1: Try direct service ---
     direct_response = await departure_service.get_departures(
