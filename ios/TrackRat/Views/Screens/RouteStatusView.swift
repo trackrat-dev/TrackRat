@@ -58,6 +58,13 @@ struct RouteStatusView: View {
                     departuresSection
                     serviceAlertsSection
                     alertSubscriptionSection
+                    FeedbackButton(
+                        screen: "route_status",
+                        trainId: nil,
+                        originCode: context.fromStationCode,
+                        destinationCode: context.toStationCode
+                    )
+                    .padding(.top, 8)
                 }
                 .padding()
                 .animation(.easeInOut(duration: 0.3), value: viewModel.filterLoaded)
