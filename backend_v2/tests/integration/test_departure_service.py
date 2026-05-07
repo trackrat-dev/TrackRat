@@ -1654,7 +1654,13 @@ class TestPathCutoffTime:
             stop_sequence=0,
             has_departed_station=False,
         )
-        past_cancelled.stops = [past_cancelled_stop]
+        past_cancelled_dest = JourneyStop(
+            station_code="TR",
+            station_name="Trenton",
+            scheduled_arrival=now,
+            stop_sequence=1,
+        )
+        past_cancelled.stops = [past_cancelled_stop, past_cancelled_dest]
 
         # 2. Cancelled train with FUTURE departure (1h from now) — should
         #    appear in upcoming departures even with hide_departed=True
@@ -1682,7 +1688,13 @@ class TestPathCutoffTime:
             stop_sequence=0,
             has_departed_station=False,
         )
-        future_cancelled.stops = [future_cancelled_stop]
+        future_cancelled_dest = JourneyStop(
+            station_code="TR",
+            station_name="Trenton",
+            scheduled_arrival=now + timedelta(hours=2),
+            stop_sequence=1,
+        )
+        future_cancelled.stops = [future_cancelled_stop, future_cancelled_dest]
 
         # 3. Normal upcoming train (1h 30m from now) — should always appear
         normal_train = TrainJourney(
@@ -1707,7 +1719,13 @@ class TestPathCutoffTime:
             stop_sequence=0,
             has_departed_station=False,
         )
-        normal_train.stops = [normal_stop]
+        normal_dest = JourneyStop(
+            station_code="TR",
+            station_name="Trenton",
+            scheduled_arrival=now + timedelta(hours=2, minutes=30),
+            stop_sequence=1,
+        )
+        normal_train.stops = [normal_stop, normal_dest]
 
         db_session.add(past_cancelled)
         db_session.add(future_cancelled)
