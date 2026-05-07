@@ -576,6 +576,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     train_id=journey.train_id,
                     api_error_count=journey.api_error_count,
                 )
+            await session.flush()
             return
 
         # Reset error count on successful fetch
