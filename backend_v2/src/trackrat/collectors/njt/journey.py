@@ -932,9 +932,9 @@ class JourneyCollector(BaseJourneyCollector):
 
         if match_result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH:
             # Destination matches but the API's first-stop time is outside the
-            # 10-minute tolerance. This is most often a real-world delay rather
-            # than a journey swap, so we skip applying this snapshot but leave
-            # the row valid for the next collection cycle. (`_is_same_journey`
+            # 10-minute tolerance. Usually a real-world delay rather than a
+            # journey swap, so we skip applying this snapshot but leave the
+            # row valid for the next collection cycle. (`_is_same_journey`
             # has already logged the detailed `journey_mismatch_departure_time`
             # warning with full context.)
             #
@@ -942,6 +942,33 @@ class JourneyCollector(BaseJourneyCollector):
             # journey as stale and busy-loop re-collecting it every cycle.
             journey.last_updated_at = now_et()
             journey.update_count = (journey.update_count or 0) + 1
+
+            # Increment api_error_count so a *sustained* mismatch eventually
+            # expires the row. Without this, a stale slot that the API keeps
+            # serving with wrong-time data would never trigger expiry — the
+            # journey collector would never see TrainNotFoundError, and the
+            # row would linger indefinitely (along with any Live Activity
+            # bound to it). Use the same 3-strike threshold as the not-found
+            # path so behavior is symmetric across the two failure modes.
+            journey.api_error_count = (journey.api_error_count or 0) + 1
+            if journey.api_error_count >= 3:
+                if not journey.is_completed:
+                    await self._attempt_completion_on_expiry(session, journey)
+
+                if not journey.is_completed:
+                    journey.is_expired = True
+
+                logger.warning(
+                    (
+                        "train_marked_expired_on_sustained_time_mismatch"
+                        if journey.is_expired
+                        else "train_completed_on_sustained_time_mismatch"
+                    ),
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    api_error_count=journey.api_error_count,
+                )
+
             await session.flush()
             return
 
