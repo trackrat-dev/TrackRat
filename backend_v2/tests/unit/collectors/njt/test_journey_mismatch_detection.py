@@ -466,14 +466,101 @@ class TestStaleOriginDetection:
         await db_session.refresh(journey)
         assert (
             journey.is_expired is False
-        ), "Time-only mismatch must not flag the journey as expired"
-        assert (
-            journey.api_error_count or 0
-        ) == 0, "Time-only mismatch must not bump api_error_count"
+        ), "A single time-only mismatch must not flag the journey as expired"
+        # api_error_count is bumped to 1 (toward the 3-strike expiry threshold)
+        # so a sustained mismatch eventually expires; a single mismatch must
+        # not cross the threshold.
+        assert journey.api_error_count == 1, (
+            "Single time-only mismatch must increment api_error_count by exactly "
+            "one (toward the 3-strike threshold), not jump straight to expiry"
+        )
         assert journey.last_updated_at is not None and (
             original_last_updated is None
             or journey.last_updated_at > original_last_updated
         ), (
             "Time-only mismatch must advance last_updated_at so the scheduler "
             "does not busy-loop re-collecting this journey every cycle"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sustained_time_mismatch_expires_after_three_strikes(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Three consecutive DEPARTURE_TIME_MISMATCH responses must trigger
+        expiry. Without this escalation, a stale slot that the API keeps
+        serving with wrong-time data would never be cleaned up — neither
+        TrainNotFoundError nor a fresh MATCH would ever reset or escalate
+        the row, leaving any bound Live Activity hanging indefinitely.
+        """
+        scheduled_departure = now_et().replace(
+            hour=15, minute=55, second=0, microsecond=0
+        )
+        api_actual_departure = scheduled_departure + timedelta(minutes=22)
+
+        journey = TrainJourney(
+            train_id="3943",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Single origin stop with no penultimate-departed signal — the
+        # completion-on-expiry backstop won't fire, so the row should land
+        # in is_expired=True after three strikes.
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3943",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_actual_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        # Strike 1 and 2: count climbs but no expiry yet.
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+        assert journey.api_error_count == 1
+        assert journey.is_expired is False, "First mismatch must not expire"
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+        assert journey.api_error_count == 2
+        assert journey.is_expired is False, "Second mismatch must not expire"
+
+        # Strike 3: completion-on-expiry runs, finds no departed penultimate
+        # stop, falls back to is_expired=True.
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+        assert journey.api_error_count >= 3
+        assert journey.is_expired is True, (
+            "Three sustained DEPARTURE_TIME_MISMATCH responses must expire "
+            "the journey when the completion backstop cannot fire"
         )
