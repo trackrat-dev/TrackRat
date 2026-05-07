@@ -868,3 +868,145 @@ class TestPopulateStopTimesFromDiscovery:
         # TR: arrival was set -> preserved; departure was NULL -> filled
         assert stop_tr.updated_arrival == datetime(2025, 1, 1, 9, 50, 0)
         assert stop_tr.updated_departure == parsed_times[3]
+
+
+class TestDiscoveryInsertRaceCondition:
+    """Test that concurrent INSERT races on unique_train_journey are handled
+    gracefully instead of crashing with UniqueViolationError.
+
+    Addresses issue #1123: NJT discovery hits unique_train_journey constraint
+    violation due to insert race; needs ON CONFLICT handling.
+    """
+
+    @pytest.fixture
+    def collector(self, mock_njt_client):
+        return TrainDiscoveryCollector(mock_njt_client)
+
+    def _make_train_data(self, train_id="3737", destination="New York Penn Station"):
+        return {
+            "TRAIN_ID": train_id,
+            "LINE": "NEC",
+            "LINE_NAME": "Northeast Corridor",
+            "DESTINATION": destination,
+            "SCHED_DEP_DATE": "01-Jan-2025 10:00:00 AM",
+            "BACKCOLOR": "#FF6600",
+        }
+
+    @pytest.mark.asyncio
+    async def test_insert_race_does_not_crash_process(self, collector):
+        """When a concurrent process inserts the same journey between our
+        existence check and our INSERT, the IntegrityError should be caught
+        and the train skipped — not crash the entire discovery cycle."""
+        mock_session = _make_session_mock()
+
+        # Scalar calls per train:
+        # 1. SELECT FOR UPDATE SKIP LOCKED -> None (not found)
+        # 2. EXISTS check -> False (doesn't exist yet)
+        # 3. _find_matching_scheduled_train -> None (no fuzzy match)
+        mock_session.scalar = AsyncMock(side_effect=[None, False, None])
+
+        # session.flush() raises IntegrityError (unique constraint violation)
+        mock_session.flush = AsyncMock(
+            side_effect=IntegrityError(
+                "duplicate key", params=None, orig=Exception("unique_train_journey")
+            )
+        )
+
+        train_data = [self._make_train_data()]
+
+        with patch("trackrat.collectors.njt.discovery.parse_njt_time") as mock_parse:
+            mock_parse.return_value = datetime(2025, 1, 1, 10, 0, 0)
+            with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
+                mock_now.return_value = datetime(2025, 1, 1, 9, 0, 0)
+
+                # Should NOT raise — IntegrityError is caught internally
+                result = await collector.process_discovered_trains(
+                    mock_session, "NY", train_data
+                )
+
+        # The train should NOT be in the result set (it wasn't created)
+        assert "3737" not in result
+        # Process completed without crashing
+        assert isinstance(result, set)
+
+    @pytest.mark.asyncio
+    async def test_insert_race_does_not_affect_other_trains(self, collector):
+        """An IntegrityError on one train should not prevent processing
+        subsequent trains in the same station batch."""
+        mock_session = _make_session_mock()
+
+        # Scalar calls per train (3 each):
+        # Train 1: FOR UPDATE -> None, EXISTS -> False, fuzzy match -> None
+        # Train 2: FOR UPDATE -> None, EXISTS -> False, fuzzy match -> None
+        mock_session.scalar = AsyncMock(
+            side_effect=[None, False, None, None, False, None]
+        )
+
+        call_count = 0
+
+        async def flush_side_effect():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise IntegrityError(
+                    "duplicate key",
+                    params=None,
+                    orig=Exception("unique_train_journey"),
+                )
+
+        mock_session.flush = AsyncMock(side_effect=flush_side_effect)
+
+        train_data = [
+            self._make_train_data("3737", "New York Penn Station"),
+            self._make_train_data("5126", "Trenton"),
+        ]
+
+        with patch("trackrat.collectors.njt.discovery.parse_njt_time") as mock_parse:
+            mock_parse.side_effect = [
+                datetime(2025, 1, 1, 10, 0, 0),
+                datetime(2025, 1, 1, 10, 30, 0),
+            ]
+            with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
+                mock_now.return_value = datetime(2025, 1, 1, 9, 0, 0)
+
+                result = await collector.process_discovered_trains(
+                    mock_session, "NY", train_data
+                )
+
+        # Train 3737 failed due to race, but 5126 should succeed
+        assert "3737" not in result
+        assert "5126" in result
+
+    @pytest.mark.asyncio
+    async def test_insert_race_logged_at_info_not_error(self, collector):
+        """IntegrityError from insert race should be logged at INFO level
+        (not ERROR), since it's a benign race condition."""
+        mock_session = _make_session_mock()
+        # 3 scalar calls: FOR UPDATE -> None, EXISTS -> False, fuzzy -> None
+        mock_session.scalar = AsyncMock(side_effect=[None, False, None])
+        mock_session.flush = AsyncMock(
+            side_effect=IntegrityError(
+                "duplicate key", params=None, orig=Exception("unique_train_journey")
+            )
+        )
+
+        train_data = [self._make_train_data()]
+
+        with patch("trackrat.collectors.njt.discovery.parse_njt_time") as mock_parse:
+            mock_parse.return_value = datetime(2025, 1, 1, 10, 0, 0)
+            with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
+                mock_now.return_value = datetime(2025, 1, 1, 9, 0, 0)
+                with patch("trackrat.collectors.njt.discovery.logger") as mock_logger:
+                    await collector.process_discovered_trains(
+                        mock_session, "NY", train_data
+                    )
+
+                    # Should log at info level with the race event name
+                    mock_logger.info.assert_any_call(
+                        "discovery_insert_race_skipped",
+                        train_id="3737",
+                        journey_date=datetime(2025, 1, 1, 10, 0, 0).date(),
+                    )
+                    # Should NOT log at error level for this train
+                    for call in mock_logger.error.call_args_list:
+                        assert "3737" not in str(call)
