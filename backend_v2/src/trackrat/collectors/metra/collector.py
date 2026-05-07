@@ -41,9 +41,12 @@ logger = logging.getLogger(__name__)
 DATA_SOURCE = "METRA"
 
 # Module-level counter that persists across collector instantiations (same process).
-# Reset on any successful non-empty fetch.
+# Reset on any successful non-empty fetch. Exposed as a structured log field on
+# every empty cycle so operators can detect sustained outages via log search /
+# derived metrics (e.g., "Metra empty for >N consecutive cycles"). The counter
+# is diagnostic only — empty 200s from the upstream feed are a known recurring
+# behavior (daily maintenance gap) and are NOT escalated to ERROR.
 _consecutive_empty_cycles = 0
-_CONSECUTIVE_EMPTY_THRESHOLD = 3
 
 
 def _generate_train_id(trip_id: str) -> str:
@@ -146,18 +149,18 @@ class MetraCollector:
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:
+                # Empty 200s from the Metra feed are a known recurring upstream
+                # behavior (daily maintenance gap, ~07:30-09:25 UTC). Treat as a
+                # benign skipped cycle: log WARNING with the running counter and
+                # return. Sustained outages are detected via monitoring on the
+                # `consecutive_empty_cycles` field, not via log-level escalation.
+                # Genuine HTTP / auth failures still raise via MetraFetchError.
                 _consecutive_empty_cycles += 1
-                if _consecutive_empty_cycles >= _CONSECUTIVE_EMPTY_THRESHOLD:
-                    raise RuntimeError(
-                        f"Metra collection: {_consecutive_empty_cycles} consecutive "
-                        f"cycles returned 0 arrivals — possible auth or API failure "
-                        f"(auth_method={self.client._auth_method})"
-                    )
                 logger.warning(
                     "metra_empty_feed",
                     extra={
                         "consecutive_empty_cycles": _consecutive_empty_cycles,
-                        "threshold": _CONSECUTIVE_EMPTY_THRESHOLD,
+                        "auth_method": self.client._auth_method,
                     },
                 )
                 return stats
