@@ -1029,6 +1029,7 @@ class TestStaleScheduledFiltering:
         data_source: str,
         observation_type: str,
         minutes_until_departure: int,
+        is_cancelled: bool = False,
     ) -> "TrainDeparture":
         """Create a TrainDeparture for testing."""
         from trackrat.models.api import (
@@ -1064,7 +1065,7 @@ class TestStaleScheduledFiltering:
             ),
             data_source=data_source,
             observation_type=observation_type,
-            is_cancelled=False,
+            is_cancelled=is_cancelled,
         )
 
     def test_filter_scheduled_njt_within_threshold(self):
@@ -1391,3 +1392,33 @@ class TestStaleScheduledFiltering:
         assert result_ids == {"PATH-1", "WMATA-1", "SUB-1"}, (
             f"Expected PATH/WMATA/SUBWAY kept at 6 min, NJT/AMTRAK filtered. Got: {result_ids}"
         )
+
+    def test_cancelled_scheduled_train_within_threshold_is_kept(self):
+        """Cancelled SCHEDULED trains must bypass the staleness filter.
+
+        Without this short-circuit, a train cancelled before promotion to
+        OBSERVED would be filtered out of the upcoming list (here) yet not
+        yet eligible for the recent list (its scheduled time is still in
+        the future), leaving the cancellation invisible to users.
+        """
+        service = DepartureService()
+        now = now_et()
+
+        departures = [
+            self._create_departure(
+                train_id="NJT-CXL",
+                data_source="NJT",
+                observation_type="SCHEDULED",
+                minutes_until_departure=5,  # Inside 15-min NJT threshold
+                is_cancelled=True,
+            ),
+        ]
+
+        result = service._filter_stale_scheduled_trains(departures, now)
+
+        assert len(result) == 1, (
+            "Cancelled SCHEDULED NJT train within threshold must be surfaced, "
+            "not silently filtered out"
+        )
+        assert result[0].train_id == "NJT-CXL"
+        assert result[0].is_cancelled is True
