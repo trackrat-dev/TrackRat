@@ -172,7 +172,7 @@ class TrainListViewModelTests: XCTestCase {
                        "Future-date view should not apply the 6-hour live-board filter")
     }
 
-    func testTimeFromForFutureDateProjectsTodaysTimeOfDay() {
+    func testTimeFromForFutureDateAnchorsAt5AM() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!
 
@@ -182,13 +182,62 @@ class TrainListViewModelTests: XCTestCase {
 
         let timeFrom = APIService.timeFromForFutureDate(tomorrowStart, now: today)
 
-        XCTAssertNotNil(timeFrom)
+        XCTAssertNotNil(timeFrom, "Future date should return a non-nil time_from")
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: timeFrom!)
         XCTAssertEqual(components.year, 2026)
         XCTAssertEqual(components.month, 5)
         XCTAssertEqual(components.day, 5)
-        XCTAssertEqual(components.hour, 15)
-        XCTAssertEqual(components.minute, 30)
+        XCTAssertEqual(components.hour, 5, "Future date should anchor at 5 AM ET, not the user's current time")
+        XCTAssertEqual(components.minute, 0)
+    }
+
+    func testTimeFromForFutureDateIgnoresCurrentTimeOfDay() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+
+        let morning = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 5, day: 4, hour: 8, minute: 0))!
+        let evening = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 5, day: 4, hour: 21, minute: 45))!
+        let tomorrowStart = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 5, day: 5))!
+
+        let timeFromMorning = APIService.timeFromForFutureDate(tomorrowStart, now: morning)
+        let timeFromEvening = APIService.timeFromForFutureDate(tomorrowStart, now: evening)
+
+        XCTAssertNotNil(timeFromMorning)
+        XCTAssertNotNil(timeFromEvening)
+        XCTAssertEqual(timeFromMorning, timeFromEvening,
+                       "Future date time_from should be the same regardless of when the user checks")
+    }
+
+    func testTimeFromForFutureDatePreserves5AMOnDSTSpringForward() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+
+        // March 8, 2026 is DST spring-forward day (clocks jump 2AM → 3AM)
+        let today = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 3, day: 7, hour: 12))!
+        let dstDay = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 3, day: 8))!
+
+        let timeFrom = APIService.timeFromForFutureDate(dstDay, now: today)
+
+        XCTAssertNotNil(timeFrom)
+        let components = calendar.dateComponents([.hour, .minute], from: timeFrom!)
+        XCTAssertEqual(components.hour, 5, "Should be 5 AM local time even on spring-forward day")
+        XCTAssertEqual(components.minute, 0)
+    }
+
+    func testTimeFromForFutureDatePreserves5AMOnDSTFallBack() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+
+        // November 1, 2026 is DST fall-back day (clocks repeat 1AM → 2AM)
+        let today = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 10, day: 31, hour: 12))!
+        let dstDay = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 11, day: 1))!
+
+        let timeFrom = APIService.timeFromForFutureDate(dstDay, now: today)
+
+        XCTAssertNotNil(timeFrom)
+        let components = calendar.dateComponents([.hour, .minute], from: timeFrom!)
+        XCTAssertEqual(components.hour, 5, "Should be 5 AM local time even on fall-back day")
+        XCTAssertEqual(components.minute, 0)
     }
 
     func testTimeFromForFutureDateReturnsNilForToday() {
