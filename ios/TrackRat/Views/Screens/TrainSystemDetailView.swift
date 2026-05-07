@@ -198,7 +198,7 @@ struct TrainSystemDetailView: View {
 
     private var existingSystemWideSub: RouteAlertSubscription? {
         alertService.subscriptions.first {
-            $0.isSystemWide && $0.dataSource == system.rawValue
+            $0.isSystemWide && $0.dataSource == system.dataSource
         }
     }
 
@@ -259,7 +259,7 @@ struct TrainSystemDetailView: View {
                 showingPaywall = true
                 return
             }
-            let sub = RouteAlertSubscription(dataSource: system.rawValue)
+            let sub = RouteAlertSubscription(dataSource: system.dataSource)
             alertService.addSubscriptions([sub])
             alertService.syncIfPossible()
         } else if let sub = existingSystemWideSub {
@@ -272,9 +272,9 @@ struct TrainSystemDetailView: View {
     private func loadServiceAlerts() async {
         guard system.supportsAlerts else { return }
         do {
-            serviceAlerts = try await APIService.shared.fetchServiceAlerts(dataSource: system.rawValue)
+            serviceAlerts = try await APIService.shared.fetchServiceAlerts(dataSource: system.dataSource)
         } catch {
-            print("TrainSystemDetailView: failed to load service alerts for \(system.rawValue): \(error)")
+            print("TrainSystemDetailView: failed to load service alerts for \(system.dataSource): \(error)")
         }
     }
 }
