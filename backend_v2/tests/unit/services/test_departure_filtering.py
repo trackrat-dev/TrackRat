@@ -1437,3 +1437,124 @@ class TestStaleScheduledFiltering:
         )
         assert result[0].train_id == "NJT-CXL"
         assert result[0].is_cancelled is True
+
+
+class TestGtfsMergePassesTimeFrom:
+    """Verify the GTFS merge step propagates time_from to get_scheduled_departures.
+
+    Regression test for issue #1140: trip-search leg-2 queries set time_from
+    to a future leg-1 arrival time. Without propagating time_from to the
+    underlying GTFS SQL query, its `.limit(250)` truncates to overnight-only
+    departures at high-volume station complexes (e.g., the Union Sq subway
+    expansion {SL03, S635, SR20} with ~3000+ trips/day across 4/5/6/L/N/R/W).
+    None of those overnight rows survive the post-filter, leaving leg-2
+    empty and the trip search returning 0 trips.
+    """
+
+    @pytest.mark.asyncio
+    async def test_future_time_from_propagates_to_gtfs_query(self):
+        """When get_departures has a future time_from, it must be passed to GTFS."""
+        future_time_from = now_et() + timedelta(hours=1)
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et()
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=[])
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    await service.get_departures(
+                        db=mock_session,
+                        from_station="SL03",
+                        to_station="SL29",
+                        time_from=future_time_from,
+                        data_sources=["SUBWAY"],
+                        limit=20,
+                    )
+
+                    # Assert get_scheduled_departures was called with time_from
+                    # equal to the future time we passed in. The exact value is
+                    # carried through ensure_timezone_aware, so compare the
+                    # underlying instant.
+                    assert mock_gtfs.get_scheduled_departures.await_count == 1
+                    kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
+                    assert "time_from" in kwargs, (
+                        "GTFS merge must pass time_from so the SQL pre-filter "
+                        "prunes trips before the connection window. Without "
+                        "this, the .limit(250) at high-volume stations "
+                        "truncates to overnight-only rows. See issue #1140."
+                    )
+                    passed = kwargs["time_from"]
+                    assert passed is not None
+                    assert passed == future_time_from, (
+                        f"time_from passed to GTFS ({passed}) must match the "
+                        f"caller's time_from ({future_time_from}); a mismatch "
+                        f"means leg-2 queries will still hit the SQL truncation."
+                    )
+
+    @pytest.mark.asyncio
+    async def test_default_time_from_still_passed_to_gtfs(self):
+        """Even with default (start-of-day) time_from, pass it through.
+
+        Backward compatible: when callers do not specify time_from, the
+        service defaults it to start-of-day in ET. Passing that through
+        to GTFS is a no-op for the SQL filter (it would have returned the
+        same rows anyway), but keeps the contract simple — GTFS always
+        receives the lower bound the caller intends to enforce.
+        """
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et()
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=[])
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="TR",
+                        data_sources=["NJT"],
+                    )
+
+                    assert mock_gtfs.get_scheduled_departures.await_count == 1
+                    kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
+                    # Default time_from = start of day in ET; must still be passed.
+                    assert kwargs.get("time_from") is not None
+                    assert kwargs["time_from"].tzinfo is not None
+                    # Should be at midnight ET of today
+                    assert kwargs["time_from"].hour == 0
+                    assert kwargs["time_from"].minute == 0
