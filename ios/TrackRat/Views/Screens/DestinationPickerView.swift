@@ -327,6 +327,7 @@ struct DestinationPickerView: View {
                         .stroke(TrackRatTheme.Colors.border, lineWidth: 1)
                 )
         )
+        .stationDetailsContextMenu(code: code, path: $appState.navigationPath)
     }
 
     /// Demoted search row for stations on systems the user hasn't activated.
@@ -380,6 +381,7 @@ struct DestinationPickerView: View {
                         .stroke(TrackRatTheme.Colors.border.opacity(0.6), lineWidth: 1)
                 )
         )
+        .stationDetailsContextMenu(code: code, path: $appState.navigationPath)
     }
 
     private func selectDestination(_ destination: String) {

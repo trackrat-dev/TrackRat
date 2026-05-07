@@ -383,12 +383,14 @@ struct DeparturePickerView: View {
     @ViewBuilder
     private var stationResultsView: some View {
         ForEach(searchResults.stations, id: \.self) { station in
+            let code = Stations.getStationCode(station)
             stationRow(station)
                 .onTapGesture {
-                    if let code = Stations.getStationCode(station) {
+                    if let code {
                         selectDeparture(name: station, code: code)
                     }
                 }
+                .stationDetailsContextMenu(code: code, path: $appState.navigationPath)
         }
     }
 
@@ -672,6 +674,7 @@ struct DepartureButton: View {
         .padding(.vertical, 16)
         .background(TrackRatTheme.Colors.surfaceCard)
         .cornerRadius(TrackRatTheme.CornerRadius.md)
+        .stationDetailsContextMenu(code: code, path: $appState.navigationPath)
     }
 }
 

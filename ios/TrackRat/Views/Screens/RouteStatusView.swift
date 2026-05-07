@@ -852,7 +852,7 @@ enum ServiceAlertFilter: CaseIterable {
 
 // MARK: - Service Alert Card
 
-private struct ServiceAlertCard: View {
+struct ServiceAlertCard: View {
     let alert: V2ServiceAlert
     @State private var isExpanded = false
 
@@ -951,85 +951,6 @@ private struct NowDivider: View {
         }
         .padding(.vertical, 2)
         .onReceive(timer) { now = $0 }
-    }
-}
-
-// MARK: - Train Row
-
-private struct TrainRow: View {
-    let train: TrainV2
-    let dataSource: String
-
-    /// Whether this transit system uses synthetic train IDs (e.g., subway, PATCO)
-    private var useSyntheticId: Bool {
-        TrainSystem.syntheticTrainIdSources.contains(dataSource)
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Line color indicator
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: train.line.color))
-                .frame(width: 4, height: 40)
-
-            VStack(alignment: .leading, spacing: 2) {
-                if useSyntheticId {
-                    Text(train.line.name)
-                        .font(.subheadline.bold())
-                } else {
-                    Text("Train \(train.trainId)")
-                        .font(.subheadline.bold())
-                }
-                HStack(spacing: 8) {
-                    if let track = train.track, !track.isEmpty {
-                        Text("Track \(track)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    if train.isCancelled {
-                        Text("Cancelled")
-                            .font(.caption.bold())
-                            .foregroundColor(.red)
-                    }
-                }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(departureTimeString)
-                    .font(.subheadline.bold())
-                delayBadge
-            }
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    private var departureTimeString: String {
-        guard let time = train.departure.updatedTime ?? train.departure.scheduledTime else {
-            return "--"
-        }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        formatter.timeZone = TimeZone(identifier: "America/New_York")
-        return formatter.string(from: time)
-    }
-
-    @ViewBuilder
-    private var delayBadge: some View {
-        if train.isCancelled {
-            EmptyView()
-        } else if train.departure.delayMinutes > 0 {
-            Text("+\(train.departure.delayMinutes)m")
-                .font(.caption.bold())
-                .foregroundColor(.red)
-        } else {
-            Text("On Time")
-                .font(.caption)
-                .foregroundColor(.green)
-        }
     }
 }
 

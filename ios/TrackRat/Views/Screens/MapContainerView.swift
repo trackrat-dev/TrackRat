@@ -747,6 +747,8 @@ struct MapContainerView: View {
                 )
             case .tripHistory:
                 TripHistoryView()
+            case .stationDetails(let stationCode):
+                StationDetailsView(stationCode: stationCode)
             }
         }
         .transparentNavigationBackground()
