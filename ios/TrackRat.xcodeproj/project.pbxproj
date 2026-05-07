@@ -127,6 +127,7 @@
 		A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */; };
 		A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */; };
 		A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */; };
+		A1CB28512E3D6189004A49E6 /* TrainSystemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB28502E3D6189004A49E6 /* TrainSystemDetailView.swift */; };
 		A1D88F612F27083000111466 /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D88F602F27083000111466 /* RouteTopology.swift */; };
 		A1D88F622F27083000111466 /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D88F602F27083000111466 /* RouteTopology.swift */; };
 		A1D88F632F27083000111466 /* RouteTopology.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D88F602F27083000111466 /* RouteTopology.swift */; };
@@ -288,6 +289,7 @@
 		A1BA60EB2DFC73650002FB39 /* XCTestCase+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XCTestCase+Extensions.swift"; sourceTree = "<group>"; };
 		A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AdvancedConfigurationView.swift; path = Views/Screens/AdvancedConfigurationView.swift; sourceTree = "<group>"; };
 		A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapView.swift; path = Views/Screens/CongestionMapView.swift; sourceTree = "<group>"; };
+		A1CB28502E3D6189004A49E6 /* TrainSystemDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainSystemDetailView.swift; path = Views/Screens/TrainSystemDetailView.swift; sourceTree = "<group>"; };
 		A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyCongestionMapView.swift; path = Views/Components/JourneyCongestionMapView.swift; sourceTree = "<group>"; };
 		A1D88F602F27083000111466 /* RouteTopology.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteTopology.swift; path = TrackRat/Shared/RouteTopology.swift; sourceTree = "<group>"; };
 		B11DC1018BF600000001 /* RouteShapes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteShapes.swift; path = TrackRat/Shared/RouteShapes.swift; sourceTree = "<group>"; };
@@ -449,6 +451,7 @@
 				A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */,
 				A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */,
 				A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */,
+				A1CB28502E3D6189004A49E6 /* TrainSystemDetailView.swift */,
 				A1CB28322E3D634C004A49E6 /* JourneyCongestionMapView.swift */,
 				A183B7E02E6352E80024FADC /* LegacySheetAwareScrollView.swift */,
 				A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */,
@@ -783,6 +786,7 @@
 				A1CB28302E3D6189004A49E6 /* AdvancedConfigurationView.swift in Sources */,
 				A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */,
 				A1CB28312E3D6189004A49E6 /* CongestionMapView.swift in Sources */,
+				A1CB28512E3D6189004A49E6 /* TrainSystemDetailView.swift in Sources */,
 				A1CNFTI0012F7000000000002 /* ConfettiView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

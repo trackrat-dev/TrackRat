@@ -4,6 +4,7 @@ import SwiftUI
 enum SettingsDestination: Hashable {
     case tripHistory
     case advancedConfiguration
+    case trainSystem(TrainSystem)
 }
 
 struct SettingsView: View {
@@ -102,6 +103,8 @@ struct SettingsView: View {
                         TripHistoryView()
                     case .advancedConfiguration:
                         AdvancedConfigurationView()
+                    case .trainSystem(let system):
+                        TrainSystemDetailView(system: system)
                     }
                 }
             }
@@ -237,12 +240,15 @@ struct SettingsSection: View {
 
                         VStack(spacing: 0) {
                             ForEach(selectedSystems, id: \.self) { system in
-                                TrainSystemRow(
-                                    system: system,
-                                    isSelected: true,
-                                    isLast: system == selectedSystems.last,
-                                    showControls: false
-                                ) {}
+                                NavigationLink(value: SettingsDestination.trainSystem(system)) {
+                                    TrainSystemRow(
+                                        system: system,
+                                        isSelected: true,
+                                        isLast: system == selectedSystems.last,
+                                        showControls: false
+                                    ) {}
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -1266,6 +1272,10 @@ private struct TrainSystemRow: View {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.body)
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
             .padding(.horizontal)
