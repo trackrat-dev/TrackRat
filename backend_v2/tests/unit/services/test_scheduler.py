@@ -969,3 +969,181 @@ class TestSchedulerHorizontalScaling:
         # 60-minute task should have 54-minute safe interval
         interval = calculate_safe_interval(60)
         assert interval == 3240  # (60 - 6) * 60
+
+
+class TestCollectJourneyLogging:
+    """Test that collect_journey logs at appropriate levels based on
+    _collect_single_njt_journey_safe return values.
+
+    Addresses issue #1122: benign expired/missing journeys were logged
+    as journey.collection.failed (ERROR) instead of being skipped quietly.
+    """
+
+    @pytest.fixture
+    def test_settings(self):
+        return Settings(
+            njt_api_token="test_token",
+            discovery_interval_minutes=30,
+            journey_update_interval_minutes=15,
+            data_staleness_seconds=60,
+            environment="testing",
+        )
+
+    @pytest.fixture
+    def mock_apns_service(self):
+        service = AsyncMock()
+        service.send_update = AsyncMock()
+        return service
+
+    @pytest.fixture
+    def scheduler_service(self, test_settings, mock_apns_service):
+        with patch("trackrat.services.scheduler.NJTransitClient"):
+            svc = SchedulerService(
+                settings=test_settings, apns_service=mock_apns_service
+            )
+            svc.njt_client = AsyncMock()
+            return svc
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_logs_debug_on_success(
+        self, scheduler_service
+    ):
+        """Successful collection should log at DEBUG level."""
+        result = {
+            "train_id": "1234",
+            "success": True,
+            "is_completed": False,
+            "stops_count": 5,
+        }
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            return_value=result,
+        ):
+            with patch("trackrat.services.scheduler.logger") as mock_logger:
+                await scheduler_service.collect_journey("1234", datetime(2026, 5, 7))
+                mock_logger.debug.assert_any_call(
+                    "journey.collection.completed",
+                    train_id="1234",
+                    is_completed=False,
+                    stops_count=5,
+                )
+                mock_logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_logs_debug_on_skipped_expired(
+        self, scheduler_service
+    ):
+        """Skipped (already expired) should log at DEBUG, not ERROR."""
+        result = {
+            "train_id": "47",
+            "success": False,
+            "skipped": True,
+            "reason": "already_expired",
+        }
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            return_value=result,
+        ):
+            with patch("trackrat.services.scheduler.logger") as mock_logger:
+                await scheduler_service.collect_journey("47", datetime(2026, 5, 7))
+                mock_logger.debug.assert_any_call(
+                    "journey.collection.skipped",
+                    train_id="47",
+                    reason="already_expired",
+                )
+                mock_logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_logs_debug_on_skipped_not_found(
+        self, scheduler_service
+    ):
+        """Skipped (journey not found) should log at DEBUG, not ERROR."""
+        result = {
+            "train_id": "49",
+            "success": False,
+            "skipped": True,
+            "reason": "journey_not_found",
+        }
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            return_value=result,
+        ):
+            with patch("trackrat.services.scheduler.logger") as mock_logger:
+                await scheduler_service.collect_journey("49", datetime(2026, 5, 7))
+                mock_logger.debug.assert_any_call(
+                    "journey.collection.skipped",
+                    train_id="49",
+                    reason="journey_not_found",
+                )
+                mock_logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_logs_debug_on_skipped_disappeared(
+        self, scheduler_service
+    ):
+        """Skipped (journey disappeared between phases) should log at DEBUG."""
+        result = {
+            "train_id": "535",
+            "success": False,
+            "skipped": True,
+            "reason": "journey_disappeared",
+        }
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            return_value=result,
+        ):
+            with patch("trackrat.services.scheduler.logger") as mock_logger:
+                await scheduler_service.collect_journey("535", datetime(2026, 5, 7))
+                mock_logger.debug.assert_any_call(
+                    "journey.collection.skipped",
+                    train_id="535",
+                    reason="journey_disappeared",
+                )
+                mock_logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_logs_info_on_unsuccessful(
+        self, scheduler_service
+    ):
+        """Non-skipped unsuccessful result (e.g. TrainNotFoundError) logs INFO."""
+        result = {
+            "train_id": "5530",
+            "success": False,
+            "error": "Train not found",
+            "expired": True,
+        }
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            return_value=result,
+        ):
+            with patch("trackrat.services.scheduler.logger") as mock_logger:
+                await scheduler_service.collect_journey("5530", datetime(2026, 5, 7))
+                mock_logger.info.assert_any_call(
+                    "journey.collection.unsuccessful",
+                    train_id="5530",
+                    error="Train not found",
+                )
+                mock_logger.error.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_logs_error_on_none(
+        self, scheduler_service
+    ):
+        """Genuine failure (None) should still log ERROR."""
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            return_value=None,
+        ):
+            with patch("trackrat.services.scheduler.logger") as mock_logger:
+                await scheduler_service.collect_journey("9999", datetime(2026, 5, 7))
+                mock_logger.error.assert_any_call(
+                    "journey.collection.failed",
+                    train_id="9999",
+                    error="No result returned from collection",
+                )
