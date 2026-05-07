@@ -107,6 +107,27 @@ def _filter_unreasonable_durations(trips: list[TripOption]) -> list[TripOption]:
     return [t for t in trips if t.total_duration_minutes <= max_reasonable]
 
 
+def _filter_cross_system_direct_trips(
+    trips: list[TripOption],
+    from_systems: set[str],
+    to_systems: set[str],
+) -> list[TripOption]:
+    """Filter direct trips to those whose data_source natively serves both endpoints.
+
+    Station equivalence expansion in the departure service can match trains from
+    systems that don't actually serve the requested station codes (e.g., an Amtrak
+    train to NY matching a query for subway station S128, because NY and S128 are
+    in the same equivalence group).  These cross-system matches require a physical
+    transfer and should fall through to the transfer search.
+    """
+    if not trips:
+        return trips
+    valid_systems = from_systems & to_systems
+    if not valid_systems:
+        return []
+    return [t for t in trips if t.legs[0].data_source in valid_systems]
+
+
 def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
     """Get line codes for a station and its physical-equivalent codes."""
     lines: set[str] = set()
@@ -267,6 +288,16 @@ async def search_trips(
         data_sources=data_sources,
     )
 
+    # Systems natively serving each endpoint (used for direct-trip filtering
+    # and transfer search below).  Expand equivalence aliases first so that
+    # alias-only codes (e.g. TS → SE) resolve to the canonical station's systems.
+    from_systems: set[str] = set()
+    for code in expand_station_codes(from_station):
+        from_systems |= get_systems_serving_station(code)
+    to_systems: set[str] = set()
+    for code in expand_station_codes(to_station):
+        to_systems |= get_systems_serving_station(code)
+
     # --- Step 1: Try direct service ---
     direct_response = await departure_service.get_departures(
         db=db,
@@ -289,6 +320,12 @@ async def search_trips(
         if trip:
             direct_trips.append(trip)
 
+    # Filter out cross-system matches that only connected via station equivalence
+    # expansion (e.g., Amtrak to NY appearing as "direct" to subway S128).
+    direct_trips = _filter_cross_system_direct_trips(
+        direct_trips, from_systems, to_systems
+    )
+
     if direct_trips:
         logger.info("trip_search_direct", count=len(direct_trips))
         return TripSearchResponse(
@@ -309,8 +346,6 @@ async def search_trips(
         )
 
     # --- Step 2: No direct service — find transfers ---
-    from_systems = get_systems_serving_station(from_station)
-    to_systems = get_systems_serving_station(to_station)
 
     # Restrict to user-enabled systems so transfer search doesn't
     # propose routes through systems the user hasn't selected.

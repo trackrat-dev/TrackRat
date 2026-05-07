@@ -36,6 +36,7 @@ from trackrat.services.trip_search import (
     MAX_TRANSFER_QUERIES,
     _departure_to_leg,
     _empty_response,
+    _filter_cross_system_direct_trips,
     _filter_unreasonable_durations,
     _find_relevant_transfer_points,
     _get_best_time,
@@ -1139,4 +1140,215 @@ class TestTransferPointSymmetryIntegration:
             f"Direction-dependent ordering detected for {station_a}↔{station_b}.\n"
             f"Forward:  {[(tp.station_a, tp.system_a, tp.station_b, tp.system_b) for tp in fwd_ranked]}\n"
             f"Reverse:  {[(tp.station_a, tp.system_a, tp.station_b, tp.system_b) for tp in rev_ranked]}"
+        )
+
+
+class TestFilterCrossSystemDirectTrips:
+    """Test filtering of direct trips that matched only via station equivalence expansion.
+
+    When the departure service expands station codes across equivalence groups,
+    it can return trains from systems that don't natively serve the user's
+    requested station. E.g., searching to=S128 (subway 34 St-Penn Station)
+    returns Amtrak trains to NY (Penn Station) because {NY, S128, SA28} are
+    equivalent. These cross-system matches are not "direct" — they require a
+    physical system transfer — and should be filtered so the transfer search
+    can propose the correct multi-leg trip.
+    """
+
+    def _make_trip_with_source(self, data_source: str) -> TripOption:
+        """Helper to build a TripOption with a specific data_source."""
+        now = datetime.now(ET)
+        dep_time = now + timedelta(minutes=10)
+        arr_time = dep_time + timedelta(minutes=30)
+        leg = TripLeg(
+            train_id="9999",
+            journey_date=now.date(),
+            line=LineInfo(code="NE", name="Test Line", color="#000000"),
+            destination="Test",
+            boarding=_make_station_info(code="A", name="A", scheduled=dep_time),
+            alighting=_make_station_info(code="B", name="B", scheduled=arr_time),
+            data_source=data_source,
+            observation_type="OBSERVED",
+            is_cancelled=False,
+            train_position=TrainPosition(),
+        )
+        return TripOption(
+            legs=[leg],
+            transfers=[],
+            departure_time=dep_time,
+            arrival_time=arr_time,
+            total_duration_minutes=30,
+            is_direct=True,
+        )
+
+    def test_empty_list_returns_empty(self):
+        result = _filter_cross_system_direct_trips([], {"NJT"}, {"NJT"})
+        assert result == []
+
+    def test_same_system_keeps_all(self):
+        """When from and to are both served by NJT, NJT trips pass through."""
+        trips = [self._make_trip_with_source("NJT")]
+        result = _filter_cross_system_direct_trips(trips, {"NJT", "AMTRAK"}, {"NJT"})
+        assert len(result) == 1
+        assert result[0].legs[0].data_source == "NJT"
+
+    def test_cross_system_filtered_out(self):
+        """Amtrak trip should be filtered when to_station is subway-only (S128).
+
+        This is the core bug: from=TR (NJT, AMTRAK) to=S128 (SUBWAY).
+        Amtrak trains to NY matched via equivalence expansion and were returned
+        as 'direct' trips to the subway station.
+        """
+        trips = [
+            self._make_trip_with_source("AMTRAK"),
+            self._make_trip_with_source("NJT"),
+        ]
+        # TR is served by NJT+AMTRAK, S128 is served by SUBWAY only
+        result = _filter_cross_system_direct_trips(
+            trips,
+            from_systems={"NJT", "AMTRAK"},
+            to_systems={"SUBWAY"},
+        )
+        assert len(result) == 0, (
+            f"Cross-system trips should be filtered when from and to have "
+            f"no common system. Got: {[t.legs[0].data_source for t in result]}"
+        )
+
+    def test_disjoint_systems_returns_empty(self):
+        """When no system serves both endpoints, all direct trips are filtered."""
+        trips = [self._make_trip_with_source("AMTRAK")]
+        result = _filter_cross_system_direct_trips(
+            trips, from_systems={"AMTRAK"}, to_systems={"SUBWAY"}
+        )
+        assert len(result) == 0
+
+    def test_shared_system_kept_different_system_filtered(self):
+        """When from=NY (NJT,AMTRAK,LIRR) and to=TR (NJT,AMTRAK),
+        NJT and AMTRAK trips pass but LIRR trips would be filtered.
+        """
+        trips = [
+            self._make_trip_with_source("NJT"),
+            self._make_trip_with_source("AMTRAK"),
+            self._make_trip_with_source("LIRR"),
+        ]
+        result = _filter_cross_system_direct_trips(
+            trips,
+            from_systems={"NJT", "AMTRAK", "LIRR"},
+            to_systems={"NJT", "AMTRAK"},
+        )
+        sources = [t.legs[0].data_source for t in result]
+        assert "NJT" in sources, f"NJT should be kept, got {sources}"
+        assert "AMTRAK" in sources, f"AMTRAK should be kept, got {sources}"
+        assert "LIRR" not in sources, f"LIRR should be filtered, got {sources}"
+
+    def test_subway_to_subway_direct(self):
+        """Intra-subway trips should pass (both endpoints are SUBWAY)."""
+        trips = [self._make_trip_with_source("SUBWAY")]
+        result = _filter_cross_system_direct_trips(
+            trips, from_systems={"SUBWAY"}, to_systems={"SUBWAY"}
+        )
+        assert len(result) == 1
+
+    def test_penn_station_subway_to_trenton_filtered(self):
+        """Reverse direction: from=S128 (SUBWAY) to=TR (NJT,AMTRAK).
+        NJT trains from NY (matched via equivalence) should be filtered.
+        """
+        trips = [self._make_trip_with_source("NJT")]
+        result = _filter_cross_system_direct_trips(
+            trips,
+            from_systems={"SUBWAY"},
+            to_systems={"NJT", "AMTRAK"},
+        )
+        assert len(result) == 0, (
+            f"NJT trip from equivalence-expanded S128→NY should not be "
+            f"'direct'. Got: {[t.legs[0].data_source for t in result]}"
+        )
+
+    def test_grand_central_mnr_to_subway_filtered(self):
+        """from=GCT (MNR) to=S631 (SUBWAY): MNR trips should be filtered."""
+        trips = [self._make_trip_with_source("MNR")]
+        result = _filter_cross_system_direct_trips(
+            trips, from_systems={"MNR"}, to_systems={"SUBWAY"}
+        )
+        assert len(result) == 0
+
+    def test_wtc_path_to_subway_filtered(self):
+        """from=PWC (PATH) to=S138 (SUBWAY): PATH trips should be filtered."""
+        trips = [self._make_trip_with_source("PATH")]
+        result = _filter_cross_system_direct_trips(
+            trips, from_systems={"PATH"}, to_systems={"SUBWAY"}
+        )
+        assert len(result) == 0
+
+    def test_uses_real_station_systems(self):
+        """Integration test with real get_systems_serving_station data.
+
+        Verifies the fix for the exact scenario reported in issue #1121:
+        from=TR to=S128 should have no valid direct systems.
+        """
+        from_sys = get_systems_serving_station("TR")
+        to_sys = get_systems_serving_station("S128")
+        assert (
+            from_sys & to_sys == set()
+        ), f"TR ({from_sys}) and S128 ({to_sys}) should have no common systems"
+
+        trips = [
+            self._make_trip_with_source("AMTRAK"),
+            self._make_trip_with_source("NJT"),
+        ]
+        result = _filter_cross_system_direct_trips(trips, from_sys, to_sys)
+        assert len(result) == 0, (
+            f"All trips from TR to S128 should be filtered as cross-system. "
+            f"from_systems={from_sys}, to_systems={to_sys}, "
+            f"remaining: {[t.legs[0].data_source for t in result]}"
+        )
+
+    def test_alias_code_resolves_via_equivalence_expansion(self):
+        """Alias-only codes (TS, SC) should resolve systems via expansion.
+
+        TS (Secaucus Lower Level) is not in any route topology, so
+        get_systems_serving_station("TS") returns empty. But expanding
+        TS → {TS, SC, SE} and unioning their systems yields {"NJT"} via SE.
+        Without expansion, from_systems would be empty and all direct trips
+        from TS would be incorrectly filtered.
+        """
+        from trackrat.config.stations import expand_station_codes
+
+        # Direct lookup returns empty for alias codes
+        assert get_systems_serving_station("TS") == set()
+        assert get_systems_serving_station("SC") == set()
+
+        # But expansion resolves via SE
+        expanded_systems: set[str] = set()
+        for code in expand_station_codes("TS"):
+            expanded_systems |= get_systems_serving_station(code)
+        assert "NJT" in expanded_systems, (
+            f"TS should resolve to NJT via SE expansion, got {expanded_systems}"
+        )
+
+        # NJT trip from TS to TR should be kept when using expanded systems
+        trips = [self._make_trip_with_source("NJT")]
+        to_sys = get_systems_serving_station("TR")
+        result = _filter_cross_system_direct_trips(trips, expanded_systems, to_sys)
+        assert len(result) == 1, (
+            f"NJT trip from TS (expanded) to TR should be kept. "
+            f"from_systems={expanded_systems}, to_systems={to_sys}"
+        )
+
+    def test_ny_to_trenton_keeps_njt_amtrak(self):
+        """Sanity check: NY→TR is a normal direct route, nothing should be filtered."""
+        from_sys = get_systems_serving_station("NY")
+        to_sys = get_systems_serving_station("TR")
+        valid = from_sys & to_sys
+        assert "NJT" in valid, f"NJT should serve both NY and TR, got {valid}"
+        assert "AMTRAK" in valid, f"AMTRAK should serve both NY and TR, got {valid}"
+
+        trips = [
+            self._make_trip_with_source("NJT"),
+            self._make_trip_with_source("AMTRAK"),
+        ]
+        result = _filter_cross_system_direct_trips(trips, from_sys, to_sys)
+        assert len(result) == 2, (
+            f"Both NJT and AMTRAK should be kept for NY→TR, got "
+            f"{[t.legs[0].data_source for t in result]}"
         )
