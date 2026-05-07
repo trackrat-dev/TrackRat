@@ -93,6 +93,7 @@
 		A18E54462DEB8B0000AB2B74 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
 		A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */; };
 		A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */; };
+		B1B1B1B12FA1B1B100000005 /* PrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000004 /* PrefetcherTests.swift */; };
 		A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */; };
 		A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */; };
 		A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899492E8063F90079E596 /* TrainListViewModelTests.swift */; };
@@ -141,6 +142,8 @@
 		A1D92A752F0AF01E0098897F /* CompletedTrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D92A732F0AF01E0098897F /* CompletedTrip.swift */; };
 		A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
 		A1F0BAAB2ECABB7300A52367 /* TrainCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */; };
+		B1B1B1B12FA1B1B100000002 /* Prefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */; };
+		B1B1B1B12FA1B1B100000003 /* Prefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */; };
 		A1F670E92EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
 		A1F670EA2EFEE4E700E040AA /* TrackRatNavigationHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */; };
 		A1F97BB42F1E8B2500BF816D /* TrainSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */; };
@@ -257,6 +260,7 @@
 		A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ActiveTripsSection.swift; path = Views/Components/ActiveTripsSection.swift; sourceTree = "<group>"; };
 		A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityServiceTests.swift; path = TrackRatTests/Services/LiveActivityServiceTests.swift; sourceTree = "<group>"; };
 		A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatSenseServiceTests.swift; path = TrackRatTests/Services/RatSenseServiceTests.swift; sourceTree = "<group>"; };
+		B1B1B1B12FA1B1B100000004 /* PrefetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PrefetcherTests.swift; path = TrackRatTests/Services/PrefetcherTests.swift; sourceTree = "<group>"; };
 		A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapViewModelTests.swift; path = TrackRatTests/ViewModels/CongestionMapViewModelTests.swift; sourceTree = "<group>"; };
 		A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalDataViewModelTests.swift; path = TrackRatTests/ViewModels/HistoricalDataViewModelTests.swift; sourceTree = "<group>"; };
 		A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsViewModelTests.swift; path = TrackRatTests/ViewModels/TrainDetailsViewModelTests.swift; sourceTree = "<group>"; };
@@ -296,6 +300,7 @@
 		A1D92A732F0AF01E0098897F /* CompletedTrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CompletedTrip.swift; path = TrackRat/Models/CompletedTrip.swift; sourceTree = "<group>"; };
 		A1EA529C2F23A2450023CC09 /* Configuration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Configuration.storekit; path = TrackRat/Configuration.storekit; sourceTree = "<group>"; };
 		A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainCacheService.swift; path = TrackRat/Services/TrainCacheService.swift; sourceTree = "<group>"; };
+		B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Prefetcher.swift; path = TrackRat/Services/Prefetcher.swift; sourceTree = "<group>"; };
 		A1F670E82EFEE4E700E040AA /* TrackRatNavigationHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrackRatNavigationHeader.swift; path = TrackRat/Views/Components/TrackRatNavigationHeader.swift; sourceTree = "<group>"; };
 		A1F97BB32F1E8B2500BF816D /* TrainSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainSystem.swift; path = TrackRat/Models/TrainSystem.swift; sourceTree = "<group>"; };
 		A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BackendWakeupService.swift; path = TrackRat/Services/BackendWakeupService.swift; sourceTree = "<group>"; };
@@ -347,6 +352,7 @@
 			children = (
 				A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */,
 				A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */,
+				B1B1B1B12FA1B1B100000004 /* PrefetcherTests.swift */,
 				A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */,
 				A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */,
 				A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */,
@@ -363,6 +369,7 @@
 				A16D6EE62E16A558008C6996 /* Recovered References */,
 				A19899522E8067020079E596 /* TrainV2Tests.swift */,
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
+				B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */,
 				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
 				A12AADE72EF8407600407794 /* TrainDistributionChart.swift */,
 				A12AADF22EF8407600407794 /* TrainFrequencyChart.swift */,
@@ -719,6 +726,7 @@
 				A126E55D2E25BBD800958ABA /* DeepLinkService.swift in Sources */,
 				A126E55E2E25BBD800958ABA /* ShareService.swift in Sources */,
 				A1F0BAAB2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
+				B1B1B1B12FA1B1B100000002 /* Prefetcher.swift in Sources */,
 				A10E97F82DE39EF9002F3214 /* StorageService.swift in Sources */,
 				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
@@ -825,6 +833,7 @@
 				A11A0DB82F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */,
 				A11A0DB92F4B83CF00C96DA1 /* APIService.swift in Sources */,
 				A1F0BAAA2ECABB7300A52367 /* TrainCacheService.swift in Sources */,
+				B1B1B1B12FA1B1B100000003 /* Prefetcher.swift in Sources */,
 				A1BA60F12DFC73650002FB39 /* TrainTestData.swift in Sources */,
 				A1BA60F22DFC73650002FB39 /* TestHelpers.swift in Sources */,
 				A12C314E2F1DB9D100CAF76D /* JourneyCongestionMapView.swift in Sources */,
@@ -833,6 +842,7 @@
 				A1D92A742F0AF01E0098897F /* CompletedTrip.swift in Sources */,
 				A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */,
 				A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */,
+				B1B1B1B12FA1B1B100000005 /* PrefetcherTests.swift in Sources */,
 				A12AADE92EF8407600407794 /* TrainDistributionChart.swift in Sources */,
 				A12AADF12EF8407600407794 /* TrainFrequencyChart.swift in Sources */,
 				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,

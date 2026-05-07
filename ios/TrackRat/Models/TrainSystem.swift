@@ -223,6 +223,21 @@ extension Stations {
         return (Array(primary.prefix(cap)), Array(other.prefix(cap)))
     }
 
+    /// Returns the effective set of systems to query for a route, combining the user's
+    /// selected systems with the systems serving each endpoint. Ensures departures appear
+    /// even when stations are from non-active systems. Single source of truth so prefetch
+    /// and consume sites compute identical cache keys.
+    static func effectiveSystems(
+        selected: Set<TrainSystem>,
+        fromStationCode: String,
+        toStationCode: String
+    ) -> Set<TrainSystem> {
+        var systems = selected
+        systems.formUnion(systemsForStation(fromStationCode))
+        systems.formUnion(systemsForStation(toStationCode))
+        return systems
+    }
+
     /// Returns true if the station shares at least one train system with the given origin.
     /// Returns true when the origin is nil or has no mapped systems (no filtering applied).
     static func sharesSystem(stationCode: String, withOrigin originStationCode: String?) -> Bool {
