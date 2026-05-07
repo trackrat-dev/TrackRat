@@ -324,3 +324,89 @@ class TestStaleOriginDetection:
         )
 
         assert result is True, "Incomplete journey should skip departure time check"
+
+    @pytest.mark.asyncio
+    async def test_uses_stops_table_when_origin_matches_but_journey_record_is_stale(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """
+        Test that when journey.origin_station_code matches the API's first stop
+        but journey.scheduled_departure is stale relative to the stops table,
+        _is_same_journey() uses the stops table's value rather than the stale
+        journey-record value.
+
+        Real-world scenario (NJT train 3943, 2026-05-06):
+        - Train 3943 was scheduled NY -> Trenton departing 16:17 ET
+        - At midnight schedule.py created the journey with the morning's schedule
+          time but NJT returned null STOPS, so no stops were created
+        - Discovery later (when the train showed up on station boards) created
+          the NY stop with the current 16:17 schedule
+        - journey.scheduled_departure remained at the original (stale) value
+        - stops[NY].scheduled_departure has the correct 16:17 value
+        - Every JIT collection attempt called getTrainStopList, which returned
+          first_stop=NY at 16:17. _is_same_journey saw origin_station_code=NY ==
+          first_stop=NY, so it used journey.scheduled_departure for comparison.
+          The 26-minute gap exceeded the 10-min tolerance and the journey was
+          falsely marked is_expired=True with api_error_count=99. JIT then
+          short-circuited on is_expired and the user saw stale data with no
+          track until the next discovery cycle reactivated the train.
+
+        With the fix, _is_same_journey looks up the stop in our DB matching the
+        API's first station (NY) and uses its scheduled_departure (16:17) for
+        the comparison, correctly identifying this as the same journey. The
+        subsequent update_journey_metadata then corrects journey.scheduled_departure
+        to match the stops table.
+        """
+        base_time = now_et().replace(hour=16, minute=17, second=0, microsecond=0)
+        # Stale value 26 minutes earlier than reality
+        stale_journey_departure = base_time - timedelta(minutes=26)
+
+        journey = TrainJourney(
+            train_id="3943",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton -SEC",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stale_journey_departure,  # STALE
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Stops table has the CORRECT (current) scheduled departure for NY
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=base_time,  # Correct
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        # API response with the same correct departure that the stops table has
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3943",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY", "New York Penn Station", base_time.strftime(NJT_TIME_FORMAT)
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is True, (
+            "Same journey should be recognized when stops table agrees with API "
+            "even though journey.scheduled_departure is stale"
+        )
