@@ -630,6 +630,8 @@ class TestStaleOriginDetection:
         )
         mock_njt_client.get_train_stop_list.return_value = api_response
 
+        original_last_updated = journey.last_updated_at
+
         await journey_collector.collect_journey_details(db_session, journey)
 
         await db_session.refresh(journey)
@@ -639,3 +641,10 @@ class TestStaleOriginDetection:
         assert (
             journey.api_error_count or 0
         ) == 0, "Time-only mismatch must not bump api_error_count"
+        assert journey.last_updated_at is not None and (
+            original_last_updated is None
+            or journey.last_updated_at > original_last_updated
+        ), (
+            "Time-only mismatch must advance last_updated_at so the scheduler "
+            "does not busy-loop re-collecting this journey every cycle"
+        )
