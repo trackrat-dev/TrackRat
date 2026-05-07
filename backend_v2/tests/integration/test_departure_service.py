@@ -401,34 +401,34 @@ class TestDepartureServiceIntegration:
     async def test_cancelled_trains_visible_with_hide_departed(
         self, db_session: AsyncSession
     ):
-        """Test that cancelled trains are shown even when hide_departed=True
-        and the stop has has_departed_station=True (set by Tier 3 time inference).
+        """Test that recently-cancelled trains are shown with hide_departed=True
+        when their scheduled departure is within the 5-minute past_cutoff window.
 
-        Bug: Tier 3 time-based inference sets has_departed_station=True on
-        cancelled stops whose scheduled departure has passed. Combined with
-        hide_departed=True (sent by iOS app), this hides cancelled trains
-        from users who need to see cancellation notices.
+        Cancelled trains whose departure is still upcoming (or within the
+        5-minute grace window) should be visible so users see the cancellation
+        notice. Cancelled trains with older departures are excluded to avoid
+        duplication with recent-departures (see issue #1107).
         """
         service = DepartureService()
 
-        # Create a cancelled NJT journey whose scheduled departure has passed
-        # Simulate: train was scheduled 30 min ago but was cancelled
+        # Create a cancelled NJT journey whose scheduled departure just passed
+        # (within the 5-minute grace window, so it should still be visible)
         cancelled_journey = create_amtrak_journey(
             train_id="3873",
             data_source="NJT",
             is_cancelled=True,
             line_code="NE",
             line_name="Northeast Corridor",
-            scheduled_departure=now_et() - timedelta(minutes=30),
+            scheduled_departure=now_et() - timedelta(minutes=3),
         )
         # Stop has has_departed_station=True from Tier 3 time inference
         # even though the train never actually ran
         cancelled_stop = create_amtrak_journey_stop(
             station_code="NY",
             station_name="New York Penn Station",
-            scheduled_departure=now_et() - timedelta(minutes=30),
+            scheduled_departure=now_et() - timedelta(minutes=3),
             stop_sequence=0,
-            has_departed_station=True,  # Set by Tier 3 inference (the bug)
+            has_departed_station=True,  # Set by Tier 3 inference
         )
         cancelled_journey.stops = [cancelled_stop]
 
