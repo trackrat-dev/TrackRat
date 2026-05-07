@@ -65,8 +65,12 @@ struct TrainV2: Identifiable, Codable {
     
     // MARK: - Computed Properties for UI Compatibility
     
+    // Best-known departure time at the origin: actual > updated > scheduled.
+    // Preferring actualTime once set keeps the displayed time honest after
+    // the train has physically departed, even when the upstream API
+    // continues to publish a stale delayed-departure estimate.
     var departureTime: Date {
-        departure.updatedTime ?? departure.scheduledTime ?? Date()
+        departure.actualTime ?? departure.updatedTime ?? departure.scheduledTime ?? Date()
     }
     
     var track: String? {
@@ -182,15 +186,17 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Get departure time from a specific station (best available: updated > scheduled)
+    // Get departure time from a specific station (best available: actual > updated > scheduled).
+    // actualDeparture wins once set so departed trains stop showing their
+    // pre-departure delay estimate, which sometimes lingers in the upstream
+    // API for hours after the train left on time.
     func getDepartureTime(fromStationCode: String) -> Date? {
         if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departureTime
         }
 
-        // Find departure from stops if available, prefer real-time updated time
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            return stop.updatedDeparture ?? stop.scheduledDeparture
+            return stop.actualDeparture ?? stop.updatedDeparture ?? stop.scheduledDeparture
         }
         return nil
     }
