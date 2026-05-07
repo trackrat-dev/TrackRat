@@ -554,11 +554,25 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             journey.api_error_count = (journey.api_error_count or 0) + 1
             journey.last_updated_at = now_et()
 
-            # After 3 failed attempts, mark as expired
+            # After 3 failed attempts, attempt last-chance completion before
+            # giving up. Without this backstop, a train that finishes its run
+            # and drops off the API mid-Live-Activity stays is_expired-only —
+            # which the scheduler intentionally ignores for end-of-activity
+            # pushes (see PR #1114), leaving the user's Live Activity hanging
+            # until token TTL.
             if journey.api_error_count >= 3:
-                journey.is_expired = True
+                if not journey.is_completed:
+                    await self._attempt_completion_on_expiry(session, journey)
+
+                if not journey.is_completed:
+                    journey.is_expired = True
+
                 logger.warning(
-                    "amtrak_train_marked_expired",
+                    (
+                        "amtrak_train_marked_expired"
+                        if journey.is_expired
+                        else "amtrak_train_completed_on_expiry"
+                    ),
                     train_id=journey.train_id,
                     api_error_count=journey.api_error_count,
                 )
@@ -822,3 +836,51 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 train_id=journey.train_id,
                 journey_id=journey.id,
             )
+
+    async def _attempt_completion_on_expiry(
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+    ) -> None:
+        """Last-chance completion when an Amtrak train disappears from the API.
+
+        Mirrors NJTJourneyCollector._attempt_completion_on_expiry: if the
+        penultimate stop has departed, the train reached its terminal. We
+        can't pull terminal actual_arrival from the API (the train is gone),
+        but marking the journey completed lets the scheduler end the user's
+        Live Activity rather than orphaning it on is_expired alone.
+        """
+        last_two_stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence.desc())
+            .limit(2)
+        )
+        result = await session.execute(last_two_stmt)
+        last_two = result.scalars().all()
+
+        if len(last_two) < 2:
+            return
+
+        terminal_stop = last_two[0]
+        penultimate_stop = last_two[1]
+
+        if not penultimate_stop.has_departed_station:
+            return
+
+        journey.is_completed = True
+
+        if terminal_stop.actual_arrival is None and terminal_stop.scheduled_arrival:
+            terminal_stop.actual_arrival = terminal_stop.scheduled_arrival
+            terminal_stop.arrival_source = "scheduled_fallback"
+            journey.actual_arrival = terminal_stop.scheduled_arrival
+
+        logger.info(
+            "amtrak_journey_completed_on_expiry",
+            train_id=journey.train_id,
+            journey_id=journey.id,
+            terminal_arrival_source=terminal_stop.arrival_source,
+        )
+
+        transit_analyzer = TransitAnalyzer()
+        await transit_analyzer.analyze_journey(session, journey)

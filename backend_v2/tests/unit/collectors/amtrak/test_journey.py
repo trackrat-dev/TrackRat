@@ -4,7 +4,7 @@ Unit tests for Amtrak journey collector.
 Tests the journey collection logic for Amtrak trains.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.factories.amtrak import create_amtrak_station_data, create_amtrak_train_data
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
-from trackrat.models.database import TrainJourney
-from trackrat.utils.time import ET
+from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.time import ET, now_et
 
 
 @pytest.fixture
@@ -676,3 +676,161 @@ class TestAmtrakOrphanStopRemoval:
 
         # Ensure stop_sequence is contiguous (no gaps from deleted stops)
         assert [s.stop_sequence for s in stops] == [0, 1, 2, 3]
+
+
+class TestAmtrakCompletionOnExpiry:
+    """Tests for the completion-on-expiry backstop in Amtrak's collector.
+
+    When an Amtrak train disappears from the API after 3+ failed refreshes,
+    we previously set ``is_expired = True`` and walked away — leaving any
+    bound Live Activity hanging because the scheduler intentionally ignores
+    ``is_expired`` for end-of-activity pushes (PR #1114). This backstop
+    mirrors NJT's: if the penultimate stop has departed, the train almost
+    certainly reached its terminal, so we mark ``is_completed = True``
+    (which the scheduler *does* honor) and fall back to scheduled_arrival
+    for the terminal stop's actual_arrival.
+    """
+
+    @pytest.mark.asyncio
+    async def test_completes_journey_when_penultimate_departed(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """Train disappears after 3 strikes WITH penultimate departed →
+        should mark complete, not expired."""
+        scheduled_departure = now_et().replace(
+            hour=14, minute=30, second=0, microsecond=0
+        )
+        scheduled_arrival = scheduled_departure + timedelta(hours=1)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=date.today(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=2,  # One more strike trips the threshold
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Penultimate stop has departed — backstop's signal that the train
+        # made it to its terminal.
+        penultimate = JourneyStop(
+            journey_id=journey.id,
+            station_code="BWI",
+            station_name="Baltimore-Washington Intl",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure + timedelta(minutes=45),
+            has_departed_station=True,
+        )
+        terminal = JourneyStop(
+            journey_id=journey.id,
+            station_code="WS",
+            station_name="Washington Union",
+            stop_sequence=1,
+            scheduled_arrival=scheduled_arrival,
+            has_departed_station=False,
+        )
+        db_session.add_all([penultimate, terminal])
+        await db_session.flush()
+
+        # Mock the client so the collector takes the "train not found" path.
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get_all_trains.return_value = {}
+        journey_collector.client = mock_client
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+        await db_session.refresh(terminal)
+
+        assert journey.api_error_count >= 3
+        assert journey.is_completed is True, (
+            "Penultimate-departed signal should trip the completion backstop "
+            "instead of the expired-only fallback"
+        )
+        assert journey.is_expired is False, (
+            "Once is_completed fires, is_expired should NOT also be set — "
+            "the scheduler keys end-of-activity off is_completed"
+        )
+        assert terminal.actual_arrival == scheduled_arrival, (
+            "Terminal stop should fall back to scheduled_arrival when no "
+            "real arrival data is available"
+        )
+        assert terminal.arrival_source == "scheduled_fallback"
+
+    @pytest.mark.asyncio
+    async def test_expires_when_penultimate_not_departed(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """Train disappears after 3 strikes WITHOUT penultimate departed →
+        backstop cannot fire; falls through to is_expired."""
+        scheduled_departure = now_et().replace(
+            hour=14, minute=30, second=0, microsecond=0
+        )
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=date.today(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=2,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Penultimate has NOT departed — backstop returns without marking complete.
+        penultimate = JourneyStop(
+            journey_id=journey.id,
+            station_code="BWI",
+            station_name="Baltimore-Washington Intl",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure + timedelta(minutes=45),
+            has_departed_station=False,
+        )
+        terminal = JourneyStop(
+            journey_id=journey.id,
+            station_code="WS",
+            station_name="Washington Union",
+            stop_sequence=1,
+            scheduled_arrival=scheduled_departure + timedelta(hours=1),
+            has_departed_station=False,
+        )
+        db_session.add_all([penultimate, terminal])
+        await db_session.flush()
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get_all_trains.return_value = {}
+        journey_collector.client = mock_client
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.api_error_count >= 3
+        assert (
+            journey.is_completed is False
+        ), "Without a departed penultimate stop, completion backstop must abstain"
+        assert journey.is_expired is True, (
+            "When the backstop cannot fire, the row must still be expired so "
+            "future passes stop refreshing it"
+        )
