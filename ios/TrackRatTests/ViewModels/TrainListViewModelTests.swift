@@ -208,6 +208,38 @@ class TrainListViewModelTests: XCTestCase {
                        "Future date time_from should be the same regardless of when the user checks")
     }
 
+    func testTimeFromForFutureDatePreserves5AMOnDSTSpringForward() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+
+        // March 8, 2026 is DST spring-forward day (clocks jump 2AM → 3AM)
+        let today = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 3, day: 7, hour: 12))!
+        let dstDay = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 3, day: 8))!
+
+        let timeFrom = APIService.timeFromForFutureDate(dstDay, now: today)
+
+        XCTAssertNotNil(timeFrom)
+        let components = calendar.dateComponents([.hour, .minute], from: timeFrom!)
+        XCTAssertEqual(components.hour, 5, "Should be 5 AM local time even on spring-forward day")
+        XCTAssertEqual(components.minute, 0)
+    }
+
+    func testTimeFromForFutureDatePreserves5AMOnDSTFallBack() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+
+        // November 1, 2026 is DST fall-back day (clocks repeat 1AM → 2AM)
+        let today = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 10, day: 31, hour: 12))!
+        let dstDay = calendar.date(from: DateComponents(timeZone: calendar.timeZone, year: 2026, month: 11, day: 1))!
+
+        let timeFrom = APIService.timeFromForFutureDate(dstDay, now: today)
+
+        XCTAssertNotNil(timeFrom)
+        let components = calendar.dateComponents([.hour, .minute], from: timeFrom!)
+        XCTAssertEqual(components.hour, 5, "Should be 5 AM local time even on fall-back day")
+        XCTAssertEqual(components.minute, 0)
+    }
+
     func testTimeFromForFutureDateReturnsNilForToday() {
         let now = Date()
         let todayStart = Calendar.current.startOfDay(for: now)

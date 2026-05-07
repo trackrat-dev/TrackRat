@@ -105,7 +105,7 @@ final class APIService: ObservableObject {
               selectedStart > todayStart else {
             return nil
         }
-        return selectedStart.addingTimeInterval(5 * 60 * 60)
+        return calendar.date(bySettingHour: 5, minute: 0, second: 0, of: selectedStart)
     }
 
     // MARK: - Train Search
