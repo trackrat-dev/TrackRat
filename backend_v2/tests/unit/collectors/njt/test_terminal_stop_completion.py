@@ -180,12 +180,24 @@ async def _create_tr_to_ny_journey(
     ]
 
     for code, name, seq, departed, sched_arr, sched_dep in stops:
+        # Terminals never get DEPARTED=YES from NJT, so simulate them with
+        # departure_source=None when not departed; intermediate stops with
+        # has_departed_station=True are realistically `api_explicit` (NJT
+        # reported DEPARTED=YES). Penultimate completion now requires
+        # api_explicit specifically.
+        if not departed:
+            source = None
+        elif code == "NY":
+            source = "time_inference"
+        else:
+            source = "api_explicit"
         stop = JourneyStop(
             journey_id=journey.id,
             station_code=code,
             station_name=name,
             stop_sequence=seq,
             has_departed_station=departed,
+            departure_source=source,
             scheduled_arrival=sched_arr,
             scheduled_departure=(
                 sched_dep if code != "NY" else None
@@ -414,6 +426,7 @@ class TestStopSequenceRobustness:
                 station_name="Newark Penn",
                 stop_sequence=1,
                 has_departed_station=True,
+                departure_source="api_explicit",
                 scheduled_arrival=base_time + timedelta(minutes=40),
             ),
             # stop_sequence=2 was deleted (phantom stop)

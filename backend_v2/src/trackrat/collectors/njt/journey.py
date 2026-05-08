@@ -1980,8 +1980,22 @@ class JourneyCollector(BaseJourneyCollector):
         #
         # Terminal stops (e.g., NY Penn) never get DEPARTED="YES" from the
         # NJT API, and sequential_inference can't fire (nothing after them).
-        # So we also check if the penultimate stop has departed — if it has,
-        # the train has necessarily reached the terminal.
+        # So we also check if the penultimate stop has departed — if it has
+        # *via api_explicit*, the train has necessarily reached the terminal.
+        #
+        # The penultimate check MUST require `api_explicit` and reject
+        # `time_inference` / `sequential_inference`. Time_inference fires
+        # 5 minutes after the penultimate's scheduled departure passes,
+        # which on a delayed train still inbound to that stop will
+        # falsely flip the penultimate to "departed" while the train has
+        # 10–20 minutes of trip remaining. (Sequential_inference for the
+        # penultimate would require the terminal itself to have departed,
+        # and the terminal can only get `time_inference` for NJT — same
+        # unreliable signal cascading.) See premature-completion of NJT
+        # train 3918 on 2026-05-08 for the production failure mode this
+        # guards against: penultimate (SE) was time_inferenced while the
+        # train was at NP, and the user's Live Activity ended ~17 min
+        # before the train actually reached NY Penn.
 
         # Get the last stop from the database (by max stop_sequence, not len)
         last_stop_stmt = (
@@ -2020,7 +2034,11 @@ class JourneyCollector(BaseJourneyCollector):
             )
             result = await session.execute(penultimate_stmt)
             penultimate_stop = result.scalar_one_or_none()
-            if penultimate_stop and penultimate_stop.has_departed_station:
+            if (
+                penultimate_stop
+                and penultimate_stop.has_departed_station
+                and penultimate_stop.departure_source == "api_explicit"
+            ):
                 terminal_reached = True
 
         if terminal_reached:
