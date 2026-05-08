@@ -5,6 +5,7 @@ Simplified implementation focused on just Live Activity push notifications.
 """
 
 import time
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -15,6 +16,20 @@ from structlog import get_logger
 from trackrat.settings import get_settings
 
 logger = get_logger(__name__)
+
+
+class ApnsSendResult(Enum):
+    """Outcome of an APNS push send.
+
+    Distinguishes a permanent token failure (410 BadDeviceToken) from
+    transient failures (5xx, timeouts, network errors, JWT issues), so
+    callers only deactivate tokens on real invalidation. Treating
+    transient failures as token death prematurely kills Live Activities.
+    """
+
+    SUCCESS = "success"
+    INVALID_TOKEN = "invalid_token"
+    TRANSIENT_FAILURE = "transient_failure"
 
 
 class SimpleAPNSService:
@@ -120,7 +135,7 @@ class SimpleAPNSService:
 
     async def send_live_activity_update(
         self, push_token: str, content_state: dict[str, Any]
-    ) -> bool:
+    ) -> ApnsSendResult:
         """
         Send a Live Activity update to iOS device.
 
@@ -129,11 +144,11 @@ class SimpleAPNSService:
             content_state: The content-state dictionary with train data
 
         Returns:
-            True if successful, False otherwise
+            ApnsSendResult.SUCCESS, .INVALID_TOKEN (410), or .TRANSIENT_FAILURE.
         """
         if not self.is_configured:
             logger.warning("apns_send_skipped", reason="Not configured")
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
         # Extract alertMetadata before building payload (not part of ContentState)
         alert_metadata = content_state.pop("alertMetadata", None)
@@ -197,7 +212,7 @@ class SimpleAPNSService:
                         push_token=push_token[:10] + "...",
                         status_code=response.status_code,
                     )
-                    return True
+                    return ApnsSendResult.SUCCESS
 
                 # Handle specific errors
                 if response.status_code == 410:
@@ -207,7 +222,7 @@ class SimpleAPNSService:
                         push_token=push_token[:10] + "...",
                         status_code=410,
                     )
-                    return False
+                    return ApnsSendResult.INVALID_TOKEN
 
                 logger.error(
                     "apns_error",
@@ -215,13 +230,13 @@ class SimpleAPNSService:
                     status_code=response.status_code,
                     response=response.text,
                 )
-                return False
+                return ApnsSendResult.TRANSIENT_FAILURE
 
         except Exception as e:
             logger.exception(
                 "apns_exception", push_token=push_token[:10] + "...", error=str(e)
             )
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
     async def send_alert_notification(
         self,
@@ -309,7 +324,7 @@ class SimpleAPNSService:
         push_token: str,
         content_state: dict[str, Any],
         dismissal_date: int | None = None,
-    ) -> bool:
+    ) -> ApnsSendResult:
         """
         Send a Live Activity end event to iOS device.
 
@@ -322,11 +337,11 @@ class SimpleAPNSService:
                            If None, uses current time + 4 hours (keeps on Lock Screen briefly).
 
         Returns:
-            True if successful, False otherwise
+            ApnsSendResult.SUCCESS, .INVALID_TOKEN (410), or .TRANSIENT_FAILURE.
         """
         if not self.is_configured:
             logger.warning("apns_end_skipped", reason="Not configured")
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
         # Default: dismiss from Lock Screen after 4 hours
         if dismissal_date is None:
@@ -373,7 +388,7 @@ class SimpleAPNSService:
                         push_token=push_token[:10] + "...",
                         status_code=response.status_code,
                     )
-                    return True
+                    return ApnsSendResult.SUCCESS
 
                 if response.status_code == 410:
                     logger.warning(
@@ -381,7 +396,7 @@ class SimpleAPNSService:
                         push_token=push_token[:10] + "...",
                         status_code=410,
                     )
-                    return False
+                    return ApnsSendResult.INVALID_TOKEN
 
                 logger.error(
                     "apns_end_error",
@@ -389,10 +404,10 @@ class SimpleAPNSService:
                     status_code=response.status_code,
                     response=response.text,
                 )
-                return False
+                return ApnsSendResult.TRANSIENT_FAILURE
 
         except Exception as e:
             logger.exception(
                 "apns_end_exception", push_token=push_token[:10] + "...", error=str(e)
             )
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE

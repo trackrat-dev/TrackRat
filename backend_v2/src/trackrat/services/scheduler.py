@@ -38,7 +38,7 @@ from trackrat.services.alert_evaluator import (
     evaluate_service_alerts,
 )
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
-from trackrat.services.apns import SimpleAPNSService
+from trackrat.services.apns import ApnsSendResult, SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.scheduler_utils import (
@@ -3229,18 +3229,26 @@ class SchedulerService:
                                     )
 
                                 # Send token-specific update via APNS
-                                success = (
+                                send_result = (
                                     await self.apns_service.send_live_activity_update(
                                         token.push_token, content_state
                                     )
                                 )
 
-                                if success and track_just_assigned:
+                                if (
+                                    send_result == ApnsSendResult.SUCCESS
+                                    and track_just_assigned
+                                ):
                                     token.track_notified_at = now_et()
                                     session.commit()
 
-                                # Mark token as inactive if it failed with 410
-                                if not success:
+                                # Only deactivate the token when APNS reports it
+                                # is permanently invalid (410 BadDeviceToken).
+                                # Transient failures (5xx, timeouts, network
+                                # errors, JWT issues) must NOT kill the Live
+                                # Activity — they are routinely retried on the
+                                # next scheduler tick.
+                                if send_result == ApnsSendResult.INVALID_TOKEN:
                                     token.is_active = False
                                     session.commit()
 
