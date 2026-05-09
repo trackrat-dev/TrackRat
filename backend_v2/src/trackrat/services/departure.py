@@ -539,6 +539,14 @@ class DepartureService:
 
                 gtfs_service = GTFSService()
 
+                # Pass time_from so the GTFS SQL pre-filter prunes trips
+                # before the connection window. Without this, the underlying
+                # SQL query (limit=250 inside get_scheduled_departures) returns
+                # the earliest trips of the day at high-volume station
+                # complexes — e.g. Union Sq Subway expansion {SL03, S635,
+                # SR20} fetches ~3000+ trips/day across 4/5/6/L/N/R/W,
+                # truncating to overnight-only departures before any
+                # post-filter runs. Issue #1140.
                 gtfs_response = await gtfs_service.get_scheduled_departures(
                     db=db,
                     from_station=from_station,
@@ -546,6 +554,7 @@ class DepartureService:
                     target_date=target_date,
                     limit=200,  # Fetch more, we'll filter after merge
                     data_sources=allowed_sources,
+                    time_from=time_from,
                 )
 
                 # Filter GTFS departures:
