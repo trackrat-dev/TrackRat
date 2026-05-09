@@ -158,6 +158,9 @@ struct MapContainerView: View {
                     guard appState.enableSegmentTap else { return }
                     selectedIndividualSegment = individualSegment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
+                onStationTap: { code in
+                    appState.navigationPath.append(NavigationDestination.stationDetails(stationCode: code))
                 }
             )
             .ignoresSafeArea()

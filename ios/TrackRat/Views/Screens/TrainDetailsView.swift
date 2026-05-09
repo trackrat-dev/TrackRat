@@ -534,6 +534,13 @@ struct CombinedDetailsCard: View {
                             departureStationCode: appState.departureStationCode,
                             shouldShowJourneyPredictions: shouldShowJourneyPredictions
                         )
+                        // Long-press a stop to open that station's details. Only wire when
+                        // pushed (not presented as a sheet), since sheet contexts use their
+                        // own NavigationStack that doesn't register `.stationDetails`.
+                        .stationDetailsContextMenu(
+                            code: isSheet ? nil : stop.stationCode,
+                            path: $appState.navigationPath
+                        )
                     }
                     
                     if hasMoreDisplayStops {

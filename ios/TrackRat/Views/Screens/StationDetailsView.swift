@@ -36,9 +36,8 @@ struct StationDetailsView: View {
                 headerSection
                 mapSnippetSection
                 actionsSection
-                upcomingDeparturesSection
+                departuresSection
                 serviceAlertsSection
-                recentDeparturesSection
                 routesServingSection
             }
             .padding()
@@ -180,55 +179,66 @@ struct StationDetailsView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Upcoming departures
+    // MARK: - Departures (unified recent/upcoming around a NOW divider)
 
+    /// Mirrors `RouteStatusView.departuresSection`: recent trains (oldest at top,
+    /// dimmed), a NOW pill, then upcoming trains. Skeleton matches that view's
+    /// 2-past / 2-future layout.
     @ViewBuilder
-    private var upcomingDeparturesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Upcoming Departures")
-                .font(.headline)
+    private var departuresSection: some View {
+        if viewModel.isLoadingDepartures {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Departures")
+                    .font(.headline)
 
-            if viewModel.isLoadingDepartures {
-                ForEach(0..<3, id: \.self) { _ in skeletonRow }
-            } else if viewModel.upcoming.isEmpty {
-                emptyRow("No upcoming departures")
-            } else {
-                ForEach(viewModel.upcoming.prefix(10)) { train in
-                    Button {
-                        viewModel.selectedTrain = train
-                    } label: {
+                ForEach(0..<2, id: \.self) { _ in skeletonRow.opacity(0.55) }
+                NowDivider()
+                ForEach(0..<2, id: \.self) { _ in skeletonRow }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        } else if !viewModel.upcoming.isEmpty || !viewModel.recent.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Departures")
+                    .font(.headline)
+
+                ForEach(Array(viewModel.recent.prefix(3).reversed())) { train in
+                    Button { viewModel.selectedTrain = train } label: {
+                        TrainRow(train: train, dataSource: train.dataSource)
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(0.55)
+                }
+
+                NowDivider()
+
+                ForEach(viewModel.upcoming.prefix(3)) { train in
+                    Button { viewModel.selectedTrain = train } label: {
                         TrainRow(train: train, dataSource: train.dataSource)
                     }
                     .buttonStyle(.plain)
                 }
+
+                if viewModel.upcoming.isEmpty {
+                    Text("No more trains scheduled")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 4)
+                }
             }
-        }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-    }
-
-    // MARK: - Recent departures
-
-    @ViewBuilder
-    private var recentDeparturesSection: some View {
-        if viewModel.isLoadingDepartures || !viewModel.recent.isEmpty {
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        } else {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Recently Departed")
+                Text("Departures")
                     .font(.headline)
 
-                if viewModel.isLoadingDepartures {
-                    ForEach(0..<2, id: \.self) { _ in skeletonRow.opacity(0.55) }
-                } else {
-                    ForEach(viewModel.recent.prefix(5)) { train in
-                        Button {
-                            viewModel.selectedTrain = train
-                        } label: {
-                            TrainRow(train: train, dataSource: train.dataSource)
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(0.55)
-                    }
-                }
+                Text("No departures available")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 4)
             }
             .padding()
             .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
@@ -314,14 +324,6 @@ struct StationDetailsView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
     }
 
-    private func emptyRow(_ text: String) -> some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundColor(.secondary)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 8)
-    }
-
     /// Data sources that publish service alerts. Mirrors the constant in
     /// `RouteStatusViewModel`; kept local to avoid coupling the two views.
     private static let alertSupportedSystems: Set<TrainSystem> = [.subway, .lirr, .mnr, .njt]
@@ -341,7 +343,9 @@ final class StationDetailsViewModel: ObservableObject {
     @Published var selectedTrain: TrainV2?
     @Published var routeStatusContext: RouteStatusContext?
 
-    private static let recentWindowMinutes = 60
+    /// Match `RouteStatusViewModel.recentTrainsWindowMinutes` so the unified
+    /// Departures section reads from the same window in both views.
+    private static let recentWindowMinutes = 120
 
     init(stationCode: String) {
         self.stationCode = stationCode

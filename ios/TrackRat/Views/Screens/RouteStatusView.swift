@@ -944,8 +944,9 @@ struct ServiceAlertCard: View {
 // MARK: - Now Divider
 
 /// Thin orange hairline with a centered "NOW · h:mm a" pill, used to separate past and
-/// future rows in the unified Departures section. Updates each minute.
-private struct NowDivider: View {
+/// future rows in the unified Departures section. Updates each minute. Shared with
+/// `StationDetailsView`.
+struct NowDivider: View {
     @State private var now: Date = Date()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 

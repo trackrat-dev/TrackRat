@@ -507,22 +507,26 @@ struct SettingsSection: View {
                             $0.id != homeCode && $0.id != workCode
                         }
 
-                        if homeCode != nil {
+                        if let homeCode {
                             FavoriteStationRow(
                                 label: "Home",
                                 stationCode: homeCode,
                                 isLast: workCode == nil && otherFavorites.isEmpty,
                                 showControls: false
-                            )
+                            ) {
+                                navigationPath.append(NavigationDestination.stationDetails(stationCode: homeCode))
+                            }
                         }
 
-                        if workCode != nil {
+                        if let workCode {
                             FavoriteStationRow(
                                 label: "Work",
                                 stationCode: workCode,
                                 isLast: otherFavorites.isEmpty,
                                 showControls: false
-                            )
+                            ) {
+                                navigationPath.append(NavigationDestination.stationDetails(stationCode: workCode))
+                            }
                         }
 
                         ForEach(otherFavorites) { fav in
@@ -531,7 +535,9 @@ struct SettingsSection: View {
                                 stationCode: fav.id,
                                 isLast: fav.id == otherFavorites.last?.id,
                                 showControls: false
-                            )
+                            ) {
+                                navigationPath.append(NavigationDestination.stationDetails(stationCode: fav.id))
+                            }
                         }
 
                         if appState.favoriteStations.isEmpty {
@@ -868,11 +874,15 @@ private struct FavoriteStationRow: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                // Wrap in a Button whenever there's a meaningful tap target:
-                // labelled rows (Home/Work) always tap to repick; unlabelled
-                // ("other") rows only tap when a station is set, since they
-                // navigate to that station's details.
-                if showControls && (label != nil || stationCode != nil) {
+                // Wrap in a Button whenever the row has a meaningful tap target.
+                // In edit mode (showControls=true), labelled Home/Work rows tap to
+                // repick (even with no station set) and unlabelled rows tap to
+                // navigate to details. In display mode (showControls=false), only
+                // rows with a station are tappable — they navigate to details.
+                let isTappable = showControls
+                    ? (label != nil || stationCode != nil)
+                    : (stationCode != nil)
+                if isTappable {
                     Button(action: onTap) {
                         rowContent
                             .contentShape(Rectangle())
