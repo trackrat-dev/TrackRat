@@ -3077,14 +3077,29 @@ class SchedulerService:
                                     # Add end reason to content state
                                     final_content_state["endReason"] = end_reason
 
+                                    # Same defensive handling as the update path:
+                                    # only deactivate on definitive outcomes
+                                    # (SUCCESS or INVALID_TOKEN). A transient
+                                    # APNS failure on the end push must NOT
+                                    # flip is_active=False, otherwise the next
+                                    # scheduler tick won't retry and the user's
+                                    # Live Activity stays on the lock screen
+                                    # until iOS auto-expires it (8–12h).
                                     if self.apns_service:
-                                        await self.apns_service.send_live_activity_end(
+                                        send_result = await self.apns_service.send_live_activity_end(
                                             token.push_token, final_content_state
                                         )
-
-                                    # Mark token as inactive since Live Activity is ending
-                                    token.is_active = False
-                                    session.commit()
+                                        if send_result in (
+                                            ApnsSendResult.SUCCESS,
+                                            ApnsSendResult.INVALID_TOKEN,
+                                        ):
+                                            token.is_active = False
+                                            session.commit()
+                                    else:
+                                        # No APNS service configured — nothing
+                                        # to retry, deactivate to free the slot.
+                                        token.is_active = False
+                                        session.commit()
 
                                 except Exception as e:
                                     logger.error(
