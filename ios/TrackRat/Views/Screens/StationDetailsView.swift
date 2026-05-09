@@ -330,7 +330,9 @@ final class StationDetailsViewModel: ObservableObject {
     @Published var selectedTrain: TrainV2?
     @Published var routeStatusContext: RouteStatusContext?
 
-    private static let recentWindowMinutes = 60
+    /// Match `RouteStatusViewModel.recentTrainsWindowMinutes` so the unified
+    /// Departures section reads from the same window in both views.
+    private static let recentWindowMinutes = 120
 
     init(stationCode: String) {
         self.stationCode = stationCode
