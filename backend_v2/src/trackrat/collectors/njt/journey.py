@@ -943,6 +943,22 @@ class JourneyCollector(BaseJourneyCollector):
             journey.last_updated_at = now_et()
             journey.update_count = (journey.update_count or 0) + 1
 
+            # If any stop on this journey is already marked departed, the
+            # train physically ran — the mismatch is necessarily stale
+            # upstream data (NJT often holds a delayed DEP_TIME estimate
+            # for hours after a train left on time), not evidence the row
+            # is a phantom slot. Skip the strike so we don't false-expire
+            # real, running trains and remove them from /departures.
+            if await self._journey_has_departed_stop(session, journey):
+                logger.info(
+                    "skipping_mismatch_strike_for_departed_journey",
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    api_error_count=journey.api_error_count or 0,
+                )
+                await session.flush()
+                return
+
             # Increment api_error_count so a *sustained* mismatch eventually
             # expires the row. Without this, a stale slot that the API keeps
             # serving with wrong-time data would never trigger expiry — the
@@ -1904,6 +1920,31 @@ class JourneyCollector(BaseJourneyCollector):
                 journey_id=journey.id,
                 total_stops=len(sequences),
             )
+
+    async def _journey_has_departed_stop(
+        self,
+        session: AsyncSession,
+        journey: TrainJourney,
+    ) -> bool:
+        """Return True if any stop on this journey is marked departed.
+
+        Used by the DEPARTURE_TIME_MISMATCH path to distinguish a real
+        running train (whose journey row must not be expired) from a
+        phantom train_id slot. Once any stop has has_departed_station=True,
+        we have evidence the train physically ran, regardless of whether
+        the API's lingering DEP_TIME for the origin still matches.
+        """
+        result = await session.scalar(
+            select(JourneyStop.id)
+            .where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.has_departed_station.is_(True),
+                )
+            )
+            .limit(1)
+        )
+        return result is not None
 
     async def _attempt_completion_on_expiry(
         self,
