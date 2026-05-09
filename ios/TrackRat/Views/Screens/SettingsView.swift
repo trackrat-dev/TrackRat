@@ -464,13 +464,12 @@ struct SettingsSection: View {
                         FavoriteStationRow(
                             label: nil,
                             stationCode: fav.id,
-                            isLast: fav.id == otherFavorites.last?.id && appState.favoriteStations.count >= 10
-                        ) {
-                            navigationPath.append(NavigationDestination.stationDetails(stationCode: fav.id))
-                        } onClear: {
-                            appState.removeFavoriteStation(code: fav.id)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
+                            isLast: fav.id == otherFavorites.last?.id && appState.favoriteStations.count >= 10,
+                            onClear: {
+                                appState.removeFavoriteStation(code: fav.id)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        )
                     }
 
                     if appState.favoriteStations.count < 10 {
@@ -508,36 +507,39 @@ struct SettingsSection: View {
                         }
 
                         if let homeCode {
-                            FavoriteStationRow(
-                                label: "Home",
-                                stationCode: homeCode,
-                                isLast: workCode == nil && otherFavorites.isEmpty,
-                                showControls: false
-                            ) {
-                                navigationPath.append(NavigationDestination.stationDetails(stationCode: homeCode))
+                            NavigationLink(value: NavigationDestination.stationDetails(stationCode: homeCode)) {
+                                FavoriteStationRow(
+                                    label: "Home",
+                                    stationCode: homeCode,
+                                    isLast: workCode == nil && otherFavorites.isEmpty,
+                                    showControls: false
+                                )
                             }
+                            .buttonStyle(.plain)
                         }
 
                         if let workCode {
-                            FavoriteStationRow(
-                                label: "Work",
-                                stationCode: workCode,
-                                isLast: otherFavorites.isEmpty,
-                                showControls: false
-                            ) {
-                                navigationPath.append(NavigationDestination.stationDetails(stationCode: workCode))
+                            NavigationLink(value: NavigationDestination.stationDetails(stationCode: workCode)) {
+                                FavoriteStationRow(
+                                    label: "Work",
+                                    stationCode: workCode,
+                                    isLast: otherFavorites.isEmpty,
+                                    showControls: false
+                                )
                             }
+                            .buttonStyle(.plain)
                         }
 
                         ForEach(otherFavorites) { fav in
-                            FavoriteStationRow(
-                                label: nil,
-                                stationCode: fav.id,
-                                isLast: fav.id == otherFavorites.last?.id,
-                                showControls: false
-                            ) {
-                                navigationPath.append(NavigationDestination.stationDetails(stationCode: fav.id))
+                            NavigationLink(value: NavigationDestination.stationDetails(stationCode: fav.id)) {
+                                FavoriteStationRow(
+                                    label: nil,
+                                    stationCode: fav.id,
+                                    isLast: fav.id == otherFavorites.last?.id,
+                                    showControls: false
+                                )
                             }
+                            .buttonStyle(.plain)
                         }
 
                         if appState.favoriteStations.isEmpty {
@@ -873,16 +875,12 @@ private struct FavoriteStationRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // In edit mode, labelled Home/Work rows tap to repick; unlabelled
+            // rows are inert (the X-button clears them). In display mode the
+            // row renders inert content and the caller wraps it in a
+            // NavigationLink so the whole row pushes StationDetailsView.
             HStack(spacing: 12) {
-                // Wrap in a Button whenever the row has a meaningful tap target.
-                // In edit mode (showControls=true), labelled Home/Work rows tap to
-                // repick (even with no station set) and unlabelled rows tap to
-                // navigate to details. In display mode (showControls=false), only
-                // rows with a station are tappable — they navigate to details.
-                let isTappable = showControls
-                    ? (label != nil || stationCode != nil)
-                    : (stationCode != nil)
-                if isTappable {
+                if showControls && label != nil {
                     Button(action: onTap) {
                         rowContent
                             .contentShape(Rectangle())
@@ -905,6 +903,7 @@ private struct FavoriteStationRow: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 10)
+            .contentShape(Rectangle())
 
             if !isLast {
                 Divider()
