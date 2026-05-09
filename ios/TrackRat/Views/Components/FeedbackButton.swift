@@ -72,11 +72,16 @@ struct FeedbackButton: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             showingSheet = true
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.bubble")
-                    .font(font)
-                Text(label)
-                    .font(font)
+            VStack(spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.bubble")
+                        .font(font)
+                    Text(label)
+                        .font(font)
+                }
+                Text("What you write here helps!")
+                    .font(.caption2)
+                    .opacity(0.8)
             }
             .foregroundColor(textColor)
         }
