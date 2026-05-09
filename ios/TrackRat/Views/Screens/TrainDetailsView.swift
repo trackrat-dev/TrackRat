@@ -235,7 +235,8 @@ struct TrainDetailsView: View {
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
                                 journeyTotalStops: viewModel.journeyTotalStops,
                                 isLoadingStops: viewModel.isLoadingStops,
-                                prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction
+                                prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction,
+                                isSheet: isSheet
                             )
 
                             if let _ = alertSubscription {
@@ -344,6 +345,10 @@ struct CombinedDetailsCard: View {
     let journeyTotalStops: Int
     let isLoadingStops: Bool
     let prefetchedTrackPrediction: PredictionData?
+    /// When true, the parent is shown as a sheet whose NavigationStack does not
+    /// register `.stationDetails`, so the long-press → station details modifier
+    /// is suppressed to avoid pushing onto a stack that can't render it.
+    let isSheet: Bool
 
     private var departureTime: String {
         let formatter = DateFormatter()
