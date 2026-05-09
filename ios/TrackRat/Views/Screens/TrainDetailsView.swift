@@ -148,7 +148,10 @@ struct TrainDetailsView: View {
                     // Get Updates button (Live Activity)
                     if let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
-                        let isTracking = liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
+                        let isTracking = liveActivityService.currentActivity?.attributes.matchesTrain(
+                            trainId: train.trainId,
+                            dataSource: train.dataSource
+                        ) ?? false
                         TrackTrainInlineButton(
                             train: train,
                             originCode: originCode,
@@ -1197,7 +1200,11 @@ class TrainDetailsViewModel: ObservableObject {
         // (written by LiveActivityService.fetchAndUpdateTrain) is the only instant
         // source of departed-stops state.
         if !trainIdentifier.isEmpty,
-           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
+           let cached = cacheService.getCachedTrain(
+               trainNumber: trainIdentifier,
+               date: effectiveDate,
+               dataSource: dataSource
+           ) {
             print("📦 Loading from cache (\(cached.ageSeconds)s old) - instant display")
             train = cached.train
             updateComputedProperties()
@@ -1219,7 +1226,12 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Only cache if train has stops data (don't overwrite good cache with partial data)
             if !trainIdentifier.isEmpty && hasStops {
-                cacheService.cacheTrain(existingTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    existingTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? existingTrain.dataSource
+                )
             }
 
             // Background refresh to get full data (including stops if missing)
@@ -1245,7 +1257,12 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Cache the newly fetched train
             if !trainIdentifier.isEmpty {
-                cacheService.cacheTrain(fetchedTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    fetchedTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? fetchedTrain.dataSource
+                )
             }
 
             // Update all computed properties after setting train
@@ -1291,7 +1308,12 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Cache the fresh data
             if trainIdentifier != "unknown" {
-                cacheService.cacheTrain(newTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    newTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? newTrain.dataSource
+                )
             }
 
             print("✅ Background refresh successful - updating UI")
@@ -1337,14 +1359,22 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Cache the fresh data
             if trainIdentifier != "unknown" {
-                cacheService.cacheTrain(newTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    newTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? newTrain.dataSource
+                )
             }
 
             // Check if Live Activity should auto-end (Primary Fix)
             let liveService = LiveActivityService.shared
             if liveService.isActivityActive,
                let currentActivity = liveService.currentActivity,
-               currentActivity.attributes.trainNumber == newTrain.trainId {
+               currentActivity.attributes.matchesTrain(
+                   trainId: newTrain.trainId,
+                   dataSource: newTrain.dataSource
+               ) {
 
                 print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
 

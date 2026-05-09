@@ -161,3 +161,145 @@ final class PrefetcherTests: XCTestCase {
     // larger refactor. Coalescing is enforced by the type system (single Task<_,_> per key)
     // and by code review.
 }
+
+@MainActor
+final class TrainCacheServiceTests: XCTestCase {
+
+    private let cacheService = TrainCacheService.shared
+
+    override func setUp() {
+        super.setUp()
+        cacheService.resetForTesting()
+    }
+
+    override func tearDown() {
+        cacheService.resetForTesting()
+        super.tearDown()
+    }
+
+    private func makeTrain(trainId: String, dataSource: String) -> TrainV2 {
+        let now = Date()
+        let departure = StationTiming(
+            code: "NY",
+            name: "New York Penn Station",
+            scheduledTime: now,
+            updatedTime: nil,
+            actualTime: nil,
+            track: "11"
+        )
+        let arrival = StationTiming(
+            code: "PH",
+            name: "Philadelphia",
+            scheduledTime: now.addingTimeInterval(3600),
+            updatedTime: nil,
+            actualTime: nil,
+            track: nil
+        )
+
+        return TrainV2(
+            trainId: trainId,
+            journeyDate: now,
+            line: LineInfo(code: "NEC", name: "Northeast Corridor", color: "#FF6B00"),
+            destination: "Philadelphia",
+            departure: departure,
+            arrival: arrival,
+            trainPosition: nil,
+            dataFreshness: nil,
+            observationType: nil,
+            isCancelled: false,
+            isCompleted: false,
+            dataSource: dataSource,
+            stops: nil
+        )
+    }
+
+    func testCacheSeparatesCollidingTrainNumbersByDataSource() {
+        let date = Date()
+        let njtTrain = makeTrain(trainId: "100", dataSource: "NJT")
+        let amtrakTrain = makeTrain(trainId: "100", dataSource: "AMTRAK")
+
+        cacheService.cacheTrain(
+            njtTrain,
+            trainNumber: "100",
+            date: date,
+            dataSource: "NJT"
+        )
+        cacheService.cacheTrain(
+            amtrakTrain,
+            trainNumber: "100",
+            date: date,
+            dataSource: "AMTRAK"
+        )
+
+        let cachedNJT = cacheService.getCachedTrain(
+            trainNumber: "100",
+            date: date,
+            dataSource: "NJT"
+        )
+        let cachedAmtrak = cacheService.getCachedTrain(
+            trainNumber: "100",
+            date: date,
+            dataSource: "AMTRAK"
+        )
+
+        XCTAssertEqual(cachedNJT?.train.dataSource, "NJT")
+        XCTAssertEqual(cachedAmtrak?.train.dataSource, "AMTRAK")
+    }
+
+    func testDataSourceLookupFallsBackToLegacyCacheEntry() {
+        let date = Date()
+        let train = makeTrain(trainId: "200", dataSource: "NJT")
+
+        cacheService.injectLegacyTrainForTesting(train, trainNumber: "200", date: date)
+
+        let cached = cacheService.getCachedTrain(
+            trainNumber: "200",
+            date: date,
+            dataSource: "NJT"
+        )
+
+        XCTAssertEqual(cached?.train.trainId, "200")
+        XCTAssertEqual(cached?.train.dataSource, "NJT")
+    }
+
+    func testDataSourceLookupRejectsMismatchedLegacyCacheEntry() {
+        let date = Date()
+        let train = makeTrain(trainId: "300", dataSource: "NJT")
+
+        cacheService.injectLegacyTrainForTesting(train, trainNumber: "300", date: date)
+
+        let cached = cacheService.getCachedTrain(
+            trainNumber: "300",
+            date: date,
+            dataSource: "AMTRAK"
+        )
+
+        XCTAssertNil(cached)
+    }
+
+    func testSourcelessLookupFindsSourceQualifiedCacheEntry() {
+        // Source-aware paths cache under `dataSource|trainNumber|date`. Legacy
+        // call sites that don't pass a dataSource must still surface those
+        // entries; otherwise they'd hit deterministic cache misses and refetch
+        // the same train. Codex review on PR #1136.
+        let date = Date()
+        let train = makeTrain(trainId: "400", dataSource: "NJT")
+
+        cacheService.cacheTrain(
+            train,
+            trainNumber: "400",
+            date: date,
+            dataSource: "NJT"
+        )
+
+        let cached = cacheService.getCachedTrain(
+            trainNumber: "400",
+            date: date,
+            dataSource: nil
+        )
+
+        XCTAssertNotNil(cached, "Source-less lookup should find source-qualified entry")
+        XCTAssertEqual(cached?.train.trainId, "400")
+        XCTAssertEqual(cached?.train.dataSource, "NJT")
+    }
+}

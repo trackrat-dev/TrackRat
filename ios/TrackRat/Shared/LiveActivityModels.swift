@@ -184,6 +184,30 @@ struct TrainActivityAttributes: ActivityAttributes {
     let theme: String // Theme name as string (blue, black, white)
     // Optional so Activities started before this field was added can still decode
     let dataSource: String?
+
+    func matchesTrain(trainId: String, dataSource: String?) -> Bool {
+        guard trainNumber == trainId || self.trainId == trainId else {
+            return false
+        }
+
+        // Activities created before dataSource was added can only be matched by
+        // train number. Newer activities must match the full train identity.
+        guard let activitySource = normalizedDataSource(self.dataSource) else {
+            return true
+        }
+        guard let trainSource = normalizedDataSource(dataSource) else {
+            return false
+        }
+        return activitySource == trainSource
+    }
+
+    private func normalizedDataSource(_ dataSource: String?) -> String? {
+        guard let source = dataSource?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !source.isEmpty else {
+            return nil
+        }
+        return source
+    }
 }
 
 // MARK: - Supporting Data Models

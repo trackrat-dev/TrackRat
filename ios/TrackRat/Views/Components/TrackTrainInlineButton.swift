@@ -15,7 +15,10 @@ struct TrackTrainInlineButton: View {
     @State private var isStarting = false
 
     private var isTrackingThisTrain: Bool {
-        liveActivityService.currentActivity?.attributes.trainNumber == train.trainId
+        liveActivityService.currentActivity?.attributes.matchesTrain(
+            trainId: train.trainId,
+            dataSource: train.dataSource
+        ) ?? false
     }
 
     var body: some View {

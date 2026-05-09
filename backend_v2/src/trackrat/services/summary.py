@@ -310,8 +310,14 @@ class SummaryService:
         result = await db.execute(stmt)
         rows = result.all()
 
-        return {
-            row.line_key: LineStats(
+        line_stats: dict[str, LineStats] = {}
+        for row in rows:
+            key = (
+                row.line_key
+                if data_source
+                else f"{row.data_source or 'UNKNOWN'}:{row.line_key}"
+            )
+            line_stats[key] = LineStats(
                 line_name=row.line_name or row.line_key,
                 line_code=row.line_code or "",
                 train_count=row.train_count,
@@ -321,8 +327,7 @@ class SummaryService:
                 data_source=row.data_source or "",
                 arrival_data_count=row.arrival_data_count,
             )
-            for row in rows
-        }
+        return line_stats
 
     async def get_route_summary(
         self,
