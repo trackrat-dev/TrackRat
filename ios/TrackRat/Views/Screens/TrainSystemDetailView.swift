@@ -7,7 +7,6 @@ import MapKit
 struct TrainSystemDetailView: View {
     let system: TrainSystem
 
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var subscriptionService = SubscriptionService.shared
@@ -22,24 +21,17 @@ struct TrainSystemDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TrackRatNavigationHeader(
-                title: system.displayName,
-                onBackAction: { dismiss() }
-            )
-
-            ScrollView {
-                VStack(spacing: 16) {
-                    mapSection
-                    statsSection
-                    alertsSection
-                }
-                .padding()
-                .padding(.bottom, 40)
+        ScrollView {
+            VStack(spacing: 16) {
+                mapSection
+                statsSection
+                alertsSection
             }
+            .padding()
         }
-        .navigationBarHidden(true)
-        .background(TrackRatTheme.Colors.primaryBackground.ignoresSafeArea())
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(system.displayName)
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             mapViewModel.highlightMode = system.preferredHighlightMode
             mapViewModel.showRoutes = true
@@ -93,25 +85,23 @@ struct TrainSystemDetailView: View {
 
                 Text("Recent Activity")
                     .font(.headline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white)
 
                 Spacer()
             }
             .padding()
 
-            Divider().background(Color.white.opacity(0.1))
+            Divider()
 
             statRow(icon: "clock.fill", label: "Average delay", value: averageDelayDisplay)
-            Divider().background(Color.white.opacity(0.1))
+            Divider()
             statRow(icon: "map.fill", label: "Routes", value: "\(systemRouteCount)")
-            Divider().background(Color.white.opacity(0.1))
+            Divider()
             statRow(
                 icon: "exclamationmark.triangle.fill",
                 label: "Active alerts",
                 value: activeAlertCount > 0 ? "\(activeAlertCount)" : "None"
             )
-            Divider().background(Color.white.opacity(0.1))
+            Divider()
             statRow(
                 icon: "wrench.and.screwdriver.fill",
                 label: "Planned work",
@@ -133,12 +123,11 @@ struct TrainSystemDetailView: View {
                 .frame(width: 24)
             Text(label)
                 .font(.subheadline)
-                .foregroundColor(.white)
             Spacer()
             Text(value)
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundColor(.secondary)
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
@@ -155,11 +144,9 @@ struct TrainSystemDetailView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("System-wide Alerts")
                         .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
                     Text(alertSubtitleText)
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -171,17 +158,17 @@ struct TrainSystemDetailView: View {
                 } else {
                     Text("Unavailable")
                         .font(.caption)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.secondary)
                 }
             }
             .padding()
 
             if isSubscribed {
-                Divider().background(Color.white.opacity(0.1))
+                Divider()
 
                 Text("Customize delivery, days, and thresholds from Route Alerts in Settings.")
                     .font(.caption)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     .padding(.vertical, 12)
