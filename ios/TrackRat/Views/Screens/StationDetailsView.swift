@@ -25,8 +25,12 @@ struct StationDetailsView: View {
     private var coordinate: CLLocationCoordinate2D? { Stations.getCoordinates(for: stationCode) }
 
     private var routesServingStation: [RouteLine] {
-        RouteTopology.allRoutes
-            .filter { $0.stationCodes.contains(stationCode) }
+        // Expand via equivalents so station complexes match every route serving
+        // them, not just the canonical line. e.g. Times Sq-42 St (S127) also
+        // covers 7/A-C-E/N-Q-R-W/shuttle via S725/SA27/SR16/S902.
+        let codes = Stations.stationEquivalents[stationCode] ?? [stationCode]
+        return RouteTopology.allRoutes
+            .filter { $0.stationCodes.contains(where: codes.contains) }
             .filter { TrainSystem(rawValue: $0.dataSource).map(stationSystems.contains) ?? false }
     }
 
@@ -448,7 +452,8 @@ final class StationDetailsViewModel: ObservableObject {
     /// see Brooklyn-only G-train alerts).
     private func relevantGtfsRouteIdsBySystem() -> [TrainSystem: Set<String>] {
         var map: [TrainSystem: Set<String>] = [:]
-        let routes = RouteTopology.allRoutes.filter { $0.stationCodes.contains(stationCode) }
+        let codes = Stations.stationEquivalents[stationCode] ?? [stationCode]
+        let routes = RouteTopology.allRoutes.filter { $0.stationCodes.contains(where: codes.contains) }
         for route in routes {
             guard let system = TrainSystem(rawValue: route.dataSource) else { continue }
             let context = RouteStatusContext(dataSource: route.dataSource, lineId: route.id)
