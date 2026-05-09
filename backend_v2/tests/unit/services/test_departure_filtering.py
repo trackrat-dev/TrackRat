@@ -1437,3 +1437,248 @@ class TestStaleScheduledFiltering:
         )
         assert result[0].train_id == "NJT-CXL"
         assert result[0].is_cancelled is True
+
+
+class TestGtfsMergeRespectsFutureTimeFrom:
+    """Verify GTFS merge filters out departures before an explicit future time_from.
+
+    Regression test for #1138/#1139/#1140: trip_search leg-2 queries set
+    time_from to a future leg-1 arrival time (sometimes hours ahead). The
+    GTFS merge previously filtered only by `> current_time`, so the response
+    was filled with too-early GTFS departures and the limit cap truncated
+    before reaching the actual connection window. The fix uses
+    `max(current_time, time_from)` as the GTFS lower bound so the merged
+    result aligns with the SQL window for real-time journeys.
+    """
+
+    @staticmethod
+    def _make_gtfs_departure(
+        train_id: str,
+        scheduled_time: datetime,
+        data_source: str = "LIRR",
+        from_code: str = "NY",
+        to_code: str = "JAM",
+    ):
+        """Build a SCHEDULED TrainDeparture as the GTFS service would emit."""
+        from trackrat.models.api import (
+            DataFreshness,
+            LineInfo,
+            StationInfo,
+            TrainDeparture,
+            TrainPosition,
+        )
+
+        arrival_time = scheduled_time + timedelta(minutes=20)
+        return TrainDeparture(
+            train_id=train_id,
+            journey_date=scheduled_time.date(),
+            line=LineInfo(code="MAIN", name="Main Line", color="#000000"),
+            destination="Jamaica",
+            departure=StationInfo(
+                code=from_code,
+                name="From",
+                scheduled_time=scheduled_time,
+            ),
+            arrival=StationInfo(
+                code=to_code,
+                name="To",
+                scheduled_time=arrival_time,
+            ),
+            train_position=TrainPosition(),
+            data_freshness=DataFreshness(
+                last_updated=scheduled_time, age_seconds=0, update_count=0
+            ),
+            data_source=data_source,
+            observation_type="SCHEDULED",
+            is_cancelled=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_future_time_from_excludes_earlier_gtfs_departures(self):
+        """When time_from is hours in the future, GTFS departures from now should be filtered out.
+
+        Scenario from issue #1139: leg-2 (LIRR NY→JAM) is queried with
+        time_from = leg-1 arrival ~3 hours from now. The GTFS feed has
+        LIRR departures throughout the day. Without the fix, all the
+        earlier departures (from now to time_from) were retained and
+        the limit cap truncated before reaching the connection window.
+        """
+        now = now_et()
+        future_time_from = now + timedelta(hours=3)
+
+        # GTFS departures: 6 too-early (before time_from) and 3 valid (after)
+        gtfs_deps = [
+            self._make_gtfs_departure("E1", now + timedelta(minutes=15)),
+            self._make_gtfs_departure("E2", now + timedelta(minutes=45)),
+            self._make_gtfs_departure("E3", now + timedelta(hours=1, minutes=15)),
+            self._make_gtfs_departure("E4", now + timedelta(hours=1, minutes=45)),
+            self._make_gtfs_departure("E5", now + timedelta(hours=2, minutes=15)),
+            self._make_gtfs_departure("E6", now + timedelta(hours=2, minutes=45)),
+            self._make_gtfs_departure("V1", now + timedelta(hours=3, minutes=15)),
+            self._make_gtfs_departure("V2", now + timedelta(hours=3, minutes=45)),
+            self._make_gtfs_departure("V3", now + timedelta(hours=4, minutes=15)),
+        ]
+
+        # Mock empty SQL results — only GTFS contributes departures
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=gtfs_deps)
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    result = await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="JAM",
+                        time_from=future_time_from,
+                        data_sources=["LIRR"],
+                        limit=20,
+                    )
+
+        returned_ids = [d.train_id for d in result.departures]
+        # All early-GTFS departures (E1..E6) must be filtered out
+        for early_id in ["E1", "E2", "E3", "E4", "E5", "E6"]:
+            assert early_id not in returned_ids, (
+                f"Early GTFS departure {early_id} (before time_from={future_time_from}) "
+                f"should be filtered out, but appeared in: {returned_ids}"
+            )
+        # Valid future departures (V1..V3) must be present
+        for valid_id in ["V1", "V2", "V3"]:
+            assert valid_id in returned_ids, (
+                f"Valid GTFS departure {valid_id} (after time_from={future_time_from}) "
+                f"should be present, but missing from: {returned_ids}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_past_time_from_falls_back_to_current_time(self):
+        """When time_from is in the past (typical user-facing query), behavior is unchanged.
+
+        For the user-facing departures endpoint, time_from defaults to start of
+        day. The GTFS filter must still use current_time as the effective lower
+        bound so we don't return already-departed trains.
+        """
+        now = now_et()
+        # Simulate user-facing call: time_from at start of day (in the past)
+        past_time_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        gtfs_deps = [
+            # Departed an hour ago — must be excluded by current_time
+            self._make_gtfs_departure("PAST", now - timedelta(hours=1)),
+            # Future — must be included
+            self._make_gtfs_departure("FUTURE", now + timedelta(minutes=30)),
+        ]
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=gtfs_deps)
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    result = await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="JAM",
+                        time_from=past_time_from,
+                        data_sources=["LIRR"],
+                        limit=20,
+                    )
+
+        returned_ids = [d.train_id for d in result.departures]
+        assert "PAST" not in returned_ids, (
+            f"GTFS departure in the past must be filtered by current_time, "
+            f"got: {returned_ids}"
+        )
+        assert "FUTURE" in returned_ids, (
+            f"Future GTFS departure must be retained when time_from is in the past, "
+            f"got: {returned_ids}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_time_from_at_current_time_uses_current_time(self):
+        """When time_from equals current_time, the boundary is current_time.
+
+        Both bounds yield the same effective lower bound — the filter uses
+        strict greater-than, so only departures strictly after now are kept.
+        """
+        now = now_et()
+
+        gtfs_deps = [
+            self._make_gtfs_departure("EARLIER", now - timedelta(minutes=5)),
+            # Use 30min so we're well clear of the 5-min LIRR SCHEDULED-staleness
+            # threshold and any microsecond drift between the test's `now` and
+            # `current_time` recomputed inside get_departures.
+            self._make_gtfs_departure("LATER", now + timedelta(minutes=30)),
+        ]
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=gtfs_deps)
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    result = await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="JAM",
+                        time_from=now,
+                        data_sources=["LIRR"],
+                        limit=20,
+                    )
+
+        returned_ids = [d.train_id for d in result.departures]
+        assert "EARLIER" not in returned_ids
+        assert "LATER" in returned_ids

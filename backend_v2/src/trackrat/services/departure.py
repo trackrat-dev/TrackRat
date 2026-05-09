@@ -549,11 +549,17 @@ class DepartureService:
                 )
 
                 # Filter GTFS departures:
-                # 1. Must be in the future (after current time)
+                # 1. Must be after the explicit time_from window (or current time
+                #    when time_from is in the past).  Without this, leg-2 queries
+                #    in trip_search — which set time_from to a future leg-1
+                #    arrival time — would receive GTFS departures starting from
+                #    "now", filling the limit with departures that are too early
+                #    to connect.  See issues #1138/#1139/#1140.
                 # 2. PATH trains: Only include if beyond dynamic cutoff window.
                 #    Cutoff = max(now + 20min, last_observed_departure + 2min).
                 #    This prevents duplicates while showing schedules until realtime
                 #    data reliably covers them.
+                gtfs_lower_bound = max(current_time, time_from)
                 if "PATH" in allowed_sources:
                     path_cutoff_time = await self._get_path_cutoff_time(
                         db, from_station, current_time, target_date
@@ -564,7 +570,7 @@ class DepartureService:
                     dep
                     for dep in gtfs_response.departures
                     if dep.departure.scheduled_time
-                    and dep.departure.scheduled_time > current_time
+                    and dep.departure.scheduled_time > gtfs_lower_bound
                     and dep.data_source in allowed_sources
                     and (
                         # Non-PATH: include all future departures
