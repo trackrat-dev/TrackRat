@@ -229,6 +229,19 @@ struct StationDetailsView: View {
             }
             .padding()
             .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Departures")
+                    .font(.headline)
+
+                Text("No departures available")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 4)
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
         }
     }
 
