@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.models.database import TrainJourney
+from trackrat.services.apns import ApnsSendResult
 from trackrat.services.scheduler import SchedulerService
 from trackrat.settings import Settings
 from trackrat.utils.time import ET
@@ -533,7 +534,7 @@ class TestLiveActivitySessionScope:
         context — this was one of the DB ops outside the `with` block."""
         scheduler_service.apns_service = AsyncMock()
         scheduler_service.apns_service.send_live_activity_update = AsyncMock(
-            return_value=True
+            return_value=ApnsSendResult.SUCCESS
         )
 
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
@@ -614,7 +615,9 @@ class TestLiveActivitySessionScope:
         """When a Live Activity update fails (410), the token is deactivated
         and session.commit() is called. This must happen within the session context."""
         mock_apns = AsyncMock()
-        mock_apns.send_live_activity_update = AsyncMock(return_value=False)  # 410
+        mock_apns.send_live_activity_update = AsyncMock(
+            return_value=ApnsSendResult.INVALID_TOKEN
+        )  # 410
         scheduler_service.apns_service = mock_apns
 
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
@@ -693,7 +696,9 @@ class TestLiveActivitySessionScope:
         The engine is disposed once in stop(), not after each method invocation.
         """
         mock_apns = AsyncMock()
-        mock_apns.send_live_activity_update = AsyncMock(return_value=True)
+        mock_apns.send_live_activity_update = AsyncMock(
+            return_value=ApnsSendResult.SUCCESS
+        )
         scheduler_service.apns_service = mock_apns
 
         mock_sync_engine = Mock()

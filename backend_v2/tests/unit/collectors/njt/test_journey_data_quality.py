@@ -1543,6 +1543,244 @@ class TestTerminalStopActualArrival:
         )
 
 
+class TestPenultimateTimeInferenceDoesNotCompleteJourney:
+    """Regression: a delayed train still en route to its penultimate stop must
+    not be marked complete when that stop's `has_departed_station` was inferred
+    purely from the clock. Production train 3918 on 2026-05-08 was prematurely
+    completed at 11:25:13 UTC — ~17 minutes before its actual NY Penn arrival —
+    because the penultimate (Secaucus Upper Lvl) was flagged
+    `has_departed_station=True` via `time_inference` while the train was
+    physically still at Newark Penn. The user's iOS Live Activity ended
+    `reason=completed` mid-trip.
+    """
+
+    @staticmethod
+    def _build_journey_with_stops(
+        sqlite_session: AsyncSession,
+        penultimate_source: str,
+    ) -> tuple[TrainJourney, datetime]:
+        """Helper: 6-stop NJT journey TR→HL→PJ→NP→SE→NY where the train is
+        physically at NP (NP departed via api_explicit), SE (penultimate) has
+        a scheduled departure 10 minutes in the past (so time_inference would
+        legitimately fire for it), and NY (terminal) has no departure source.
+
+        The caller picks the source of SE's departure flag.
+        """
+        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="3918",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Penn Station New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=base_time,
+            is_cancelled=False,
+            is_completed=False,
+        )
+        sqlite_session.add(journey)
+        return journey, base_time
+
+    @pytest.mark.asyncio
+    async def test_penultimate_time_inference_does_not_complete(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """SE flagged via time_inference while train is still inbound: must NOT
+        complete the journey. This is the train 3918 production failure."""
+        journey, base_time = self._build_journey_with_stops(
+            sqlite_session, penultimate_source="time_inference"
+        )
+        await sqlite_session.flush()
+
+        # Schedule: TR depart at base, NY arrive base+85min. SE scheduled
+        # departure is 10 min in the past relative to "now" so time_inference
+        # would naturally fire on a delayed train.
+        ny_scheduled_arrival = base_time + timedelta(minutes=85)
+        se_scheduled_departure = now_et() - timedelta(minutes=10)
+
+        stop_specs = [
+            ("TR", "Trenton", 0, "api_explicit", True, base_time),
+            (
+                "HL",
+                "Hamilton",
+                1,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=10),
+            ),
+            (
+                "PJ",
+                "Princeton Junction",
+                2,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=20),
+            ),
+            (
+                "NP",
+                "Newark Penn Station",
+                3,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=60),
+            ),
+            (
+                "SE",
+                "Secaucus Upper Lvl",
+                4,
+                "time_inference",
+                True,
+                se_scheduled_departure,
+            ),
+            ("NY", "New York Penn Station", 5, None, False, None),
+        ]
+        for code, name, seq, source, departed, sched_dep in stop_specs:
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=seq,
+                scheduled_departure=sched_dep,
+                scheduled_arrival=(
+                    ny_scheduled_arrival
+                    if code == "NY"
+                    else (sched_dep if seq > 0 else None)
+                ),
+                has_departed_station=departed,
+                departure_source=source,
+            )
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        # API still returns all 6 stops; no DEPARTED=YES for SE or NY.
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder,
+                code,
+                name,
+                dep_time=(sched_dep or ny_scheduled_arrival).strftime(NJT_TIME_FORMAT),
+                arr_time=(
+                    (sched_dep or ny_scheduled_arrival).strftime(NJT_TIME_FORMAT)
+                    if seq > 0
+                    else None
+                ),
+                departed=departed and source == "api_explicit",
+            )
+            for code, name, seq, source, departed, sched_dep in stop_specs
+        ]
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_completed is False, (
+            "Journey must NOT be marked complete when the penultimate stop's "
+            "departure was inferred from the clock alone (time_inference). "
+            "The train may still be physically en route to that stop."
+        )
+
+    @pytest.mark.asyncio
+    async def test_penultimate_api_explicit_does_complete(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Positive case: when NJT explicitly reports the penultimate as
+        DEPARTED=YES (`api_explicit`), the train has physically passed it and
+        the journey is correctly marked complete."""
+        journey, base_time = self._build_journey_with_stops(
+            sqlite_session, penultimate_source="api_explicit"
+        )
+        await sqlite_session.flush()
+
+        ny_scheduled_arrival = base_time + timedelta(minutes=85)
+
+        stop_specs = [
+            ("TR", "Trenton", 0, "api_explicit", True, base_time),
+            (
+                "HL",
+                "Hamilton",
+                1,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=10),
+            ),
+            (
+                "PJ",
+                "Princeton Junction",
+                2,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=20),
+            ),
+            (
+                "NP",
+                "Newark Penn Station",
+                3,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=60),
+            ),
+            (
+                "SE",
+                "Secaucus Upper Lvl",
+                4,
+                "api_explicit",
+                True,
+                base_time + timedelta(minutes=78),
+            ),
+            ("NY", "New York Penn Station", 5, None, False, None),
+        ]
+        for code, name, seq, source, departed, sched_dep in stop_specs:
+            stop = JourneyStop(
+                journey_id=journey.id,
+                station_code=code,
+                station_name=name,
+                stop_sequence=seq,
+                scheduled_departure=sched_dep,
+                scheduled_arrival=(
+                    ny_scheduled_arrival
+                    if code == "NY"
+                    else (sched_dep if seq > 0 else None)
+                ),
+                has_departed_station=departed,
+                departure_source=source,
+                actual_departure=sched_dep if departed else None,
+            )
+            sqlite_session.add(stop)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops_data = [
+            _make_stop_with_sched_fields(
+                builder,
+                code,
+                name,
+                dep_time=(sched_dep or ny_scheduled_arrival).strftime(NJT_TIME_FORMAT),
+                arr_time=(
+                    (sched_dep or ny_scheduled_arrival).strftime(NJT_TIME_FORMAT)
+                    if seq > 0
+                    else None
+                ),
+                departed=departed and code != "NY",
+            )
+            for code, name, seq, source, departed, sched_dep in stop_specs
+        ]
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_completed is True, (
+            "Journey MUST be marked complete when the penultimate stop has "
+            "an api_explicit DEPARTED=YES from NJT — the train has physically "
+            "passed it and is at/past the terminal."
+        )
+
+
 # ---------------------------------------------------------------------------
 # 8. Pydantic field validators normalize NJT API values
 # ---------------------------------------------------------------------------
