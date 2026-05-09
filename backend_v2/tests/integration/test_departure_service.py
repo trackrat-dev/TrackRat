@@ -401,13 +401,17 @@ class TestDepartureServiceIntegration:
     async def test_cancelled_trains_visible_with_hide_departed(
         self, db_session: AsyncSession
     ):
-        """Test that recently-cancelled trains are shown with hide_departed=True
-        when their scheduled departure is within the 5-minute past_cutoff window.
+        """Past-cancelled trains stay out of upcoming (issue #1107 regression).
 
-        Cancelled trains whose departure is still upcoming (or within the
-        5-minute grace window) should be visible so users see the cancellation
-        notice. Cancelled trains with older departures are excluded to avoid
-        duplication with recent-departures (see issue #1107).
+        A train that already left origin (has_departed_station=True) and was
+        later annulled mid-journey legitimately reaches the state
+        ``is_cancelled=True + has_departed_station=True + scheduled departure
+        in the past``. That train belongs in get_recent_departures (it really
+        did depart), not in get_departures(hide_departed=True), where it would
+        duplicate the recent-departures list. Issue #1107 narrowed the
+        cancelled-train carve-out to *future*-scheduled cancellations; this
+        test guards that boundary while still verifying that an active
+        upcoming train is returned and a non-cancelled departed train is hidden.
         """
         service = DepartureService()
 
@@ -489,11 +493,15 @@ class TestDepartureServiceIntegration:
                 hide_departed=True,
             )
 
-        # Should return cancelled train + active train, but NOT the departed train
+        # Past-cancelled train (has_departed_station=True) belongs in the
+        # recent-departures list, not in upcoming. Per issue #1107, the
+        # hide_departed carve-out for cancelled trains only applies when the
+        # scheduled departure is still upcoming.
         train_ids = [d.train_id for d in response.departures]
-        assert "3873" in train_ids, (
-            f"Cancelled train 3873 should be visible with hide_departed=True, "
-            f"got: {train_ids}"
+        assert "3873" not in train_ids, (
+            f"Past-cancelled train 3873 should be hidden from upcoming when "
+            f"hide_departed=True (it surfaces via get_recent_departures, see "
+            f"issue #1107), got: {train_ids}"
         )
         assert (
             "3875" in train_ids
@@ -501,10 +509,6 @@ class TestDepartureServiceIntegration:
         assert (
             "3871" not in train_ids
         ), f"Departed non-cancelled train 3871 should be hidden, got: {train_ids}"
-
-        # Verify the cancelled train has proper cancellation info
-        cancelled_dep = next(d for d in response.departures if d.train_id == "3873")
-        assert cancelled_dep.is_cancelled is True
 
     async def test_departure_time_filtering(self, db_session: AsyncSession):
         """Test filtering departures by time range."""
@@ -1743,7 +1747,6 @@ class TestPathCutoffTime:
             response = await service.get_departures(
                 db=db_session,
                 from_station="NY",
-                to_station="TR",
                 hide_departed=True,
             )
 
