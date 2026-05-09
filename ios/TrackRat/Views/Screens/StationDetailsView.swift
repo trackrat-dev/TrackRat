@@ -37,12 +37,11 @@ struct StationDetailsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                headerSection
                 mapSnippetSection
                 actionsSection
+                routesServingSection
                 departuresSection
                 serviceAlertsSection
-                routesServingSection
             }
             .padding()
             .animation(.easeInOut(duration: 0.3), value: viewModel.isLoadingDepartures)
@@ -75,37 +74,6 @@ struct StationDetailsView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
-    }
-
-    // MARK: - Header
-
-    @ViewBuilder
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(fullName)
-                .font(.title2.bold())
-                .lineLimit(2)
-                .minimumScaleFactor(0.7)
-
-            HStack(spacing: 8) {
-                ForEach(Array(stationSystems).sorted(by: { $0.rawValue < $1.rawValue })) { system in
-                    Text(system.chipLabel)
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color(hex: system.color).opacity(0.2)))
-                        .foregroundColor(Color(hex: system.color))
-                }
-                let lines = SubwayLines.lines(forStationCode: stationCode)
-                if !lines.isEmpty {
-                    SubwayLineChips(lines: lines, size: 18)
-                }
-                Spacer()
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
     }
 
     // MARK: - Map snippet
