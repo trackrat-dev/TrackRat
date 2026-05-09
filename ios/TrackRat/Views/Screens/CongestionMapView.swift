@@ -1111,6 +1111,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
         // Add tap gesture recognizer for polyline interaction
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
+        tapGesture.delegate = context.coordinator
         mapView.addGestureRecognizer(tapGesture)
 
         return mapView
@@ -1332,7 +1333,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let congestionLevel: String
     }
 
-    class Coordinator: NSObject, MKMapViewDelegate {
+    class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var segments: [CongestionSegment] = []
         var individualSegments: [IndividualJourneySegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
@@ -1529,6 +1530,22 @@ struct SystemCongestionMapView: UIViewRepresentable {
             mapView.deselectAnnotation(view.annotation, animated: false)
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             onStationTap(code)
+        }
+
+        /// Annotation taps are routed through `mapView(_:didSelect:)`. Without
+        /// this filter, a tap on a pin sitting over a route polyline also fires
+        /// the polyline-tap recognizer below, so a single tap triggers both
+        /// station-detail navigation and a segment popup.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            var view: UIView? = touch.view
+            while let candidate = view {
+                if candidate is MKAnnotationView { return false }
+                view = candidate.superview
+            }
+            return true
         }
 
         @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
