@@ -21,15 +21,53 @@ logger = get_logger(__name__)
 class ApnsSendResult(Enum):
     """Outcome of an APNS push send.
 
-    Distinguishes a permanent token failure (410 BadDeviceToken) from
-    transient failures (5xx, timeouts, network errors, JWT issues), so
-    callers only deactivate tokens on real invalidation. Treating
-    transient failures as token death prematurely kills Live Activities.
+    Distinguishes a permanent token failure (410 Unregistered, or 400 with
+    a permanent-reason body like BadDeviceToken / DeviceTokenNotForTopic)
+    from transient failures (5xx, 429, timeouts, network errors, JWT
+    issues), so callers only deactivate tokens on real invalidation.
+    Treating transient failures as token death prematurely kills Live
+    Activities; treating permanent token failures as transient leaves
+    broken tokens in rotation forever.
     """
 
     SUCCESS = "success"
     INVALID_TOKEN = "invalid_token"
     TRANSIENT_FAILURE = "transient_failure"
+
+
+# APNS reason strings that mean the token is permanently invalid.
+# 410 always means Unregistered/ExpiredToken (the response body usually
+# echoes one of these), but APNS can also return a 400 with the same
+# semantic for malformed tokens or topic-mismatch. Per Apple's
+# `Handling Notification Responses from APNs` documentation:
+# https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
+_APNS_PERMANENT_TOKEN_REASONS: frozenset[str] = frozenset(
+    {
+        "BadDeviceToken",  # 400: token malformed for this environment
+        "DeviceTokenNotForTopic",  # 400: token doesn't belong to our app/topic
+        "Unregistered",  # 410: app uninstalled / push disabled
+        "ExpiredToken",  # 410: token expired
+    }
+)
+
+
+def _parse_apns_reason(response: httpx.Response) -> str | None:
+    """Extract APNS `reason` from a non-200 response body.
+
+    APNS error bodies are JSON like `{"reason": "BadDeviceToken"}`. Some
+    responses (5xx HTML error pages, network errors that produce empty
+    bodies) have nothing useful — return None and let the caller fall
+    back to status-code-based classification.
+    """
+    try:
+        body = response.json()
+    except Exception:
+        return None
+    if isinstance(body, dict):
+        reason = body.get("reason")
+        if isinstance(reason, str):
+            return reason
+    return None
 
 
 class SimpleAPNSService:
@@ -214,13 +252,16 @@ class SimpleAPNSService:
                     )
                     return ApnsSendResult.SUCCESS
 
-                # Handle specific errors
-                if response.status_code == 410:
-                    # Token is no longer valid
+                reason = _parse_apns_reason(response)
+                if (
+                    response.status_code == 410
+                    or reason in _APNS_PERMANENT_TOKEN_REASONS
+                ):
                     logger.warning(
                         "apns_token_invalid",
                         push_token=push_token[:10] + "...",
-                        status_code=410,
+                        status_code=response.status_code,
+                        reason=reason,
                     )
                     return ApnsSendResult.INVALID_TOKEN
 
@@ -228,6 +269,7 @@ class SimpleAPNSService:
                     "apns_error",
                     push_token=push_token[:10] + "...",
                     status_code=response.status_code,
+                    reason=reason,
                     response=response.text,
                 )
                 return ApnsSendResult.TRANSIENT_FAILURE
@@ -390,11 +432,16 @@ class SimpleAPNSService:
                     )
                     return ApnsSendResult.SUCCESS
 
-                if response.status_code == 410:
+                reason = _parse_apns_reason(response)
+                if (
+                    response.status_code == 410
+                    or reason in _APNS_PERMANENT_TOKEN_REASONS
+                ):
                     logger.warning(
                         "apns_token_invalid",
                         push_token=push_token[:10] + "...",
-                        status_code=410,
+                        status_code=response.status_code,
+                        reason=reason,
                     )
                     return ApnsSendResult.INVALID_TOKEN
 
@@ -402,6 +449,7 @@ class SimpleAPNSService:
                     "apns_end_error",
                     push_token=push_token[:10] + "...",
                     status_code=response.status_code,
+                    reason=reason,
                     response=response.text,
                 )
                 return ApnsSendResult.TRANSIENT_FAILURE
