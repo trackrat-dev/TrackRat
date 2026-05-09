@@ -557,18 +557,25 @@ struct SettingsSection: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showingFeedbackSheet = true
             } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.bubble.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.bubble.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    Text("Report an Issue")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
+                        Text("Report an Issue")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
 
-                    Spacer()
+                        Spacer()
+                    }
+
+                    Text("What you write here helps!")
+                        .font(.footnote)
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.leading, 40)
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
