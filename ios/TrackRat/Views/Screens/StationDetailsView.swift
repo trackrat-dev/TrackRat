@@ -244,7 +244,7 @@ struct StationDetailsView: View {
                 Text("Routes Serving This Station")
                     .font(.headline)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                VStack(spacing: 8) {
                     ForEach(routesServingStation) { route in
                         Button {
                             viewModel.routeStatusContext = RouteStatusContext(
@@ -252,16 +252,20 @@ struct StationDetailsView: View {
                                 lineId: route.id
                             )
                         } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(route.name)
-                                    .font(.subheadline.bold())
-                                    .lineLimit(1)
-                                if let subtitle = route.terminalSubtitle {
-                                    Text(subtitle)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
+                            HStack(spacing: 10) {
+                                routeBadge(for: route)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(route.name)
+                                        .font(.subheadline.bold())
                                         .lineLimit(1)
+                                    if let subtitle = route.terminalSubtitle {
+                                        Text(subtitle)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                    }
                                 }
+                                Spacer(minLength: 0)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(10)
@@ -277,6 +281,20 @@ struct StationDetailsView: View {
     }
 
     // MARK: - Helpers
+
+    /// Subway routes get the colored MTA bullet (e.g. orange "B"); non-subway
+    /// routes get the system pill (NJT, AMK, LIRR, …). The bullet character is
+    /// taken from the first char of `route.name`, which always begins with the
+    /// line letter/number — e.g. "6X Pelham Bay Park Express" → "6",
+    /// "S 42 St Shuttle" → "S".
+    @ViewBuilder
+    private func routeBadge(for route: RouteLine) -> some View {
+        if route.dataSource == "SUBWAY", let first = route.name.first {
+            SubwayLineChips(lines: [String(first)], size: 24)
+        } else if let system = TrainSystem(rawValue: route.dataSource) {
+            SystemPill(system: system, size: 24)
+        }
+    }
 
     private var skeletonRow: some View {
         HStack(spacing: 12) {
