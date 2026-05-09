@@ -579,11 +579,6 @@ struct SettingsSection: View {
 
                         Spacer()
                     }
-
-                    Text("What you write here helps!")
-                        .font(.footnote)
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(.leading, 40)
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
