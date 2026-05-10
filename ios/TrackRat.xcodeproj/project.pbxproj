@@ -151,6 +151,10 @@
 		B1B1B1B12FA1B1B100000002 /* Prefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */; };
 		B1B1B1B12FA1B1B100000003 /* Prefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */; };
 		B1B1B1B12FA1B1B100000005 /* PrefetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000004 /* PrefetcherTests.swift */; };
+		B1ALERTS01000000000000A1 /* ServiceAlertsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1ALERTS01000000000000A1 /* ServiceAlertsSection.swift */; };
+		B1ALERTS02000000000000A1 /* ServiceAlertsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1ALERTS01000000000000A1 /* ServiceAlertsSection.swift */; };
+		B1SYSROW01000000000000A1 /* SystemRouteListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SYSROW01000000000000A1 /* SystemRouteListRow.swift */; };
+		B1SYSROW02000000000000A1 /* SystemRouteListRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SYSROW01000000000000A1 /* SystemRouteListRow.swift */; };
 		B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINSEL01000000000000A1 /* LineSelectionView.swift */; };
 		B1LINSEL02000000000000A1 /* LineSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINSEL01000000000000A1 /* LineSelectionView.swift */; };
 		B1LINTST01000000000000A1 /* LineSelectionViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */; };
@@ -318,6 +322,8 @@
 		BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainSystemTests.swift; sourceTree = "<group>"; };
 		C182D065DE7062F61B8F2446 /* TripDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripDetailsView.swift; path = Views/Screens/TripDetailsView.swift; sourceTree = "<group>"; };
 		C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTopologyTests.swift; sourceTree = "<group>"; };
+		F1ALERTS01000000000000A1 /* ServiceAlertsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ServiceAlertsSection.swift; path = TrackRat/Views/Components/ServiceAlertsSection.swift; sourceTree = "<group>"; };
+		F1SYSROW01000000000000A1 /* SystemRouteListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SystemRouteListRow.swift; path = TrackRat/Views/Components/SystemRouteListRow.swift; sourceTree = "<group>"; };
 		F1LINSEL01000000000000A1 /* LineSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LineSelectionView.swift; path = TrackRat/Views/Components/LineSelectionView.swift; sourceTree = "<group>"; };
 		F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LineSelectionViewTests.swift; path = TrackRatTests/Views/LineSelectionViewTests.swift; sourceTree = "<group>"; };
 		F1SHIMR001000000000000A1 /* ShimmerRect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShimmerRect.swift; path = TrackRat/Views/Components/ShimmerRect.swift; sourceTree = "<group>"; };
@@ -394,6 +400,8 @@
 				A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */,
 				A18D98D62F1D2F3700F5D22F /* DateSelectorSheet.swift */,
 				60E6F30618D8429081157633 /* AlertConfigurationSection.swift */,
+				F1ALERTS01000000000000A1 /* ServiceAlertsSection.swift */,
+				F1SYSROW01000000000000A1 /* SystemRouteListRow.swift */,
 				F1LINSEL01000000000000A1 /* LineSelectionView.swift */,
 				F1LINTST01000000000000A1 /* LineSelectionViewTests.swift */,
 				F1SHIMR001000000000000A1 /* ShimmerRect.swift */,
@@ -774,6 +782,8 @@
 				B1SYSCHP01000000000000A1 /* SystemChips.swift in Sources */,
 				A18D98D72F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */,
+				B1ALERTS01000000000000A1 /* ServiceAlertsSection.swift in Sources */,
+				B1SYSROW01000000000000A1 /* SystemRouteListRow.swift in Sources */,
 				B1LINSEL01000000000000A1 /* LineSelectionView.swift in Sources */,
 				B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */,
 				A126E5582E25BBC700958ABA /* TrainV2.swift in Sources */,
@@ -824,6 +834,8 @@
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,
 				A18D98D82F1D2F3700F5D22F /* DateSelectorSheet.swift in Sources */,
 				8DA494D9EB3E4FFD97C93AB7 /* AlertConfigurationSection.swift in Sources */,
+				B1ALERTS02000000000000A1 /* ServiceAlertsSection.swift in Sources */,
+				B1SYSROW02000000000000A1 /* SystemRouteListRow.swift in Sources */,
 				B1LINSEL02000000000000A1 /* LineSelectionView.swift in Sources */,
 				B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */,
 				B1SUBLNS02000000000000A1 /* SubwayLines.swift in Sources */,
