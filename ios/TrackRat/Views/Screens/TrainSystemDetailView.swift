@@ -31,15 +31,6 @@ struct TrainSystemDetailView: View {
     /// Initialized in `.task`; consumed when the user picks any active day.
     @State private var draftSubscription: RouteAlertSubscription?
 
-    /// Data sources whose backend feeds publish service alerts. Other systems
-    /// (PATH, BART, MBTA, etc.) have `supportsAlerts = true` for delay/cancel
-    /// push notifications but no service-alert feed, so the section is hidden.
-    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
-
-    private var hasServiceAlertFeed: Bool {
-        Self.serviceAlertSystems.contains(system.dataSource)
-    }
-
     init(system: TrainSystem) {
         self.system = system
         self._region = State(initialValue: system.defaultMapRegion)
@@ -50,7 +41,7 @@ struct TrainSystemDetailView: View {
             VStack(spacing: 16) {
                 mapSection
                 OperationsSummaryView(scope: .network, dataSource: system.dataSource)
-                if hasServiceAlertFeed {
+                if system.hasServiceAlertFeed {
                     ServiceAlertsSection(alerts: serviceAlerts)
                 }
                 routesSection
@@ -354,7 +345,7 @@ struct TrainSystemDetailView: View {
     }
 
     private func loadServiceAlerts() async {
-        guard hasServiceAlertFeed else { return }
+        guard system.hasServiceAlertFeed else { return }
         do {
             serviceAlerts = try await APIService.shared.fetchServiceAlerts(dataSource: system.dataSource)
         } catch {

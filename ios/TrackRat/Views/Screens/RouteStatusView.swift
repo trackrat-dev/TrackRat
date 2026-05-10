@@ -822,13 +822,10 @@ final class RouteStatusViewModel: ObservableObject {
     // History overall loading state (true until first period loads)
     @Published var isLoadingHistory = true
 
-    /// Data sources that have service alert data
-    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
-
-    /// Whether this route involves any systems that support service alerts
+    /// Whether this route involves any systems that publish a service-alerts feed
     var hasServiceAlertSystems: Bool {
         let systems = enabledSystems.isEmpty ? Set([context.dataSource]) : enabledSystems
-        return !systems.isDisjoint(with: Self.serviceAlertSystems)
+        return !systems.isDisjoint(with: TrainSystem.serviceAlertFeedSources)
     }
 
     // History state — keyed by system for stacked display
@@ -1230,7 +1227,7 @@ final class RouteStatusViewModel: ObservableObject {
 
         await withTaskGroup(of: [V2ServiceAlert].self) { group in
             for system in systemsToFetch {
-                guard Self.serviceAlertSystems.contains(system) else { continue }
+                guard TrainSystem.serviceAlertFeedSources.contains(system) else { continue }
                 group.addTask {
                     do {
                         let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: system)

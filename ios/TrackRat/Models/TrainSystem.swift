@@ -90,6 +90,16 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Data sources whose backend feeds publish a service-alerts list
+    /// (planned work, elevator outages, real-time service changes).
+    /// Distinct from `supportsAlerts`, which gates delay/cancellation push
+    /// notifications and is true for many systems without an alerts feed.
+    static let serviceAlertFeedSources: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
+
+    var hasServiceAlertFeed: Bool {
+        Self.serviceAlertFeedSources.contains(dataSource)
+    }
+
     /// Short label for compact station chips (analogous to subway line letters).
     var chipLabel: String {
         switch self {
