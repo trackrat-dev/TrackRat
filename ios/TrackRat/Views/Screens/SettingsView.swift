@@ -773,6 +773,12 @@ struct SettingsSection: View {
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+            } else if sub.isSystemWide, let system = TrainSystem(rawValue: sub.dataSource) {
+                NavigationStack {
+                    TrainSystemDetailView(system: system)
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             } else {
                 RouteStatusView(context: routeStatusContext(for: sub))
                     .presentationDetents([.large])

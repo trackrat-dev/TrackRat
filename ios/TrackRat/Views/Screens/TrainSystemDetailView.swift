@@ -2,12 +2,15 @@ import SwiftUI
 import MapKit
 
 /// System-level details: an interactive system-wide route map, a network
-/// operations summary, current service alerts, and a single opt-in toggle for
-/// system-wide route alerts. Pushed from SettingsView when a TrainSystemRow is
-/// tapped outside of edit mode.
+/// operations summary, current service alerts, a clickable list of routes,
+/// and the full alert-configuration form for system-wide route alerts.
 ///
-/// Tapping a map segment presents `RouteStatusView` as a sheet with the
-/// concrete origin/destination pair, mirroring `CongestionMapView`.
+/// Reached from:
+/// - SettingsView selected-systems list (push)
+/// - SettingsView Route Alerts list when the tapped subscription is system-wide (sheet)
+/// - Notification deep-link when the notification is system-wide (sheet via MapContainerView)
+///
+/// Tapping a map segment or a route row presents `RouteStatusView` as a sheet.
 struct TrainSystemDetailView: View {
     let system: TrainSystem
 
@@ -19,6 +22,14 @@ struct TrainSystemDetailView: View {
     @State private var serviceAlerts: [V2ServiceAlert] = []
     @State private var showingPaywall = false
     @State private var routeStatusContext: RouteStatusContext?
+
+    /// Locally-edited copies of the matching system-wide subscription, keyed by ID.
+    /// Persisted to `alertService` on disappear.
+    @State private var editedSubscriptions: [UUID: RouteAlertSubscription] = [:]
+
+    /// Draft subscription used when no matching system-wide subscription exists yet.
+    /// Initialized in `.task`; consumed when the user picks any active day.
+    @State private var draftSubscription: RouteAlertSubscription?
 
     /// Data sources whose backend feeds publish service alerts. Other systems
     /// (PATH, BART, MBTA, etc.) have `supportsAlerts = true` for delay/cancel
@@ -61,8 +72,23 @@ struct TrainSystemDetailView: View {
             mapViewModel.highlightMode = system.preferredHighlightMode
             mapViewModel.showRoutes = true
             mapViewModel.showStations = false
+            // Seed the draft when no system-wide subscription exists yet, so the
+            // AlertConfigurationSection has a stable binding to mutate.
+            if matchingSubscriptions.isEmpty && draftSubscription == nil {
+                draftSubscription = RouteAlertSubscription(
+                    dataSource: system.dataSource,
+                    activeDays: 0
+                )
+            }
             await mapViewModel.fetchCongestionData(dataSource: system.dataSource)
             await loadServiceAlerts()
+        }
+        .onDisappear {
+            guard !editedSubscriptions.isEmpty else { return }
+            for (_, edited) in editedSubscriptions {
+                alertService.updateSubscription(edited)
+            }
+            alertService.syncIfPossible()
         }
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: .routeAlerts)
@@ -201,105 +227,130 @@ struct TrainSystemDetailView: View {
         a < b ? "\(a)|\(b)" : "\(b)|\(a)"
     }
 
+    @ViewBuilder
     private var alertsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        if system.supportsAlerts {
+            AlertConfigurationSection(
+                subscription: alertConfigBinding,
+                headerText: "\(system.displayName) Alerts"
+            )
+            .onChange(of: alertConfigBinding.wrappedValue.activeDays) { _, newDays in
+                handleActiveDaysChange(newDays)
+            }
+        } else {
             HStack(spacing: 16) {
-                Image(systemName: "bell.badge.fill")
+                Image(systemName: "bell.slash.fill")
                     .font(.title2)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.secondary)
                     .frame(width: 24, height: 24)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("System-wide Alerts")
+                    Text("\(system.displayName) Alerts")
                         .font(.headline)
-                    Text(alertSubtitleText)
+                    Text("Real-time alerts not available for \(system.displayName).")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
 
                 Spacer()
-
-                if system.supportsAlerts {
-                    Toggle("", isOn: subscribedToggleBinding)
-                        .labelsHidden()
-                        .tint(.orange)
-                } else {
-                    Text("Unavailable")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
             }
             .padding()
-
-            if isSubscribed {
-                Divider()
-
-                Text("Customize delivery, days, and thresholds from Route Alerts in Settings.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.vertical, 12)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
     }
 
     // MARK: - Derived state
 
-    private var existingSystemWideSub: RouteAlertSubscription? {
-        alertService.subscriptions.first {
+    private var matchingSubscriptions: [RouteAlertSubscription] {
+        alertService.subscriptions.filter {
             $0.isSystemWide && $0.dataSource == system.dataSource
         }
     }
 
-    private var isSubscribed: Bool { existingSystemWideSub != nil }
+    private var isSubscribed: Bool { !matchingSubscriptions.isEmpty }
 
     private var atFreeRouteAlertLimit: Bool {
         !subscriptionService.isPro
             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
     }
 
-    /// Two-way binding for the alerts toggle. The setter never mutates state
-    /// directly — it routes through `handleToggle`, which gates on the free
-    /// route-alert limit. If the gate trips, `isSubscribed` is unchanged and
-    /// SwiftUI re-renders the Toggle in its prior state.
-    private var subscribedToggleBinding: Binding<Bool> {
-        Binding(
-            get: { isSubscribed },
-            set: { handleToggle($0) }
-        )
-    }
-
-    private var alertSubtitleText: String {
-        if !system.supportsAlerts {
-            return "Real-time alerts not available for \(system.displayName)."
+    /// Single binding for alert configuration. Uses the matching system-wide
+    /// subscription if one exists; otherwise falls back to the draft.
+    private var alertConfigBinding: Binding<RouteAlertSubscription> {
+        if let first = matchingSubscriptions.first {
+            return Binding(
+                get: { editedSubscriptions[first.id] ?? first },
+                set: { newValue in
+                    let edited = RouteAlertSubscription.copySettings(
+                        from: newValue,
+                        to: editedSubscriptions[first.id] ?? first
+                    )
+                    editedSubscriptions[first.id] = edited
+                }
+            )
         }
-        return isSubscribed
-            ? "You'll be notified about delays across \(system.displayName)."
-            : "Get notified about delays across \(system.displayName)."
+        return Binding(
+            get: {
+                draftSubscription ?? RouteAlertSubscription(
+                    dataSource: system.dataSource,
+                    activeDays: 0
+                )
+            },
+            set: { draftSubscription = $0 }
+        )
     }
 
     // MARK: - Actions
 
-    private func handleToggle(_ newValue: Bool) {
-        if newValue {
+    /// Auto-subscribe when activeDays goes non-zero, auto-unsubscribe when it
+    /// returns to zero. Mirrors the per-route flow in `RouteStatusView`.
+    private func handleActiveDaysChange(_ newDays: Int) {
+        if newDays > 0 && !isSubscribed {
             if atFreeRouteAlertLimit {
+                // Revert the UI to "None" when the paywall is dismissed.
+                draftSubscription?.activeDays = 0
                 showingPaywall = true
                 return
             }
-            let sub = RouteAlertSubscription(dataSource: system.dataSource)
+            let template = draftSubscription ?? RouteAlertSubscription(
+                dataSource: system.dataSource,
+                activeDays: newDays
+            )
+            let sub = RouteAlertSubscription(
+                dataSource: template.dataSource,
+                activeDays: newDays,
+                activeStartMinutes: template.activeStartMinutes,
+                activeEndMinutes: template.activeEndMinutes,
+                timezone: template.timezone,
+                delayThresholdMinutes: template.delayThresholdMinutes,
+                serviceThresholdPct: template.serviceThresholdPct,
+                cancellationThresholdPct: template.cancellationThresholdPct,
+                notifyCancellation: template.notifyCancellation,
+                notifyDelay: template.notifyDelay,
+                notifyRecovery: template.notifyRecovery,
+                digestTimeMinutes: template.digestTimeMinutes,
+                includePlannedWork: template.includePlannedWork
+            )
             alertService.addSubscriptions([sub])
+            draftSubscription = nil
             alertService.syncIfPossible()
-        } else if let sub = existingSystemWideSub {
-            alertService.removeSubscription(sub)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } else if newDays == 0 && isSubscribed {
+            for sub in matchingSubscriptions {
+                alertService.removeSubscription(sub)
+            }
+            editedSubscriptions.removeAll()
+            draftSubscription = RouteAlertSubscription(
+                dataSource: system.dataSource,
+                activeDays: 0
+            )
             alertService.syncIfPossible()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func loadServiceAlerts() async {
