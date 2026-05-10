@@ -601,6 +601,8 @@ class AmtrakPatternScheduler:
             logger.warning(
                 "no_consensus_stops_for_pattern",
                 train_number=pattern["train_number"],
+                origin=pattern["origin"],
+                terminal=pattern["terminal"],
                 sample_count=len(recent_journeys),
             )
             return []
