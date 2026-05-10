@@ -299,17 +299,8 @@ struct StationDetailsView: View {
 
     @ViewBuilder
     private var serviceAlertsSection: some View {
-        if hasAlertSupport && !viewModel.isLoadingAlerts && !viewModel.alerts.isEmpty {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Service Alerts")
-                    .font(.headline)
-
-                ForEach(viewModel.alerts) { alert in
-                    ServiceAlertCard(alert: alert)
-                }
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        if hasAlertSupport && !viewModel.isLoadingAlerts {
+            ServiceAlertsSection(alerts: viewModel.alerts)
         }
     }
 
@@ -515,11 +506,9 @@ final class StationDetailsViewModel: ObservableObject {
             }
         }
 
-        // Active first, then upcoming; chronological within each group.
-        alerts = collected.sorted {
-            if $0.isActiveNow != $1.isActiveNow { return $0.isActiveNow }
-            return $0.earliestStartEpoch < $1.earliestStartEpoch
-        }
+        // ServiceAlertsSection partitions and sorts internally; just hand it
+        // the raw collected alerts.
+        alerts = collected
     }
 
     /// Per-system GTFS route IDs for routes touching this station, used to scope
