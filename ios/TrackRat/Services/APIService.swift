@@ -1277,16 +1277,18 @@ final class APIService: ObservableObject {
 
         if let httpResponse = response as? HTTPURLResponse {
             print("📡 [APIService] Response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode == 404 {
+                throw APIError.notFound
+            }
             if httpResponse.statusCode != 200 {
-                print("⚠️ [APIService] Non-200 status code")
                 if let responseStr = String(data: data, encoding: .utf8) {
                     print("   Response body: \(responseStr)")
                 }
+                throw APIError.serverError
             }
         }
 
         do {
-            // Try to decode the response
             let prediction = try decoder.decode(PlatformPrediction.self, from: data)
             print("✅ [APIService] Successfully decoded platform prediction")
             return prediction
