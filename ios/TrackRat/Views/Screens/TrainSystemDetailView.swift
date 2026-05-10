@@ -38,7 +38,7 @@ struct TrainSystemDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 mapSection
-                OperationsSummaryView(scope: .network)
+                OperationsSummaryView(scope: .network, dataSource: system.dataSource)
                 if hasServiceAlertFeed {
                     ServiceAlertsSection(alerts: serviceAlerts)
                 }
@@ -120,10 +120,18 @@ struct TrainSystemDetailView: View {
         if !routes.isEmpty {
             // Build the segment lookup once per render so each row's
             // delay computation is O(stops) instead of O(stops × segments).
-            let segmentsByPair = Dictionary(
-                mapViewModel.segments.map { ("\($0.fromStation)→\($0.toStation)", $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
+            // Key by an alphabetically-ordered pair so A→B and B→A collapse
+            // to the same entry; the backend can return either direction and
+            // we want consecutive route stops to find a match regardless.
+            // When both directions are present, keep the one with more samples.
+            let segmentsByPair: [String: CongestionSegment] = mapViewModel.segments
+                .reduce(into: [:]) { acc, segment in
+                    let key = Self.canonicalPairKey(segment.fromStation, segment.toStation)
+                    if let existing = acc[key], existing.sampleCount >= segment.sampleCount {
+                        return
+                    }
+                    acc[key] = segment
+                }
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
@@ -177,13 +185,20 @@ struct TrainSystemDetailView: View {
         guard codes.count >= 2 else { return nil }
         var totals: [Double] = []
         for i in 0..<(codes.count - 1) {
-            let key = "\(codes[i])→\(codes[i + 1])"
+            let key = Self.canonicalPairKey(codes[i], codes[i + 1])
             if let segment = segmentsByPair[key] {
                 totals.append(segment.averageDelayMinutes)
             }
         }
         guard !totals.isEmpty else { return nil }
         return totals.reduce(0, +) / Double(totals.count)
+    }
+
+    /// Alphabetically-ordered key for a station pair so A↔B collapses to a
+    /// single canonical entry. Matches the convention used by
+    /// `buildMergedAggregatedOverlays` in `CongestionMapView`.
+    private static func canonicalPairKey(_ a: String, _ b: String) -> String {
+        a < b ? "\(a)|\(b)" : "\(b)|\(a)"
     }
 
     private var alertsSection: some View {

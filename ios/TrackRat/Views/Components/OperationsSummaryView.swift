@@ -9,6 +9,10 @@ struct OperationsSummaryView: View {
     let fromStation: String?
     let toStation: String?
     let trainId: String?
+    /// Optional data source filter (e.g. "NJT", "PATH"). When set, the
+    /// network/route summary is scoped to that system instead of the
+    /// whole network.
+    let dataSource: String?
     let isExpandable: Bool
     let onTrainTap: ((String) -> Void)?
 
@@ -27,6 +31,7 @@ struct OperationsSummaryView: View {
         fromStation: String? = nil,
         toStation: String? = nil,
         trainId: String? = nil,
+        dataSource: String? = nil,
         isExpandable: Bool = false,
         onTrainTap: ((String) -> Void)? = nil,
         ratSenseRoute: (from: String, to: String)? = nil
@@ -35,6 +40,7 @@ struct OperationsSummaryView: View {
         self.fromStation = fromStation
         self.toStation = toStation
         self.trainId = trainId
+        self.dataSource = dataSource
         self.isExpandable = isExpandable
         self.onTrainTap = onTrainTap
         self.ratSenseRoute = ratSenseRoute
@@ -115,7 +121,8 @@ struct OperationsSummaryView: View {
                 scope: scope,
                 fromStation: fromStation,
                 toStation: toStation,
-                trainId: trainId
+                trainId: trainId,
+                dataSource: dataSource
             )
             summary = result
 
@@ -126,7 +133,8 @@ struct OperationsSummaryView: View {
                         scope: .route,
                         fromStation: route.from,
                         toStation: route.to,
-                        trainId: nil
+                        trainId: nil,
+                        dataSource: dataSource
                     )
                     routeSummary = routeResult
                     print("📊 OperationsSummary: Route summary body='\(routeResult.body.prefix(60))...'")
