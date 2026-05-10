@@ -255,7 +255,7 @@ struct StationDetailsView: View {
                             HStack(spacing: 10) {
                                 routeBadge(for: route)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(route.name)
+                                    Text(displayName(for: route))
                                         .font(.subheadline.bold())
                                         .lineLimit(1)
                                     if let subtitle = route.terminalSubtitle {
@@ -294,6 +294,17 @@ struct StationDetailsView: View {
         } else if let system = TrainSystem(rawValue: route.dataSource) {
             SystemPill(system: system, size: 24)
         }
+    }
+
+    /// For subway routes, strip the leading line designator (e.g. "6 ", "6X ",
+    /// "S ") since `routeBadge` already renders it as a chip. Non-subway route
+    /// names have no line prefix and are returned as-is.
+    private func displayName(for route: RouteLine) -> String {
+        guard route.dataSource == "SUBWAY",
+              let spaceIndex = route.name.firstIndex(of: " ") else {
+            return route.name
+        }
+        return String(route.name[route.name.index(after: spaceIndex)...])
     }
 
     private var skeletonRow: some View {
