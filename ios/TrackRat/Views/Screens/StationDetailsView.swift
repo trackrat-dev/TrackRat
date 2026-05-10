@@ -95,29 +95,26 @@ struct StationDetailsView: View {
         }
     }
 
-    // MARK: - Actions (favorite / home / work)
+    // MARK: - Actions (set home / set work / set favorite — mutually exclusive)
 
+    /// Home, Work, and Favorite are mutually exclusive states for a station,
+    /// matching `SettingsView`: setting Home/Work auto-injects the station as
+    /// a favorite, and clearing the role drops it from favorites unless the
+    /// other role still anchors it. The Favorite button represents the
+    /// residual "in favorites, but not designated Home/Work" state.
     @ViewBuilder
     private var actionsSection: some View {
-        let isFavorited = appState.isStationFavorited(code: stationCode)
         let isHome = ratSense.getHomeStation() == stationCode
         let isWork = ratSense.getWorkStation() == stationCode
+        let isFavorite = !isHome && !isWork && appState.isStationFavorited(code: stationCode)
 
         HStack(spacing: 8) {
-            actionButton(
-                title: isFavorited ? "Favorited" : "Favorite",
-                systemImage: isFavorited ? "heart.fill" : "heart",
-                isActive: isFavorited
-            ) {
-                appState.toggleFavoriteStation(code: stationCode, name: fullName)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
             actionButton(
                 title: isHome ? "Home" : "Set Home",
                 systemImage: "house.fill",
                 isActive: isHome
             ) {
-                ratSense.setHomeStation(isHome ? nil : stationCode)
+                withAnimation(.easeInOut(duration: 0.2)) { applyHomeAction() }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
             actionButton(
@@ -125,10 +122,91 @@ struct StationDetailsView: View {
                 systemImage: "briefcase.fill",
                 isActive: isWork
             ) {
-                ratSense.setWorkStation(isWork ? nil : stationCode)
+                withAnimation(.easeInOut(duration: 0.2)) { applyWorkAction() }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+            actionButton(
+                title: isFavorite ? "Favorited" : "Set Favorite",
+                systemImage: isFavorite ? "heart.fill" : "heart",
+                isActive: isFavorite
+            ) {
+                withAnimation(.easeInOut(duration: 0.2)) { applyFavoriteAction() }
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: isHome)
+        .animation(.easeInOut(duration: 0.2), value: isWork)
+        .animation(.easeInOut(duration: 0.2), value: isFavorite)
+    }
+
+    /// Toggle Home for this station. Clearing strips the favorite (unless the
+    /// station is also Work, which keeps it auto-injected). Setting it
+    /// promotes from Work or Favorite, and demotes the previous Home station
+    /// from favorites — mirroring `SettingsView`'s home picker.
+    private func applyHomeAction() {
+        let isHome = ratSense.getHomeStation() == stationCode
+        let isWork = ratSense.getWorkStation() == stationCode
+
+        if isHome {
+            ratSense.setHomeStation(nil)
+            if !isWork {
+                appState.removeFavoriteStation(code: stationCode)
+            }
+            return
+        }
+
+        if isWork {
+            ratSense.setWorkStation(nil)
+        }
+        if let oldHome = ratSense.getHomeStation(),
+           oldHome != stationCode,
+           oldHome != ratSense.getWorkStation() {
+            appState.removeFavoriteStation(code: oldHome)
+        }
+        ratSense.setHomeStation(stationCode)
+        appState.addFavoriteStation(code: stationCode, name: fullName)
+    }
+
+    /// Symmetric counterpart to `applyHomeAction` for Work.
+    private func applyWorkAction() {
+        let isHome = ratSense.getHomeStation() == stationCode
+        let isWork = ratSense.getWorkStation() == stationCode
+
+        if isWork {
+            ratSense.setWorkStation(nil)
+            if !isHome {
+                appState.removeFavoriteStation(code: stationCode)
+            }
+            return
+        }
+
+        if isHome {
+            ratSense.setHomeStation(nil)
+        }
+        if let oldWork = ratSense.getWorkStation(),
+           oldWork != stationCode,
+           oldWork != ratSense.getHomeStation() {
+            appState.removeFavoriteStation(code: oldWork)
+        }
+        ratSense.setWorkStation(stationCode)
+        appState.addFavoriteStation(code: stationCode, name: fullName)
+    }
+
+    /// Toggle the plain Favorite state. When the station is currently Home or
+    /// Work, "Set Favorite" demotes it (clears the role, keeps the favorite).
+    /// Otherwise it's a plain stored-favorite toggle.
+    private func applyFavoriteAction() {
+        let isHome = ratSense.getHomeStation() == stationCode
+        let isWork = ratSense.getWorkStation() == stationCode
+
+        if isHome || isWork {
+            if isHome { ratSense.setHomeStation(nil) }
+            if isWork { ratSense.setWorkStation(nil) }
+            appState.addFavoriteStation(code: stationCode, name: fullName)
+            return
+        }
+
+        appState.toggleFavoriteStation(code: stationCode, name: fullName)
     }
 
     @ViewBuilder
