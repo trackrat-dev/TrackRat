@@ -547,25 +547,6 @@ class AmtrakPatternScheduler:
             sorted_values[mid - 1] + (sorted_values[mid] - sorted_values[mid - 1]) / 2
         )
 
-    def _origin_only_stop(
-        self,
-        journey: TrainJourney,
-        pattern: dict[str, Any],
-        scheduled_departure: datetime,
-    ) -> list[JourneyStop]:
-        """Build the safe fallback stop list when no stable route is known."""
-        return [
-            JourneyStop(
-                journey=journey,
-                station_code=pattern["origin"],
-                station_name=get_station_name(pattern["origin"]),
-                stop_sequence=0,
-                scheduled_departure=scheduled_departure,
-                scheduled_arrival=scheduled_departure,
-                has_departed_station=False,
-            )
-        ]
-
     @staticmethod
     def _normalize_stop_sequences(stops: list[JourneyStop]) -> list[JourneyStop]:
         """Return stops with contiguous sequences before inserting scheduled rows."""
@@ -611,12 +592,20 @@ class AmtrakPatternScheduler:
         )
 
         if not stop_templates:
-            logger.debug(
+            # Skip creating the SCHEDULED record entirely. An origin-only stop
+            # is actively misleading: the train shows up in searches from the
+            # origin but its detail view shows no destination, and downstream
+            # filters that require both endpoints exclude it inconsistently.
+            # Discovery (every 30 min) will create an OBSERVED record once the
+            # train appears in Amtrak's feed.
+            logger.warning(
                 "no_consensus_stops_for_pattern",
                 train_number=pattern["train_number"],
+                origin=pattern["origin"],
+                terminal=pattern["terminal"],
                 sample_count=len(recent_journeys),
             )
-            return self._origin_only_stop(journey, pattern, scheduled_departure)
+            return []
 
         stops = []
         for i, template in enumerate(stop_templates):
@@ -727,6 +716,11 @@ class AmtrakPatternScheduler:
                 stops = await self._build_scheduled_stops(
                     session, journey, pattern, scheduled_departure
                 )
+                if not stops:
+                    # Consensus produced no stops; skip rather than create a
+                    # journey with no route. _build_scheduled_stops already
+                    # logged the reason at WARNING.
+                    continue
                 journey.stops_count = len(stops)
 
                 scheduled_journeys.append(
@@ -783,6 +777,24 @@ class AmtrakPatternScheduler:
                     existing_journey = result.scalar_one_or_none()
 
                     if existing_journey:
+                        # Defense in depth: refuse to replace a multi-stop
+                        # SCHEDULED record with fewer stops. A consensus pass
+                        # that suddenly produces fewer stops (e.g., one bad
+                        # sample run shrinks the intersection) would otherwise
+                        # permanently downgrade the existing route until the
+                        # train goes OBSERVED.
+                        existing_stops_count = existing_journey.stops_count or 0
+                        if len(stops) < existing_stops_count:
+                            logger.warning(
+                                "refusing_stop_downgrade_for_scheduled_journey",
+                                train_id=journey.train_id,
+                                journey_date=journey.journey_date.isoformat(),
+                                existing_stop_count=existing_stops_count,
+                                new_stop_count=len(stops),
+                            )
+                            stats["skipped"] += 1
+                            continue
+
                         # Update times and stops if pattern is more recent
                         existing_journey.scheduled_departure = (
                             journey.scheduled_departure
