@@ -1,9 +1,13 @@
 import SwiftUI
 import MapKit
 
-/// System-level details: a route map, recent network stats, and a single
-/// opt-in toggle for system-wide route alerts. Pushed from SettingsView when
-/// a TrainSystemRow is tapped outside of edit mode.
+/// System-level details: an interactive system-wide route map, a network
+/// operations summary, current service alerts, and a single opt-in toggle for
+/// system-wide route alerts. Pushed from SettingsView when a TrainSystemRow is
+/// tapped outside of edit mode.
+///
+/// Tapping a map segment presents `RouteStatusView` as a sheet with the
+/// concrete origin/destination pair, mirroring `CongestionMapView`.
 struct TrainSystemDetailView: View {
     let system: TrainSystem
 
@@ -14,6 +18,16 @@ struct TrainSystemDetailView: View {
     @State private var region: MKCoordinateRegion
     @State private var serviceAlerts: [V2ServiceAlert] = []
     @State private var showingPaywall = false
+    @State private var routeStatusContext: RouteStatusContext?
+
+    /// Data sources whose backend feeds publish service alerts. Other systems
+    /// (PATH, BART, MBTA, etc.) have `supportsAlerts = true` for delay/cancel
+    /// push notifications but no service-alert feed, so the section is hidden.
+    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
+
+    private var hasServiceAlertFeed: Bool {
+        Self.serviceAlertSystems.contains(system.dataSource)
+    }
 
     init(system: TrainSystem) {
         self.system = system
@@ -24,8 +38,19 @@ struct TrainSystemDetailView: View {
         ScrollView {
             VStack(spacing: 16) {
                 mapSection
-                statsSection
+                OperationsSummaryView(scope: .network)
+                if hasServiceAlertFeed {
+                    ServiceAlertsSection(alerts: serviceAlerts)
+                }
+                routesSection
                 alertsSection
+                FeedbackButton(
+                    screen: "system_detail",
+                    trainId: nil,
+                    originCode: nil,
+                    destinationCode: nil
+                )
+                .padding(.top, 8)
             }
             .padding()
         }
@@ -42,15 +67,17 @@ struct TrainSystemDetailView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: .routeAlerts)
         }
+        .sheet(item: $routeStatusContext) { context in
+            RouteStatusView(context: context)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: - Sections
 
     private var mapSection: some View {
         ZStack(alignment: .topTrailing) {
-            // Embedded map preview. Hit-testing is disabled so vertical scroll
-            // gestures aren't stolen by MKMapView; the map serves as visual
-            // context, not as a fully interactive surface.
             SystemCongestionMapView(
                 region: $region,
                 segments: mapViewModel.segments,
@@ -59,12 +86,24 @@ struct TrainSystemDetailView: View {
                 showRoutes: mapViewModel.showRoutes,
                 selectedSystems: [system],
                 highlightMode: mapViewModel.highlightMode,
-                onSegmentTap: { _ in },
+                onSegmentTap: { segment in
+                    let route = RouteTopology.routeContaining(
+                        from: segment.fromStation,
+                        to: segment.toStation,
+                        dataSource: segment.dataSource
+                    )
+                    routeStatusContext = RouteStatusContext(
+                        dataSource: segment.dataSource,
+                        lineId: route?.id,
+                        fromStationCode: segment.fromStation,
+                        toStationCode: segment.toStation
+                    )
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
                 onIndividualSegmentTap: nil
             )
             .frame(height: 280)
             .clipShape(RoundedRectangle(cornerRadius: 12))
-            .allowsHitTesting(false)
 
             if mapViewModel.isLoading {
                 ProgressView()
@@ -75,62 +114,76 @@ struct TrainSystemDetailView: View {
         }
     }
 
-    private var statsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 16) {
-                Image(systemName: "chart.bar.fill")
-                    .font(.title2)
-                    .foregroundColor(.orange)
-                    .frame(width: 24, height: 24)
-
-                Text("Recent Activity")
-                    .font(.headline)
-
-                Spacer()
-            }
-            .padding()
-
-            Divider()
-
-            statRow(icon: "clock.fill", label: "Average delay", value: averageDelayDisplay)
-            Divider()
-            statRow(icon: "map.fill", label: "Routes", value: "\(systemRouteCount)")
-            Divider()
-            statRow(
-                icon: "exclamationmark.triangle.fill",
-                label: "Active alerts",
-                value: activeAlertCount > 0 ? "\(activeAlertCount)" : "None"
+    @ViewBuilder
+    private var routesSection: some View {
+        let routes = RouteTopology.allRoutes.filter { $0.dataSource == system.dataSource }
+        if !routes.isEmpty {
+            // Build the segment lookup once per render so each row's
+            // delay computation is O(stops) instead of O(stops × segments).
+            let segmentsByPair = Dictionary(
+                mapViewModel.segments.map { ("\($0.fromStation)→\($0.toStation)", $0) },
+                uniquingKeysWith: { first, _ in first }
             )
-            Divider()
-            statRow(
-                icon: "wrench.and.screwdriver.fill",
-                label: "Planned work",
-                value: plannedWorkCount > 0 ? "\(plannedWorkCount)" : "None"
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Routes")
+                        .font(.headline)
+                    Spacer()
+                    Text("\(routes.count)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.top)
+                .padding(.bottom, 8)
+
+                ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
+                    Button {
+                        routeStatusContext = RouteStatusContext(
+                            dataSource: system.dataSource,
+                            lineId: route.id
+                        )
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        SystemRouteListRow(
+                            route: route,
+                            system: system,
+                            averageDelayMinutes: averageDelay(for: route, segmentsByPair: segmentsByPair)
+                        )
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < routes.count - 1 {
+                        Divider().padding(.leading)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
     }
 
-    private func statRow(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.body)
-                .foregroundColor(.orange.opacity(0.8))
-                .frame(width: 24)
-            Text(label)
-                .font(.subheadline)
-            Spacer()
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
+    /// Average delay (in minutes) across the segments that make up `route`,
+    /// or `nil` if no segments are loaded for the route's consecutive station
+    /// pairs. Looks up segments via the caller-provided dictionary so the cost
+    /// is O(stops) per route instead of O(stops × segments).
+    private func averageDelay(for route: RouteLine, segmentsByPair: [String: CongestionSegment]) -> Double? {
+        let codes = route.stationCodes
+        guard codes.count >= 2 else { return nil }
+        var totals: [Double] = []
+        for i in 0..<(codes.count - 1) {
+            let key = "\(codes[i])→\(codes[i + 1])"
+            if let segment = segmentsByPair[key] {
+                totals.append(segment.averageDelayMinutes)
+            }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
+        guard !totals.isEmpty else { return nil }
+        return totals.reduce(0, +) / Double(totals.count)
     }
 
     private var alertsSection: some View {
@@ -207,28 +260,6 @@ struct TrainSystemDetailView: View {
         )
     }
 
-    private var systemRouteCount: Int {
-        RouteTopology.allRoutes.filter { $0.dataSource == system.dataSource }.count
-    }
-
-    private var averageDelayDisplay: String {
-        let segments = mapViewModel.segments
-        guard !segments.isEmpty else {
-            return mapViewModel.isLoading ? "—" : "No data"
-        }
-        let avg = segments.map(\.averageDelayMinutes).reduce(0, +) / Double(segments.count)
-        if avg < 0.5 { return "On time" }
-        return String(format: "%.1f min", avg)
-    }
-
-    private var activeAlertCount: Int {
-        serviceAlerts.filter { $0.alertType == "alert" && $0.isActiveNow }.count
-    }
-
-    private var plannedWorkCount: Int {
-        serviceAlerts.filter { $0.alertType == "planned_work" && $0.isActiveNow }.count
-    }
-
     private var alertSubtitleText: String {
         if !system.supportsAlerts {
             return "Real-time alerts not available for \(system.displayName)."
@@ -257,7 +288,7 @@ struct TrainSystemDetailView: View {
     }
 
     private func loadServiceAlerts() async {
-        guard system.supportsAlerts else { return }
+        guard hasServiceAlertFeed else { return }
         do {
             serviceAlerts = try await APIService.shared.fetchServiceAlerts(dataSource: system.dataSource)
         } catch {
