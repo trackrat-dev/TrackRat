@@ -894,6 +894,10 @@ private struct FavoriteStationRow: View {
                             .foregroundColor(.white.opacity(0.3))
                     }
                     .buttonStyle(.plain)
+                } else if !showControls && stationCode != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
             .padding(.horizontal)
@@ -948,6 +952,10 @@ private struct RouteAlertRow: View {
                             .foregroundColor(.white.opacity(0.3))
                     }
                     .buttonStyle(.plain)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
             .padding(.horizontal)
