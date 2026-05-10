@@ -118,6 +118,13 @@ struct TrainSystemDetailView: View {
     private var routesSection: some View {
         let routes = RouteTopology.allRoutes.filter { $0.dataSource == system.dataSource }
         if !routes.isEmpty {
+            // Build the segment lookup once per render so each row's
+            // delay computation is O(stops) instead of O(stops × segments).
+            let segmentsByPair = Dictionary(
+                mapViewModel.segments.map { ("\($0.fromStation)→\($0.toStation)", $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Text("Routes")
@@ -142,7 +149,7 @@ struct TrainSystemDetailView: View {
                         SystemRouteListRow(
                             route: route,
                             system: system,
-                            averageDelayMinutes: averageDelay(for: route)
+                            averageDelayMinutes: averageDelay(for: route, segmentsByPair: segmentsByPair)
                         )
                     }
                     .buttonStyle(.plain)
@@ -163,19 +170,15 @@ struct TrainSystemDetailView: View {
 
     /// Average delay (in minutes) across the segments that make up `route`,
     /// or `nil` if no segments are loaded for the route's consecutive station
-    /// pairs. Uses `mapViewModel.segments` so the value updates with the map.
-    private func averageDelay(for route: RouteLine) -> Double? {
+    /// pairs. Looks up segments via the caller-provided dictionary so the cost
+    /// is O(stops) per route instead of O(stops × segments).
+    private func averageDelay(for route: RouteLine, segmentsByPair: [String: CongestionSegment]) -> Double? {
         let codes = route.stationCodes
         guard codes.count >= 2 else { return nil }
         var totals: [Double] = []
         for i in 0..<(codes.count - 1) {
-            let from = codes[i]
-            let to = codes[i + 1]
-            if let segment = mapViewModel.segments.first(where: {
-                $0.fromStation == from
-                    && $0.toStation == to
-                    && $0.dataSource == route.dataSource
-            }) {
+            let key = "\(codes[i])→\(codes[i + 1])"
+            if let segment = segmentsByPair[key] {
                 totals.append(segment.averageDelayMinutes)
             }
         }
