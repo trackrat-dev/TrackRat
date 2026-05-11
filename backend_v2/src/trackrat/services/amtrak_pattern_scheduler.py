@@ -391,12 +391,16 @@ class AmtrakPatternScheduler:
         lookback_start = target_date - timedelta(days=self.LOOKBACK_DAYS)
         origin_codes = sorted(self._station_code_aliases(pattern["origin"]))
         terminal_codes = sorted(self._station_code_aliases(pattern["terminal"]))
+        # Match the same prefix pattern that create_scheduled_journeys uses
+        # (line ~665): train_ids may be stored with a suffix (e.g. "2150-4") so
+        # an exact == match would miss those rows. Origin/terminal filters
+        # below prevent the LIKE from picking up unrelated numbers.
         stmt = (
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
             .where(
                 and_(
-                    TrainJourney.train_id == pattern["train_number"],
+                    TrainJourney.train_id.like(f"{pattern['train_number']}%"),
                     TrainJourney.data_source == "AMTRAK",
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),

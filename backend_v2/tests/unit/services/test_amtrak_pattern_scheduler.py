@@ -200,6 +200,44 @@ async def test_recent_matching_journeys_filters_amtrak_station_aliases(
 
 
 @pytest.mark.asyncio
+async def test_recent_matching_journeys_matches_suffixed_train_ids(
+    pattern_scheduler,
+):
+    """Historical lookups should match train_ids stored with a suffix.
+
+    Real-world Amtrak rows have been observed with suffixed train_ids
+    (e.g. "2150-4"), while ``pattern["train_number"]`` is always the bare
+    number ("2150"). An exact == comparison would miss those rows and
+    silently break stop-template consensus building. The matcher must use
+    the same prefix LIKE pattern that ``create_scheduled_journeys`` uses
+    when checking for existing rows.
+    """
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
+
+    await pattern_scheduler._get_recent_matching_journeys(
+        session,
+        {
+            "train_number": "2150",
+            "origin": "NYP",
+            "terminal": "WAS",
+        },
+        date(2024, 1, 25),
+    )
+
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    # Must use a prefix LIKE so "2150-4" rows are picked up, matching the
+    # convention used at create_scheduled_journeys.
+    assert "train_id LIKE '2150%'" in compiled
+    # Guard against regression to the exact-match form.
+    assert "train_id = '2150'" not in compiled
+
+
+@pytest.mark.asyncio
 async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
     """SCHEDULED journeys use a stable stop list from multiple recent runs."""
     target_date = date(2024, 1, 25)
