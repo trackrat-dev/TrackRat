@@ -2099,7 +2099,18 @@ class JourneyCollector(BaseJourneyCollector):
         if not last_stop_db:
             return
 
-        last_stop_api = stops_data[-1]
+        # The caller passes raw NJT API order here, while update_journey_stops
+        # sorts only a local copy before sequencing. Match the authoritative
+        # DB terminal by station code so a misordered non-terminal row cannot
+        # supply the terminal ETA or terminal cancellation status.
+        last_stop_api = next(
+            (
+                stop
+                for stop in stops_data
+                if stop.STATION_2CHAR == last_stop_db.station_code
+            ),
+            None,
+        )
 
         # Terminal stop departed directly (rare for NJT terminals, but possible).
         # Still require the terminal arrival time to be due so time-inferred
@@ -2188,8 +2199,8 @@ class JourneyCollector(BaseJourneyCollector):
         cancelled_stops = sum(
             1 for stop in stops_data if is_njt_stop_cancelled(stop.STOP_STATUS)
         )
-        terminal_cancelled = bool(stops_data) and is_njt_stop_cancelled(
-            stops_data[-1].STOP_STATUS
+        terminal_cancelled = bool(last_stop_api) and is_njt_stop_cancelled(
+            last_stop_api.STOP_STATUS
         )
 
         if cancelled_stops and (

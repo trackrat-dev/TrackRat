@@ -345,6 +345,65 @@ class TestTerminalStopCompletion:
         assert ny_stop.actual_arrival is None
 
     @pytest.mark.asyncio
+    async def test_misordered_api_stops_use_terminal_row_for_arrival_due(
+        self, sqlite_session, journey_collector
+    ):
+        """Completion should match the terminal API row by station code, not
+        raw list position."""
+        now = now_et().replace(second=0, microsecond=0)
+        base_time = now - timedelta(minutes=70)
+        journey = await _create_tr_to_ny_journey(
+            sqlite_session, base_time, penultimate_departed=True
+        )
+
+        builder = StopBuilder()
+        terminal_arrival_time = now - timedelta(minutes=1)
+        future_intermediate_time = now + timedelta(minutes=8)
+        stops_data = [
+            _make_stop(
+                builder,
+                "TR",
+                "Trenton",
+                base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NY",
+                "New York Penn",
+                None,
+                arr_time=terminal_arrival_time.strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+            _make_stop(
+                builder,
+                "NP",
+                "Newark Penn",
+                future_intermediate_time.strftime(NJT_TIME_FORMAT),
+                arr_time=future_intermediate_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+        ]
+        stops_data[1].DEP_TIME = None
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_completed is True, (
+            "Journey should complete using the NY terminal row even when NJT "
+            "returns a non-terminal stop last"
+        )
+        ny_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        assert ny_stop.actual_arrival == terminal_arrival_time
+        assert ny_stop.arrival_source == "api_observed"
+
+    @pytest.mark.asyncio
     async def test_no_completion_when_penultimate_not_departed(
         self, sqlite_session, journey_collector
     ):
