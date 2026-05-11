@@ -1172,11 +1172,18 @@ class TestSystemsForStation:
         """
         assert _systems_for_station("NY") == {"NJT", "AMTRAK", "LIRR"}
 
-    def test_native_path_code_unaffected_by_njt_amtrak_equivalence(self):
-        """PNK is in {NP, PNK} with NP served by NJT/AMTRAK; expansion would
-        add those to PNK's set and break the PATH↔commuter-rail direct filter.
+    def test_non_subway_code_includes_sibling_rail_systems(self):
+        """NP (Newark Penn Station) is served natively by NJT/AMTRAK; its
+        equivalent PNK is served by PATH at the same physical building.
+
+        For non-subway station codes we include sibling systems from the
+        equivalence group so a search NP→PWC surfaces direct PATH trains
+        (issue #1172).  SUBWAY is still excluded from the cross-modal
+        expansion of non-subway codes (preserves the #1121 filter).
         """
-        assert _systems_for_station("PNK") == {"PATH"}
+        assert _systems_for_station("NP") == {"NJT", "AMTRAK", "PATH"}
+        # And symmetrically: PNK should see NJT/AMTRAK from its NP equivalent.
+        assert _systems_for_station("PNK") == {"NJT", "AMTRAK", "PATH"}
 
     def test_alias_only_code_falls_back_to_expansion(self):
         """TS (Secaucus Lower Level) is alias-only and must resolve to NJT via SE."""
@@ -1188,6 +1195,26 @@ class TestSystemsForStation:
     def test_unknown_code_returns_empty(self):
         """A completely unknown code returns empty (no native, no expansion)."""
         assert _systems_for_station("ZZZZ_NOT_A_STATION") == set()
+
+    def test_amtrak_mnr_shared_station_includes_both(self):
+        """Stations shared between Amtrak and Metro-North (e.g. New Rochelle)
+        should surface both systems regardless of which code the user picks.
+        """
+        assert _systems_for_station("NRO") == {"AMTRAK", "MNR"}
+        assert _systems_for_station("MNRC") == {"AMTRAK", "MNR"}
+
+    def test_np_pwc_direct_filter_keeps_path_trips(self):
+        """End-to-end check for issue #1172: a PATH train NP→PWC must survive
+        _filter_cross_system_direct_trips so the user sees direct PATH service
+        from Newark Penn Station to World Trade Center / Grove Street.
+        """
+        from_sys = _systems_for_station("NP")
+        to_sys = _systems_for_station("PWC")
+        valid = from_sys & to_sys
+        assert "PATH" in valid, (
+            f"PATH should be a valid direct system for NP→PWC. "
+            f"from_systems={from_sys}, to_systems={to_sys}"
+        )
 
 
 class TestFilterCrossSystemDirectTrips:

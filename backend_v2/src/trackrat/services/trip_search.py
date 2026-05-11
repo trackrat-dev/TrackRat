@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.config.stations import expand_station_codes, get_station_name
+from trackrat.config.stations.common import STATION_EQUIVALENTS
 from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
@@ -129,22 +130,35 @@ def _filter_cross_system_direct_trips(
 
 
 def _systems_for_station(code: str) -> set[str]:
-    """Return the transit systems natively serving a station code.
+    """Return the transit systems available to a passenger at this station.
 
-    Falls back to equivalence-group expansion only for alias-only codes (codes
-    that aren't in any route topology, e.g. TS for Secaucus Lower Level).  For
-    codes that are in a route topology, returns just the native systems —
-    expanding cross-modal equivalence groups (e.g. {NY, S128, SA28}) would
-    defeat the cross-system direct-trip filter by adding commuter-rail systems
-    to a subway code's system set.
+    For non-subway station codes, includes sibling systems from the same
+    equivalence group so e.g. NP (Newark Penn Station, NJT/Amtrak) also
+    surfaces PATH via its equivalent PNK — both codes refer to the same
+    physical building.  SUBWAY is excluded from the expansion of non-subway
+    codes because subway-platform codes in a large complex (e.g. S128 inside
+    NY Penn) are physically separate from the rail concourses and would
+    defeat the cross-system direct-trip filter (#1121).
+
+    Subway-only codes stay strict (only SUBWAY) so subway-platform queries
+    like S128→TR don't pick up rail trains arriving at NY.
+
+    Alias-only codes (not in any route topology, e.g. TS for Secaucus Lower
+    Level) fall back to full equivalence expansion so they resolve to the
+    canonical station's systems.
     """
     direct = get_systems_serving_station(code)
-    if direct:
+    group = STATION_EQUIVALENTS.get(code)
+    if not group:
         return direct
     expanded: set[str] = set()
-    for equivalent in expand_station_codes(code):
+    for equivalent in group:
         expanded |= get_systems_serving_station(equivalent)
-    return expanded
+    if not direct:
+        return expanded
+    if direct <= {"SUBWAY"}:
+        return direct
+    return expanded - {"SUBWAY"}
 
 
 def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
