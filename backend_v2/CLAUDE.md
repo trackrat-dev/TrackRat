@@ -282,6 +282,7 @@ The APScheduler runs in-process and handles:
 - **Daily at 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Daily at 1:00 AM ET**: Lock manager cleanup
 - **Daily at 3:00 AM ET**: GTFS static schedule refresh
+- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys older than `TRACKRAT_RETENTION_DAYS`)
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
 - **Every 4 min**: PATH collection (unified, RidePATH API)
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
