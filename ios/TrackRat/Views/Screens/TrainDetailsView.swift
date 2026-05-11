@@ -245,19 +245,22 @@ struct TrainDetailsView: View {
                                     set: { alertSubscription = $0 }
                                 ))
                             }
-
-                            // Report an issue button
-                            FeedbackButton(
-                                screen: "train_details",
-                                trainId: train.trainId,
-                                originCode: appState.departureStationCode,
-                                destinationCode: appState.destinationStationCode
-                            )
-                            .padding(.top, 8)
                         }
                         .padding()
                         // Force view recreation when train identity or status changes
                         .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)")
+
+                        // FeedbackButton is outside the .id() scope so live data refreshes
+                        // don't recreate it and dismiss an in-progress feedback sheet
+                        FeedbackButton(
+                            screen: "train_details",
+                            trainId: train.trainId,
+                            originCode: appState.departureStationCode,
+                            destinationCode: appState.destinationStationCode
+                        )
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .padding(.bottom, 16)
                     }
                 } // VStack
             }
