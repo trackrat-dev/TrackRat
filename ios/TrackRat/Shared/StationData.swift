@@ -76,7 +76,7 @@ extension Stations {
         // PATH Stations
         "Harrison PATH", "Journal Square",
         "Grove Street", "Exchange Place", "Newport",
-        "Hoboken PATH", "Christopher Street", "9th Street",
+        "Christopher Street", "9th Street",
         "14th Street", "23rd Street", "33rd Street",
         "World Trade Center",
 
@@ -3127,6 +3127,7 @@ extension Stations {
             ["NHV", "MNHV"],   // New Haven
             ["STS", "MNSS"],   // New Haven-State St
             ["NP", "PNK"],     // Newark Penn Station / Newark PATH
+            ["HB", "PHO"],     // Hoboken / Hoboken PATH
         ]
 
         // Subway station complexes: build groups from (alternate, canonical) pairs

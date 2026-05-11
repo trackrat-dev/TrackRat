@@ -219,8 +219,10 @@ class TestProximityTransfers:
             and "PHO" in (tp.station_a, tp.station_b)
         ]
         assert len(hoboken) == 1, f"Expected 1 Hoboken transfer, got {len(hoboken)}"
-        assert not hoboken[0].same_station  # Different codes = proximity-based
-        assert hoboken[0].walk_meters < 200  # Very close
+        # HB and PHO are in an equivalence group, so the transfer is recorded
+        # as same_station (matching the Newark NP/PNK pattern).
+        assert hoboken[0].same_station
+        assert hoboken[0].walk_meters == 0.0
 
     def test_newark_njt_path(self):
         """NJT/Amtrak Newark (NP) should connect to PATH Newark (PNK)."""
