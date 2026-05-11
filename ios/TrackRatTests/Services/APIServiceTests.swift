@@ -62,4 +62,48 @@ class APIServiceTests: XCTestCase {
             XCTFail("Should be able to decode Train from JSON. Error: \(error)")
         }
     }
+
+    func testPlatformPredictionDecodesValidResponse() {
+        let jsonString = """
+        {
+            "platform_probabilities": {"1": 0.6, "2": 0.4},
+            "primary_prediction": "1",
+            "confidence": 0.85,
+            "top_3": ["1", "2", "3"],
+            "model_version": "v1",
+            "station_code": "NY",
+            "train_id": "1234"
+        }
+        """
+        do {
+            let prediction = try TestHelpers.decodeJSON(PlatformPrediction.self, from: jsonString)
+            XCTAssertEqual(prediction.primaryPrediction, "1")
+            XCTAssertEqual(prediction.confidence, 0.85, accuracy: 0.0001)
+            XCTAssertEqual(prediction.top3, ["1", "2", "3"])
+        } catch {
+            XCTFail("Should decode a valid PlatformPrediction. Error: \(error)")
+        }
+    }
+
+    func testPlatformPredictionDoesNotDecodeFromErrorBody() {
+        // Backend returns a 404 with this body when there's no historical data
+        // (see backend_v2/src/trackrat/api/predictions.py).
+        // Pre-fix behavior: getPlatformPrediction would attempt to decode this
+        // body as a PlatformPrediction, surfacing a misleading "Decoding error"
+        // in the caller. The fix is to throw APIError.notFound on a 404 status
+        // before decoding. This test guards that the error body is not
+        // accidentally decodable to PlatformPrediction.
+        let errorBody = """
+        {"detail": "Insufficient historical data to predict track for train 1234 at station NY"}
+        """
+        XCTAssertThrowsError(
+            try TestHelpers.decodeJSON(PlatformPrediction.self, from: errorBody),
+            "An error response body must not silently decode as a PlatformPrediction"
+        )
+    }
+
+    func testAPIErrorDescriptions() {
+        XCTAssertEqual(APIError.notFound.errorDescription, "Resource not found")
+        XCTAssertEqual(APIError.serverError.errorDescription, "Server error")
+    }
 }

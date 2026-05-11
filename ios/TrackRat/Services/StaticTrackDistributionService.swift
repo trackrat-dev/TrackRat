@@ -86,11 +86,13 @@ class StaticTrackDistributionService {
 
             return PredictionData(trackProbabilities: trackProbabilities)
 
+        } catch APIError.notFound {
+            print("ℹ️ [StaticTrackDistribution] No historical data for train \(train.trainId) at \(train.originStationCode) — predictions unavailable")
+            return nil
         } catch {
             print("❌ [StaticTrackDistribution] ML platform prediction failed:")
             print("   Error: \(error)")
             print("   Localized: \(error.localizedDescription)")
-            // If API fails, don't show predictions
             return nil
         }
     }
