@@ -30,6 +30,7 @@ struct TrainListView: View {
     // Date selection for future schedules
     @State private var selectedDate: Date = Date()
     @State private var showDatePicker: Bool = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     /// Check if viewing a future date (not today)
     private var isFutureDate: Bool {
@@ -255,7 +256,8 @@ struct TrainListView: View {
                             screen: "train_list",
                             trainId: nil,
                             originCode: departureStationCode,
-                            destinationCode: Stations.getStationCode(destination)
+                            destinationCode: Stations.getStationCode(destination),
+                            onRequest: { feedbackRequest = $0 }
                         )
                         .padding(.top, 8)
                     }
@@ -289,6 +291,7 @@ struct TrainListView: View {
         .sheet(isPresented: $showDatePicker) {
             DateSelectorSheet(selectedDate: $selectedDate)
         }
+        .feedbackSheet(request: $feedbackRequest)
         .onAppear {
             isViewVisible = true
 

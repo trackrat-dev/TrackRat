@@ -55,6 +55,48 @@ enum FeedbackMode {
     }
 }
 
+struct FeedbackSheetRequest: Identifiable {
+    let id = UUID()
+    let mode: FeedbackMode
+    let screen: String
+    let trainId: String?
+    let originCode: String?
+    let destinationCode: String?
+
+    init(
+        mode: FeedbackMode = .issue,
+        screen: String,
+        trainId: String?,
+        originCode: String?,
+        destinationCode: String?
+    ) {
+        self.mode = mode
+        self.screen = screen
+        self.trainId = trainId
+        self.originCode = originCode
+        self.destinationCode = destinationCode
+    }
+
+    init(mode: FeedbackMode, context: JourneyFeedbackContext?) {
+        self.mode = mode
+        self.screen = "journey_feedback_prompt"
+        self.trainId = context?.trainId
+        self.originCode = context?.originCode
+        self.destinationCode = context?.destinationCode
+    }
+}
+
+extension View {
+    func feedbackSheet(
+        request: Binding<FeedbackSheetRequest?>,
+        onDismiss: (() -> Void)? = nil
+    ) -> some View {
+        sheet(item: request, onDismiss: onDismiss) { request in
+            FeedbackSheet(request: request)
+        }
+    }
+}
+
 /// A button that allows users to report data issues
 struct FeedbackButton: View {
     let screen: String
@@ -64,13 +106,24 @@ struct FeedbackButton: View {
     var textColor: Color = .white.opacity(0.6)
     var label: String = "Report an issue"
     var font: Font = .footnote
+    var onRequest: ((FeedbackSheetRequest) -> Void)?
 
-    @State private var showingSheet = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showingSheet = true
+            let request = FeedbackSheetRequest(
+                screen: screen,
+                trainId: trainId,
+                originCode: originCode,
+                destinationCode: destinationCode
+            )
+            if let onRequest {
+                onRequest(request)
+            } else {
+                feedbackRequest = request
+            }
         } label: {
             VStack(spacing: 2) {
                 HStack(spacing: 6) {
@@ -86,15 +139,7 @@ struct FeedbackButton: View {
             .foregroundColor(textColor)
         }
         .buttonStyle(.plain)
-        .sheet(isPresented: $showingSheet) {
-            FeedbackSheet(
-                mode: .issue,
-                screen: screen,
-                trainId: trainId,
-                originCode: originCode,
-                destinationCode: destinationCode
-            )
-        }
+        .feedbackSheet(request: $feedbackRequest)
     }
 }
 
@@ -114,13 +159,12 @@ struct FeedbackSheet: View {
         self.destinationCode = destinationCode
     }
 
-    /// Convenience initializer for journey feedback context
-    init(mode: FeedbackMode, context: JourneyFeedbackContext?) {
-        self.mode = mode
-        self.screen = "journey_feedback_prompt"
-        self.trainId = context?.trainId
-        self.originCode = context?.originCode
-        self.destinationCode = context?.destinationCode
+    init(request: FeedbackSheetRequest) {
+        self.mode = request.mode
+        self.screen = request.screen
+        self.trainId = request.trainId
+        self.originCode = request.originCode
+        self.destinationCode = request.destinationCode
     }
 
     @Environment(\.dismiss) private var dismiss

@@ -7,7 +7,7 @@ struct JourneyFeedbackPromptView: View {
     @ObservedObject private var feedbackService = JourneyFeedbackService.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var showImprovementForm = false
+    @State private var improvementFeedbackRequest: FeedbackSheetRequest?
 
     var body: some View {
         NavigationStack {
@@ -50,7 +50,10 @@ struct JourneyFeedbackPromptView: View {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         if feedbackService.userRespondedNegatively() {
-                            showImprovementForm = true
+                            improvementFeedbackRequest = FeedbackSheetRequest(
+                                mode: .improvement,
+                                context: feedbackService.currentJourneyContext
+                            )
                         }
                     } label: {
                         Text("Not really")
@@ -83,11 +86,9 @@ struct JourneyFeedbackPromptView: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showImprovementForm, onDismiss: {
+        .feedbackSheet(request: $improvementFeedbackRequest, onDismiss: {
             feedbackService.shouldShowFeedbackPrompt = false
-        }) {
-            FeedbackSheet(mode: .improvement, context: feedbackService.currentJourneyContext)
-        }
+        })
     }
 }
 

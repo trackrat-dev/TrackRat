@@ -16,6 +16,7 @@ struct RouteStatusView: View {
     @State private var draftSubscription: RouteAlertSubscription?
 
     @State private var showingPaywall = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     /// Selected history time period for the segmented picker.
     @State private var selectedHistoryPeriod: HistoryPeriod = .hour
@@ -59,7 +60,8 @@ struct RouteStatusView: View {
                         screen: "route_status",
                         trainId: nil,
                         originCode: context.fromStationCode,
-                        destinationCode: context.toStationCode
+                        destinationCode: context.toStationCode,
+                        onRequest: { feedbackRequest = $0 }
                     )
                     .padding(.top, 8)
                 }
@@ -145,6 +147,7 @@ struct RouteStatusView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(context: .routeAlerts)
             }
+            .feedbackSheet(request: $feedbackRequest)
         }
     }
 

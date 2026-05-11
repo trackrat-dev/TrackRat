@@ -9,6 +9,7 @@ struct TrainDetailsView: View {
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     let trainId: Int  // Keep for backwards compatibility
     let isSheet: Bool
@@ -250,13 +251,14 @@ struct TrainDetailsView: View {
                         // Force view recreation when train identity or status changes
                         .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)")
 
-                        // FeedbackButton is outside the .id() scope so live data refreshes
-                        // don't recreate it and dismiss an in-progress feedback sheet
+                        // Keep the button outside the .id() scope and present
+                        // from this view so live refreshes don't dismiss the sheet.
                         FeedbackButton(
                             screen: "train_details",
                             trainId: train.trainId,
                             originCode: appState.departureStationCode,
-                            destinationCode: appState.destinationStationCode
+                            destinationCode: appState.destinationStationCode,
+                            onRequest: { feedbackRequest = $0 }
                         )
                         .padding(.horizontal)
                         .padding(.top, 8)
@@ -330,6 +332,7 @@ struct TrainDetailsView: View {
                 }
             }
         }
+        .feedbackSheet(request: $feedbackRequest)
     }
 }
 

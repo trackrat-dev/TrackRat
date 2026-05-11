@@ -22,6 +22,7 @@ struct TrainSystemDetailView: View {
     @State private var serviceAlerts: [V2ServiceAlert] = []
     @State private var showingPaywall = false
     @State private var routeStatusContext: RouteStatusContext?
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     /// Locally-edited copies of the matching system-wide subscription, keyed by ID.
     /// Persisted to `alertService` on disappear.
@@ -50,7 +51,8 @@ struct TrainSystemDetailView: View {
                     screen: "system_detail",
                     trainId: nil,
                     originCode: nil,
-                    destinationCode: nil
+                    destinationCode: nil,
+                    onRequest: { feedbackRequest = $0 }
                 )
                 .padding(.top, 8)
             }
@@ -89,6 +91,7 @@ struct TrainSystemDetailView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        .feedbackSheet(request: $feedbackRequest)
     }
 
     // MARK: - Sections

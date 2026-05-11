@@ -16,6 +16,7 @@ struct SettingsView: View {
     var editTrainSystems: Bool = false
 
     @State private var showingPaywall = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
 
@@ -88,6 +89,14 @@ struct SettingsView: View {
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
                         paywallContext: $paywallContext,
+                        onReportIssue: {
+                            feedbackRequest = FeedbackSheetRequest(
+                                screen: "settings",
+                                trainId: nil,
+                                originCode: nil,
+                                destinationCode: nil
+                            )
+                        },
                         showDebugSections: showDebugSections,
                         initialEditTrainSystems: editTrainSystems
                     )
@@ -119,6 +128,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
         }
+        .feedbackSheet(request: $feedbackRequest)
         .interactiveDismissDisabled(appState.selectedSystems.isEmpty)
     }
 
@@ -142,6 +152,7 @@ struct SettingsSection: View {
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
     @Binding var paywallContext: PaywallContext
+    let onReportIssue: () -> Void
     var showDebugSections: Bool
     var initialEditTrainSystems: Bool = false
     @State private var isEditingTrainSystems = false
@@ -154,7 +165,6 @@ struct SettingsSection: View {
     @State private var selectedSubscription: RouteAlertSubscription?
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var ratSense = RatSenseService.shared
-    @State private var showingFeedbackSheet = false
 
     private enum FavoriteStationRole {
         case home, work, other
@@ -563,7 +573,7 @@ struct SettingsSection: View {
             // Report an Issue
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingFeedbackSheet = true
+                onReportIssue()
             } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 16) {
@@ -588,14 +598,6 @@ struct SettingsSection: View {
                 )
             }
             .buttonStyle(.plain)
-            .sheet(isPresented: $showingFeedbackSheet) {
-                FeedbackSheet(
-                    screen: "settings",
-                    trainId: nil,
-                    originCode: nil,
-                    destinationCode: nil
-                )
-            }
 
             // GitHub
             Button {
