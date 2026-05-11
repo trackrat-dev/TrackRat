@@ -118,10 +118,11 @@ TrackRat/
 │   ├── SubscriptionService.swift # Pro subscription management
 │   ├── TripRecordingService.swift # Trip statistics tracking
 │   ├── JourneyFeedbackService.swift # Journey feedback prompts
+│   ├── Prefetcher.swift           # Warm trips list + train detail caches
 │   └── StaticTrackDistributionService.swift # Track analytics
 │
 ├── Views/                       # UI layer
-│   ├── Screens/                # Full-screen views (16 screens)
+│   ├── Screens/                # Full-screen views (18 screens)
 │   │   ├── TripSelectionView.swift      # Home screen with search
 │   │   ├── DeparturePickerView.swift    # Origin station selection
 │   │   ├── DestinationPickerView.swift  # Destination selection
@@ -132,6 +133,8 @@ TrackRat/
 │   │   ├── HistoricalDataView.swift     # Performance analytics
 │   │   ├── PennStationGuideView.swift   # Penn Station boarding guide
 │   │   ├── SettingsView.swift           # User settings (inline favorites & route alerts)
+│   │   ├── StationDetailsView.swift     # Per-station overview (departures, alerts, routes)
+│   │   ├── TrainSystemDetailView.swift  # System-level overview (map, alerts, routes)
 │   │   ├── MapContainerView.swift       # Primary map interface
 │   │   ├── OnboardingView.swift         # User onboarding
 │   │   ├── AdvancedConfigurationView.swift # Developer settings
@@ -139,7 +142,7 @@ TrackRat/
 │   │   ├── AddRouteAlertView.swift      # Add route alert
 │   │   └── TripHistoryView.swift        # Trip history
 │   │
-│   └── Components/              # Reusable UI components (25 files)
+│   └── Components/              # Reusable UI components (28 files)
 │       ├── ActiveTripsSection.swift     # Live Activity cards
 │       ├── AlertConfigurationSection.swift # Route alert configuration
 │       ├── ConfettiView.swift           # Confetti animation effect
@@ -152,18 +155,21 @@ TrackRat/
 │       ├── LineSelectionView.swift      # Transit line selection
 │       ├── LiveActivityControls.swift   # Start/stop buttons
 │       ├── OperationsSummaryView.swift  # Operations summary
+│       ├── ServiceAlertsSection.swift   # Active/Upcoming alerts tabs (shared)
 │       ├── ShimmerRect.swift            # Shimmer loading placeholder
 │       ├── StationButton.swift          # Station selection button
 │       ├── StationPickerSheet.swift     # Station picker modal
 │       ├── StationRow.swift             # Station list row
 │       ├── SubwayLineChips.swift        # Subway line badge chips
 │       ├── SystemChips.swift            # Transit system indicator chips
+│       ├── SystemRouteListRow.swift     # Routes-list row on TrainSystemDetailView
 │       ├── TrackRatLoadingView.swift    # Loading animation
 │       ├── TrackRatMascot.swift         # Animated character
 │       ├── TrackRatNavigationHeader.swift # Navigation header
 │       ├── TrackTrainInlineButton.swift # Inline track button
 │       ├── TrainDistributionChart.swift # Delay distribution
 │       ├── TrainFrequencyChart.swift    # Frequency chart (column layout)
+│       ├── TrainRow.swift               # Compact line-color-bar departure row
 │       └── TrainStatsSummaryView.swift  # Train performance
 │
 ├── Views/Paywall/               # Subscription UI
