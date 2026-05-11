@@ -13,7 +13,7 @@ class StationsTests: XCTestCase {
     
     func testDepartureStationsExist() {
         XCTAssertFalse(Stations.departureStations.isEmpty, "Departure stations should not be empty")
-        XCTAssertEqual(Stations.departureStations.count, 23, "Should have exactly 23 departure stations")
+        XCTAssertEqual(Stations.departureStations.count, 79, "Should have exactly 79 departure stations")
     }
     
     func testKnownStations() {
@@ -468,6 +468,11 @@ class StationsTests: XCTestCase {
         XCTAssertTrue(npSystems.contains("AMTRAK"), "Newark Penn should serve AMTRAK")
         XCTAssertTrue(npSystems.contains("PATH"), "Newark Penn should serve PATH")
 
+        // Hoboken should serve NJT and PATH as a single visible station
+        let hbSystems = Stations.systemStringsForStation("HB")
+        XCTAssertTrue(hbSystems.contains("NJT"), "Hoboken should serve NJT")
+        XCTAssertTrue(hbSystems.contains("PATH"), "Hoboken should serve PATH")
+
         // NY Penn should serve NJT and AMTRAK (via RouteTopology)
         let nySystems = Stations.systemStringsForStation("NY")
         XCTAssertTrue(nySystems.contains("NJT"), "NY Penn should serve NJT")
@@ -477,6 +482,17 @@ class StationsTests: XCTestCase {
         let gctSystems = Stations.systemStringsForStation("GCT")
         XCTAssertTrue(gctSystems.contains("LIRR"), "Grand Central should serve LIRR")
         XCTAssertTrue(gctSystems.contains("MNR"), "Grand Central should serve MNR")
+    }
+
+    func testHobokenPathIsMergedInDepartureStations() {
+        XCTAssertTrue(
+            Stations.departureStations.contains { $0.name == "Hoboken" && $0.code == "HB" },
+            "Merged Hoboken departure station should use canonical HB"
+        )
+        XCTAssertFalse(
+            Stations.departureStations.contains { $0.name == "Hoboken PATH" || $0.code == "PHO" },
+            "Hoboken PATH should not appear as a separate departure station"
+        )
     }
 
     func testAmtrakOnlyStationsMapped() {

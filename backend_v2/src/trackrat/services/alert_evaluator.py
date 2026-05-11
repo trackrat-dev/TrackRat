@@ -21,7 +21,7 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.config.route_topology import ALL_ROUTES, Route
-from trackrat.config.stations import get_station_name
+from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.config.stations.lirr import LIRR_ROUTES
 from trackrat.config.stations.mnr import MNR_ROUTES
 from trackrat.models.database import (
@@ -112,6 +112,16 @@ def _is_system_wide(sub: RouteAlertSubscription) -> bool:
     )
 
 
+def _route_contains_station_pair(route: Route, from_station: str, to_station: str) -> bool:
+    """Check a route for a station pair, honoring station equivalence groups."""
+    to_codes = expand_station_codes(to_station)
+    for from_code in expand_station_codes(from_station):
+        for to_code in to_codes:
+            if route.contains_segment(from_code, to_code):
+                return True
+    return False
+
+
 def _get_gtfs_route_ids_for_subscription(
     sub: RouteAlertSubscription,
 ) -> set[str]:
@@ -139,7 +149,9 @@ def _get_gtfs_route_ids_for_subscription(
         for route in ALL_ROUTES:
             if route.data_source != ds:
                 continue
-            if route.contains_segment(sub.from_station_code, sub.to_station_code):
+            if _route_contains_station_pair(
+                route, sub.from_station_code, sub.to_station_code
+            ):
                 gtfs_ids |= _line_codes_to_gtfs_ids(ds, route.line_codes)
         return gtfs_ids
 
@@ -519,11 +531,13 @@ async def _query_journeys_for_subscription(
         # Eagerly load stops so _is_significantly_delayed can check
         # arrival delay at the destination station.
         eager_opts = [selectinload(TrainJourney.stops)]
+        from_codes = expand_station_codes(sub.from_station_code)
+        to_codes = expand_station_codes(sub.to_station_code)
 
         # First try direct origin/destination match
         direct_conditions = base_conditions + [
-            TrainJourney.origin_station_code == sub.from_station_code,
-            TrainJourney.terminal_station_code == sub.to_station_code,
+            TrainJourney.origin_station_code.in_(from_codes),
+            TrainJourney.terminal_station_code.in_(to_codes),
         ]
         result = await db.execute(
             select(TrainJourney).options(*eager_opts).where(and_(*direct_conditions))
@@ -548,8 +562,8 @@ async def _query_journeys_for_subscription(
             )
             .where(
                 and_(
-                    from_stop.c.station_code == sub.from_station_code,
-                    to_stop.c.station_code == sub.to_station_code,
+                    from_stop.c.station_code.in_(from_codes),
+                    to_stop.c.station_code.in_(to_codes),
                     from_stop.c.stop_sequence.isnot(None),
                     to_stop.c.stop_sequence.isnot(None),
                 )
@@ -647,10 +661,12 @@ async def _query_baseline_train_count(
             return None
         base_conditions.append(TrainJourney.line_code.in_(list(route.line_codes)))
     elif sub.from_station_code and sub.to_station_code:
+        from_codes = expand_station_codes(sub.from_station_code)
+        to_codes = expand_station_codes(sub.to_station_code)
         base_conditions.extend(
             [
-                TrainJourney.origin_station_code == sub.from_station_code,
-                TrainJourney.terminal_station_code == sub.to_station_code,
+                TrainJourney.origin_station_code.in_(from_codes),
+                TrainJourney.terminal_station_code.in_(to_codes),
             ]
         )
     # else: system-wide — no additional filtering, all journeys for data_source
@@ -837,9 +853,10 @@ def _is_significantly_delayed(
 
     # For station-pair subs, also check arrival delay at the destination stop
     if to_station_code and hasattr(journey, "stops") and journey.stops:
+        to_station_codes = set(expand_station_codes(to_station_code))
         for stop in journey.stops:
             if (
-                stop.station_code == to_station_code
+                stop.station_code in to_station_codes
                 and stop.actual_arrival
                 and stop.scheduled_arrival
             ):
@@ -1311,7 +1328,9 @@ def _get_route_name_for_subscription(sub: RouteAlertSubscription) -> str:
         for route in ALL_ROUTES:
             if route.data_source != sub.data_source:
                 continue
-            if route.contains_segment(sub.from_station_code, sub.to_station_code):
+            if _route_contains_station_pair(
+                route, sub.from_station_code, sub.to_station_code
+            ):
                 return route.name
     return sub.data_source or "Unknown"
 

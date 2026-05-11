@@ -278,12 +278,7 @@ struct AddRouteAlertView: View {
                     }
                     let fromCode = from.code
                     let toCode = to.code
-                    let fromSystems = Stations.systemStringsForStation(fromCode)
-                    let toSystems = Stations.systemStringsForStation(toCode)
-                    let alertCapableStrings = alertCapableSystems.asRawStrings
-                    // Pick a system shared by both stations that supports alerts
-                    let common = fromSystems.intersection(toSystems).intersection(alertCapableStrings)
-                    let dataSource = common.first ?? fromSystems.intersection(toSystems).first ?? "NJT"
+                    let dataSource = preferredAlertDataSource(from: fromCode, to: toCode)
 
                     let existsAB = alertService.subscriptions.contains {
                         $0.fromStationCode == fromCode &&
@@ -361,6 +356,33 @@ struct AddRouteAlertView: View {
                 }
             )
         }
+    }
+
+    private func preferredAlertDataSource(from fromCode: String, to toCode: String) -> String {
+        let fromSystems = Stations.systemStringsForStation(fromCode)
+        let toSystems = Stations.systemStringsForStation(toCode)
+        let sharedAlertSystems = fromSystems
+            .intersection(toSystems)
+            .intersection(alertCapableSystems.asRawStrings)
+
+        let orderedSharedAlertSystems = TrainSystem.allCases
+            .map(\.rawValue)
+            .filter { sharedAlertSystems.contains($0) }
+
+        if let directSystem = orderedSharedAlertSystems.first(where: {
+            RouteTopology.routeContaining(from: fromCode, to: toCode, dataSource: $0) != nil
+        }) {
+            return directSystem
+        }
+
+        if let firstAlertSystem = orderedSharedAlertSystems.first {
+            return firstAlertSystem
+        }
+
+        let sharedSystems = fromSystems.intersection(toSystems)
+        return TrainSystem.allCases
+            .map(\.rawValue)
+            .first(where: { sharedSystems.contains($0) }) ?? "NJT"
     }
 
     private func noEligibleSystemsView(detail: String) -> some View {
