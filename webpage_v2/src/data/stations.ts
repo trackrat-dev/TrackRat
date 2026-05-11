@@ -286,7 +286,6 @@ const _STATIONS_RAW: any[] = [
   { code: 'PGR', name: 'Grove Street', coordinates: { lat: 40.7197, lon: -74.0434 }, system: 'PATH' },
   { code: 'PEX', name: 'Exchange Place', coordinates: { lat: 40.7167, lon: -74.0333 }, system: 'PATH' },
   { code: 'PNP', name: 'Newport', coordinates: { lat: 40.7265, lon: -74.0337 }, system: 'PATH' },
-  { code: 'PHO', name: 'Hoboken PATH', coordinates: { lat: 40.7348, lon: -74.0280 }, system: 'PATH' },
   { code: 'PCH', name: 'Christopher Street', coordinates: { lat: 40.7329, lon: -74.0067 }, system: 'PATH' },
   { code: 'P9S', name: '9th Street', coordinates: { lat: 40.7340, lon: -73.9997 }, system: 'PATH' },
   { code: 'P14', name: '14th Street', coordinates: { lat: 40.7376, lon: -73.9967 }, system: 'PATH' },
@@ -1622,7 +1621,7 @@ for (const s of STATIONS) {
 export const PRIMARY_STATIONS: Record<TransitSystem, string[]> = {
   NJT: ['NY', 'NP', 'HB', 'SE', 'MP', 'PJ', 'HL', 'TR', 'LB', 'PF', 'DN', 'RA'],
   AMTRAK: ['NY', 'PH', 'WI', 'BL', 'WS', 'BOS', 'RVR', 'CLT', 'RGH', 'ATL'],
-  PATH: ['NP', 'PHO', 'PWC', 'PJS', 'P33', 'PGR', 'PEX', 'PNP'],
+  PATH: ['NP', 'HB', 'PWC', 'PJS', 'P33', 'PGR', 'PEX', 'PNP'],
   PATCO: ['LND', 'FFL', 'CTH', 'HDF'],
   LIRR: ['JAM', 'GCT', 'LAT', 'BTA', 'LHUN', 'RON', 'PJN', 'LBH', 'PWS', 'LHVL'],
   MNR: ['GCT', 'M125', 'MWPL', 'MCRH', 'MPOK', 'MBRS', 'MSTM', 'MNHV'],
