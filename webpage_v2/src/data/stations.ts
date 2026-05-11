@@ -1650,9 +1650,17 @@ export const SYSTEM_NAMES: Record<TransitSystem, string> = {
 // System display order
 export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'WMATA', 'BART', 'AMTRAK', 'MBTA', 'PATCO', 'METRA'];
 
+// Aliases for codes that share a physical station with another system's code.
+// The duplicate entry is hidden from the picker, but route data and shareable
+// URLs may still reference the alias code — resolve those to the canonical entry.
+const STATION_CODE_ALIASES: Record<string, string> = {
+  PHO: 'HB',   // Hoboken PATH -> Hoboken (NJT)
+  PNK: 'NP',   // Newark PATH -> Newark Penn Station (NJT)
+};
+
 // Helper functions
 export function getStationByCode(code: string): Station | undefined {
-  return _stationsByCode.get(code);
+  return _stationsByCode.get(code) ?? _stationsByCode.get(STATION_CODE_ALIASES[code]);
 }
 
 export function searchStations(query: string, systems?: TransitSystem[], limit = 15): Station[] {

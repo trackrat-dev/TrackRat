@@ -65,6 +65,13 @@ describe('getStationByCode', () => {
       expect(station!.system).toBe(expectedSystem);
     }
   });
+
+  it('resolves alias codes (PHO->HB, PNK->NP) to canonical station', () => {
+    // PHO (Hoboken PATH) and PNK (Newark PATH) are not in the searchable
+    // catalog but still appear in route topology and shareable URLs.
+    expect(getStationByCode('PHO')?.code).toBe('HB');
+    expect(getStationByCode('PNK')?.code).toBe('NP');
+  });
 });
 
 describe('searchStations', () => {
