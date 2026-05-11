@@ -667,9 +667,9 @@ class TestCompletionOnExpiry:
 
         await journey_collector._attempt_completion_on_expiry(sqlite_session, journey)
 
-        assert journey.is_completed is not True, (
-            "Expiry completion should wait until the terminal arrival time is due"
-        )
+        assert (
+            journey.is_completed is not True
+        ), "Expiry completion should wait until the terminal arrival time is due"
 
     @pytest.mark.asyncio
     async def test_expiry_uses_latest_terminal_estimate_before_schedule_fallback(

@@ -792,7 +792,10 @@ class AmtrakPatternScheduler:
                     result = await session.execute(stmt)
                     existing_journey = result.scalar_one_or_none()
 
-                    if existing_journey and existing_journey.observation_type == "OBSERVED":
+                    if (
+                        existing_journey
+                        and existing_journey.observation_type == "OBSERVED"
+                    ):
                         # Discovery promoted the row to OBSERVED while we were
                         # preparing this save. We have real data — leave it
                         # alone rather than overwriting it with a SCHEDULED

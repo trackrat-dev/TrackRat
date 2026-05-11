@@ -2199,7 +2199,7 @@ class JourneyCollector(BaseJourneyCollector):
         cancelled_stops = sum(
             1 for stop in stops_data if is_njt_stop_cancelled(stop.STOP_STATUS)
         )
-        terminal_cancelled = bool(last_stop_api) and is_njt_stop_cancelled(
+        terminal_cancelled = last_stop_api is not None and is_njt_stop_cancelled(
             last_stop_api.STOP_STATUS
         )
 
