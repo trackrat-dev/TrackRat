@@ -200,6 +200,89 @@ async def test_recent_matching_journeys_filters_amtrak_station_aliases(
 
 
 @pytest.mark.asyncio
+async def test_recent_matching_journeys_matches_suffixed_train_ids(
+    pattern_scheduler,
+):
+    """Historical lookups should match exact or hyphen-suffixed train_ids.
+
+    Real-world Amtrak rows have been observed with suffixed train_ids
+    (e.g. "2150-4"), while ``pattern["train_number"]`` is always the bare
+    number ("2150"). An exact == comparison would miss those rows and
+    silently break stop-template consensus building. A bare prefix match would
+    pull in unrelated trains like "21500", so the suffix delimiter matters.
+    """
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
+
+    await pattern_scheduler._get_recent_matching_journeys(
+        session,
+        {
+            "train_number": "2150",
+            "origin": "NYP",
+            "terminal": "WAS",
+        },
+        date(2024, 1, 25),
+    )
+
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "train_id = '2150'" in compiled
+    assert "train_id LIKE '2150-%'" in compiled
+    assert "train_id LIKE '2150%'" not in compiled
+
+
+@pytest.mark.asyncio
+async def test_create_scheduled_journeys_existing_lookup_uses_suffix_boundary(
+    pattern_scheduler,
+):
+    """Existing-journey lookup should not match trains sharing a number prefix."""
+    target_date = date(2024, 1, 25)
+    patterns = [
+        {
+            "train_number": "69",
+            "median_departure": time(15, 5),
+            "occurrence_count": 3,
+            "origin": "NYP",
+            "destination": "Washington",
+            "terminal": "WAS",
+            "line_name": "Regional",
+            "time_variance": 2.5,
+            "sample_dates": ["2024-01-18"],
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        existing_journey = MagicMock()
+        existing_journey.observation_type = "OBSERVED"
+
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = existing_journey
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_execute = AsyncMock(return_value=mock_result)
+
+        mock_session.return_value.__aenter__.return_value.execute = mock_execute
+
+        scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
+            patterns, target_date
+        )
+
+        assert scheduled_journeys == []
+
+    stmt = mock_execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "train_id = '69'" in compiled
+    assert "train_id LIKE '69-%'" in compiled
+    assert "train_id LIKE '69%'" not in compiled
+
+
+@pytest.mark.asyncio
 async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
     """SCHEDULED journeys use a stable stop list from multiple recent runs."""
     target_date = date(2024, 1, 25)

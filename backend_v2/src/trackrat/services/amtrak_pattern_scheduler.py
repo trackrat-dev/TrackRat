@@ -8,7 +8,7 @@ for trains that haven't appeared yet but are expected based on past behavior.
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select, text
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -44,6 +44,14 @@ class AmtrakPatternScheduler:
     TIME_VARIANCE_THRESHOLD = 35  # Minutes - if times vary by more, don't schedule
     STOP_CONSENSUS_RUNS = 5  # Recent matching runs used to infer scheduled stops
     MIN_STOP_CONSENSUS_RUNS = 2  # Avoid trusting a one-off route variant
+
+    @staticmethod
+    def _train_id_matches_number(train_id_column: Any, train_number: str) -> Any:
+        """Match a bare Amtrak train number or its hyphen-suffixed train_id."""
+        return or_(
+            train_id_column == train_number,
+            train_id_column.like(f"{train_number}-%"),
+        )
 
     async def generate_daily_schedules(self, target_date: date) -> dict[str, Any]:
         """
@@ -391,12 +399,14 @@ class AmtrakPatternScheduler:
         lookback_start = target_date - timedelta(days=self.LOOKBACK_DAYS)
         origin_codes = sorted(self._station_code_aliases(pattern["origin"]))
         terminal_codes = sorted(self._station_code_aliases(pattern["terminal"]))
+        train_number = pattern["train_number"]
+
         stmt = (
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
             .where(
                 and_(
-                    TrainJourney.train_id == pattern["train_number"],
+                    self._train_id_matches_number(TrainJourney.train_id, train_number),
                     TrainJourney.data_source == "AMTRAK",
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),
@@ -655,14 +665,16 @@ class AmtrakPatternScheduler:
 
         async with get_session() as session:
             for pattern in patterns:
-                # Check if journey already exists for this train today.
-                # LIKE can match multiple rows (e.g. "69%" matches "69", "690"),
-                # so use .first() with OBSERVED sorted first to detect real data.
+                train_number = pattern["train_number"]
+                # Check if this train already exists today. Amtrak train_ids may
+                # be stored bare or with a hyphen suffix, e.g. "2150" / "2150-4".
                 stmt = (
                     select(TrainJourney)
                     .where(
                         and_(
-                            TrainJourney.train_id.like(f"{pattern['train_number']}%"),
+                            self._train_id_matches_number(
+                                TrainJourney.train_id, train_number
+                            ),
                             TrainJourney.journey_date == target_date,
                             TrainJourney.data_source == "AMTRAK",
                         )
