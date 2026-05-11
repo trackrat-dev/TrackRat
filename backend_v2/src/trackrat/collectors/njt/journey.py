@@ -30,6 +30,7 @@ from trackrat.utils.time import (
     DATETIME_MAX_ET,
     DATETIME_MIN_ET,
     ET,
+    ensure_timezone_aware,
     now_et,
     parse_njt_time,
 )
@@ -1946,6 +1947,46 @@ class JourneyCollector(BaseJourneyCollector):
         )
         return result is not None
 
+    @staticmethod
+    def _terminal_arrival_reference(
+        terminal_stop: JourneyStop,
+        terminal_api_stop: NJTransitStopData | None = None,
+    ) -> tuple[datetime | None, str | None]:
+        """Best terminal arrival timestamp for deciding completion.
+
+        Prefer the current NJT terminal TIME field when available because it is
+        the live terminal-arrival estimate. On expiry, use the last stored
+        terminal estimate before falling back to the static schedule.
+        """
+        if terminal_stop.actual_arrival:
+            return terminal_stop.actual_arrival, terminal_stop.arrival_source
+
+        if terminal_api_stop and terminal_api_stop.TIME:
+            return parse_njt_time(terminal_api_stop.TIME), "api_observed"
+
+        if terminal_stop.updated_arrival:
+            return terminal_stop.updated_arrival, "api_observed"
+
+        if terminal_stop.scheduled_arrival:
+            return terminal_stop.scheduled_arrival, "scheduled_fallback"
+
+        return None, None
+
+    @classmethod
+    def _terminal_arrival_due(
+        cls,
+        terminal_stop: JourneyStop,
+        terminal_api_stop: NJTransitStopData | None = None,
+    ) -> bool:
+        """Return True only once the terminal arrival time is no longer future."""
+        terminal_arrival, _ = cls._terminal_arrival_reference(
+            terminal_stop, terminal_api_stop
+        )
+        if terminal_arrival is None:
+            return False
+
+        return ensure_timezone_aware(terminal_arrival) <= now_et()
+
     async def _attempt_completion_on_expiry(
         self,
         session: AsyncSession,
@@ -1953,10 +1994,10 @@ class JourneyCollector(BaseJourneyCollector):
     ) -> None:
         """Last-chance completion when a train disappears from the NJT API.
 
-        If the penultimate stop has departed, the train reached its terminal.
-        We can't set terminal actual_arrival (no API data available), but we
-        mark the journey completed and use scheduled_arrival as a fallback
-        so route history stats aren't N/A.
+        If the penultimate stop has explicitly departed and the terminal
+        arrival time is due, mark the journey completed. Without current API
+        data, use the stored terminal estimate or schedule as a conservative
+        fallback.
         """
         # Get last two stops by sequence
         last_two_stmt = (
@@ -1974,17 +2015,24 @@ class JourneyCollector(BaseJourneyCollector):
         terminal_stop = last_two[0]
         penultimate_stop = last_two[1]
 
-        if not penultimate_stop.has_departed_station:
+        if not (
+            penultimate_stop.has_departed_station
+            and penultimate_stop.departure_source == "api_explicit"
+            and self._terminal_arrival_due(terminal_stop)
+        ):
             return
 
-        # Penultimate stop departed — train reached its terminal
+        # Penultimate stop departed and terminal arrival is due.
         journey.is_completed = True
 
-        # Use scheduled_arrival as fallback for the terminal stop if we have it
-        if terminal_stop.actual_arrival is None and terminal_stop.scheduled_arrival:
-            terminal_stop.actual_arrival = terminal_stop.scheduled_arrival
-            terminal_stop.arrival_source = "scheduled_fallback"
-            journey.actual_arrival = terminal_stop.scheduled_arrival
+        terminal_arrival, arrival_source = self._terminal_arrival_reference(
+            terminal_stop
+        )
+        if terminal_arrival:
+            journey.actual_arrival = terminal_arrival
+            if terminal_stop.actual_arrival is None:
+                terminal_stop.actual_arrival = terminal_arrival
+                terminal_stop.arrival_source = arrival_source
 
         logger.info(
             "journey_completed_on_expiry",
@@ -2019,10 +2067,10 @@ class JourneyCollector(BaseJourneyCollector):
         # 2. sequential_inference: earlier stops have departed
         # 3. time_inference: >5 minutes past scheduled time
         #
-        # Terminal stops (e.g., NY Penn) never get DEPARTED="YES" from the
-        # NJT API, and sequential_inference can't fire (nothing after them).
-        # So we also check if the penultimate stop has departed — if it has
-        # *via api_explicit*, the train has necessarily reached the terminal.
+        # Terminal stops (e.g., NY Penn) almost never get DEPARTED="YES" from
+        # the NJT API, and sequential_inference can't fire (nothing after them).
+        # So we also check if the penultimate stop has departed *via
+        # api_explicit* and the terminal arrival time is due.
         #
         # The penultimate check MUST require `api_explicit` and reject
         # `time_inference` / `sequential_inference`. Time_inference fires
@@ -2051,8 +2099,26 @@ class JourneyCollector(BaseJourneyCollector):
         if not last_stop_db:
             return
 
-        # Terminal stop departed directly (rare for NJT terminals, but possible)
-        terminal_reached = last_stop_db.has_departed_station
+        # The caller passes raw NJT API order here, while update_journey_stops
+        # sorts only a local copy before sequencing. Match the authoritative
+        # DB terminal by station code so a misordered non-terminal row cannot
+        # supply the terminal ETA or terminal cancellation status.
+        last_stop_api = next(
+            (
+                stop
+                for stop in stops_data
+                if stop.STATION_2CHAR == last_stop_db.station_code
+            ),
+            None,
+        )
+
+        # Terminal stop departed directly (rare for NJT terminals, but possible).
+        # Still require the terminal arrival time to be due so time-inferred
+        # terminal departures cannot complete a delayed or still-en-route trip.
+        terminal_reached = (
+            last_stop_db.has_departed_station
+            and self._terminal_arrival_due(last_stop_db, last_stop_api)
+        )
 
         # If not, check if the penultimate stop has departed.
         # Use ORDER BY desc with offset to handle non-contiguous sequences
@@ -2079,16 +2145,19 @@ class JourneyCollector(BaseJourneyCollector):
                 penultimate_stop
                 and penultimate_stop.has_departed_station
                 and penultimate_stop.departure_source == "api_explicit"
+                and self._terminal_arrival_due(last_stop_db, last_stop_api)
             ):
                 terminal_reached = True
 
         if terminal_reached:
             journey.is_completed = True
 
-            # Set actual arrival from the last stop's data
-            last_stop_api = stops_data[-1]
-            if last_stop_api.TIME:
-                arrival_time = parse_njt_time(last_stop_api.TIME)
+            # Set actual arrival from the current terminal estimate when
+            # available, otherwise from the conservative stored fallback.
+            arrival_time, arrival_source = self._terminal_arrival_reference(
+                last_stop_db, last_stop_api
+            )
+            if arrival_time:
                 journey.actual_arrival = arrival_time
 
                 # Also set actual_arrival on the terminal stop itself.
@@ -2099,7 +2168,7 @@ class JourneyCollector(BaseJourneyCollector):
                 # on-time percentage at terminal destinations.
                 if last_stop_db.actual_arrival is None:
                     last_stop_db.actual_arrival = arrival_time
-                    last_stop_db.arrival_source = "api_observed"
+                    last_stop_db.arrival_source = arrival_source
 
             logger.info(
                 "journey_completed",
@@ -2130,8 +2199,8 @@ class JourneyCollector(BaseJourneyCollector):
         cancelled_stops = sum(
             1 for stop in stops_data if is_njt_stop_cancelled(stop.STOP_STATUS)
         )
-        terminal_cancelled = bool(stops_data) and is_njt_stop_cancelled(
-            stops_data[-1].STOP_STATUS
+        terminal_cancelled = bool(last_stop_api) and is_njt_stop_cancelled(
+            last_stop_api.STOP_STATUS
         )
 
         if cancelled_stops and (
