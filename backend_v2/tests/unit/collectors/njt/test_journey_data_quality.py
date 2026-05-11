@@ -1359,7 +1359,7 @@ class TestTerminalStopActualArrival:
     ):
         """When a journey completes, the terminal stop must have actual_arrival
         set so route history stats can compute on-time percentage."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         arrival_time = base_time + timedelta(minutes=60)
 
         journey = TrainJourney(
@@ -1469,7 +1469,7 @@ class TestTerminalStopActualArrival:
     ):
         """If the terminal stop already has actual_arrival, completion should
         not overwrite it (preserves the frozen value from an earlier cycle)."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         original_arrival = base_time + timedelta(minutes=58)
         later_arrival = base_time + timedelta(minutes=60)
 
@@ -1564,9 +1564,11 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         a scheduled departure 10 minutes in the past (so time_inference would
         legitimately fire for it), and NY (terminal) has no departure source.
 
-        The caller picks the source of SE's departure flag.
+        The caller picks the source of SE's departure flag. NY is scheduled to
+        arrive five minutes before now so tests can isolate the departure
+        source check from the terminal-arrival due check.
         """
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=90)
 
         journey = TrainJourney(
             train_id="3918",
@@ -1689,8 +1691,8 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         self, sqlite_session: AsyncSession, journey_collector
     ):
         """Positive case: when NJT explicitly reports the penultimate as
-        DEPARTED=YES (`api_explicit`), the train has physically passed it and
-        the journey is correctly marked complete."""
+        DEPARTED=YES (`api_explicit`) and terminal arrival is due, the journey
+        is correctly marked complete."""
         journey, base_time = self._build_journey_with_stops(
             sqlite_session, penultimate_source="api_explicit"
         )
@@ -1777,7 +1779,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         assert journey.is_completed is True, (
             "Journey MUST be marked complete when the penultimate stop has "
             "an api_explicit DEPARTED=YES from NJT — the train has physically "
-            "passed it and is at/past the terminal."
+            "passed it and terminal arrival is due."
         )
 
 

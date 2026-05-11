@@ -3,8 +3,8 @@ Tests for NJT terminal stop journey completion fix.
 
 Verifies that journeys are correctly completed when the terminal stop
 (e.g., NY Penn) is the destination. Terminal stops never get DEPARTED="YES"
-from the NJT API, so the completion logic must check the penultimate stop
-instead.
+from the NJT API, so completion requires the penultimate stop to be explicitly
+departed and the terminal arrival time to be due.
 
 Also tests the last-chance completion-on-expiry path for trains that
 disappear from the API before normal completion runs.
@@ -138,7 +138,8 @@ async def _create_tr_to_ny_journey(
 
     Args:
         session: DB session
-        base_time: Base time for scheduled departures
+        base_time: Base time for scheduled departures. Terminal arrival is
+            base_time + 60 minutes.
         penultimate_departed: Whether NP (penultimate) has_departed_station
         terminal_departed: Whether NY (terminal) has_departed_station
     """
@@ -215,16 +216,16 @@ async def _create_tr_to_ny_journey(
 
 
 class TestTerminalStopCompletion:
-    """Test that journey completion triggers via the penultimate stop."""
+    """Test journey completion through terminal-arrival checks."""
 
     @pytest.mark.asyncio
     async def test_penultimate_departed_triggers_completion(
         self, sqlite_session, journey_collector
     ):
         """When the penultimate stop (NP) has departed, the journey should
-        be marked completed even though the terminal stop (NY) has not
-        departed (which is the normal case for NJT terminals)."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        be marked completed once the terminal arrival time is due, even though
+        the terminal stop (NY) has not departed (the normal NJT case)."""
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         journey = await _create_tr_to_ny_journey(
             sqlite_session, base_time, penultimate_departed=True
         )
@@ -287,12 +288,69 @@ class TestTerminalStopCompletion:
         print(f"  Journey is_completed: {journey.is_completed}")
 
     @pytest.mark.asyncio
+    async def test_penultimate_departed_does_not_complete_before_terminal_arrival(
+        self, sqlite_session, journey_collector
+    ):
+        """An on-time train that just left the penultimate stop should remain
+        active until the terminal arrival time is due."""
+        now = now_et().replace(second=0, microsecond=0)
+        base_time = now - timedelta(minutes=50)
+        journey = await _create_tr_to_ny_journey(
+            sqlite_session, base_time, penultimate_departed=True
+        )
+
+        builder = StopBuilder()
+        ny_arrival_time = now + timedelta(minutes=8)
+        stops_data = [
+            _make_stop(
+                builder,
+                "TR",
+                "Trenton",
+                base_time.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NP",
+                "Newark Penn",
+                (base_time + timedelta(minutes=42)).strftime(NJT_TIME_FORMAT),
+                arr_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop(
+                builder,
+                "NY",
+                "New York Penn",
+                None,
+                arr_time=ny_arrival_time.strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+        stops_data[2].DEP_TIME = None
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, stops_data
+        )
+
+        assert journey.is_completed is not True, (
+            "Journey should not complete merely because the train left the "
+            "penultimate stop while terminal arrival is still in the future"
+        )
+        ny_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        assert ny_stop.actual_arrival is None
+
+    @pytest.mark.asyncio
     async def test_no_completion_when_penultimate_not_departed(
         self, sqlite_session, journey_collector
     ):
         """Journey should NOT be completed when neither terminal nor
         penultimate stop has departed."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         journey = await _create_tr_to_ny_journey(
             sqlite_session, base_time, penultimate_departed=False
         )
@@ -332,7 +390,7 @@ class TestTerminalStopCompletion:
     ):
         """The original logic (terminal stop departed) should still work
         for edge cases where it does fire."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         journey = await _create_tr_to_ny_journey(
             sqlite_session,
             base_time,
@@ -391,7 +449,7 @@ class TestStopSequenceRobustness:
         """If a phantom stop was deleted leaving a gap in sequences
         (e.g., 0, 1, 3 instead of 0, 1, 2), completion should still find
         the correct terminal stop via ORDER BY desc, not len(stops_data)-1."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
 
         journey = TrainJourney(
             train_id="3830",
@@ -509,9 +567,9 @@ class TestCompletionOnExpiry:
     async def test_expiry_completes_when_penultimate_departed(
         self, sqlite_session, journey_collector
     ):
-        """When a train disappears from the API and the penultimate stop
-        has departed, the journey should be marked completed (not expired)."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        """When a train disappears from the API after terminal arrival time,
+        the journey should be marked completed (not expired)."""
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         journey = await _create_tr_to_ny_journey(
             sqlite_session, base_time, penultimate_departed=True
         )
@@ -538,6 +596,51 @@ class TestCompletionOnExpiry:
         print(f"  Expiry completion: arrival_source={ny_stop.arrival_source}")
 
     @pytest.mark.asyncio
+    async def test_expiry_does_not_complete_before_terminal_arrival(
+        self, sqlite_session, journey_collector
+    ):
+        """Expiry fallback should not complete a train that left the
+        penultimate stop but is still scheduled to arrive at the terminal."""
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=50)
+        journey = await _create_tr_to_ny_journey(
+            sqlite_session, base_time, penultimate_departed=True
+        )
+
+        await journey_collector._attempt_completion_on_expiry(sqlite_session, journey)
+
+        assert journey.is_completed is not True, (
+            "Expiry completion should wait until the terminal arrival time is due"
+        )
+
+    @pytest.mark.asyncio
+    async def test_expiry_uses_latest_terminal_estimate_before_schedule_fallback(
+        self, sqlite_session, journey_collector
+    ):
+        """A stale static schedule should not complete a delayed train when the
+        latest terminal estimate is still in the future."""
+        now = now_et().replace(second=0, microsecond=0)
+        base_time = now - timedelta(minutes=70)
+        journey = await _create_tr_to_ny_journey(
+            sqlite_session, base_time, penultimate_departed=True
+        )
+        ny_stop = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        ny_stop.updated_arrival = now + timedelta(minutes=8)
+        await sqlite_session.flush()
+
+        await journey_collector._attempt_completion_on_expiry(sqlite_session, journey)
+
+        assert journey.is_completed is not True, (
+            "Expiry completion should honor the latest terminal estimate before "
+            "falling back to schedule"
+        )
+        assert ny_stop.actual_arrival is None
+
+    @pytest.mark.asyncio
     async def test_expiry_does_not_complete_when_penultimate_not_departed(
         self, sqlite_session, journey_collector
     ):
@@ -562,7 +665,7 @@ class TestCompletionOnExpiry:
     ):
         """If journey is already completed, expiry handler should not
         run (guarded by the caller)."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
         journey = await _create_tr_to_ny_journey(
             sqlite_session, base_time, penultimate_departed=True
         )
