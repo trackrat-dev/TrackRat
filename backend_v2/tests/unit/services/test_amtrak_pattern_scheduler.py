@@ -772,6 +772,95 @@ async def test_save_scheduled_journeys_refuses_to_downgrade_existing(pattern_sch
 
 
 @pytest.mark.asyncio
+async def test_save_scheduled_journeys_skips_when_already_observed(pattern_scheduler):
+    """Discovery may flip the row to OBSERVED between create_scheduled_journeys
+    and save_scheduled_journeys. The save must not try to re-insert a SCHEDULED
+    row for the same (train_id, journey_date, AMTRAK) — the unique constraint
+    ignores observation_type, so an INSERT would raise IntegrityError and be
+    counted as an error. Instead, treat the existing OBSERVED row as authoritative
+    and skip.
+    """
+    journey = TrainJourney(
+        train_id="2150",
+        journey_date=date(2024, 1, 25),
+        data_source="AMTRAK",
+        observation_type="SCHEDULED",
+        origin_station_code="NYP",
+        terminal_station_code="WAS",
+        destination="Washington",
+        line_name="Regional",
+        line_code="AM",
+        scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        has_complete_journey=False,
+        stops_count=1,
+    )
+
+    stops = [
+        JourneyStop(
+            journey=journey,
+            station_code="NYP",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        ),
+    ]
+
+    scheduled_journeys = [
+        {
+            "journey": journey,
+            "stops": stops,
+            "pattern_info": {
+                "occurrences": 3,
+                "variance_minutes": 2.5,
+                "sample_dates": ["2024-01-18"],
+            },
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        # Discovery flipped the row to OBSERVED between create and save.
+        existing_journey = MagicMock()
+        existing_journey.id = 42
+        existing_journey.observation_type = "OBSERVED"
+        existing_journey.update_count = 5
+        existing_journey.stops_count = 12
+
+        mock_select_result = MagicMock()
+        mock_select_result.scalar_one_or_none.return_value = existing_journey
+        mock_execute = AsyncMock(return_value=mock_select_result)
+
+        mock_add = MagicMock()
+        mock_flush = AsyncMock()
+        mock_commit = AsyncMock()
+
+        session_mock = mock_session.return_value.__aenter__.return_value
+        session_mock.execute = mock_execute
+        session_mock.add = mock_add
+        session_mock.flush = mock_flush
+        session_mock.commit = mock_commit
+
+        stats = await pattern_scheduler.save_scheduled_journeys(scheduled_journeys)
+
+        # Skipped — not created, not updated, not counted as an error
+        assert stats["created"] == 0
+        assert stats["updated"] == 0
+        assert stats["skipped"] == 1
+        assert stats["errors"] == 0
+
+        # Only the SELECT ran — no INSERT, no DELETE, no flush per-item
+        assert mock_execute.call_count == 1
+        assert mock_add.call_count == 0
+        assert mock_flush.call_count == 0
+
+        # Existing OBSERVED row is untouched
+        assert existing_journey.observation_type == "OBSERVED"
+        assert existing_journey.stops_count == 12
+        assert existing_journey.update_count == 5
+
+
+@pytest.mark.asyncio
 async def test_cleanup_old_scheduled_records(pattern_scheduler):
     """Test cleanup of old SCHEDULED records that never became OBSERVED."""
     with patch(

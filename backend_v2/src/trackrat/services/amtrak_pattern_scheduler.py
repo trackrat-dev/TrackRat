@@ -764,17 +764,34 @@ class AmtrakPatternScheduler:
                 stops = self._normalize_stop_sequences(item["stops"])
 
                 try:
-                    # Check for existing SCHEDULED record
+                    # Check for any existing journey row for this (train_id,
+                    # journey_date, AMTRAK). The unique_train_journey constraint
+                    # ignores observation_type, so we cannot filter on it here:
+                    # a SCHEDULED→OBSERVED flip between create_scheduled_journeys
+                    # and this save would hide the row and send us down the
+                    # insert path, which then raises IntegrityError on commit.
                     stmt = select(TrainJourney).where(
                         and_(
                             TrainJourney.train_id == journey.train_id,
                             TrainJourney.journey_date == journey.journey_date,
                             TrainJourney.data_source == "AMTRAK",
-                            TrainJourney.observation_type == "SCHEDULED",
                         )
                     )
                     result = await session.execute(stmt)
                     existing_journey = result.scalar_one_or_none()
+
+                    if existing_journey and existing_journey.observation_type == "OBSERVED":
+                        # Discovery promoted the row to OBSERVED while we were
+                        # preparing this save. We have real data — leave it
+                        # alone rather than overwriting it with a SCHEDULED
+                        # payload.
+                        logger.debug(
+                            "skipping_scheduled_save_train_already_observed",
+                            train_id=journey.train_id,
+                            journey_date=journey.journey_date.isoformat(),
+                        )
+                        stats["skipped"] += 1
+                        continue
 
                     if existing_journey:
                         # Defense in depth: refuse to replace a multi-stop
