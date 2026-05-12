@@ -157,6 +157,7 @@ struct Stations {
     /// - Stations not on any RouteTopology route but belonging to a non-Amtrak system
     private static let stationSystemOverrides: [String: Set<String>] = [
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
+        "HB": ["NJT", "PATH"],            // Hoboken Terminal (PATH adjacent)
         // NJT stations not in RouteTopology
         "TS": ["NJT"],   // Secaucus Lower Lvl
         "GA": ["NJT"],   // Great Notch
@@ -334,4 +335,3 @@ extension MKCoordinateRegion {
         )
     }
 }
-

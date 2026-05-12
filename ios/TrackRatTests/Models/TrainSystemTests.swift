@@ -184,6 +184,10 @@ class TrainSystemTests: XCTestCase {
         XCTAssertTrue(systems.contains(.njt), "Newark Penn should include NJT")
         XCTAssertTrue(systems.contains(.amtrak), "Newark Penn should include AMTRAK")
         XCTAssertTrue(systems.contains(.path), "Newark Penn should include PATH")
+
+        let hobokenSystems = Stations.systemsForStation("HB")
+        XCTAssertTrue(hobokenSystems.contains(.njt), "Hoboken should include NJT")
+        XCTAssertTrue(hobokenSystems.contains(.path), "Hoboken should include PATH")
     }
 
     func testSystemsForStation_singleSystem() {
