@@ -22,8 +22,11 @@ from trackrat.api.share import (
     _arrival_at,
     _build_image_url,
     _build_spa_url,
+    _departure_at,
     _format_clock_time,
+    _format_share_copy,
     _format_share_strings,
+    _format_time_range,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
 
@@ -136,6 +139,41 @@ class TestArrivalAt:
         assert _arrival_at(journey, "HB") == scheduled_arrival
 
 
+class TestDepartureAt:
+    def test_prefers_actual_departure_over_updated_and_scheduled(self) -> None:
+        actual = datetime(2026, 4, 24, 21, 3, tzinfo=UTC)
+        updated = datetime(2026, 4, 24, 21, 5, tzinfo=UTC)
+        scheduled = datetime(2026, 4, 24, 21, 0, tzinfo=UTC)
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            actual_departure=actual,
+            updated_departure=updated,
+            scheduled_departure=scheduled,
+        )
+        journey = _make_journey(stops=[stop])
+        assert _departure_at(journey, "NY") == actual
+
+    def test_uses_later_updated_field_for_njt_live_estimate(self) -> None:
+        updated_arr = datetime(2026, 4, 24, 21, 3, tzinfo=UTC)  # delayed estimate
+        updated_dep = datetime(2026, 4, 24, 21, 0, tzinfo=UTC)  # schedule field
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=updated_arr,
+            updated_departure=updated_dep,
+            scheduled_departure=updated_dep,
+        )
+        journey = _make_journey(stops=[stop])
+        assert _departure_at(journey, "NY") == updated_arr
+
+    def test_falls_back_to_journey_departure_for_origin_without_stop(self) -> None:
+        scheduled_departure = datetime(2026, 4, 24, 20, 30, tzinfo=UTC)
+        journey = _make_journey(stops=[])
+        journey.scheduled_departure = scheduled_departure
+        assert _departure_at(journey, "DV") == scheduled_departure
+
+
 class TestFormatShareStrings:
     def test_normal_arriving(self) -> None:
         stop = JourneyStop(
@@ -193,6 +231,85 @@ class TestFormatShareStrings:
         journey = _make_journey(stops=[stop])
         _, status = _format_share_strings(journey, None)
         assert status == "View train details"
+
+
+class TestFormatShareCopy:
+    def test_title_includes_from_to_time_range_when_available(self) -> None:
+        departure = datetime(2026, 4, 24, 21, 3, tzinfo=UTC)  # 5:03 PM ET
+        arrival = datetime(2026, 4, 24, 22, 10, tzinfo=UTC)  # 6:10 PM ET
+        journey = _make_journey(
+            terminal="HL",
+            stops=[
+                JourneyStop(
+                    station_code="NY",
+                    station_name="New York Penn",
+                    actual_departure=departure,
+                ),
+                JourneyStop(
+                    station_code="HL",
+                    station_name="Hamilton",
+                    actual_arrival=arrival,
+                ),
+            ],
+        )
+
+        copy = _format_share_copy(journey, "NY", "HL")
+
+        assert copy.headline == "NJT 3957 to Hamilton"
+        assert copy.title == "NJT 3957 to Hamilton from 5:03 to 6:10 PM"
+        assert copy.status == "Arriving 6:10 PM"
+
+    def test_title_falls_back_to_headline_when_range_is_incomplete(self) -> None:
+        journey = _make_journey(
+            terminal="HB",
+            stops=[
+                JourneyStop(
+                    station_code="HB",
+                    station_name="Hoboken",
+                    actual_arrival=HOBOKEN_ARRIVAL_UTC,
+                )
+            ],
+        )
+
+        copy = _format_share_copy(journey, "MISSING", "HB")
+
+        assert copy.title == "NJT 3957 to Hoboken"
+        assert copy.status == "Arriving 5:42 PM"
+
+    def test_cancelled_title_omits_time_range(self) -> None:
+        journey = _make_journey(
+            terminal="HB",
+            is_cancelled=True,
+            stops=[
+                JourneyStop(
+                    station_code="DV",
+                    station_name="Denville",
+                    actual_departure=datetime(2026, 4, 24, 20, 30, tzinfo=UTC),
+                ),
+                JourneyStop(
+                    station_code="HB",
+                    station_name="Hoboken",
+                    actual_arrival=HOBOKEN_ARRIVAL_UTC,
+                ),
+            ],
+        )
+
+        copy = _format_share_copy(journey, "DV", "HB")
+
+        assert copy.title == "NJT 3957 to Hoboken"
+        assert copy.status == "Cancelled"
+
+
+class TestFormatTimeRange:
+    def test_compacts_same_day_same_meridiem(self) -> None:
+        start = datetime(2026, 4, 24, 17, 3, tzinfo=UTC)
+        end = datetime(2026, 4, 24, 18, 10, tzinfo=UTC)
+        assert _format_time_range(start, end) == "5:03 to 6:10 PM"
+
+    def test_keeps_both_meridiems_when_they_differ(self) -> None:
+        start = datetime(2026, 4, 24, 11, 45, tzinfo=UTC)
+        end = datetime(2026, 4, 24, 12, 15, tzinfo=UTC)
+        assert _format_time_range(start, end) == "11:45 AM to 12:15 PM"
 
 
 # ---- URL builders ----
@@ -327,7 +444,9 @@ class TestShareRoutesWithRealJourney:
         resp = e2e_client.get("/share/train/3957?date=2026-04-24")
         assert resp.status_code == 200
         body = resp.text
-        assert '<meta property="og:title" content="NJT 3957 to Hoboken">' in body
+        expected_title = "NJT 3957 to Hoboken from 4:30 to 5:42 PM"
+        assert f"<title>{expected_title}</title>" in body
+        assert f'<meta property="og:title" content="{expected_title}">' in body
         assert '<meta property="og:description" content="Arriving 5:42 PM">' in body
         assert "og:image" in body  # exact URL depends on TestClient host
         assert (

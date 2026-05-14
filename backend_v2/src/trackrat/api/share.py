@@ -21,6 +21,7 @@ iOS app for users who have it installed.
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 from datetime import date as date_type
 from datetime import datetime
 from urllib.parse import quote, urlencode
@@ -34,7 +35,7 @@ from structlog import get_logger
 from trackrat.api.utils import handle_errors
 from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_db
-from trackrat.models.database import TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.share_image import render_share_image
 from trackrat.utils.time import normalize_to_et, now_et
 
@@ -50,6 +51,15 @@ _FALLBACK_HEADLINE = "TrackRat"
 _FALLBACK_STATUS = "Real-time train tracking"
 
 
+@dataclass(frozen=True)
+class _ShareCopy:
+    """Text strings used by the share HTML and generated preview image."""
+
+    title: str
+    headline: str
+    status: str
+
+
 @router.get("/train/{train_id}", name="share_train_html")
 @handle_errors
 async def share_train_html(
@@ -62,10 +72,14 @@ async def share_train_html(
 ) -> Response:
     """Return an OG-tagged HTML doc that unfurls in iMessage and redirects to the SPA."""
     journey = await _fetch_journey(db, train_id, date or now_et().date())
-    headline, status = (
-        _format_share_strings(journey, to)
+    copy = (
+        _format_share_copy(journey, from_, to)
         if journey is not None
-        else (_FALLBACK_HEADLINE, _FALLBACK_STATUS)
+        else _ShareCopy(
+            title=_FALLBACK_HEADLINE,
+            headline=_FALLBACK_HEADLINE,
+            status=_FALLBACK_STATUS,
+        )
     )
 
     redirect_url = _build_spa_url(train_id, date, from_, to)
@@ -74,7 +88,7 @@ async def share_train_html(
     )
 
     return Response(
-        content=_render_html(headline, status, redirect_url, image_url),
+        content=_render_html(copy.title, copy.status, redirect_url, image_url),
         media_type="text/html; charset=utf-8",
         headers={"Cache-Control": "public, max-age=60"},
     )
@@ -93,8 +107,8 @@ async def share_train_image(
     if journey is None:
         raise HTTPException(status_code=404, detail=f"Train {train_id} not found")
 
-    headline, status = _format_share_strings(journey, to)
-    png = render_share_image(headline, status)
+    copy = _format_share_copy(journey, None, to)
+    png = render_share_image(copy.headline, copy.status)
 
     return Response(
         content=png,
@@ -122,27 +136,91 @@ async def _fetch_journey(
     return result
 
 
-def _format_share_strings(
-    journey: TrainJourney, to_station_code: str | None
-) -> tuple[str, str]:
-    """Translate a journey + optional user destination into (headline, status)."""
+def _format_share_copy(
+    journey: TrainJourney, from_station_code: str | None, to_station_code: str | None
+) -> _ShareCopy:
+    """Translate a journey + optional user route context into share copy."""
     # ``terminal_station_code`` is non-null in the schema; narrow for mypy.
     dest_code: str = to_station_code or journey.terminal_station_code or ""
+    origin_code: str = from_station_code or journey.origin_station_code or ""
     headline = (
         f"{journey.data_source} {journey.train_id} to {get_station_name(dest_code)}"
     )
+    title = _format_share_title(journey, headline, origin_code, dest_code)
 
     if journey.is_cancelled:
-        return headline, "Cancelled"
+        return _ShareCopy(title=headline, headline=headline, status="Cancelled")
 
     eta = _arrival_at(journey, dest_code)
     if eta is None:
-        return headline, "View train details"
+        return _ShareCopy(
+            title=title, headline=headline, status="View train details"
+        )
 
     time_str = _format_clock_time(normalize_to_et(eta))
     if journey.observation_type == "SCHEDULED":
-        return headline, f"Scheduled {time_str}"
-    return headline, f"Arriving {time_str}"
+        return _ShareCopy(
+            title=title, headline=headline, status=f"Scheduled {time_str}"
+        )
+    return _ShareCopy(title=title, headline=headline, status=f"Arriving {time_str}")
+
+
+def _format_share_strings(
+    journey: TrainJourney, to_station_code: str | None
+) -> tuple[str, str]:
+    """Translate a journey + optional user destination into image headline/status."""
+    copy = _format_share_copy(journey, None, to_station_code)
+    return copy.headline, copy.status
+
+
+def _format_share_title(
+    journey: TrainJourney, headline: str, from_station_code: str, to_station_code: str
+) -> str:
+    """Return the HTML/OG title, including route times when both are trustworthy."""
+    if journey.is_cancelled:
+        return headline
+
+    departure = _departure_at(journey, from_station_code)
+    arrival = _arrival_at(journey, to_station_code)
+    if departure is None or arrival is None:
+        return headline
+
+    departure_et = normalize_to_et(departure)
+    arrival_et = normalize_to_et(arrival)
+    if arrival_et <= departure_et:
+        return headline
+
+    return f"{headline} from {_format_time_range(departure_et, arrival_et)}"
+
+
+def _departure_at(journey: TrainJourney, station_code: str) -> datetime | None:
+    """Best-available departure estimate at ``station_code``.
+
+    Falls through actual -> updated -> scheduled. For updated departure estimates,
+    use the later of ``updated_arrival`` and ``updated_departure`` when both exist:
+    NJT stores the live delayed estimate in different fields depending on stop type,
+    and the later timestamp matches the canonical DepartureService behavior.
+    """
+    for stop in journey.stops or []:
+        if stop.station_code != station_code:
+            continue
+        return (
+            stop.actual_departure
+            or stop.actual_arrival
+            or _latest_updated_time(stop)
+            or stop.scheduled_departure
+            or stop.scheduled_arrival
+        )
+
+    if station_code == journey.origin_station_code:
+        return journey.actual_departure or journey.scheduled_departure
+    return None
+
+
+def _latest_updated_time(stop: JourneyStop) -> datetime | None:
+    """Return the later updated stop time, tolerating providers with only one field."""
+    updated_times = [t for t in (stop.updated_arrival, stop.updated_departure) if t]
+    return max(updated_times) if updated_times else None
 
 
 def _arrival_at(journey: TrainJourney, station_code: str) -> datetime | None:
@@ -181,6 +259,21 @@ def _format_clock_time(dt: datetime) -> str:
     """Render an ET datetime as a 12-hour clock string (e.g. ``"5:42 PM"``)."""
     # %-I is GNU-only; build the same output portably by stripping the leading zero.
     return dt.strftime("%I:%M %p").lstrip("0")
+
+
+def _format_time_range(start: datetime, end: datetime) -> str:
+    """Render a compact clock range for two ET datetimes."""
+    start_clock, start_meridiem = _split_clock_time(start)
+    end_clock, end_meridiem = _split_clock_time(end)
+    if start.date() == end.date() and start_meridiem == end_meridiem:
+        return f"{start_clock} to {end_clock} {end_meridiem}"
+    return f"{start_clock} {start_meridiem} to {end_clock} {end_meridiem}"
+
+
+def _split_clock_time(dt: datetime) -> tuple[str, str]:
+    """Split ``_format_clock_time`` into clock and AM/PM pieces."""
+    clock, meridiem = _format_clock_time(dt).rsplit(" ", 1)
+    return clock, meridiem
 
 
 def _build_spa_url(
@@ -228,10 +321,10 @@ def _build_image_url(
 
 
 def _render_html(
-    headline: str, status: str, redirect_url: str, image_url: str | None
+    title: str, status: str, redirect_url: str, image_url: str | None
 ) -> str:
     """Minimal HTML doc with OG/Twitter tags and a meta-refresh."""
-    title = html.escape(headline)
+    title = html.escape(title)
     description = html.escape(status)
     redirect = html.escape(redirect_url, quote=True)
 
