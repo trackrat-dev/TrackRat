@@ -641,8 +641,8 @@ class TrainListViewModel: ObservableObject {
             let fetched = try await Prefetcher.shared.fetchTrips(from: fromStationCode, to: toStationCode, date: date, systems: systems)
             self.error = nil
             applyTrips(fetched, fromStationCode: fromStationCode, date: date, detectBoardingChange: true)
-            // Intentionally no top-5 prefetch on the 30s poll: the age gate would mostly
-            // dedupe but every cycle past TTL would re-fan-out 5 detail calls.
+            // Intentionally no top-train detail prefetch on the 30s poll: the age gate
+            // would mostly dedupe but every cycle past TTL would re-fan-out detail calls.
         } catch {
             print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
         }
@@ -684,7 +684,7 @@ class TrainListViewModel: ObservableObject {
     }
 
     private func warmTopTrainDetails(fromStationCode: String, date: Date) {
-        for train in trains.prefix(5) {
+        for train in trains.prefix(2) {
             Prefetcher.shared.prefetchTrainDetails(
                 trainNumber: train.trainId,
                 fromStation: fromStationCode,
