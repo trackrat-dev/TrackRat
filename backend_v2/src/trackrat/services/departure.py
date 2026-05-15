@@ -1354,10 +1354,17 @@ class DepartureService:
                 njt_collector = NJTJourneyCollector(njt_client)
                 individual_updated = 0
 
-                for journey in remaining_stale:
-                    if journey.id is None:
-                        continue
-                    journey_id = journey.id
+                # Snapshot (journey_id, train_id) for every stale journey
+                # before the loop starts. `db.commit()` and `db.rollback()`
+                # below expire all session attributes, so reading
+                # `journey.train_id` from a later iteration would trigger a
+                # sync lazy-load that fails with MissingGreenlet in the
+                # async session.
+                stale_ids: list[tuple[int, str | None]] = [
+                    (j.id, j.train_id) for j in remaining_stale if j.id is not None
+                ]
+
+                for journey_id, train_id in stale_ids:
 
                     async def refresh_journey(jid: int = journey_id) -> None:
                         # Re-query to get fresh state after potential rollback.
@@ -1389,7 +1396,7 @@ class DepartureService:
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                         )
                     except TrainNotFoundError:
                         # Train no longer in NJT system - this is expected for
@@ -1397,13 +1404,13 @@ class DepartureService:
                         await db.rollback()
                         logger.debug(
                             "stale_train_not_found",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                         )
                     except Exception as e:
                         await db.rollback()
                         logger.warning(
                             "stale_train_refresh_failed",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                             error=str(e) or repr(e),
                             error_type=type(e).__name__,
                         )
