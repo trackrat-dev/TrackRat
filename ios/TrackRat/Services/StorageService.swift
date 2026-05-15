@@ -282,24 +282,54 @@ final class StorageService {
     }
 
     /// Returns the full favorites list including home/work stations (for display).
+    ///
+    /// Ordering: home station first, work station second, then all remaining
+    /// favorites sorted alphabetically by display name. Home/work appear in
+    /// these slots even when not explicitly favorited (injection), and never
+    /// also in the alphabetical tail.
     func loadFavoriteStations() -> [FavoriteStation] {
         var stations = loadStoredFavorites()
 
+        let homeCode = RatSenseService.shared.getHomeStation()
+        let workCode = RatSenseService.shared.getWorkStation()
+
         // Always include home station if set
-        if let homeCode = RatSenseService.shared.getHomeStation(),
-           !stations.contains(where: { $0.id == homeCode }) {
+        if let homeCode, !stations.contains(where: { $0.id == homeCode }) {
             let homeName = Stations.displayName(for: homeCode)
             stations.append(FavoriteStation(code: homeCode, name: homeName))
         }
 
-        // Always include work station if set
-        if let workCode = RatSenseService.shared.getWorkStation(),
+        // Always include work station if set (and not the same as home)
+        if let workCode, workCode != homeCode,
            !stations.contains(where: { $0.id == workCode }) {
             let workName = Stations.displayName(for: workCode)
             stations.append(FavoriteStation(code: workCode, name: workName))
         }
 
-        return stations.sorted { $0.lastUsed > $1.lastUsed }
+        var home: FavoriteStation?
+        var work: FavoriteStation?
+        var others: [FavoriteStation] = []
+        for station in stations {
+            if station.id == homeCode {
+                home = station
+            } else if station.id == workCode {
+                work = station
+            } else {
+                others.append(station)
+            }
+        }
+
+        others.sort {
+            Stations.displayName(for: $0.name)
+                .localizedCaseInsensitiveCompare(Stations.displayName(for: $1.name))
+                == .orderedAscending
+        }
+
+        var ordered: [FavoriteStation] = []
+        if let home { ordered.append(home) }
+        if let work { ordered.append(work) }
+        ordered.append(contentsOf: others)
+        return ordered
     }
 
     func toggleFavoriteStation(code: String, name: String) {
