@@ -1375,9 +1375,17 @@ class DepartureService:
                         if fresh:
                             await njt_collector.collect_journey_details(db, fresh)
 
+                    # Per-journey commit/rollback isolates each refresh so a
+                    # single failure does not erase prior successful work.
+                    # NOTE: do NOT wrap this in `async with db.begin_nested()`.
+                    # `retry_on_deadlock` calls `await session.rollback()` on
+                    # retry, which rolls back the entire outer transaction
+                    # (not the savepoint), leaving the SAVEPOINT state
+                    # inconsistent and triggering `greenlet_spawn has not
+                    # been called` on subsequent flushes/commits.
                     try:
-                        async with db.begin_nested():
-                            await retry_on_deadlock(db, refresh_journey)
+                        await retry_on_deadlock(db, refresh_journey)
+                        await db.commit()
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
@@ -1386,11 +1394,13 @@ class DepartureService:
                     except TrainNotFoundError:
                         # Train no longer in NJT system - this is expected for
                         # trains that completed their journey
+                        await db.rollback()
                         logger.debug(
                             "stale_train_not_found",
                             train_id=journey.train_id,
                         )
                     except Exception as e:
+                        await db.rollback()
                         logger.warning(
                             "stale_train_refresh_failed",
                             train_id=journey.train_id,
@@ -1398,7 +1408,6 @@ class DepartureService:
                             error_type=type(e).__name__,
                         )
 
-                await db.commit()
                 logger.info(
                     "stale_past_trains_refresh_complete",
                     station_code=station_code,
