@@ -18,7 +18,7 @@
     "react-dom": "^19.2.6",
     "react-map-gl": "^8.1.0",
     "react-router-dom": "^7.14.0",
-    "zustand": "^5.0.12"
+    "zustand": "^5.0.13"
   },
   "overrides": {
     "vite-plugin-pwa": {
