@@ -654,6 +654,99 @@ class TestStaleOriginDetection:
         )
 
     @pytest.mark.asyncio
+    async def test_sustained_mismatch_does_not_expire_running_train(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Once any stop is marked departed, the train physically ran and the
+        mismatch is necessarily stale upstream data (NJT often serves a
+        delayed DEP_TIME estimate for hours after the train left on time).
+        Strikes must not accumulate against the journey or it would
+        false-expire real running trains and remove them from /departures.
+
+        Production observation (May 2026): trains like NJT 3855 (NY→Trenton,
+        scheduled 15:04, actual departure 15:04, NJT API persistently
+        reporting DEP_TIME=15:30) were getting expired ~30 minutes after
+        leaving on time, removing them from the iOS app's listing.
+        """
+        scheduled_departure = now_et().replace(
+            hour=15, minute=4, second=0, microsecond=0
+        )
+        api_actual_departure = scheduled_departure + timedelta(minutes=26)
+
+        journey = TrainJourney(
+            train_id="3855",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Origin is marked departed (NJT confirmed DEPARTED=YES at 15:04).
+        # This is the proof-of-life that the running-train guard relies on.
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+            actual_departure=scheduled_departure,
+            has_departed_station=True,
+            departure_source="api_explicit",
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3855",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_actual_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        # Run well past the 3-strike threshold — must never expire.
+        for _ in range(5):
+            await journey_collector.collect_journey_details(db_session, journey)
+            await db_session.refresh(journey)
+
+        assert journey.is_expired is False, (
+            "Sustained DEPARTURE_TIME_MISMATCH must not expire a journey "
+            "whose origin stop has has_departed_station=True — that's proof "
+            "the train physically ran, so the API's lingering wrong-time data "
+            "is stale upstream noise, not evidence of a phantom slot."
+        )
+        assert journey.api_error_count == 0, (
+            "Strike counter must not advance once the train has physically "
+            "departed (counter starts at 0 and stays at 0)"
+        )
+        assert journey.is_completed is False, (
+            "We must not falsely complete a still-running train via the "
+            "completion-on-expiry backstop"
+        )
+        assert journey.last_updated_at is not None, (
+            "Mismatch must still advance last_updated_at so the scheduler "
+            "does not busy-loop re-collecting this journey every cycle"
+        )
+
+    @pytest.mark.asyncio
     async def test_sustained_time_mismatch_expires_after_three_strikes(
         self, db_session: AsyncSession, journey_collector, mock_njt_client
     ):

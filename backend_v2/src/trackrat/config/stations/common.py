@@ -98,6 +98,7 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     {"NHV", "MNHV"},  # New Haven
     {"STS", "MNSS"},  # New Haven-State St
     {"NP", "PNK"},  # Newark Penn Station / Newark PATH
+    {"HB", "PHO"},  # Hoboken (NJT) / Hoboken PATH
     {"SE", "TS", "SC"},  # Secaucus Upper Lvl / Lower Lvl / Concourse
     {"NF", "PHN"},  # North Philadelphia (NJT NF / Amtrak PHN)
     {"JES", "JSP"},  # Jesup, GA (Amtrak aliases)

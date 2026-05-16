@@ -29,9 +29,7 @@ class TestScheduleInsertRace:
     """Test that IntegrityError during schedule INSERT is treated as a skip."""
 
     @pytest.mark.asyncio
-    async def test_integrity_error_counted_as_skip_not_error(
-        self, schedule_collector
-    ):
+    async def test_integrity_error_counted_as_skip_not_error(self, schedule_collector):
         """When the savepoint commit raises IntegrityError (concurrent
         discovery already created the journey), it should increment
         skipped_observed, not errors."""
@@ -80,9 +78,7 @@ class TestScheduleInsertRace:
         )
 
     @pytest.mark.asyncio
-    async def test_integrity_error_does_not_block_other_items(
-        self, schedule_collector
-    ):
+    async def test_integrity_error_does_not_block_other_items(self, schedule_collector):
         """An IntegrityError on one schedule item should not prevent
         processing subsequent items in the same station."""
         mock_session = AsyncMock()

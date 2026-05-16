@@ -7,7 +7,6 @@ extension Stations {
         ("New York Penn Station", "NY"),
         ("Hoboken", "HB"),
         // PATH
-        ("Hoboken PATH", "PHO"),
         ("World Trade Center", "PWC"),
         ("33rd Street", "P33"),
         ("Journal Square", "PJS"),

@@ -337,6 +337,73 @@ class TestCollectNJTJourneysBatch:
             # Should handle the error gracefully and not crash
             await scheduler_service.collect_njt_journeys_batch(["3737"])
 
+    @pytest.mark.asyncio
+    async def test_skipped_results_not_counted_as_errors(self, scheduler_service):
+        """Skipped results (expired/not-found/disappeared) should not
+        increment error_count in batch collection.
+
+        Addresses chatgpt-codex-connector review on PR #1130: the new
+        {"success": False, "skipped": True} return value must be handled
+        by collect_njt_journeys_batch, not classified as an error.
+        """
+        train_ids = ["47", "49", "3737"]
+
+        results = [
+            {
+                "train_id": "47",
+                "success": False,
+                "skipped": True,
+                "reason": "already_expired",
+            },
+            {
+                "train_id": "49",
+                "success": False,
+                "skipped": True,
+                "reason": "journey_not_found",
+            },
+            {
+                "train_id": "3737",
+                "success": True,
+                "stops_count": 10,
+            },
+        ]
+
+        call_idx = 0
+
+        async def mock_collect(train_id, journey_date=None):
+            nonlocal call_idx
+            result = results[call_idx]
+            call_idx += 1
+            return result
+
+        with patch.object(
+            scheduler_service,
+            "_collect_single_njt_journey_safe",
+            side_effect=mock_collect,
+        ):
+            with patch.object(scheduler_service, "_running_tasks", {}):
+                with patch("trackrat.services.scheduler.logger") as mock_logger:
+                    await scheduler_service.collect_njt_journeys_batch(train_ids)
+
+        # Verify batch completion log shows 1 success, 0 errors
+        batch_complete_calls = [
+            c
+            for c in mock_logger.info.call_args_list
+            if c[0][0] == "njt_batch_collection_completed"
+        ]
+        assert len(batch_complete_calls) == 1
+        kwargs = batch_complete_calls[0][1]
+        assert kwargs["success_count"] == 1
+        assert kwargs["error_count"] == 0
+
+        # Verify skipped results were logged at debug level
+        skip_calls = [
+            c
+            for c in mock_logger.debug.call_args_list
+            if c[0][0] == "njt_journey_batch_skipped"
+        ]
+        assert len(skip_calls) == 2
+
 
     @pytest.mark.asyncio
     async def test_skipped_results_not_counted_as_errors(self, scheduler_service):

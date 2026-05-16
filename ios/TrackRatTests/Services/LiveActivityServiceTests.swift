@@ -153,4 +153,33 @@ class LiveActivityServiceTests: XCTestCase {
         XCTAssertNotNil(contentState.status)
         XCTAssertEqual(contentState.journeyProgress, 0.0, accuracy: 0.01)
     }
+
+    func testActivityAttributesMatchTrainRequiresDataSourceWhenPresent() {
+        let attributes = makeActivityAttributes(trainId: "3254", dataSource: "NJT")
+
+        XCTAssertTrue(attributes.matchesTrain(trainId: "3254", dataSource: "NJT"))
+        XCTAssertFalse(attributes.matchesTrain(trainId: "3254", dataSource: "AMTRAK"))
+    }
+
+    func testActivityAttributesMatchTrainFallsBackForLegacyActivities() {
+        let attributes = makeActivityAttributes(trainId: "3254", dataSource: nil)
+
+        XCTAssertTrue(attributes.matchesTrain(trainId: "3254", dataSource: "AMTRAK"))
+    }
+
+    private func makeActivityAttributes(trainId: String, dataSource: String?) -> TrainActivityAttributes {
+        TrainActivityAttributes(
+            trainNumber: trainId,
+            trainId: trainId,
+            routeDescription: "New York -> Philadelphia",
+            origin: "New York",
+            destination: "Philadelphia",
+            originStationCode: "NY",
+            destinationStationCode: "PH",
+            departureTime: Date(),
+            scheduledArrivalTime: Date().addingTimeInterval(3600),
+            theme: "black",
+            dataSource: dataSource
+        )
+    }
 }

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.config.stations import expand_station_codes, get_station_name
+from trackrat.config.stations.common import STATION_EQUIVALENTS
 from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
@@ -126,6 +127,38 @@ def _filter_cross_system_direct_trips(
     if not valid_systems:
         return []
     return [t for t in trips if t.legs[0].data_source in valid_systems]
+
+
+def _systems_for_station(code: str) -> set[str]:
+    """Return the transit systems available to a passenger at this station.
+
+    For non-subway station codes, includes sibling systems from the same
+    equivalence group so e.g. NP (Newark Penn Station, NJT/Amtrak) also
+    surfaces PATH via its equivalent PNK — both codes refer to the same
+    physical building.  SUBWAY is excluded from the expansion of non-subway
+    codes because subway-platform codes in a large complex (e.g. S128 inside
+    NY Penn) are physically separate from the rail concourses and would
+    defeat the cross-system direct-trip filter (#1121).
+
+    Subway-only codes stay strict (only SUBWAY) so subway-platform queries
+    like S128→TR don't pick up rail trains arriving at NY.
+
+    Alias-only codes (not in any route topology, e.g. TS for Secaucus Lower
+    Level) fall back to full equivalence expansion so they resolve to the
+    canonical station's systems.
+    """
+    direct = get_systems_serving_station(code)
+    group = STATION_EQUIVALENTS.get(code)
+    if not group:
+        return direct
+    expanded: set[str] = set()
+    for equivalent in group:
+        expanded |= get_systems_serving_station(equivalent)
+    if not direct:
+        return expanded
+    if direct <= {"SUBWAY"}:
+        return direct
+    return expanded - {"SUBWAY"}
 
 
 def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
@@ -289,14 +322,10 @@ async def search_trips(
     )
 
     # Systems natively serving each endpoint (used for direct-trip filtering
-    # and transfer search below).  Expand equivalence aliases first so that
-    # alias-only codes (e.g. TS → SE) resolve to the canonical station's systems.
-    from_systems: set[str] = set()
-    for code in expand_station_codes(from_station):
-        from_systems |= get_systems_serving_station(code)
-    to_systems: set[str] = set()
-    for code in expand_station_codes(to_station):
-        to_systems |= get_systems_serving_station(code)
+    # and transfer search below).  Equivalence-group expansion is applied only
+    # for alias-only codes; see _systems_for_station.
+    from_systems = _systems_for_station(from_station)
+    to_systems = _systems_for_station(to_station)
 
     # --- Step 1: Try direct service ---
     direct_response = await departure_service.get_departures(

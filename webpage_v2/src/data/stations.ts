@@ -286,7 +286,6 @@ const _STATIONS_RAW: any[] = [
   { code: 'PGR', name: 'Grove Street', coordinates: { lat: 40.7197, lon: -74.0434 }, system: 'PATH' },
   { code: 'PEX', name: 'Exchange Place', coordinates: { lat: 40.7167, lon: -74.0333 }, system: 'PATH' },
   { code: 'PNP', name: 'Newport', coordinates: { lat: 40.7265, lon: -74.0337 }, system: 'PATH' },
-  { code: 'PHO', name: 'Hoboken PATH', coordinates: { lat: 40.7348, lon: -74.0280 }, system: 'PATH' },
   { code: 'PCH', name: 'Christopher Street', coordinates: { lat: 40.7329, lon: -74.0067 }, system: 'PATH' },
   { code: 'P9S', name: '9th Street', coordinates: { lat: 40.7340, lon: -73.9997 }, system: 'PATH' },
   { code: 'P14', name: '14th Street', coordinates: { lat: 40.7376, lon: -73.9967 }, system: 'PATH' },
@@ -1622,7 +1621,7 @@ for (const s of STATIONS) {
 export const PRIMARY_STATIONS: Record<TransitSystem, string[]> = {
   NJT: ['NY', 'NP', 'HB', 'SE', 'MP', 'PJ', 'HL', 'TR', 'LB', 'PF', 'DN', 'RA'],
   AMTRAK: ['NY', 'PH', 'WI', 'BL', 'WS', 'BOS', 'RVR', 'CLT', 'RGH', 'ATL'],
-  PATH: ['NP', 'PHO', 'PWC', 'PJS', 'P33', 'PGR', 'PEX', 'PNP'],
+  PATH: ['NP', 'HB', 'PWC', 'PJS', 'P33', 'PGR', 'PEX', 'PNP'],
   PATCO: ['LND', 'FFL', 'CTH', 'HDF'],
   LIRR: ['JAM', 'GCT', 'LAT', 'BTA', 'LHUN', 'RON', 'PJN', 'LBH', 'PWS', 'LHVL'],
   MNR: ['GCT', 'M125', 'MWPL', 'MCRH', 'MPOK', 'MBRS', 'MSTM', 'MNHV'],
@@ -1651,9 +1650,17 @@ export const SYSTEM_NAMES: Record<TransitSystem, string> = {
 // System display order
 export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'WMATA', 'BART', 'AMTRAK', 'MBTA', 'PATCO', 'METRA'];
 
+// Aliases for codes that share a physical station with another system's code.
+// The duplicate entry is hidden from the picker, but route data and shareable
+// URLs may still reference the alias code — resolve those to the canonical entry.
+const STATION_CODE_ALIASES: Record<string, string> = {
+  PHO: 'HB',   // Hoboken PATH -> Hoboken (NJT)
+  PNK: 'NP',   // Newark PATH -> Newark Penn Station (NJT)
+};
+
 // Helper functions
 export function getStationByCode(code: string): Station | undefined {
-  return _stationsByCode.get(code);
+  return _stationsByCode.get(code) ?? _stationsByCode.get(STATION_CODE_ALIASES[code]);
 }
 
 export function searchStations(query: string, systems?: TransitSystem[], limit = 15): Station[] {

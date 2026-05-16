@@ -25,14 +25,14 @@ SwiftUI app for tracking trains across 11 transit systems: NJ Transit, Amtrak, P
 
 ```
 TrackRat/
-├── App/              # TrackRatApp.swift, AppState
+├── App/              # TrackRatApp.swift, ContentView.swift
 ├── Views/
-│   ├── Screens/      # 16 screen-level views
-│   ├── Components/   # 23 reusable UI components
+│   ├── Screens/      # 18 screen-level views
+│   ├── Components/   # 28 reusable UI components
 │   └── Paywall/      # PaywallView, ProFeatureLockView
 ├── Models/           # Train, TrainV2, V2APIModels, TrainSystem, TripOption, CompletedTrip, DeepLink
-├── Services/         # 14 singleton services
-├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes
+├── Services/         # 15 singleton services
+├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes, SubwayLines
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
 └── Resources/        # Assets, Info.plist
@@ -52,6 +52,7 @@ TrackRatTests/               # Unit tests
 | SubscriptionService | StoreKit 2 Pro subscription |
 | BackendWakeupService | Health checks with 15-min cache |
 | AlertSubscriptionService | Route alert subscriptions and APNS registration |
+| Prefetcher | Warms trip list + train detail caches for instant navigation |
 | DeepLinkService | Deep link handling |
 | ShareService | Sharing functionality |
 | JourneyFeedbackService | Journey feedback |

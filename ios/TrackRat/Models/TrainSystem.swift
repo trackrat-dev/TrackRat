@@ -90,6 +90,16 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Data sources whose backend feeds publish a service-alerts list
+    /// (planned work, elevator outages, real-time service changes).
+    /// Distinct from `supportsAlerts`, which gates delay/cancellation push
+    /// notifications and is true for many systems without an alerts feed.
+    static let serviceAlertFeedSources: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
+
+    var hasServiceAlertFeed: Bool {
+        Self.serviceAlertFeedSources.contains(dataSource)
+    }
+
     /// Short label for compact station chips (analogous to subway line letters).
     var chipLabel: String {
         switch self {
@@ -221,6 +231,21 @@ extension Stations {
             if primary.count >= cap && other.count >= cap { break }
         }
         return (Array(primary.prefix(cap)), Array(other.prefix(cap)))
+    }
+
+    /// Returns the effective set of systems to query for a route, combining the user's
+    /// selected systems with the systems serving each endpoint. Ensures departures appear
+    /// even when stations are from non-active systems. Single source of truth so prefetch
+    /// and consume sites compute identical cache keys.
+    static func effectiveSystems(
+        selected: Set<TrainSystem>,
+        fromStationCode: String,
+        toStationCode: String
+    ) -> Set<TrainSystem> {
+        var systems = selected
+        systems.formUnion(systemsForStation(fromStationCode))
+        systems.formUnion(systemsForStation(toStationCode))
+        return systems
     }
 
     /// Returns true if the station shares at least one train system with the given origin.

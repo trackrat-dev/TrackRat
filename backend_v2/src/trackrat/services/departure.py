@@ -539,6 +539,14 @@ class DepartureService:
 
                 gtfs_service = GTFSService()
 
+                # Pass time_from so the GTFS SQL pre-filter prunes trips
+                # before the connection window. Without this, the underlying
+                # SQL query (limit=250 inside get_scheduled_departures) returns
+                # the earliest trips of the day at high-volume station
+                # complexes — e.g. Union Sq Subway expansion {SL03, S635,
+                # SR20} fetches ~3000+ trips/day across 4/5/6/L/N/R/W,
+                # truncating to overnight-only departures before any
+                # post-filter runs. Issue #1140.
                 gtfs_response = await gtfs_service.get_scheduled_departures(
                     db=db,
                     from_station=from_station,
@@ -546,14 +554,21 @@ class DepartureService:
                     target_date=target_date,
                     limit=200,  # Fetch more, we'll filter after merge
                     data_sources=allowed_sources,
+                    time_from=time_from,
                 )
 
                 # Filter GTFS departures:
-                # 1. Must be in the future (after current time)
+                # 1. Must be after the explicit time_from window (or current time
+                #    when time_from is in the past).  Without this, leg-2 queries
+                #    in trip_search — which set time_from to a future leg-1
+                #    arrival time — would receive GTFS departures starting from
+                #    "now", filling the limit with departures that are too early
+                #    to connect.  See issues #1138/#1139/#1140.
                 # 2. PATH trains: Only include if beyond dynamic cutoff window.
                 #    Cutoff = max(now + 20min, last_observed_departure + 2min).
                 #    This prevents duplicates while showing schedules until realtime
                 #    data reliably covers them.
+                gtfs_lower_bound = max(current_time, time_from)
                 if "PATH" in allowed_sources:
                     path_cutoff_time = await self._get_path_cutoff_time(
                         db, from_station, current_time, target_date
@@ -564,7 +579,7 @@ class DepartureService:
                     dep
                     for dep in gtfs_response.departures
                     if dep.departure.scheduled_time
-                    and dep.departure.scheduled_time > current_time
+                    and dep.departure.scheduled_time > gtfs_lower_bound
                     and dep.data_source in allowed_sources
                     and (
                         # Non-PATH: include all future departures

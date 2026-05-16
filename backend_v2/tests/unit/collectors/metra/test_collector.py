@@ -629,7 +629,9 @@ class TestConsecutiveEmptyCycles:
         collector = MetraCollector(client=client)
         session = AsyncMock()
 
-        with caplog.at_level(logging.WARNING, logger="trackrat.collectors.metra.collector"):
+        with caplog.at_level(
+            logging.WARNING, logger="trackrat.collectors.metra.collector"
+        ):
             await collector.collect(session)
 
         empty_records = [r for r in caplog.records if r.message == "metra_empty_feed"]

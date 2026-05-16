@@ -194,7 +194,9 @@ class TestAmtrakClient:
 
         result = await client.get_all_trains()
 
-        assert "50" in result, f"Train 50 should be parsed; got keys: {list(result.keys())}"
+        assert (
+            "50" in result
+        ), f"Train 50 should be parsed; got keys: {list(result.keys())}"
         train = result["50"][0]
         assert isinstance(train, AmtrakTrainData)
         assert train.trainID == "50-5"

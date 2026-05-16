@@ -8,7 +8,7 @@ for trains that haven't appeared yet but are expected based on past behavior.
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, func, select, text
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -44,6 +44,14 @@ class AmtrakPatternScheduler:
     TIME_VARIANCE_THRESHOLD = 35  # Minutes - if times vary by more, don't schedule
     STOP_CONSENSUS_RUNS = 5  # Recent matching runs used to infer scheduled stops
     MIN_STOP_CONSENSUS_RUNS = 2  # Avoid trusting a one-off route variant
+
+    @staticmethod
+    def _train_id_matches_number(train_id_column: Any, train_number: str) -> Any:
+        """Match a bare Amtrak train number or its hyphen-suffixed train_id."""
+        return or_(
+            train_id_column == train_number,
+            train_id_column.like(f"{train_number}-%"),
+        )
 
     async def generate_daily_schedules(self, target_date: date) -> dict[str, Any]:
         """
@@ -391,12 +399,14 @@ class AmtrakPatternScheduler:
         lookback_start = target_date - timedelta(days=self.LOOKBACK_DAYS)
         origin_codes = sorted(self._station_code_aliases(pattern["origin"]))
         terminal_codes = sorted(self._station_code_aliases(pattern["terminal"]))
+        train_number = pattern["train_number"]
+
         stmt = (
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
             .where(
                 and_(
-                    TrainJourney.train_id == pattern["train_number"],
+                    self._train_id_matches_number(TrainJourney.train_id, train_number),
                     TrainJourney.data_source == "AMTRAK",
                     TrainJourney.observation_type == "OBSERVED",
                     TrainJourney.has_complete_journey.is_(True),
@@ -433,9 +443,11 @@ class AmtrakPatternScheduler:
         for journey in journeys:
             stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             if stops and self._scheduled_time_for_order(stops[0]):
-                canonical_stops = []
-                seen_station_codes = set()
+                canonical_stops: list[tuple[str, JourneyStop]] = []
+                seen_station_codes: set[str] = set()
                 for stop in stops:
+                    if not stop.station_code:
+                        continue
                     station_code = self._canonical_amtrak_station_code(
                         stop.station_code
                     )
@@ -448,9 +460,9 @@ class AmtrakPatternScheduler:
         if len(runs) < self.MIN_STOP_CONSENSUS_RUNS:
             return None
 
-        common_station_codes = set(station_code for station_code, _stop in runs[0])
-        for stops in runs[1:]:
-            common_station_codes &= {station_code for station_code, _stop in stops}
+        common_station_codes = {station_code for station_code, _stop in runs[0]}
+        for run in runs[1:]:
+            common_station_codes &= {station_code for station_code, _stop in run}
 
         if not common_station_codes:
             return None
@@ -467,12 +479,12 @@ class AmtrakPatternScheduler:
             departure_offsets = []
             station_name = get_station_name(station_code)
 
-            for stops in runs:
-                origin_time = self._scheduled_time_for_order(stops[0][1])
+            for run in runs:
+                origin_time = self._scheduled_time_for_order(run[0][1])
                 if origin_time is None:
                     continue
 
-                stop = next(s for code, s in stops if code == station_code)
+                stop = next(s for code, s in run if code == station_code)
                 sequence_values.append(stop.stop_sequence or 0)
                 station_name = stop.station_name or station_name
                 if stop.scheduled_arrival:
@@ -541,28 +553,9 @@ class AmtrakPatternScheduler:
         mid = len(sorted_values) // 2
         if len(sorted_values) % 2:
             return sorted_values[mid]
-        return sorted_values[mid - 1] + (
-            sorted_values[mid] - sorted_values[mid - 1]
-        ) / 2
-
-    def _origin_only_stop(
-        self,
-        journey: TrainJourney,
-        pattern: dict[str, Any],
-        scheduled_departure: datetime,
-    ) -> list[JourneyStop]:
-        """Build the safe fallback stop list when no stable route is known."""
-        return [
-            JourneyStop(
-                journey=journey,
-                station_code=pattern["origin"],
-                station_name=get_station_name(pattern["origin"]),
-                stop_sequence=0,
-                scheduled_departure=scheduled_departure,
-                scheduled_arrival=scheduled_departure,
-                has_departed_station=False,
-            )
-        ]
+        return (
+            sorted_values[mid - 1] + (sorted_values[mid] - sorted_values[mid - 1]) / 2
+        )
 
     @staticmethod
     def _normalize_stop_sequences(stops: list[JourneyStop]) -> list[JourneyStop]:
@@ -609,12 +602,20 @@ class AmtrakPatternScheduler:
         )
 
         if not stop_templates:
-            logger.debug(
+            # Skip creating the SCHEDULED record entirely. An origin-only stop
+            # is actively misleading: the train shows up in searches from the
+            # origin but its detail view shows no destination, and downstream
+            # filters that require both endpoints exclude it inconsistently.
+            # Discovery (every 30 min) will create an OBSERVED record once the
+            # train appears in Amtrak's feed.
+            logger.warning(
                 "no_consensus_stops_for_pattern",
                 train_number=pattern["train_number"],
+                origin=pattern["origin"],
+                terminal=pattern["terminal"],
                 sample_count=len(recent_journeys),
             )
-            return self._origin_only_stop(journey, pattern, scheduled_departure)
+            return []
 
         stops = []
         for i, template in enumerate(stop_templates):
@@ -664,14 +665,16 @@ class AmtrakPatternScheduler:
 
         async with get_session() as session:
             for pattern in patterns:
-                # Check if journey already exists for this train today.
-                # LIKE can match multiple rows (e.g. "69%" matches "69", "690"),
-                # so use .first() with OBSERVED sorted first to detect real data.
+                train_number = pattern["train_number"]
+                # Check if this train already exists today. Amtrak train_ids may
+                # be stored bare or with a hyphen suffix, e.g. "2150" / "2150-4".
                 stmt = (
                     select(TrainJourney)
                     .where(
                         and_(
-                            TrainJourney.train_id.like(f"{pattern['train_number']}%"),
+                            self._train_id_matches_number(
+                                TrainJourney.train_id, train_number
+                            ),
                             TrainJourney.journey_date == target_date,
                             TrainJourney.data_source == "AMTRAK",
                         )
@@ -725,6 +728,11 @@ class AmtrakPatternScheduler:
                 stops = await self._build_scheduled_stops(
                     session, journey, pattern, scheduled_departure
                 )
+                if not stops:
+                    # Consensus produced no stops; skip rather than create a
+                    # journey with no route. _build_scheduled_stops already
+                    # logged the reason at WARNING.
+                    continue
                 journey.stops_count = len(stops)
 
                 scheduled_journeys.append(
@@ -768,19 +776,57 @@ class AmtrakPatternScheduler:
                 stops = self._normalize_stop_sequences(item["stops"])
 
                 try:
-                    # Check for existing SCHEDULED record
+                    # Check for any existing journey row for this (train_id,
+                    # journey_date, AMTRAK). The unique_train_journey constraint
+                    # ignores observation_type, so we cannot filter on it here:
+                    # a SCHEDULED→OBSERVED flip between create_scheduled_journeys
+                    # and this save would hide the row and send us down the
+                    # insert path, which then raises IntegrityError on commit.
                     stmt = select(TrainJourney).where(
                         and_(
                             TrainJourney.train_id == journey.train_id,
                             TrainJourney.journey_date == journey.journey_date,
                             TrainJourney.data_source == "AMTRAK",
-                            TrainJourney.observation_type == "SCHEDULED",
                         )
                     )
                     result = await session.execute(stmt)
                     existing_journey = result.scalar_one_or_none()
 
+                    if (
+                        existing_journey
+                        and existing_journey.observation_type == "OBSERVED"
+                    ):
+                        # Discovery promoted the row to OBSERVED while we were
+                        # preparing this save. We have real data — leave it
+                        # alone rather than overwriting it with a SCHEDULED
+                        # payload.
+                        logger.debug(
+                            "skipping_scheduled_save_train_already_observed",
+                            train_id=journey.train_id,
+                            journey_date=journey.journey_date.isoformat(),
+                        )
+                        stats["skipped"] += 1
+                        continue
+
                     if existing_journey:
+                        # Defense in depth: refuse to replace a multi-stop
+                        # SCHEDULED record with fewer stops. A consensus pass
+                        # that suddenly produces fewer stops (e.g., one bad
+                        # sample run shrinks the intersection) would otherwise
+                        # permanently downgrade the existing route until the
+                        # train goes OBSERVED.
+                        existing_stops_count = existing_journey.stops_count or 0
+                        if len(stops) < existing_stops_count:
+                            logger.warning(
+                                "refusing_stop_downgrade_for_scheduled_journey",
+                                train_id=journey.train_id,
+                                journey_date=journey.journey_date.isoformat(),
+                                existing_stop_count=existing_stops_count,
+                                new_stop_count=len(stops),
+                            )
+                            stats["skipped"] += 1
+                            continue
+
                         # Update times and stops if pattern is more recent
                         existing_journey.scheduled_departure = (
                             journey.scheduled_departure

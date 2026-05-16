@@ -1072,6 +1072,31 @@ struct SystemCongestionMapView: UIViewRepresentable {
     let highlightMode: SegmentHighlightMode
     let onSegmentTap: (CongestionSegment) -> Void
     let onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)?
+    let onStationTap: ((String) -> Void)?
+
+    init(
+        region: Binding<MKCoordinateRegion>,
+        segments: [CongestionSegment],
+        individualSegments: [IndividualJourneySegment],
+        stations: [MapStation],
+        showRoutes: Bool,
+        selectedSystems: Set<TrainSystem>,
+        highlightMode: SegmentHighlightMode,
+        onSegmentTap: @escaping (CongestionSegment) -> Void,
+        onIndividualSegmentTap: ((IndividualJourneySegment) -> Void)? = nil,
+        onStationTap: ((String) -> Void)? = nil
+    ) {
+        self._region = region
+        self.segments = segments
+        self.individualSegments = individualSegments
+        self.stations = stations
+        self.showRoutes = showRoutes
+        self.selectedSystems = selectedSystems
+        self.highlightMode = highlightMode
+        self.onSegmentTap = onSegmentTap
+        self.onIndividualSegmentTap = onIndividualSegmentTap
+        self.onStationTap = onStationTap
+    }
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -1086,6 +1111,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
         // Add tap gesture recognizer for polyline interaction
         let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleMapTap(_:)))
+        tapGesture.delegate = context.coordinator
         mapView.addGestureRecognizer(tapGesture)
 
         return mapView
@@ -1294,6 +1320,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         context.coordinator.individualSegments = individualSegments
         context.coordinator.onSegmentTap = onSegmentTap
         context.coordinator.onIndividualSegmentTap = onIndividualSegmentTap ?? { _ in }
+        context.coordinator.onStationTap = onStationTap
     }
     
     
@@ -1306,11 +1333,12 @@ struct SystemCongestionMapView: UIViewRepresentable {
         let congestionLevel: String
     }
 
-    class Coordinator: NSObject, MKMapViewDelegate {
+    class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         var segments: [CongestionSegment] = []
         var individualSegments: [IndividualJourneySegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
         var onIndividualSegmentTap: (IndividualJourneySegment) -> Void = { _ in }
+        var onStationTap: ((String) -> Void)?
         var highlightMode: SegmentHighlightMode = .delays
 
         var currentAggregatedOverlayState: Set<OverlayIdentity> = []
@@ -1492,6 +1520,33 @@ struct SystemCongestionMapView: UIViewRepresentable {
         }
 
         // MARK: - Tap Handling
+
+        /// Tapping a station pin pushes that station's details. We deselect immediately so
+        /// the same pin can be tapped again after returning, and avoid the default callout.
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            guard let stationAnnotation = view.annotation as? SystemStationAnnotation,
+                  let code = stationAnnotation.station?.code,
+                  let onStationTap else { return }
+            mapView.deselectAnnotation(view.annotation, animated: false)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onStationTap(code)
+        }
+
+        /// Annotation taps are routed through `mapView(_:didSelect:)`. Without
+        /// this filter, a tap on a pin sitting over a route polyline also fires
+        /// the polyline-tap recognizer below, so a single tap triggers both
+        /// station-detail navigation and a segment popup.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            var view: UIView? = touch.view
+            while let candidate = view {
+                if candidate is MKAnnotationView { return false }
+                view = candidate.superview
+            }
+            return true
+        }
 
         @objc func handleMapTap(_ gesture: UITapGestureRecognizer) {
             guard let mapView = gesture.view as? MKMapView else { return }

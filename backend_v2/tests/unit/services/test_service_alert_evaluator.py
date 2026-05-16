@@ -158,6 +158,17 @@ class TestGetGtfsRouteIdsForSubscription:
         # Should find at least the Babylon branch GTFS ID
         assert len(result) > 0
 
+    def test_station_pair_uses_equivalent_codes(self):
+        """Station-pair route inference should honor station equivalence groups."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SUBWAY",
+            from_station_code="NY",
+            to_station_code="S116",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert "1" in result
+
     def test_station_pair_no_matching_route_returns_empty(self):
         """Station-pair with stations not on any shared route returns empty."""
         sub = RouteAlertSubscription(
@@ -361,6 +372,17 @@ class TestGetRouteNameForSubscription:
         name = _get_route_name_for_subscription(sub)
         assert name  # Should find a route name
         assert name != "LIRR"  # Should not be the fallback
+
+    def test_station_pair_route_name_uses_equivalent_codes(self):
+        """Station-pair route names should resolve through station equivalences."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SUBWAY",
+            from_station_code="NY",
+            to_station_code="S116",
+        )
+        name = _get_route_name_for_subscription(sub)
+        assert name == "1 Broadway - 7 Avenue Local"
 
     def test_station_pair_no_match_returns_data_source(self):
         """Station-pair with no matching route falls back to data_source."""

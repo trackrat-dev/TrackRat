@@ -93,10 +93,10 @@ final class APIService: ObservableObject {
         return decoder
     }()
 
-    /// For a future `selectedDate`, project today's wall-clock time-of-day (ET)
-    /// onto it so the backend's limit-50 window lands around the user's current
-    /// commute time rather than always at midnight. Returns nil for today or
-    /// past dates so the existing today-path behavior is unchanged.
+    /// For a future `selectedDate`, anchor the backend's limit-50 window at
+    /// 5 AM ET so high-frequency providers (e.g. SUBWAY) don't fill the result
+    /// set with pre-dawn trains while still showing the full daytime schedule.
+    /// Returns nil for today or past dates so the existing behavior is unchanged.
     static func timeFromForFutureDate(_ selectedDate: Date, now: Date = Date()) -> Date? {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York") ?? .current
@@ -105,8 +105,7 @@ final class APIService: ObservableObject {
               selectedStart > todayStart else {
             return nil
         }
-        let timeOfDay = now.timeIntervalSince(todayStart)
-        return selectedStart.addingTimeInterval(timeOfDay)
+        return calendar.date(bySettingHour: 5, minute: 0, second: 0, of: selectedStart)
     }
 
     // MARK: - Train Search
@@ -1278,16 +1277,18 @@ final class APIService: ObservableObject {
 
         if let httpResponse = response as? HTTPURLResponse {
             print("📡 [APIService] Response status: \(httpResponse.statusCode)")
+            if httpResponse.statusCode == 404 {
+                throw APIError.notFound
+            }
             if httpResponse.statusCode != 200 {
-                print("⚠️ [APIService] Non-200 status code")
                 if let responseStr = String(data: data, encoding: .utf8) {
                     print("   Response body: \(responseStr)")
                 }
+                throw APIError.serverError
             }
         }
 
         do {
-            // Try to decode the response
             let prediction = try decoder.decode(PlatformPrediction.self, from: data)
             print("✅ [APIService] Successfully decoded platform prediction")
             return prediction

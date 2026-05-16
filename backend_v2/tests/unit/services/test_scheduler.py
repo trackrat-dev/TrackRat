@@ -16,6 +16,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from trackrat.services.apns import ApnsSendResult
 from trackrat.services.scheduler import SchedulerService
 from trackrat.settings import Settings
 
@@ -678,6 +679,246 @@ class TestSchedulerService:
                 mock_apns_service.send_live_activity_update.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_transient_apns_failure_does_not_deactivate_token(
+        self, scheduler_service, mock_apns_service
+    ):
+        """Transient APNS failures (5xx, timeouts, network) must NOT deactivate
+        the Live Activity token. Only a 410 BadDeviceToken response should.
+
+        Regression: production was permanently killing Live Activities on every
+        transient APNS hiccup because the scheduler treated any non-success
+        return as 410.
+        """
+        scheduler_service.apns_service = mock_apns_service
+        mock_apns_service.send_live_activity_update = AsyncMock(
+            return_value=ApnsSendResult.TRANSIENT_FAILURE
+        )
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine"),
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                mock_token = Mock(
+                    push_token="token-transient",
+                    activity_id="activity-transient",
+                    train_number="1234",
+                    origin_code="NY",
+                    destination_code="TR",
+                    data_source="AMTRAK",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=datetime.now(UTC),
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [mock_token]
+
+                mock_journey = Mock(
+                    train_id="1234",
+                    data_source="AMTRAK",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=False,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                mock_sync_session.scalar.return_value = mock_journey
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    return_value={"test": "content"},
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                mock_apns_service.send_live_activity_update.assert_called_once_with(
+                    "token-transient", {"test": "content"}
+                )
+                # Token must remain active so the next scheduler tick retries.
+                assert mock_token.is_active is True
+
+    @pytest.mark.asyncio
+    async def test_invalid_token_response_deactivates_token(
+        self, scheduler_service, mock_apns_service
+    ):
+        """A 410 BadDeviceToken response must deactivate the token so the
+        scheduler stops trying to push to it."""
+        scheduler_service.apns_service = mock_apns_service
+        mock_apns_service.send_live_activity_update = AsyncMock(
+            return_value=ApnsSendResult.INVALID_TOKEN
+        )
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine"),
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                mock_token = Mock(
+                    push_token="token-invalid",
+                    activity_id="activity-invalid",
+                    train_number="1234",
+                    origin_code="NY",
+                    destination_code="TR",
+                    data_source="AMTRAK",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=datetime.now(UTC),
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [mock_token]
+
+                mock_journey = Mock(
+                    train_id="1234",
+                    data_source="AMTRAK",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=False,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                mock_sync_session.scalar.return_value = mock_journey
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    return_value={"test": "content"},
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                assert mock_token.is_active is False
+
+    @pytest.mark.asyncio
+    async def test_transient_apns_failure_on_end_does_not_deactivate_token(
+        self, scheduler_service, mock_apns_service
+    ):
+        """End-path symmetry with the update path: a transient APNS failure
+        on the END push must NOT flip is_active=False, otherwise the next
+        scheduler tick won't retry and the user's Live Activity stays on the
+        lock screen until iOS auto-expires it (8–12h). Only SUCCESS or
+        INVALID_TOKEN should retire the token.
+        """
+        scheduler_service.apns_service = mock_apns_service
+        mock_apns_service.send_live_activity_end = AsyncMock(
+            return_value=ApnsSendResult.TRANSIENT_FAILURE
+        )
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine"),
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                mock_token = Mock(
+                    push_token="token-end-transient",
+                    activity_id="activity-end-transient",
+                    train_number="3943",
+                    origin_code="NY",
+                    destination_code="HL",
+                    data_source="AMTRAK",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    is_active=True,
+                    track_notified_at=datetime.now(UTC),
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [mock_token]
+
+                # is_completed=True triggers the end path
+                mock_journey = Mock(
+                    train_id="3943",
+                    data_source="AMTRAK",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=True,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                mock_sync_session.scalar.return_value = mock_journey
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    return_value={"test": "content"},
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                mock_apns_service.send_live_activity_end.assert_called_once()
+                # Token must remain active so the next scheduler tick retries
+                # the end push instead of leaving the activity dangling on the
+                # lock screen.
+                assert mock_token.is_active is True
+
+    @pytest.mark.asyncio
     async def test_precompute_congestion_cache(self, scheduler_service):
         """Test congestion cache pre-computation."""
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
@@ -1005,9 +1246,7 @@ class TestCollectJourneyLogging:
             return svc
 
     @pytest.mark.asyncio
-    async def test_collect_journey_logs_debug_on_success(
-        self, scheduler_service
-    ):
+    async def test_collect_journey_logs_debug_on_success(self, scheduler_service):
         """Successful collection should log at DEBUG level."""
         result = {
             "train_id": "1234",
@@ -1106,9 +1345,7 @@ class TestCollectJourneyLogging:
                 mock_logger.error.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_collect_journey_logs_info_on_unsuccessful(
-        self, scheduler_service
-    ):
+    async def test_collect_journey_logs_info_on_unsuccessful(self, scheduler_service):
         """Non-skipped unsuccessful result (e.g. TrainNotFoundError) logs INFO."""
         result = {
             "train_id": "5530",
@@ -1131,9 +1368,7 @@ class TestCollectJourneyLogging:
                 mock_logger.error.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_collect_journey_logs_error_on_none(
-        self, scheduler_service
-    ):
+    async def test_collect_journey_logs_error_on_none(self, scheduler_service):
         """Genuine failure (None) should still log ERROR."""
         with patch.object(
             scheduler_service,

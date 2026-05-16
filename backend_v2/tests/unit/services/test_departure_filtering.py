@@ -969,16 +969,13 @@ class TestDepartureFilterQuery:
 
     @pytest.mark.asyncio
     async def test_hide_departed_filter_allows_cancelled_trains_through(self):
-        """Verify that the hide_departed filter lets cancelled trains pass through.
+        """Verify that the hide_departed filter lets recently-cancelled trains pass.
 
         The hide_departed SQL filter includes:
         - has_departed_station check (primary)
         - scheduled_departure time-based fallback (catches stale flags)
-        - is_cancelled bypass (always show cancelled trains)
-
-        Cancelled trains always have has_departed_station=False, but we
-        explicitly allow them through so the base filter's 2-hour window
-        is the sole gatekeeper for stale cancelled trains.
+        - is_cancelled bypass with scheduled_departure > past_cutoff
+          (show cancelled trains only if their departure is still upcoming)
         """
         from sqlalchemy import and_, or_
         from trackrat.models.database import TrainJourney, JourneyStop
@@ -995,7 +992,13 @@ class TestDepartureFilterQuery:
                     JourneyStop.scheduled_departure > past_cutoff,
                 ),
             ),
-            TrainJourney.is_cancelled.is_(True),
+            and_(
+                TrainJourney.is_cancelled.is_(True),
+                or_(
+                    JourneyStop.scheduled_departure.is_(None),
+                    JourneyStop.scheduled_departure > past_cutoff,
+                ),
+            ),
         )
 
         filter_str = str(filter_expr)
@@ -1144,9 +1147,9 @@ class TestStaleScheduledFiltering:
 
         result = service._filter_stale_scheduled_trains(departures, now)
 
-        assert len(result) == 1, (
-            "SCHEDULED PATH train at 6 min should be kept (PATH threshold is 5 min)"
-        )
+        assert (
+            len(result) == 1
+        ), "SCHEDULED PATH train at 6 min should be kept (PATH threshold is 5 min)"
         assert result[0].train_id == "PATH-456"
 
     def test_keep_scheduled_patco_within_threshold(self):
@@ -1286,7 +1289,9 @@ class TestStaleScheduledFiltering:
         ]
 
         result = service._filter_stale_scheduled_trains(departures, now)
-        assert len(result) == 0, "NJT SCHEDULED at 14 min should be filtered (threshold=15)"
+        assert (
+            len(result) == 0
+        ), "NJT SCHEDULED at 14 min should be filtered (threshold=15)"
 
     def test_path_boundary_at_exactly_5_min(self):
         """PATH train at exactly 5-min threshold should be kept (< not <=)."""
@@ -1324,7 +1329,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "WMATA at 4 min should be kept (threshold=4)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "WMATA at 3 min should be filtered (threshold=4)"
+        assert (
+            len(result_filtered) == 0
+        ), "WMATA at 3 min should be filtered (threshold=4)"
 
     def test_subway_uses_5_min_threshold(self):
         """SUBWAY uses 5-min threshold (4-min discovery cycle)."""
@@ -1338,7 +1345,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "SUBWAY at 6 min should be kept (threshold=5)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "SUBWAY at 3 min should be filtered (threshold=5)"
+        assert (
+            len(result_filtered) == 0
+        ), "SUBWAY at 3 min should be filtered (threshold=5)"
 
     def test_lirr_uses_5_min_threshold(self):
         """LIRR uses 5-min threshold (4-min discovery cycle)."""
@@ -1352,7 +1361,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "LIRR at 6 min should be kept (threshold=5)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "LIRR at 4 min should be filtered (threshold=5)"
+        assert (
+            len(result_filtered) == 0
+        ), "LIRR at 4 min should be filtered (threshold=5)"
 
     def test_mnr_uses_5_min_threshold(self):
         """MNR uses 5-min threshold (4-min discovery cycle)."""
@@ -1366,7 +1377,9 @@ class TestStaleScheduledFiltering:
         assert len(result_kept) == 1, "MNR at 7 min should be kept (threshold=5)"
 
         result_filtered = service._filter_stale_scheduled_trains(filtered, now)
-        assert len(result_filtered) == 0, "MNR at 4 min should be filtered (threshold=5)"
+        assert (
+            len(result_filtered) == 0
+        ), "MNR at 4 min should be filtered (threshold=5)"
 
     def test_per_source_thresholds_in_single_batch(self):
         """Different providers apply their own thresholds in the same filter call."""
@@ -1389,9 +1402,11 @@ class TestStaleScheduledFiltering:
         result = service._filter_stale_scheduled_trains(departures, now)
         result_ids = {d.train_id for d in result}
 
-        assert result_ids == {"PATH-1", "WMATA-1", "SUB-1"}, (
-            f"Expected PATH/WMATA/SUBWAY kept at 6 min, NJT/AMTRAK filtered. Got: {result_ids}"
-        )
+        assert result_ids == {
+            "PATH-1",
+            "WMATA-1",
+            "SUB-1",
+        }, f"Expected PATH/WMATA/SUBWAY kept at 6 min, NJT/AMTRAK filtered. Got: {result_ids}"
 
     def test_cancelled_scheduled_train_within_threshold_is_kept(self):
         """Cancelled SCHEDULED trains must bypass the staleness filter.
@@ -1422,3 +1437,369 @@ class TestStaleScheduledFiltering:
         )
         assert result[0].train_id == "NJT-CXL"
         assert result[0].is_cancelled is True
+
+
+class TestGtfsMergeRespectsFutureTimeFrom:
+    """Verify GTFS merge filters out departures before an explicit future time_from.
+
+    Regression test for #1138/#1139/#1140: trip_search leg-2 queries set
+    time_from to a future leg-1 arrival time (sometimes hours ahead). The
+    GTFS merge previously filtered only by `> current_time`, so the response
+    was filled with too-early GTFS departures and the limit cap truncated
+    before reaching the actual connection window. The fix uses
+    `max(current_time, time_from)` as the GTFS lower bound so the merged
+    result aligns with the SQL window for real-time journeys.
+    """
+
+    @staticmethod
+    def _make_gtfs_departure(
+        train_id: str,
+        scheduled_time: datetime,
+        data_source: str = "LIRR",
+        from_code: str = "NY",
+        to_code: str = "JAM",
+    ):
+        """Build a SCHEDULED TrainDeparture as the GTFS service would emit."""
+        from trackrat.models.api import (
+            DataFreshness,
+            LineInfo,
+            StationInfo,
+            TrainDeparture,
+            TrainPosition,
+        )
+
+        arrival_time = scheduled_time + timedelta(minutes=20)
+        return TrainDeparture(
+            train_id=train_id,
+            journey_date=scheduled_time.date(),
+            line=LineInfo(code="MAIN", name="Main Line", color="#000000"),
+            destination="Jamaica",
+            departure=StationInfo(
+                code=from_code,
+                name="From",
+                scheduled_time=scheduled_time,
+            ),
+            arrival=StationInfo(
+                code=to_code,
+                name="To",
+                scheduled_time=arrival_time,
+            ),
+            train_position=TrainPosition(),
+            data_freshness=DataFreshness(
+                last_updated=scheduled_time, age_seconds=0, update_count=0
+            ),
+            data_source=data_source,
+            observation_type="SCHEDULED",
+            is_cancelled=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_future_time_from_excludes_earlier_gtfs_departures(self):
+        """When time_from is hours in the future, GTFS departures from now should be filtered out.
+
+        Scenario from issue #1139: leg-2 (LIRR NY→JAM) is queried with
+        time_from = leg-1 arrival ~3 hours from now. The GTFS feed has
+        LIRR departures throughout the day. Without the fix, all the
+        earlier departures (from now to time_from) were retained and
+        the limit cap truncated before reaching the connection window.
+        """
+        now = now_et()
+        future_time_from = now + timedelta(hours=3)
+
+        # GTFS departures: 6 too-early (before time_from) and 3 valid (after)
+        gtfs_deps = [
+            self._make_gtfs_departure("E1", now + timedelta(minutes=15)),
+            self._make_gtfs_departure("E2", now + timedelta(minutes=45)),
+            self._make_gtfs_departure("E3", now + timedelta(hours=1, minutes=15)),
+            self._make_gtfs_departure("E4", now + timedelta(hours=1, minutes=45)),
+            self._make_gtfs_departure("E5", now + timedelta(hours=2, minutes=15)),
+            self._make_gtfs_departure("E6", now + timedelta(hours=2, minutes=45)),
+            self._make_gtfs_departure("V1", now + timedelta(hours=3, minutes=15)),
+            self._make_gtfs_departure("V2", now + timedelta(hours=3, minutes=45)),
+            self._make_gtfs_departure("V3", now + timedelta(hours=4, minutes=15)),
+        ]
+
+        # Mock empty SQL results — only GTFS contributes departures
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=gtfs_deps)
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    result = await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="JAM",
+                        time_from=future_time_from,
+                        data_sources=["LIRR"],
+                        limit=20,
+                    )
+
+        returned_ids = [d.train_id for d in result.departures]
+        # All early-GTFS departures (E1..E6) must be filtered out
+        for early_id in ["E1", "E2", "E3", "E4", "E5", "E6"]:
+            assert early_id not in returned_ids, (
+                f"Early GTFS departure {early_id} (before time_from={future_time_from}) "
+                f"should be filtered out, but appeared in: {returned_ids}"
+            )
+        # Valid future departures (V1..V3) must be present
+        for valid_id in ["V1", "V2", "V3"]:
+            assert valid_id in returned_ids, (
+                f"Valid GTFS departure {valid_id} (after time_from={future_time_from}) "
+                f"should be present, but missing from: {returned_ids}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_past_time_from_falls_back_to_current_time(self):
+        """When time_from is in the past (typical user-facing query), behavior is unchanged.
+
+        For the user-facing departures endpoint, time_from defaults to start of
+        day. The GTFS filter must still use current_time as the effective lower
+        bound so we don't return already-departed trains.
+        """
+        now = now_et()
+        # Simulate user-facing call: time_from at start of day (in the past)
+        past_time_from = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        gtfs_deps = [
+            # Departed an hour ago — must be excluded by current_time
+            self._make_gtfs_departure("PAST", now - timedelta(hours=1)),
+            # Future — must be included
+            self._make_gtfs_departure("FUTURE", now + timedelta(minutes=30)),
+        ]
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=gtfs_deps)
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    result = await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="JAM",
+                        time_from=past_time_from,
+                        data_sources=["LIRR"],
+                        limit=20,
+                    )
+
+        returned_ids = [d.train_id for d in result.departures]
+        assert "PAST" not in returned_ids, (
+            f"GTFS departure in the past must be filtered by current_time, "
+            f"got: {returned_ids}"
+        )
+        assert "FUTURE" in returned_ids, (
+            f"Future GTFS departure must be retained when time_from is in the past, "
+            f"got: {returned_ids}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_time_from_at_current_time_uses_current_time(self):
+        """When time_from equals current_time, the boundary is current_time.
+
+        Both bounds yield the same effective lower bound — the filter uses
+        strict greater-than, so only departures strictly after now are kept.
+        """
+        now = now_et()
+
+        gtfs_deps = [
+            self._make_gtfs_departure("EARLIER", now - timedelta(minutes=5)),
+            # Use 30min so we're well clear of the 5-min LIRR SCHEDULED-staleness
+            # threshold and any microsecond drift between the test's `now` and
+            # `current_time` recomputed inside get_departures.
+            self._make_gtfs_departure("LATER", now + timedelta(minutes=30)),
+        ]
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=gtfs_deps)
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    result = await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="JAM",
+                        time_from=now,
+                        data_sources=["LIRR"],
+                        limit=20,
+                    )
+
+        returned_ids = [d.train_id for d in result.departures]
+        assert "EARLIER" not in returned_ids
+        assert "LATER" in returned_ids
+
+
+class TestGtfsMergePassesTimeFrom:
+    """Verify the GTFS merge step propagates time_from to get_scheduled_departures.
+
+    Regression test for issue #1140: trip-search leg-2 queries set time_from
+    to a future leg-1 arrival time. Without propagating time_from to the
+    underlying GTFS SQL query, its `.limit(250)` truncates to overnight-only
+    departures at high-volume station complexes (e.g., the Union Sq subway
+    expansion {SL03, S635, SR20} with ~3000+ trips/day across 4/5/6/L/N/R/W).
+    None of those overnight rows survive the post-filter, leaving leg-2
+    empty and the trip search returning 0 trips.
+    """
+
+    @pytest.mark.asyncio
+    async def test_future_time_from_propagates_to_gtfs_query(self):
+        """When get_departures has a future time_from, it must be passed to GTFS."""
+        future_time_from = now_et() + timedelta(hours=1)
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et()
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=[])
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    await service.get_departures(
+                        db=mock_session,
+                        from_station="SL03",
+                        to_station="SL29",
+                        time_from=future_time_from,
+                        data_sources=["SUBWAY"],
+                        limit=20,
+                    )
+
+                    # Assert get_scheduled_departures was called with time_from
+                    # equal to the future time we passed in. The exact value is
+                    # carried through ensure_timezone_aware, so compare the
+                    # underlying instant.
+                    assert mock_gtfs.get_scheduled_departures.await_count == 1
+                    kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
+                    assert "time_from" in kwargs, (
+                        "GTFS merge must pass time_from so the SQL pre-filter "
+                        "prunes trips before the connection window. Without "
+                        "this, the .limit(250) at high-volume stations "
+                        "truncates to overnight-only rows. See issue #1140."
+                    )
+                    passed = kwargs["time_from"]
+                    assert passed is not None
+                    assert passed == future_time_from, (
+                        f"time_from passed to GTFS ({passed}) must match the "
+                        f"caller's time_from ({future_time_from}); a mismatch "
+                        f"means leg-2 queries will still hit the SQL truncation."
+                    )
+
+    @pytest.mark.asyncio
+    async def test_default_time_from_still_passed_to_gtfs(self):
+        """Even with default (start-of-day) time_from, pass it through.
+
+        Backward compatible: when callers do not specify time_from, the
+        service defaults it to start-of-day in ET. Passing that through
+        to GTFS is a no-op for the SQL filter (it would have returned the
+        same rows anyway), but keeps the contract simple — GTFS always
+        receives the lower bound the caller intends to enforce.
+        """
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_result = Mock()
+        mock_scalars = Mock()
+        mock_scalars.unique.return_value.all.return_value = []
+        mock_result.scalars.return_value = mock_scalars
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.scalar = AsyncMock(return_value=None)
+
+        service = DepartureService()
+
+        with patch.object(
+            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+        ):
+            with patch.object(
+                service, "_get_path_cutoff_time", new_callable=AsyncMock
+            ) as mock_cutoff:
+                mock_cutoff.return_value = now_et()
+                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                    mock_gtfs = AsyncMock()
+                    mock_gtfs.get_scheduled_departures = AsyncMock(
+                        return_value=Mock(departures=[])
+                    )
+                    mock_gtfs_class.return_value = mock_gtfs
+
+                    await service.get_departures(
+                        db=mock_session,
+                        from_station="NY",
+                        to_station="TR",
+                        data_sources=["NJT"],
+                    )
+
+                    assert mock_gtfs.get_scheduled_departures.await_count == 1
+                    kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
+                    # Default time_from = start of day in ET; must still be passed.
+                    assert kwargs.get("time_from") is not None
+                    assert kwargs["time_from"].tzinfo is not None
+                    # Should be at midnight ET of today
+                    assert kwargs["time_from"].hour == 0
+                    assert kwargs["time_from"].minute == 0

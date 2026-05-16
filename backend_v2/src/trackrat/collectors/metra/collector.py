@@ -557,7 +557,9 @@ class MetraCollector:
             )
             return
 
-        journey_station_codes = {s.station_code for s in journey.stops}
+        journey_station_codes = {
+            s.station_code for s in journey.stops if s.station_code
+        }
 
         matching_trips = group_candidate_trips_by_overlap(
             arrivals, journey_station_codes

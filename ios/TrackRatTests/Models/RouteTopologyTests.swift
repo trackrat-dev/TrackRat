@@ -56,6 +56,12 @@ class RouteTopologyTests: XCTestCase {
         XCTAssertEqual(route?.dataSource, "PATH")
     }
 
+    func testRouteContainingFindsHobokenPATHRouteViaEquivalent() {
+        let route = RouteTopology.routeContaining(from: "HB", to: "P33", dataSource: "PATH")
+        XCTAssertNotNil(route, "Should find a PATH route from canonical Hoboken to 33rd Street")
+        XCTAssertEqual(route?.dataSource, "PATH")
+    }
+
     func testRouteContainingReturnsNilForPartialMatch() {
         // When only one station matches, return nil rather than a misleading partial match
         let route = RouteTopology.routeContaining(from: "NY", to: "NONEXISTENT", dataSource: "NJT")

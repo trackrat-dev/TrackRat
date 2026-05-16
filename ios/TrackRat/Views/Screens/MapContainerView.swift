@@ -158,6 +158,9 @@ struct MapContainerView: View {
                     guard appState.enableSegmentTap else { return }
                     selectedIndividualSegment = individualSegment
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
+                onStationTap: { code in
+                    appState.navigationPath.append(NavigationDestination.stationDetails(stationCode: code))
                 }
             )
             .ignoresSafeArea()
@@ -228,9 +231,24 @@ struct MapContainerView: View {
                 JourneyFeedbackPromptView()
             }
             .sheet(item: $appState.pendingRouteStatus) { context in
-                RouteStatusView(context: context)
+                // System-wide notifications (no line or station pair) land on
+                // TrainSystemDetailView, which owns the full system-level UI
+                // and the system-wide alert config. Everything else stays on
+                // RouteStatusView.
+                if context.lineId == nil,
+                   context.fromStationCode == nil,
+                   context.toStationCode == nil,
+                   let system = TrainSystem(rawValue: context.dataSource) {
+                    NavigationStack {
+                        TrainSystemDetailView(system: system)
+                    }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+                } else {
+                    RouteStatusView(context: context)
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                }
             }
             .sheet(item: $routeStatusContext) { context in
                 RouteStatusView(context: context)
@@ -747,6 +765,8 @@ struct MapContainerView: View {
                 )
             case .tripHistory:
                 TripHistoryView()
+            case .stationDetails(let stationCode):
+                StationDetailsView(stationCode: stationCode)
             }
         }
         .transparentNavigationBackground()

@@ -5,8 +5,11 @@ struct TrainDetailsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: TrainDetailsViewModel
+    @ObservedObject private var liveActivityService = LiveActivityService.shared
+    @ObservedObject private var alertService = AlertSubscriptionService.shared
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
     @State private var isViewVisible = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     let trainId: Int  // Keep for backwards compatibility
     let isSheet: Bool
@@ -116,15 +119,17 @@ struct TrainDetailsView: View {
                        !destCode.isEmpty,
                        let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
+                        let ds = train.dataSource
+                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: originCode, to: destCode, dataSource: ds)?.id
+                        let routeContext = RouteStatusContext(
+                            dataSource: ds,
+                            lineId: lineId,
+                            fromStationCode: originCode,
+                            toStationCode: destCode
+                        )
+                        let hasActiveAlert = !alertService.subscriptions(for: routeContext).isEmpty
                         Button {
-                            let ds = train.dataSource
-                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: originCode, to: destCode, dataSource: ds)?.id
-                            appState.pendingRouteStatus = RouteStatusContext(
-                                dataSource: ds,
-                                lineId: lineId,
-                                fromStationCode: originCode,
-                                toStationCode: destCode
-                            )
+                            appState.pendingRouteStatus = routeContext
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "bell.badge")
@@ -135,7 +140,8 @@ struct TrainDetailsView: View {
                             .foregroundColor(.white.opacity(0.8))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .background(Capsule().fill(hasActiveAlert ? Color.orange.opacity(0.15) : Color.white.opacity(0.12)))
+                            .overlay(Capsule().stroke(hasActiveAlert ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1.5))
                         }
                         .buttonStyle(.plain)
                     }
@@ -143,6 +149,10 @@ struct TrainDetailsView: View {
                     // Get Updates button (Live Activity)
                     if let originCode = appState.departureStationCode,
                        !originCode.isEmpty {
+                        let isTracking = liveActivityService.currentActivity?.attributes.matchesTrain(
+                            trainId: train.trainId,
+                            dataSource: train.dataSource
+                        ) ?? false
                         TrackTrainInlineButton(
                             train: train,
                             originCode: originCode,
@@ -155,7 +165,8 @@ struct TrainDetailsView: View {
                         )
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                        .background(Capsule().fill(isTracking ? Color.orange.opacity(0.15) : Color.white.opacity(0.12)))
+                        .overlay(Capsule().stroke(isTracking ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1.5))
                     }
 
                 }
@@ -225,7 +236,8 @@ struct TrainDetailsView: View {
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
                                 journeyTotalStops: viewModel.journeyTotalStops,
                                 isLoadingStops: viewModel.isLoadingStops,
-                                prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction
+                                prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction,
+                                isSheet: isSheet
                             )
 
                             if let _ = alertSubscription {
@@ -234,19 +246,23 @@ struct TrainDetailsView: View {
                                     set: { alertSubscription = $0 }
                                 ))
                             }
-
-                            // Report an issue button
-                            FeedbackButton(
-                                screen: "train_details",
-                                trainId: train.trainId,
-                                originCode: appState.departureStationCode,
-                                destinationCode: appState.destinationStationCode
-                            )
-                            .padding(.top, 8)
                         }
                         .padding()
                         // Force view recreation when train identity or status changes
                         .id("\(train.id)-\(train.calculateStatus(fromStationCode: appState.departureStationCode ?? "").rawValue)")
+
+                        // Keep the button outside the .id() scope and present
+                        // from this view so live refreshes don't dismiss the sheet.
+                        FeedbackButton(
+                            screen: "train_details",
+                            trainId: train.trainId,
+                            originCode: appState.departureStationCode,
+                            destinationCode: appState.destinationStationCode,
+                            onRequest: { feedbackRequest = $0 }
+                        )
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+                        .padding(.bottom, 16)
                     }
                 } // VStack
             }
@@ -316,6 +332,7 @@ struct TrainDetailsView: View {
                 }
             }
         }
+        .feedbackSheet(request: $feedbackRequest)
     }
 }
 
@@ -334,6 +351,10 @@ struct CombinedDetailsCard: View {
     let journeyTotalStops: Int
     let isLoadingStops: Bool
     let prefetchedTrackPrediction: PredictionData?
+    /// When true, the parent is shown as a sheet whose NavigationStack does not
+    /// register `.stationDetails`, so the long-press → station details modifier
+    /// is suppressed to avoid pushing onto a stack that can't render it.
+    let isSheet: Bool
 
     private var departureTime: String {
         let formatter = DateFormatter()
@@ -523,6 +544,13 @@ struct CombinedDetailsCard: View {
                             train: train,
                             departureStationCode: appState.departureStationCode,
                             shouldShowJourneyPredictions: shouldShowJourneyPredictions
+                        )
+                        // Long-press a stop to open that station's details. Only wire when
+                        // pushed (not presented as a sheet), since sheet contexts use their
+                        // own NavigationStack that doesn't register `.stationDetails`.
+                        .stationDetailsContextMenu(
+                            code: isSheet ? nil : stop.stationCode,
+                            path: $appState.navigationPath
                         )
                     }
                     
@@ -1169,6 +1197,20 @@ class TrainDetailsViewModel: ObservableObject {
         let trainIdentifier = trainNumber ?? databaseId.map(String.init) ?? ""
         let effectiveDate = journeyDate ?? Date()
 
+        // Auxiliary data (operations summary, delay forecast, track prediction) is fetched
+        // in parallel for every load path — cache hit, existingTrain, and cold network.
+        // Without this, child views observing prefetchedSummary/Forecast/TrackPrediction
+        // would see nil whenever the main train comes from the cache, since the cached
+        // path skipped this fetch.
+        Task {
+            await self.prefetchSecondaryData(
+                trainId: trainNumber ?? "",
+                fromStation: fromStationCode,
+                toStation: toStationCode,
+                journeyDate: journeyDate
+            )
+        }
+
         // PRIORITY 1: Render any non-expired cache instantly, reconcile in background.
         // The 5-minute isExpired ceiling in TrainCacheService bounds staleness; the
         // background refresh corrects any drift. Critical for Live Activity taps: the
@@ -1176,7 +1218,11 @@ class TrainDetailsViewModel: ObservableObject {
         // (written by LiveActivityService.fetchAndUpdateTrain) is the only instant
         // source of departed-stops state.
         if !trainIdentifier.isEmpty,
-           let cached = cacheService.getCachedTrain(trainNumber: trainIdentifier, date: effectiveDate) {
+           let cached = cacheService.getCachedTrain(
+               trainNumber: trainIdentifier,
+               date: effectiveDate,
+               dataSource: dataSource
+           ) {
             print("📦 Loading from cache (\(cached.ageSeconds)s old) - instant display")
             train = cached.train
             updateComputedProperties()
@@ -1198,7 +1244,12 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Only cache if train has stops data (don't overwrite good cache with partial data)
             if !trainIdentifier.isEmpty && hasStops {
-                cacheService.cacheTrain(existingTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    existingTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? existingTrain.dataSource
+                )
             }
 
             // Background refresh to get full data (including stops if missing)
@@ -1209,17 +1260,6 @@ class TrainDetailsViewModel: ObservableObject {
         // PRIORITY 3: No cached data and no existing train - show loading indicator and fetch from network
         print("🌐 No cache available - fetching from network")
         isLoading = true
-
-        // Start secondary data fetch in parallel — fire and forget since
-        // child views observe @Published properties and update reactively
-        Task {
-            await self.prefetchSecondaryData(
-                trainId: trainNumber ?? "",
-                fromStation: fromStationCode,
-                toStation: toStationCode,
-                journeyDate: journeyDate
-            )
-        }
 
         do {
             // Use the flexible API method with dataSource for disambiguation
@@ -1235,7 +1275,12 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Cache the newly fetched train
             if !trainIdentifier.isEmpty {
-                cacheService.cacheTrain(fetchedTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    fetchedTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? fetchedTrain.dataSource
+                )
             }
 
             // Update all computed properties after setting train
@@ -1281,7 +1326,12 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Cache the fresh data
             if trainIdentifier != "unknown" {
-                cacheService.cacheTrain(newTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    newTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? newTrain.dataSource
+                )
             }
 
             print("✅ Background refresh successful - updating UI")
@@ -1327,14 +1377,22 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Cache the fresh data
             if trainIdentifier != "unknown" {
-                cacheService.cacheTrain(newTrain, trainNumber: trainIdentifier, date: effectiveDate)
+                cacheService.cacheTrain(
+                    newTrain,
+                    trainNumber: trainIdentifier,
+                    date: effectiveDate,
+                    dataSource: dataSource ?? newTrain.dataSource
+                )
             }
 
             // Check if Live Activity should auto-end (Primary Fix)
             let liveService = LiveActivityService.shared
             if liveService.isActivityActive,
                let currentActivity = liveService.currentActivity,
-               currentActivity.attributes.trainNumber == newTrain.trainId {
+               currentActivity.attributes.matchesTrain(
+                   trainId: newTrain.trainId,
+                   dataSource: newTrain.dataSource
+               ) {
 
                 print("🔍 Checking Live Activity auto-end for train \(newTrain.trainId)")
 

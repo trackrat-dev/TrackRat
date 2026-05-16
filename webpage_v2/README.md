@@ -62,7 +62,7 @@ src/
 ├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
 ├── utils/           # Date formatting, status badges, share helpers
-├── data/            # Station data and route topology (1,500+ stations, 11 transit systems)
+├── data/            # Station data, route topology, subway lines (1,500+ stations, 11 transit systems)
 ├── App.tsx          # Main app component with route definitions
 ├── main.tsx         # Entry point
 └── index.css        # Global styles

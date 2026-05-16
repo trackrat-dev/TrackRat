@@ -3,6 +3,7 @@ import SwiftUI
 struct TrainListView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TrainListViewModel
+    @ObservedObject private var alertService = AlertSubscriptionService.shared
     // Configuration constants
     private static let DELAY_THRESHOLD_MINUTES = 6
 
@@ -15,15 +16,12 @@ struct TrainListView: View {
         Stations.displayName(for: departureStationCode)
     }
 
-    /// Data sources to query: user's selected systems plus systems serving the selected stations.
-    /// Ensures departures appear even when stations are from non-active systems.
     private var effectiveSystems: Set<TrainSystem> {
-        var systems = appState.selectedSystems
-        systems.formUnion(Stations.systemsForStation(departureStationCode))
-        if let toCode = Stations.getStationCode(destination) {
-            systems.formUnion(Stations.systemsForStation(toCode))
-        }
-        return systems
+        Stations.effectiveSystems(
+            selected: appState.selectedSystems,
+            fromStationCode: departureStationCode,
+            toStationCode: Stations.getStationCode(destination) ?? ""
+        )
     }
 
     // PERFORMANCE: Track visibility to prevent polling when view is not visible
@@ -32,6 +30,7 @@ struct TrainListView: View {
     // Date selection for future schedules
     @State private var selectedDate: Date = Date()
     @State private var showDatePicker: Bool = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     /// Check if viewing a future date (not today)
     private var isFutureDate: Bool {
@@ -99,17 +98,17 @@ struct TrainListView: View {
                 HStack(spacing: 12) {
                     // Route alerts button
                     if let destinationCode = Stations.getStationCode(destination) {
+                        let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
+                        let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
+                        let routeContext = RouteStatusContext(
+                            dataSource: ds,
+                            lineId: lineId,
+                            fromStationCode: departureStationCode,
+                            toStationCode: destinationCode
+                        )
+                        let hasActiveAlert = !alertService.subscriptions(for: routeContext).isEmpty
                         Button {
-                            let ds = viewModel.trains.first?.dataSource ?? appState.selectedSystems.first?.rawValue ?? "NJT"
-                            // For subway, don't set lineId — station pairs are served by multiple lines
-                            // and gtfsRouteIds will infer all relevant lines from the station pair.
-                            let lineId: String? = ds == "SUBWAY" ? nil : RouteTopology.routeContaining(from: departureStationCode, to: destinationCode, dataSource: ds)?.id
-                            appState.pendingRouteStatus = RouteStatusContext(
-                                dataSource: ds,
-                                lineId: lineId,
-                                fromStationCode: departureStationCode,
-                                toStationCode: destinationCode
-                            )
+                            appState.pendingRouteStatus = routeContext
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "bell.badge")
@@ -120,7 +119,8 @@ struct TrainListView: View {
                             .foregroundColor(.white.opacity(0.8))
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .background(Capsule().fill(hasActiveAlert ? Color.orange.opacity(0.15) : Color.white.opacity(0.12)))
+                            .overlay(Capsule().stroke(hasActiveAlert ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1.5))
                         }
                         .buttonStyle(.plain)
                     }
@@ -256,7 +256,8 @@ struct TrainListView: View {
                             screen: "train_list",
                             trainId: nil,
                             originCode: departureStationCode,
-                            destinationCode: Stations.getStationCode(destination)
+                            destinationCode: Stations.getStationCode(destination),
+                            onRequest: { feedbackRequest = $0 }
                         )
                         .padding(.top, 8)
                     }
@@ -290,6 +291,7 @@ struct TrainListView: View {
         .sheet(isPresented: $showDatePicker) {
             DateSelectorSheet(selectedDate: $selectedDate)
         }
+        .feedbackSheet(request: $feedbackRequest)
         .onAppear {
             isViewVisible = true
 
@@ -515,7 +517,6 @@ class TrainListViewModel: ObservableObject {
 
     private var currentDestination: String?
     private var currentFromStationCode: String?
-    private let apiService: APIService
 
     // MARK: - Express Train Identification
     
@@ -577,11 +578,8 @@ class TrainListViewModel: ObservableObject {
         }
     }
     
-    // Initializer for dependency injection
     @MainActor
-    init(apiService: APIService = .shared) {
-        self.apiService = apiService
-    }
+    init() {}
 
     private var currentDate: Date?
 
@@ -593,55 +591,43 @@ class TrainListViewModel: ObservableObject {
         self.currentDate = date
         self.currentSelectedSystems = selectedSystems
 
-        isLoading = true
         hasStartedLoading = true
         error = nil
 
+        guard let toStationCode = Stations.getStationCode(destination) else {
+            self.error = "Invalid destination station code for: \(destination)"
+            self.isLoading = false
+            return
+        }
+
+        let systems = selectedSystems ?? []
+
+        // Cache hit: render instantly, then silently refresh in-place. No spinner flash.
+        if let cached = Prefetcher.shared.cachedTrips(from: fromStationCode, to: toStationCode, date: date, systems: systems) {
+            applyTrips(cached, fromStationCode: fromStationCode, date: date, detectBoardingChange: false)
+            warmTopTrainDetails(fromStationCode: fromStationCode, date: date)
+            do {
+                let fresh = try await Prefetcher.shared.fetchTrips(from: fromStationCode, to: toStationCode, date: date, systems: systems)
+                applyTrips(fresh, fromStationCode: fromStationCode, date: date, detectBoardingChange: true)
+                warmTopTrainDetails(fromStationCode: fromStationCode, date: date)
+            } catch {
+                print("TrainListViewModel: silent refresh after cache hit failed: \(error.localizedDescription)")
+            }
+            return
+        }
+
+        // Cold path: show spinner, fetch, render.
+        isLoading = true
         do {
-            guard let toStationCode = Stations.getStationCode(destination) else {
-                self.error = "Invalid destination station code for: \(destination)"
-                self.isLoading = false
-                return
-            }
-
-            let fetchedTrips = try await self.apiService.searchTrips(
-                fromStationCode: fromStationCode,
-                toStationCode: toStationCode,
-                date: date,
-                dataSources: selectedSystems
-            )
-
-            let hasTransfers = fetchedTrips.contains { !$0.isDirect }
-            // No direct route only when we got transfer results but zero direct trips
-            hasDirectRoute = !hasTransfers || fetchedTrips.contains { $0.isDirect }
-
-            if hasTransfers {
-                // Transfer results: deduplicate and store directly (backend sorts by departure)
-                let uniqueTrips = Array(Dictionary(grouping: fetchedTrips, by: \.id).compactMapValues(\.first).values)
-                    .sorted { $0.departureTime < $1.departureTime }
-                transferTrips = uniqueTrips
-                trains = []
-                isTransferSearch = true
-            } else {
-                // Direct results: convert to TrainV2 for existing UI
-                let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
-                let filteredTrains = filterUpcomingTrains(fetchedTrains, fromStationCode: fromStationCode, date: date)
-
-                let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
-                trains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
-                transferTrips = []
-                isTransferSearch = false
-
-                expressTrainIds = identifyExpressTrains()
-            }
-
-
+            let fetched = try await Prefetcher.shared.fetchTrips(from: fromStationCode, to: toStationCode, date: date, systems: systems)
+            applyTrips(fetched, fromStationCode: fromStationCode, date: date, detectBoardingChange: false)
+            warmTopTrainDetails(fromStationCode: fromStationCode, date: date)
         } catch {
             self.error = error.localizedDescription
         }
         isLoading = false
     }
-    
+
     func refreshTrains(date: Date = Date(), selectedSystems: Set<TrainSystem>? = nil) async {
         guard let destination = currentDestination,
               let fromStationCode = currentFromStationCode,
@@ -649,49 +635,62 @@ class TrainListViewModel: ObservableObject {
             return
         }
 
-        let systems = selectedSystems ?? currentSelectedSystems
+        let systems = selectedSystems ?? currentSelectedSystems ?? []
 
         do {
-            let fetchedTrips = try await self.apiService.searchTrips(
-                fromStationCode: fromStationCode,
-                toStationCode: toStationCode,
-                date: date,
-                dataSources: systems
-            )
-
-            // Clear any stale error from a previous failed load
+            let fetched = try await Prefetcher.shared.fetchTrips(from: fromStationCode, to: toStationCode, date: date, systems: systems)
             self.error = nil
-
-            let hasTransfers = fetchedTrips.contains { !$0.isDirect }
-
-            if hasTransfers {
-                let uniqueTrips = Array(Dictionary(grouping: fetchedTrips, by: \.id).compactMapValues(\.first).values)
-                    .sorted { $0.departureTime < $1.departureTime }
-                transferTrips = uniqueTrips
-                trains = []
-                isTransferSearch = true
-            } else {
-                let fetchedTrains = fetchedTrips.compactMap { $0.asTrainV2() }
-                let filteredTrains = filterUpcomingTrains(fetchedTrains, fromStationCode: fromStationCode, date: date)
-                let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
-                let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
-
-                // Check for boarding status changes
-                for train in trains {
-                    if let newTrain = newTrains.first(where: { $0.id == train.id }) {
-                        if !train.isBoardingAtStation(fromStationCode) && newTrain.isBoardingAtStation(fromStationCode) {
-                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                        }
-                    }
-                }
-
-                trains = newTrains
-                transferTrips = []
-                isTransferSearch = false
-                expressTrainIds = identifyExpressTrains()
-            }
+            applyTrips(fetched, fromStationCode: fromStationCode, date: date, detectBoardingChange: true)
+            // Intentionally no top-train detail prefetch on the 30s poll: the age gate
+            // would mostly dedupe but every cycle past TTL would re-fan-out detail calls.
         } catch {
             print("TrainListViewModel: Silent refresh failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Single source of truth for translating fetched trips into view state. Used by both
+    /// the cache-hit and network paths to keep state transitions consistent.
+    private func applyTrips(_ fetched: [TripOption], fromStationCode: String, date: Date, detectBoardingChange: Bool) {
+        let hasTransfers = fetched.contains { !$0.isDirect }
+        hasDirectRoute = !hasTransfers || fetched.contains { $0.isDirect }
+
+        if hasTransfers {
+            let uniqueTrips = Array(Dictionary(grouping: fetched, by: \.id).compactMapValues(\.first).values)
+                .sorted { $0.departureTime < $1.departureTime }
+            transferTrips = uniqueTrips
+            trains = []
+            isTransferSearch = true
+        } else {
+            let fetchedTrains = fetched.compactMap { $0.asTrainV2() }
+            let filteredTrains = filterUpcomingTrains(fetchedTrains, fromStationCode: fromStationCode, date: date)
+            let uniqueTrains = Array(Dictionary(grouping: filteredTrains, by: \.id).compactMapValues(\.first).values)
+            let newTrains = sortTrainsByDepartureTime(uniqueTrains, fromStationCode: fromStationCode)
+
+            if detectBoardingChange {
+                for train in trains {
+                    if let newTrain = newTrains.first(where: { $0.id == train.id }),
+                       !train.isBoardingAtStation(fromStationCode),
+                       newTrain.isBoardingAtStation(fromStationCode) {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    }
+                }
+            }
+
+            trains = newTrains
+            transferTrips = []
+            isTransferSearch = false
+            expressTrainIds = identifyExpressTrains()
+        }
+    }
+
+    private func warmTopTrainDetails(fromStationCode: String, date: Date) {
+        for train in trains.prefix(2) {
+            Prefetcher.shared.prefetchTrainDetails(
+                trainNumber: train.trainId,
+                fromStation: fromStationCode,
+                date: train.journeyDate ?? date,
+                dataSource: train.dataSource
+            )
         }
     }
 }

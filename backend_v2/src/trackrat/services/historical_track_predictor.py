@@ -5,7 +5,7 @@ Uses hierarchical historical data to predict tracks with high accuracy.
 No ML models required - just SQL queries and simple logic.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, case, func, select
@@ -15,6 +15,7 @@ from structlog import get_logger
 from trackrat.config.station_configs import get_station_config
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.track_occupancy import get_track_occupancy_service
+from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
@@ -28,6 +29,13 @@ MIN_SERVICE_PROVIDER_RECORDS = (
 
 # Time window for time+line code matching (±30 minutes)
 TIME_WINDOW_MINUTES = 30
+
+# Bound distribution queries to recent history so Postgres can use the
+# journey_date index and avoid sorting/hashing the full retention window
+# (which exhausted /dev/shm and surfaced as DiskFullError on staging —
+# issue #1168). Track patterns are stable, so 90 days is far above all
+# MIN_*_RECORDS thresholds at every modeled station.
+HISTORICAL_LOOKBACK_DAYS = 90
 
 
 class HistoricalTrackPredictor:
@@ -245,6 +253,8 @@ class HistoricalTrackPredictor:
     ) -> dict[str, Any] | None:
         """Get track distribution for specific train ID."""
 
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+
         # Query historical track assignments for this train
         query = (
             select(JourneyStop.track, func.count(JourneyStop.id).label("count"))
@@ -253,6 +263,7 @@ class HistoricalTrackPredictor:
                 and_(
                     JourneyStop.station_code == station_code,
                     TrainJourney.train_id == train_id,
+                    TrainJourney.journey_date >= cutoff_date,
                     JourneyStop.track.is_not(None),
                 )
             )
@@ -305,6 +316,8 @@ class HistoricalTrackPredictor:
             else_=1440 - raw_diff,
         )
 
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+
         query = (
             select(JourneyStop.track, func.count(JourneyStop.id).label("count"))
             .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
@@ -312,6 +325,7 @@ class HistoricalTrackPredictor:
                 and_(
                     JourneyStop.station_code == station_code,
                     TrainJourney.line_code == line_code,
+                    TrainJourney.journey_date >= cutoff_date,
                     JourneyStop.track.is_not(None),
                     JourneyStop.scheduled_departure.is_not(None),
                     circular_diff <= TIME_WINDOW_MINUTES,
@@ -345,6 +359,8 @@ class HistoricalTrackPredictor:
     ) -> dict[str, Any] | None:
         """Get track distribution for trains on this line."""
 
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+
         query = (
             select(JourneyStop.track, func.count(JourneyStop.id).label("count"))
             .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
@@ -352,6 +368,7 @@ class HistoricalTrackPredictor:
                 and_(
                     JourneyStop.station_code == station_code,
                     TrainJourney.line_code == line_code,
+                    TrainJourney.journey_date >= cutoff_date,
                     JourneyStop.track.is_not(None),
                 )
             )
@@ -382,6 +399,8 @@ class HistoricalTrackPredictor:
     ) -> dict[str, Any] | None:
         """Get track distribution for service provider."""
 
+        cutoff_date = now_et().date() - timedelta(days=HISTORICAL_LOOKBACK_DAYS)
+
         query = (
             select(JourneyStop.track, func.count(JourneyStop.id).label("count"))
             .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
@@ -389,6 +408,7 @@ class HistoricalTrackPredictor:
                 and_(
                     JourneyStop.station_code == station_code,
                     TrainJourney.data_source == data_source,
+                    TrainJourney.journey_date >= cutoff_date,
                     JourneyStop.track.is_not(None),
                 )
             )

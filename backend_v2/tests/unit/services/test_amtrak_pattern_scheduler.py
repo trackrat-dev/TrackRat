@@ -200,6 +200,89 @@ async def test_recent_matching_journeys_filters_amtrak_station_aliases(
 
 
 @pytest.mark.asyncio
+async def test_recent_matching_journeys_matches_suffixed_train_ids(
+    pattern_scheduler,
+):
+    """Historical lookups should match exact or hyphen-suffixed train_ids.
+
+    Real-world Amtrak rows have been observed with suffixed train_ids
+    (e.g. "2150-4"), while ``pattern["train_number"]`` is always the bare
+    number ("2150"). An exact == comparison would miss those rows and
+    silently break stop-template consensus building. A bare prefix match would
+    pull in unrelated trains like "21500", so the suffix delimiter matters.
+    """
+    session = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
+
+    await pattern_scheduler._get_recent_matching_journeys(
+        session,
+        {
+            "train_number": "2150",
+            "origin": "NYP",
+            "terminal": "WAS",
+        },
+        date(2024, 1, 25),
+    )
+
+    stmt = session.execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "train_id = '2150'" in compiled
+    assert "train_id LIKE '2150-%'" in compiled
+    assert "train_id LIKE '2150%'" not in compiled
+
+
+@pytest.mark.asyncio
+async def test_create_scheduled_journeys_existing_lookup_uses_suffix_boundary(
+    pattern_scheduler,
+):
+    """Existing-journey lookup should not match trains sharing a number prefix."""
+    target_date = date(2024, 1, 25)
+    patterns = [
+        {
+            "train_number": "69",
+            "median_departure": time(15, 5),
+            "occurrence_count": 3,
+            "origin": "NYP",
+            "destination": "Washington",
+            "terminal": "WAS",
+            "line_name": "Regional",
+            "time_variance": 2.5,
+            "sample_dates": ["2024-01-18"],
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        existing_journey = MagicMock()
+        existing_journey.observation_type = "OBSERVED"
+
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = existing_journey
+        mock_result = MagicMock()
+        mock_result.scalars.return_value = mock_scalars
+        mock_execute = AsyncMock(return_value=mock_result)
+
+        mock_session.return_value.__aenter__.return_value.execute = mock_execute
+
+        scheduled_journeys = await pattern_scheduler.create_scheduled_journeys(
+            patterns, target_date
+        )
+
+        assert scheduled_journeys == []
+
+    stmt = mock_execute.await_args.args[0]
+    compiled = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "train_id = '69'" in compiled
+    assert "train_id LIKE '69-%'" in compiled
+    assert "train_id LIKE '69%'" not in compiled
+
+
+@pytest.mark.asyncio
 async def test_create_scheduled_journeys_with_recent_stops(pattern_scheduler):
     """SCHEDULED journeys use a stable stop list from multiple recent runs."""
     target_date = date(2024, 1, 25)
@@ -435,8 +518,13 @@ def test_consensus_stop_templates_canonicalize_amtrak_station_aliases(
 
 
 @pytest.mark.asyncio
-async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
-    """Test fallback to origin-only stop when no recent OBSERVED journey exists."""
+async def test_create_scheduled_journeys_skips_when_no_consensus(pattern_scheduler):
+    """When consensus can't infer a route, no SCHEDULED record is created.
+
+    An origin-only journey would mislead users: the train shows up under the
+    origin station's departures but its detail view exposes no destination.
+    Discovery will create an OBSERVED record once the train appears live.
+    """
     target_date = date(2024, 1, 25)
 
     patterns = [
@@ -469,15 +557,7 @@ async def test_create_scheduled_journeys_fallback_no_recent(pattern_scheduler):
             patterns, target_date
         )
 
-        assert len(scheduled_journeys) == 1
-        stops = scheduled_journeys[0]["stops"]
-
-        # Falls back to single origin stop
-        assert len(stops) == 1
-        assert stops[0].station_code == "NYP"
-        assert stops[0].scheduled_departure == ET.localize(
-            datetime.combine(target_date, time(10, 0))
-        )
+        assert scheduled_journeys == []
 
 
 @pytest.mark.asyncio
@@ -645,11 +725,13 @@ async def test_save_scheduled_journeys_update_replaces_stops(pattern_scheduler):
     with patch(
         "trackrat.services.amtrak_pattern_scheduler.get_session"
     ) as mock_session:
-        # Mock finding an existing SCHEDULED journey
+        # Mock finding an existing SCHEDULED journey with the same stop count
+        # so the downgrade guard does not skip the update.
         existing_journey = MagicMock()
         existing_journey.id = 42
         existing_journey.observation_type = "SCHEDULED"
         existing_journey.update_count = 1
+        existing_journey.stops_count = 3
 
         mock_select_result = MagicMock()
         mock_select_result.scalar_one_or_none.return_value = existing_journey
@@ -683,6 +765,182 @@ async def test_save_scheduled_journeys_update_replaces_stops(pattern_scheduler):
         # Verify journey metadata was updated
         assert existing_journey.stops_count == 3
         assert existing_journey.update_count == 2
+
+
+@pytest.mark.asyncio
+async def test_save_scheduled_journeys_refuses_to_downgrade_existing(pattern_scheduler):
+    """Existing multi-stop SCHEDULED records must not be replaced with fewer stops.
+
+    A consensus pass that suddenly produces a smaller stop set (e.g., one bad
+    sample run shrinks the intersection) would otherwise wipe a previously-good
+    schedule. The save guard skips the update and leaves the existing record
+    untouched.
+    """
+    journey = TrainJourney(
+        train_id="2150",
+        journey_date=date(2024, 1, 25),
+        data_source="AMTRAK",
+        observation_type="SCHEDULED",
+        origin_station_code="NYP",
+        terminal_station_code="WAS",
+        destination="Washington",
+        line_name="Regional",
+        line_code="AM",
+        scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        has_complete_journey=False,
+        stops_count=1,
+    )
+
+    # Only the origin stop in the new payload — i.e. consensus shrank
+    stops = [
+        JourneyStop(
+            journey=journey,
+            station_code="NYP",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        ),
+    ]
+
+    scheduled_journeys = [
+        {
+            "journey": journey,
+            "stops": stops,
+            "pattern_info": {
+                "occurrences": 3,
+                "variance_minutes": 2.5,
+                "sample_dates": ["2024-01-18"],
+            },
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        # Existing SCHEDULED record already has 3 stops
+        existing_journey = MagicMock()
+        existing_journey.id = 42
+        existing_journey.observation_type = "SCHEDULED"
+        existing_journey.update_count = 1
+        existing_journey.stops_count = 3
+
+        mock_select_result = MagicMock()
+        mock_select_result.scalar_one_or_none.return_value = existing_journey
+        mock_execute = AsyncMock(return_value=mock_select_result)
+
+        mock_add = MagicMock()
+        mock_flush = AsyncMock()
+        mock_commit = AsyncMock()
+
+        session_mock = mock_session.return_value.__aenter__.return_value
+        session_mock.execute = mock_execute
+        session_mock.add = mock_add
+        session_mock.flush = mock_flush
+        session_mock.commit = mock_commit
+
+        stats = await pattern_scheduler.save_scheduled_journeys(scheduled_journeys)
+
+        assert stats["created"] == 0
+        assert stats["updated"] == 0
+        assert stats["skipped"] == 1
+        assert stats["errors"] == 0
+
+        # Only the SELECT ran — no DELETE, no re-insert
+        assert mock_execute.call_count == 1
+        assert mock_add.call_count == 0
+
+        # Existing record is untouched
+        assert existing_journey.stops_count == 3
+        assert existing_journey.update_count == 1
+
+
+@pytest.mark.asyncio
+async def test_save_scheduled_journeys_skips_when_already_observed(pattern_scheduler):
+    """Discovery may flip the row to OBSERVED between create_scheduled_journeys
+    and save_scheduled_journeys. The save must not try to re-insert a SCHEDULED
+    row for the same (train_id, journey_date, AMTRAK) — the unique constraint
+    ignores observation_type, so an INSERT would raise IntegrityError and be
+    counted as an error. Instead, treat the existing OBSERVED row as authoritative
+    and skip.
+    """
+    journey = TrainJourney(
+        train_id="2150",
+        journey_date=date(2024, 1, 25),
+        data_source="AMTRAK",
+        observation_type="SCHEDULED",
+        origin_station_code="NYP",
+        terminal_station_code="WAS",
+        destination="Washington",
+        line_name="Regional",
+        line_code="AM",
+        scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        has_complete_journey=False,
+        stops_count=1,
+    )
+
+    stops = [
+        JourneyStop(
+            journey=journey,
+            station_code="NYP",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=datetime(2024, 1, 25, 15, 5),
+        ),
+    ]
+
+    scheduled_journeys = [
+        {
+            "journey": journey,
+            "stops": stops,
+            "pattern_info": {
+                "occurrences": 3,
+                "variance_minutes": 2.5,
+                "sample_dates": ["2024-01-18"],
+            },
+        }
+    ]
+
+    with patch(
+        "trackrat.services.amtrak_pattern_scheduler.get_session"
+    ) as mock_session:
+        # Discovery flipped the row to OBSERVED between create and save.
+        existing_journey = MagicMock()
+        existing_journey.id = 42
+        existing_journey.observation_type = "OBSERVED"
+        existing_journey.update_count = 5
+        existing_journey.stops_count = 12
+
+        mock_select_result = MagicMock()
+        mock_select_result.scalar_one_or_none.return_value = existing_journey
+        mock_execute = AsyncMock(return_value=mock_select_result)
+
+        mock_add = MagicMock()
+        mock_flush = AsyncMock()
+        mock_commit = AsyncMock()
+
+        session_mock = mock_session.return_value.__aenter__.return_value
+        session_mock.execute = mock_execute
+        session_mock.add = mock_add
+        session_mock.flush = mock_flush
+        session_mock.commit = mock_commit
+
+        stats = await pattern_scheduler.save_scheduled_journeys(scheduled_journeys)
+
+        # Skipped — not created, not updated, not counted as an error
+        assert stats["created"] == 0
+        assert stats["updated"] == 0
+        assert stats["skipped"] == 1
+        assert stats["errors"] == 0
+
+        # Only the SELECT ran — no INSERT, no DELETE, no flush per-item
+        assert mock_execute.call_count == 1
+        assert mock_add.call_count == 0
+        assert mock_flush.call_count == 0
+
+        # Existing OBSERVED row is untouched
+        assert existing_journey.observation_type == "OBSERVED"
+        assert existing_journey.stops_count == 12
+        assert existing_journey.update_count == 5
 
 
 @pytest.mark.asyncio

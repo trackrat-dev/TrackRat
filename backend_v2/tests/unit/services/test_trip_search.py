@@ -44,6 +44,7 @@ from trackrat.services.trip_search import (
     _make_direct_trip,
     _orient_transfer,
     _rank_transfer_points,
+    _systems_for_station,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -1143,6 +1144,79 @@ class TestTransferPointSymmetryIntegration:
         )
 
 
+class TestSystemsForStation:
+    """Verify _systems_for_station's hybrid lookup behavior.
+
+    Native codes (codes that appear in a route topology) must return only
+    their native systems — expanding cross-modal equivalence groups would
+    defeat the cross-system direct-trip filter (#1121).  Alias-only codes
+    (codes that are not in any route topology) fall back to expansion so
+    they still resolve to the canonical station's systems.
+    """
+
+    def test_native_code_returns_native_systems_only(self):
+        """S128 (subway) is in subway routes, so expansion must NOT add NJT/AMTRAK/LIRR.
+
+        S128 is in equivalence group {NY, S128, SA28}. Without the alias-only
+        guard, expansion would union systems from NY, polluting the subway
+        code's set with commuter-rail systems and breaking the
+        cross-system direct filter for TR↔S128 etc.
+        """
+        assert _systems_for_station("S128") == {"SUBWAY"}
+
+    def test_native_code_with_cross_modal_equivalence_unaffected(self):
+        """NY (Penn) is shared by NJT/AMTRAK/LIRR; expansion would add SUBWAY.
+
+        We want exactly the systems whose routes call at NY, not the systems
+        of the equivalent subway codes (S128, SA28).
+        """
+        assert _systems_for_station("NY") == {"NJT", "AMTRAK", "LIRR"}
+
+    def test_non_subway_code_includes_sibling_rail_systems(self):
+        """NP (Newark Penn Station) is served natively by NJT/AMTRAK; its
+        equivalent PNK is served by PATH at the same physical building.
+
+        For non-subway station codes we include sibling systems from the
+        equivalence group so a search NP→PWC surfaces direct PATH trains
+        (issue #1172).  SUBWAY is still excluded from the cross-modal
+        expansion of non-subway codes (preserves the #1121 filter).
+        """
+        assert _systems_for_station("NP") == {"NJT", "AMTRAK", "PATH"}
+        # And symmetrically: PNK should see NJT/AMTRAK from its NP equivalent.
+        assert _systems_for_station("PNK") == {"NJT", "AMTRAK", "PATH"}
+
+    def test_alias_only_code_falls_back_to_expansion(self):
+        """TS (Secaucus Lower Level) is alias-only and must resolve to NJT via SE."""
+        # Precondition: TS is genuinely alias-only.
+        assert get_systems_serving_station("TS") == set()
+        # Fallback expansion picks up SE → NJT.
+        assert "NJT" in _systems_for_station("TS")
+
+    def test_unknown_code_returns_empty(self):
+        """A completely unknown code returns empty (no native, no expansion)."""
+        assert _systems_for_station("ZZZZ_NOT_A_STATION") == set()
+
+    def test_amtrak_mnr_shared_station_includes_both(self):
+        """Stations shared between Amtrak and Metro-North (e.g. New Rochelle)
+        should surface both systems regardless of which code the user picks.
+        """
+        assert _systems_for_station("NRO") == {"AMTRAK", "MNR"}
+        assert _systems_for_station("MNRC") == {"AMTRAK", "MNR"}
+
+    def test_np_pwc_direct_filter_keeps_path_trips(self):
+        """End-to-end check for issue #1172: a PATH train NP→PWC must survive
+        _filter_cross_system_direct_trips so the user sees direct PATH service
+        from Newark Penn Station to World Trade Center / Grove Street.
+        """
+        from_sys = _systems_for_station("NP")
+        to_sys = _systems_for_station("PWC")
+        valid = from_sys & to_sys
+        assert "PATH" in valid, (
+            f"PATH should be a valid direct system for NP→PWC. "
+            f"from_systems={from_sys}, to_systems={to_sys}"
+        )
+
+
 class TestFilterCrossSystemDirectTrips:
     """Test filtering of direct trips that matched only via station equivalence expansion.
 
@@ -1322,9 +1396,9 @@ class TestFilterCrossSystemDirectTrips:
         expanded_systems: set[str] = set()
         for code in expand_station_codes("TS"):
             expanded_systems |= get_systems_serving_station(code)
-        assert "NJT" in expanded_systems, (
-            f"TS should resolve to NJT via SE expansion, got {expanded_systems}"
-        )
+        assert (
+            "NJT" in expanded_systems
+        ), f"TS should resolve to NJT via SE expansion, got {expanded_systems}"
 
         # NJT trip from TS to TR should be kept when using expanded systems
         trips = [self._make_trip_with_source("NJT")]

@@ -4,6 +4,7 @@ import SwiftUI
 enum SettingsDestination: Hashable {
     case tripHistory
     case advancedConfiguration
+    case trainSystem(TrainSystem)
 }
 
 struct SettingsView: View {
@@ -15,6 +16,7 @@ struct SettingsView: View {
     var editTrainSystems: Bool = false
 
     @State private var showingPaywall = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
 
@@ -87,6 +89,14 @@ struct SettingsView: View {
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
                         paywallContext: $paywallContext,
+                        onReportIssue: {
+                            feedbackRequest = FeedbackSheetRequest(
+                                screen: "settings",
+                                trainId: nil,
+                                originCode: nil,
+                                destinationCode: nil
+                            )
+                        },
                         showDebugSections: showDebugSections,
                         initialEditTrainSystems: editTrainSystems
                     )
@@ -102,7 +112,14 @@ struct SettingsView: View {
                         TripHistoryView()
                     case .advancedConfiguration:
                         AdvancedConfigurationView()
+                    case .trainSystem(let system):
+                        TrainSystemDetailView(system: system)
                     }
+                }
+            }
+            .navigationDestination(for: NavigationDestination.self) { destination in
+                if case .stationDetails(let stationCode) = destination {
+                    StationDetailsView(stationCode: stationCode)
                 }
             }
             .navigationBarHidden(true)
@@ -111,6 +128,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showingPaywall) {
             PaywallView(context: paywallContext)
         }
+        .feedbackSheet(request: $feedbackRequest)
         .interactiveDismissDisabled(appState.selectedSystems.isEmpty)
     }
 
@@ -134,6 +152,7 @@ struct SettingsSection: View {
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
     @Binding var paywallContext: PaywallContext
+    let onReportIssue: () -> Void
     var showDebugSections: Bool
     var initialEditTrainSystems: Bool = false
     @State private var isEditingTrainSystems = false
@@ -146,7 +165,6 @@ struct SettingsSection: View {
     @State private var selectedSubscription: RouteAlertSubscription?
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var ratSense = RatSenseService.shared
-    @State private var showingFeedbackSheet = false
 
     private enum FavoriteStationRole {
         case home, work, other
@@ -237,12 +255,15 @@ struct SettingsSection: View {
 
                         VStack(spacing: 0) {
                             ForEach(selectedSystems, id: \.self) { system in
-                                TrainSystemRow(
-                                    system: system,
-                                    isSelected: true,
-                                    isLast: system == selectedSystems.last,
-                                    showControls: false
-                                ) {}
+                                NavigationLink(value: SettingsDestination.trainSystem(system)) {
+                                    TrainSystemRow(
+                                        system: system,
+                                        isSelected: true,
+                                        isLast: system == selectedSystems.last,
+                                        showControls: false
+                                    ) {}
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -419,6 +440,7 @@ struct SettingsSection: View {
                         }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
+                    .stationDetailsContextMenu(code: ratSense.getHomeStation(), path: $navigationPath)
 
                     // Work Station
                     FavoriteStationRow(
@@ -440,6 +462,7 @@ struct SettingsSection: View {
                         }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
+                    .stationDetailsContextMenu(code: ratSense.getWorkStation(), path: $navigationPath)
 
                     // Other favorites
                     let homeCode = ratSense.getHomeStation()
@@ -451,13 +474,12 @@ struct SettingsSection: View {
                         FavoriteStationRow(
                             label: nil,
                             stationCode: fav.id,
-                            isLast: fav.id == otherFavorites.last?.id && appState.favoriteStations.count >= 10
-                        ) {
-                            // Tap does nothing for "other" favorites — they're just listed
-                        } onClear: {
-                            appState.removeFavoriteStation(code: fav.id)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
+                            isLast: fav.id == otherFavorites.last?.id && appState.favoriteStations.count >= 10,
+                            onClear: {
+                                appState.removeFavoriteStation(code: fav.id)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        )
                     }
 
                     if appState.favoriteStations.count < 10 {
@@ -494,31 +516,40 @@ struct SettingsSection: View {
                             $0.id != homeCode && $0.id != workCode
                         }
 
-                        if homeCode != nil {
-                            FavoriteStationRow(
-                                label: "Home",
-                                stationCode: homeCode,
-                                isLast: workCode == nil && otherFavorites.isEmpty,
-                                showControls: false
-                            )
+                        if let homeCode {
+                            NavigationLink(value: NavigationDestination.stationDetails(stationCode: homeCode)) {
+                                FavoriteStationRow(
+                                    label: "Home",
+                                    stationCode: homeCode,
+                                    isLast: workCode == nil && otherFavorites.isEmpty,
+                                    showControls: false
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
 
-                        if workCode != nil {
-                            FavoriteStationRow(
-                                label: "Work",
-                                stationCode: workCode,
-                                isLast: otherFavorites.isEmpty,
-                                showControls: false
-                            )
+                        if let workCode {
+                            NavigationLink(value: NavigationDestination.stationDetails(stationCode: workCode)) {
+                                FavoriteStationRow(
+                                    label: "Work",
+                                    stationCode: workCode,
+                                    isLast: otherFavorites.isEmpty,
+                                    showControls: false
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         ForEach(otherFavorites) { fav in
-                            FavoriteStationRow(
-                                label: nil,
-                                stationCode: fav.id,
-                                isLast: fav.id == otherFavorites.last?.id,
-                                showControls: false
-                            )
+                            NavigationLink(value: NavigationDestination.stationDetails(stationCode: fav.id)) {
+                                FavoriteStationRow(
+                                    label: nil,
+                                    stationCode: fav.id,
+                                    isLast: fav.id == otherFavorites.last?.id,
+                                    showControls: false
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         if appState.favoriteStations.isEmpty {
@@ -542,20 +573,22 @@ struct SettingsSection: View {
             // Report an Issue
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingFeedbackSheet = true
+                onReportIssue()
             } label: {
-                HStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.bubble.fill")
-                        .font(.title2)
-                        .foregroundColor(.orange)
-                        .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.bubble.fill")
+                            .font(.title2)
+                            .foregroundColor(.orange)
+                            .frame(width: 24, height: 24)
 
-                    Text("Report an Issue")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundColor(.white)
+                        Text("Report an Issue")
+                            .font(.headline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
 
-                    Spacer()
+                        Spacer()
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity)
@@ -565,14 +598,6 @@ struct SettingsSection: View {
                 )
             }
             .buttonStyle(.plain)
-            .sheet(isPresented: $showingFeedbackSheet) {
-                FeedbackSheet(
-                    screen: "settings",
-                    trainId: nil,
-                    originCode: nil,
-                    destinationCode: nil
-                )
-            }
 
             // GitHub
             Button {
@@ -750,6 +775,12 @@ struct SettingsSection: View {
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+            } else if sub.isSystemWide, let system = TrainSystem(rawValue: sub.dataSource) {
+                NavigationStack {
+                    TrainSystemDetailView(system: system)
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             } else {
                 RouteStatusView(context: routeStatusContext(for: sub))
                     .presentationDetents([.large])
@@ -847,6 +878,10 @@ private struct FavoriteStationRow: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // In edit mode, labelled Home/Work rows tap to repick; unlabelled
+            // rows are inert (the X-button clears them). In display mode the
+            // row renders inert content and the caller wraps it in a
+            // NavigationLink so the whole row pushes StationDetailsView.
             HStack(spacing: 12) {
                 if showControls && label != nil {
                     Button(action: onTap) {
@@ -867,10 +902,15 @@ private struct FavoriteStationRow: View {
                             .foregroundColor(.white.opacity(0.3))
                     }
                     .buttonStyle(.plain)
+                } else if !showControls && stationCode != nil {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
             .padding(.horizontal)
             .padding(.vertical, 10)
+            .contentShape(Rectangle())
 
             if !isLast {
                 Divider()
@@ -920,6 +960,10 @@ private struct RouteAlertRow: View {
                             .foregroundColor(.white.opacity(0.3))
                     }
                     .buttonStyle(.plain)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
             .padding(.horizontal)
@@ -1266,6 +1310,10 @@ private struct TrainSystemRow: View {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.body)
                         .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(.white.opacity(0.4))
                 }
             }
             .padding(.horizontal)

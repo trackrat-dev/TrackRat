@@ -20,6 +20,7 @@ enum NavigationDestination: Hashable {
     case congestionMap
     case favoriteStations
     case tripHistory
+    case stationDetails(stationCode: String)
 }
 
 #Preview {

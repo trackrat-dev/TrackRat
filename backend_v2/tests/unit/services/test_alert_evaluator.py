@@ -409,6 +409,38 @@ class TestAlertEvaluator:
         count = await evaluate_route_alerts(db_session, apns)
         assert count == 1
 
+    async def test_station_pair_matches_equivalent_origin_destination(
+        self, db_session: AsyncSession
+    ):
+        """Station-pair subscriptions should honor station equivalence groups."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            data_source="PATH",
+            from_station="HB",
+            to_station="P33",
+        )
+        _make_journey(
+            db_session,
+            train_id="PATH_PHO_P33_1001",
+            data_source="PATH",
+            line_code="HOB-33",
+            origin="PHO",
+            terminal="P33",
+            is_cancelled=True,
+            minutes_ago=20,
+        )
+        await db_session.flush()
+
+        count = await evaluate_route_alerts(db_session, apns)
+        assert count == 1
+        apns.send_alert_notification.assert_called_once()
+        call_kwargs = apns.send_alert_notification.call_args.kwargs
+        route_alert = call_kwargs["custom_data"]["route_alert"]
+        assert route_alert["data_source"] == "PATH"
+        assert route_alert["from_station_code"] == "HB"
+        assert route_alert["to_station_code"] == "P33"
+
     async def test_custom_data_includes_route_alert_metadata(
         self, db_session: AsyncSession
     ):

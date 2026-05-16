@@ -16,12 +16,10 @@ struct RouteStatusView: View {
     @State private var draftSubscription: RouteAlertSubscription?
 
     @State private var showingPaywall = false
+    @State private var feedbackRequest: FeedbackSheetRequest?
 
     /// Selected history time period for the segmented picker.
     @State private var selectedHistoryPeriod: HistoryPeriod = .hour
-
-    /// Selected service alert filter (active vs upcoming).
-    @State private var selectedAlertFilter: ServiceAlertFilter = .active
 
     /// Preferred highlight mode derived from this route's data source
     private var preferredMode: SegmentHighlightMode {
@@ -58,6 +56,14 @@ struct RouteStatusView: View {
                     departuresSection
                     serviceAlertsSection
                     alertSubscriptionSection
+                    FeedbackButton(
+                        screen: "route_status",
+                        trainId: nil,
+                        originCode: context.fromStationCode,
+                        destinationCode: context.toStationCode,
+                        onRequest: { feedbackRequest = $0 }
+                    )
+                    .padding(.top, 8)
                 }
                 .padding()
                 .animation(.easeInOut(duration: 0.3), value: viewModel.filterLoaded)
@@ -80,6 +86,13 @@ struct RouteStatusView: View {
                                 fromStationCode: context.toStationCode,
                                 toStationCode: context.fromStationCode
                             )
+                            // Persist pending edits before switching direction
+                            for (_, edited) in editedSubscriptions {
+                                alertService.updateSubscription(edited)
+                            }
+                            if !editedSubscriptions.isEmpty {
+                                alertService.syncIfPossible()
+                            }
                             editedSubscriptions = [:]
                             draftSubscription = nil
                             Task { await viewModel.replaceContext(reversed, historyPeriod: selectedHistoryPeriod) }
@@ -95,24 +108,19 @@ struct RouteStatusView: View {
                     }
                 }
             }
-            .task {
+            .task(id: "\(context.fromStationCode ?? "")-\(context.toStationCode ?? "")") {
                 // Initialize draft subscription for alert config if not yet subscribed
-                if matchingSubscriptions.isEmpty && draftSubscription == nil {
-                    if let from = context.fromStationCode, let to = context.toStationCode {
-                        draftSubscription = RouteAlertSubscription(
-                            dataSource: context.dataSource,
-                            fromStationCode: from,
-                            toStationCode: to,
-                            activeDays: 0
-                        )
-                    } else if context.lineId == nil {
-                        // System-wide context
-                        draftSubscription = RouteAlertSubscription(
-                            dataSource: context.dataSource,
-                            activeDays: 0
-                        )
-                    }
+                if matchingSubscriptions.isEmpty && draftSubscription == nil,
+                   let from = context.fromStationCode, let to = context.toStationCode {
+                    draftSubscription = RouteAlertSubscription(
+                        dataSource: context.dataSource,
+                        fromStationCode: from,
+                        toStationCode: to,
+                        activeDays: 0
+                    )
                 }
+            }
+            .task {
                 await viewModel.loadData(initialPeriod: selectedHistoryPeriod)
             }
             .onDisappear {
@@ -139,19 +147,15 @@ struct RouteStatusView: View {
             .sheet(isPresented: $showingPaywall) {
                 PaywallView(context: .routeAlerts)
             }
+            .feedbackSheet(request: $feedbackRequest)
         }
     }
 
     // MARK: - Alert Subscription Section
 
-    /// Whether this context represents a system-wide subscription (no line or stations).
-    private var isSystemWideContext: Bool {
-        context.lineId == nil && context.fromStationCode == nil && context.toStationCode == nil
-    }
-
     @ViewBuilder
     private var alertSubscriptionSection: some View {
-        if context.fromStationCode != nil && context.toStationCode != nil || isSystemWideContext {
+        if context.fromStationCode != nil && context.toStationCode != nil {
             AlertConfigurationSection(subscription: alertConfigBinding)
                 .onChange(of: alertConfigBinding.wrappedValue.activeDays) { _, newDays in
                     handleActiveDaysChange(newDays)
@@ -174,18 +178,12 @@ struct RouteStatusView: View {
             return Binding(
                 get: {
                     // Draft is initialized in .task; fallback should never be needed
-                    if let draft = draftSubscription {
-                        return draft
-                    } else if isSystemWideContext {
-                        return RouteAlertSubscription(dataSource: context.dataSource, activeDays: 0)
-                    } else {
-                        return RouteAlertSubscription(
-                            dataSource: context.dataSource,
-                            fromStationCode: context.fromStationCode ?? "",
-                            toStationCode: context.toStationCode ?? "",
-                            activeDays: 0
-                        )
-                    }
+                    draftSubscription ?? RouteAlertSubscription(
+                        dataSource: context.dataSource,
+                        fromStationCode: context.fromStationCode ?? "",
+                        toStationCode: context.toStationCode ?? "",
+                        activeDays: 0
+                    )
                 },
                 set: { draftSubscription = $0 }
             )
@@ -194,12 +192,7 @@ struct RouteStatusView: View {
 
     /// Handle active days changes: auto-subscribe when going non-zero, auto-unsubscribe when zero.
     private func handleActiveDaysChange(_ newDays: Int) {
-        let from = context.fromStationCode
-        let to = context.toStationCode
-        let isSystemWide = isSystemWideContext
-
-        // Need either a station pair or system-wide context
-        guard (from != nil && to != nil) || isSystemWide else { return }
+        guard let from = context.fromStationCode, let to = context.toStationCode else { return }
 
         if newDays > 0 && !isSubscribed {
             // Check freemium limit before auto-subscribing
@@ -211,52 +204,29 @@ struct RouteStatusView: View {
                 return
             }
             // Auto-subscribe
-            let sub: RouteAlertSubscription
-            if isSystemWide {
-                let template = draftSubscription ?? RouteAlertSubscription(
-                    dataSource: context.dataSource,
-                    activeDays: newDays
-                )
-                sub = RouteAlertSubscription(
-                    dataSource: template.dataSource,
-                    activeDays: newDays,
-                    activeStartMinutes: template.activeStartMinutes,
-                    activeEndMinutes: template.activeEndMinutes,
-                    timezone: template.timezone,
-                    delayThresholdMinutes: template.delayThresholdMinutes,
-                    serviceThresholdPct: template.serviceThresholdPct,
-                    cancellationThresholdPct: template.cancellationThresholdPct,
-                    notifyCancellation: template.notifyCancellation,
-                    notifyDelay: template.notifyDelay,
-                    notifyRecovery: template.notifyRecovery,
-                    digestTimeMinutes: template.digestTimeMinutes,
-                    includePlannedWork: template.includePlannedWork
-                )
-            } else {
-                let template = draftSubscription ?? RouteAlertSubscription(
-                    dataSource: context.dataSource,
-                    fromStationCode: from!,
-                    toStationCode: to!,
-                    activeDays: newDays
-                )
-                sub = RouteAlertSubscription(
-                    dataSource: template.dataSource,
-                    fromStationCode: from!,
-                    toStationCode: to!,
-                    activeDays: newDays,
-                    activeStartMinutes: template.activeStartMinutes,
-                    activeEndMinutes: template.activeEndMinutes,
-                    timezone: template.timezone,
-                    delayThresholdMinutes: template.delayThresholdMinutes,
-                    serviceThresholdPct: template.serviceThresholdPct,
-                    cancellationThresholdPct: template.cancellationThresholdPct,
-                    notifyCancellation: template.notifyCancellation,
-                    notifyDelay: template.notifyDelay,
-                    notifyRecovery: template.notifyRecovery,
-                    digestTimeMinutes: template.digestTimeMinutes,
-                    includePlannedWork: template.includePlannedWork
-                )
-            }
+            let template = draftSubscription ?? RouteAlertSubscription(
+                dataSource: context.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: newDays
+            )
+            let sub = RouteAlertSubscription(
+                dataSource: template.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: newDays,
+                activeStartMinutes: template.activeStartMinutes,
+                activeEndMinutes: template.activeEndMinutes,
+                timezone: template.timezone,
+                delayThresholdMinutes: template.delayThresholdMinutes,
+                serviceThresholdPct: template.serviceThresholdPct,
+                cancellationThresholdPct: template.cancellationThresholdPct,
+                notifyCancellation: template.notifyCancellation,
+                notifyDelay: template.notifyDelay,
+                notifyRecovery: template.notifyRecovery,
+                digestTimeMinutes: template.digestTimeMinutes,
+                includePlannedWork: template.includePlannedWork
+            )
             alertService.addSubscriptions([sub])
             draftSubscription = nil
             alertService.syncIfPossible()
@@ -267,19 +237,12 @@ struct RouteStatusView: View {
                 alertService.removeSubscription(sub)
             }
             editedSubscriptions.removeAll()
-            if isSystemWide {
-                draftSubscription = RouteAlertSubscription(
-                    dataSource: context.dataSource,
-                    activeDays: 0
-                )
-            } else {
-                draftSubscription = RouteAlertSubscription(
-                    dataSource: context.dataSource,
-                    fromStationCode: from!,
-                    toStationCode: to!,
-                    activeDays: 0
-                )
-            }
+            draftSubscription = RouteAlertSubscription(
+                dataSource: context.dataSource,
+                fromStationCode: from,
+                toStationCode: to,
+                activeDays: 0
+            )
             alertService.syncIfPossible()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
@@ -439,7 +402,7 @@ struct RouteStatusView: View {
     private var operationsSummarySection: some View {
         if preferredMode != .health {
             OperationsSummaryView(
-                scope: isSystemWideContext ? .network : .route,
+                scope: .route,
                 fromStation: context.effectiveFromStation,
                 toStation: context.effectiveToStation
             )
@@ -453,42 +416,7 @@ struct RouteStatusView: View {
         if viewModel.isLoadingServiceAlerts && viewModel.hasServiceAlertSystems {
             // No skeleton for service alerts — they appear when ready
         } else if viewModel.hasServiceAlertSystems {
-            let activeAlerts = viewModel.serviceAlerts
-                .filter { $0.isActiveNow }
-                .sorted { $0.earliestStartEpoch < $1.earliestStartEpoch }
-            let upcomingAlerts = viewModel.serviceAlerts
-                .filter { !$0.isActiveNow }
-                .sorted { $0.earliestStartEpoch < $1.earliestStartEpoch }
-            let filteredAlerts = selectedAlertFilter == .active ? activeAlerts : upcomingAlerts
-
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Service Alerts")
-                        .font(.headline)
-                    Spacer()
-                    Picker("", selection: $selectedAlertFilter) {
-                        ForEach(ServiceAlertFilter.allCases, id: \.self) { filter in
-                            Text(filter.label(activeCount: activeAlerts.count, upcomingCount: upcomingAlerts.count)).tag(filter)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 220)
-                }
-
-                if filteredAlerts.isEmpty {
-                    Text(selectedAlertFilter == .active ? "No active alerts" : "No upcoming alerts")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 8)
-                } else {
-                    ForEach(filteredAlerts) { alert in
-                        ServiceAlertCard(alert: alert)
-                    }
-                }
-            }
-            .padding()
-            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+            ServiceAlertsSection(alerts: viewModel.serviceAlerts)
         }
     }
 
@@ -837,99 +765,12 @@ enum HistoryPeriod: CaseIterable {
     }
 }
 
-// MARK: - Service Alert Filter
-
-enum ServiceAlertFilter: CaseIterable {
-    case active, upcoming
-
-    func label(activeCount: Int, upcomingCount: Int) -> String {
-        switch self {
-        case .active: return "Active (\(activeCount))"
-        case .upcoming: return "Upcoming (\(upcomingCount))"
-        }
-    }
-}
-
-// MARK: - Service Alert Card
-
-private struct ServiceAlertCard: View {
-    let alert: V2ServiceAlert
-    @State private var isExpanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(alert.alertTypeLabel.uppercased())
-                    .font(.caption2.bold())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(alertTypeColor.opacity(0.2)))
-                    .foregroundColor(alertTypeColor)
-
-                if alert.isActiveNow && !alert.activePeriods.isEmpty {
-                    Text("ACTIVE NOW")
-                        .font(.caption2.bold())
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.green.opacity(0.2)))
-                        .foregroundColor(.green)
-                }
-
-                Spacer()
-            }
-
-            if let periodText = alert.activePeriodText {
-                HStack(spacing: 4) {
-                    Image(systemName: "calendar")
-                        .font(.caption2)
-                    Text(periodText)
-                        .font(.caption)
-                    if alert.additionalPeriodCount > 0 {
-                        Text("(+\(alert.additionalPeriodCount) more)")
-                            .font(.caption)
-                    }
-                }
-                .foregroundColor(.secondary)
-            }
-
-            Text(alert.headerText)
-                .font(.subheadline)
-                .foregroundColor(.primary)
-
-            if let description = alert.descriptionText, !description.isEmpty {
-                Text(description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(isExpanded ? nil : 3)
-
-                if description.count > 120 {
-                    Button(isExpanded ? "Show Less" : "Show More") {
-                        withAnimation { isExpanded.toggle() }
-                    }
-                    .font(.caption.bold())
-                    .foregroundColor(.orange)
-                }
-            }
-        }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    private var alertTypeColor: Color {
-        switch alert.alertType {
-        case "planned_work": return .yellow
-        case "alert": return .red
-        case "elevator": return .blue
-        default: return .orange
-        }
-    }
-}
-
 // MARK: - Now Divider
 
 /// Thin orange hairline with a centered "NOW · h:mm a" pill, used to separate past and
-/// future rows in the unified Departures section. Updates each minute.
-private struct NowDivider: View {
+/// future rows in the unified Departures section. Updates each minute. Shared with
+/// `StationDetailsView`.
+struct NowDivider: View {
     @State private var now: Date = Date()
     private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
@@ -951,85 +792,6 @@ private struct NowDivider: View {
         }
         .padding(.vertical, 2)
         .onReceive(timer) { now = $0 }
-    }
-}
-
-// MARK: - Train Row
-
-private struct TrainRow: View {
-    let train: TrainV2
-    let dataSource: String
-
-    /// Whether this transit system uses synthetic train IDs (e.g., subway, PATCO)
-    private var useSyntheticId: Bool {
-        TrainSystem.syntheticTrainIdSources.contains(dataSource)
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Line color indicator
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: train.line.color))
-                .frame(width: 4, height: 40)
-
-            VStack(alignment: .leading, spacing: 2) {
-                if useSyntheticId {
-                    Text(train.line.name)
-                        .font(.subheadline.bold())
-                } else {
-                    Text("Train \(train.trainId)")
-                        .font(.subheadline.bold())
-                }
-                HStack(spacing: 8) {
-                    if let track = train.track, !track.isEmpty {
-                        Text("Track \(track)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    if train.isCancelled {
-                        Text("Cancelled")
-                            .font(.caption.bold())
-                            .foregroundColor(.red)
-                    }
-                }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(departureTimeString)
-                    .font(.subheadline.bold())
-                delayBadge
-            }
-        }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 10)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    private var departureTimeString: String {
-        guard let time = train.departure.updatedTime ?? train.departure.scheduledTime else {
-            return "--"
-        }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        formatter.timeZone = TimeZone(identifier: "America/New_York")
-        return formatter.string(from: time)
-    }
-
-    @ViewBuilder
-    private var delayBadge: some View {
-        if train.isCancelled {
-            EmptyView()
-        } else if train.departure.delayMinutes > 0 {
-            Text("+\(train.departure.delayMinutes)m")
-                .font(.caption.bold())
-                .foregroundColor(.red)
-        } else {
-            Text("On Time")
-                .font(.caption)
-                .foregroundColor(.green)
-        }
     }
 }
 
@@ -1063,13 +825,10 @@ final class RouteStatusViewModel: ObservableObject {
     // History overall loading state (true until first period loads)
     @Published var isLoadingHistory = true
 
-    /// Data sources that have service alert data
-    private static let serviceAlertSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
-
-    /// Whether this route involves any systems that support service alerts
+    /// Whether this route involves any systems that publish a service-alerts feed
     var hasServiceAlertSystems: Bool {
         let systems = enabledSystems.isEmpty ? Set([context.dataSource]) : enabledSystems
-        return !systems.isDisjoint(with: Self.serviceAlertSystems)
+        return !systems.isDisjoint(with: TrainSystem.serviceAlertFeedSources)
     }
 
     // History state — keyed by system for stacked display
@@ -1391,13 +1150,9 @@ final class RouteStatusViewModel: ObservableObject {
                             maxPerSegment: 100,
                             dataSource: system
                         )
-                        if routeStationCodes.isEmpty {
-                            return response.aggregatedSegments
-                        } else {
-                            return response.aggregatedSegments.filter { segment in
-                                routeStationCodes.contains(segment.fromStation.uppercased()) &&
-                                routeStationCodes.contains(segment.toStation.uppercased())
-                            }
+                        return response.aggregatedSegments.filter { segment in
+                            routeStationCodes.contains(segment.fromStation.uppercased()) &&
+                            routeStationCodes.contains(segment.toStation.uppercased())
                         }
                     } catch {
                         return []
@@ -1475,7 +1230,7 @@ final class RouteStatusViewModel: ObservableObject {
 
         await withTaskGroup(of: [V2ServiceAlert].self) { group in
             for system in systemsToFetch {
-                guard Self.serviceAlertSystems.contains(system) else { continue }
+                guard TrainSystem.serviceAlertFeedSources.contains(system) else { continue }
                 group.addTask {
                     do {
                         let alerts = try await APIService.shared.fetchServiceAlerts(dataSource: system)

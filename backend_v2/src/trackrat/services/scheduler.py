@@ -38,7 +38,7 @@ from trackrat.services.alert_evaluator import (
     evaluate_service_alerts,
 )
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
-from trackrat.services.apns import SimpleAPNSService
+from trackrat.services.apns import ApnsSendResult, SimpleAPNSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.scheduler_utils import (
@@ -3077,14 +3077,29 @@ class SchedulerService:
                                     # Add end reason to content state
                                     final_content_state["endReason"] = end_reason
 
+                                    # Same defensive handling as the update path:
+                                    # only deactivate on definitive outcomes
+                                    # (SUCCESS or INVALID_TOKEN). A transient
+                                    # APNS failure on the end push must NOT
+                                    # flip is_active=False, otherwise the next
+                                    # scheduler tick won't retry and the user's
+                                    # Live Activity stays on the lock screen
+                                    # until iOS auto-expires it (8–12h).
                                     if self.apns_service:
-                                        await self.apns_service.send_live_activity_end(
+                                        send_result = await self.apns_service.send_live_activity_end(
                                             token.push_token, final_content_state
                                         )
-
-                                    # Mark token as inactive since Live Activity is ending
-                                    token.is_active = False
-                                    session.commit()
+                                        if send_result in (
+                                            ApnsSendResult.SUCCESS,
+                                            ApnsSendResult.INVALID_TOKEN,
+                                        ):
+                                            token.is_active = False
+                                            session.commit()
+                                    else:
+                                        # No APNS service configured — nothing
+                                        # to retry, deactivate to free the slot.
+                                        token.is_active = False
+                                        session.commit()
 
                                 except Exception as e:
                                     logger.error(
@@ -3229,18 +3244,26 @@ class SchedulerService:
                                     )
 
                                 # Send token-specific update via APNS
-                                success = (
+                                send_result = (
                                     await self.apns_service.send_live_activity_update(
                                         token.push_token, content_state
                                     )
                                 )
 
-                                if success and track_just_assigned:
+                                if (
+                                    send_result == ApnsSendResult.SUCCESS
+                                    and track_just_assigned
+                                ):
                                     token.track_notified_at = now_et()
                                     session.commit()
 
-                                # Mark token as inactive if it failed with 410
-                                if not success:
+                                # Only deactivate the token when APNS reports it
+                                # is permanently invalid (410 BadDeviceToken).
+                                # Transient failures (5xx, timeouts, network
+                                # errors, JWT issues) must NOT kill the Live
+                                # Activity — they are routinely retried on the
+                                # next scheduler tick.
+                                if send_result == ApnsSendResult.INVALID_TOKEN:
                                     token.is_active = False
                                     session.commit()
 

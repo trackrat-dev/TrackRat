@@ -135,6 +135,7 @@ webpage_v2/
 │   │   ├── SimilarTrainsPanel.tsx # Similar trains suggestion panel
 │   │   ├── TrainDistributionChart.tsx # Track distribution chart
 │   │   ├── UpcomingTrains.tsx    # Upcoming trains widget
+│   │   ├── SubwayLineChips.tsx  # Subway line badge chips
 │   │   ├── ErrorBoundary.tsx     # React error boundary
 │   │   └── ErrorMessage.tsx
 │   ├── pages/              # Route components
@@ -154,7 +155,8 @@ webpage_v2/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
 │   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems)
-│   │   └── routeTopology.ts # Route topology for smart search and filtering
+│   │   ├── routeTopology.ts # Route topology for smart search and filtering
+│   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/
