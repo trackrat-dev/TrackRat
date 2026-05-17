@@ -608,6 +608,145 @@ class TestSchedulerService:
                 mock_apns_service.send_live_activity_end.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_update_live_activities_finds_journey_from_previous_day(
+        self, scheduler_service, mock_apns_service
+    ):
+        """Issue #1211: PATH late-night journeys stamp ``journey_date`` from
+        the *origin* departure, which sits on the previous ET calendar day
+        for trains that begin in the late evening. The journey lookup used
+        to filter ``journey_date == now_et().date()``, so once midnight ET
+        rolled by the scheduler missed the still-active journey, logged
+        ``journey_not_found_for_live_activity``, and silently stopped push
+        updates. iOS's ``staleDate`` then expired and the Live Activity
+        froze until the user opened the train details page (which forces a
+        JIT refresh and locally re-arms the activity).
+
+        The fix: search a 2-day window (yesterday + today) and take the
+        most recently updated row, ``ORDER BY journey_date DESC,
+        last_updated_at DESC LIMIT 1``. This catches yesterday's PATH
+        journey while ``journey_date <= today`` keeps tomorrow's
+        pre-generated SCHEDULED rows from outranking today's OBSERVED one.
+
+        This test captures the SQLAlchemy statement passed to
+        ``scalar()``, compiles it, and asserts the WHERE clause shape and
+        ORDER BY / LIMIT so a regression to an equality filter would
+        fail loudly.
+        """
+        scheduler_service.apns_service = mock_apns_service
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            with (
+                patch("sqlalchemy.create_engine"),
+                patch("sqlalchemy.orm.sessionmaker") as mock_sessionmaker,
+            ):
+                mock_sync_session = Mock()
+                mock_sessionmaker.return_value = Mock(return_value=mock_sync_session)
+
+                # Token for a PATH trip that started before midnight.
+                mock_token = Mock(
+                    push_token="path-token",
+                    activity_id="path-act",
+                    train_number="PATH_PNK_worldtrad_1778979000",
+                    origin_code="PNK",
+                    destination_code="PWC",
+                    data_source="PATH",
+                    expires_at=datetime.now(UTC) + timedelta(hours=4),
+                    is_active=True,
+                    track_notified_at=None,
+                )
+
+                mock_tokens_result = Mock()
+                mock_tokens_result.scalars.return_value = [mock_token]
+
+                # Mocked journey row with journey_date = yesterday — the
+                # bug condition. Before the fix, the lookup's equality
+                # filter on today's date would miss this entirely and the
+                # scalar() result would be None.
+                mock_journey = Mock(
+                    train_id="PATH_PNK_worldtrad_1778979000",
+                    data_source="PATH",
+                    observation_type="OBSERVED",
+                    is_cancelled=False,
+                    is_completed=False,
+                    is_expired=False,
+                    last_updated_at=datetime.now(UTC),
+                    stops=[],
+                )
+
+                captured_statements: list = []
+
+                def capture_stmt(stmt):
+                    captured_statements.append(stmt)
+                    return mock_journey
+
+                mock_sync_session.execute.return_value = mock_tokens_result
+                mock_sync_session.scalar.side_effect = capture_stmt
+                mock_sync_session.__enter__ = Mock(return_value=mock_sync_session)
+                mock_sync_session.__exit__ = Mock(return_value=None)
+
+                with patch.object(
+                    scheduler_service,
+                    "_calculate_live_activity_content_state",
+                    return_value={"test": "content"},
+                ):
+                    with patch(
+                        "trackrat.services.scheduler.run_with_freshness_check"
+                    ) as mock_freshness_check:
+
+                        async def execute_task_func(
+                            db, task_name, minimum_interval_seconds, task_func
+                        ):
+                            await task_func()
+                            return True
+
+                        mock_freshness_check.side_effect = execute_task_func
+
+                        await scheduler_service.update_live_activities()
+
+                # Exactly one journey lookup happened, and it received an
+                # update push (not an end push, because is_completed is False).
+                assert len(captured_statements) == 1
+                mock_apns_service.send_live_activity_update.assert_called_once()
+                mock_apns_service.send_live_activity_end.assert_not_called()
+
+                # Compile the captured SELECT and assert its shape:
+                # - WHERE clause uses ``>=`` AND ``<=`` on journey_date,
+                #   spanning at least two distinct dates (i.e. a range, not
+                #   an equality)
+                # - ORDER BY includes journey_date DESC and
+                #   last_updated_at DESC
+                # - LIMIT 1
+                compiled = str(
+                    captured_statements[0].compile(
+                        compile_kwargs={"literal_binds": True}
+                    )
+                ).lower()
+
+                assert "journey_date >=" in compiled, (
+                    "Expected a lower-bound on journey_date; the bug was a "
+                    "strict equality filter that missed previous-day rows. "
+                    f"Compiled SQL: {compiled}"
+                )
+                assert "journey_date <=" in compiled, (
+                    "Expected an upper-bound on journey_date to keep "
+                    "tomorrow's pre-generated SCHEDULED rows out. "
+                    f"Compiled SQL: {compiled}"
+                )
+                # No exact-equality on journey_date.
+                assert "journey_date = " not in compiled, (
+                    "Regression: lookup is back to a single-date equality. "
+                    f"Compiled SQL: {compiled}"
+                )
+                # Most-recent-first ordering with LIMIT 1.
+                assert "order by" in compiled
+                assert "journey_date desc" in compiled
+                assert "last_updated_at desc" in compiled
+                assert "limit 1" in compiled
+
+    @pytest.mark.asyncio
     async def test_update_live_activities_ends_on_is_completed(
         self, scheduler_service, mock_apns_service
     ):
