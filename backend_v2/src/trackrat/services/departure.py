@@ -53,6 +53,21 @@ _NJT_REFRESH_LOAD_OPTIONS = (
     selectinload(TrainJourney.progress_snapshots),
 )
 
+
+def _destination_prefix(destination: str | None) -> str:
+    """First word of a destination, lowercased, for similarity comparison.
+
+    NJT's schedule API and real-time API sometimes return the same terminus
+    with different suffixes ("Suffern" vs "Suffern via Hoboken"). The first
+    word is the most stable comparison point. Empty string for missing
+    destinations so they can never accidentally match a real value.
+    """
+    if not destination:
+        return ""
+    first = destination.strip().split(None, 1)
+    return first[0].lower() if first else ""
+
+
 # Tracks station codes currently being refreshed in background tasks.
 # Prevents duplicate concurrent JIT refreshes for the same station.
 _refreshing_stations: set[str] = set()
@@ -513,6 +528,13 @@ class DepartureService:
                 is_expired=journey.is_expired or False,
             )
             departures.append(departure)
+
+        # Collapse SCHEDULED/OBSERVED pairs for the same physical train that
+        # the upstream collectors failed to merge (most common with NJT —
+        # see _dedupe_scheduled_observed_collisions for details). Runs on
+        # the realtime list only; GTFS-sourced rows below have their own
+        # merge logic.
+        departures = self._dedupe_scheduled_observed_collisions(departures)
 
         # PERFORMANCE: Log timing and result set metrics for observability
         total_duration_ms = (time.perf_counter() - perf_start) * 1000
@@ -1632,6 +1654,74 @@ class DepartureService:
             fallback_keys = [f"{line_code}:{dep.data_source}:unknown"]
 
         return primary_key, fallback_keys
+
+    def _dedupe_scheduled_observed_collisions(
+        self,
+        departures: list[TrainDeparture],
+    ) -> list[TrainDeparture]:
+        """Drop SCHEDULED departures that collide with an OBSERVED departure.
+
+        The same physical train can end up with two ``TrainJourney`` rows when
+        an upstream collector fails to merge a daily SCHEDULED row into the
+        OBSERVED row at discovery time. The known case is NJT publishing a
+        different train number (or slightly different destination text) in
+        ``getTrainSchedule`` vs the real-time feed, which causes
+        ``_find_matching_scheduled_train`` to miss the merge. The two rows
+        then have different ``train_id`` values and scheduled times that may
+        differ by a minute, so the exact-``train_id`` dedup above doesn't
+        catch them and clients render the same train twice (once labeled
+        "Train TBD" from the SCHEDULED row, once with the real number).
+
+        Collapse logic: within a ``(data_source, line_code, scheduled_time
+        ±1 min)`` bucket, if any departure is OBSERVED, drop SCHEDULED rows
+        in the same bucket whose destination shares a first-word prefix
+        with the OBSERVED row. Pairs of two OBSERVED rows are NOT collapsed
+        — they are presumed to be genuinely different trains. The
+        destination prefix check guards against the rare case where two
+        legitimate trains run on the same line within ±1 min to different
+        termini.
+        """
+        if len(departures) < 2:
+            return departures
+
+        # Build map from fallback key -> list of OBSERVED destination tokens
+        # claiming that key. We use first-word destination prefix as a
+        # similarity proxy.
+        observed_keys: dict[str, set[str]] = {}
+        for dep in departures:
+            if dep.observation_type != "OBSERVED":
+                continue
+            _, fallbacks = self._make_dedup_keys(dep)
+            dest_token = _destination_prefix(dep.destination)
+            for fb in fallbacks:
+                observed_keys.setdefault(fb, set()).add(dest_token)
+
+        if not observed_keys:
+            return departures
+
+        result: list[TrainDeparture] = []
+        dropped_train_ids: list[str | None] = []
+        for dep in departures:
+            if dep.observation_type == "SCHEDULED":
+                _, fallbacks = self._make_dedup_keys(dep)
+                dest_token = _destination_prefix(dep.destination)
+                if any(
+                    dest_token in observed_keys[fb]
+                    for fb in fallbacks
+                    if fb in observed_keys
+                ):
+                    dropped_train_ids.append(dep.train_id)
+                    continue
+            result.append(dep)
+
+        if dropped_train_ids:
+            logger.info(
+                "scheduled_observed_collision_deduped",
+                dropped_count=len(dropped_train_ids),
+                dropped_train_ids=dropped_train_ids,
+                kept_count=len(result),
+            )
+        return result
 
     def _merge_departures(
         self,
