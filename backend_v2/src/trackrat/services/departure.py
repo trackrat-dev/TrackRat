@@ -55,17 +55,23 @@ _NJT_REFRESH_LOAD_OPTIONS = (
 
 
 def _destination_prefix(destination: str | None) -> str:
-    """First word of a destination, lowercased, for similarity comparison.
+    """Normalize a destination string for similarity comparison.
 
     NJT's schedule API and real-time API sometimes return the same terminus
-    with different suffixes ("Suffern" vs "Suffern via Hoboken"). The first
-    word is the most stable comparison point. Empty string for missing
-    destinations so they can never accidentally match a real value.
+    with different suffixes ("Suffern" vs "Suffern via Hoboken"). Lowercase
+    the string, trim whitespace, and strip any " via ..." suffix so the two
+    forms compare equal — but preserve the rest of the destination so that
+    distinct termini sharing a leading word ("Long Branch" vs "Long Island",
+    "Atlantic City" vs "Atlantic Highlands") still compare unequal. Empty
+    string for missing destinations so they never accidentally match.
     """
     if not destination:
         return ""
-    first = destination.strip().split(None, 1)
-    return first[0].lower() if first else ""
+    normalized = destination.strip().lower()
+    via_idx = normalized.find(" via ")
+    if via_idx > 0:
+        normalized = normalized[:via_idx].rstrip()
+    return normalized
 
 
 # Tracks station codes currently being refreshed in background tasks.
@@ -1672,29 +1678,34 @@ class DepartureService:
         catch them and clients render the same train twice (once labeled
         "Train TBD" from the SCHEDULED row, once with the real number).
 
-        Collapse logic: within a ``(data_source, line_code, scheduled_time
-        ±1 min)`` bucket, if any departure is OBSERVED, drop SCHEDULED rows
-        in the same bucket whose destination shares a first-word prefix
-        with the OBSERVED row. Pairs of two OBSERVED rows are NOT collapsed
-        — they are presumed to be genuinely different trains. The
-        destination prefix check guards against the rare case where two
+        Collapse logic: within a ``(journey_date, data_source, line_code,
+        scheduled_time ±1 min)`` bucket, if any departure is OBSERVED, drop
+        SCHEDULED rows in the same bucket whose normalized destination
+        matches the OBSERVED row. Pairs of two OBSERVED rows are NOT
+        collapsed — they are presumed to be genuinely different trains.
+        The destination check guards against the rare case where two
         legitimate trains run on the same line within ±1 min to different
-        termini.
+        termini. The ``journey_date`` scope keeps an OBSERVED train from
+        suppressing a distinct SCHEDULED train at the same wall-clock
+        minute on a different calendar day (``_make_dedup_keys`` fallback
+        keys are date-less ``HH:MM`` and ``get_departures`` returns a
+        multi-day window).
         """
         if len(departures) < 2:
             return departures
 
-        # Build map from fallback key -> list of OBSERVED destination tokens
-        # claiming that key. We use first-word destination prefix as a
-        # similarity proxy.
-        observed_keys: dict[str, set[str]] = {}
+        # Build map from (journey_date, fallback key) -> set of normalized
+        # OBSERVED destinations claiming that bucket. Date scope keeps an
+        # overnight OBSERVED train from colliding with the next day's
+        # SCHEDULED slot.
+        observed_keys: dict[tuple[date, str], set[str]] = {}
         for dep in departures:
             if dep.observation_type != "OBSERVED":
                 continue
             _, fallbacks = self._make_dedup_keys(dep)
             dest_token = _destination_prefix(dep.destination)
             for fb in fallbacks:
-                observed_keys.setdefault(fb, set()).add(dest_token)
+                observed_keys.setdefault((dep.journey_date, fb), set()).add(dest_token)
 
         if not observed_keys:
             return departures
@@ -1706,9 +1717,9 @@ class DepartureService:
                 _, fallbacks = self._make_dedup_keys(dep)
                 dest_token = _destination_prefix(dep.destination)
                 if any(
-                    dest_token in observed_keys[fb]
+                    dest_token in observed_keys[(dep.journey_date, fb)]
                     for fb in fallbacks
-                    if fb in observed_keys
+                    if (dep.journey_date, fb) in observed_keys
                 ):
                     dropped_train_ids.append(dep.train_id)
                     continue

@@ -30,10 +30,10 @@ from trackrat.utils.time import ET
 class TestDestinationPrefix:
     """Tests for the _destination_prefix helper."""
 
-    def test_returns_lowercase_first_word(self):
+    def test_lowercases_and_strips(self):
         assert _destination_prefix("Suffern") == "suffern"
 
-    def test_handles_via_suffix(self):
+    def test_strips_via_suffix(self):
         assert _destination_prefix("Suffern via Hoboken") == "suffern"
 
     def test_handles_leading_whitespace(self):
@@ -47,6 +47,22 @@ class TestDestinationPrefix:
 
     def test_distinct_termini_compare_unequal(self):
         assert _destination_prefix("Suffern") != _destination_prefix("Port Jervis")
+
+    def test_distinct_termini_with_shared_leading_word_compare_unequal(self):
+        """First-word-only collapse would mis-merge 'Long Branch' with
+        'Long Island' or 'Atlantic City' with 'Atlantic Highlands'. Full
+        normalized text keeps them distinct."""
+        assert _destination_prefix("Long Branch") != _destination_prefix("Long Island")
+        assert _destination_prefix("Atlantic City") != _destination_prefix(
+            "Atlantic Highlands"
+        )
+        assert _destination_prefix("Bay Head") != _destination_prefix("Bay Ridge")
+
+    def test_multi_word_terminus_preserved(self):
+        assert _destination_prefix("Long Branch") == "long branch"
+
+    def test_via_suffix_with_multi_word_origin(self):
+        assert _destination_prefix("Bay Head via Long Branch") == "bay head"
 
 
 class TestMakeDedupKeys:
@@ -843,3 +859,40 @@ class TestDedupeScheduledObservedCollisions:
         result = self.service._dedupe_scheduled_observed_collisions(deps)
 
         assert [d.train_id for d in result] == ["A", "B", "C"]
+
+    def test_does_not_collapse_across_different_journey_dates(self):
+        """The realtime window can span ~26 hours, so an OBSERVED train at
+        00:30 today must NOT suppress a distinct SCHEDULED train at the
+        same wall-clock minute on the next service day. The
+        ``_make_dedup_keys`` fallback is date-less ``HH:MM``, so the dedup
+        function has to scope buckets by ``journey_date`` itself."""
+        observed_today = self._create_departure(
+            train_id="9999",
+            line_code="BE",
+            scheduled_time=ET.localize(datetime(2026, 5, 17, 0, 30)),
+            observation_type="OBSERVED",
+            destination="Suffern",
+        )
+        scheduled_tomorrow = self._create_departure(
+            train_id="1234",
+            line_code="BE",
+            scheduled_time=ET.localize(datetime(2026, 5, 18, 0, 30)),
+            observation_type="SCHEDULED",
+            destination="Suffern",
+        )
+
+        # Sanity-check the precondition: bare fallback keys collide.
+        _, today_fallbacks = self.service._make_dedup_keys(observed_today)
+        _, tomorrow_fallbacks = self.service._make_dedup_keys(scheduled_tomorrow)
+        assert set(today_fallbacks) & set(tomorrow_fallbacks), (
+            "Test premise wrong: fallback keys must overlap for the dedup "
+            "function's journey_date scope to matter."
+        )
+
+        result = self.service._dedupe_scheduled_observed_collisions(
+            [observed_today, scheduled_tomorrow]
+        )
+
+        # Both rows should survive — they're different service days.
+        assert len(result) == 2
+        assert {d.train_id for d in result} == {"9999", "1234"}
