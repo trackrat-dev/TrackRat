@@ -267,6 +267,10 @@ GET /trips/search             # Multi-leg trip search with transfers
 GET /routes/preferences       # User route preferences
 PUT /routes/preferences       # Update route preferences
 
+# Share / Link Previews (NOT under /api/v2/ prefix)
+GET /share/train/{train_id}        # OG meta tag HTML with route times
+GET /share/train/{train_id}/image  # PNG share card image
+
 # System Health and Metrics
 GET /health                    # Comprehensive health check
 GET /health/live              # Liveness probe
@@ -767,6 +771,15 @@ The backend is organized into service classes for better maintainability:
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
+
+### Recent Improvements (May 2026)
+- ✅ Train share metadata now includes route times for richer link previews (`api/share.py`)
+- ✅ NJT terminal stop completion / Live Activity arrival timing fixes (`collectors/njt/journey.py`)
+- ✅ Amtrak suffixed `train_id` matching in pattern consensus lookup; skip scheduled save when row is already OBSERVED (`services/amtrak_pattern_scheduler.py`)
+- ✅ HistoricalTrackPredictor bounded to recent history to keep query cost predictable (issue #1168)
+- ✅ Trip search surfaces PATH trains from Newark Penn Station (`services/trip_search.py`)
+- ✅ Merge Hoboken / Hoboken PATH into one canonical station; PHO/PNK resolve to canonical (`config/stations/common.py`)
+- ✅ Service alert evaluator: fix merged Hoboken PATH alerts (`services/alert_evaluator.py`)
 
 ### Recent Improvements (April 2026)
 - ✅ Intra-system transfers for PATH, BART, NJT, LIRR, MBTA, Metra trip search

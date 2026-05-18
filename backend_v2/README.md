@@ -332,6 +332,13 @@ GET /api/v2/trips/search?from={from}&to={to}&limit=50&hide_departed=true
 ```
 Multi-leg trip search with transfers across transit systems
 
+### Share / Link Previews
+```
+GET /share/train/{train_id}        # OG meta tag HTML (includes route times)
+GET /share/train/{train_id}/image  # PNG share card image
+```
+Rich link previews for shared train URLs (not under `/api/v2/` prefix)
+
 ### Route Preferences
 ```
 GET /api/v2/routes/preferences
@@ -498,6 +505,10 @@ The scheduler supports multiple replicas:
 
 #### Route Alerts
 - **AlertEvaluatorService**: Evaluates delay/cancellation conditions for push notifications
+
+#### Share / Link Previews
+- **ShareAPI** (`api/share.py`): OG meta tag HTML and image endpoints for rich link previews
+- **ShareImageService** (`services/share_image.py`): PNG rendering for share card images
 
 #### Infrastructure
 - **SimpleAPNSService**: iOS Live Activity notifications and route alert pushes
