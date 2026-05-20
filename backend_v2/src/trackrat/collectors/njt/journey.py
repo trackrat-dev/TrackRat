@@ -1524,15 +1524,21 @@ class JourneyCollector(BaseJourneyCollector):
             elif (
                 stop.scheduled_departure
                 and stop.scheduled_departure < now - timedelta(minutes=5)
-                # NJT's live arrival estimate (TIME) must also agree the stop is
-                # in the past. For severely delayed trains, NJT keeps DEPARTED=NO
-                # and pushes TIME into the future — that's our signal the train
-                # truly has not reached this stop, so we must not time-infer
-                # departure. Without this guard, time_inference falsely marks
-                # the stop as departed and Tier 2 on the next cycle propagates
-                # back to earlier stops, writing future TIME values into
-                # actual_departure (issue #1221).
+                # NJT's live-estimate fields must agree the stop is in the past.
+                # The normalize_njt_stop_times docstring claims TIME and DEP_TIME
+                # have inverted semantics at origin vs intermediate stops, so we
+                # cannot know which one carries the live estimate at a given
+                # stop. Gate on both: only time-infer once every populated
+                # estimate is in the past. For severely delayed trains, NJT
+                # keeps DEPARTED=NO and pushes the live estimate into the
+                # future — that's our signal the train truly has not reached
+                # this stop, so we must not time-infer departure. Without this
+                # guard, time_inference falsely marks the stop as departed and
+                # Tier 2 on the next cycle propagates back to earlier stops,
+                # writing future TIME values into actual_departure
+                # (issue #1221).
                 and (time_field is None or time_field <= now)
+                and (dep_time_field is None or dep_time_field <= now)
             ):
                 # Train should have departed by now (5-minute grace period).
                 # Mark as departed for position tracking, but do NOT set

@@ -1068,3 +1068,116 @@ class TestDepartureInference:
         assert (
             np_stop.actual_departure is not None and np_stop.actual_departure <= now
         ), f"NP.actual_departure must not be in the future, got {np_stop.actual_departure!r}"
+
+    async def test_tier3_skipped_when_only_dep_time_is_future(
+        self, collector, sample_journey, mock_session
+    ):
+        """Tier 3 must also gate on DEP_TIME, not just TIME (PR #1222 review).
+
+        The normalize_njt_stop_times docstring claims that at the origin,
+        TIME carries the immutable schedule while DEP_TIME carries the
+        live updated departure estimate (the opposite of intermediate
+        stops). Under that semantic, a delayed origin can have TIME in
+        the past (= scheduled, 5+ min ago) while DEP_TIME is still in
+        the future (live updated departure has not yet happened).
+
+        Without the dep_time_field guard, Tier 3 would fire for the
+        origin and the user-visible "in progress when not departed"
+        symptom of issue #1221 returns at the origin stop. With the
+        guard, no stop is marked departed.
+        """
+        session = mock_session
+
+        stops_by_code = {s.station_code: s for s in sample_journey.stops}
+        stop_order = ["NY", "NP", "MP", "TR"]
+        scalar_calls = iter(stop_order)
+
+        async def scalar_side_effect(stmt):
+            try:
+                return stops_by_code[next(scalar_calls)]
+            except StopIteration:
+                return None
+
+        session.scalar = AsyncMock(side_effect=scalar_side_effect)
+
+        def njt_time(offset: timedelta) -> str:
+            return (now_et() + offset).strftime("%d-%b-%Y %I:%M:%S %p")
+
+        past_30m = njt_time(-timedelta(minutes=30))
+        future_20m = njt_time(timedelta(minutes=20))
+
+        # Docstring-semantic origin: TIME=scheduled (past), DEP_TIME=live
+        # updated departure (future). The earlier single-field guard
+        # (`time_field <= now`) would pass and Tier 3 would fire — this
+        # test pins down that the new dep_time_field gate prevents it.
+        api_stops = [
+            MagicMock(
+                ITEM="NY | New York",
+                STATION_2CHAR="NY",
+                STATIONNAME="New York Penn Station",
+                DEPARTED="NO",
+                TIME=past_30m,
+                DEP_TIME=future_20m,
+                ARR_TIME=None,
+                TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
+            ),
+            # Other stops also undeparted and not yet reached.
+            MagicMock(
+                ITEM="NP | Newark Penn",
+                STATION_2CHAR="NP",
+                STATIONNAME="Newark Penn Station",
+                DEPARTED="NO",
+                TIME=njt_time(timedelta(minutes=30)),
+                DEP_TIME=njt_time(-timedelta(hours=1, minutes=30)),
+                ARR_TIME=njt_time(timedelta(minutes=30)),
+                TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
+            ),
+            MagicMock(
+                ITEM="MP | Metropark",
+                STATION_2CHAR="MP",
+                STATIONNAME="Metropark",
+                DEPARTED="NO",
+                TIME=njt_time(timedelta(minutes=45)),
+                DEP_TIME=njt_time(-timedelta(hours=1)),
+                ARR_TIME=njt_time(timedelta(minutes=45)),
+                TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
+            ),
+            MagicMock(
+                ITEM="TR | Trenton",
+                STATION_2CHAR="TR",
+                STATIONNAME="Trenton",
+                DEPARTED="NO",
+                TIME=njt_time(timedelta(hours=1)),
+                DEP_TIME=None,
+                ARR_TIME=njt_time(timedelta(hours=1)),
+                TRACK=None,
+                SCHED_ARR_DATE=None,
+                SCHED_DEP_DATE=None,
+                PICKUP=None,
+                DROPOFF=None,
+            ),
+        ]
+
+        await collector.update_journey_stops(session, sample_journey, api_stops)
+
+        # No stop should be marked departed when any live-estimate field
+        # is still in the future.
+        for code in ["NY", "NP", "MP", "TR"]:
+            stop = stops_by_code[code]
+            assert (
+                stop.has_departed_station is False
+            ), f"{code} must not be marked departed (DEP_TIME guard, issue #1221)"
+            assert stop.departure_source is None
+            assert stop.actual_departure is None
