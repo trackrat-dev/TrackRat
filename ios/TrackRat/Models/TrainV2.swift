@@ -517,6 +517,16 @@ extension TrainV2 {
         // Get next stop arrival time
         let nextStopArrivalTime = getNextStopArrivalTime()
 
+        // Only surface the predicted track when there is no actual track yet
+        let (predictedTrackValue, predictedTrackConfidenceValue): (String?, Double?) = {
+            guard track == nil || track?.isEmpty == true,
+                  let prediction = trackPrediction,
+                  !prediction.primaryPrediction.isEmpty else {
+                return (nil, nil)
+            }
+            return (prediction.primaryPrediction, prediction.confidence)
+        }()
+
         return TrainActivityAttributes.ContentState(
             status: contextStatus.rawValue,
             track: track,
@@ -530,6 +540,8 @@ extension TrainV2 {
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
             nextStopCode: nextStopCode,
             hasTrainDeparted: hasTrainDeparted,
+            predictedTrack: predictedTrackValue,
+            predictedTrackConfidence: predictedTrackConfidenceValue,
             originStationCode: originCode,
             destinationStationCode: destinationStationCode ?? ""
         )

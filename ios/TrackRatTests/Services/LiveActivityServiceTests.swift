@@ -182,4 +182,108 @@ class LiveActivityServiceTests: XCTestCase {
             dataSource: dataSource
         )
     }
+
+    // MARK: - Predicted Track Tests
+
+    /// Build a content state with the new prediction fields populated.
+    /// Keeps the unrelated fields neutral so tests focus on prediction behavior.
+    private func makeContentState(
+        track: String?,
+        predictedTrack: String?,
+        predictedTrackConfidence: Double?
+    ) -> TrainActivityAttributes.ContentState {
+        TrainActivityAttributes.ContentState(
+            status: "BOARDING",
+            track: track,
+            currentStopName: "New York Penn Station",
+            nextStopName: "Newark Penn Station",
+            delayMinutes: 0,
+            journeyProgress: 0.0,
+            dataTimestamp: Date().timeIntervalSince1970,
+            scheduledDepartureTime: nil,
+            scheduledArrivalTime: nil,
+            nextStopArrivalTime: nil,
+            nextStopCode: "NP",
+            hasTrainDeparted: false,
+            predictedTrack: predictedTrack,
+            predictedTrackConfidence: predictedTrackConfidence,
+            originStationCode: "NY",
+            destinationStationCode: "PH"
+        )
+    }
+
+    func testPredictedTrackDisplay_returnsNilWhenActualTrackAssigned() {
+        let state = makeContentState(track: "4", predictedTrack: "7", predictedTrackConfidence: 0.95)
+        XCTAssertNil(state.predictedTrackDisplay,
+                     "Actual track must always win over prediction so we never show a wrong-track guess")
+        XCTAssertFalse(state.hasPredictedTrack)
+    }
+
+    func testPredictedTrackDisplay_returnsNilWhenNoPrediction() {
+        let state = makeContentState(track: nil, predictedTrack: nil, predictedTrackConfidence: nil)
+        XCTAssertNil(state.predictedTrackDisplay)
+        XCTAssertFalse(state.hasPredictedTrack)
+    }
+
+    func testPredictedTrackDisplay_returnsNilWhenPredictionEmpty() {
+        let state = makeContentState(track: nil, predictedTrack: "", predictedTrackConfidence: 0.9)
+        XCTAssertNil(state.predictedTrackDisplay,
+                     "Empty prediction string must be treated as no prediction")
+        XCTAssertFalse(state.hasPredictedTrack)
+    }
+
+    func testPredictedTrackDisplay_returnsNilWhenConfidenceBelowFloor() {
+        let floor = TrainActivityAttributes.ContentState.predictedTrackConfidenceFloor
+        let state = makeContentState(track: nil, predictedTrack: "7", predictedTrackConfidence: floor - 0.01)
+        XCTAssertNil(state.predictedTrackDisplay,
+                     "Confidence below the floor must suppress the prediction to avoid noisy guesses")
+        XCTAssertFalse(state.hasPredictedTrack)
+    }
+
+    func testPredictedTrackDisplay_returnsTildePrefixedTrackAtFloor() {
+        let floor = TrainActivityAttributes.ContentState.predictedTrackConfidenceFloor
+        let state = makeContentState(track: nil, predictedTrack: "7", predictedTrackConfidence: floor)
+        XCTAssertEqual(state.predictedTrackDisplay, "~T7",
+                       "Exactly at the floor confidence the predicted track must be shown")
+        XCTAssertTrue(state.hasPredictedTrack)
+    }
+
+    func testPredictedTrackDisplay_returnsTildePrefixedTrackWhenHighConfidence() {
+        let state = makeContentState(track: nil, predictedTrack: "4", predictedTrackConfidence: 0.92)
+        XCTAssertEqual(state.predictedTrackDisplay, "~T4")
+        XCTAssertTrue(state.hasPredictedTrack)
+    }
+
+    func testPredictedTrackDisplay_returnsNilWhenEmptyTrackAssigned() {
+        // Some backends report an empty-string track instead of nil while a real assignment is pending;
+        // we treat that as "no actual track" and still surface the prediction.
+        let state = makeContentState(track: "", predictedTrack: "9", predictedTrackConfidence: 0.8)
+        XCTAssertEqual(state.predictedTrackDisplay, "~T9",
+                       "Empty actual track must not block the prediction")
+    }
+
+    func testDisplayablePredictedTrack_returnsRawValueWhenPredictionShown() {
+        let state = makeContentState(track: nil, predictedTrack: "12", predictedTrackConfidence: 0.7)
+        XCTAssertEqual(state.displayablePredictedTrack, "12",
+                       "Lock screen uses the raw track value because it adds its own 'Track' prefix")
+        XCTAssertEqual(state.predictedTrackDisplay, "~T12",
+                       "Compact surfaces use the tilde-prefixed display value")
+    }
+
+    func testDisplayablePredictedTrack_returnsNilWhenSuppressed() {
+        let state = makeContentState(track: nil, predictedTrack: "12", predictedTrackConfidence: 0.1)
+        XCTAssertNil(state.displayablePredictedTrack,
+                     "Low-confidence predictions must be suppressed from the lock-screen text")
+    }
+
+    func testExtractPredictedTrack_returnsNothingWhenTrainHasActualTrack() {
+        // MockDataFactory sets track: "11" on the departure stop and the train track field
+        let train = MockDataFactory.createMockTrainV2(trainId: "T1", fromStationCode: "NY")
+        // Sanity check: the mock factory's track is non-nil
+        XCTAssertNotNil(train.track, "Test relies on the mock having an assigned track")
+
+        let (predicted, confidence) = LiveActivityService.extractPredictedTrack(from: train)
+        XCTAssertNil(predicted)
+        XCTAssertNil(confidence)
+    }
 }
