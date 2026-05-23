@@ -6,10 +6,8 @@
 #
 # Manages:
 #   - Staging webpage: GCS bucket + CDN + LB for staging.trackrat.net
+#   - Production webpage: GCS bucket + CDN + LB for trackrat.net / www.trackrat.net
 #   - Cloud Build triggers for both staging and production webpage deployments
-#
-# Production webpage (trackrat.net) lives in GCP project trackrat-prod,
-# managed separately outside this config.
 #
 # Usage:
 #   cd infra_v2/terraform-webpage
@@ -194,6 +192,130 @@ output "staging_webpage_ip" {
 output "staging_webpage_bucket" {
   value       = google_storage_bucket.webpage_staging.name
   description = "Staging GCS bucket name"
+}
+
+# ============================================
+# Production webpage infrastructure
+# ============================================
+# Mirrors staging, sized/tuned for production. Resources are created in
+# trackrat-v2 to consolidate ownership with the rest of the stack.
+# Cutover from the legacy trackrat-prod LB is a DNS-only operation: point
+# trackrat.net / www.trackrat.net A records at production_webpage_ip output.
+
+# GCS bucket for production webpage
+resource "google_storage_bucket" "webpage_production" {
+  name          = "trackrat-webpage-production"
+  location      = "US"
+  force_destroy = false # prod safety: require manual emptying before destroy
+
+  uniform_bucket_level_access = true
+
+  website {
+    main_page_suffix = "index.html"
+    not_found_page   = "index.html" # SPA fallback
+  }
+
+  cors {
+    origin          = ["*"]
+    method          = ["GET", "HEAD"]
+    response_header = ["*"]
+    max_age_seconds = 3600
+  }
+}
+
+# Make production bucket publicly readable
+resource "google_storage_bucket_iam_member" "production_public_access" {
+  bucket = google_storage_bucket.webpage_production.name
+  role   = "roles/storage.objectViewer"
+  member = "allUsers"
+}
+
+# CDN backend bucket for production
+resource "google_compute_backend_bucket" "webpage_production_backend" {
+  name        = "trackrat-webpage-production-backend"
+  description = "Backend bucket for TrackRat production webpage"
+  bucket_name = google_storage_bucket.webpage_production.name
+  enable_cdn  = true
+
+  cdn_policy {
+    cache_mode       = "CACHE_ALL_STATIC"
+    default_ttl      = 3600  # 1 hour fallback (objects' own Cache-Control wins)
+    max_ttl          = 86400 # 24 hours
+    client_ttl       = 3600
+    negative_caching = true
+  }
+}
+
+# URL map for production
+resource "google_compute_url_map" "webpage_production" {
+  name            = "trackrat-webpage-production-map"
+  description     = "URL map for TrackRat production webpage"
+  default_service = google_compute_backend_bucket.webpage_production_backend.id
+}
+
+# SSL certificate covers both apex and www.
+# NOTE: Google-managed certs cannot have their `domains` list changed in
+# place — adding/removing a SAN requires creating a new cert resource.
+resource "google_compute_managed_ssl_certificate" "webpage_production_cert" {
+  name = "trackrat-webpage-production-cert"
+
+  managed {
+    domains = ["trackrat.net", "www.trackrat.net"]
+  }
+}
+
+# Global static IP for production
+resource "google_compute_global_address" "webpage_production_ip" {
+  name = "trackrat-webpage-production-ip"
+}
+
+# HTTPS proxy for production
+resource "google_compute_target_https_proxy" "webpage_production_proxy" {
+  name             = "trackrat-webpage-production-https-proxy"
+  url_map          = google_compute_url_map.webpage_production.id
+  ssl_certificates = [google_compute_managed_ssl_certificate.webpage_production_cert.id]
+}
+
+# HTTPS forwarding rule for production
+resource "google_compute_global_forwarding_rule" "webpage_production_https" {
+  name       = "trackrat-webpage-production-https"
+  target     = google_compute_target_https_proxy.webpage_production_proxy.id
+  port_range = "443"
+  ip_address = google_compute_global_address.webpage_production_ip.address
+}
+
+# HTTP to HTTPS redirect for production
+resource "google_compute_url_map" "webpage_production_https_redirect" {
+  name = "trackrat-webpage-production-https-redirect"
+
+  default_url_redirect {
+    https_redirect         = true
+    redirect_response_code = "PERMANENT_REDIRECT"
+    strip_query            = false
+  }
+}
+
+resource "google_compute_target_http_proxy" "webpage_production_http_proxy" {
+  name    = "trackrat-webpage-production-http-proxy"
+  url_map = google_compute_url_map.webpage_production_https_redirect.id
+}
+
+resource "google_compute_global_forwarding_rule" "webpage_production_http" {
+  name       = "trackrat-webpage-production-http-proxy-rule"
+  target     = google_compute_target_http_proxy.webpage_production_http_proxy.id
+  port_range = "80"
+  ip_address = google_compute_global_address.webpage_production_ip.address
+}
+
+# Production outputs
+output "production_webpage_ip" {
+  value       = google_compute_global_address.webpage_production_ip.address
+  description = "Point trackrat.net + www.trackrat.net DNS A records at this IP (Cloudflare: DNS only / grey-cloud)"
+}
+
+output "production_webpage_bucket" {
+  value       = google_storage_bucket.webpage_production.name
+  description = "Production GCS bucket name"
 }
 
 # ============================================
