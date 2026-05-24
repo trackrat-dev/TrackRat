@@ -863,6 +863,11 @@ class TestDepartureServiceIntegration:
         journey.stops = [stop]
         db_session.add(journey)
         await db_session.commit()
+        # Capture the primary key before _ensure_fresh_station_data runs:
+        # its second-pass rollback (on the simulated API failure) expires
+        # session-attached attributes, so re-reading `journey.id` afterwards
+        # would trigger a sync lazy-load that fails inside the async session.
+        journey_id = journey.id
 
         # API returns empty list
         with patch("trackrat.services.departure.NJTransitClient") as mock_njt:
@@ -877,7 +882,7 @@ class TestDepartureServiceIntegration:
             await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
 
         # Verify journey was not updated
-        refreshed = await db_session.get(TrainJourney, journey.id)
+        refreshed = await db_session.get(TrainJourney, journey_id)
         assert refreshed.update_count == 1
 
     async def test_skip_individual_refresh_skips_second_pass(

@@ -1,12 +1,15 @@
 """
-Tests for JIT station refresh fixes (issue #962):
+Tests for JIT station refresh fixes:
 
-1. _update_stops_from_embedded_data uses stops_by_code lookup from
+1. (#962) _update_stops_from_embedded_data uses stops_by_code lookup from
    journey.stops instead of session.get() after pg_insert — prevents
    greenlet_spawn errors from orphan-check lazy loads during flush.
 
-2. Second-pass error handler rolls back the session to prevent
-   PendingRollbackError cascading to subsequent iterations.
+2. (#1196) Second-pass per-journey refresh uses per-journey commit
+   instead of `begin_nested()` around `retry_on_deadlock`. The latter
+   combination corrupted SAVEPOINT state on deadlock retry (inner
+   rollback discards the outer transaction) and triggered greenlet
+   errors on subsequent flushes.
 """
 
 import asyncio
@@ -219,15 +222,28 @@ class TestDepartedFlagSequentialInference:
         assert s2.has_departed_station is True
 
 
-class TestSecondPassSavepoint:
-    """Test that the second-pass per-journey refresh uses begin_nested()
-    (savepoint) to isolate failures and prevent PendingRollbackError cascade
-    while preserving prior successful refreshes (fix for #962)."""
+class TestSecondPassPerJourneyCommit:
+    """Verify second-pass per-journey refresh uses per-journey commit instead
+    of `begin_nested()` for isolation (fix for #1196).
 
-    def test_savepoint_wraps_each_journey_refresh(self):
-        """Each stale journey refresh should be wrapped in begin_nested()
-        so a failure only rolls back that savepoint, not the entire
-        transaction."""
+    Background: issue #962 wrapped each stale-journey refresh in
+    `async with db.begin_nested(): await retry_on_deadlock(db, refresh_journey)`
+    to isolate failures. That combination is broken — `retry_on_deadlock`
+    calls `await session.rollback()` on retry, which rolls back the *outer*
+    transaction (not the savepoint), leaving the SAVEPOINT state inconsistent
+    and triggering `greenlet_spawn has not been called; can't call
+    await_only() here` on subsequent flushes. Recurred 3x in 48h of
+    production logs.
+
+    The fix is per-journey commit: each successful refresh commits
+    immediately, preserving prior work; each failure rolls back only the
+    current journey's partial state, leaving the session clean for the
+    next iteration.
+    """
+
+    def test_no_begin_nested_around_retry_on_deadlock(self):
+        """`begin_nested()` must not wrap `retry_on_deadlock` — the two
+        primitives are incompatible (see class docstring)."""
         import inspect
         from trackrat.services.departure import DepartureService
 
@@ -237,26 +253,92 @@ class TestSecondPassSavepoint:
             "stale_train_refresh_failed" in source
         ), "Expected 'stale_train_refresh_failed' log in _ensure_fresh_station_data"
 
-        # The per-journey refresh must use begin_nested() (savepoint)
-        # instead of a bare db.rollback() that would undo prior successes
-        assert "begin_nested()" in source, (
-            "Expected 'begin_nested()' savepoint wrapping each journey refresh "
-            "to isolate failures without rolling back prior successful work"
+        # Strip comments so the comment that documents the fix doesn't
+        # trip the substring check. Keep only code.
+        code_lines = []
+        for line in source.split("\n"):
+            stripped = line.lstrip()
+            if stripped.startswith("#"):
+                continue
+            code_lines.append(line)
+
+        # Walk the code and verify no `begin_nested():` (as a statement,
+        # not a string in a comment) is followed within a few lines by a
+        # call to `retry_on_deadlock(`.
+        for i, line in enumerate(code_lines):
+            if "begin_nested():" in line:
+                window = "\n".join(code_lines[i : i + 5])
+                assert "retry_on_deadlock(" not in window, (
+                    f"Found `begin_nested()` wrapping `retry_on_deadlock` "
+                    f"at code line {i}. This combination is broken — the "
+                    f"inner rollback discards the savepoint, triggering "
+                    f"greenlet errors on subsequent flushes.\n\nContext:\n"
+                    f"{window}"
+                )
+
+    def test_per_journey_commit_isolates_failures(self):
+        """Each successful per-journey refresh must commit before the next
+        iteration so a later failure cannot erase prior successes."""
+        import inspect
+        from trackrat.services.departure import DepartureService
+
+        source = inspect.getsource(DepartureService._ensure_fresh_station_data)
+
+        # Find the per-journey loop: retry_on_deadlock(db, refresh_journey)
+        # must be followed by `await db.commit()` and the success log
+        # before the next iteration.
+        lines = source.split("\n")
+        commit_after_retry = False
+        for i, line in enumerate(lines):
+            if (
+                "retry_on_deadlock(db, refresh_journey)" in line
+                and i + 5 < len(lines)
+            ):
+                window = "\n".join(lines[i : i + 5])
+                if "await db.commit()" in window:
+                    commit_after_retry = True
+                    break
+        assert commit_after_retry, (
+            "Expected `await db.commit()` immediately after "
+            "`retry_on_deadlock(db, refresh_journey)` so each successful "
+            "stale-train refresh is durable before the next iteration."
         )
 
-        # There should be NO bare db.rollback() in the per-journey loop
-        # (between stale_train_refresh_failed and await db.commit()).
-        # The begin_nested() savepoint handles rollback automatically.
-        lines = source.split("\n")
-        in_stale_handler = False
-        for line in lines:
-            if "stale_train_refresh_failed" in line:
-                in_stale_handler = True
-            if in_stale_handler and "await db.commit()" in line:
-                break
-            if in_stale_handler and "await db.rollback()" in line:
-                raise AssertionError(
-                    "Found 'await db.rollback()' between stale_train_refresh_failed "
-                    "and db.commit() — this rolls back the entire transaction "
-                    "including prior successful refreshes. Use begin_nested()."
-                )
+    def test_per_journey_rollback_clears_session_on_failure(self):
+        """Both failure branches in the per-journey loop must `db.rollback()`
+        so the next iteration starts with a clean session — otherwise
+        PendingRollbackError cascades through the rest of the batch."""
+        import inspect
+        from trackrat.services.departure import DepartureService
+
+        source = inspect.getsource(DepartureService._ensure_fresh_station_data)
+
+        # Both handlers must rollback before logging.
+        assert source.count("await db.rollback()") >= 2, (
+            "Expected at least two `await db.rollback()` calls in "
+            "_ensure_fresh_station_data — one in each per-journey except "
+            "handler (TrainNotFoundError and generic Exception)."
+        )
+
+        # Verify the TrainNotFoundError handler rolls back.
+        not_found_idx = source.find("except TrainNotFoundError")
+        warn_idx = source.find('"stale_train_not_found"')
+        assert not_found_idx != -1 and warn_idx > not_found_idx
+        not_found_block = source[not_found_idx:warn_idx]
+        assert "await db.rollback()" in not_found_block, (
+            "TrainNotFoundError handler must roll back the session to "
+            "clear any pending state before the next iteration."
+        )
+
+        # Verify the generic Exception handler rolls back.
+        generic_idx = source.find('"stale_train_refresh_failed"')
+        assert generic_idx != -1
+        # Look backwards from the warning log to the `except Exception`.
+        prelude = source[:generic_idx]
+        last_except = prelude.rfind("except Exception")
+        assert last_except != -1
+        generic_block = source[last_except:generic_idx]
+        assert "await db.rollback()" in generic_block, (
+            "Generic Exception handler must roll back the session to clear "
+            "any pending state before the next iteration."
+        )

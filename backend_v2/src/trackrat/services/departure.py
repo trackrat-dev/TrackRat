@@ -1354,10 +1354,17 @@ class DepartureService:
                 njt_collector = NJTJourneyCollector(njt_client)
                 individual_updated = 0
 
-                for journey in remaining_stale:
-                    if journey.id is None:
-                        continue
-                    journey_id = journey.id
+                # Snapshot (journey_id, train_id) for every stale journey
+                # before the loop starts. `db.commit()` and `db.rollback()`
+                # below expire all session attributes, so reading
+                # `journey.train_id` from a later iteration would trigger a
+                # sync lazy-load that fails with MissingGreenlet in the
+                # async session.
+                stale_ids: list[tuple[int, str | None]] = [
+                    (j.id, j.train_id) for j in remaining_stale if j.id is not None
+                ]
+
+                for journey_id, train_id in stale_ids:
 
                     async def refresh_journey(jid: int = journey_id) -> None:
                         # Re-query to get fresh state after potential rollback.
@@ -1375,30 +1382,39 @@ class DepartureService:
                         if fresh:
                             await njt_collector.collect_journey_details(db, fresh)
 
+                    # Per-journey commit/rollback isolates each refresh so a
+                    # single failure does not erase prior successful work.
+                    # NOTE: do NOT wrap this in `async with db.begin_nested()`.
+                    # `retry_on_deadlock` calls `await session.rollback()` on
+                    # retry, which rolls back the entire outer transaction
+                    # (not the savepoint), leaving the SAVEPOINT state
+                    # inconsistent and triggering `greenlet_spawn has not
+                    # been called` on subsequent flushes/commits.
                     try:
-                        async with db.begin_nested():
-                            await retry_on_deadlock(db, refresh_journey)
+                        await retry_on_deadlock(db, refresh_journey)
+                        await db.commit()
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                         )
                     except TrainNotFoundError:
                         # Train no longer in NJT system - this is expected for
                         # trains that completed their journey
+                        await db.rollback()
                         logger.debug(
                             "stale_train_not_found",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                         )
                     except Exception as e:
+                        await db.rollback()
                         logger.warning(
                             "stale_train_refresh_failed",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                             error=str(e) or repr(e),
                             error_type=type(e).__name__,
                         )
 
-                await db.commit()
                 logger.info(
                     "stale_past_trains_refresh_complete",
                     station_code=station_code,
