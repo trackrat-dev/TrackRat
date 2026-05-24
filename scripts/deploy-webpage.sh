@@ -11,7 +11,7 @@
 
 set -e
 
-PROD_BUCKET="gs://trackrat-links-2caf78c68fded156"
+PROD_BUCKET="gs://trackrat-webpage-production"
 STAGING_BUCKET="gs://trackrat-webpage-staging"
 PROD_API_URL="https://apiv2.trackrat.net/api/v2"
 STAGING_API_URL="https://staging.apiv2.trackrat.net/api/v2"
