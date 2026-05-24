@@ -3016,9 +3016,27 @@ class SchedulerService:
                         # Get latest journey for this train. Filter by
                         # data_source when the token has one to avoid picking
                         # the wrong journey on cross-system train_id collisions.
+                        #
+                        # Don't anchor to today's date alone: PATH (and any
+                        # late-night service) stamps ``journey_date`` from the
+                        # origin departure, which for trains that begin late
+                        # in the ET evening sits on the *previous* calendar
+                        # day once the user pulls into a midnight-or-later
+                        # stop. An equality filter on today's date would miss
+                        # those rows and silently stop push updates while the
+                        # trip is still in progress (issue #1211). Search a
+                        # 2-day window (yesterday + today) and take the most
+                        # recently updated journey — token ``expires_at`` is
+                        # only 6 h so we can't pick up something genuinely
+                        # stale, and ``ORDER BY journey_date DESC`` keeps
+                        # tomorrow's pre-generated SCHEDULED rows from
+                        # outranking today's OBSERVED one for recurring NJT
+                        # train numbers.
+                        today = now_et().date()
                         journey_filters = [
                             TrainJourney.train_id == train_number,
-                            TrainJourney.journey_date == now_et().date(),
+                            TrainJourney.journey_date >= today - timedelta(days=1),
+                            TrainJourney.journey_date <= today,
                         ]
                         if data_source:
                             journey_filters.append(
@@ -3027,6 +3045,11 @@ class SchedulerService:
                         journey_stmt = (
                             select(TrainJourney)
                             .where(and_(*journey_filters))
+                            .order_by(
+                                TrainJourney.journey_date.desc(),
+                                TrainJourney.last_updated_at.desc(),
+                            )
+                            .limit(1)
                             .options(
                                 selectinload(TrainJourney.stops),
                                 selectinload(TrainJourney.snapshots),
