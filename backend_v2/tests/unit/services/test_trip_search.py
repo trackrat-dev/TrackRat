@@ -47,7 +47,9 @@ from trackrat.services.trip_search import (
     _orient_transfer,
     _rank_transfer_points,
     _resolve_arrival_time,
+    _synthesize_alighting,
     _systems_for_station,
+    search_trips,
 )
 
 ET = ZoneInfo("America/New_York")
@@ -1698,4 +1700,221 @@ class TestFilterCrossSystemEndToEndForBugB:
         sources = [t.legs[0].data_source for t in result]
         assert sources == ["SUBWAY"], (
             f"Pure subway pair must filter out rail trains, got {sources}"
+        )
+
+
+class TestSynthesizeAlighting:
+    """PR #1235 codex P1: when ``dep.arrival`` is missing, the synthesized
+    alighting StationInfo must carry the resolved fallback time so leg-level
+    times don't disagree with trip-level ``arrival_time``.
+    """
+
+    def test_synthesizes_station_info_with_scheduled_time(self):
+        when = datetime(2026, 5, 24, 14, 30, tzinfo=ET)
+        info = _synthesize_alighting("S128", when)
+        assert info.code == "S128"
+        assert info.scheduled_time == when
+        assert info.updated_time is None
+        assert info.actual_time is None
+
+    def test_get_best_time_returns_synthesized_value(self):
+        """The trip-level arrival_time uses ``_resolve_arrival_time`` which
+        ultimately reads the leg's alighting via ``_get_best_time``.  Both
+        must end up at the same datetime — otherwise the leg breakdown
+        contradicts the trip header.
+        """
+        when = datetime(2026, 5, 24, 14, 30, tzinfo=ET)
+        info = _synthesize_alighting("S128", when)
+        assert _get_best_time(info) == when
+
+    def test_name_is_resolved_from_known_code(self):
+        """Real station codes (e.g. S128 = 34St-Penn Station 7) get a name,
+        not the bare code.  Clients render this name; a bare code would
+        leak through to UI as e.g. "S128" with no station label.
+        """
+        info = _synthesize_alighting("S128", datetime.now(ET))
+        # Don't hard-code the exact name string (it can change), just
+        # confirm it isn't the raw code or an empty string.
+        assert info.name and info.name != "S128"
+
+
+class TestDepartureToLegAlightingOverride:
+    """PR #1235 codex P1: ``_departure_to_leg`` must accept an override so
+    callers can patch in a synthesized alighting StationInfo when
+    ``dep.arrival`` is missing but a fallback arrival time was used at the
+    trip level.  Without this, the leg-level times silently fall back to
+    the boarding station's data and disagree with the trip header.
+    """
+
+    def test_override_replaces_alighting_when_arrival_present(self):
+        """Override wins over real arrival — callers opt in deliberately."""
+        dep = _make_departure(to_code="NY", to_name="New York Penn Station")
+        override = _make_station_info(
+            code="OTHER",
+            name="Override Station",
+            scheduled=datetime(2026, 5, 24, 14, 30, tzinfo=ET),
+        )
+        leg = _departure_to_leg(dep, alighting_override=override)
+        assert leg.alighting.code == "OTHER"
+        assert leg.alighting.scheduled_time == override.scheduled_time
+
+    def test_override_used_when_arrival_missing(self):
+        """Real fix scenario: dep.arrival is None and caller wants to surface
+        the synthesized fallback time at the leg level too.
+        """
+        dep = _make_departure()
+        dep.arrival = None
+        when = datetime(2026, 5, 24, 14, 30, tzinfo=ET)
+        override = _synthesize_alighting("S726", when)
+        leg = _departure_to_leg(dep, alighting_override=override)
+        assert leg.alighting.code == "S726"
+        assert _get_best_time(leg.alighting) == when
+
+    def test_no_override_falls_back_to_departure_when_arrival_missing(self):
+        """Backward compat: callers that don't supply override keep the old
+        fallback behavior (alighting copies dep.departure).  This is the
+        legacy code path other call sites still rely on.
+        """
+        dep = _make_departure()
+        dep.arrival = None
+        leg = _departure_to_leg(dep)
+        # Fallback path: alighting carries the departure's station data
+        assert leg.alighting.code == dep.departure.code
+
+    def test_no_override_uses_real_arrival(self):
+        """Backward compat: callers that don't supply override and have a real
+        arrival keep using it.  No regression for the common case.
+        """
+        dep = _make_departure(to_code="NY", to_name="New York Penn Station")
+        leg = _departure_to_leg(dep)
+        assert leg.alighting.code == "NY"
+
+
+class TestSharedLineShortcutRespectsDataSources:
+    """PR #1235 codex P2: the shared-line shortcut must run *after* the
+    ``data_sources`` filter, so an excluded-system overlap can't short-
+    circuit a search that should still try transfer routing through the
+    user's enabled systems.
+
+    These are unit tests against ``_has_shared_line`` using the same
+    filtered system sets that ``search_trips`` now computes; an end-to-end
+    integration test is in TestSharedLineEndToEnd below.
+    """
+
+    def test_njt_amtrak_overlap_invisible_when_user_only_enabled_subway(self):
+        """NP (Newark Penn) and NY share NJT + AMTRAK on NEC, plus subway
+        equivalents (PNK is in S128's group via NY in different equivalence
+        chains).  If the user only enabled SUBWAY, the rail overlap must NOT
+        trigger the shortcut.
+        """
+        # Mirror what search_trips computes: from_systems/to_systems after
+        # the data_sources filter has been applied.
+        from_systems_filtered = {"NJT", "AMTRAK"} & {"SUBWAY"}  # = {}
+        to_systems_filtered = {"NJT", "AMTRAK"} & {"SUBWAY"}  # = {}
+        assert from_systems_filtered == set()
+        # _has_shared_line with empty intersection returns False because the
+        # loop body never executes — confirms the shortcut is dormant when
+        # no common enabled system remains.
+        assert not _has_shared_line(
+            "NP", "NY", from_systems_filtered, to_systems_filtered
+        )
+
+    def test_njt_amtrak_overlap_still_triggers_when_user_enabled_them(self):
+        """Sanity check: when the user kept NJT/AMTRAK enabled, the shortcut
+        should still fire for shared-NEC pairs — that's the whole point of
+        Bug A/D (#1231).
+        """
+        from_systems_filtered = {"NJT", "AMTRAK"} & {"NJT", "AMTRAK"}
+        to_systems_filtered = {"NJT", "AMTRAK"} & {"NJT", "AMTRAK"}
+        assert _has_shared_line(
+            "NP", "NY", from_systems_filtered, to_systems_filtered
+        )
+
+    def test_subway_overlap_invisible_when_user_only_enabled_rail(self):
+        """Inverse: two subway-line-sharing stations, but user only enabled
+        NJT/AMTRAK — the SUBWAY overlap must NOT trigger the shortcut, so
+        the search proceeds to try rail transfers.
+        """
+        from_systems_filtered = {"SUBWAY"} & {"NJT", "AMTRAK"}  # = {}
+        to_systems_filtered = {"SUBWAY"} & {"NJT", "AMTRAK"}  # = {}
+        assert not _has_shared_line(
+            "S701", "S726", from_systems_filtered, to_systems_filtered
+        )
+
+
+class TestSharedLineEndToEnd:
+    """PR #1235 codex P2: end-to-end ``search_trips`` must not short-circuit
+    to ``no_direct_trains`` when the shared line lives in a system the user
+    filtered out via ``data_sources``.
+
+    Patches ``DepartureService`` at module level so the test is hermetic
+    (no DB).  Each stub call records its kwargs and returns an empty
+    departures response.
+    """
+
+    class _StubResponse:
+        def __init__(self, deps: list[TrainDeparture]):
+            self.departures = deps
+
+    class _StubDepartureService:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        async def get_departures(self, **kwargs):  # noqa: ANN003 - test stub
+            self.calls.append(kwargs)
+            return TestSharedLineEndToEnd._StubResponse([])
+
+    @pytest.mark.asyncio
+    async def test_shortcut_skipped_when_shared_line_system_is_excluded(
+        self, monkeypatch
+    ):
+        """User enables only SUBWAY for an NP→NY search.  Direct (subway)
+        returns nothing; rail overlap on NEC must NOT short-circuit to
+        ``no_direct_trains`` — instead the search should land in
+        ``no_systems`` because filtering NP/NY by SUBWAY removes the only
+        common systems.
+        """
+        from trackrat.services import trip_search as ts_mod
+
+        stub = self._StubDepartureService()
+        monkeypatch.setattr(ts_mod, "DepartureService", lambda: stub)
+
+        result = await search_trips(
+            db=None,  # type: ignore[arg-type]  # stub doesn't read db
+            from_station="NP",
+            to_station="NY",
+            data_sources=["SUBWAY"],
+        )
+        assert result.metadata["search_type"] != "no_direct_trains", (
+            "Shared-line shortcut fired on a system the user filtered out — "
+            f"should have proceeded past it. metadata={result.metadata}"
+        )
+        assert result.metadata["search_type"] == "no_systems", (
+            f"Filtered NP/NY by SUBWAY should leave no enabled systems, "
+            f"got metadata={result.metadata}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_shortcut_still_fires_when_user_enabled_shared_system(
+        self, monkeypatch
+    ):
+        """Sanity check: when the user kept NJT enabled, NP→NY returns
+        ``no_direct_trains`` (the legitimate shortcut path from #1231 A/D).
+        Without this assertion the reorder fix could silently regress the
+        Bug A/D behavior the original PR delivered.
+        """
+        from trackrat.services import trip_search as ts_mod
+
+        stub = self._StubDepartureService()
+        monkeypatch.setattr(ts_mod, "DepartureService", lambda: stub)
+
+        result = await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station="NP",
+            to_station="NY",
+            data_sources=["NJT"],
+        )
+        assert result.metadata["search_type"] == "no_direct_trains", (
+            "NJT-enabled NP→NY with no real-time results should report "
+            f"no_direct_trains, got {result.metadata}"
         )

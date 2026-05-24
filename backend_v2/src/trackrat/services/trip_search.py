@@ -79,8 +79,35 @@ def _resolve_arrival_time(dep: TrainDeparture) -> datetime | None:
     return None
 
 
-def _departure_to_leg(dep: TrainDeparture) -> TripLeg:
-    """Convert a TrainDeparture into a TripLeg."""
+def _synthesize_alighting(code: str, when: datetime) -> StationInfo:
+    """Build a synthetic alighting StationInfo when the real arrival is missing.
+
+    Used to keep ``TripLeg.alighting`` consistent with the trip-level
+    ``arrival_time`` when ``_resolve_arrival_time`` had to fall back to
+    ``departure + FALLBACK_TRANSIT_MINUTES`` (#1235 codex review).  Without
+    this, ``_departure_to_leg``'s fallback would put the boarding station's
+    timing on the leg's alighting field, so clients would render a final-leg
+    time that disagrees with the trip's overall arrival.
+    """
+    return StationInfo(
+        code=code,
+        name=get_station_name(code),
+        scheduled_time=when,
+    )
+
+
+def _departure_to_leg(
+    dep: TrainDeparture,
+    alighting_override: StationInfo | None = None,
+) -> TripLeg:
+    """Convert a TrainDeparture into a TripLeg.
+
+    ``alighting_override`` supplies a synthetic alighting StationInfo when
+    ``dep.arrival`` is missing (e.g. SUBWAY GTFS-RT intermediate stops).
+    Without it, the alighting silently falls back to ``dep.departure``, which
+    contradicts the trip's overall ``arrival_time`` when callers used a
+    fallback transit-time estimate.
+    """
     return TripLeg(
         train_id=dep.train_id,
         journey_date=dep.journey_date,
@@ -88,7 +115,7 @@ def _departure_to_leg(dep: TrainDeparture) -> TripLeg:
         data_source=dep.data_source,
         destination=dep.destination,
         boarding=dep.departure,
-        alighting=dep.arrival or dep.departure,  # fallback if no arrival
+        alighting=alighting_override or dep.arrival or dep.departure,
         observation_type=dep.observation_type,
         is_cancelled=dep.is_cancelled,
         train_position=dep.train_position,
@@ -448,16 +475,12 @@ async def search_trips(
 
     # --- Step 2: No direct service — find transfers ---
 
-    # If origin and destination already share a line on paper, transfer search
-    # is the wrong tool — intra-system junctions don't connect a line to
-    # itself, so the search would either return nothing or propose absurd
-    # transfers.  Surface the real failure: no direct trains in the window.
-    # (#1231 Bug A/D)
-    if _has_shared_line(from_station, to_station, from_systems, to_systems):
-        return _empty_response(from_station, to_station, "no_direct_trains")
-
-    # Restrict to user-enabled systems so transfer search doesn't
-    # propose routes through systems the user hasn't selected.
+    # Restrict to user-enabled systems so neither the shared-line shortcut
+    # nor the transfer search consider systems the user hasn't selected.
+    # The filter must come before the shared-line check: otherwise a pair
+    # that shares a line in an *excluded* system would short-circuit to
+    # ``no_direct_trains`` even when a transfer path through an enabled
+    # system is still possible (PR #1235 codex review).
     if data_sources:
         allowed = set(data_sources)
         from_systems = from_systems & allowed
@@ -465,6 +488,14 @@ async def search_trips(
 
     if not from_systems or not to_systems:
         return _empty_response(from_station, to_station, "no_systems")
+
+    # If origin and destination already share a line on paper (within the
+    # user's enabled systems), transfer search is the wrong tool — intra-
+    # system junctions don't connect a line to itself, so the search would
+    # either return nothing or propose absurd transfers.  Surface the real
+    # failure: no direct trains in the window. (#1231 Bug A/D)
+    if _has_shared_line(from_station, to_station, from_systems, to_systems):
+        return _empty_response(from_station, to_station, "no_direct_trains")
 
     # Find transfer points between systems (cross-system and intra-subway).
     transfer_points = _find_relevant_transfer_points(
@@ -678,10 +709,28 @@ async def search_trips(
                     0, int((leg2_arrival - leg1_departure).total_seconds() / 60)
                 )
 
+                # When dep.arrival is missing we used a synthesized fallback
+                # for leg{1,2}_arrival; mirror that into the leg's alighting
+                # field so per-leg times agree with trip-level arrival_time.
+                leg1_alighting_override = (
+                    None
+                    if dep1.arrival
+                    else _synthesize_alighting(alight_station, leg1_arrival)
+                )
+                leg2_alighting_override = (
+                    None
+                    if dep2.arrival
+                    else _synthesize_alighting(to_station, leg2_arrival)
+                )
+
                 trip = TripOption(
                     legs=[
-                        _departure_to_leg(dep1),
-                        _departure_to_leg(dep2),
+                        _departure_to_leg(
+                            dep1, alighting_override=leg1_alighting_override
+                        ),
+                        _departure_to_leg(
+                            dep2, alighting_override=leg2_alighting_override
+                        ),
                     ],
                     transfers=[
                         TransferInfo(
