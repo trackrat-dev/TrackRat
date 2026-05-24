@@ -469,4 +469,79 @@ class TrainSystemTests: XCTestCase {
         XCTAssertEqual(systems1.map(\.chipLabel), systems2.map(\.chipLabel),
                       "SystemChips sort order should be deterministic")
     }
+
+    // MARK: - congestionMapRouteOverlaySources
+    // Schedule-only systems (PATCO today) must be auto-rendered on the congestion
+    // map whenever selected, because the backend produces no congestion segments
+    // for them. Real-time systems are only rendered when the Routes layer is on.
+
+    func testCongestionMapRouteOverlaySources_emptySelection() {
+        let selected: Set<TrainSystem> = []
+        XCTAssertEqual(selected.congestionMapRouteOverlaySources(showRoutes: false), [])
+        XCTAssertEqual(selected.congestionMapRouteOverlaySources(showRoutes: true), [])
+    }
+
+    func testCongestionMapRouteOverlaySources_realtimeOnly_routesOff() {
+        let selected: Set<TrainSystem> = [.njt, .amtrak, .path]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, [],
+                       "Real-time systems should not render route overlays when Routes toggle is off")
+    }
+
+    func testCongestionMapRouteOverlaySources_realtimeOnly_routesOn() {
+        let selected: Set<TrainSystem> = [.njt, .amtrak, .path]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: true)
+        XCTAssertEqual(sources, ["NJT", "AMTRAK", "PATH"],
+                       "Real-time systems should render route overlays when Routes toggle is on")
+    }
+
+    func testCongestionMapRouteOverlaySources_patcoOnly_routesOff() {
+        let selected: Set<TrainSystem> = [.patco]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, ["PATCO"],
+                       "PATCO (schedule-only) must render its route overlay even when Routes toggle is off, since it has no congestion segments")
+    }
+
+    func testCongestionMapRouteOverlaySources_patcoOnly_routesOn() {
+        let selected: Set<TrainSystem> = [.patco]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: true)
+        XCTAssertEqual(sources, ["PATCO"],
+                       "PATCO render behavior should be unchanged by the Routes toggle")
+    }
+
+    func testCongestionMapRouteOverlaySources_mixedSelection_routesOff() {
+        let selected: Set<TrainSystem> = [.patco, .njt, .path]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, ["PATCO"],
+                       "Only schedule-only systems should render overlays when Routes toggle is off")
+    }
+
+    func testCongestionMapRouteOverlaySources_mixedSelection_routesOn() {
+        let selected: Set<TrainSystem> = [.patco, .njt, .path]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: true)
+        XCTAssertEqual(sources, ["PATCO", "NJT", "PATH"],
+                       "All selected systems should render overlays when Routes toggle is on")
+    }
+
+    func testCongestionMapRouteOverlaySources_excludesUnselectedScheduleOnly() {
+        // If PATCO is the only schedule-only system but the user hasn't selected it,
+        // it must not appear in the overlay set (this would defeat the "selected systems"
+        // filter on the map).
+        let selected: Set<TrainSystem> = [.njt]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertFalse(sources.contains("PATCO"),
+                       "Unselected schedule-only systems must not bleed into the overlay set")
+    }
+
+    func testCongestionMapRouteOverlaySources_coversAllScheduleOnlySystems() {
+        // If a new schedule-only system is added to TrainSystem, this test ensures it
+        // automatically participates in the always-render behavior. Compares against
+        // the same `!supportsAlerts` predicate used internally.
+        let scheduleOnlySystems = Set(TrainSystem.allCases.filter { !$0.supportsAlerts })
+        XCTAssertFalse(scheduleOnlySystems.isEmpty,
+                       "Expected at least one schedule-only system to exercise this code path")
+        let sources = scheduleOnlySystems.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, Set(scheduleOnlySystems.map(\.dataSource)),
+                       "Every schedule-only system in selection must appear in overlay sources when Routes toggle is off")
+    }
 }
