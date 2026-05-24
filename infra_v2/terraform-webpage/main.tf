@@ -331,7 +331,7 @@ resource "google_cloudbuild_trigger" "webpage_staging" {
   service_account = "projects/${var.project_id}/serviceAccounts/trackrat-staging@${var.project_id}.iam.gserviceaccount.com"
 
   repository_event_config {
-    repository = "projects/${var.project_id}/locations/us-east4/connections/trackrat-github/repositories/TrackRat"
+    repository = "projects/${var.project_id}/locations/us-east4/connections/trackrat-github/repositories/trackrat-dev-TrackRat"
     push {
       branch = "^main$"
     }
@@ -348,7 +348,7 @@ resource "google_cloudbuild_trigger" "webpage_production" {
   service_account = "projects/${var.project_id}/serviceAccounts/trackrat-staging@${var.project_id}.iam.gserviceaccount.com"
 
   repository_event_config {
-    repository = "projects/${var.project_id}/locations/us-east4/connections/trackrat-github/repositories/TrackRat"
+    repository = "projects/${var.project_id}/locations/us-east4/connections/trackrat-github/repositories/trackrat-dev-TrackRat"
     push {
       branch = "^production$"
     }
