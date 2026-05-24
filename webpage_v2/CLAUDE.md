@@ -204,7 +204,7 @@ npm run preview    # Preview production build locally
 ### Deployment
 - **Manual**: Run `./scripts/deploy-webpage.sh` from repo root
 - **Dry run**: `./scripts/deploy-webpage.sh --dry-run` to preview changes
-- **Target**: `gs://trackrat-links-2caf78c68fded156/` → `https://trackrat.net`
+- **Target**: `gs://trackrat-webpage-production/` → `https://trackrat.net`
 - **Cache**: `index.html` and service worker get `no-cache`; hashed assets get `max-age=1yr`
 
 ## Common Patterns
