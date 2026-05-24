@@ -397,6 +397,21 @@ class TestCompareRouteCancellation:
         assert len(result.matches) == 1
         assert result.matches[0].tr.is_cancelled is True
 
+    def test_unmatched_cancelled_goes_to_cancelled_list(self):
+        """An unmatched cancelled TR should go to cancelled_in_tr, not phantoms."""
+        gt = [_gt(minutes_offset=10)]
+        tr = [
+            _tr(minutes_offset=10),  # This one matches the GT
+            _tr(
+                minutes_offset=30, is_cancelled=True
+            ),  # This one is unmatched + cancelled
+        ]
+        result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
+
+        assert len(result.matches) == 1
+        assert len(result.cancelled_in_tr) == 1
+        assert len(result.phantoms) == 0
+
 
 class TestRunValidationLoopEmptyGroundTruth:
     """Regression coverage for #1230 silent-skip bug.
@@ -480,21 +495,6 @@ class _StubHttpx:
 
         def close(self):
             pass
-
-    def test_unmatched_cancelled_goes_to_cancelled_list(self):
-        """An unmatched cancelled TR should go to cancelled_in_tr, not phantoms."""
-        gt = [_gt(minutes_offset=10)]
-        tr = [
-            _tr(minutes_offset=10),  # This one matches the GT
-            _tr(
-                minutes_offset=30, is_cancelled=True
-            ),  # This one is unmatched + cancelled
-        ]
-        result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
-
-        assert len(result.matches) == 1
-        assert len(result.cancelled_in_tr) == 1
-        assert len(result.phantoms) == 0
 
 
 class TestCompareRouteToleranceBoundary:
