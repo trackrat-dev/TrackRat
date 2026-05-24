@@ -20,6 +20,12 @@ struct TrainActivityAttributes: ActivityAttributes {
         let nextStopArrivalTime: String?
         let nextStopCode: String?
         let hasTrainDeparted: Bool
+
+        // Track prediction surfaced from /v2/predictions/track or the inline train-details prediction.
+        // Only meaningful when `track` is nil (actual track wins). Optional so existing activities
+        // that predate these fields still decode.
+        let predictedTrack: String?
+        let predictedTrackConfidence: Double?
         
         // Computed property for data freshness
         var freshnessText: String {
@@ -119,6 +125,33 @@ struct TrainActivityAttributes: ActivityAttributes {
         var trackDisplay: String? {
             guard let track = track, !track.isEmpty else { return nil }
             return "T\(track)"
+        }
+
+        /// Minimum confidence required before a track prediction is surfaced on the Live Activity.
+        /// Matches the threshold used by `TrackRatPredictionInfo.displayText` for "thinks it may be".
+        static let predictedTrackConfidenceFloor: Double = 0.5
+
+        /// Predicted track display with "T" prefix and a "~" prefix to mark it as an estimate.
+        /// Returns nil when an actual track is already assigned, when there is no prediction,
+        /// or when confidence is below `predictedTrackConfidenceFloor`.
+        var predictedTrackDisplay: String? {
+            guard track == nil || track?.isEmpty == true,
+                  let predicted = predictedTrack, !predicted.isEmpty,
+                  (predictedTrackConfidence ?? 0) >= Self.predictedTrackConfidenceFloor else {
+                return nil
+            }
+            return "~T\(predicted)"
+        }
+
+        /// True when no actual track is assigned but a prediction is available for display.
+        var hasPredictedTrack: Bool { predictedTrackDisplay != nil }
+
+        /// Raw predicted track value once the same confidence/availability checks as
+        /// `predictedTrackDisplay` have passed. Used by lock-screen text that already
+        /// wraps the value with its own "Track" prefix.
+        var displayablePredictedTrack: String? {
+            guard hasPredictedTrack, let predicted = predictedTrack else { return nil }
+            return predicted
         }
         
         /// Destination arrival time for expanded view
