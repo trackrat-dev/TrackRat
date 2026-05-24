@@ -3,7 +3,7 @@
 # Builds the React app pointing at production API, deploys to production GCS bucket
 
 substitutions:
-  _WEBPAGE_BUCKET: trackrat-links-2caf78c68fded156
+  _WEBPAGE_BUCKET: trackrat-webpage-production
   _API_BASE_URL: 'https://apiv2.trackrat.net/api/v2'
 
 steps:

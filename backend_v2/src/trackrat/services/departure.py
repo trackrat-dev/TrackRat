@@ -53,6 +53,27 @@ _NJT_REFRESH_LOAD_OPTIONS = (
     selectinload(TrainJourney.progress_snapshots),
 )
 
+
+def _destination_prefix(destination: str | None) -> str:
+    """Normalize a destination string for similarity comparison.
+
+    NJT's schedule API and real-time API sometimes return the same terminus
+    with different suffixes ("Suffern" vs "Suffern via Hoboken"). Lowercase
+    the string, trim whitespace, and strip any " via ..." suffix so the two
+    forms compare equal — but preserve the rest of the destination so that
+    distinct termini sharing a leading word ("Long Branch" vs "Long Island",
+    "Atlantic City" vs "Atlantic Highlands") still compare unequal. Empty
+    string for missing destinations so they never accidentally match.
+    """
+    if not destination:
+        return ""
+    normalized = destination.strip().lower()
+    via_idx = normalized.find(" via ")
+    if via_idx > 0:
+        normalized = normalized[:via_idx].rstrip()
+    return normalized
+
+
 # Tracks station codes currently being refreshed in background tasks.
 # Prevents duplicate concurrent JIT refreshes for the same station.
 _refreshing_stations: set[str] = set()
@@ -513,6 +534,13 @@ class DepartureService:
                 is_expired=journey.is_expired or False,
             )
             departures.append(departure)
+
+        # Collapse SCHEDULED/OBSERVED pairs for the same physical train that
+        # the upstream collectors failed to merge (most common with NJT —
+        # see _dedupe_scheduled_observed_collisions for details). Runs on
+        # the realtime list only; GTFS-sourced rows below have their own
+        # merge logic.
+        departures = self._dedupe_scheduled_observed_collisions(departures)
 
         # PERFORMANCE: Log timing and result set metrics for observability
         total_duration_ms = (time.perf_counter() - perf_start) * 1000
@@ -1354,10 +1382,17 @@ class DepartureService:
                 njt_collector = NJTJourneyCollector(njt_client)
                 individual_updated = 0
 
-                for journey in remaining_stale:
-                    if journey.id is None:
-                        continue
-                    journey_id = journey.id
+                # Snapshot (journey_id, train_id) for every stale journey
+                # before the loop starts. `db.commit()` and `db.rollback()`
+                # below expire all session attributes, so reading
+                # `journey.train_id` from a later iteration would trigger a
+                # sync lazy-load that fails with MissingGreenlet in the
+                # async session.
+                stale_ids: list[tuple[int, str | None]] = [
+                    (j.id, j.train_id) for j in remaining_stale if j.id is not None
+                ]
+
+                for journey_id, train_id in stale_ids:
 
                     async def refresh_journey(jid: int = journey_id) -> None:
                         # Re-query to get fresh state after potential rollback.
@@ -1375,30 +1410,39 @@ class DepartureService:
                         if fresh:
                             await njt_collector.collect_journey_details(db, fresh)
 
+                    # Per-journey commit/rollback isolates each refresh so a
+                    # single failure does not erase prior successful work.
+                    # NOTE: do NOT wrap this in `async with db.begin_nested()`.
+                    # `retry_on_deadlock` calls `await session.rollback()` on
+                    # retry, which rolls back the entire outer transaction
+                    # (not the savepoint), leaving the SAVEPOINT state
+                    # inconsistent and triggering `greenlet_spawn has not
+                    # been called` on subsequent flushes/commits.
                     try:
-                        async with db.begin_nested():
-                            await retry_on_deadlock(db, refresh_journey)
+                        await retry_on_deadlock(db, refresh_journey)
+                        await db.commit()
                         individual_updated += 1
                         logger.debug(
                             "stale_train_refreshed",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                         )
                     except TrainNotFoundError:
                         # Train no longer in NJT system - this is expected for
                         # trains that completed their journey
+                        await db.rollback()
                         logger.debug(
                             "stale_train_not_found",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                         )
                     except Exception as e:
+                        await db.rollback()
                         logger.warning(
                             "stale_train_refresh_failed",
-                            train_id=journey.train_id,
+                            train_id=train_id,
                             error=str(e) or repr(e),
                             error_type=type(e).__name__,
                         )
 
-                await db.commit()
                 logger.info(
                     "stale_past_trains_refresh_complete",
                     station_code=station_code,
@@ -1632,6 +1676,79 @@ class DepartureService:
             fallback_keys = [f"{line_code}:{dep.data_source}:unknown"]
 
         return primary_key, fallback_keys
+
+    def _dedupe_scheduled_observed_collisions(
+        self,
+        departures: list[TrainDeparture],
+    ) -> list[TrainDeparture]:
+        """Drop SCHEDULED departures that collide with an OBSERVED departure.
+
+        The same physical train can end up with two ``TrainJourney`` rows when
+        an upstream collector fails to merge a daily SCHEDULED row into the
+        OBSERVED row at discovery time. The known case is NJT publishing a
+        different train number (or slightly different destination text) in
+        ``getTrainSchedule`` vs the real-time feed, which causes
+        ``_find_matching_scheduled_train`` to miss the merge. The two rows
+        then have different ``train_id`` values and scheduled times that may
+        differ by a minute, so the exact-``train_id`` dedup above doesn't
+        catch them and clients render the same train twice (once labeled
+        "Train TBD" from the SCHEDULED row, once with the real number).
+
+        Collapse logic: within a ``(journey_date, data_source, line_code,
+        scheduled_time ±1 min)`` bucket, if any departure is OBSERVED, drop
+        SCHEDULED rows in the same bucket whose normalized destination
+        matches the OBSERVED row. Pairs of two OBSERVED rows are NOT
+        collapsed — they are presumed to be genuinely different trains.
+        The destination check guards against the rare case where two
+        legitimate trains run on the same line within ±1 min to different
+        termini. The ``journey_date`` scope keeps an OBSERVED train from
+        suppressing a distinct SCHEDULED train at the same wall-clock
+        minute on a different calendar day (``_make_dedup_keys`` fallback
+        keys are date-less ``HH:MM`` and ``get_departures`` returns a
+        multi-day window).
+        """
+        if len(departures) < 2:
+            return departures
+
+        # Build map from (journey_date, fallback key) -> set of normalized
+        # OBSERVED destinations claiming that bucket. Date scope keeps an
+        # overnight OBSERVED train from colliding with the next day's
+        # SCHEDULED slot.
+        observed_keys: dict[tuple[date, str], set[str]] = {}
+        for dep in departures:
+            if dep.observation_type != "OBSERVED":
+                continue
+            _, fallbacks = self._make_dedup_keys(dep)
+            dest_token = _destination_prefix(dep.destination)
+            for fb in fallbacks:
+                observed_keys.setdefault((dep.journey_date, fb), set()).add(dest_token)
+
+        if not observed_keys:
+            return departures
+
+        result: list[TrainDeparture] = []
+        dropped_train_ids: list[str | None] = []
+        for dep in departures:
+            if dep.observation_type == "SCHEDULED":
+                _, fallbacks = self._make_dedup_keys(dep)
+                dest_token = _destination_prefix(dep.destination)
+                if any(
+                    dest_token in observed_keys[(dep.journey_date, fb)]
+                    for fb in fallbacks
+                    if (dep.journey_date, fb) in observed_keys
+                ):
+                    dropped_train_ids.append(dep.train_id)
+                    continue
+            result.append(dep)
+
+        if dropped_train_ids:
+            logger.info(
+                "scheduled_observed_collision_deduped",
+                dropped_count=len(dropped_train_ids),
+                dropped_train_ids=dropped_train_ids,
+                kept_count=len(result),
+            )
+        return result
 
     def _merge_departures(
         self,

@@ -186,9 +186,14 @@ GET  /api/v2/predictions/track              # Platform predictions
 GET  /api/v2/predictions/delay              # Delay/cancellation forecasts
 POST /api/v2/devices/register              # Register device for push notifications
 PUT  /api/v2/alerts/subscriptions          # Sync route alert subscriptions
+GET  /api/v2/alerts/subscriptions/{device_id}  # Get current alert subscriptions
 GET  /api/v2/alerts/service                # MTA service alerts (planned work, delays)
 GET  /api/v2/trips/search                  # Multi-leg trip search with transfers
+GET  /api/v2/routes/preferences            # User route preferences
+PUT  /api/v2/routes/preferences            # Update route preferences
 POST /api/v2/feedback                      # Submit user feedback
+GET  /share/train/{train_id}                # OG meta tag HTML for link previews
+GET  /share/train/{train_id}/image          # PNG share image for link previews
 GET  /admin/stats                           # Server usage statistics (HTML)
 GET  /admin/stats.json                      # Server usage statistics (JSON)
 GET  /health                                # Health check

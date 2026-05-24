@@ -1,14 +1,17 @@
 #!/bin/bash
 # Build and deploy webpage_v2 to GCS
 #
-# Usage: ./scripts/deploy-webpage.sh [staging|production] [--dry-run]
+# Usage: ./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
 #
 # Defaults to production if no environment specified.
+# --bucket overrides the destination bucket (with or without gs:// prefix)
+# while keeping the environment's API URL. Useful for pre-populating a new
+# bucket during a migration without flipping the default.
 # Prerequisites: gsutil authenticated, npm installed
 
 set -e
 
-PROD_BUCKET="gs://trackrat-links-2caf78c68fded156"
+PROD_BUCKET="gs://trackrat-webpage-production"
 STAGING_BUCKET="gs://trackrat-webpage-staging"
 PROD_API_URL="https://apiv2.trackrat.net/api/v2"
 STAGING_API_URL="https://staging.apiv2.trackrat.net/api/v2"
@@ -19,11 +22,15 @@ WEB_DIR="$PROJECT_DIR/webpage_v2"
 DIST_DIR="$WEB_DIR/dist"
 DRY_RUN=false
 ENVIRONMENT="production"
+BUCKET_OVERRIDE=""
 
 for arg in "$@"; do
     case $arg in
         --dry-run)
             DRY_RUN=true
+            ;;
+        --bucket=*)
+            BUCKET_OVERRIDE="${arg#--bucket=}"
             ;;
         staging)
             ENVIRONMENT="staging"
@@ -33,7 +40,7 @@ for arg in "$@"; do
             ;;
         *)
             echo "❌ Unknown argument: $arg"
-            echo "Usage: $0 [staging|production] [--dry-run]"
+            echo "Usage: $0 [staging|production] [--bucket=<name>] [--dry-run]"
             exit 1
             ;;
     esac
@@ -45,6 +52,14 @@ if [[ "$ENVIRONMENT" == "staging" ]]; then
 else
     BUCKET="$PROD_BUCKET"
     API_URL="$PROD_API_URL"
+fi
+
+if [[ -n "$BUCKET_OVERRIDE" ]]; then
+    if [[ "$BUCKET_OVERRIDE" == gs://* ]]; then
+        BUCKET="$BUCKET_OVERRIDE"
+    else
+        BUCKET="gs://$BUCKET_OVERRIDE"
+    fi
 fi
 
 echo "Environment: $ENVIRONMENT"

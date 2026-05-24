@@ -23,8 +23,46 @@ from trackrat.models.api import (
     TrainDeparture,
     TrainPosition,
 )
-from trackrat.services.departure import DepartureService
+from trackrat.services.departure import DepartureService, _destination_prefix
 from trackrat.utils.time import ET
+
+
+class TestDestinationPrefix:
+    """Tests for the _destination_prefix helper."""
+
+    def test_lowercases_and_strips(self):
+        assert _destination_prefix("Suffern") == "suffern"
+
+    def test_strips_via_suffix(self):
+        assert _destination_prefix("Suffern via Hoboken") == "suffern"
+
+    def test_handles_leading_whitespace(self):
+        assert _destination_prefix("  Suffern ") == "suffern"
+
+    def test_empty_string_for_none(self):
+        assert _destination_prefix(None) == ""
+
+    def test_empty_string_for_empty(self):
+        assert _destination_prefix("") == ""
+
+    def test_distinct_termini_compare_unequal(self):
+        assert _destination_prefix("Suffern") != _destination_prefix("Port Jervis")
+
+    def test_distinct_termini_with_shared_leading_word_compare_unequal(self):
+        """First-word-only collapse would mis-merge 'Long Branch' with
+        'Long Island' or 'Atlantic City' with 'Atlantic Highlands'. Full
+        normalized text keeps them distinct."""
+        assert _destination_prefix("Long Branch") != _destination_prefix("Long Island")
+        assert _destination_prefix("Atlantic City") != _destination_prefix(
+            "Atlantic Highlands"
+        )
+        assert _destination_prefix("Bay Head") != _destination_prefix("Bay Ridge")
+
+    def test_multi_word_terminus_preserved(self):
+        assert _destination_prefix("Long Branch") == "long branch"
+
+    def test_via_suffix_with_multi_word_origin(self):
+        assert _destination_prefix("Bay Head via Long Branch") == "bay head"
 
 
 class TestMakeDedupKeys:
@@ -495,3 +533,366 @@ class TestMergeDepartures:
         # Should deduplicate: "No" canonicalizes to "NE", matching GTFS
         assert len(merged) == 1
         assert merged[0].train_id == "3719"  # DB train preferred
+
+
+class TestDedupeScheduledObservedCollisions:
+    """Tests for _dedupe_scheduled_observed_collisions.
+
+    Covers the issue where NJT publishes different train numbers in the
+    schedule API vs the real-time feed, leaving two TrainJourney rows
+    for the same physical train (one SCHEDULED, one OBSERVED) that the
+    train_id-only dedup above can't collapse.
+    """
+
+    def setup_method(self):
+        self.service = DepartureService.__new__(DepartureService)
+
+    def _create_departure(
+        self,
+        train_id: str,
+        line_code: str,
+        scheduled_time: datetime,
+        observation_type: str = "OBSERVED",
+        destination: str = "Suffern",
+        data_source: str = "NJT",
+    ) -> TrainDeparture:
+        return TrainDeparture(
+            train_id=train_id,
+            journey_date=scheduled_time.date(),
+            line=LineInfo(code=line_code, name="Bergen", color="#000000"),
+            destination=destination,
+            departure=StationInfo(
+                code="HB",
+                name="Hoboken",
+                scheduled_time=scheduled_time,
+                updated_time=None,
+                actual_time=None,
+                track=None,
+            ),
+            arrival=None,
+            train_position=TrainPosition(
+                last_departed_station_code=None,
+                at_station_code=None,
+                next_station_code=None,
+                between_stations=False,
+            ),
+            data_freshness=DataFreshness(
+                last_updated=scheduled_time,
+                age_seconds=0,
+                update_count=None,
+                collection_method=None,
+            ),
+            data_source=data_source,
+            observation_type=observation_type,
+        )
+
+    def test_drops_scheduled_when_observed_at_same_line_and_time(self):
+        """The reported HB→GK case: 1-min drift, same line, drop SCHEDULED."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 31))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 1
+        assert result[0].train_id == "1234"
+        assert result[0].observation_type == "OBSERVED"
+
+    def test_keeps_scheduled_when_destination_does_not_match(self):
+        """Same line + time but different terminus: legitimately different trains."""
+        time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+                destination="Suffern",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                destination="Port Jervis",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        # Different destinations — both should survive.
+        assert len(result) == 2
+
+    def test_matches_destination_with_via_suffix(self):
+        """NJT 'Suffern' vs 'Suffern via Hoboken' should still match."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 31))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+                destination="Suffern via Hoboken",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+                destination="Suffern",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 1
+        assert result[0].train_id == "1234"
+
+    def test_does_not_collapse_two_observed_rows(self):
+        """Two OBSERVED rows at same line/time are presumed real distinct trains."""
+        time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 2
+
+    def test_does_not_collapse_two_scheduled_rows(self):
+        """Two SCHEDULED rows at same line/time are preserved (no OBSERVED anchor)."""
+        time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 2
+
+    def test_does_not_collapse_across_different_lines(self):
+        """Different lines at the same time are clearly different trains."""
+        time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="NE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 2
+
+    def test_does_not_collapse_across_data_sources(self):
+        """Different data sources are independent — never cross-merge."""
+        time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="NE",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+                data_source="NJT",
+            ),
+            self._create_departure(
+                train_id="A2205",
+                line_code="NE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                data_source="AMTRAK",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 2
+
+    def test_returns_input_unchanged_when_no_observed_rows(self):
+        """All-SCHEDULED input bypasses the function early — no work done."""
+        time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert result is deps  # short-circuited
+
+    def test_drift_beyond_two_minutes_does_not_collapse(self):
+        """A SCHEDULED row 3 minutes off the OBSERVED stays — outside tolerance."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 33))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        # ±1 min on each side overlaps at 12:31 only; 12:33 falls outside.
+        assert len(result) == 2
+
+    def test_one_observed_collapses_multiple_matching_scheduled(self):
+        """An OBSERVED row drops all colliding SCHEDULED rows in its bucket."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=ET.localize(datetime(2026, 5, 17, 12, 29)),
+                observation_type="SCHEDULED",
+            ),
+            self._create_departure(
+                train_id="9012",
+                line_code="BE",
+                scheduled_time=ET.localize(datetime(2026, 5, 17, 12, 31)),
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        # Both SCHEDULED rows share a ±1 min key with the OBSERVED row AND
+        # the same destination — they collapse.
+        assert len(result) == 1
+        assert result[0].train_id == "1234"
+
+    def test_preserves_order_of_surviving_departures(self):
+        """Function should not reorder surviving departures."""
+        deps = [
+            self._create_departure(
+                train_id="A",
+                line_code="BE",
+                scheduled_time=ET.localize(datetime(2026, 5, 17, 12, 0)),
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="B",
+                line_code="BE",
+                scheduled_time=ET.localize(datetime(2026, 5, 17, 13, 0)),
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="C",
+                line_code="BE",
+                scheduled_time=ET.localize(datetime(2026, 5, 17, 14, 0)),
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert [d.train_id for d in result] == ["A", "B", "C"]
+
+    def test_does_not_collapse_across_different_journey_dates(self):
+        """The realtime window can span ~26 hours, so an OBSERVED train at
+        00:30 today must NOT suppress a distinct SCHEDULED train at the
+        same wall-clock minute on the next service day. The
+        ``_make_dedup_keys`` fallback is date-less ``HH:MM``, so the dedup
+        function has to scope buckets by ``journey_date`` itself."""
+        observed_today = self._create_departure(
+            train_id="9999",
+            line_code="BE",
+            scheduled_time=ET.localize(datetime(2026, 5, 17, 0, 30)),
+            observation_type="OBSERVED",
+            destination="Suffern",
+        )
+        scheduled_tomorrow = self._create_departure(
+            train_id="1234",
+            line_code="BE",
+            scheduled_time=ET.localize(datetime(2026, 5, 18, 0, 30)),
+            observation_type="SCHEDULED",
+            destination="Suffern",
+        )
+
+        # Sanity-check the precondition: bare fallback keys collide.
+        _, today_fallbacks = self.service._make_dedup_keys(observed_today)
+        _, tomorrow_fallbacks = self.service._make_dedup_keys(scheduled_tomorrow)
+        assert set(today_fallbacks) & set(tomorrow_fallbacks), (
+            "Test premise wrong: fallback keys must overlap for the dedup "
+            "function's journey_date scope to matter."
+        )
+
+        result = self.service._dedupe_scheduled_observed_collisions(
+            [observed_today, scheduled_tomorrow]
+        )
+
+        # Both rows should survive — they're different service days.
+        assert len(result) == 2
+        assert {d.train_id for d in result} == {"9999", "1234"}

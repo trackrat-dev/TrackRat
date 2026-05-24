@@ -853,7 +853,10 @@ class TestBulkInferenceGuard:
 
         This prevents the bulk-stamp anomaly where multiple stops get identical
         timestamps from a stale NJT data refresh."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        # Anchor relative to now so the simulated departures are always in the
+        # past; the Tier 1 future-departure guard (issue #1221) refuses to write
+        # actual_departure values that haven't happened yet.
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=70)
 
         journey = TrainJourney(
             train_id="3922B",
