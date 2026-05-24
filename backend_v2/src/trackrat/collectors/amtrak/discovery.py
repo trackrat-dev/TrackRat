@@ -24,6 +24,12 @@ DISCOVERY_HUBS = {
     "WIL",  # Wilmington
     "RVR",  # Richmond Staples Mill Road
     "CLT",  # Charlotte
+    "ALB",  # Albany-Rensselaer - Empire Service, Adirondack, Maple Leaf,
+            # Ethan Allen, Lake Shore Limited. The Amtraker /v3/trains feed
+            # trims stations a train has already passed, so once an Empire
+            # Service train departs NYP its remaining stops list contains
+            # only upstate-NY stations; without ALB in the hub set those
+            # trains are silently dropped from discovery mid-journey.
     # Midwest hubs
     "CHI",  # Chicago Union Station - Empire Builder, Zephyr, Chief, etc.
     "STL",  # St. Louis - Texas Eagle, Missouri River Runner
