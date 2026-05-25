@@ -50,6 +50,17 @@ class JourneyMatchResult(Enum):
     MATCH = "match"
     DESTINATION_MISMATCH = "destination_mismatch"
     DEPARTURE_TIME_MISMATCH = "departure_time_mismatch"
+    STALE_PRIOR_RUN = "stale_prior_run"
+
+
+# A first-stop departure-time mismatch larger than this cannot be a real-world
+# delay; it means the NJT API is serving a different service day's run. NJT
+# reuses the same numeric train_id every day, so getTrainStopList(<id>) on a
+# later day returns that day's run, ~24h displaced from a stored prior-day
+# journey. 6h sits far above any plausible NJT delay yet well below the ~24h
+# daily displacement, so it cleanly separates "delayed today" from "yesterday's
+# reused train_id". See JourneyMatchResult.STALE_PRIOR_RUN and issue #1238.
+STALE_PRIOR_RUN_THRESHOLD_SECONDS = 6 * 3600
 
 
 def _journey_eager_options() -> list[Any]:
@@ -722,6 +733,32 @@ class JourneyCollector(BaseJourneyCollector):
                     if stored_origin_found_in_stops:
                         # Don't return False - let the journey continue to be processed
                         pass
+                    elif time_diff > STALE_PRIOR_RUN_THRESHOLD_SECONDS:
+                        # A mismatch this large is not a delay: NJT reuses the
+                        # same numeric train_id every service day, so
+                        # getTrainStopList is now serving a later day's run,
+                        # ~24h displaced from this stored prior-day journey.
+                        # The stored row physically ran but was never finalized,
+                        # so it stays an update candidate and the scheduler
+                        # re-polls it every cycle for the rest of the day.
+                        # Classify it distinctly (and log at info, since reused
+                        # train_id is expected, not anomalous) so the caller can
+                        # finalize it instead of looping. See issue #1238.
+                        logger.info(
+                            "journey_stale_prior_run_detected",
+                            journey_id=stored_journey.id,
+                            train_id=stored_journey.train_id,
+                            stored_departure=stored_departure.isoformat(),
+                            api_departure=api_departure.isoformat(),
+                            difference_minutes=int(time_diff / 60),
+                            api_first_station=first_stop.STATION_2CHAR,
+                            journey_date=(
+                                stored_journey.journey_date.isoformat()
+                                if stored_journey.journey_date
+                                else None
+                            ),
+                        )
+                        return JourneyMatchResult.STALE_PRIOR_RUN
                     else:
                         # This is actually a different journey
                         logger.warning(
@@ -926,6 +963,39 @@ class JourneyCollector(BaseJourneyCollector):
                 has_complete_journey=journey.has_complete_journey,
                 update_count=journey.update_count,
                 api_error_count=journey.api_error_count,
+            )
+
+            await session.flush()
+            return
+
+        if match_result is JourneyMatchResult.STALE_PRIOR_RUN:
+            # NJT reused this train_id for a later service day; the API is now
+            # serving that day's run (~24h displaced). Our row is a prior-day
+            # journey that physically ran but never got is_completed/is_expired
+            # set, so schedule_periodic_updates keeps re-polling it — and each
+            # poll re-fetches the wrong day and re-triggers this path — until
+            # its journey_date ages out of the candidate window (~next
+            # midnight). Finalize it now so it drops out of the candidate set.
+            # We never applied the displaced data, so there is no user-facing
+            # change; we only flip the lifecycle flags. Prefer real completion
+            # (using stored data only) and fall back to expiry.
+            if not journey.is_completed:
+                await self._attempt_completion_on_expiry(session, journey)
+
+            if not journey.is_completed:
+                journey.is_expired = True
+
+            journey.last_updated_at = now_et()
+
+            logger.info(
+                "stale_prior_run_finalized",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                journey_date=(
+                    journey.journey_date.isoformat() if journey.journey_date else None
+                ),
+                is_completed=journey.is_completed,
+                is_expired=journey.is_expired,
             )
 
             await session.flush()

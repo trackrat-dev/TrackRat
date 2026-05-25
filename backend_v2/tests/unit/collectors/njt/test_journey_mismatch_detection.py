@@ -22,7 +22,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.collectors.njt.journey import JourneyCollector, JourneyMatchResult
+from trackrat.collectors.njt.journey import (
+    STALE_PRIOR_RUN_THRESHOLD_SECONDS,
+    JourneyCollector,
+    JourneyMatchResult,
+)
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import ET, now_et
 
@@ -742,3 +746,354 @@ class TestStaleOriginDetection:
             "Three sustained DEPARTURE_TIME_MISMATCH responses must expire "
             "the journey when the completion backstop cannot fire"
         )
+
+
+class TestStalePriorRunDetection:
+    """Test handling of prior-day journeys re-served under a reused train_id.
+
+    NJT reuses the same numeric train_id every service day. A prior-day
+    journey row that physically ran but was never finalized stays an update
+    candidate; getTrainStopList(<id>) on a later day returns *that* day's run,
+    ~24h displaced from the stored departure. Before the fix, this displaced
+    response logged a journey_mismatch_departure_time WARNING and was skipped
+    (because the row has a departed stop), so the row was never finalized and
+    the scheduler re-polled it every cycle for the rest of the day. The fix
+    classifies a whole-service-day displacement as STALE_PRIOR_RUN and
+    finalizes the row so it drops out of the candidate set. See issue #1238.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_day_displacement_classified_as_stale_prior_run(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A ~24h first-stop displacement (the reused-train_id smoking gun)
+        must be classified as STALE_PRIOR_RUN, NOT DEPARTURE_TIME_MISMATCH.
+
+        Returning STALE_PRIOR_RUN (rather than DEPARTURE_TIME_MISMATCH) is also
+        what guarantees the noisy journey_mismatch_departure_time WARNING is not
+        emitted — that warning is logged only on the DEPARTURE_TIME_MISMATCH
+        branch, immediately before it returns.
+        """
+        # Stored journey ran yesterday; API now serves today's run (+24h).
+        stored_departure = (now_et() - timedelta(days=1)).replace(
+            hour=16, minute=0, second=0, microsecond=0
+        )
+        api_departure = stored_departure + timedelta(days=1)
+
+        journey = TrainJourney(
+            train_id="4250",
+            journey_date=date.today() - timedelta(days=1),  # yesterday
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="4250",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.STALE_PRIOR_RUN, (
+            "A ~24h first-stop displacement is daily train_id reuse, not a "
+            "delay — it must be classified as STALE_PRIOR_RUN so the caller "
+            "finalizes the row instead of skipping and re-polling it forever"
+        )
+
+    @pytest.mark.asyncio
+    async def test_threshold_boundary_separates_delay_from_prior_run(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """The classifier must split on STALE_PRIOR_RUN_THRESHOLD_SECONDS: a
+        large-but-sub-threshold skew is still treated as a (possible) delay
+        (DEPARTURE_TIME_MISMATCH), while an over-threshold skew is a reused
+        train_id (STALE_PRIOR_RUN). This pins the boundary so the threshold
+        can't silently drift.
+        """
+        stored_departure = now_et().replace(hour=10, minute=0, second=0, microsecond=0)
+
+        journey = TrainJourney(
+            train_id="4244",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+
+        # 1h BELOW the threshold → still a delay-shaped mismatch.
+        below_departure = stored_departure + timedelta(
+            seconds=STALE_PRIOR_RUN_THRESHOLD_SECONDS - 3600
+        )
+        below_response = create_stop_list_response(
+            train_id="4244",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    below_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        below_result = await journey_collector._is_same_journey(
+            db_session, journey, below_response
+        )
+        assert below_result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH, (
+            "A skew below STALE_PRIOR_RUN_THRESHOLD_SECONDS must remain a "
+            "DEPARTURE_TIME_MISMATCH (handled as a possible delay), not be "
+            "misclassified as a prior-day run"
+        )
+
+        # 1h ABOVE the threshold → reused-train_id displacement.
+        above_departure = stored_departure + timedelta(
+            seconds=STALE_PRIOR_RUN_THRESHOLD_SECONDS + 3600
+        )
+        above_response = create_stop_list_response(
+            train_id="4244",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    above_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        above_result = await journey_collector._is_same_journey(
+            db_session, journey, above_response
+        )
+        assert above_result is JourneyMatchResult.STALE_PRIOR_RUN, (
+            "A skew above STALE_PRIOR_RUN_THRESHOLD_SECONDS must be classified "
+            "as STALE_PRIOR_RUN"
+        )
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_details_expires_stale_prior_run(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """A stale prior-day run that ran (has a departed stop) but cannot be
+        completed (no penultimate-departed backstop) must be finalized via
+        is_expired=True so schedule_periodic_updates stops selecting it. The
+        strike counter must NOT be advanced — this is not an API error, it is
+        expected reuse, so api_error_count stays put.
+        """
+        stored_departure = (now_et() - timedelta(days=1)).replace(
+            hour=14, minute=23, second=0, microsecond=0
+        )
+        api_departure = stored_departure + timedelta(days=1)
+
+        journey = TrainJourney(
+            train_id="5517",
+            journey_date=date.today() - timedelta(days=1),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Single departed origin stop: proof the train ran, but with only one
+        # stop the completion backstop cannot fire, so expiry is the outcome.
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+            actual_departure=stored_departure,
+            has_departed_station=True,
+            departure_source="api_explicit",
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="5517",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.is_expired is True, (
+            "A stale prior-day run with no completion backstop must be expired "
+            "so it leaves the periodic-update candidate set"
+        )
+        assert journey.is_completed is False, (
+            "Without a penultimate-departed api_explicit stop, the row must "
+            "expire rather than be falsely completed"
+        )
+        assert journey.api_error_count == 0, (
+            "Reused-train_id displacement is expected, not an API error — the "
+            "strike counter must not advance for STALE_PRIOR_RUN"
+        )
+        assert (
+            journey.last_updated_at is not None
+        ), "Finalizing must advance last_updated_at"
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_details_completes_stale_prior_run_when_backstop_fires(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """When the completion backstop can fire (penultimate stop departed
+        via api_explicit and terminal arrival is due), a stale prior-day run
+        must be marked COMPLETED rather than merely expired — preserving the
+        real terminal arrival for history rather than discarding the journey.
+        """
+        stored_departure = (now_et() - timedelta(days=1)).replace(
+            hour=15, minute=0, second=0, microsecond=0
+        )
+        api_departure = stored_departure + timedelta(days=1)
+
+        journey = TrainJourney(
+            train_id="1720",
+            journey_date=date.today() - timedelta(days=1),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Origin (used by _is_same_journey for the stored-departure lookup).
+        origin_stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+        )
+        # Penultimate stop departed explicitly — satisfies the completion
+        # backstop's precondition.
+        penultimate_stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NP",
+            station_name="Newark Penn Station",
+            stop_sequence=5,
+            scheduled_departure=stored_departure + timedelta(minutes=50),
+            actual_departure=stored_departure + timedelta(minutes=50),
+            has_departed_station=True,
+            departure_source="api_explicit",
+        )
+        # Terminal arrival in the past (yesterday) → "due".
+        terminal_stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="TR",
+            station_name="Trenton Station",
+            stop_sequence=10,
+            scheduled_arrival=stored_departure + timedelta(minutes=90),
+        )
+        db_session.add_all([origin_stop, penultimate_stop, terminal_stop])
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="1720",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.is_completed is True, (
+            "A stale prior-day run whose penultimate stop departed and whose "
+            "terminal arrival is due must be completed via the backstop"
+        )
+        assert journey.is_expired is False, (
+            "Completion is preferred over expiry — the row must not be flagged "
+            "expired when it can be legitimately completed"
+        )
+        assert (
+            journey.actual_arrival is not None
+        ), "Completion-on-expiry must record the terminal arrival time"
