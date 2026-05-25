@@ -733,7 +733,11 @@ class JourneyCollector(BaseJourneyCollector):
                     if stored_origin_found_in_stops:
                         # Don't return False - let the journey continue to be processed
                         pass
-                    elif time_diff > STALE_PRIOR_RUN_THRESHOLD_SECONDS:
+                    elif (
+                        time_diff > STALE_PRIOR_RUN_THRESHOLD_SECONDS
+                        and stored_journey.journey_date is not None
+                        and stored_journey.journey_date < now_et().date()
+                    ):
                         # A mismatch this large is not a delay: NJT reuses the
                         # same numeric train_id every service day, so
                         # getTrainStopList is now serving a later day's run,
@@ -744,6 +748,16 @@ class JourneyCollector(BaseJourneyCollector):
                         # Classify it distinctly (and log at info, since reused
                         # train_id is expected, not anomalous) so the caller can
                         # finalize it instead of looping. See issue #1238.
+                        #
+                        # Gate on journey_date < today: the finalize path in
+                        # collect_journey_details bypasses the departed-stop
+                        # guard and 3-strike behavior used for a generic
+                        # DEPARTURE_TIME_MISMATCH, so we only take it for a
+                        # genuine prior-service-day row. A same-day train with a
+                        # large skew (a severe >6h delay or an API date anomaly)
+                        # is NOT a reused-train_id case and must keep the
+                        # conservative mismatch path so it isn't prematurely
+                        # removed from active tracking / /departures.
                         logger.info(
                             "journey_stale_prior_run_detected",
                             journey_id=stored_journey.id,
