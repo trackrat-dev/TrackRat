@@ -1464,7 +1464,7 @@ class TestResolveArrivalTime:
     def test_falls_back_to_departure_plus_estimate_when_arrival_missing(self):
         """Subway intermediate-stop case: arrival is None entirely."""
         now = datetime.now(ET)
-        dep = _make_departure(dep_time=now)
+        dep = _make_departure(dep_time=now, data_source="SUBWAY")
         dep.arrival = None
         expected = now + timedelta(minutes=FALLBACK_TRANSIT_MINUTES)
         assert _resolve_arrival_time(dep) == expected, (
@@ -1476,14 +1476,21 @@ class TestResolveArrivalTime:
     def test_falls_back_when_arrival_station_info_has_no_times(self):
         """Arrival StationInfo exists but every time field is None."""
         now = datetime.now(ET)
-        dep = _make_departure(dep_time=now)
+        dep = _make_departure(dep_time=now, data_source="SUBWAY")
         dep.arrival = _make_station_info(code="X", name="X")  # all times None
         expected = now + timedelta(minutes=FALLBACK_TRANSIT_MINUTES)
         assert _resolve_arrival_time(dep) == expected
 
+    def test_missing_arrival_does_not_fallback_for_non_subway(self):
+        """Do not invent commuter/regional arrival times from a subway heuristic."""
+        now = datetime.now(ET)
+        dep = _make_departure(dep_time=now, data_source="NJT")
+        dep.arrival = None
+        assert _resolve_arrival_time(dep) is None
+
     def test_returns_none_when_both_arrival_and_departure_missing(self):
         """No data at all — cannot synthesize an arrival."""
-        dep = _make_departure()
+        dep = _make_departure(data_source="SUBWAY")
         dep.arrival = None
         dep.departure = _make_station_info(code="X", name="X")  # all times None
         assert _resolve_arrival_time(dep) is None

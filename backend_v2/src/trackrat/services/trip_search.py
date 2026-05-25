@@ -49,10 +49,12 @@ CONNECTION_BUFFER_MINUTES = 2
 # Maximum connection wait time at the transfer station (minutes)
 MAX_CONNECTION_WAIT_MINUTES = 60
 
-# Conservative transit-time estimate used when a departure's arrival prediction
-# is missing.  Subway GTFS-RT feeds only reliably publish next-stop arrivals,
-# so intermediate-stop arrivals are frequently null; without a fallback, every
-# candidate connection through such a stop is dropped (#1231 Bug C).
+# Conservative transit-time estimate used when a subway departure's arrival
+# prediction is missing. Subway GTFS-RT feeds only reliably publish next-stop
+# arrivals, so intermediate-stop arrivals are frequently null; without a
+# fallback, every candidate connection through such a stop is dropped (#1231
+# Bug C). Other systems must not use this heuristic because their missing
+# arrival times can represent much longer trips.
 FALLBACK_TRANSIT_MINUTES = 15
 
 
@@ -64,15 +66,17 @@ def _get_best_time(info: StationInfo) -> datetime | None:
 def _resolve_arrival_time(dep: TrainDeparture) -> datetime | None:
     """Get a usable arrival time for a departure.
 
-    Falls back to ``best(dep.departure) + FALLBACK_TRANSIT_MINUTES`` when the
-    arrival prediction is missing.  This matters for SUBWAY GTFS-RT trips
-    whose intermediate-stop arrivals are commonly null; without the fallback,
-    every transfer candidate through such a stop is dropped (#1231 Bug C).
+    Falls back to ``best(dep.departure) + FALLBACK_TRANSIT_MINUTES`` only for
+    SUBWAY departures whose arrival prediction is missing. That keeps the
+    workaround scoped to the GTFS-RT intermediate-stop shape from #1231 Bug C
+    instead of inventing arrival times for commuter/regional trips.
     """
     if dep.arrival:
         arr = _get_best_time(dep.arrival)
         if arr:
             return arr
+    if dep.data_source != "SUBWAY":
+        return None
     dep_time = _get_best_time(dep.departure)
     if dep_time:
         return dep_time + timedelta(minutes=FALLBACK_TRANSIT_MINUTES)
