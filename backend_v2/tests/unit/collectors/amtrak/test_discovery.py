@@ -154,6 +154,27 @@ class TestAmtrakDiscoveryCollector:
         result = collector._stops_at_any_hub(train)
         assert result is False
 
+    def test_stops_at_any_hub_empire_train_past_nyp(self, collector):
+        """An Empire Service train mid-journey (NYP already departed and
+        trimmed from train.stations by the Amtraker /v3/trains feed) must
+        still be discovered via its remaining upstate-NY stops. Regression
+        test for #1230."""
+        empire_remaining_stops = [
+            create_amtrak_station_data(
+                name="Albany-Rensselaer", code="ALB", status="Enroute"
+            ),
+            create_amtrak_station_data(
+                name="Schenectady", code="SDY", status="Enroute"
+            ),
+            create_amtrak_station_data(
+                name="Amsterdam", code="AMS", status="Enroute"
+            ),
+        ]
+        train = create_amtrak_train_data(
+            train_num="284", route="Empire Service", stations=empire_remaining_stops
+        )
+        assert collector._stops_at_any_hub(train) is True
+
     async def test_run_method_interface(self, collector, mock_client):
         """Test the run method interface."""
         parsed_response = self._parse_response_to_objects(AMTRAK_FULL_RESPONSE)

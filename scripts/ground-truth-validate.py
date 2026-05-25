@@ -835,14 +835,25 @@ def run_validation_loop(
                 a for a in gt_arrivals if a.station_code == from_st and a.destination_code == to_st
             ]
 
+            # Always fetch TrackRat departures so we can surface the
+            # "TR has data, GT does not" asymmetry (e.g. registered route
+            # still scheduled by TR but not actually running per provider).
+            # Previously this path SKIP'd silently whenever GT was empty,
+            # which masked entire-route real-time outages (#1230).
+            tr_departures = fetch_trackrat_departures(client, base_url, from_st, to_st, data_source)
+
             if not relevant_gt:
                 print(f"\n{YELLOW}--- {label} ---{NC}")
-                log_skip(f"No ground truth arrivals at {from_st} heading to {to_st}")
+                if tr_departures:
+                    log_warn(
+                        f"No ground truth arrivals at {from_st} heading to {to_st}, "
+                        f"but TrackRat returned {len(tr_departures)} departure(s) — "
+                        f"possible drift between TrackRat and provider real-time feed"
+                    )
+                else:
+                    log_skip(f"No ground truth arrivals at {from_st} heading to {to_st}")
                 route_directions_tested += 1
                 continue
-
-            # Fetch TrackRat departures
-            tr_departures = fetch_trackrat_departures(client, base_url, from_st, to_st, data_source)
 
             print(f"\n{YELLOW}--- {label} ---{NC}")
 

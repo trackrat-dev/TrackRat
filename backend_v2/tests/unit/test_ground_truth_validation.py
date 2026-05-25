@@ -413,6 +413,90 @@ class TestCompareRouteCancellation:
         assert len(result.phantoms) == 0
 
 
+class TestRunValidationLoopEmptyGroundTruth:
+    """Regression coverage for #1230 silent-skip bug.
+
+    When ground truth returns no arrivals for a direction, the validator
+    previously SKIPped unconditionally — masking real-time outages on
+    registered routes (e.g. Amtrak Empire NY->ALB). The fixed behavior is
+    to still fetch TrackRat and emit a WARN when TR has departures the
+    provider real-time feed does not.
+    """
+
+    @pytest.fixture(autouse=True)
+    def reset_counters(self, monkeypatch):
+        """Counters are module-level globals; reset before each test."""
+        monkeypatch.setattr(gtv, "PASS_COUNT", 0)
+        monkeypatch.setattr(gtv, "FAIL_COUNT", 0)
+        monkeypatch.setattr(gtv, "WARN_COUNT", 0)
+        monkeypatch.setattr(gtv, "SKIP_COUNT", 0)
+
+    def _patch_single_direction(self, monkeypatch, from_st="NY", to_st="ALB"):
+        """Stub the route topology so the loop processes exactly one direction."""
+        class _FakeRoute:
+            stations = (from_st, to_st)
+
+        monkeypatch.setattr(gtv, "get_routes_for_data_source", lambda _ds: [_FakeRoute()])
+        monkeypatch.setattr(gtv, "get_station_name", lambda code: code)
+        monkeypatch.setattr(gtv, "httpx", _StubHttpx())
+
+    def test_empty_gt_with_tr_departures_emits_warn(self, monkeypatch):
+        """GT empty but TR has departures -> WARN (was silent SKIP). #1230."""
+        self._patch_single_direction(monkeypatch)
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_departures",
+            lambda *_a, **_kw: [_tr(minutes_offset=10, dest="ALB")],
+        )
+
+        tested = gtv.run_validation_loop(
+            gt_arrivals=[],
+            data_source="AMTRAK",
+            base_url="http://test",
+            tolerance=2.0,
+            verbose=False,
+        )
+
+        # _deduplicated_route_directions yields both forward and reverse
+        # directions for each route, so a single Route -> 2 tested directions.
+        assert tested == 2
+        assert gtv.WARN_COUNT == 2, "expected WARN per direction when GT empty but TR has data"
+        assert gtv.SKIP_COUNT == 0, "must not SKIP when TR has departures"
+        assert gtv.FAIL_COUNT == 0
+
+    def test_empty_gt_and_empty_tr_still_skips(self, monkeypatch):
+        """Both feeds empty is a legitimate quiet window -> SKIP, not WARN."""
+        self._patch_single_direction(monkeypatch)
+        monkeypatch.setattr(gtv, "fetch_trackrat_departures", lambda *_a, **_kw: [])
+
+        tested = gtv.run_validation_loop(
+            gt_arrivals=[],
+            data_source="AMTRAK",
+            base_url="http://test",
+            tolerance=2.0,
+            verbose=False,
+        )
+
+        assert tested == 2
+        assert gtv.SKIP_COUNT == 2
+        assert gtv.WARN_COUNT == 0
+        assert gtv.FAIL_COUNT == 0
+
+
+class _StubHttpx:
+    """Minimal httpx replacement so run_validation_loop can construct a Client()."""
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def close(self):
+            pass
+
+
 class TestCompareRouteToleranceBoundary:
     """Test behavior at the exact tolerance boundary."""
 
