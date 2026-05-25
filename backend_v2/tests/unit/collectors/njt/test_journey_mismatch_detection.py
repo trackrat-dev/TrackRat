@@ -840,12 +840,15 @@ class TestStalePriorRunDetection:
         (DEPARTURE_TIME_MISMATCH), while an over-threshold skew is a reused
         train_id (STALE_PRIOR_RUN). This pins the boundary so the threshold
         can't silently drift.
+
+        The journey is prior-day so the prior-day gate is satisfied and the
+        time-delta threshold is the only variable under test.
         """
         stored_departure = now_et().replace(hour=10, minute=0, second=0, microsecond=0)
 
         journey = TrainJourney(
             train_id="4244",
-            journey_date=date.today(),
+            journey_date=date.today() - timedelta(days=1),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -1097,3 +1100,150 @@ class TestStalePriorRunDetection:
         assert (
             journey.actual_arrival is not None
         ), "Completion-on-expiry must record the terminal arrival time"
+
+    @pytest.mark.asyncio
+    async def test_same_day_large_skew_classified_as_departure_time_mismatch(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A same-day journey with an over-threshold skew must NOT be treated as
+        a reused-train_id stale prior run. The STALE_PRIOR_RUN finalize path
+        bypasses the departed-stop guard / 3-strike protection, so it is gated
+        on journey_date < today. A same-day train whose first-stop time is
+        wildly off (a severe >6h delay or an API date anomaly) must instead stay
+        on the conservative DEPARTURE_TIME_MISMATCH path so it is not prematurely
+        removed from active tracking / /departures.
+        """
+        stored_departure = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        # >6h skew, but the journey is *today*, so this is not train_id reuse.
+        api_departure = stored_departure + timedelta(
+            seconds=STALE_PRIOR_RUN_THRESHOLD_SECONDS + 3600
+        )
+
+        journey = TrainJourney(
+            train_id="4692",
+            journey_date=date.today(),  # same service day — gate must block STALE_PRIOR_RUN
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="4692",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH, (
+            "A >6h skew on a same-day journey is not daily train_id reuse — the "
+            "prior-day gate must keep it on the DEPARTURE_TIME_MISMATCH path so "
+            "the departed-stop guard / 3-strike protection still applies"
+        )
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_details_keeps_same_day_running_train(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """End-to-end guard for the codex P1 concern: a *running* same-day train
+        (a departed stop present) whose API first-stop time is >6h off must NOT
+        be finalized. The prior-day gate routes it to DEPARTURE_TIME_MISMATCH,
+        and the departed-stop guard there leaves it active (not expired, not
+        completed, strike counter untouched) so it stays in /departures.
+        """
+        stored_departure = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        api_departure = stored_departure + timedelta(
+            seconds=STALE_PRIOR_RUN_THRESHOLD_SECONDS + 3600
+        )
+
+        journey = TrainJourney(
+            train_id="717",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # The train physically ran (departed origin) — proof it must stay active.
+        stop = JourneyStop(
+            journey_id=journey.id,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+            actual_departure=stored_departure,
+            has_departed_station=True,
+            departure_source="api_explicit",
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="717",
+            line_code="NE",
+            destination="Trenton",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn Station",
+                    api_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.is_expired is False, (
+            "A same-day running train with a large skew must not be expired — "
+            "the prior-day gate keeps it off the STALE_PRIOR_RUN finalize path"
+        )
+        assert (
+            journey.is_completed is False
+        ), "A still-running same-day train must not be force-completed"
+        assert journey.api_error_count == 0, (
+            "The departed-stop guard on DEPARTURE_TIME_MISMATCH must skip the "
+            "strike for a running train, so the counter stays at 0"
+        )
