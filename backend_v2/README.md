@@ -105,7 +105,7 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_DATABASE_URL`: PostgreSQL connection string
 - Note: Amtrak uses the public Amtraker API (no authentication required)
 - `TRACKRAT_WMATA_API_KEY`: WMATA developer API key (required for DC Metro)
-- `TRACKRAT_METRA_API_TOKEN`: Metra GTFS-RT API token (required for Metra)
+- `TRACKRAT_METRA_API_TOKEN`: Metra GTFS-RT API token (required for Metra; or use HTTP Basic Auth via `TRACKRAT_METRA_API_USERNAME` / `TRACKRAT_METRA_API_PASSWORD`)
 - **APNS Configuration** (required for Live Activities):
   - `APNS_TEAM_ID`: Apple Developer Team ID (10 characters)
   - `APNS_KEY_ID`: APNS Auth Key ID (10 characters)
@@ -218,6 +218,12 @@ Detailed train records for a specific segment
 GET /api/v2/predictions/track?station_code=NY&train_id=1234&journey_date=2025-09-15
 ```
 ML-powered track predictions with confidence scoring
+
+#### Delay / Cancellation Forecast
+```
+GET /api/v2/predictions/delay?train_id=1234&station_code=NY&journey_date=2025-09-15
+```
+Probability distribution across delay categories (on-time, slight, significant, major), cancellation probability, and expected delay minutes from hierarchical historical data
 
 #### Supported Stations
 ```

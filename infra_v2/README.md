@@ -114,6 +114,18 @@ gcloud builds submit --config=cloudbuild-staging.yaml .
 gcloud builds submit --config=cloudbuild.yaml .
 ```
 
+### Webpage Deployment
+
+The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`):
+- **Push to `main`** (with `webpage_v2/` changes) → `trackrat-webpage-staging` trigger → `gs://trackrat-webpage-staging` (`staging.trackrat.net`)
+- **Push to `production`** (with `webpage_v2/` changes) → `trackrat-webpage-production` trigger → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
+
+Manual deploy from the repo root:
+```bash
+./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
+```
+`--bucket` overrides the destination bucket (with or without the `gs://` prefix) while keeping the environment's API URL — useful for pre-populating a new bucket during a migration.
+
 ## Key Configuration
 
 ### Variables (terraform/variables.tf)
@@ -300,7 +312,7 @@ infra_v2/
 │   │   └── requirements.txt
 │   └── train_follow_notifier/   # Train follow push notification service
 ├── terraform-webpage/
-│   └── main.tf                  # Standalone webpage infrastructure (GCS, CDN)
+│   └── main.tf                  # Webpage hosting (staging + production): GCS buckets, LB, SSL certs, CDN, Cloud Build triggers
 └── terraform/
     ├── main.tf                  # Provider and backend config
     ├── variables.tf             # Input variables
