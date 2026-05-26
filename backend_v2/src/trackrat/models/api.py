@@ -54,8 +54,8 @@ class LineInfo(BaseModel):
     """Train line information."""
 
     code: str = Field(
-        ..., min_length=1, max_length=10
-    )  # PATH line codes are ~6-7 chars
+        ..., min_length=1, max_length=20
+    )  # PATH ~6-7 chars; Metra codes are longest, e.g. "METRA-UP-NW" (11)
     name: str
     color: str = Field(..., pattern="^#[0-9A-Fa-f]{6}$")
 
