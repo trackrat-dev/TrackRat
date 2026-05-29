@@ -17,6 +17,23 @@ FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
 FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
 # Below 0.5 = severe
 
+# Cancellation rate thresholds (percent of journeys cancelled in the window).
+# The delay-based congestion factor only reflects trains that actually ran, so a
+# line where many trains are cancelled but the survivors are on time would render
+# green. These thresholds escalate the congestion level so heavy cancellations
+# are visible on the map. See issue #1246.
+CANCELLATION_THRESHOLD_MODERATE = 15.0  # >= 15% cancelled
+CANCELLATION_THRESHOLD_HEAVY = 30.0  # >= 30% cancelled
+CANCELLATION_THRESHOLD_SEVERE = 50.0  # >= 50% cancelled
+# Minimum journeys (active + cancelled) with real-time data before the
+# cancellation rate is trusted, to avoid small-sample noise flipping a
+# low-traffic segment red on a single cancellation.
+CANCELLATION_MIN_SAMPLE = 4
+
+# Ordering of congestion levels from least to most severe, used to combine the
+# delay-based and cancellation-based levels into a single displayed level.
+_CONGESTION_SEVERITY = {"normal": 0, "moderate": 1, "heavy": 2, "severe": 3}
+
 # Data sources where frequency/service health is more meaningful than delay stats.
 # Mirrors iOS TrainSystem.preferredHighlightMode == .health
 FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO", "WMATA", "BART"}
@@ -47,6 +64,43 @@ def get_frequency_level(frequency_factor: float) -> str:
         return "reduced"
     else:
         return "severe"
+
+
+def get_cancellation_level(cancellation_rate: float) -> str:
+    """Determine a congestion level from a cancellation rate (percent)."""
+    if cancellation_rate >= CANCELLATION_THRESHOLD_SEVERE:
+        return "severe"
+    elif cancellation_rate >= CANCELLATION_THRESHOLD_HEAVY:
+        return "heavy"
+    elif cancellation_rate >= CANCELLATION_THRESHOLD_MODERATE:
+        return "moderate"
+    else:
+        return "normal"
+
+
+def combine_congestion_levels(*levels: str) -> str:
+    """Return the most severe of the given congestion levels."""
+    return max(levels, key=lambda level: _CONGESTION_SEVERITY.get(level, 0))
+
+
+def get_effective_congestion_level(
+    congestion_factor: float,
+    cancellation_rate: float,
+    sample_count: int,
+) -> str:
+    """Congestion level combining transit-time delay and cancellations.
+
+    The delay-based factor only reflects trains that ran, so a segment with
+    many cancellations but on-time survivors would read as ``normal`` (green).
+    When enough journeys are sampled, escalate to the more severe of the
+    delay-based level and the cancellation-based level. See issue #1246.
+    """
+    level = get_congestion_level(congestion_factor)
+    if sample_count >= CANCELLATION_MIN_SAMPLE:
+        level = combine_congestion_levels(
+            level, get_cancellation_level(cancellation_rate)
+        )
+    return level
 
 
 class SegmentCongestion:

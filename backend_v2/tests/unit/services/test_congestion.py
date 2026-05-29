@@ -192,6 +192,74 @@ class TestCongestionAnalyzer:
         assert get_frequency_level(0.3) == "severe"  # 30%
         assert get_frequency_level(0.0) == "severe"  # No trains
 
+    def test_cancellation_level_thresholds(self):
+        """Cancellation rate maps to escalating congestion levels (issue #1246)."""
+        from trackrat.services.congestion_types import get_cancellation_level
+
+        # Below moderate threshold -> no escalation
+        assert get_cancellation_level(0.0) == "normal"
+        assert get_cancellation_level(14.9) == "normal"
+        # Moderate: 15-30%
+        assert get_cancellation_level(15.0) == "moderate"
+        assert get_cancellation_level(29.9) == "moderate"
+        # Heavy: 30-50%
+        assert get_cancellation_level(30.0) == "heavy"
+        assert get_cancellation_level(49.9) == "heavy"
+        # Severe: >= 50%
+        assert get_cancellation_level(50.0) == "severe"
+        assert get_cancellation_level(58.0) == "severe"
+        assert get_cancellation_level(100.0) == "severe"
+
+    def test_combine_congestion_levels_returns_most_severe(self):
+        """Combining levels keeps the most severe one regardless of order."""
+        from trackrat.services.congestion_types import combine_congestion_levels
+
+        assert combine_congestion_levels("normal", "severe") == "severe"
+        assert combine_congestion_levels("heavy", "moderate") == "heavy"
+        assert combine_congestion_levels("normal", "normal") == "normal"
+        assert combine_congestion_levels("moderate", "heavy", "normal") == "heavy"
+
+    def test_effective_congestion_level_escalates_on_cancellations(self):
+        """A green (on-time) segment with heavy cancellations escalates.
+
+        This is the issue #1246 scenario: NEC trains that ran were on time
+        (factor ~1.0 -> normal) but ~58% were cancelled. The map must not be
+        green.
+        """
+        from trackrat.services.congestion_types import (
+            get_effective_congestion_level,
+        )
+
+        # On-time survivors (factor 1.0 = normal) + 58% cancelled + plenty of
+        # samples -> severe.
+        assert get_effective_congestion_level(1.0, 58.0, sample_count=20) == "severe"
+        # On-time survivors + 35% cancelled -> heavy.
+        assert get_effective_congestion_level(1.0, 35.0, sample_count=20) == "heavy"
+        # On-time survivors + 20% cancelled -> moderate.
+        assert get_effective_congestion_level(1.0, 20.0, sample_count=20) == "moderate"
+
+    def test_effective_congestion_level_keeps_delay_when_more_severe(self):
+        """Delay-based level wins when it is worse than the cancellation level."""
+        from trackrat.services.congestion_types import (
+            get_effective_congestion_level,
+        )
+
+        # Factor 1.6 -> severe (delay), low cancellations -> stays severe.
+        assert get_effective_congestion_level(1.6, 5.0, sample_count=20) == "severe"
+        # Factor 1.3 -> heavy (delay), 20% cancelled -> moderate; heavy wins.
+        assert get_effective_congestion_level(1.3, 20.0, sample_count=20) == "heavy"
+
+    def test_effective_congestion_level_ignores_small_samples(self):
+        """Small samples do not let a single cancellation flip the level."""
+        from trackrat.services.congestion_types import (
+            get_effective_congestion_level,
+        )
+
+        # 1 of 3 cancelled = 33% but only 3 samples (< min 4) -> stays normal.
+        assert get_effective_congestion_level(1.0, 33.3, sample_count=3) == "normal"
+        # At the minimum sample size the escalation applies.
+        assert get_effective_congestion_level(1.0, 50.0, sample_count=4) == "severe"
+
     def test_calculate_segments_from_journeys(
         self, congestion_analyzer, sample_journeys
     ):

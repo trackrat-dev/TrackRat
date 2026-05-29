@@ -24,6 +24,7 @@ from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
     get_congestion_level,
+    get_effective_congestion_level,
     get_frequency_level,
 )
 from trackrat.utils.time import ensure_timezone_aware, now_et
@@ -78,6 +79,7 @@ _SCHEDULED_MINUTES_SQL = """
 __all__ = [
     "SegmentCongestion",
     "get_congestion_level",
+    "get_effective_congestion_level",
     "get_frequency_level",
     "CongestionAnalyzer",
     "CONGESTION_THRESHOLD_NORMAL",
@@ -638,7 +640,12 @@ class CongestionAnalyzer:
             current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
             congestion_factor = current_avg / baseline if baseline > 0 else 1.0
 
-            level = get_congestion_level(congestion_factor)
+            # Escalate the level when many trains are cancelled: the factor only
+            # reflects trains that ran, so a heavily-cancelled line would
+            # otherwise render green (issue #1246).
+            level = get_effective_congestion_level(
+                congestion_factor, cancellation_rate, total_journeys
+            )
 
             # Calculate average delay
             average_delay = current_avg - baseline
