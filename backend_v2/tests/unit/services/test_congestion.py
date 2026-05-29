@@ -795,3 +795,91 @@ class TestCongestionAnalyzer:
             "get_individual_segments_optimized must SET LOCAL statement_timeout "
             "before executing the query"
         )
+
+    def test_effective_congestion_factor(self):
+        """effective_congestion_factor folds cancellation rate into the factor
+        using the same weight as the iOS client (0.015 per percent)."""
+        from trackrat.services.congestion import effective_congestion_factor
+
+        # No cancellations -> factor unchanged
+        assert effective_congestion_factor(1.0, 0.0) == pytest.approx(1.0)
+        # 10% cancellations ~= one congestion tier (+0.15)
+        assert effective_congestion_factor(1.0, 10.0) == pytest.approx(1.15)
+        # 50% cancellations -> +0.75
+        assert effective_congestion_factor(1.0, 50.0) == pytest.approx(1.75)
+        # Negative rates are clamped to zero (never reduce the factor)
+        assert effective_congestion_factor(1.2, -5.0) == pytest.approx(1.2)
+
+    @pytest.mark.asyncio
+    async def test_aggregated_congestion_sql_counts_cancelled_trains(
+        self, congestion_analyzer, mock_db
+    ):
+        """Reproduces #1246: cancelled trains have no real-time arrival/departure
+        times, so the old segment_data filter dropped them entirely and
+        cancellation_count/cancellation_rate were always ~0. The query must
+        admit cancelled journeys (windowed on their scheduled departure) so
+        heavy cancellations register on the congestion map.
+        """
+        mock_result = Mock()
+        mock_result.fetchall.return_value = []
+        mock_db.execute.return_value = mock_result
+        congestion_analyzer._cache.clear()
+
+        await congestion_analyzer.get_network_congestion_optimized(
+            mock_db, time_window_hours=3, data_source="NJT"
+        )
+
+        main_sql = next(
+            (
+                str(call.args[0])
+                for call in mock_db.execute.call_args_list
+                if "WITH stop_pairs" in str(call.args[0])
+            ),
+            None,
+        )
+        assert main_sql is not None, "main aggregated query was not executed"
+        # Cancelled journeys must be admitted via their scheduled departure.
+        assert "tj.is_cancelled" in main_sql
+        assert "sp.from_scheduled_departure >= :cutoff_time" in main_sql
+        # cancelled_count must still only count cancelled rows.
+        assert "FILTER (WHERE is_cancelled)" in main_sql
+
+    @pytest.mark.asyncio
+    async def test_optimized_high_cancellation_elevates_level(
+        self, congestion_analyzer, mock_db
+    ):
+        """End-to-end (DB row -> normalized segment): a segment whose running
+        trains are on time but which has a high cancellation rate surfaces as a
+        worse-than-normal level. Reproduces #1246.
+        """
+        mock_row = Mock()
+        mock_row.from_station = "NY"
+        mock_row.to_station = "SE"  # adjacent NEC pair -> no expansion
+        mock_row.data_source = "NJT"
+        mock_row.active_count = 5
+        mock_row.cancelled_count = 5  # 50% of scheduled trains cancelled
+        mock_row.avg_actual = 5.0
+        mock_row.baseline_minutes = 5.0  # running trains exactly on time
+        mock_row.recent_avg = 5.0
+        mock_row.current_avg_minutes = 5.0
+        mock_row.median_actual = 5.0
+        mock_row.train_count = 5
+        mock_row.baseline_train_count = 10.0
+        mock_row.frequency_factor = 0.5
+
+        mock_result = Mock()
+        mock_result.fetchall.return_value = [mock_row]
+        mock_db.execute.return_value = mock_result
+        congestion_analyzer._cache.clear()
+
+        with patch("trackrat.services.congestion.now_et") as mock_now:
+            mock_now.return_value = datetime.now(UTC)
+            results = await congestion_analyzer.get_network_congestion_optimized(
+                mock_db, time_window_hours=3
+            )
+
+        seg = next(s for s in results if (s.from_station, s.to_station) == ("NY", "SE"))
+        assert seg.cancellation_rate == pytest.approx(50.0)
+        assert seg.congestion_factor == pytest.approx(1.0)
+        # 1.0 + 50% * 0.015 = 1.75 -> severe
+        assert seg.congestion_level == "severe"

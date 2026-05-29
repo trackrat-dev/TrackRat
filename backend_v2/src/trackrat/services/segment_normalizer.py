@@ -18,6 +18,7 @@ from trackrat.config.route_topology import (
 )
 from trackrat.services.congestion_types import (
     SegmentCongestion,
+    effective_congestion_factor,
     get_congestion_level,
     get_frequency_level,
 )
@@ -177,7 +178,6 @@ def normalize_aggregated_segments(
 
         # Calculate congestion factor
         congestion_factor = avg_transit / avg_baseline if avg_baseline > 0 else 1.0
-        congestion_level = get_congestion_level(congestion_factor)
 
         # Average delay
         average_delay = avg_transit - avg_baseline
@@ -186,6 +186,14 @@ def normalize_aggregated_segments(
         total_journeys = total_samples + total_cancellations
         cancellation_rate = (
             (total_cancellations / total_journeys * 100) if total_journeys > 0 else 0.0
+        )
+
+        # Fold cancellations into the displayed level so a segment with many
+        # cancelled trains is not shown as "normal" just because the trains
+        # still running are on time. Mirrors the iOS client, which colors by
+        # congestion_factor + cancellation_rate.
+        congestion_level = get_congestion_level(
+            effective_congestion_factor(congestion_factor, cancellation_rate)
         )
 
         # Aggregate frequency metrics (sum train_count and baseline_train_count)

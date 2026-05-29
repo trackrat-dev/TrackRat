@@ -4,6 +4,8 @@ Unit tests for the segment normalizer service.
 
 from datetime import date, datetime
 
+import pytest
+
 from trackrat.models.api import IndividualJourneySegment
 from trackrat.services.congestion_types import SegmentCongestion
 from trackrat.services.segment_normalizer import (
@@ -276,6 +278,85 @@ class TestNormalizeAggregatedSegments:
 
         # Cancellation-only segments are filtered out
         assert len(result) == 0
+
+    def test_high_cancellation_rate_elevates_level(self):
+        """Reproduces #1246: a segment whose running trains are on time but
+        which has many cancelled trains must NOT be reported as "normal".
+
+        NJT NEC (Trenton -> NY Penn) had many cancellations while the
+        congestion map stayed green because the level ignored cancellations.
+        """
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="SE",  # adjacent NEC pair -> not expanded
+                data_source="NJT",
+                congestion_factor=1.0,
+                congestion_level="normal",  # input ignored; recomputed
+                avg_transit_minutes=5.0,
+                baseline_minutes=5.0,  # running trains exactly on time
+                sample_count=10,
+                average_delay_minutes=0.0,
+                cancellation_count=10,  # 10 cancelled of 20 scheduled = 50%
+                cancellation_rate=50.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 1
+        seg = result[0]
+        assert seg.cancellation_rate == pytest.approx(50.0)
+        # On-time delay factor stays 1.0; cancellations drive the level.
+        assert seg.congestion_factor == pytest.approx(1.0)
+        # 1.0 + 50% * 0.015 = 1.75 -> severe
+        assert seg.congestion_level == "severe"
+
+    def test_modest_cancellations_bump_one_tier(self):
+        """~10% cancellations bump roughly one congestion tier (normal->moderate)."""
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="SE",
+                data_source="NJT",
+                congestion_factor=1.0,
+                congestion_level="normal",
+                avg_transit_minutes=5.0,
+                baseline_minutes=5.0,
+                sample_count=9,
+                average_delay_minutes=0.0,
+                cancellation_count=1,  # 1 of 10 = 10%
+                cancellation_rate=10.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 1
+        seg = result[0]
+        assert seg.cancellation_rate == pytest.approx(10.0)
+        # 1.0 + 10% * 0.015 = 1.15 -> moderate
+        assert seg.congestion_level == "moderate"
+
+    def test_no_cancellations_level_is_plain_delay_level(self):
+        """Without cancellations the level is the plain delay-based level."""
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="SE",
+                data_source="NJT",
+                congestion_factor=1.0,
+                congestion_level="severe",  # input ignored; recomputed
+                avg_transit_minutes=5.0,
+                baseline_minutes=5.0,
+                sample_count=10,
+                average_delay_minutes=0.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 1
+        assert result[0].congestion_level == "normal"
 
 
 class TestNormalizeIndividualSegments:
