@@ -694,18 +694,27 @@ class TestCongestionAnalyzer:
         assert "journey_date >= CURRENT_DATE" in sql
         assert "LEAD(js.station_code) OVER w" in sql
 
-    def test_stop_pairs_cte_admits_stale_cancellations_by_scheduled_departure(self):
-        """Cancelled journeys must also be admitted via scheduled_departure,
-        because NJT's journey collector stops touching them after cancellation
-        (collectors/njt/journey.py filters is_cancelled.is_not(True)) so
-        last_updated_at freezes — and a train cancelled hours before its
-        scheduled run would otherwise be pruned before reaching segment_data
-        and never count toward cancellation_rate. Guards the fix from the
-        chatgpt-codex review on PR #1248.
+    def test_stop_pairs_cte_admits_stale_cancellations(self):
+        """Cancelled journeys must be admitted (journey-level, not per-stop)
+        regardless of last_updated_at, because NJT's journey collector stops
+        touching them after cancellation (collectors/njt/journey.py filters
+        is_cancelled.is_not(True)) so last_updated_at freezes — and a train
+        cancelled hours before its scheduled run would otherwise be pruned
+        before reaching segment_data and never count toward cancellation_rate.
+
+        The filter must be journey-level (not per-stop). A per-stop
+        scheduled_departure check would drop the TO row of each pair (its
+        scheduled_departure is NULL — it carries scheduled_arrival instead),
+        causing LEAD() to produce a NULL to_station and segment_data to
+        discard the row via its `sp.to_station IS NOT NULL` filter.
+
+        Guards the fix from the chatgpt-codex review on PR #1248.
         """
         sql = _stop_pairs_cte("")
         assert "tj_pre.is_cancelled" in sql
-        assert "js.scheduled_departure >= :cutoff_time" in sql
+        # Must be journey-level: no per-stop scheduled_departure predicate
+        # gating the is_cancelled branch (it would drop the TO row).
+        assert "js.scheduled_departure >= :cutoff_time" not in sql
 
     def test_stop_pairs_cte_includes_data_source_filter(self):
         """When a data_source filter is provided, it must appear in the CTE."""
