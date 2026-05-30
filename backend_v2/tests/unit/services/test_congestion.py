@@ -694,6 +694,19 @@ class TestCongestionAnalyzer:
         assert "journey_date >= CURRENT_DATE" in sql
         assert "LEAD(js.station_code) OVER w" in sql
 
+    def test_stop_pairs_cte_admits_stale_cancellations_by_scheduled_departure(self):
+        """Cancelled journeys must also be admitted via scheduled_departure,
+        because NJT's journey collector stops touching them after cancellation
+        (collectors/njt/journey.py filters is_cancelled.is_not(True)) so
+        last_updated_at freezes — and a train cancelled hours before its
+        scheduled run would otherwise be pruned before reaching segment_data
+        and never count toward cancellation_rate. Guards the fix from the
+        chatgpt-codex review on PR #1248.
+        """
+        sql = _stop_pairs_cte("")
+        assert "tj_pre.is_cancelled" in sql
+        assert "js.scheduled_departure >= :cutoff_time" in sql
+
     def test_stop_pairs_cte_includes_data_source_filter(self):
         """When a data_source filter is provided, it must appear in the CTE."""
         sql_with_ds = _stop_pairs_cte("AND tj_pre.data_source = :data_source")

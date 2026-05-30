@@ -98,7 +98,12 @@ def _stop_pairs_cte(ds_filter: str) -> str:
     """Generate the stop_pairs CTE with cutoff_time pushdown.
 
     Filters on tj_pre.last_updated_at >= :cutoff_time so PostgreSQL prunes
-    journeys before the expensive LEAD() window function runs.
+    journeys before the expensive LEAD() window function runs. Cancelled
+    journeys are admitted via scheduled_departure instead, because the NJT
+    journey collector stops touching them once is_cancelled is set
+    (collectors/njt/journey.py filters is_cancelled.is_not(True)), so a
+    train cancelled hours before its scheduled run would otherwise be
+    pruned and never reach segment_data's cancellation window.
     Requires :cutoff_time in the query's params dict.
     """
     return f"""stop_pairs AS (
@@ -119,7 +124,10 @@ def _stop_pairs_cte(ds_filter: str) -> str:
         JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
         WHERE js.station_code IS NOT NULL
           AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-          AND tj_pre.last_updated_at >= :cutoff_time
+          AND (
+              tj_pre.last_updated_at >= :cutoff_time
+              OR (tj_pre.is_cancelled AND js.scheduled_departure >= :cutoff_time)
+          )
           {ds_filter}
         WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
     )"""

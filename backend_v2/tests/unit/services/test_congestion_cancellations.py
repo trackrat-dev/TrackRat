@@ -30,6 +30,7 @@ async def _add_njt_nec_journey(
     is_cancelled: bool,
     actual_departure: datetime | None = None,
     actual_arrival: datetime | None = None,
+    last_updated_at: datetime | None = None,
 ) -> None:
     """Create an NJT NEC journey with a single from->to stop pair.
 
@@ -51,6 +52,8 @@ async def _add_njt_nec_journey(
         has_complete_journey=not is_cancelled,
         stops_count=2,
     )
+    if last_updated_at is not None:
+        journey.last_updated_at = last_updated_at
     db.add(journey)
     await db.flush()
 
@@ -133,6 +136,58 @@ class TestCongestionCancellationsRealDB:
         # On-time running trains -> delay factor ~1.0; cancellations alone must
         # push the level above normal (1.0 + 50% * 0.015 = 1.75 -> severe).
         assert ny_se.congestion_factor == pytest.approx(1.0, abs=0.05)
+        assert ny_se.congestion_level == "severe"
+
+    async def test_stale_cancellation_still_counted(self, db_session: AsyncSession):
+        """Cancelled trains stop receiving collector updates (NJT's journey
+        collector filters is_cancelled.is_not(True)), so last_updated_at
+        freezes at cancellation time. A train cancelled hours before its
+        scheduled run must still register on the congestion map as long as
+        its scheduled departure falls in the lookback window.
+        """
+        dep = now_et() - timedelta(minutes=30)
+        arr = dep + timedelta(minutes=5)
+        # Cancelled 6 hours ago: well outside the 3-hour window. Without the
+        # CTE fix, this journey is pruned before reaching segment_data.
+        stale_update = now_et() - timedelta(hours=6)
+
+        for i in range(5):
+            await _add_njt_nec_journey(
+                db_session,
+                train_id=f"run_{i}",
+                from_station="NY",
+                to_station="SE",
+                scheduled_departure=dep,
+                scheduled_arrival=arr,
+                is_cancelled=False,
+                actual_departure=dep,
+                actual_arrival=arr,
+            )
+        for i in range(5):
+            await _add_njt_nec_journey(
+                db_session,
+                train_id=f"stale_cancel_{i}",
+                from_station="NY",
+                to_station="SE",
+                scheduled_departure=dep,
+                scheduled_arrival=arr,
+                is_cancelled=True,
+                last_updated_at=stale_update,
+            )
+        await db_session.commit()
+
+        analyzer = CongestionAnalyzer()
+        segments = await analyzer.get_network_congestion_optimized(
+            db_session, time_window_hours=3, data_source="NJT"
+        )
+
+        ny_se = next(
+            (s for s in segments if (s.from_station, s.to_station) == ("NY", "SE")),
+            None,
+        )
+        assert ny_se is not None
+        assert ny_se.cancellation_count == 5
+        assert ny_se.cancellation_rate == pytest.approx(50.0)
         assert ny_se.congestion_level == "severe"
 
     async def test_no_cancellations_segment_stays_normal(
