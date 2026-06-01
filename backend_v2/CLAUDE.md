@@ -224,7 +224,7 @@ All endpoints are prefixed with `/api/v2/`:
 ```python
 # Train Operations
 GET /trains/departures?from=NY&to=TR&limit=50         # Find departures between stations
-GET /trains/recent-departures?data_source=NJT&limit=50  # Recent departures (no route filter)
+GET /trains/recent-departures?from=NY&data_sources=NJT&limit=50  # Recent departures (no route filter)
 GET /trains/{train_id}?date=2024-01-01&refresh=true   # Get specific train journey
 GET /trains/{train_id}/history?date=2024-01-01        # Historical train performance
 GET /trains/stations/{station_code}/tracks/occupied   # Real-time track occupancy
