@@ -46,7 +46,11 @@ from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.request_stats import get_request_stats
 from trackrat.utils.time import DATETIME_MIN_ET, now_et, safe_datetime_subtract
-from trackrat.utils.train import get_effective_observation_type, is_amtrak_train
+from trackrat.utils.train import (
+    effective_njt_updated_times,
+    get_effective_observation_type,
+    is_amtrak_train,
+)
 
 logger = get_logger(__name__)
 
@@ -444,6 +448,13 @@ async def get_train_details(
     # Build stop details
     stops = []
     for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
+        # NJT's raw updated_arrival/updated_departure have inverted semantics at
+        # intermediate stops (DEP_TIME=schedule, TIME=live estimate). Normalize
+        # here so clients reading either field get the live delayed estimate —
+        # mirrors the max() applied in services/departure.py for /departures.
+        updated_arrival, updated_departure = effective_njt_updated_times(
+            stop, journey.data_source
+        )
         stop_detail = StopDetails(
             station=SimpleStationInfo(
                 code=stop.station_code,
@@ -454,8 +465,8 @@ async def get_train_details(
             stop_sequence=stop.stop_sequence or 0,
             scheduled_arrival=stop.scheduled_arrival,
             scheduled_departure=stop.scheduled_departure,
-            updated_arrival=stop.updated_arrival,
-            updated_departure=stop.updated_departure,
+            updated_arrival=updated_arrival,
+            updated_departure=updated_departure,
             actual_arrival=stop.actual_arrival,
             actual_departure=stop.actual_departure,
             track=stop.track,
