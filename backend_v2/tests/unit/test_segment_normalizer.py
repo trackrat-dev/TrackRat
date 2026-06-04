@@ -251,6 +251,61 @@ class TestNormalizeAggregatedSegments:
         assert ("GCT", "M125") in segments_by_key
         assert ("M125", "MEYS") in segments_by_key
 
+    def test_cancellation_escalation_survives_normalization(self):
+        """High cancellations keep an escalated level through normalization.
+
+        Regression for issue #1246: an on-time segment (factor ~1.0) with a
+        high cancellation rate must not be reset to "normal" when the
+        normalizer re-aggregates. NEC scenario: survivors on time but ~58%
+        cancelled.
+        """
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="SE",
+                data_source="NJT",
+                congestion_factor=1.0,
+                congestion_level="severe",  # escalated upstream
+                avg_transit_minutes=5.0,
+                baseline_minutes=5.0,
+                sample_count=15,
+                average_delay_minutes=0.0,
+                cancellation_count=21,  # 21 / (15 + 21) = 58.3%
+                cancellation_rate=58.3,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 1
+        # Factor alone would be "normal"; cancellations must keep it severe.
+        assert result[0].congestion_level == "severe"
+        assert result[0].cancellation_count == 21
+
+    def test_moderate_cancellation_escalation_after_expansion(self):
+        """Escalation also applies to segments produced by expansion."""
+        # NY -> NP expands to NY->SE and SE->NP; on-time but 30% cancelled.
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="NP",
+                data_source="NJT",
+                congestion_factor=1.0,
+                congestion_level="heavy",
+                avg_transit_minutes=8.0,
+                baseline_minutes=8.0,
+                sample_count=14,
+                average_delay_minutes=0.0,
+                cancellation_count=6,  # 6 / (14 + 6) = 30%
+                cancellation_rate=30.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 2
+        for segment in result:
+            # 30% cancelled -> heavy, even though factor 1.0 is "normal".
+            assert segment.congestion_level == "heavy"
+
     def test_cancellation_only_segment_filtered(self):
         """Test that segments with only cancellation data are filtered out.
 

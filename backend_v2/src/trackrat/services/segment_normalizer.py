@@ -18,7 +18,7 @@ from trackrat.config.route_topology import (
 )
 from trackrat.services.congestion_types import (
     SegmentCongestion,
-    get_congestion_level,
+    get_effective_congestion_level,
     get_frequency_level,
 )
 
@@ -143,22 +143,27 @@ def normalize_aggregated_segments(
         total_cancellations = sum(d["cancellation_count"] for d in data_list)
 
         if total_samples == 0:
-            # Only cancellation data - skip or create minimal entry
+            # Only cancellation data - skip or create minimal entry. With no
+            # running trains the rate is 100%, so escalate by cancellations
+            # alone (gated by sample size) rather than rendering green (#1246).
             if total_cancellations > 0:
                 total_journeys = total_cancellations
+                cancellation_rate = total_cancellations / total_journeys * 100
                 result.append(
                     SegmentCongestion(
                         from_station=from_station,
                         to_station=to_station,
                         data_source=data_source,
                         congestion_factor=1.0,
-                        congestion_level="normal",
+                        congestion_level=get_effective_congestion_level(
+                            1.0, cancellation_rate, total_journeys
+                        ),
                         avg_transit_minutes=0.0,
                         baseline_minutes=0.0,
                         sample_count=0,
                         average_delay_minutes=0.0,
                         cancellation_count=total_cancellations,
-                        cancellation_rate=(total_cancellations / total_journeys * 100),
+                        cancellation_rate=cancellation_rate,
                     )
                 )
             continue
@@ -177,7 +182,6 @@ def normalize_aggregated_segments(
 
         # Calculate congestion factor
         congestion_factor = avg_transit / avg_baseline if avg_baseline > 0 else 1.0
-        congestion_level = get_congestion_level(congestion_factor)
 
         # Average delay
         average_delay = avg_transit - avg_baseline
@@ -186,6 +190,13 @@ def normalize_aggregated_segments(
         total_journeys = total_samples + total_cancellations
         cancellation_rate = (
             (total_cancellations / total_journeys * 100) if total_journeys > 0 else 0.0
+        )
+
+        # Escalate the level when many trains are cancelled (issue #1246).
+        # Must use the effective level here, not get_congestion_level alone,
+        # or the cancellation escalation applied upstream is discarded.
+        congestion_level = get_effective_congestion_level(
+            congestion_factor, cancellation_rate, total_journeys
         )
 
         # Aggregate frequency metrics (sum train_count and baseline_train_count)
