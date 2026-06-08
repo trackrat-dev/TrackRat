@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** April 2026
+**Last Updated:** May 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
@@ -780,6 +780,10 @@ The backend is organized into service classes for better maintainability:
 - ✅ Trip search surfaces PATH trains from Newark Penn Station (`services/trip_search.py`)
 - ✅ Merge Hoboken / Hoboken PATH into one canonical station; PHO/PNK resolve to canonical (`config/stations/common.py`)
 - ✅ Service alert evaluator: fix merged Hoboken PATH alerts (`services/alert_evaluator.py`)
+- ✅ Add ALB (Albany-Rensselaer) to Amtrak `DISCOVERY_HUBS` so post-NYP Empire / Adirondack / Maple Leaf / Ethan Allen / Lake Shore Limited trains aren't silently dropped from discovery (issue #1230, `collectors/amtrak/discovery.py`)
+- ✅ Trip search: short-circuit `_has_shared_line` for same-line pairs, expand subway-only systems via `other_code` to fix cross-modal pairs like TR↔S128, and fall back to `best(departure) + FALLBACK_TRANSIT_MINUTES` for subway legs with null intermediate arrivals (issue #1231 + PR #1235 codex follow-up, `services/trip_search.py`)
+- ✅ NJT cross-day reused-train-id handling: classify whole-service-day displacement (>6h, prior-day row) as `JourneyMatchResult.STALE_PRIOR_RUN` and finalize the row instead of re-polling every cycle (issues #1238 / #1240, `collectors/njt/journey.py`)
+- ✅ Postgres `/dev/shm` raised to 1GB and `max_parallel_workers_per_gather=1` on the db service to fix asyncpg `DiskFullError` on `predict_track` / `operations_summary` / route alert evaluation under concurrent parallel queries (issue #1232, `backend_v2/docker-compose.yml`)
 
 ### Recent Improvements (April 2026)
 - ✅ Intra-system transfers for PATH, BART, NJT, LIRR, MBTA, Metra trip search
