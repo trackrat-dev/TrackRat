@@ -2573,7 +2573,8 @@ class SchedulerService:
         Deletes train_journeys older than retention_days (cascading to
         journey_stops, journey_snapshots, journey_progress,
         segment_transit_times, station_dwell_times via ON DELETE CASCADE).
-        Also prunes discovery_runs and validation_results.
+        Also prunes discovery_runs, validation_results, and inactive
+        service_alerts that haven't been refreshed by the collector.
         """
         settings = get_settings()
         cutoff_days = settings.retention_days
@@ -2583,6 +2584,7 @@ class SchedulerService:
             total_journeys = 0
             total_discovery = 0
             total_validation = 0
+            total_service_alerts = 0
 
             try:
                 logger.info(
@@ -2656,12 +2658,40 @@ class SchedulerService:
                     if deleted < batch_size:
                         break
 
+                # Phase 4: Delete old inactive service_alerts in batches.
+                # Active alerts are kept regardless of age — the collector
+                # marks alerts inactive when they disappear from the feed,
+                # so this prunes long-resolved alerts the collector has
+                # stopped refreshing.
+                while True:
+                    async with get_session() as db:
+                        result = cast(
+                            CursorResult[tuple[()]],
+                            await db.execute(
+                                text(
+                                    "DELETE FROM service_alerts "
+                                    "WHERE id IN ("
+                                    "  SELECT id FROM service_alerts "
+                                    "  WHERE is_active = false "
+                                    "    AND updated_at < NOW() - make_interval(days => :days) "
+                                    "  LIMIT :batch_size"
+                                    ")"
+                                ),
+                                {"days": cutoff_days, "batch_size": batch_size},
+                            ),
+                        )
+                        deleted = result.rowcount or 0
+                    total_service_alerts += deleted
+                    if deleted < batch_size:
+                        break
+
                 logger.info(
                     "retention_cleanup_completed",
                     cutoff_days=cutoff_days,
                     journeys_deleted=total_journeys,
                     discovery_runs_deleted=total_discovery,
                     validation_results_deleted=total_validation,
+                    service_alerts_deleted=total_service_alerts,
                 )
 
             except Exception as e:
@@ -2672,6 +2702,7 @@ class SchedulerService:
                     journeys_deleted_so_far=total_journeys,
                     discovery_runs_deleted_so_far=total_discovery,
                     validation_results_deleted_so_far=total_validation,
+                    service_alerts_deleted_so_far=total_service_alerts,
                 )
 
         async with get_session() as db:
