@@ -957,13 +957,22 @@ class SummaryService:
                     # effective_njt_updated_times applies the NJT TIME/DEP_TIME
                     # inversion correction, which matters because the boarding
                     # station is often an intermediate stop of the train's journey.
+                    # Fall back to the arrival estimate when departure is absent
+                    # so GTFS-RT feeds that only carry arr.arrival_time (e.g. MTA
+                    # subway stops with no scheduled dwell) still register the
+                    # train as delayed, matching departures.py's gate:
+                    #   max(updated_departure, updated_arrival)
+                    #     if both else updated_departure or updated_arrival
                     _eff_arr, eff_dep = effective_njt_updated_times(
                         from_stop, journey.data_source
                     )
-                    if eff_dep is not None:
+                    eff_estimate = eff_dep if eff_dep is not None else _eff_arr
+                    if eff_estimate is not None:
                         delay = max(
                             0.0,
-                            (eff_dep - from_stop.scheduled_departure).total_seconds()
+                            (
+                                eff_estimate - from_stop.scheduled_departure
+                            ).total_seconds()
                             / 60,
                         )
                         total_delay += delay

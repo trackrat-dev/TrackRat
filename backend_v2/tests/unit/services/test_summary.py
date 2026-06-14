@@ -732,6 +732,56 @@ class TestSummaryService:
         assert 19 <= stats.average_delay_minutes <= 21  # ~20 min
         assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
 
+    def test_calculate_departure_stats_uses_live_estimate_arrival_only(
+        self, summary_service
+    ):
+        """GTFS-RT feeds sometimes ingest stops with only `updated_arrival` set
+        (when the upstream protobuf entry omits ``stop_time_update.departure``).
+        ``/api/v2/trains/departures`` already surfaces those as delayed via its
+        ``updated_departure or updated_arrival`` gate; the summary must match,
+        otherwise a train scheduled inside the 5-min grace with a 20-min late
+        arrival estimate would be counted on-time here while the row on the same
+        screen shows the delay (codex P2 finding on PR #1290).
+        """
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.id = 4
+        journey.train_id = "SUBWAY_1"
+        journey.is_cancelled = False
+        journey.data_source = "SUBWAY"
+        journey.last_updated_at = current_time
+
+        origin_stop = Mock()
+        origin_stop.station_code = "S101"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=2)
+        origin_stop.actual_departure = None
+        # GTFS-RT shape: arrival-only live estimate (departure missing because
+        # the upstream protobuf entry didn't carry stop_time_update.departure).
+        # Live estimate is 20 min later than the 2-min-ago schedule.
+        origin_stop.updated_departure = None
+        origin_stop.updated_arrival = current_time + timedelta(minutes=18)
+
+        dest_stop = Mock()
+        dest_stop.station_code = "S142"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "S101", current_time=current_time
+        )
+
+        assert stats.total_count == 1
+        # Wall-clock fallback would have counted this on-time (only 2 min past
+        # schedule, inside the 5-min grace). The arrival estimate gate makes it
+        # delayed.
+        assert stats.on_time_percentage == 0.0
+        assert 19 <= stats.average_delay_minutes <= 21  # ~20 min
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
+
     def test_calculate_departure_stats_live_estimate_on_time(self, summary_service):
         """A not-yet-departed train whose live estimate is within the on-time
         threshold stays on-time — the fix must not over-report delays."""
