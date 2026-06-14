@@ -2,13 +2,14 @@
 Train-related utility functions for TrackRat V2.
 """
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm.base import NO_VALUE
 
 if TYPE_CHECKING:
-    from trackrat.models.database import TrainJourney
+    from trackrat.models.database import JourneyStop, TrainJourney
 
 
 def _stops_loaded(journey: "TrainJourney") -> bool:
@@ -106,6 +107,36 @@ def get_train_data_source(train_id: str) -> str:
         Data source: "AMTRAK" or "NJT" (default fallback)
     """
     return "AMTRAK" if is_amtrak_train(train_id) else "NJT"
+
+
+def effective_njt_updated_times(
+    stop: "JourneyStop", data_source: str | None
+) -> tuple[datetime | None, datetime | None]:
+    """Return ``(updated_arrival, updated_departure)`` with NJT inversion correction.
+
+    NJT's ``TIME`` and ``DEP_TIME`` API fields have inverted semantics at
+    intermediate stops: ``DEP_TIME`` is the original schedule (immutable) while
+    ``TIME`` is the live delayed estimate. The collector persists both as raw
+    passthroughs on ``JourneyStop.updated_departure`` and ``.updated_arrival``,
+    so any client that reads ``updated_departure`` directly at an intermediate
+    NJT stop sees the schedule and thinks the train is on time.
+
+    For NJT records where both fields are populated, this helper returns
+    ``max(updated_arrival, updated_departure)`` for both — the canonical
+    pattern already used by ``services/departure.py`` for the departures
+    endpoint. For all other providers (Amtrak, GTFS-RT, PATH, WMATA) both
+    fields are genuine live estimates that may legitimately differ by the
+    stop's dwell time, so we return them unmodified to preserve that
+    distinction.
+    """
+    if data_source != "NJT":
+        return stop.updated_arrival, stop.updated_departure
+
+    if stop.updated_arrival is not None and stop.updated_departure is not None:
+        latest = max(stop.updated_arrival, stop.updated_departure)
+        return latest, latest
+
+    return stop.updated_arrival, stop.updated_departure
 
 
 def is_njt_stop_cancelled(status: str | None) -> bool:
