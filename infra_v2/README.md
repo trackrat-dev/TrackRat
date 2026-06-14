@@ -136,7 +136,7 @@ Manual deploy from the repo root:
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
 | `machine_type` | t2d-standard-2 | VM machine type |
-| `disk_size_gb` | 40 | Persistent disk size |
+| `disk_size_gb` | 60 | Persistent disk size |
 | `snapshot_retention_days` | 35 | Snapshot retention period |
 
 **Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability.
