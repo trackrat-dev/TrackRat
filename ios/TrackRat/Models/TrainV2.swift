@@ -137,8 +137,11 @@ struct TrainV2: Identifiable, Codable {
             return false
         }
 
-        // Only show boarding within 15 minutes of departure (some stations assign tracks far in advance)
-        guard let departureTime = stop.updatedDeparture ?? stop.scheduledDeparture else {
+        // Only show boarding within 15 minutes of departure (some stations assign tracks far in advance).
+        // Use the NJT-inversion-safe live estimate (see StopV2.liveEstimatedDeparture) so a delayed
+        // intermediate stop measures the window against the real estimated departure, not the schedule
+        // sitting in updated_departure — otherwise a train delayed well beyond 15 min still shows boarding.
+        guard let departureTime = stop.liveEstimatedDeparture ?? stop.scheduledDeparture else {
             return false
         }
 
@@ -186,17 +189,19 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Get departure time from a specific station (best available: actual > updated > scheduled).
+    // Get departure time from a specific station (best available: actual > live estimate > scheduled).
     // actualDeparture wins once set so departed trains stop showing their
     // pre-departure delay estimate, which sometimes lingers in the upstream
-    // API for hours after the train left on time.
+    // API for hours after the train left on time. The live estimate uses
+    // StopV2.liveEstimatedDeparture so NJT intermediate stops surface the delayed
+    // time rather than the raw schedule that NJT stores in updated_departure.
     func getDepartureTime(fromStationCode: String) -> Date? {
         if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departureTime
         }
 
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            return stop.actualDeparture ?? stop.updatedDeparture ?? stop.scheduledDeparture
+            return stop.actualDeparture ?? stop.liveEstimatedDeparture ?? stop.scheduledDeparture
         }
         return nil
     }

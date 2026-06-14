@@ -832,15 +832,18 @@ class TrainV2Tests: XCTestCase {
     /// Helper: build a StopV2 with only the fields delayMinutes / live estimate care about.
     /// Keeps the four NJT-inversion-prone scenarios easy to read in the tests below.
     private func makeStop(
+        stationCode: String = "TEST",
         sequence: Int = 4,
         scheduledDeparture: Date?,
         scheduledArrival: Date? = nil,
         updatedDeparture: Date? = nil,
         updatedArrival: Date? = nil,
-        actualDeparture: Date? = nil
+        actualDeparture: Date? = nil,
+        track: String? = nil,
+        hasDepartedStation: Bool = false
     ) -> StopV2 {
         StopV2(
-            stationCode: "TEST",
+            stationCode: stationCode,
             stationName: "Test Station",
             sequence: sequence,
             scheduledArrival: scheduledArrival,
@@ -849,9 +852,9 @@ class TrainV2Tests: XCTestCase {
             updatedDeparture: updatedDeparture,
             actualArrival: nil,
             actualDeparture: actualDeparture,
-            track: nil,
+            track: track,
             rawStatus: nil,
-            hasDepartedStation: false,
+            hasDepartedStation: hasDepartedStation,
             predictedArrival: nil,
             predictedArrivalSamples: nil
         )
@@ -1031,5 +1034,107 @@ class TrainV2Tests: XCTestCase {
             StopV2.liveEstimatedDeparture(updatedDeparture: nil, updatedArrival: nil),
             "Both nil → nil"
         )
+    }
+
+    // MARK: - getDepartureTime / isBoardingAtStation / NJT inversion (Issue #1289)
+
+    func testGetDepartureTime_njtIntermediateInversion_returnsLiveEstimate() {
+        print("🐀 Testing TrainV2.getDepartureTime recovers the live estimate at an NJT intermediate stop")
+
+        // Companion to delayMinutes (#1289). getDepartureTime feeds the departures-list
+        // sort key, the Live Activity departure time, and detail views. At an NJT
+        // intermediate stop updated_departure holds the immutable schedule (DEP_TIME) and
+        // updated_arrival holds the live estimate (TIME), so the old
+        // `actualDeparture ?? updatedDeparture ?? scheduledDeparture` chain returned the
+        // schedule. Routing through liveEstimatedDeparture recovers the +13 min estimate.
+        let now = Date()
+        let scheduled = now.addingTimeInterval(-2 * 60)
+        let liveEstimate = now.addingTimeInterval(11 * 60)   // 13 min after schedule
+
+        // "TEST" is a non-origin intermediate stop (origin is "NY"), so getDepartureTime
+        // takes the stop branch rather than returning the origin's departureTime.
+        let stop = makeStop(
+            stationCode: "TEST",
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,      // NJT inversion: schedule here
+            updatedArrival: liveEstimate      // NJT inversion: live estimate here
+        )
+        let train = createTestTrainV2(departureCode: "NY", dataSource: "NJT", stops: [stop])
+
+        let result = train.getDepartureTime(fromStationCode: "TEST")
+        print("  - getDepartureTime: \(String(describing: result))")
+        XCTAssertEqual(result, liveEstimate,
+            "getDepartureTime must return the live estimate (updated_arrival), not the NJT schedule in updated_departure")
+    }
+
+    func testGetDepartureTime_actualDepartureWins_overLiveEstimate() {
+        print("🐀 Testing TrainV2.getDepartureTime keeps actualDeparture ahead of the live estimate")
+
+        // The live-estimate change must not disturb the actual > estimate > scheduled
+        // ordering: once a train has departed it should show its real departure, not a
+        // stale pre-departure estimate that lingers in the upstream feed.
+        let now = Date()
+        let scheduled = now.addingTimeInterval(-10 * 60)
+        let actual = now.addingTimeInterval(-7 * 60)
+
+        let stop = makeStop(
+            stationCode: "TEST",
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,
+            updatedArrival: now.addingTimeInterval(5 * 60),   // stale estimate still in feed
+            actualDeparture: actual
+        )
+        let train = createTestTrainV2(departureCode: "NY", dataSource: "NJT", stops: [stop])
+
+        XCTAssertEqual(train.getDepartureTime(fromStationCode: "TEST"), actual,
+            "actualDeparture must win over the live estimate once the train has departed")
+    }
+
+    func testIsBoardingAtStation_njtIntermediateInversion_hidesPrematureBoarding() {
+        print("🐀 Testing TrainV2.isBoardingAtStation measures the 15-min window against the live estimate")
+
+        // A train scheduled to leave this intermediate stop in 10 min but delayed (live
+        // estimate 25 min out) must NOT show as boarding — the real departure is 25 min
+        // away. The old `updatedDeparture ?? scheduledDeparture` read the NJT schedule
+        // (+10) and reported boarding prematurely.
+        let now = Date()
+        let scheduled = now.addingTimeInterval(10 * 60)       // schedule: inside 15-min window
+        let liveEstimate = now.addingTimeInterval(25 * 60)    // live: well outside the window
+
+        let stop = makeStop(
+            stationCode: "TEST",
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,       // NJT inversion: schedule here
+            updatedArrival: liveEstimate,      // NJT inversion: live estimate here
+            track: "5"                         // track required for boarding
+        )
+        let train = createTestTrainV2(departureCode: "NY", dataSource: "NJT", stops: [stop])
+
+        XCTAssertEqual(stop.liveEstimatedDeparture, liveEstimate,
+            "Sanity: the live estimate is the later (delayed) time")
+        XCTAssertFalse(train.isBoardingAtStation("TEST"),
+            "A train delayed 25 min out must not show boarding even though its schedule is 10 min out")
+    }
+
+    func testIsBoardingAtStation_liveEstimateWithinWindow_showsBoarding() {
+        print("🐀 Testing TrainV2.isBoardingAtStation still shows boarding when the live estimate is within 15 min")
+
+        // Guard against over-hiding: a delayed train whose live estimate is 12 min out
+        // (its schedule already passed) is genuinely boarding soon and must still show.
+        let now = Date()
+        let scheduled = now.addingTimeInterval(-3 * 60)       // schedule already passed
+        let liveEstimate = now.addingTimeInterval(12 * 60)    // live: inside the 15-min window
+
+        let stop = makeStop(
+            stationCode: "TEST",
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,
+            updatedArrival: liveEstimate,
+            track: "5"
+        )
+        let train = createTestTrainV2(departureCode: "NY", dataSource: "NJT", stops: [stop])
+
+        XCTAssertTrue(train.isBoardingAtStation("TEST"),
+            "A train with a live estimate 12 min out must still show boarding")
     }
 }
