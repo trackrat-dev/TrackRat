@@ -537,6 +537,8 @@ class TestSummaryService:
         origin_stop.stop_sequence = 1
         origin_stop.scheduled_departure = current_time - timedelta(minutes=30)
         origin_stop.actual_departure = None  # Not departed yet!
+        origin_stop.updated_departure = None  # No live estimate -> wall-clock fallback
+        origin_stop.updated_arrival = None
 
         dest_stop = Mock()
         dest_stop.station_code = "NP"
@@ -578,6 +580,8 @@ class TestSummaryService:
         origin_stop.stop_sequence = 1
         origin_stop.scheduled_departure = current_time - timedelta(minutes=30)
         origin_stop.actual_departure = None  # No departure data due to stale record
+        origin_stop.updated_departure = None  # No live estimate -> wall-clock fallback
+        origin_stop.updated_arrival = None
 
         dest_stop = Mock()
         dest_stop.station_code = "NP"
@@ -615,6 +619,8 @@ class TestSummaryService:
         origin_stop.stop_sequence = 1
         origin_stop.scheduled_departure = current_time - timedelta(minutes=3)
         origin_stop.actual_departure = None  # Not departed yet, but that's normal
+        origin_stop.updated_departure = None  # No live estimate -> wall-clock fallback
+        origin_stop.updated_arrival = None
 
         dest_stop = Mock()
         dest_stop.station_code = "NP"
@@ -629,6 +635,261 @@ class TestSummaryService:
         # Should be counted as on-time since it's only 3 minutes past scheduled
         assert stats.total_count == 1
         assert stats.on_time_percentage == 100.0
+
+    def test_calculate_departure_stats_uses_live_estimate_njt_intermediate(
+        self, summary_service
+    ):
+        """Regression for #1282: a not-yet-departed train that the live estimate
+        already shows as delayed must be counted as delayed, not on-time.
+
+        Before the fix, _calculate_departure_stats ignored the live estimate and
+        only compared scheduled-vs-now. A train scheduled 2 minutes ago (inside
+        the 5-min grace) with no actual_departure was counted on-time, even though
+        /api/v2/trains/departures already showed it ~13 min late on the same
+        screen. That contradiction is exactly what the user reported.
+
+        NJT twist: at an intermediate boarding stop, updated_departure holds the
+        immutable schedule (DEP_TIME) and updated_arrival holds the live estimate
+        (TIME). effective_njt_updated_times' max() must recover the live estimate,
+        otherwise reading updated_departure directly would re-introduce #1268.
+        """
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "1620"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+        journey.last_updated_at = current_time
+
+        # Boarding at an intermediate stop, scheduled 2 min ago — inside the grace
+        # window the old heuristic treated as on-time.
+        origin_stop = Mock()
+        origin_stop.station_code = "NH"
+        origin_stop.stop_sequence = 4
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=2)
+        origin_stop.actual_departure = None  # Not departed yet
+        # NJT inversion: schedule in updated_departure, live estimate in
+        # updated_arrival. Live departure resolves to now + 11 min, i.e. 13 min
+        # after the 2-min-ago schedule.
+        origin_stop.updated_departure = current_time - timedelta(minutes=2)
+        origin_stop.updated_arrival = current_time + timedelta(minutes=11)
+
+        dest_stop = Mock()
+        dest_stop.station_code = "HB"
+        dest_stop.stop_sequence = 9
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NH", current_time=current_time
+        )
+
+        assert stats.total_count == 1
+        # Was 100.0 before the fix; the live estimate makes it delayed.
+        assert stats.on_time_percentage == 0.0
+        assert 12 <= stats.average_delay_minutes <= 14  # ~13 min
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_SLIGHT_DELAY]) == 1
+
+    def test_calculate_departure_stats_uses_live_estimate_gtfs_rt(
+        self, summary_service
+    ):
+        """The fix is provider-agnostic: for GTFS-RT carriers updated_departure
+        is itself the live estimate, so a not-yet-departed delayed train must be
+        counted as delayed there too."""
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.id = 2
+        journey.train_id = "LIRR_1"
+        journey.is_cancelled = False
+        journey.data_source = "LIRR"
+        journey.last_updated_at = current_time
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NY"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=1)
+        origin_stop.actual_departure = None
+        # Non-NJT: updated_departure is the genuine live estimate (now +19 →
+        # 20 min after the 1-min-ago schedule).
+        origin_stop.updated_departure = current_time + timedelta(minutes=19)
+        origin_stop.updated_arrival = None
+
+        dest_stop = Mock()
+        dest_stop.station_code = "JA"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NY", current_time=current_time
+        )
+
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 0.0
+        assert 19 <= stats.average_delay_minutes <= 21  # ~20 min
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
+
+    def test_calculate_departure_stats_uses_live_estimate_arrival_only(
+        self, summary_service
+    ):
+        """GTFS-RT feeds sometimes ingest stops with only `updated_arrival` set
+        (when the upstream protobuf entry omits ``stop_time_update.departure``).
+        ``/api/v2/trains/departures`` already surfaces those as delayed via its
+        ``updated_departure or updated_arrival`` gate; the summary must match,
+        otherwise a train scheduled inside the 5-min grace with a 20-min late
+        arrival estimate would be counted on-time here while the row on the same
+        screen shows the delay (codex P2 finding on PR #1290).
+        """
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.id = 4
+        journey.train_id = "SUBWAY_1"
+        journey.is_cancelled = False
+        journey.data_source = "SUBWAY"
+        journey.last_updated_at = current_time
+
+        origin_stop = Mock()
+        origin_stop.station_code = "S101"
+        origin_stop.stop_sequence = 1
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=2)
+        origin_stop.actual_departure = None
+        # GTFS-RT shape: arrival-only live estimate (departure missing because
+        # the upstream protobuf entry didn't carry stop_time_update.departure).
+        # Live estimate is 20 min later than the 2-min-ago schedule.
+        origin_stop.updated_departure = None
+        origin_stop.updated_arrival = current_time + timedelta(minutes=18)
+
+        dest_stop = Mock()
+        dest_stop.station_code = "S142"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "S101", current_time=current_time
+        )
+
+        assert stats.total_count == 1
+        # Wall-clock fallback would have counted this on-time (only 2 min past
+        # schedule, inside the 5-min grace). The arrival estimate gate makes it
+        # delayed.
+        assert stats.on_time_percentage == 0.0
+        assert 19 <= stats.average_delay_minutes <= 21  # ~20 min
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
+
+    def test_calculate_departure_stats_live_estimate_on_time(self, summary_service):
+        """A not-yet-departed train whose live estimate is within the on-time
+        threshold stays on-time — the fix must not over-report delays."""
+        current_time = datetime.now(UTC)
+
+        journey = Mock(spec=TrainJourney)
+        journey.id = 3
+        journey.train_id = "1622"
+        journey.is_cancelled = False
+        journey.data_source = "NJT"
+        journey.last_updated_at = current_time
+
+        origin_stop = Mock()
+        origin_stop.station_code = "NH"
+        origin_stop.stop_sequence = 4
+        origin_stop.scheduled_departure = current_time - timedelta(minutes=2)
+        origin_stop.actual_departure = None
+        # Live estimate only 3 min after schedule (now + 1 vs now - 2) → on-time.
+        origin_stop.updated_departure = current_time - timedelta(minutes=2)
+        origin_stop.updated_arrival = current_time + timedelta(minutes=1)
+
+        dest_stop = Mock()
+        dest_stop.station_code = "HB"
+        dest_stop.stop_sequence = 9
+
+        journey.stops = [origin_stop, dest_stop]
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "NH", current_time=current_time
+        )
+
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 100.0
+        assert stats.average_delay_minutes <= ON_TIME_THRESHOLD_MINUTES
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
+
+    def test_generate_route_summary_reflects_live_estimate_delay(
+        self, summary_service
+    ):
+        """End-to-end regression for #1282: when a recently-departed train was
+        on time but the next (not-yet-departed) train's live estimate says it's
+        delayed, the headline must NOT claim "100% on time".
+
+        With one on-time and one +13m train the weighted departure OTP is 50%,
+        so the headline reads "Past two hours: 50% on time" and the body says
+        the trains are delayed — matching the per-train delay shown in the
+        departures list on the same screen.
+        """
+        current_time = datetime.now(UTC)
+
+        def _make_njt_journey(train_id, sched_offset, *, departed, est_offset=None):
+            journey = Mock(spec=TrainJourney)
+            journey.id = train_id
+            journey.train_id = str(train_id)
+            journey.is_cancelled = False
+            journey.data_source = "NJT"
+            journey.last_updated_at = current_time
+
+            origin_stop = Mock()
+            origin_stop.station_code = "NH"
+            origin_stop.stop_sequence = 4
+            origin_stop.scheduled_departure = current_time + sched_offset
+            if departed:
+                # Departed on time (actual == scheduled).
+                origin_stop.actual_departure = current_time + sched_offset
+                origin_stop.updated_departure = None
+                origin_stop.updated_arrival = None
+            else:
+                origin_stop.actual_departure = None
+                # NJT inversion: schedule in updated_departure, live estimate in
+                # updated_arrival.
+                origin_stop.updated_departure = current_time + sched_offset
+                origin_stop.updated_arrival = current_time + est_offset
+
+            # Destination stop with no arrival data so arrival stats are skipped
+            # cleanly (scheduled_arrival None short-circuits the arrival branch).
+            dest_stop = Mock()
+            dest_stop.station_code = "HB"
+            dest_stop.stop_sequence = 9
+            dest_stop.scheduled_arrival = None
+            dest_stop.actual_arrival = None
+            dest_stop.arrival_source = None
+
+            journey.stops = [origin_stop, dest_stop]
+            return journey
+
+        # Train 1618: departed 40 min ago, on time.
+        on_time = _make_njt_journey(1618, timedelta(minutes=-40), departed=True)
+        # Train 1620: scheduled 2 min ago, not departed, live estimate +13m.
+        delayed = _make_njt_journey(
+            1620,
+            timedelta(minutes=-2),
+            departed=False,
+            est_offset=timedelta(minutes=11),
+        )
+
+        summary = summary_service._generate_route_summary(
+            [on_time, delayed], "NH", "HB"
+        )
+
+        assert summary.scope == "route"
+        # The bug produced "Past two hours: 100% on time"; the fix yields 50%.
+        assert summary.headline == "Past two hours: 50% on time"
+        assert "100%" not in summary.headline
+        assert "delayed" in summary.body.lower()
+        assert summary.metrics is not None
+        assert summary.metrics.on_time_percentage == 50.0
+        assert summary.metrics.train_count == 2
 
     def test_calculate_arrival_stats_excludes_scheduled_fallback(self, summary_service):
         """Regression: route arrival stats must not count scheduled_fallback
