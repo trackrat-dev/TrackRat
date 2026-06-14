@@ -1171,7 +1171,10 @@ final class APIService: ObservableObject {
             )
         }
         
-        // Create departure timing from first stop or requested station
+        // Create departure timing from first stop or requested station.
+        // Use StopV2.liveEstimatedDeparture (max(updated_*) when both present)
+        // to survive NJT's TIME/DEP_TIME inversion at intermediate stops, in
+        // case a future endpoint stops normalizing on the server side.
         let departureTiming: StationTiming
         if let fromCode = fromStationCode,
            let requestedStop = details.stops.first(where: { Stations.areEquivalentStations($0.station.code, fromCode) }) {
@@ -1179,7 +1182,10 @@ final class APIService: ObservableObject {
                 code: fromCode,
                 name: Stations.stationName(forCode: fromCode) ?? requestedStop.station.name,
                 scheduledTime: requestedStop.scheduledDeparture,
-                updatedTime: requestedStop.updatedDeparture,
+                updatedTime: StopV2.liveEstimatedDeparture(
+                    updatedDeparture: requestedStop.updatedDeparture,
+                    updatedArrival: requestedStop.updatedArrival
+                ),
                 actualTime: requestedStop.actualDeparture,
                 track: requestedStop.track
             )
@@ -1188,7 +1194,10 @@ final class APIService: ObservableObject {
                 code: firstStop.station.code,
                 name: firstStop.station.name,
                 scheduledTime: firstStop.scheduledDeparture,
-                updatedTime: firstStop.updatedDeparture,
+                updatedTime: StopV2.liveEstimatedDeparture(
+                    updatedDeparture: firstStop.updatedDeparture,
+                    updatedArrival: firstStop.updatedArrival
+                ),
                 actualTime: firstStop.actualDeparture,
                 track: firstStop.track
             )
