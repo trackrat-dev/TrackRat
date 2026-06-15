@@ -3097,6 +3097,7 @@ class SchedulerService:
                             logger.warning(
                                 "journey_not_found_for_live_activity",
                                 train_number=train_number,
+                                data_source=data_source,
                             )
                             continue
 
