@@ -6,10 +6,10 @@
 
 - **Framework**: React 19.2 + TypeScript 6.0 + PWA (vite-plugin-pwa)
 - **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
-- **Styling**: Tailwind CSS 4.2 (utility-first, custom design system)
+- **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 7.14
-- **Date Handling**: date-fns 4.1
+- **Routing**: React Router DOM 7.16
+- **Date Handling**: date-fns 4.4
 - **HTTP Client**: Native `fetch` (no axios)
 - **Maps**: MapLibre GL 5.22 + react-map-gl 8.1
 - **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)
