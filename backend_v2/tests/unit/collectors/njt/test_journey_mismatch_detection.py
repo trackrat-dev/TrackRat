@@ -782,7 +782,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="4250",
-            journey_date=date.today() - timedelta(days=1),  # yesterday
+            journey_date=(now_et() - timedelta(days=1)).date(),  # yesterday (ET)
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -848,7 +848,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="4244",
-            journey_date=date.today() - timedelta(days=1),
+            journey_date=(now_et() - timedelta(days=1)).date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -941,7 +941,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="5517",
-            journey_date=date.today() - timedelta(days=1),
+            journey_date=(now_et() - timedelta(days=1)).date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -1023,7 +1023,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="1720",
-            journey_date=date.today() - timedelta(days=1),
+            journey_date=(now_et() - timedelta(days=1)).date(),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
