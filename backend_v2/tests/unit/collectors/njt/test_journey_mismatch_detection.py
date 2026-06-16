@@ -782,7 +782,11 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="4250",
-            journey_date=date.today() - timedelta(days=1),  # yesterday
+            # Use now_et().date() so the prior-day gate in production code
+            # (stored_journey.journey_date < now_et().date()) sees this row as
+            # yesterday in ET. Mixing date.today() (UTC) with now_et()-based
+            # comparisons fails when CI runs after 8pm ET / midnight UTC.
+            journey_date=now_et().date() - timedelta(days=1),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -848,7 +852,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="4244",
-            journey_date=date.today() - timedelta(days=1),
+            journey_date=now_et().date() - timedelta(days=1),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -941,7 +945,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="5517",
-            journey_date=date.today() - timedelta(days=1),
+            journey_date=now_et().date() - timedelta(days=1),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
@@ -1023,7 +1027,7 @@ class TestStalePriorRunDetection:
 
         journey = TrainJourney(
             train_id="1720",
-            journey_date=date.today() - timedelta(days=1),
+            journey_date=now_et().date() - timedelta(days=1),
             line_code="NE",
             line_name="Northeast Corridor",
             destination="Trenton",
