@@ -113,6 +113,14 @@ NJT_LINE_CODE_MAPPING = {
     "PRIN": "PR",
 }
 
+# Sources whose discovery upgrades a SCHEDULED journey to OBSERVED *in place*,
+# matched on the unique_train_journey key (train_id, journey_date, data_source).
+# Only these can have a row materialized from GTFS at Live Activity registration:
+# their real-time collectors adopt that exact row. GTFS-RT systems (subway, LIRR,
+# MNR, BART, MBTA, Metra, PATH, WMATA) mint their own train_ids and would create a
+# *separate* OBSERVED row, orphaning the materialized one (issue #1298 follow-up).
+MATERIALIZE_SCHEDULED_SOURCES = {"NJT", "AMTRAK"}
+
 
 def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
     """Convert LIRR GTFS train number or trip_id to the L-prefixed real-time format.
@@ -2091,10 +2099,13 @@ class GTFSService:
         Materializing a SCHEDULED row lets the push job deliver scheduled-time
         updates immediately. NJT/Amtrak discovery later upgrades the same row to
         OBSERVED in place, matched via the ``unique_train_journey`` key
-        (train_id, journey_date, data_source), so no duplicate is created.
+        (train_id, journey_date, data_source), so no duplicate is created. Only
+        sources in ``MATERIALIZE_SCHEDULED_SOURCES`` are eligible — GTFS-RT
+        systems mint their own train_ids and would orphan the materialized row.
 
         Returns the existing or newly-created journey, or ``None`` if the train
-        is not present in GTFS or has no usable scheduled departure.
+        is not present in GTFS, has no usable scheduled departure, or belongs to
+        a source without in-place SCHEDULED→OBSERVED upgrade.
         """
         existing: TrainJourney | None = await db.scalar(
             self._scheduled_journey_lookup(train_id, target_date, data_source)
@@ -2106,6 +2117,13 @@ class GTFSService:
             db, train_id, target_date, data_source=data_source
         )
         if details is None or not details.stops:
+            return None
+
+        # Gate on the *resolved* source: a null data_source (older iOS clients)
+        # only resolves to a concrete source after get_train_details' two-phase
+        # search. Materializing for any other source would create a row no
+        # collector adopts, silently re-introducing stale Live Activities.
+        if details.data_source not in MATERIALIZE_SCHEDULED_SOURCES:
             return None
 
         origin = details.stops[0]

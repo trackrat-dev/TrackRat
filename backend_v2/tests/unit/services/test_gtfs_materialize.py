@@ -28,10 +28,12 @@ from trackrat.services.gtfs import GTFSService
 TARGET_DATE = date(2026, 6, 15)
 
 
-async def _seed_njt_gtfs_trip(db, *, train_id: str = "3096") -> GTFSTrip:
-    """Seed one NJT GTFS trip (NY -> Trenton) active on TARGET_DATE."""
+async def _seed_gtfs_trip(
+    db, *, train_id: str = "3096", data_source: str = "NJT"
+) -> GTFSTrip:
+    """Seed one GTFS trip (NY -> Trenton) active on TARGET_DATE for ``data_source``."""
     route = GTFSRoute(
-        data_source="NJT",
+        data_source=data_source,
         route_id="NEC",
         route_short_name="NEC",
         route_long_name="Northeast Corridor",
@@ -42,7 +44,7 @@ async def _seed_njt_gtfs_trip(db, *, train_id: str = "3096") -> GTFSTrip:
 
     db.add(
         GTFSCalendar(
-            data_source="NJT",
+            data_source=data_source,
             service_id="WKDY",
             monday=True,
             tuesday=True,
@@ -57,7 +59,7 @@ async def _seed_njt_gtfs_trip(db, *, train_id: str = "3096") -> GTFSTrip:
     )
 
     trip = GTFSTrip(
-        data_source="NJT",
+        data_source=data_source,
         trip_id=f"trip-{train_id}",
         route_id=route.id,
         service_id="WKDY",
@@ -92,7 +94,7 @@ async def _seed_njt_gtfs_trip(db, *, train_id: str = "3096") -> GTFSTrip:
 async def test_materialize_creates_scheduled_journey_from_gtfs(db_session):
     """A GTFS-only SCHEDULED train gets a real train_journeys row + stops."""
     GTFSService._service_id_cache.clear()
-    await _seed_njt_gtfs_trip(db_session)
+    await _seed_gtfs_trip(db_session)
 
     journey = await GTFSService().materialize_scheduled_journey(
         db_session, "3096", TARGET_DATE, data_source="NJT"
@@ -125,7 +127,7 @@ async def test_materialize_creates_scheduled_journey_from_gtfs(db_session):
 async def test_materialize_is_idempotent(db_session):
     """Calling twice must not create a duplicate row (unique_train_journey)."""
     GTFSService._service_id_cache.clear()
-    await _seed_njt_gtfs_trip(db_session)
+    await _seed_gtfs_trip(db_session)
     service = GTFSService()
 
     first = await service.materialize_scheduled_journey(
@@ -153,7 +155,7 @@ async def test_materialize_returns_existing_observed_row_without_duplicating(
 ):
     """If discovery already created a row, return it and do not materialize."""
     GTFSService._service_id_cache.clear()
-    await _seed_njt_gtfs_trip(db_session)
+    await _seed_gtfs_trip(db_session)
 
     observed = TrainJourney(
         train_id="3096",
@@ -199,9 +201,42 @@ async def test_materialize_returns_existing_observed_row_without_duplicating(
 async def test_materialize_returns_none_when_train_absent_from_gtfs(db_session):
     """A train with no GTFS trip cannot be materialized; returns None gracefully."""
     GTFSService._service_id_cache.clear()
-    await _seed_njt_gtfs_trip(db_session)
+    await _seed_gtfs_trip(db_session)
 
     journey = await GTFSService().materialize_scheduled_journey(
         db_session, "9999", TARGET_DATE, data_source="NJT"
     )
     assert journey is None
+
+
+@pytest.mark.asyncio
+async def test_materialize_skips_sources_without_in_place_upgrade(db_session):
+    """A GTFS-RT source (e.g. SUBWAY) must NOT get a materialized row.
+
+    Those collectors mint their own train_ids and would create a *separate*
+    OBSERVED row, orphaning anything materialized here. The train is genuinely
+    present in GTFS (get_train_details returns it), so the None must come from
+    the source gate — not an incidental lookup miss.
+    """
+    GTFSService._service_id_cache.clear()
+    await _seed_gtfs_trip(db_session, data_source="SUBWAY")
+    service = GTFSService()
+
+    # Guard against a cheater pass: the train IS materializable in principle.
+    details = await service.get_train_details(
+        db_session, "3096", TARGET_DATE, data_source="SUBWAY"
+    )
+    assert details is not None, "GTFS lookup should find the seeded SUBWAY trip"
+    assert details.data_source == "SUBWAY"
+
+    journey = await service.materialize_scheduled_journey(
+        db_session, "3096", TARGET_DATE, data_source="SUBWAY"
+    )
+    assert journey is None
+
+    rows = (
+        await db_session.scalars(
+            select(TrainJourney).where(TrainJourney.train_id == "3096")
+        )
+    ).all()
+    assert rows == [], "no train_journeys row may be written for a gated source"
