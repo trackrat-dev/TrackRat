@@ -26,19 +26,48 @@ def _make_request(
 
 
 class TestGetClientIp:
-    """Unit tests for the X-Forwarded-For aware client-IP helper."""
+    """Unit tests for the X-Forwarded-For aware client-IP helper.
 
-    def test_prefers_first_forwarded_for_entry(self) -> None:
-        """Behind GCP's LB the real client IP is the first XFF entry."""
+    GCP's external HTTP(S) load balancer appends ``"<client-ip>,<lb-ip>"`` to
+    any existing X-Forwarded-For header, so the trusted client IP is the
+    second-to-last entry and any earlier entries may have been forged by the
+    caller.
+    """
+
+    def test_returns_second_to_last_entry_behind_gcp_lb(self) -> None:
+        """The LB-appended pair is at the tail; the real client IP is at -2."""
         request = _make_request(
             headers={"x-forwarded-for": "203.0.113.7, 35.191.0.1"},
             client=("10.0.0.1", 5000),
         )
         assert get_client_ip(request) == "203.0.113.7"
 
-    def test_strips_whitespace_from_forwarded_entry(self) -> None:
-        request = _make_request(headers={"x-forwarded-for": "  203.0.113.7  "})
+    def test_ignores_spoofed_entries_before_lb_appended_pair(self) -> None:
+        """Client-supplied XFF entries appear before the LB-appended pair and
+        must not be trusted; only the LB's recorded client IP (position -2)
+        counts."""
+        request = _make_request(
+            headers={
+                "x-forwarded-for": "1.2.3.4, 5.6.7.8, 203.0.113.7, 35.191.0.1"
+            },
+            client=("10.0.0.1", 5000),
+        )
         assert get_client_ip(request) == "203.0.113.7"
+
+    def test_strips_whitespace_around_entries(self) -> None:
+        request = _make_request(
+            headers={"x-forwarded-for": "  203.0.113.7  ,  35.191.0.1  "}
+        )
+        assert get_client_ip(request) == "203.0.113.7"
+
+    def test_single_xff_entry_falls_back_to_direct_peer(self) -> None:
+        """A single XFF entry can't be the LB-appended pair (the LB always adds
+        its own), so it isn't trusted — fall back to the direct peer."""
+        request = _make_request(
+            headers={"x-forwarded-for": "203.0.113.7"},
+            client=("10.0.0.1", 5000),
+        )
+        assert get_client_ip(request) == "10.0.0.1"
 
     def test_falls_back_to_direct_peer_without_header(self) -> None:
         request = _make_request(client=("198.51.100.4", 443))

@@ -18,13 +18,22 @@ logger = get_logger(__name__)
 def get_client_ip(request: Request) -> str:
     """Return the originating client IP for a request.
 
-    Behind GCP's HTTP(S) load balancer the direct peer is the load balancer, so
-    the real client IP is the first entry of the ``X-Forwarded-For`` header. Fall
-    back to the direct peer address, then ``"unknown"`` when neither is present.
+    Behind GCP's external HTTP(S) load balancer the LB appends
+    ``"<client-ip>,<lb-ip>"`` to any existing ``X-Forwarded-For`` header rather
+    than overwriting it, so the trusted client IP is the second-to-last entry.
+    Earlier entries can be forged by the client. When the header is missing or
+    has only one entry (e.g. local dev — the LB would always have added its own
+    pair in production), fall back to the direct peer.
+
+    See https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
     """
-    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-    if forwarded:
-        return forwarded
+    forwarded = [
+        part.strip()
+        for part in request.headers.get("x-forwarded-for", "").split(",")
+        if part.strip()
+    ]
+    if len(forwarded) >= 2:
+        return forwarded[-2]
     return request.client.host if request.client else "unknown"
 
 
