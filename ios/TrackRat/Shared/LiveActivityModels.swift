@@ -47,7 +47,25 @@ struct TrainActivityAttributes: ActivityAttributes {
         }
         
         // MARK: - New Computed Properties for Time-Based Display
-        
+
+        /// Parsed scheduled departure `Date` for the user's origin station.
+        /// Live Activity widget bodies only re-render on a push or app foreground,
+        /// so countdowns must be rendered with a self-updating `Text(_:style:)`
+        /// driven by this `Date` rather than a precomputed minute string — otherwise
+        /// the displayed minutes freeze between pushes (issue #1298).
+        var departureDate: Date? {
+            guard !hasTrainDeparted,
+                  let departureTimeString = scheduledDepartureTime else { return nil }
+            return Date.fromISO8601(departureTimeString)
+        }
+
+        /// Parsed scheduled arrival `Date` for the user's destination station.
+        /// Used for the same self-updating countdown rendering as `departureDate`.
+        var arrivalDate: Date? {
+            guard let arrivalTimeString = scheduledArrivalTime else { return nil }
+            return Date.fromISO8601(arrivalTimeString)
+        }
+
         /// Minutes until train departs from user's origin station
         var minutesUntilDeparture: Int? {
             guard !hasTrainDeparted,

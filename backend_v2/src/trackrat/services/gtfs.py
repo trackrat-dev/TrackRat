@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 from sqlalchemy import and_, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -43,6 +44,8 @@ from trackrat.models.database import (
     GTFSRoute,
     GTFSStopTime,
     GTFSTrip,
+    JourneyStop,
+    TrainJourney,
 )
 from trackrat.utils.time import DATETIME_MAX_ET, ET, PROVIDER_TIMEZONE, now_et
 
@@ -109,6 +112,14 @@ NJT_LINE_CODE_MAPPING = {
     # Princeton Shuttle (Dinky)
     "PRIN": "PR",
 }
+
+# Sources whose discovery upgrades a SCHEDULED journey to OBSERVED *in place*,
+# matched on the unique_train_journey key (train_id, journey_date, data_source).
+# Only these can have a row materialized from GTFS at Live Activity registration:
+# their real-time collectors adopt that exact row. GTFS-RT systems (subway, LIRR,
+# MNR, BART, MBTA, Metra, PATH, WMATA) mint their own train_ids and would create a
+# *separate* OBSERVED row, orphaning the materialized one (issue #1298 follow-up).
+MATERIALIZE_SCHEDULED_SOURCES = {"NJT", "AMTRAK"}
 
 
 def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
@@ -2068,6 +2079,130 @@ class GTFSService:
             progress=None,
             predicted_arrival=None,
         )
+
+    async def materialize_scheduled_journey(
+        self,
+        db: AsyncSession,
+        train_id: str,
+        target_date: date,
+        data_source: str | None = None,
+    ) -> TrainJourney | None:
+        """Create a SCHEDULED ``train_journeys`` row from GTFS static data.
+
+        Live Activities can be started for SCHEDULED trains that exist only in
+        the GTFS static schedule (no ``train_journeys`` row until discovery
+        observes the train). The Live Activity push job queries ``train_journeys``
+        exclusively and has no GTFS fallback, so without a row it logs
+        ``journey_not_found_for_live_activity`` every cycle and never pushes an
+        update — the on-device countdown goes static (issue #1298).
+
+        Materializing a SCHEDULED row lets the push job deliver scheduled-time
+        updates immediately. NJT/Amtrak discovery later upgrades the same row to
+        OBSERVED in place, matched via the ``unique_train_journey`` key
+        (train_id, journey_date, data_source), so no duplicate is created. Only
+        sources in ``MATERIALIZE_SCHEDULED_SOURCES`` are eligible — GTFS-RT
+        systems mint their own train_ids and would orphan the materialized row.
+
+        Returns the existing or newly-created journey, or ``None`` if the train
+        is not present in GTFS, has no usable scheduled departure, or belongs to
+        a source without in-place SCHEDULED→OBSERVED upgrade.
+        """
+        existing: TrainJourney | None = await db.scalar(
+            self._scheduled_journey_lookup(train_id, target_date, data_source)
+        )
+        if existing:
+            return existing
+
+        details = await self.get_train_details(
+            db, train_id, target_date, data_source=data_source
+        )
+        if details is None or not details.stops:
+            return None
+
+        # Gate on the *resolved* source: a null data_source (older iOS clients)
+        # only resolves to a concrete source after get_train_details' two-phase
+        # search. Materializing for any other source would create a row no
+        # collector adopts, silently re-introducing stale Live Activities.
+        if details.data_source not in MATERIALIZE_SCHEDULED_SOURCES:
+            return None
+
+        origin = details.stops[0]
+        dest = details.stops[-1]
+        # ``scheduled_departure`` is NOT NULL on TrainJourney; fall back to the
+        # origin's scheduled arrival, then bail if neither is available.
+        scheduled_departure = origin.scheduled_departure or origin.scheduled_arrival
+        if scheduled_departure is None:
+            logger.info(
+                "gtfs_materialize_no_scheduled_departure",
+                train_id=train_id,
+                target_date=str(target_date),
+            )
+            return None
+
+        journey = TrainJourney(
+            train_id=details.train_id,
+            journey_date=target_date,
+            line_code=details.line.code[:15],
+            line_name=details.line.name,
+            line_color=details.line.color,
+            destination=details.route.destination[:100],
+            origin_station_code=details.route.origin_code,
+            terminal_station_code=details.route.destination_code,
+            data_source=details.data_source,
+            observation_type="SCHEDULED",
+            scheduled_departure=scheduled_departure,
+            scheduled_arrival=dest.scheduled_arrival or dest.scheduled_departure,
+            has_complete_journey=False,
+            stops_count=len(details.stops),
+        )
+        db.add(journey)
+        for stop in details.stops:
+            db.add(
+                JourneyStop(
+                    journey=journey,
+                    station_code=stop.station.code,
+                    station_name=stop.station.name,
+                    stop_sequence=stop.stop_sequence,
+                    scheduled_arrival=stop.scheduled_arrival,
+                    scheduled_departure=stop.scheduled_departure,
+                    has_departed_station=False,
+                )
+            )
+
+        try:
+            await db.flush()
+        except IntegrityError:
+            # A concurrent request or discovery created the row first — adopt it
+            # via the unique_train_journey key instead of failing.
+            await db.rollback()
+            adopted: TrainJourney | None = await db.scalar(
+                self._scheduled_journey_lookup(
+                    details.train_id, target_date, details.data_source
+                )
+            )
+            return adopted
+
+        logger.info(
+            "gtfs_scheduled_journey_materialized",
+            train_id=details.train_id,
+            journey_date=str(target_date),
+            data_source=details.data_source,
+            stops_count=len(details.stops),
+        )
+        return journey
+
+    @staticmethod
+    def _scheduled_journey_lookup(
+        train_id: str, target_date: date, data_source: str | None
+    ) -> Any:
+        """Build the existence query used to dedupe materialized journeys."""
+        conditions = [
+            TrainJourney.train_id == train_id,
+            TrainJourney.journey_date == target_date,
+        ]
+        if data_source:
+            conditions.append(TrainJourney.data_source == data_source)
+        return select(TrainJourney).where(and_(*conditions))
 
     async def get_static_stop_times(
         self,
