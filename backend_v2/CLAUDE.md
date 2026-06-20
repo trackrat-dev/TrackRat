@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** May 2026
+**Last Updated:** June 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
@@ -287,7 +287,7 @@ The APScheduler runs in-process and handles:
 - **Daily at 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Daily at 1:00 AM ET**: Lock manager cleanup
 - **Daily at 3:00 AM ET**: GTFS static schedule refresh
-- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys older than `TRACKRAT_RETENTION_DAYS`)
+- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`; active alerts are kept regardless of age)
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
 - **Every 4 min**: PATH collection (unified, RidePATH API)
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
@@ -772,6 +772,13 @@ The backend is organized into service classes for better maintainability:
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
+
+### Recent Improvements (June 2026)
+- ✅ Retention sweep extended to inactive `service_alerts` so long-resolved alerts no longer accumulate (issue #1269, `services/scheduler.py`)
+- ✅ NJT `updated_arrival` / `updated_departure` inversion normalized at the `/trains/{train_id}` endpoint via `utils/train.py` so consumers don't have to apply `max(updated_departure, updated_arrival)` themselves (issue #1268, `api/trains.py`)
+- ✅ Route summary uses live estimate for boarding-stop departure on-time calculation; falls back to arrival estimate when departure is absent (issue #1282, `services/summary.py`)
+- ✅ Congestion map level now reflects cancellations alongside delays (issue #1246, `services/congestion.py`, `services/congestion_types.py`, `services/segment_normalizer.py`)
+- ✅ Metra UP-NW line code length increased on departures endpoint to prevent truncation (issue #1241, `models/api.py`)
 
 ### Recent Improvements (May 2026)
 - ✅ Train share metadata now includes route times for richer link previews (`api/share.py`)
