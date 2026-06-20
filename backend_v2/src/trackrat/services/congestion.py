@@ -16,6 +16,7 @@ from structlog import get_logger
 
 from trackrat.models.database import TrainJourney
 from trackrat.services.congestion_types import (
+    CANCELLATION_CONGESTION_WEIGHT,
     CONGESTION_THRESHOLD_HEAVY,
     CONGESTION_THRESHOLD_MODERATE,
     CONGESTION_THRESHOLD_NORMAL,
@@ -23,6 +24,7 @@ from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_MODERATE,
     FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
+    effective_congestion_factor,
     get_congestion_level,
     get_frequency_level,
 )
@@ -79,10 +81,12 @@ __all__ = [
     "SegmentCongestion",
     "get_congestion_level",
     "get_frequency_level",
+    "effective_congestion_factor",
     "CongestionAnalyzer",
     "CONGESTION_THRESHOLD_NORMAL",
     "CONGESTION_THRESHOLD_MODERATE",
     "CONGESTION_THRESHOLD_HEAVY",
+    "CANCELLATION_CONGESTION_WEIGHT",
     "FREQ_THRESHOLD_HEALTHY",
     "FREQ_THRESHOLD_MODERATE",
     "FREQ_THRESHOLD_REDUCED",
@@ -94,7 +98,18 @@ def _stop_pairs_cte(ds_filter: str) -> str:
     """Generate the stop_pairs CTE with cutoff_time pushdown.
 
     Filters on tj_pre.last_updated_at >= :cutoff_time so PostgreSQL prunes
-    journeys before the expensive LEAD() window function runs.
+    journeys before the expensive LEAD() window function runs. Cancelled
+    journeys are admitted unconditionally (still bounded by the 1-day
+    journey_date filter), because the NJT journey collector stops touching
+    them once is_cancelled is set (collectors/njt/journey.py filters
+    is_cancelled.is_not(True)), so a train cancelled hours before its
+    scheduled run would otherwise be pruned and never reach segment_data's
+    cancellation window. The filter is journey-level (not per-stop) because
+    a per-stop scheduled_departure check drops the TO row of each pair
+    (it has scheduled_arrival, not scheduled_departure), breaking LEAD()
+    so to_station resolves to NULL. segment_data's
+    `sp.from_scheduled_departure >= :cutoff_time` predicate narrows the
+    admitted cancellations to the relevant window.
     Requires :cutoff_time in the query's params dict.
     """
     return f"""stop_pairs AS (
@@ -115,7 +130,10 @@ def _stop_pairs_cte(ds_filter: str) -> str:
         JOIN train_journeys tj_pre ON tj_pre.id = js.journey_id
         WHERE js.station_code IS NOT NULL
           AND tj_pre.journey_date >= CURRENT_DATE - INTERVAL '1 day'
-          AND tj_pre.last_updated_at >= :cutoff_time
+          AND (
+              tj_pre.last_updated_at >= :cutoff_time
+              OR tj_pre.is_cancelled
+          )
           {ds_filter}
         WINDOW w AS (PARTITION BY js.journey_id ORDER BY js.stop_sequence)
     )"""
@@ -473,14 +491,26 @@ class CongestionAnalyzer:
             WHERE
                 -- LEAD returns NULL for last stop in journey (no next stop)
                 sp.to_station IS NOT NULL
-                -- Within time window
-                AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
-                -- Valid times: need some real-time departure and arrival time
-                AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) IS NOT NULL
-                AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) IS NOT NULL
-                -- Ensure arrival is after departure (positive transit time)
-                AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) >
-                    COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
+                AND (
+                    -- Running trains: need positive real-time transit time
+                    -- within the lookback window. (>= :cutoff_time implies the
+                    -- coalesced departure is non-NULL.)
+                    (
+                        COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
+                        AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) IS NOT NULL
+                        AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) >
+                            COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
+                    )
+                    -- Cancelled trains have no real-time times, so window them
+                    -- on their scheduled departure instead. They contribute
+                    -- only to cancelled_count (every active metric below filters
+                    -- NOT is_cancelled), letting heavy cancellations register on
+                    -- the congestion map even when running trains are on time.
+                    OR (
+                        tj.is_cancelled
+                        AND sp.from_scheduled_departure >= :cutoff_time
+                    )
+                )
         ),
         segment_with_recency AS (
             -- Add recency window for efficient filtering
@@ -638,7 +668,13 @@ class CongestionAnalyzer:
             current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
             congestion_factor = current_avg / baseline if baseline > 0 else 1.0
 
-            level = get_congestion_level(congestion_factor)
+            # Fold cancellations into the level so heavy cancellations register
+            # on the map even when the running trains are on time. (Segments are
+            # re-aggregated in normalize_aggregated_segments, which applies the
+            # same weighting; this keeps each raw segment self-consistent.)
+            level = get_congestion_level(
+                effective_congestion_factor(congestion_factor, cancellation_rate)
+            )
 
             # Calculate average delay
             average_delay = current_avg - baseline

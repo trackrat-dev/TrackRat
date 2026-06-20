@@ -6,6 +6,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 
 ### Live Activities & Real-time Tracking
 - **Lock Screen Integration**: Real-time train tracking on Lock Screen and Dynamic Island
+- **Track Predictions**: Predicted track/platform surfaced on the Live Activity Lock Screen when available
 - **Push Notifications**: Automatic updates for boarding, delays, and arrivals
 - **30-Second Refresh**: Continuous background updates while tracking
 - **Smart Auto-End**: Automatically ends tracking when journey completes

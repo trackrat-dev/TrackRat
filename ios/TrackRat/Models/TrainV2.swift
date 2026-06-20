@@ -137,8 +137,11 @@ struct TrainV2: Identifiable, Codable {
             return false
         }
 
-        // Only show boarding within 15 minutes of departure (some stations assign tracks far in advance)
-        guard let departureTime = stop.updatedDeparture ?? stop.scheduledDeparture else {
+        // Only show boarding within 15 minutes of departure (some stations assign tracks far in advance).
+        // Use the NJT-inversion-safe live estimate (see StopV2.liveEstimatedDeparture) so a delayed
+        // intermediate stop measures the window against the real estimated departure, not the schedule
+        // sitting in updated_departure — otherwise a train delayed well beyond 15 min still shows boarding.
+        guard let departureTime = stop.liveEstimatedDeparture ?? stop.scheduledDeparture else {
             return false
         }
 
@@ -186,17 +189,19 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Get departure time from a specific station (best available: actual > updated > scheduled).
+    // Get departure time from a specific station (best available: actual > live estimate > scheduled).
     // actualDeparture wins once set so departed trains stop showing their
     // pre-departure delay estimate, which sometimes lingers in the upstream
-    // API for hours after the train left on time.
+    // API for hours after the train left on time. The live estimate uses
+    // StopV2.liveEstimatedDeparture so NJT intermediate stops surface the delayed
+    // time rather than the raw schedule that NJT stores in updated_departure.
     func getDepartureTime(fromStationCode: String) -> Date? {
         if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departureTime
         }
 
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            return stop.actualDeparture ?? stop.updatedDeparture ?? stop.scheduledDeparture
+            return stop.actualDeparture ?? stop.liveEstimatedDeparture ?? stop.scheduledDeparture
         }
         return nil
     }
@@ -244,11 +249,12 @@ struct TrainV2: Identifiable, Codable {
         return arrival?.scheduledTime
     }
 
-    // Get estimated (delay-adjusted) departure time from a specific station
-    // Returns updatedDeparture if available, otherwise falls back to scheduledDeparture
+    // Get estimated (delay-adjusted) departure time from a specific station.
+    // Uses the NJT-inversion-safe live estimate (see StopV2.liveEstimatedDeparture)
+    // and falls back to the schedule when no live estimate is available.
     func getEstimatedDepartureTime(fromStationCode: String) -> Date? {
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            return stop.updatedDeparture ?? stop.scheduledDeparture
+            return stop.liveEstimatedDeparture ?? stop.scheduledDeparture
         }
         // Fallback for origin station
         if Stations.areEquivalentStations(fromStationCode, originStationCode) {
@@ -455,9 +461,45 @@ struct StopV2: Identifiable, Codable {
         actualArrival ?? updatedArrival ?? scheduledArrival
     }
 
-    // Computed delay based on updated vs scheduled times
+    /// Live estimated departure that survives NJT's TIME/DEP_TIME inversion.
+    ///
+    /// NJT persists `updated_departure = DEP_TIME` (the immutable schedule) and
+    /// `updated_arrival = TIME` (the live delayed estimate) at intermediate
+    /// stops, so a plain `updatedDeparture ?? updatedArrival` picks the
+    /// schedule and reports 0 delay. Taking the later of the two when both are
+    /// populated recovers the live estimate for NJT and stays correct for
+    /// other providers (where the later value is the dwell-end departure,
+    /// matching what `services/departure.py` returns to `/api/v2/trains/
+    /// departures`). Today the server normalizes NJT updated_* in PR #1271, so
+    /// this method is defensive belt-and-suspenders, but it keeps the contract
+    /// correct-by-construction independent of any single server endpoint.
+    static func liveEstimatedDeparture(
+        updatedDeparture: Date?,
+        updatedArrival: Date?
+    ) -> Date? {
+        switch (updatedDeparture, updatedArrival) {
+        case let (departure?, arrival?):
+            return max(departure, arrival)
+        case let (departure?, nil):
+            return departure
+        case let (nil, arrival?):
+            return arrival
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    /// Live estimated departure for this stop (see `liveEstimatedDeparture`).
+    var liveEstimatedDeparture: Date? {
+        StopV2.liveEstimatedDeparture(
+            updatedDeparture: updatedDeparture,
+            updatedArrival: updatedArrival
+        )
+    }
+
+    // Computed delay based on the live estimated departure vs the schedule.
     var delayMinutes: Int {
-        if let updated = updatedDeparture ?? updatedArrival,
+        if let updated = liveEstimatedDeparture,
            let scheduled = scheduledDeparture ?? scheduledArrival {
             return max(0, Int(updated.timeIntervalSince(scheduled) / 60))
         }
@@ -517,6 +559,16 @@ extension TrainV2 {
         // Get next stop arrival time
         let nextStopArrivalTime = getNextStopArrivalTime()
 
+        // Only surface the predicted track when there is no actual track yet
+        let (predictedTrackValue, predictedTrackConfidenceValue): (String?, Double?) = {
+            guard track == nil || track?.isEmpty == true,
+                  let prediction = trackPrediction,
+                  !prediction.primaryPrediction.isEmpty else {
+                return (nil, nil)
+            }
+            return (prediction.primaryPrediction, prediction.confidence)
+        }()
+
         return TrainActivityAttributes.ContentState(
             status: contextStatus.rawValue,
             track: track,
@@ -530,6 +582,8 @@ extension TrainV2 {
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
             nextStopCode: nextStopCode,
             hasTrainDeparted: hasTrainDeparted,
+            predictedTrack: predictedTrackValue,
+            predictedTrackConfidence: predictedTrackConfidenceValue,
             originStationCode: originCode,
             destinationStationCode: destinationStationCode ?? ""
         )

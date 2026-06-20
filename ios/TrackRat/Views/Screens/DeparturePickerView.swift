@@ -449,13 +449,36 @@ struct DeparturePickerView: View {
 
     @ViewBuilder
     private var stationsSection: some View {
+        let favoriteCodes = Set(appState.favoriteStations.map(\.id))
         VStack(alignment: .leading, spacing: 12) {
+            if !appState.favoriteStations.isEmpty {
+                Text("Favorites")
+                    .trackRatSectionHeader()
+                    .padding(.horizontal)
+
+                VStack(spacing: 12) {
+                    ForEach(appState.favoriteStations) { favorite in
+                        DepartureButton(
+                            name: favorite.name,
+                            code: favorite.id,
+                            onTap: {
+                                selectDeparture(name: favorite.name, code: favorite.id)
+                            }
+                        )
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+
             Text("Stations")
                 .trackRatSectionHeader()
                 .padding(.horizontal)
-            
+
             VStack(spacing: 12) {
-                ForEach(Stations.departureStations, id: \.code) { station in
+                ForEach(
+                    Stations.departureStations.filter { !favoriteCodes.contains($0.code) },
+                    id: \.code
+                ) { station in
                     DepartureButton(
                         name: station.name,
                         code: station.code,

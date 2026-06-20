@@ -324,6 +324,17 @@ struct TrainLiveActivityView: View {
                 Spacer()
             }
             .padding(.top, 4)
+
+            if !context.state.hasTrainDeparted,
+               let predicted = context.state.displayablePredictedTrack {
+                HStack {
+                    Spacer()
+                    Text("🐀 TrackRat predicts Track \(predicted)")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.9))
+                    Spacer()
+                }
+            }
         }
         .padding()
         .onReceive(timer) { _ in

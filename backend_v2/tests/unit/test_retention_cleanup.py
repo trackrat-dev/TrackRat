@@ -110,6 +110,7 @@ class TestRetentionCleanupBatchLogic:
             Mock(rowcount=500),  # journey batch
             Mock(rowcount=100),  # discovery batch
             Mock(rowcount=50),  # validation batch
+            Mock(rowcount=25),  # service_alerts batch
         ]
 
         freshness_session = AsyncMock()
@@ -169,6 +170,7 @@ class TestRetentionCleanupBatchLogic:
             Mock(rowcount=500),  # journey batch 2
             Mock(rowcount=0),  # discovery batch
             Mock(rowcount=0),  # validation batch
+            Mock(rowcount=0),  # service_alerts batch
         ]
 
         freshness_session = AsyncMock()
@@ -212,8 +214,9 @@ class TestRetentionCleanupBatchLogic:
 
             await service.retention_cleanup()
 
-            # 1 freshness + 2 journey batches + 1 discovery + 1 validation = 5 sessions
-            assert mock_get_session.call_count == 5
+            # 1 freshness + 2 journey batches + 1 discovery + 1 validation
+            # + 1 service_alerts = 6 sessions
+            assert mock_get_session.call_count == 6
 
     @pytest.mark.asyncio
     async def test_cleanup_skipped_when_still_fresh(self, mock_settings):
@@ -291,14 +294,14 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness, then 3 batch sessions (one per table)
+            # First call = freshness, then 4 batch sessions (one per table)
             ctxs = []
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
-            for _ in range(3):
+            for _ in range(4):
                 ctx = AsyncMock()
                 ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
                 ctx.__aexit__ = AsyncMock(return_value=False)
@@ -308,8 +311,8 @@ class TestRetentionCleanupBatchLogic:
 
             await service.retention_cleanup()
 
-            # All three DELETE calls should use days=90
-            assert len(executed_params) == 3
+            # All four DELETE calls should use days=90
+            assert len(executed_params) == 4
             for params in executed_params:
                 assert params["days"] == 90
                 assert params["batch_size"] == 1000
@@ -394,14 +397,26 @@ class TestRetentionCleanupSQLStatements:
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM validation_results" in source
 
+    def test_cleanup_targets_inactive_service_alerts(self):
+        """The service_alerts DELETE should only prune inactive rows by updated_at."""
+        from trackrat.services.scheduler import SchedulerService
+        import inspect
+
+        source = inspect.getsource(SchedulerService.retention_cleanup)
+        assert "DELETE FROM service_alerts" in source
+        # Must gate on is_active=false so currently active alerts are preserved
+        assert "is_active = false" in source
+        # Must filter on updated_at so collector-refreshed alerts stay
+        assert "updated_at < NOW()" in source
+
     def test_cleanup_uses_batch_limit(self):
         """All DELETE statements should use LIMIT for batching."""
         from trackrat.services.scheduler import SchedulerService
         import inspect
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
-        # Should have 3 LIMIT clauses (one per table)
-        assert source.count("LIMIT :batch_size") == 3
+        # Should have 4 LIMIT clauses (one per table)
+        assert source.count("LIMIT :batch_size") == 4
 
     def test_cleanup_uses_subquery_pattern(self):
         """DELETEs should use id IN (SELECT id ... LIMIT) for efficient batching."""
@@ -409,7 +424,7 @@ class TestRetentionCleanupSQLStatements:
         import inspect
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
-        assert source.count("WHERE id IN (") == 3
+        assert source.count("WHERE id IN (") == 4
 
     def test_cascade_covers_all_dependent_tables(self):
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""
@@ -467,3 +482,281 @@ class TestRetentionCleanupFreshnessCheck:
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert 'task_name="retention_cleanup"' in source
+
+
+class TestServiceAlertsRetention:
+    """Test that the new service_alerts retention phase behaves correctly."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        settings = Mock()
+        settings.retention_days = 120
+        return settings
+
+    @pytest.mark.asyncio
+    async def test_service_alerts_batch_runs_to_completion(self, mock_settings):
+        """service_alerts deletion should loop until a partial batch returns."""
+        from trackrat.services.scheduler import SchedulerService
+
+        service = SchedulerService.__new__(SchedulerService)
+
+        # journey/discovery/validation each return empty in one batch.
+        # service_alerts: 1000 then 1000 then 200 (partial, stops loop).
+        execute_results = [
+            Mock(rowcount=0),  # journey
+            Mock(rowcount=0),  # discovery
+            Mock(rowcount=0),  # validation
+            Mock(rowcount=1000),  # service_alerts batch 1 (full)
+            Mock(rowcount=1000),  # service_alerts batch 2 (full)
+            Mock(rowcount=200),  # service_alerts batch 3 (partial)
+        ]
+
+        freshness_session = AsyncMock()
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check"
+            ) as mock_freshness,
+        ):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
+                await task_func()
+                return True
+
+            mock_freshness.side_effect = execute_task_func
+
+            ctxs = []
+            ctx_fresh = AsyncMock()
+            ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
+            ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+            ctxs.append(ctx_fresh)
+
+            for result in execute_results:
+                s = AsyncMock()
+                s.execute = AsyncMock(return_value=result)
+                ctx = AsyncMock()
+                ctx.__aenter__ = AsyncMock(return_value=s)
+                ctx.__aexit__ = AsyncMock(return_value=False)
+                ctxs.append(ctx)
+
+            mock_get_session.side_effect = ctxs
+
+            await service.retention_cleanup()
+
+            # 1 freshness + 1 journey + 1 discovery + 1 validation
+            # + 3 service_alerts = 7 sessions
+            assert mock_get_session.call_count == 7
+
+    @pytest.mark.asyncio
+    async def test_service_alerts_delete_passes_correct_params(self, mock_settings):
+        """The service_alerts DELETE should receive the same days/batch_size args."""
+        from trackrat.services.scheduler import SchedulerService
+
+        service = SchedulerService.__new__(SchedulerService)
+
+        executed_statements: list[str] = []
+        executed_params: list[dict] = []
+
+        empty_result = Mock(rowcount=0)
+
+        def make_capture_session():
+            session = AsyncMock()
+
+            async def capture_execute(stmt, params=None):
+                executed_statements.append(str(stmt))
+                if params:
+                    executed_params.append(dict(params))
+                return empty_result
+
+            session.execute = AsyncMock(side_effect=capture_execute)
+            return session
+
+        freshness_session = AsyncMock()
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check"
+            ) as mock_freshness,
+        ):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
+                await task_func()
+                return True
+
+            mock_freshness.side_effect = execute_task_func
+
+            ctxs = []
+            ctx_fresh = AsyncMock()
+            ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
+            ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+            ctxs.append(ctx_fresh)
+
+            for _ in range(4):
+                ctx = AsyncMock()
+                ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
+                ctx.__aexit__ = AsyncMock(return_value=False)
+                ctxs.append(ctx)
+
+            mock_get_session.side_effect = ctxs
+
+            await service.retention_cleanup()
+
+            # 4 statements expected, one per table — service_alerts is last.
+            assert len(executed_statements) == 4
+            assert "service_alerts" in executed_statements[-1]
+            assert "is_active = false" in executed_statements[-1]
+            assert "updated_at < NOW()" in executed_statements[-1]
+
+            # Every DELETE shares the same days + batch_size parameters.
+            assert len(executed_params) == 4
+            for params in executed_params:
+                assert params["days"] == 120
+                assert params["batch_size"] == 1000
+
+    @pytest.mark.asyncio
+    async def test_completion_log_includes_service_alerts_count(self, mock_settings):
+        """The success log should report service_alerts_deleted."""
+        from trackrat.services.scheduler import SchedulerService
+
+        service = SchedulerService.__new__(SchedulerService)
+
+        execute_results = [
+            Mock(rowcount=0),  # journey
+            Mock(rowcount=0),  # discovery
+            Mock(rowcount=0),  # validation
+            Mock(rowcount=42),  # service_alerts (partial in single batch)
+        ]
+
+        freshness_session = AsyncMock()
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check"
+            ) as mock_freshness,
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+        ):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
+                await task_func()
+                return True
+
+            mock_freshness.side_effect = execute_task_func
+
+            ctxs = []
+            ctx_fresh = AsyncMock()
+            ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
+            ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+            ctxs.append(ctx_fresh)
+
+            for result in execute_results:
+                s = AsyncMock()
+                s.execute = AsyncMock(return_value=result)
+                ctx = AsyncMock()
+                ctx.__aenter__ = AsyncMock(return_value=s)
+                ctx.__aexit__ = AsyncMock(return_value=False)
+                ctxs.append(ctx)
+
+            mock_get_session.side_effect = ctxs
+
+            await service.retention_cleanup()
+
+            completion_calls = [
+                c
+                for c in mock_logger.info.call_args_list
+                if c.args and c.args[0] == "retention_cleanup_completed"
+            ]
+            assert len(completion_calls) == 1
+            kwargs = completion_calls[0].kwargs
+            assert kwargs["service_alerts_deleted"] == 42
+            assert kwargs["journeys_deleted"] == 0
+            assert kwargs["discovery_runs_deleted"] == 0
+            assert kwargs["validation_results_deleted"] == 0
+
+    @pytest.mark.asyncio
+    async def test_failure_log_includes_service_alerts_so_far(self, mock_settings):
+        """If service_alerts DELETE raises, the partial count should be logged."""
+        from trackrat.services.scheduler import SchedulerService
+
+        service = SchedulerService.__new__(SchedulerService)
+
+        # journey + discovery + validation succeed empty; service_alerts errors.
+        ok_result = Mock(rowcount=0)
+
+        call_idx = {"n": 0}
+
+        def make_session():
+            session = AsyncMock()
+
+            async def execute(stmt, params=None):
+                call_idx["n"] += 1
+                if call_idx["n"] == 4:  # 4th call is service_alerts
+                    raise RuntimeError("connection lost")
+                return ok_result
+
+            session.execute = AsyncMock(side_effect=execute)
+            return session
+
+        freshness_session = AsyncMock()
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check"
+            ) as mock_freshness,
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+        ):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
+                await task_func()
+                return True
+
+            mock_freshness.side_effect = execute_task_func
+
+            ctxs = []
+            ctx_fresh = AsyncMock()
+            ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
+            ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+            ctxs.append(ctx_fresh)
+
+            for _ in range(4):
+                ctx = AsyncMock()
+                ctx.__aenter__ = AsyncMock(return_value=make_session())
+                ctx.__aexit__ = AsyncMock(return_value=False)
+                ctxs.append(ctx)
+
+            mock_get_session.side_effect = ctxs
+
+            await service.retention_cleanup()
+
+            failure_calls = [
+                c
+                for c in mock_logger.error.call_args_list
+                if c.args and c.args[0] == "retention_cleanup_failed"
+            ]
+            assert len(failure_calls) == 1
+            kwargs = failure_calls[0].kwargs
+            assert "service_alerts_deleted_so_far" in kwargs
+            assert kwargs["service_alerts_deleted_so_far"] == 0

@@ -10,6 +10,14 @@ CONGESTION_THRESHOLD_MODERATE = 1.25  # <= 25% slower than baseline
 CONGESTION_THRESHOLD_HEAVY = 1.5  # <= 50% slower than baseline
 # Above 1.5 = severe
 
+# Weight applied to a segment's cancellation rate (a percentage, 0-100) when
+# folding cancellations into the congestion factor. Mirrors the iOS client's
+# CongestionColors.cancellationCongestionWeight (ios/.../Utilities/Extensions.swift)
+# so the web map (which colors by congestion_level) and iOS (which colors by
+# congestion_factor + cancellation_rate) stay consistent: ~1 congestion tier per
+# 10% of scheduled trains cancelled.
+CANCELLATION_CONGESTION_WEIGHT = 0.015
+
 # Frequency/health level thresholds (factor = train_count / baseline)
 # Higher is better - measures service reliability
 FREQ_THRESHOLD_HEALTHY = 0.9  # >= 90% of baseline trains
@@ -32,6 +40,20 @@ def get_congestion_level(congestion_factor: float) -> str:
         return "heavy"
     else:
         return "severe"
+
+
+def effective_congestion_factor(
+    congestion_factor: float, cancellation_rate: float = 0.0
+) -> float:
+    """Fold a segment's cancellation rate into its congestion factor.
+
+    ``cancellation_rate`` is a percentage (0-100). Heavy cancellations raise the
+    effective factor so a segment with many cancelled trains is not reported as
+    "normal" just because the few trains still running happen to be on time.
+    """
+    return (
+        congestion_factor + max(0.0, cancellation_rate) * CANCELLATION_CONGESTION_WEIGHT
+    )
 
 
 def get_frequency_level(frequency_factor: float) -> str:

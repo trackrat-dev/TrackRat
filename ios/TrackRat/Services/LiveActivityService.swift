@@ -106,6 +106,9 @@ class LiveActivityService: ObservableObject {
         let initialNextStop = getNextStopName(train, originCode: originCode, destinationCode: destinationCode, hasTrainDeparted: hasTrainDeparted)
         let initialNextStopCode = getNextStopCode(train, originCode: originCode, destinationCode: destinationCode, hasTrainDeparted: hasTrainDeparted)
 
+        // Pull the predicted track from the train if we have one (only meaningful before track is assigned)
+        let (predictedTrack, predictedTrackConfidence) = Self.extractPredictedTrack(from: train)
+
         // Create simple initial content state
         let initialState = TrainActivityAttributes.ContentState(
             status: contextStatus.rawValue,
@@ -120,6 +123,8 @@ class LiveActivityService: ObservableObject {
             nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
             nextStopCode: initialNextStopCode,
             hasTrainDeparted: hasTrainDeparted,
+            predictedTrack: predictedTrack,
+            predictedTrackConfidence: predictedTrackConfidence,
             originStationCode: originCode,
             destinationStationCode: destinationCode
         )
@@ -318,6 +323,9 @@ class LiveActivityService: ObservableObject {
             // Calculate context-aware status
             let contextStatus = train.calculateStatus(for: context)
 
+            // Refresh predicted-track values (clears once an actual track is assigned)
+            let (predictedTrack, predictedTrackConfidence) = Self.extractPredictedTrack(from: train)
+
             // Create updated state
             let updatedState = TrainActivityAttributes.ContentState(
                 status: contextStatus.rawValue,
@@ -332,6 +340,8 @@ class LiveActivityService: ObservableObject {
                 nextStopArrivalTime: nextStopArrivalTime?.toISO8601String(),
                 nextStopCode: nextStopCode,
                 hasTrainDeparted: hasTrainDeparted,
+                predictedTrack: predictedTrack,
+                predictedTrackConfidence: predictedTrackConfidence,
                 originStationCode: activity.attributes.originStationCode,
                 destinationStationCode: activity.attributes.destinationStationCode
             )
@@ -571,6 +581,19 @@ class LiveActivityService: ObservableObject {
     /// Get the next stop code for user's journey segment
     private func getNextStopCode(_ train: TrainV2, originCode: String, destinationCode: String, hasTrainDeparted: Bool) -> String? {
         return getNextStop(train, originCode: originCode, destinationCode: destinationCode, hasTrainDeparted: hasTrainDeparted)?.stationCode
+    }
+
+    /// Pull the predicted track from a train's inline prediction.
+    /// Returns (nil, nil) once an actual track has been assigned so the prediction
+    /// stops competing with real data in the Live Activity. The widget applies its own
+    /// confidence floor; we pass the raw confidence through for that decision.
+    static func extractPredictedTrack(from train: TrainV2) -> (track: String?, confidence: Double?) {
+        guard train.track == nil || train.track?.isEmpty == true,
+              let prediction = train.trackPrediction,
+              !prediction.primaryPrediction.isEmpty else {
+            return (nil, nil)
+        }
+        return (prediction.primaryPrediction, prediction.confidence)
     }
     
     // MARK: - Compatibility Methods for TrackRatApp

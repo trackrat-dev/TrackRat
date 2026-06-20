@@ -705,7 +705,11 @@ struct StopRowV2: View {
                 let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
                 let departureText = "Departure: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
-            } else if let estimatedDeparture = stop.updatedDeparture {
+            // The user's boarding stop can be an intermediate stop of the train's
+            // journey, where NJT stores the schedule in updated_departure and the
+            // live estimate in updated_arrival. Use liveEstimatedDeparture so the
+            // shown departure reflects the delay (see StopV2.liveEstimatedDeparture).
+            } else if let estimatedDeparture = stop.liveEstimatedDeparture {
                 let departureText = "Departure: \(formatter.string(from: estimatedDeparture))"
                 return (nil, departureText, [])
             } else if let scheduledDeparture = stop.scheduledDeparture {

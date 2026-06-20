@@ -22,6 +22,7 @@ from trackrat.config.stations import expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion_types import FREQUENCY_FIRST_SOURCES
 from trackrat.utils.time import now_et
+from trackrat.utils.train import effective_njt_updated_times
 
 logger = get_logger(__name__)
 
@@ -949,36 +950,67 @@ class SummaryService:
                         on_time_count += 1
                     category = self._categorize_delay(delay)
                 else:
-                    # No actual departure yet - calculate how late based on current time
-                    time_since_scheduled = (
-                        current_time - from_stop.scheduled_departure
-                    ).total_seconds() / 60
-                    if time_since_scheduled <= ON_TIME_THRESHOLD_MINUTES:
-                        # Just scheduled, might still depart on time
-                        on_time_count += 1
-                        delay = 0.0
-                        category = DELAY_CATEGORY_ON_TIME
-                    else:
-                        # Past scheduled time with no actual departure data.
-                        # Check if journey data is fresh enough to trust the
-                        # absence of actual_departure as an indication of delay.
-                        data_age_seconds = (
-                            (current_time - journey.last_updated_at).total_seconds()
-                            if journey.last_updated_at
-                            else float("inf")
+                    # No actual departure yet. Prefer the live estimate — the same
+                    # source /api/v2/trains/departures uses — so the summary's
+                    # notion of "late" matches the per-train delay shown in the
+                    # departures list on the same screen (issue #1282).
+                    # effective_njt_updated_times applies the NJT TIME/DEP_TIME
+                    # inversion correction, which matters because the boarding
+                    # station is often an intermediate stop of the train's journey.
+                    # Fall back to the arrival estimate when departure is absent
+                    # so GTFS-RT feeds that only carry arr.arrival_time (e.g. MTA
+                    # subway stops with no scheduled dwell) still register the
+                    # train as delayed, matching departures.py's gate:
+                    #   max(updated_departure, updated_arrival)
+                    #     if both else updated_departure or updated_arrival
+                    _eff_arr, eff_dep = effective_njt_updated_times(
+                        from_stop, journey.data_source
+                    )
+                    eff_estimate = eff_dep if eff_dep is not None else _eff_arr
+                    if eff_estimate is not None:
+                        delay = max(
+                            0.0,
+                            (
+                                eff_estimate - from_stop.scheduled_departure
+                            ).total_seconds()
+                            / 60,
                         )
-
-                        if data_age_seconds <= DATA_FRESHNESS_THRESHOLD_SECONDS:
-                            # Fresh data - trust that no departure means delayed
-                            delay = time_since_scheduled
-                            total_delay += time_since_scheduled
-                            category = self._categorize_delay(delay)
-                        else:
-                            # Stale data - don't assume delay; train may have
-                            # departed on time but we don't have the update.
+                        total_delay += delay
+                        if delay <= ON_TIME_THRESHOLD_MINUTES:
+                            on_time_count += 1
+                        category = self._categorize_delay(delay)
+                    else:
+                        # No live estimate yet - fall back to a wall-clock heuristic
+                        # based on how far past the scheduled time we are.
+                        time_since_scheduled = (
+                            current_time - from_stop.scheduled_departure
+                        ).total_seconds() / 60
+                        if time_since_scheduled <= ON_TIME_THRESHOLD_MINUTES:
+                            # Just scheduled, might still depart on time
                             on_time_count += 1
                             delay = 0.0
                             category = DELAY_CATEGORY_ON_TIME
+                        else:
+                            # Past scheduled time with no actual departure data.
+                            # Check if journey data is fresh enough to trust the
+                            # absence of actual_departure as an indication of delay.
+                            data_age_seconds = (
+                                (current_time - journey.last_updated_at).total_seconds()
+                                if journey.last_updated_at
+                                else float("inf")
+                            )
+
+                            if data_age_seconds <= DATA_FRESHNESS_THRESHOLD_SECONDS:
+                                # Fresh data - trust that no departure means delayed
+                                delay = time_since_scheduled
+                                total_delay += time_since_scheduled
+                                category = self._categorize_delay(delay)
+                            else:
+                                # Stale data - don't assume delay; train may have
+                                # departed on time but we don't have the update.
+                                on_time_count += 1
+                                delay = 0.0
+                                category = DELAY_CATEGORY_ON_TIME
 
                 trains_by_category[category].append(
                     TrainDelaySummary(

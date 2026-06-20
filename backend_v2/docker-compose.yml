@@ -12,6 +12,10 @@ services:
   db:
     image: postgres:17-alpine
     container_name: trackrat-postgres
+    # /dev/shm holds parallel-worker DSM segments. Docker's 64MB default exhausts
+    # quickly under concurrent parallel queries against journey_stops, surfacing as
+    # asyncpg DiskFullError on predict_track / operations_summary (issue #1232).
+    shm_size: '1gb'
     command:
       - postgres
       - -c
@@ -20,6 +24,11 @@ services:
       - min_wal_size=64MB
       - -c
       - wal_keep_size=0
+      # Cap parallel-worker fan-out per query: each worker grabs its own DSM
+      # segment, so reducing the cap directly attacks the /dev/shm pressure that
+      # the larger pool above is also defending against (issue #1232).
+      - -c
+      - max_parallel_workers_per_gather=1
     volumes:
       - ${DATA_DIR}/pgdata:/var/lib/postgresql/data
     environment:

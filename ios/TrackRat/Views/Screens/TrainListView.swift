@@ -864,10 +864,14 @@ struct ErrorView: View {
                 .multilineTextAlignment(.center)
                 .foregroundColor(.white)
             
-            Button("Retry") {
+            Button {
                 retry()
+            } label: {
+                Text("Retry")
+                    .foregroundColor(.white)
             }
             .buttonStyle(.borderedProminent)
+            .tint(TrackRatTheme.Colors.accent)
         }
         .padding()
         .frame(maxWidth: .infinity)

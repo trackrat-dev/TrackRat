@@ -129,6 +129,7 @@ xcodebuild -scheme TrackRat -sdk iphonesimulator build \
 - Auto-end on arrival or 15 minutes of no updates
 - Push notifications for status changes
 - Journey progress with interpolation
+- Track/platform prediction shown on the Lock Screen when available (`predictedTrack` / `predictedTrackConfidence`)
 
 ## Testing
 

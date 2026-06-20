@@ -204,6 +204,85 @@ class StorageServiceTests: XCTestCase {
         XCTAssertTrue(favorites.isEmpty, "Should have no favorites after removing nonexistent station")
     }
 
+    func testLoadFavoriteStations_orderingHomeFirstWorkSecondThenAlphabetical() {
+        // The list shown for picking a departure/arrival station should always
+        // surface home first, work second, then the rest sorted alphabetically
+        // by display name. See issue #1195.
+        print("--- testLoadFavoriteStations_orderingHomeFirstWorkSecondThenAlphabetical ---")
+
+        // Add favorites in non-alphabetical order so insertion order can't
+        // accidentally satisfy the assertion.
+        storageService.toggleFavoriteStation(code: "TR", name: "Trenton")
+        storageService.toggleFavoriteStation(code: "WS", name: "Washington Union Station")
+        storageService.toggleFavoriteStation(code: "HB", name: "Hoboken")
+        storageService.toggleFavoriteStation(code: "PJ", name: "Princeton Junction")
+
+        // Designate home (BL = Baltimore) and work (NY = New York Penn).
+        // Neither is an explicit favorite — they must be injected and
+        // appear in the home/work slots even so.
+        RatSenseService.shared.setHomeStation("BL")
+        RatSenseService.shared.setWorkStation("NY")
+
+        let ordered = storageService.loadFavoriteStations()
+        let codes = ordered.map(\.id)
+        print("  ordered codes: \(codes)")
+
+        XCTAssertEqual(codes.first, "BL", "Home (BL) must be first")
+        XCTAssertEqual(codes.dropFirst().first, "NY", "Work (NY) must be second")
+
+        // Tail = explicit favorites that aren't home/work, alphabetical by display name.
+        let tail = Array(codes.dropFirst(2))
+        let tailNames = tail.map { Stations.displayName(for: $0) }
+        let sortedTailNames = tailNames.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+        XCTAssertEqual(tailNames, sortedTailNames,
+                       "Non-home/work favorites must be alphabetical by display name — got: \(tailNames)")
+
+        // Tail must contain exactly the explicit favorites we added (no duplicates).
+        XCTAssertEqual(Set(tail), Set(["TR", "WS", "HB", "PJ"]),
+                       "Tail must contain the 4 explicit favorites — got: \(tail)")
+    }
+
+    func testLoadFavoriteStations_homeAndWorkSameCode_noDuplicate() {
+        // Defensive: if a user has somehow set home and work to the same station,
+        // it must appear once (in the home slot), not twice.
+        print("--- testLoadFavoriteStations_homeAndWorkSameCode_noDuplicate ---")
+
+        RatSenseService.shared.setHomeStation("NY")
+        RatSenseService.shared.setWorkStation("NY")
+        storageService.toggleFavoriteStation(code: "TR", name: "Trenton")
+
+        let ordered = storageService.loadFavoriteStations()
+        let codes = ordered.map(\.id)
+        print("  ordered codes: \(codes)")
+
+        XCTAssertEqual(codes.filter { $0 == "NY" }.count, 1,
+                       "NY must appear exactly once when home == work — got: \(codes)")
+        XCTAssertEqual(codes.first, "NY", "Home/work station must be first")
+        XCTAssertEqual(codes.last, "TR", "Other favorite must follow")
+    }
+
+    func testLoadFavoriteStations_noHomeOrWork_isAlphabetical() {
+        // With no home/work designation, the whole list must be alphabetical.
+        print("--- testLoadFavoriteStations_noHomeOrWork_isAlphabetical ---")
+
+        storageService.toggleFavoriteStation(code: "TR", name: "Trenton")
+        storageService.toggleFavoriteStation(code: "HB", name: "Hoboken")
+        storageService.toggleFavoriteStation(code: "NY", name: "New York Penn Station")
+        storageService.toggleFavoriteStation(code: "BL", name: "Baltimore Station")
+
+        let ordered = storageService.loadFavoriteStations()
+        let names = ordered.map { Stations.displayName(for: $0.name) }
+        let sortedNames = names.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+        print("  ordered names: \(names)")
+
+        XCTAssertEqual(names, sortedNames,
+                       "With no home/work, favorites must be fully alphabetical — got: \(names)")
+    }
+
     func testIsStationFavorited_homeWorkAndExplicit() {
         print("--- testIsStationFavorited_homeWorkAndExplicit ---")
 
