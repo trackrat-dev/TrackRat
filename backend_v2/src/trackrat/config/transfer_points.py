@@ -228,37 +228,44 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
     # --- Source 5: Intra-system junctions for branching route systems ---
     # At junction stations where different routes within the same system meet,
     # create transfer points so trip search can route across branches.
-    # E.g., PATH Journal Sq (PJS) where NWK-WTC meets JSQ-33.
+    # E.g., PATH Journal Sq (PJS) where NWK-WTC meets JSQ-33, or NJT Secaucus
+    # where six lines interchange.
+    #
+    # A junction is emitted as a single transfer carrying *every* line that
+    # meets here on both sides. Because both sides are the same physical
+    # station, the per-side distinction is meaningless; trip search's relevance
+    # test (one side shares lines with the origin, the other with the
+    # destination) then reduces to "origin and destination both stop here",
+    # which is exactly the condition for a valid same-station interchange.
+    # Emitting one all-lines transfer (rather than one per line-pair) keeps the
+    # transfer set compact at large interchanges and, crucially, avoids the
+    # _add dedup collapsing many same-station/same-system pairs down to a
+    # single arbitrary line-pair and silently dropping the rest (#1296).
     for system, system_lines in _SYSTEM_STATION_LINES.items():
-        # Find stations served by multiple distinct line-code sets
-        for station_code, _lines in system_lines.items():
+        for station_code, station_line_codes in system_lines.items():
             if station_code not in station_systems:
                 continue
             if system not in station_systems[station_code]:
                 continue
-            # Get all routes through this station
+            # Count distinct lines (route groups) through this station; a single
+            # line with a legacy-alias code set counts once.
             route_groups: list[frozenset[str]] = []
             for route in ALL_ROUTES:
                 if route.data_source == system and station_code in route.stations:
                     if route.line_codes not in route_groups:
                         route_groups.append(route.line_codes)
-            # If station is served by 2+ distinct route groups, it's a junction
+            # 2+ distinct lines meeting here => interchange.
             if len(route_groups) >= 2:
-                # Merge all line codes reachable from each route group
-                # into two sides: routes that share codes vs those that don't
-                for i, codes_a in enumerate(route_groups):
-                    for codes_b in route_groups[i + 1 :]:
-                        # Same station, same system, different route groups
-                        _add(
-                            station_code,
-                            system,
-                            station_code,
-                            system,
-                            0.0,
-                            True,
-                            lines_a=codes_a,
-                            lines_b=codes_b,
-                        )
+                _add(
+                    station_code,
+                    system,
+                    station_code,
+                    system,
+                    0.0,
+                    True,
+                    lines_a=station_line_codes,
+                    lines_b=station_line_codes,
+                )
 
     return tuple(sorted(transfers, key=lambda t: (t.system_a, t.system_b, t.station_a)))
 

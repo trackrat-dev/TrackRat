@@ -254,6 +254,39 @@ class TestFindRelevantTransferPoints:
         assert frozenset({"GCT", "S723"}) in station_pairs
         assert frozenset({"GCT", "S901"}) in station_pairs
 
+    def test_njt_pascack_to_nec_finds_secaucus_junction(self):
+        """Regression #1296: Pascack Valley (NH) -> NEC (NY) must surface the
+        Secaucus (SE) intra-NJT junction. Before the fix, the junction only
+        carried the first-generated line-pair ({NE}<->{NC}), which doesn't
+        connect Pascack Valley, so this returned nothing."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"NJT"}, from_station="NH", to_station="NY"
+        )
+        assert any(
+            tp.station_a == "SE" and tp.station_b == "SE" and tp.system_a == "NJT"
+            for tp in transfers
+        ), "Expected a Secaucus intra-NJT junction transfer for NH->NY"
+
+    def test_njt_morris_essex_to_nec_finds_secaucus_junction(self):
+        """Regression #1296: Madison (M&E) -> Trenton (NEC) also routes via SE."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"NJT"}, from_station="MA", to_station="TR"
+        )
+        assert any(
+            tp.station_a == "SE" and tp.station_b == "SE" for tp in transfers
+        ), "Expected a Secaucus junction transfer for Madison->Trenton"
+
+    def test_lirr_branch_to_branch_finds_jamaica_junction(self):
+        """Regression #1296: Ronkonkoma (RON) -> Long Beach (LBH) must surface
+        the Jamaica (JAM) junction. Only the first branch-pair survived before
+        the fix, so most LIRR inter-branch transfers were dropped."""
+        transfers = _find_relevant_transfer_points(
+            {"LIRR"}, {"LIRR"}, from_station="RON", to_station="LBH"
+        )
+        assert any(
+            tp.station_a == "JAM" and tp.station_b == "JAM" for tp in transfers
+        ), "Expected a Jamaica junction transfer for Ronkonkoma->Long Beach"
+
 
 class TestStationLinesExpanded:
     """Test line lookup across physical station equivalences."""
@@ -1078,6 +1111,70 @@ class TestRankTransferPoints:
         result = _rank_transfer_points([tp], "A", "B", {"NJT"}, {"PATH"})
         assert len(result) == 1
         assert result[0] is tp
+
+    def test_intra_system_ranked_before_cross_system(self):
+        """Regression #1296: a relevance-verified intra-system junction must
+        rank ahead of speculative cross-system transfers, even when the
+        cross-system points sort earlier by station code. Otherwise the only
+        useful transfer gets crowded out of the MAX_TRANSFER_QUERIES budget."""
+        intra = self._make_tp(
+            station_a="SE",
+            system_a="NJT",
+            station_b="SE",
+            system_b="NJT",
+            walk_minutes=5,
+            same_station=True,
+        )
+        # Cross-system same-station transfers whose codes sort before "SE".
+        cross = [
+            self._make_tp(
+                station_a=code,
+                system_a="NJT",
+                station_b=code,
+                system_b="AMTRAK",
+                walk_minutes=5,
+                same_station=True,
+            )
+            for code in ("MP", "NB", "NP", "NY", "PH", "PJ")
+        ]
+        ranked = _rank_transfer_points(
+            cross + [intra], "NH", "NY", {"NJT"}, {"NJT", "AMTRAK"}
+        )
+        assert ranked[0] is intra, "Intra-system junction must rank first"
+
+
+class TestSecaucusJunctionBudget:
+    """End-to-end transfer-selection regression for issue #1296.
+
+    Combines the real route topology, _find_relevant_transfer_points, and
+    _rank_transfer_points to confirm the Secaucus junction is actually queried
+    for the reported New Bridge Landing -> NY Penn search in both the
+    single-system and default multi-system cases.
+    """
+
+    def _secaucus_in_budget(
+        self, from_systems: set[str], to_systems: set[str]
+    ) -> bool:
+        transfers = _find_relevant_transfer_points(
+            from_systems, to_systems, from_station="NH", to_station="NY"
+        )
+        ranked = _rank_transfer_points(
+            transfers, "NH", "NY", from_systems, to_systems
+        )
+        budget = MAX_TRANSFER_QUERIES // 2
+        return any(
+            tp.station_a == "SE" and tp.station_b == "SE" and tp.system_a == "NJT"
+            for tp in ranked[:budget]
+        )
+
+    def test_njt_only(self):
+        """With data_sources=NJT, the Secaucus junction is selected."""
+        assert self._secaucus_in_budget({"NJT"}, {"NJT"})
+
+    def test_multi_source_not_crowded_out(self):
+        """With no filter (NJT+AMTRAK+LIRR), Amtrak-shared stations must not
+        crowd Secaucus out of the queried budget."""
+        assert self._secaucus_in_budget({"NJT"}, {"NJT", "AMTRAK", "LIRR"})
 
 
 class TestMaxTransferQueriesIncreased:
