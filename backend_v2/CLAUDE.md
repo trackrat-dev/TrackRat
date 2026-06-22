@@ -774,6 +774,8 @@ The backend is organized into service classes for better maintainability:
 ## Recent Improvements & Known Issues
 
 ### Recent Improvements (June 2026)
+- ✅ Live Activity materializes a SCHEDULED `train_journeys` row from GTFS at registration when none exists, so the push job has a row to update immediately instead of logging `journey_not_found_for_live_activity` every cycle (issue #1298, `api/live_activities.py`, `services/gtfs.py::GTFSService.materialize_scheduled_journey`)
+- ✅ Live Activity materialization gated to `MATERIALIZE_SCHEDULED_SOURCES = {NJT, AMTRAK}` — GTFS-RT systems mint their own train_ids on discovery and would orphan the materialized row (issue #1298 follow-up, `services/gtfs.py`)
 - ✅ Retention sweep extended to inactive `service_alerts` so long-resolved alerts no longer accumulate (issue #1269, `services/scheduler.py`)
 - ✅ NJT `updated_arrival` / `updated_departure` inversion normalized at the `/trains/{train_id}` endpoint via `utils/train.py` so consumers don't have to apply `max(updated_departure, updated_arrival)` themselves (issue #1268, `api/trains.py`)
 - ✅ Route summary uses live estimate for boarding-stop departure on-time calculation; falls back to arrival estimate when departure is absent (issue #1282, `services/summary.py`)
