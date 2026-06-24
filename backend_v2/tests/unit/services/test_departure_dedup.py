@@ -64,6 +64,14 @@ class TestDestinationPrefix:
     def test_via_suffix_with_multi_word_origin(self):
         assert _destination_prefix("Bay Head via Long Branch") == "bay head"
 
+    def test_strips_transit_center_suffix(self):
+        """NJT schedule API 'TRENTON TRANSIT CENTER' vs real-time 'Trenton'."""
+        assert _destination_prefix("TRENTON TRANSIT CENTER") == "trenton"
+        assert _destination_prefix("Trenton") == "trenton"
+        assert _destination_prefix("TRENTON TRANSIT CENTER") == _destination_prefix(
+            "Trenton"
+        )
+
 
 class TestMakeDedupKeys:
     """Tests for _make_dedup_keys function."""
@@ -664,6 +672,33 @@ class TestDedupeScheduledObservedCollisions:
 
         assert len(result) == 1
         assert result[0].train_id == "1234"
+
+    def test_matches_destination_with_transit_center_suffix(self):
+        """NJT schedule API 'TRENTON TRANSIT CENTER' vs real-time 'Trenton' (issue #1329)."""
+        observed_time = ET.localize(datetime(2026, 6, 24, 19, 10))
+        scheduled_time = ET.localize(datetime(2026, 6, 24, 19, 11))
+
+        deps = [
+            self._create_departure(
+                train_id="3865",
+                line_code="NE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+                destination="Trenton",
+            ),
+            self._create_departure(
+                train_id="UNKNOWN",
+                line_code="NE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+                destination="TRENTON TRANSIT CENTER",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 1
+        assert result[0].train_id == "3865"
 
     def test_does_not_collapse_two_observed_rows(self):
         """Two OBSERVED rows at same line/time are presumed real distinct trains."""

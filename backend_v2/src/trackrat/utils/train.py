@@ -151,3 +151,26 @@ def is_njt_stop_cancelled(status: str | None) -> bool:
     if not status:
         return False
     return status.strip().upper() in ("CANCELLED", "CANCELED")
+
+
+def normalize_njt_destination(destination: str | None) -> str:
+    """Normalize an NJT destination string for cross-source matching.
+
+    NJT's daily schedule API (``getTrainSchedule`` used for schedule
+    generation) returns the full official station name as ``DESTINATION``
+    (e.g. "TRENTON TRANSIT CENTER"), while the real-time discovery feed
+    returns the short common name for the same station (e.g. "Trenton").
+    Without normalization, SCHEDULED rows created from the schedule API
+    never match the OBSERVED row created from the real-time feed for the
+    same physical train — the discovery merge misses it (creating a
+    duplicate journey) and the departures dedup safety net also misses it
+    (leaving the stale "Train TBD" row visible alongside the real train).
+    Strip the generic " TRANSIT CENTER" suffix so both forms compare equal.
+    """
+    if not destination:
+        return ""
+    normalized = destination.strip().lower()
+    suffix = " transit center"
+    if normalized.endswith(suffix):
+        normalized = normalized[: -len(suffix)]
+    return normalized
