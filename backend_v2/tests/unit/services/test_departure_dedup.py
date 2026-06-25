@@ -264,6 +264,38 @@ class TestMakeDedupKeys:
         # AMTRAK "NE" should NOT be normalized (it's a different system)
         assert "NE:AMTRAK:09:15" in fallbacks
 
+    def test_tolerance_minutes_widens_fallback_window(self):
+        """Custom tolerance_minutes argument spans 2*tolerance + 1 buckets."""
+        departure = self._create_departure(
+            train_id="3936",
+            line_code="NE",
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="NJT",
+        )
+
+        _, fallbacks = self.service._make_dedup_keys(departure, tolerance_minutes=3)
+
+        # 7 keys: 09:12, 09:13, 09:14, 09:15, 09:16, 09:17, 09:18
+        assert len(fallbacks) == 7
+        for hh_mm in ("09:12", "09:13", "09:14", "09:15", "09:16", "09:17", "09:18"):
+            assert f"NE:NJT:{hh_mm}" in fallbacks
+
+    def test_tolerance_minutes_default_is_one(self):
+        """Omitting tolerance_minutes preserves the realtime/GTFS-merge window."""
+        departure = self._create_departure(
+            train_id="3936",
+            line_code="NE",
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="NJT",
+        )
+
+        _, default_fallbacks = self.service._make_dedup_keys(departure)
+        _, explicit_fallbacks = self.service._make_dedup_keys(
+            departure, tolerance_minutes=1
+        )
+
+        assert default_fallbacks == explicit_fallbacks
+
 
 class TestMergeDepartures:
     """Tests for _merge_departures function."""
@@ -776,8 +808,12 @@ class TestDedupeScheduledObservedCollisions:
 
         assert result is deps  # short-circuited
 
-    def test_drift_beyond_two_minutes_does_not_collapse(self):
-        """A SCHEDULED row 3 minutes off the OBSERVED stays — outside tolerance."""
+    def test_drift_within_three_minutes_collapses(self):
+        """The reported NJT case (issue #1329): NJT republishes the SCHEDULED
+        row's time a few minutes off the live OBSERVED row, so the safety
+        net needs a wider window than realtime/GTFS merge (±1 min). At a
+        3-min drift, the ±3 min safety-net buckets overlap and the
+        SCHEDULED row drops."""
         observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
         scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 33))
 
@@ -798,7 +834,35 @@ class TestDedupeScheduledObservedCollisions:
 
         result = self.service._dedupe_scheduled_observed_collisions(deps)
 
-        # ±1 min on each side overlaps at 12:31 only; 12:33 falls outside.
+        assert len(result) == 1
+        assert result[0].train_id == "1234"
+        assert result[0].observation_type == "OBSERVED"
+
+    def test_drift_beyond_six_minutes_does_not_collapse(self):
+        """A SCHEDULED row 7 minutes off the OBSERVED stays — well beyond the
+        ±3 min safety-net tolerance, so distinct trains aren't accidentally
+        collapsed."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 37))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        # ±3 min on each side overlaps up to 12:33 / 12:34; 12:37 falls outside.
         assert len(result) == 2
 
     def test_one_observed_collapses_multiple_matching_scheduled(self):
