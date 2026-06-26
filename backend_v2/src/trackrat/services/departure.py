@@ -1708,30 +1708,36 @@ class DepartureService:
         catch them and clients render the same train twice (once labeled
         "Train TBD" from the SCHEDULED row, once with the real number).
 
-        Collapse logic: within a ``(journey_date, data_source, line_code,
-        scheduled_time ±3 min)`` bucket, if any departure is OBSERVED, drop
-        SCHEDULED rows in the same bucket whose normalized destination
-        matches the OBSERVED row. The ±3 min window mirrors the upstream
-        merge's tolerance closely enough to catch realistic NJT schedule
-        republishes while staying well below typical same-line headway, so
-        same-line + same-destination collisions are virtually always the
-        same physical train. Pairs of two OBSERVED rows are NOT collapsed —
-        they are presumed to be genuinely different trains. The destination
-        check guards against the rare case where two legitimate trains run
-        on the same line within ±3 min to different termini. The
-        ``journey_date`` scope keeps an OBSERVED train from suppressing a
-        distinct SCHEDULED train at the same wall-clock minute on a
-        different calendar day (``_make_dedup_keys`` fallback keys are
-        date-less ``HH:MM`` and ``get_departures`` returns a multi-day
-        window).
+        Collapse logic: within a ``(journey_date, data_source, line_code)``
+        group, if a SCHEDULED row's exact HH:MM falls within ±3 min of any
+        OBSERVED row's HH:MM and shares the normalized destination, drop
+        it. This is implemented by widening only the OBSERVED-side key set
+        (the SCHEDULED side keys on its exact minute) so the effective
+        window is exactly ±3 min — symmetric widening would double it. The
+        window is wider than the realtime/GTFS merge (±1 min) to catch
+        realistic NJT schedule republishes while staying well below
+        typical same-line headway, so same-line + same-destination
+        collisions are virtually always the same physical train. Pairs of
+        two OBSERVED rows are NOT collapsed — they are presumed to be
+        genuinely different trains. The destination check guards against
+        the rare case where two legitimate trains run on the same line
+        within ±3 min to different termini. The ``journey_date`` scope
+        keeps an OBSERVED train from suppressing a distinct SCHEDULED
+        train at the same wall-clock minute on a different calendar day
+        (``_make_dedup_keys`` fallback keys are date-less ``HH:MM`` and
+        ``get_departures`` returns a multi-day window).
         """
         if len(departures) < 2:
             return departures
 
-        # Wider tolerance than realtime/GTFS merge (±1 min) because the
-        # SCHEDULED row is from a daily-republished schedule while the
-        # OBSERVED row carries the live operational time, which drifts a
-        # few minutes during ordinary schedule pushes.
+        # Widen ONLY the OBSERVED side. The SCHEDULED side uses an exact
+        # HH:MM key so the effective collapse window is exactly
+        # ±safety_net_tolerance minutes — widening both sides would double
+        # it (e.g. OBSERVED ±3 keys [12:27..12:33] would intersect
+        # SCHEDULED ±3 keys [12:33..12:39] at 12:33, collapsing trains a
+        # full 6 min apart). The wider tolerance vs realtime/GTFS merge
+        # (±1 min) accommodates NJT republishing scheduled times when
+        # operations slip.
         safety_net_tolerance = 3
 
         # Build map from (journey_date, fallback key) -> set of normalized
@@ -1756,9 +1762,7 @@ class DepartureService:
         dropped_train_ids: list[str | None] = []
         for dep in departures:
             if dep.observation_type == "SCHEDULED":
-                _, fallbacks = self._make_dedup_keys(
-                    dep, tolerance_minutes=safety_net_tolerance
-                )
+                _, fallbacks = self._make_dedup_keys(dep, tolerance_minutes=0)
                 dest_token = _destination_prefix(dep.destination)
                 if any(
                     dest_token in observed_keys[(dep.journey_date, fb)]

@@ -812,8 +812,8 @@ class TestDedupeScheduledObservedCollisions:
         """The reported NJT case (issue #1329): NJT republishes the SCHEDULED
         row's time a few minutes off the live OBSERVED row, so the safety
         net needs a wider window than realtime/GTFS merge (±1 min). At a
-        3-min drift, the ±3 min safety-net buckets overlap and the
-        SCHEDULED row drops."""
+        3-min drift, the OBSERVED ±3 min keys cover the SCHEDULED row's
+        exact minute and the SCHEDULED row drops."""
         observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
         scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 33))
 
@@ -838,12 +838,14 @@ class TestDedupeScheduledObservedCollisions:
         assert result[0].train_id == "1234"
         assert result[0].observation_type == "OBSERVED"
 
-    def test_drift_beyond_six_minutes_does_not_collapse(self):
-        """A SCHEDULED row 7 minutes off the OBSERVED stays — well beyond the
-        ±3 min safety-net tolerance, so distinct trains aren't accidentally
-        collapsed."""
+    def test_drift_beyond_three_minutes_does_not_collapse(self):
+        """A SCHEDULED row 4 minutes off the OBSERVED stays — just beyond the
+        ±3 min safety-net tolerance. The window is asymmetric (OBSERVED
+        side is widened ±3 min; SCHEDULED side keys on its exact minute),
+        so the effective window is exactly ±3 min — not the ±6 min that
+        symmetric widening would produce."""
         observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
-        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 37))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 34))
 
         deps = [
             self._create_departure(
@@ -862,7 +864,36 @@ class TestDedupeScheduledObservedCollisions:
 
         result = self.service._dedupe_scheduled_observed_collisions(deps)
 
-        # ±3 min on each side overlaps up to 12:33 / 12:34; 12:37 falls outside.
+        # OBSERVED keys span 12:27..12:33; SCHEDULED keys exactly on 12:34.
+        # No overlap → both rows survive.
+        assert len(result) == 2
+
+    def test_drift_at_six_minutes_does_not_collapse(self):
+        """Regression guard for the asymmetric widening: symmetric ±3-min
+        widening on both sides would intersect at the boundary (OBSERVED
+        12:27..12:33 ∩ SCHEDULED 12:33..12:39 = {12:33}) and incorrectly
+        drop a SCHEDULED train 6 min away. With one-sided widening,
+        distinct trains 6 min apart survive."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 36))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
         assert len(result) == 2
 
     def test_one_observed_collapses_multiple_matching_scheduled(self):
