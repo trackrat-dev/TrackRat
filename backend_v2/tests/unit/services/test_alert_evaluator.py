@@ -2466,3 +2466,98 @@ class TestMorningDigestRollback:
         assert sent == 1, f"Exactly one digest should send (the second sub); got {sent}"
         apns.send_alert_notification.assert_called_once()
         print("  Verified: digest loop continues after one subscription errors")
+
+    async def test_earlier_digest_timestamp_survives_later_rollback(
+        self, db_session: AsyncSession
+    ):
+        """If sub A's digest sends successfully and sub B's summary then
+        raises, sub A's `last_digest_at` must still be persisted. Without
+        per-iteration commit, sub B's rollback discards sub A's pending
+        ORM assignment and the same digest re-fires on the next 5-minute
+        scheduler tick — exactly what the user has already received via
+        APNS once.
+        """
+        local_now = datetime.now(ZoneInfo("America/New_York"))
+        current_minutes = local_now.hour * 60 + local_now.minute
+        weekday_mask = 1 << local_now.weekday()
+
+        # Sub A is created first and succeeds; sub B is iterated second and
+        # raises. Insertion order is also iteration order because both
+        # devices come back from the same selectinload query, and the
+        # subscriptions are flat-iterated in device order.
+        _, sub_a = _make_device_and_sub(
+            db_session,
+            device_id="digest-persist-ok",
+            apns_token="fake-token-ok",
+            data_source="NJT",
+            from_station="NP",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        _, sub_b = _make_device_and_sub(
+            db_session,
+            device_id="digest-persist-fail",
+            apns_token="fake-token-fail",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        await db_session.commit()
+
+        apns = _make_apns()
+
+        # First summary call succeeds (sub A), second raises (sub B).
+        call_count = 0
+        ok_result = AsyncMock()
+        ok_result.body = "Service running normally."
+        ok_result.headline = "On time"
+
+        async def fake_get_route_summary(db, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return ok_result
+            raise Exception("simulated SQL failure on sub B")
+
+        sub_a_id = sub_a.id
+        sub_b_id = sub_b.id
+
+        with patch("trackrat.services.summary.SummaryService") as MockSvc:
+            MockSvc.return_value.get_route_summary = AsyncMock(
+                side_effect=fake_get_route_summary
+            )
+            sent = await evaluate_morning_digests(db_session, apns)
+
+        assert sent == 1, f"Exactly one digest should send (sub A); got {sent}"
+        assert call_count == 2, (
+            f"Both subscriptions must invoke get_route_summary; got " f"{call_count}"
+        )
+
+        # Re-read sub_a from the database in a fresh transaction to confirm
+        # the timestamp was actually committed, not just left as an
+        # uncommitted in-memory ORM assignment that would later be lost.
+        await db_session.rollback()
+        result = await db_session.execute(
+            select(RouteAlertSubscription).where(RouteAlertSubscription.id == sub_a_id)
+        )
+        sub_a_after = result.scalar_one()
+        assert sub_a_after.last_digest_at is not None, (
+            "sub A's last_digest_at must be persisted to the DB even when "
+            "sub B's later summary call triggered a rollback. Without "
+            "per-iteration commit this is None and the digest re-fires next tick."
+        )
+
+        # Sub B never sent, so its timestamp must remain None.
+        result = await db_session.execute(
+            select(RouteAlertSubscription).where(RouteAlertSubscription.id == sub_b_id)
+        )
+        sub_b_after = result.scalar_one()
+        assert (
+            sub_b_after.last_digest_at is None
+        ), "sub B never sent a digest; last_digest_at must remain None"
+        print("  Verified: earlier digest timestamp survives later rollback")

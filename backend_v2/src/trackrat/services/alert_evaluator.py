@@ -1092,9 +1092,17 @@ async def evaluate_morning_digests(
 
         if sent:
             # Assignment is safe on an expired ORM instance: it sets the
-            # pending value without triggering a refresh. The UPDATE is
-            # issued at commit() below.
+            # pending value without triggering a refresh.
+            #
+            # Commit immediately rather than batching at the end of the loop:
+            # a later subscription's summary failure triggers db.rollback()
+            # inside _generate_digest_summary, which would discard any
+            # uncommitted last_digest_at assignments from prior iterations.
+            # The push has already been delivered to APNS at that point, so
+            # losing the timestamp would cause the same digest to re-fire on
+            # the next 5-minute scheduler tick.
             sub.last_digest_at = datetime.now(UTC)
+            await db.commit()
             digests_sent += 1
 
             logger.info(
@@ -1104,9 +1112,6 @@ async def evaluate_morning_digests(
                 line_id=snap.line_id,
                 route_name=snap.route_name,
             )
-
-    if digests_sent > 0:
-        await db.commit()
 
     logger.info("morning_digest_evaluation_complete", digests_sent=digests_sent)
     return digests_sent
