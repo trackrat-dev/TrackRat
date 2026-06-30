@@ -19,6 +19,7 @@ from trackrat.models.database import (
     SchedulerTaskRun,
     ServiceAlert,
     StationDwellTime,
+    TrainJourney,
     ValidationResult,
 )
 
@@ -38,7 +39,6 @@ DROPPED_INDEXES = {
 
 RETAINED_INDEXES = {
     "idx_station_times",
-    "idx_journey_sequence",
     "idx_stop_track_distribution",
     "idx_stop_delay_forecaster",
     "idx_stop_journey_station_seq",
@@ -125,10 +125,11 @@ def test_retained_indexes_still_present_on_journey_stops():
     indexes = _get_index_names(JourneyStop)
     expected = {
         "idx_station_times",
-        "idx_journey_sequence",
         "idx_stop_track_distribution",
         "idx_stop_delay_forecaster",
         "idx_stop_journey_station_seq",
+        # Covering index that supersedes the dropped idx_journey_sequence.
+        "idx_journey_stops_sequence_lookup",
     }
     missing = expected - indexes
     assert not missing, (
@@ -343,3 +344,73 @@ def test_migration_downgrade_recreates_all_eleven_indexes():
         f"but created {created_names}"
     )
     assert len(calls) == 11, f"Expected 11 create_index calls, got {len(calls)}"
+
+
+# ---------------------------------------------------------------------------
+# Redundant prefix-index reconciliation (migration fd85e7f3abb3)
+# ---------------------------------------------------------------------------
+
+# Indexes dropped because they are a strict leading-column prefix of a wider
+# index that already serves the same predicates.
+REDUNDANT_PREFIX_DROPPED = {
+    "idx_journey_date",  # -> idx_journey_date_source
+    "idx_journey_sequence",  # -> idx_journey_stops_sequence_lookup
+    "idx_last_updated",  # -> idx_congestion_journey_lookup
+}
+
+
+def test_redundant_prefix_indexes_removed_from_models():
+    """The three superseded prefix indexes must be gone from the models."""
+    train_journey_idx = _get_index_names(TrainJourney)
+    journey_stop_idx = _get_index_names(JourneyStop)
+    all_idx = train_journey_idx | journey_stop_idx
+    overlap = REDUNDANT_PREFIX_DROPPED & all_idx
+    assert not overlap, f"Models still declare dropped prefix indexes: {overlap}"
+
+
+def test_superseding_indexes_present_in_models():
+    """The wider indexes that absorb the dropped prefixes must be declared.
+
+    These existed in production (migration 5b4681856a79) but were missing from
+    the models, which is what made the prefix indexes look load-bearing.
+    """
+    train_journey_idx = _get_index_names(TrainJourney)
+    journey_stop_idx = _get_index_names(JourneyStop)
+    assert "idx_journey_date_source" in train_journey_idx
+    assert "idx_congestion_journey_lookup" in train_journey_idx
+    assert "idx_journey_stops_sequence_lookup" in journey_stop_idx
+
+
+def test_idx_delay_forecaster_declared_in_model():
+    """idx_delay_forecaster stays in the model; the migration creates it in prod."""
+    assert "idx_delay_forecaster" in _get_index_names(TrainJourney)
+
+
+def test_fd85e7f3abb3_upgrade_statements():
+    """The migration creates idx_delay_forecaster, drops the prefixes, tunes vacuum."""
+    migration = importlib.import_module(
+        "trackrat.db.migrations.versions."
+        "20260630_2303-fd85e7f3abb3_drop_redundant_prefix_indexes_create_"
+    )
+    assert migration.revision == "fd85e7f3abb3"
+    assert migration.down_revision == "d8c07a8efd43"
+
+    statements: list[str] = []
+    mock_op = types.SimpleNamespace(execute=lambda sql: statements.append(str(sql)))
+
+    original_op = getattr(migration, "op", None)
+    try:
+        migration.op = mock_op
+        migration.upgrade()
+    finally:
+        migration.op = original_op
+
+    joined = "\n".join(statements)
+    assert "CREATE INDEX IF NOT EXISTS idx_delay_forecaster" in joined
+    for name in REDUNDANT_PREFIX_DROPPED:
+        assert f"DROP INDEX IF EXISTS {name}" in joined, f"missing drop for {name}"
+    for table in ("journey_stops", "segment_transit_times", "train_journeys"):
+        assert any(
+            table in s and "autovacuum_vacuum_cost_limit = 1000" in s
+            for s in statements
+        ), f"missing cost_limit tuning for {table}"

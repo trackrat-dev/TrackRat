@@ -124,14 +124,26 @@ class TrainJourney(Base):
         UniqueConstraint(
             "train_id", "journey_date", "data_source", name="unique_train_journey"
         ),
-        Index("idx_journey_date", "journey_date"),
         Index("idx_train_id", "train_id"),
-        Index("idx_last_updated", "last_updated_at"),
         Index("idx_data_source", "data_source"),
         Index("idx_active_journeys", "is_completed", "is_expired", "is_cancelled"),
-        # Composite index for queries filtering by date + source (congestion, history, forecaster)
+        # Composite index for date + source queries (congestion, history, forecaster).
+        # Supersedes a standalone idx_journey_date: journey_date is the leading
+        # column, so date-only predicates (e.g. the retention sweep) use it too.
         Index("idx_journey_date_source", "journey_date", "data_source"),
-        # Composite index for delay forecaster 365-day lookback queries
+        # Composite index for congestion queries:
+        #   last_updated_at >= cutoff AND is_cancelled = false AND data_source = ?
+        # Supersedes a standalone idx_last_updated (last_updated_at leads). Created
+        # in production by migration 5b4681856a79.
+        Index(
+            "idx_congestion_journey_lookup",
+            "last_updated_at",
+            "is_cancelled",
+            "data_source",
+        ),
+        # Composite index for delay forecaster lookback queries:
+        #   train_id = ? AND origin_station_code = ? AND data_source = ?
+        #   AND journey_date >= cutoff
         Index(
             "idx_delay_forecaster",
             "train_id",
@@ -218,7 +230,22 @@ class JourneyStop(Base):
     __table_args__ = (
         UniqueConstraint("journey_id", "station_code", name="unique_journey_stop"),
         Index("idx_station_times", "station_code", "scheduled_departure"),
-        Index("idx_journey_sequence", "journey_id", "stop_sequence"),
+        # Covering index for the consecutive-stop self-join in congestion
+        # analytics. Supersedes a standalone idx_journey_sequence
+        # (journey_id, stop_sequence) — it is the leading-column prefix here.
+        # Created in production by migration 5b4681856a79.
+        Index(
+            "idx_journey_stops_sequence_lookup",
+            "journey_id",
+            "stop_sequence",
+            "station_code",
+            postgresql_include=[
+                "scheduled_departure",
+                "scheduled_arrival",
+                "actual_departure",
+                "actual_arrival",
+            ],
+        ),
         Index("idx_stop_track_distribution", "station_code", "track"),
         Index("idx_stop_delay_forecaster", "station_code", "journey_id"),
         Index(
