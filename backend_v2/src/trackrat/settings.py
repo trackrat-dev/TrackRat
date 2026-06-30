@@ -152,7 +152,7 @@ class Settings(BaseSettings):
 
     # Retention Settings
     retention_days: int = Field(
-        default=120,
+        default=60,
         description="Days to retain train journey data before cleanup (min 30)",
         ge=30,
     )

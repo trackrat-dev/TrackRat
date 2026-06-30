@@ -490,7 +490,7 @@ TRACKRAT_API_HOST=0.0.0.0                        # API bind host
 TRACKRAT_API_PORT=8000                           # API bind port
 TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on startup
 TRACKRAT_BACKUP_INTERVAL_SECONDS=300             # GCS backup frequency (default 5min)
-TRACKRAT_RETENTION_DAYS=120                      # Days to retain journey data (min 30)
+TRACKRAT_RETENTION_DAYS=60                       # Days to retain journey data (min 30)
 
 # APNS Auth Key Content (alternative to file path)
 APNS_AUTH_KEY=                                   # Raw P8 key content (fallback if APNS_AUTH_KEY_PATH unavailable)
