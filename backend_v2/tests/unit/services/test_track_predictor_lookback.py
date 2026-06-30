@@ -55,8 +55,15 @@ async def _capture_query(predictor: HistoricalTrackPredictor, coro):
 def test_historical_lookback_days_is_positive():
     """The lookback constant must be a sensible positive value."""
     assert HISTORICAL_LOOKBACK_DAYS > 0
-    # Anything beyond the default retention (120 days) would be a no-op cap.
-    assert HISTORICAL_LOOKBACK_DAYS <= 120
+    # Lookback must not exceed the data retention window: older journeys are
+    # deleted by the nightly retention sweep, so a larger lookback would only
+    # scan for rows that no longer exist.
+    from trackrat.settings import Settings
+
+    retention_days = Settings(
+        database_url="postgresql+asyncpg://x:x@localhost/x"
+    ).retention_days
+    assert HISTORICAL_LOOKBACK_DAYS <= retention_days
 
 
 @pytest.mark.asyncio

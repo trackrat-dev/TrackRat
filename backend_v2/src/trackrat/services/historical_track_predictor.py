@@ -33,9 +33,11 @@ TIME_WINDOW_MINUTES = 30
 # Bound distribution queries to recent history so Postgres can use the
 # journey_date index and avoid sorting/hashing the full retention window
 # (which exhausted /dev/shm and surfaced as DiskFullError on staging —
-# issue #1168). Track patterns are stable, so 90 days is far above all
-# MIN_*_RECORDS thresholds at every modeled station.
-HISTORICAL_LOOKBACK_DAYS = 90
+# issue #1168). Track patterns are stable, so 60 days is far above all
+# MIN_*_RECORDS thresholds at every modeled station, and it stays within
+# the data retention window (TRACKRAT_RETENTION_DAYS, default 60) so the
+# query never scans for journeys the retention sweep has already deleted.
+HISTORICAL_LOOKBACK_DAYS = 60
 
 
 class HistoricalTrackPredictor:

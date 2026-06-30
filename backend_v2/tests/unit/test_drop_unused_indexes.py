@@ -39,7 +39,6 @@ DROPPED_INDEXES = {
 RETAINED_INDEXES = {
     "idx_station_times",
     "idx_journey_sequence",
-    "idx_track_occupancy_lookup",
     "idx_stop_track_distribution",
     "idx_stop_delay_forecaster",
     "idx_stop_journey_station_seq",
@@ -127,7 +126,6 @@ def test_retained_indexes_still_present_on_journey_stops():
     expected = {
         "idx_station_times",
         "idx_journey_sequence",
-        "idx_track_occupancy_lookup",
         "idx_stop_track_distribution",
         "idx_stop_delay_forecaster",
         "idx_stop_journey_station_seq",
@@ -139,13 +137,18 @@ def test_retained_indexes_still_present_on_journey_stops():
     )
 
 
-def test_track_occupancy_lookup_explicitly_retained():
-    """idx_track_occupancy_lookup must be kept — track_occupancy.py uses it."""
+def test_track_occupancy_lookup_dropped():
+    """idx_track_occupancy_lookup was dropped (migration d8c07a8efd43).
+
+    Reverses the earlier decision to retain it: track_occupancy.py filters
+    station_code + a scheduled_departure window, which idx_station_times serves,
+    so the planner never used this index (0 scans on production against billions
+    elsewhere) and it had bloated to ~4 GB.
+    """
     indexes = _get_index_names(JourneyStop)
-    assert "idx_track_occupancy_lookup" in indexes, (
-        "idx_track_occupancy_lookup must NOT be dropped; "
-        "track_occupancy.py queries on (station_code, has_departed_station, "
-        "scheduled_departure)"
+    assert "idx_track_occupancy_lookup" not in indexes, (
+        "idx_track_occupancy_lookup should be removed from JourneyStop; "
+        "it is redundant with idx_station_times for the track-occupancy query"
     )
 
 
@@ -252,8 +255,12 @@ def test_migration_drops_exactly_eleven_indexes():
     assert len(calls) == 11, f"Expected 11 drop_index calls, got {len(calls)}"
 
 
-def test_migration_does_not_drop_track_occupancy_lookup():
-    """idx_track_occupancy_lookup must NOT be in the migration drop list."""
+def test_d170389c0848_does_not_drop_track_occupancy_lookup():
+    """The #986 cleanup (d170389c0848) deferred dropping this index.
+
+    Historical guard: that migration left idx_track_occupancy_lookup in place.
+    The drop happens later in d8c07a8efd43 — see the test below.
+    """
     migration = importlib.import_module(
         "trackrat.db.migrations.versions."
         "20260423_1749-d170389c0848_drop_unused_indexes"
@@ -274,10 +281,36 @@ def test_migration_does_not_drop_track_occupancy_lookup():
         else:
             delattr(migration, "op")
 
-    assert "idx_track_occupancy_lookup" not in calls, (
-        "Migration must NOT drop idx_track_occupancy_lookup; "
-        "it is actively used by track_occupancy.py"
+    assert "idx_track_occupancy_lookup" not in calls
+
+
+def test_d8c07a8efd43_drops_track_occupancy_lookup_and_tunes_autovacuum():
+    """The new migration drops the dead index and tightens autovacuum."""
+    migration = importlib.import_module(
+        "trackrat.db.migrations.versions."
+        "20260630_2021-d8c07a8efd43_drop_unused_idx_track_occupancy_lookup_"
     )
+    assert migration.revision == "d8c07a8efd43"
+    assert migration.down_revision == "896c9fb11394"
+
+    statements: list[str] = []
+    mock_op = types.SimpleNamespace(execute=lambda sql: statements.append(str(sql)))
+
+    original_op = getattr(migration, "op", None)
+    try:
+        migration.op = mock_op
+        migration.upgrade()
+    finally:
+        migration.op = original_op
+
+    joined = "\n".join(statements)
+    assert "DROP INDEX IF EXISTS idx_track_occupancy_lookup" in joined
+    # Autovacuum tightened on all three high-churn tables.
+    for table in ("journey_stops", "segment_transit_times", "train_journeys"):
+        assert any(
+            table in s and "autovacuum_vacuum_scale_factor = 0.02" in s
+            for s in statements
+        ), f"missing autovacuum tuning for {table}"
 
 
 def test_migration_downgrade_recreates_all_eleven_indexes():

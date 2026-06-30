@@ -219,12 +219,6 @@ class JourneyStop(Base):
         UniqueConstraint("journey_id", "station_code", name="unique_journey_stop"),
         Index("idx_station_times", "station_code", "scheduled_departure"),
         Index("idx_journey_sequence", "journey_id", "stop_sequence"),
-        Index(
-            "idx_track_occupancy_lookup",
-            "station_code",
-            "has_departed_station",
-            "scheduled_departure",
-        ),
         Index("idx_stop_track_distribution", "station_code", "track"),
         Index("idx_stop_delay_forecaster", "station_code", "journey_id"),
         Index(
