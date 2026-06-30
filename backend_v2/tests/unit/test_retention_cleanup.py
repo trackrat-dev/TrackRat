@@ -52,6 +52,37 @@ class TestRetentionSettings:
         )
         assert settings.retention_days == 365
 
+    def test_default_subway_retention_days(self):
+        """Default subway_retention_days should be 14."""
+        settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
+        assert settings.subway_retention_days == 14
+
+    def test_custom_subway_retention_days(self):
+        """subway_retention_days should be configurable via environment."""
+        with patch.dict("os.environ", {"TRACKRAT_SUBWAY_RETENTION_DAYS": "21"}):
+            settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
+            assert settings.subway_retention_days == 21
+
+    def test_subway_retention_days_below_general_minimum_allowed(self):
+        """subway_retention_days may be below the 30-day general floor.
+
+        Subway is pruned more aggressively than other providers, so its floor is
+        only 1 (it does not share retention_days' ge=30 constraint).
+        """
+        settings = Settings(
+            database_url="postgresql+asyncpg://x:x@localhost/x",
+            subway_retention_days=14,
+        )
+        assert settings.subway_retention_days == 14
+
+    def test_subway_retention_days_zero_rejected(self):
+        """subway_retention_days below 1 should be rejected."""
+        with pytest.raises(Exception):
+            Settings(
+                database_url="postgresql+asyncpg://x:x@localhost/x",
+                subway_retention_days=0,
+            )
+
 
 class TestRetentionCleanupSchedulerRegistration:
     """Test that retention_cleanup is registered as a scheduler job."""
@@ -94,9 +125,10 @@ class TestRetentionCleanupBatchLogic:
 
     @pytest.fixture
     def mock_settings(self):
-        """Mock settings with retention_days=120."""
+        """Mock settings with retention_days=120, subway_retention_days=14."""
         settings = Mock()
         settings.retention_days = 120
+        settings.subway_retention_days = 14
         return settings
 
     @pytest.mark.asyncio
@@ -258,6 +290,7 @@ class TestRetentionCleanupBatchLogic:
 
         mock_settings = Mock()
         mock_settings.retention_days = 90
+        mock_settings.subway_retention_days = 14
 
         empty_result = Mock()
         empty_result.rowcount = 0
@@ -316,6 +349,86 @@ class TestRetentionCleanupBatchLogic:
             for params in executed_params:
                 assert params["days"] == 90
                 assert params["batch_size"] == 1000
+
+    @pytest.mark.asyncio
+    async def test_subway_uses_shorter_retention_window(self):
+        """The train_journeys DELETE carries both the default and subway cutoffs.
+
+        Subway is pruned on a shorter window via a CASE in the train_journeys
+        DELETE; the other phases (discovery_runs, validation_results,
+        service_alerts) only ever use the default cutoff.
+        """
+        from trackrat.services.scheduler import SchedulerService
+
+        service = SchedulerService.__new__(SchedulerService)
+
+        mock_settings = Mock()
+        mock_settings.retention_days = 120
+        mock_settings.subway_retention_days = 14
+
+        empty_result = Mock(rowcount=0)
+        captured: list[tuple[str, dict]] = []
+
+        def make_capture_session():
+            session = AsyncMock()
+
+            async def capture_execute(stmt, params=None):
+                captured.append((str(stmt), dict(params) if params else {}))
+                return empty_result
+
+            session.execute = AsyncMock(side_effect=capture_execute)
+            return session
+
+        freshness_session = AsyncMock()
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check"
+            ) as mock_freshness,
+        ):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
+                await task_func()
+                return True
+
+            mock_freshness.side_effect = execute_task_func
+
+            ctxs = []
+            ctx_fresh = AsyncMock()
+            ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
+            ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+            ctxs.append(ctx_fresh)
+
+            for _ in range(4):
+                ctx = AsyncMock()
+                ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
+                ctx.__aexit__ = AsyncMock(return_value=False)
+                ctxs.append(ctx)
+
+            mock_get_session.side_effect = ctxs
+
+            await service.retention_cleanup()
+
+        # One DELETE per phase (each returns rowcount 0 -> single batch).
+        assert len(captured) == 4
+
+        journey_stmt, journey_params = captured[0]
+        assert "DELETE FROM train_journeys" in journey_stmt
+        assert journey_params["days"] == 120
+        assert journey_params["subway_days"] == 14
+        assert journey_params["batch_size"] == 1000
+
+        # Remaining phases only carry the default cutoff, never subway_days.
+        for stmt, params in captured[1:]:
+            assert "train_journeys" not in stmt
+            assert params["days"] == 120
+            assert "subway_days" not in params
 
     @pytest.mark.asyncio
     async def test_cleanup_handles_exception_gracefully(self, mock_settings):
@@ -379,6 +492,18 @@ class TestRetentionCleanupSQLStatements:
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM train_journeys" in source
         assert "journey_date < CURRENT_DATE" in source
+
+    def test_cleanup_applies_subway_case_in_journey_delete(self):
+        """The train_journeys DELETE should branch SUBWAY onto its own cutoff."""
+        from trackrat.services.scheduler import SchedulerService
+        import inspect
+
+        source = inspect.getsource(SchedulerService.retention_cleanup)
+        assert "data_source = 'SUBWAY'" in source
+        assert ":subway_days" in source
+        # The CASE belongs only to the train_journeys phase; the other three
+        # DELETEs stay on the single default cutoff (:days).
+        assert source.count(":subway_days") == 1
 
     def test_cleanup_targets_discovery_runs_run_at(self):
         """The discovery_runs DELETE should filter on run_at."""
@@ -491,6 +616,7 @@ class TestServiceAlertsRetention:
     def mock_settings(self):
         settings = Mock()
         settings.retention_days = 120
+        settings.subway_retention_days = 14
         return settings
 
     @pytest.mark.asyncio

@@ -287,7 +287,7 @@ The APScheduler runs in-process and handles:
 - **Daily at 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Daily at 1:00 AM ET**: Lock manager cleanup
 - **Daily at 3:00 AM ET**: GTFS static schedule refresh
-- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`; active alerts are kept regardless of age)
+- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`; active alerts are kept regardless of age). SUBWAY journeys use the shorter `TRACKRAT_SUBWAY_RETENTION_DAYS` window (it is ~70% of journey storage and real-time/frequency-based).
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
 - **Every 4 min**: PATH collection (unified, RidePATH API)
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
@@ -491,6 +491,7 @@ TRACKRAT_API_PORT=8000                           # API bind port
 TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on startup
 TRACKRAT_BACKUP_INTERVAL_SECONDS=300             # GCS backup frequency (default 5min)
 TRACKRAT_RETENTION_DAYS=120                      # Days to retain journey data (min 30)
+TRACKRAT_SUBWAY_RETENTION_DAYS=14                # Days to retain SUBWAY journey data (shorter; high-volume/real-time, min 1)
 
 # APNS Auth Key Content (alternative to file path)
 APNS_AUTH_KEY=                                   # Raw P8 key content (fallback if APNS_AUTH_KEY_PATH unavailable)

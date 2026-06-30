@@ -156,6 +156,20 @@ class Settings(BaseSettings):
         description="Days to retain train journey data before cleanup (min 30)",
         ge=30,
     )
+    subway_retention_days: int = Field(
+        default=14,
+        description=(
+            "Days to retain SUBWAY journey data before cleanup. Subway is the "
+            "highest-volume data source (~70% of journey storage) and is "
+            "real-time / frequency-based, so old subway journeys have little "
+            "analytical value and are pruned on a shorter window than other "
+            "providers. Keep this >= ~3 days so the congestion/route-alert "
+            "frequency baseline (a per-hour average over the trailing subway "
+            "segment history, up to a 30-day window) still has samples to "
+            "average."
+        ),
+        ge=1,
+    )
 
     # Validation Settings
     internal_api_url: str = Field(
