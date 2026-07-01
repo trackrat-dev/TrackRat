@@ -47,6 +47,7 @@ from trackrat.utils.scheduler_utils import (
     commit_with_retry,
     run_with_freshness_check,
 )
+from trackrat.utils.system_stats import get_disk_usage
 from trackrat.utils.time import (
     ensure_timezone_aware,
     now_et,
@@ -294,6 +295,16 @@ class SchedulerService:
             trigger=IntervalTrigger(minutes=15, jitter=60),
             id="congestion_cache_precompute",
             name="Congestion Cache Pre-computation",
+            replace_existing=True,
+            max_instances=1,
+        )
+
+        # Schedule data disk / database size check (every 15 minutes)
+        self.scheduler.add_job(
+            self.check_resource_usage,
+            trigger=IntervalTrigger(minutes=15, jitter=60),
+            id="resource_usage_check",
+            name="Resource Usage Check",
             replace_existing=True,
             max_instances=1,
         )
@@ -2717,6 +2728,56 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("retention_cleanup_skipped_still_fresh")
+
+    async def check_resource_usage(self) -> None:
+        """Log data-disk utilization and Postgres database size.
+
+        Emits structured log events that Terraform log-based metrics
+        (`infra_v2/terraform/metrics.tf`) turn into Cloud Monitoring alerts,
+        so disk exhaustion is caught automatically instead of found by
+        manually SSHing in and running `df -h` (issue #1344). Checks
+        `settings.data_disk_path` (the mounted persistent disk), not the
+        container's boot filesystem.
+        """
+        settings = get_settings()
+
+        async def do_check_work() -> None:
+            disk = get_disk_usage(settings.data_disk_path)
+            if disk:
+                logger.info(
+                    "data_disk_usage_check",
+                    usage_percent=disk["usage_percent"],
+                    used_gb=disk["used_gb"],
+                    total_gb=disk["total_gb"],
+                )
+            else:
+                logger.warning(
+                    "data_disk_usage_check_unavailable",
+                    path=settings.data_disk_path,
+                )
+
+            async with get_session() as db:
+                result = await db.execute(
+                    text("SELECT pg_database_size(current_database())")
+                )
+                size_bytes = result.scalar() or 0
+                logger.info(
+                    "database_size_check",
+                    size_gb=round(size_bytes / (1024**3), 2),
+                )
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(15)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="resource_usage_check",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_check_work,
+            )
+
+            if not executed:
+                logger.debug("resource_usage_check_skipped_still_fresh")
 
     # All GTFS feed sources — add new systems here
     GTFS_SOURCES = (

@@ -192,3 +192,17 @@ class TestGetSystemStats:
         assert "disk" in result
         assert "memory" not in result
         assert "cpu" not in result
+
+    def test_uses_custom_disk_path(self) -> None:
+        """Should pass disk_path through to get_disk_usage instead of hardcoding '/'."""
+        with patch("trackrat.utils.system_stats.get_disk_usage") as mock_get_disk_usage:
+            mock_get_disk_usage.return_value = {
+                "total_gb": 59.0,
+                "used_gb": 50.7,
+                "free_gb": 8.3,
+                "usage_percent": 86.0,
+            }
+            result = get_system_stats(disk_path="/mnt/disks/data")
+
+        mock_get_disk_usage.assert_called_once_with("/mnt/disks/data")
+        assert result["disk"]["usage_percent"] == 86.0

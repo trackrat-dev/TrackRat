@@ -124,8 +124,8 @@ async def health_check(
     except Exception as e:
         health_status["checks"]["discovery"] = {"status": "unhealthy", "error": str(e)}
 
-    # Disk space check
-    disk = get_disk_usage("/")
+    # Disk space check (persistent data disk, not the container's boot filesystem)
+    disk = get_disk_usage(settings.data_disk_path)
     if disk:
         pct = disk["usage_percent"]
         if pct >= 95:

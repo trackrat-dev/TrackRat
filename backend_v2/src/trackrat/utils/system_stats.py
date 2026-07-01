@@ -82,15 +82,20 @@ def get_cpu_load() -> dict[str, Any]:
         return {}
 
 
-def get_system_stats() -> dict[str, Any]:
+def get_system_stats(disk_path: str = "/") -> dict[str, Any]:
     """Collect all system-level metrics.
+
+    Args:
+        disk_path: Mount point to check disk usage for. Defaults to "/"
+            (the boot filesystem); pass the persistent data disk's mount
+            path to check the volume that actually holds application data.
 
     Returns a dict with disk, memory, and cpu sections.
     Only includes sections that could be read successfully.
     """
     stats: dict[str, Any] = {}
 
-    disk = get_disk_usage("/")
+    disk = get_disk_usage(disk_path)
     if disk:
         stats["disk"] = disk
 

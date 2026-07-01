@@ -127,3 +127,87 @@ resource "google_monitoring_alert_policy" "provider_auth_failure" {
     time_sleep.wait_provider_auth_metric,
   ]
 }
+
+# Alert policies - data disk utilization on the persistent disk.
+# Backed by google_logging_metric.data_disk_usage_percent (see metrics.tf),
+# populated by SchedulerService.check_resource_usage every 15 minutes.
+# Two tiers (warn at 75%, page at 85%) so slow growth is caught well before
+# the disk fills silently, as happened in issue #1344.
+resource "time_sleep" "wait_disk_usage_metric" {
+  count = var.environment == "production" ? 1 : 0
+
+  depends_on      = [google_logging_metric.data_disk_usage_percent]
+  create_duration = "60s"
+
+  triggers = {
+    metric_name = google_logging_metric.data_disk_usage_percent[0].name
+  }
+}
+
+resource "google_monitoring_alert_policy" "data_disk_usage_warning" {
+  count = var.environment == "production" ? 1 : 0
+
+  display_name = "Data Disk Usage Warning (75%)"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Data disk usage above 75%"
+
+    condition_threshold {
+      filter          = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.data_disk_usage_percent[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 75
+      duration        = "0s"
+
+      aggregations {
+        alignment_period   = "1800s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email[0].name]
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  depends_on = [
+    google_project_service.apis["monitoring.googleapis.com"],
+    time_sleep.wait_disk_usage_metric,
+  ]
+}
+
+resource "google_monitoring_alert_policy" "data_disk_usage_critical" {
+  count = var.environment == "production" ? 1 : 0
+
+  display_name = "Data Disk Usage Critical (85%)"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Data disk usage above 85%"
+
+    condition_threshold {
+      filter          = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.data_disk_usage_percent[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 85
+      duration        = "0s"
+
+      aggregations {
+        alignment_period   = "1800s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email[0].name]
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  depends_on = [
+    google_project_service.apis["monitoring.googleapis.com"],
+    time_sleep.wait_disk_usage_metric,
+  ]
+}
