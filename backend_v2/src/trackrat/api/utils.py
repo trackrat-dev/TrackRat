@@ -6,13 +6,35 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from sqlalchemy.exc import DatabaseError, OperationalError
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitAPIError
 
 logger = get_logger(__name__)
+
+
+def get_client_ip(request: Request) -> str:
+    """Return the originating client IP for a request.
+
+    Behind GCP's external HTTP(S) load balancer the LB appends
+    ``"<client-ip>,<lb-ip>"`` to any existing ``X-Forwarded-For`` header rather
+    than overwriting it, so the trusted client IP is the second-to-last entry.
+    Earlier entries can be forged by the client. When the header is missing or
+    has only one entry (e.g. local dev — the LB would always have added its own
+    pair in production), fall back to the direct peer.
+
+    See https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
+    """
+    forwarded = [
+        part.strip()
+        for part in request.headers.get("x-forwarded-for", "").split(",")
+        if part.strip()
+    ]
+    if len(forwarded) >= 2:
+        return forwarded[-2]
+    return request.client.host if request.client else "unknown"
 
 
 def handle_errors(func: Callable[..., Any]) -> Callable[..., Any]:

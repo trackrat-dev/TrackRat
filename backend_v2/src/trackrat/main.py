@@ -32,6 +32,7 @@ from trackrat.api import (
     trips,
     validation,
 )
+from trackrat.api.utils import get_client_ip
 from trackrat.db.database import init_database, shutdown_database
 from trackrat.db.engine import close_engine, get_session
 from trackrat.services.apns import SimpleAPNSService
@@ -284,10 +285,7 @@ async def request_stats_middleware(
     # Skip noisy internal paths
     if path_template not in {"/health", "/health/live", "/health/ready", "/metrics"}:
         query_params = dict(request.query_params)
-        # Prefer X-Forwarded-For (set by GCP load balancer) over direct client IP
-        client_ip = request.headers.get("x-forwarded-for", "").split(",")[
-            0
-        ].strip() or (request.client.host if request.client else "unknown")
+        client_ip = get_client_ip(request)
         get_request_stats().record_request(
             path_template=path_template,
             status_code=response.status_code,

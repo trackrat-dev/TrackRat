@@ -125,6 +125,33 @@ def test_partial_route_info():
     print("PASS: test_partial_route_info")
 
 
+def test_client_ip_rendered_when_present():
+    """format_github_issue includes the client IP row when supplied."""
+    payload = {
+        "message": "Departures not loading",
+        "screen": "train_list",
+        "client_ip": "203.0.113.7",
+    }
+
+    _, body = format_github_issue(payload)
+
+    assert "| **Client IP** | 203.0.113.7 |" in body
+    print("PASS: test_client_ip_rendered_when_present")
+
+
+def test_client_ip_defaults_to_unknown_when_missing():
+    """format_github_issue falls back to 'unknown' when no client IP is supplied."""
+    payload = {
+        "message": "Departures not loading",
+        "screen": "train_list",
+    }
+
+    _, body = format_github_issue(payload)
+
+    assert "| **Client IP** | unknown |" in body
+    print("PASS: test_client_ip_defaults_to_unknown_when_missing")
+
+
 if __name__ == "__main__":
     test_issue_report_formatting()
     test_improvement_suggestion_formatting()
@@ -132,4 +159,6 @@ if __name__ == "__main__":
     test_missing_optional_fields()
     test_newlines_in_message_stripped_from_title()
     test_partial_route_info()
+    test_client_ip_rendered_when_present()
+    test_client_ip_defaults_to_unknown_when_missing()
     print("\nAll tests passed!")
