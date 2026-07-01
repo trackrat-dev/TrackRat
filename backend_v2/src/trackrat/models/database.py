@@ -82,13 +82,6 @@ class TrainJourney(Base):
         passive_deletes=True,
         lazy="raise_on_sql",
     )
-    snapshots: Mapped[list["JourneySnapshot"]] = relationship(
-        "JourneySnapshot",
-        back_populates="journey",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        lazy="raise_on_sql",
-    )
     progress: Mapped["JourneyProgress"] = relationship(
         "JourneyProgress",
         back_populates="journey",
@@ -234,39 +227,6 @@ class JourneyStop(Base):
             "stop_sequence",
         ),
     )
-
-
-class JourneySnapshot(Base):
-    """Historical snapshots for analysis and ML training."""
-
-    __tablename__ = "journey_snapshots"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    journey_id = Column(
-        Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False
-    )
-    captured_at = Column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-
-    # Complete API response stored for analysis
-    raw_stop_list_data = Column(JSON, nullable=False)
-
-    # Extracted key metrics at snapshot time
-    train_status = Column(String(50))
-    delay_minutes = Column(Integer)
-    completed_stops = Column(Integer)
-    total_stops = Column(Integer)
-
-    # Track assignments at snapshot time {station_code: track}
-    track_assignments = Column(JSON)
-
-    # Relationships
-    journey: Mapped["TrainJourney"] = relationship(
-        "TrainJourney", back_populates="snapshots", lazy="raise_on_sql"
-    )
-
-    __table_args__ = (Index("idx_journey_time", "journey_id", "captured_at"),)
 
 
 class DiscoveryRun(Base):

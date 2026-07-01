@@ -4,12 +4,12 @@ import pytest
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.models.database import TrainJourney, JourneyStop, JourneySnapshot
+from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import ET, now_et
 
 
 async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
-    """Test that Amtrak journeys with null delay_minutes in snapshots are handled correctly."""
+    """Test that Amtrak journey delay is calculated correctly from stop timestamps."""
     # Create an Amtrak journey
     journey = TrainJourney(
         train_id="A2150",
@@ -50,32 +50,11 @@ async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
         raw_amtrak_status="Enroute",
     )
     db_session.add_all([stop1, stop2])
-    await db_session.flush()
-
-    # Add snapshot with null delay_minutes (like Amtrak does)
-    snapshot = JourneySnapshot(
-        journey_id=journey.id,
-        captured_at=now_et(),
-        raw_stop_list_data={"test": "data"},
-        train_status="DEPARTED",
-        delay_minutes=None,  # This is the key - Amtrak doesn't set this
-        completed_stops=1,
-        total_stops=2,
-    )
-    db_session.add(snapshot)
     await db_session.commit()
 
-    # Query snapshots and stops explicitly to avoid lazy loading issues
+    # Query stops explicitly to avoid lazy loading issues
     from sqlalchemy import select
 
-    # Get snapshots using explicit query
-    snapshots_stmt = select(JourneySnapshot).where(
-        JourneySnapshot.journey_id == journey.id
-    )
-    snapshots_result = await db_session.execute(snapshots_stmt)
-    snapshots = list(snapshots_result.scalars().all())
-
-    # Get stops using explicit query
     stops_stmt = (
         select(JourneyStop)
         .where(JourneyStop.journey_id == journey.id)
@@ -85,8 +64,6 @@ async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
     stops = list(stops_result.scalars().all())
 
     # Verify the setup
-    assert len(snapshots) > 0
-    assert snapshots[0].delay_minutes is None
     assert len(stops) > 0
     assert stops[0].actual_departure is not None
     assert stops[0].scheduled_departure is not None
@@ -114,7 +91,7 @@ async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
 
 
 async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
-    """Test that NJT journeys with delay_minutes in snapshots work correctly."""
+    """Test that NJT journey delay is calculated correctly from stop timestamps."""
     # Create an NJT journey
     journey = TrainJourney(
         train_id="3955",
@@ -155,32 +132,11 @@ async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
         raw_njt_departed_flag="NO",
     )
     db_session.add_all([stop1, stop2])
-    await db_session.flush()
-
-    # Add snapshot with delay_minutes set (like NJT does)
-    snapshot = JourneySnapshot(
-        journey_id=journey.id,
-        captured_at=now_et(),
-        raw_stop_list_data={"test": "data"},
-        train_status="DEPARTED",
-        delay_minutes=3,  # NJT sets this
-        completed_stops=1,
-        total_stops=2,
-    )
-    db_session.add(snapshot)
     await db_session.commit()
 
-    # Query snapshots and stops explicitly to avoid lazy loading issues
+    # Query stops explicitly to avoid lazy loading issues
     from sqlalchemy import select
 
-    # Get snapshots using explicit query
-    snapshots_stmt = select(JourneySnapshot).where(
-        JourneySnapshot.journey_id == journey.id
-    )
-    snapshots_result = await db_session.execute(snapshots_stmt)
-    snapshots = list(snapshots_result.scalars().all())
-
-    # Get stops using explicit query
     stops_stmt = (
         select(JourneyStop)
         .where(JourneyStop.journey_id == journey.id)
@@ -188,10 +144,6 @@ async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
     )
     stops_result = await db_session.execute(stops_stmt)
     stops = list(stops_result.scalars().all())
-
-    # Verify the setup
-    assert len(snapshots) > 0
-    assert snapshots[0].delay_minutes == 3
 
     # Calculate delay from stops
     from trackrat.utils.time import calculate_delay
@@ -206,5 +158,4 @@ async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
                 )
                 break
 
-    # Should match the snapshot delay
     assert calculated_delay == 3

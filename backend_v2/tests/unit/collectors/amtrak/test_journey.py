@@ -76,23 +76,6 @@ class TestAmtrakJourneyCollector:
     def test_init(self, journey_collector):
         """Test collector initialization."""
         assert journey_collector.client is not None
-        assert hasattr(journey_collector, "STATUS_MAP")
-        assert hasattr(journey_collector, "TRAIN_STATE_MAP")
-
-    def test_status_mappings(self, journey_collector):
-        """Test status mapping dictionaries."""
-        # Test STATUS_MAP
-        assert journey_collector.STATUS_MAP["Departed"] == "DEPARTED"
-        assert journey_collector.STATUS_MAP["Station"] == "BOARDING"
-        assert journey_collector.STATUS_MAP["Enroute"] == "EN ROUTE"
-        assert journey_collector.STATUS_MAP["Cancelled"] == "CANCELLED"
-        assert journey_collector.STATUS_MAP["Terminated"] == "DEPARTED"
-        assert journey_collector.STATUS_MAP["Predeparture"] == "BOARDING"
-
-        # Test TRAIN_STATE_MAP
-        assert journey_collector.TRAIN_STATE_MAP["Active"] == "EN ROUTE"
-        assert journey_collector.TRAIN_STATE_MAP["Predeparture"] == "BOARDING"
-        assert journey_collector.TRAIN_STATE_MAP["Terminated"] == "DEPARTED"
 
     @pytest.mark.asyncio
     async def test_collect_journey_success(
@@ -343,8 +326,8 @@ class TestAmtrakJourneyCollector:
             assert result.stops_count == 4  # Only tracked stations (NYP, NWK, TRE, PHL)
             assert result.has_complete_journey is True
             # Verify correct number of session.add calls:
-            # 1 journey + 4 stops + 1 snapshot = 6 total
-            assert mock_db_session.add.call_count == 6
+            # 1 journey + 4 stops = 5 total
+            assert mock_db_session.add.call_count == 5
             # Verify flush and refresh were called
             mock_db_session.flush.assert_called()
             mock_db_session.refresh.assert_called()
@@ -358,7 +341,6 @@ class TestAmtrakJourneyCollector:
         existing_journey = Mock(spec=TrainJourney)
         existing_journey.id = 1
         existing_journey.stops = []
-        existing_journey.snapshots = []
         existing_journey.update_count = 5
         existing_journey.observation_type = "SCHEDULED"
         mock_db_session.scalar.return_value = existing_journey
@@ -422,59 +404,41 @@ class TestAmtrakJourneyCollector:
 
         assert result is None
 
-    def test_convert_to_journey_cancelled_train(
-        self, journey_collector, sample_train_data
+    @pytest.mark.asyncio
+    async def test_convert_to_journey_cancelled_train(
+        self, journey_collector, mock_db_session, sample_train_data
     ):
-        """Test journey conversion for cancelled train."""
+        """Test journey conversion sets is_cancelled for a cancelled train."""
         sample_train_data.trainState = "Cancelled"
 
-        # We can't easily test the full conversion without a lot of mocking,
-        # but we can verify the status mapping logic
-        assert (
-            journey_collector.TRAIN_STATE_MAP.get("Cancelled", "UNKNOWN") == "UNKNOWN"
-        )
+        with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
+            mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-    def test_convert_to_journey_terminated_train(
-        self, journey_collector, sample_train_data
+            result = await journey_collector._convert_to_journey(
+                mock_db_session, sample_train_data
+            )
+
+            assert result is not None
+            assert result.is_cancelled is True
+            assert result.is_completed is False
+
+    @pytest.mark.asyncio
+    async def test_convert_to_journey_terminated_train(
+        self, journey_collector, mock_db_session, sample_train_data
     ):
-        """Test journey conversion for terminated train."""
+        """Test journey conversion sets is_completed for a terminated train."""
         sample_train_data.trainState = "Terminated"
 
-        # Verify the status mapping
-        assert journey_collector.TRAIN_STATE_MAP.get("Terminated") == "DEPARTED"
+        with patch("trackrat.collectors.amtrak.journey.now_et") as mock_now:
+            mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
 
-    @pytest.mark.parametrize(
-        "status,expected",
-        [
-            ("Departed", "DEPARTED"),
-            ("Station", "BOARDING"),
-            ("Enroute", "EN ROUTE"),
-            ("Cancelled", "CANCELLED"),
-            ("Terminated", "DEPARTED"),
-            ("Predeparture", "BOARDING"),
-            ("Unknown", "Unknown"),  # Unmapped status should pass through
-        ],
-    )
-    def test_status_mapping_parametrized(self, journey_collector, status, expected):
-        """Test status mapping with various inputs."""
-        result = journey_collector.STATUS_MAP.get(status, status)
-        assert result == expected
+            result = await journey_collector._convert_to_journey(
+                mock_db_session, sample_train_data
+            )
 
-    @pytest.mark.parametrize(
-        "train_state,expected",
-        [
-            ("Active", "EN ROUTE"),
-            ("Predeparture", "BOARDING"),
-            ("Terminated", "DEPARTED"),
-            ("Unknown", "UNKNOWN"),  # Unmapped state should use default
-        ],
-    )
-    def test_train_state_mapping_parametrized(
-        self, journey_collector, train_state, expected
-    ):
-        """Test train state mapping with various inputs."""
-        result = journey_collector.TRAIN_STATE_MAP.get(train_state, "UNKNOWN")
-        assert result == expected
+            assert result is not None
+            assert result.is_completed is True
+            assert result.is_cancelled is False
 
 
 class TestComputeEstimatedTime:

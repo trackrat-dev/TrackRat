@@ -146,7 +146,7 @@ class TestExactMatchDedup:
         assert result["skipped_existing"] == 0
 
         # Find the TrainJourney among all added objects
-        # (collector also adds JourneyStop and JourneySnapshot objects)
+        # (collector also adds JourneyStop objects)
         added_journeys = [
             call.args[0]
             for call in session.add.call_args_list

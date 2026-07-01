@@ -58,7 +58,6 @@ async def test_prefetched_data_skips_api_call():
         patch.object(
             collector, "enhance_with_departure_board_data", new_callable=AsyncMock
         ),
-        patch.object(collector, "create_journey_snapshot", new_callable=AsyncMock),
         patch.object(collector, "update_journey_metadata", new_callable=AsyncMock),
         patch.object(collector, "update_journey_stops", new_callable=AsyncMock),
         patch.object(collector, "check_journey_completion", new_callable=AsyncMock),
@@ -107,7 +106,6 @@ async def test_without_prefetched_data_calls_api():
         patch.object(
             collector, "enhance_with_departure_board_data", new_callable=AsyncMock
         ),
-        patch.object(collector, "create_journey_snapshot", new_callable=AsyncMock),
         patch.object(collector, "update_journey_metadata", new_callable=AsyncMock),
         patch.object(collector, "update_journey_stops", new_callable=AsyncMock),
         patch.object(collector, "check_journey_completion", new_callable=AsyncMock),
