@@ -283,10 +283,11 @@ class TestLookupIndexes:
         assert get_transfer_points("WMATA", "WMATA") == []
 
     def test_get_transfer_points_njt_njt_has_junction_transfers(self):
-        """NJT intra-system should return junction transfers (e.g., NE/NC at Newark Penn)."""
+        """NJT intra-system should return junction transfers (e.g., Secaucus)."""
         tps = get_transfer_points("NJT", "NJT")
         assert len(tps) > 0, "Expected NJT intra-system junction transfers"
-        # All should be same-station, same-system with different line groups
+        # Each junction is one same-station transfer carrying every line that
+        # meets there on both sides (#1296), so lines_a == lines_b with 2+ lines.
         for tp in tps:
             assert tp.system_a == "NJT" and tp.system_b == "NJT"
             assert (
@@ -294,8 +295,43 @@ class TestLookupIndexes:
             ), f"Intra-system junction should be same station, got {tp.station_a} != {tp.station_b}"
             assert tp.same_station is True
             assert (
-                tp.lines_a != tp.lines_b
-            ), f"Junction should connect different line groups at {tp.station_a}"
+                tp.lines_a == tp.lines_b
+            ), f"Junction should carry all lines on both sides at {tp.station_a}"
+            assert (
+                len(tp.lines_a) >= 2
+            ), f"Junction at {tp.station_a} should have 2+ lines, got {sorted(tp.lines_a)}"
+
+    def test_njt_secaucus_junction_connects_pascack_and_nec(self):
+        """Regression for #1296: Secaucus (SE) must carry Pascack Valley AND the
+        NEC so trip search can route New Bridge Landing -> NY Penn. The old
+        per-line-pair emission collapsed under the _add dedup, dropping every
+        SE line-pair except the first one ({NE}<->{NC})."""
+        se = [
+            tp
+            for tp in get_transfer_points("NJT", "NJT")
+            if tp.station_a == "SE" and tp.station_b == "SE"
+        ]
+        assert len(se) == 1, f"Expected exactly one SE junction transfer, got {len(se)}"
+        lines = se[0].lines_a
+        # Pascack Valley (PV), NEC (NE), and NJCL (NC) all interchange at SE.
+        assert "PV" in lines, f"SE junction missing Pascack Valley, got {sorted(lines)}"
+        assert "NE" in lines, f"SE junction missing NEC, got {sorted(lines)}"
+        assert "NC" in lines, f"SE junction missing NJCL, got {sorted(lines)}"
+
+    def test_lirr_jamaica_junction_carries_all_branches(self):
+        """Regression for #1296: Jamaica (JAM) is where ~all LIRR branches meet.
+        The junction transfer must carry every branch line so any branch->branch
+        transfer resolves, not just the first-generated pair."""
+        jam = [
+            tp
+            for tp in get_transfer_points("LIRR", "LIRR")
+            if tp.station_a == "JAM" and tp.station_b == "JAM"
+        ]
+        assert len(jam) == 1, f"Expected one JAM junction transfer, got {len(jam)}"
+        lines = jam[0].lines_a
+        # Babylon, Ronkonkoma, and Long Beach are distinct branches via JAM.
+        for branch in ("LIRR-BB", "LIRR-RK", "LIRR-LB"):
+            assert branch in lines, f"JAM missing {branch}, got {sorted(lines)}"
 
     def test_get_transfer_points_subway_subway_has_results(self):
         """SUBWAY <-> SUBWAY should return intra-subway transfer points."""

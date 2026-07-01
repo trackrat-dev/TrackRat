@@ -341,18 +341,25 @@ def _rank_transfer_points(
     """Rank transfer points so truncation is deterministic and direction-symmetric.
 
     Sorting keys (ascending = better):
-    1. same_station transfers first (in-station is faster than walking)
-    2. walk_minutes ascending (shorter walks preferred)
-    3. stable tiebreaker on station/system codes (ensures identical ordering
+    1. intra-system transfers first. ``_find_relevant_transfer_points`` only
+       adds an intra-system transfer after verifying its lines connect the
+       origin to the destination, whereas cross-system transfers are added
+       unconditionally for the system pair. Prioritizing the relevance-verified
+       intra-system transfers keeps them inside the MAX_TRANSFER_QUERIES budget
+       instead of being crowded out by speculative cross-system points (#1296).
+    2. same_station transfers first (in-station is faster than walking)
+    3. walk_minutes ascending (shorter walks preferred)
+    4. stable tiebreaker on station/system codes (ensures identical ordering
        regardless of which direction the search runs)
     """
 
-    def _sort_key(tp: TransferPoint) -> tuple[int, int, str, str, str, str]:
+    def _sort_key(tp: TransferPoint) -> tuple[int, int, int, str, str, str, str]:
         # Canonical alphabetical order of the two sides for direction symmetry
         side_a = (tp.station_a, tp.system_a)
         side_b = (tp.station_b, tp.system_b)
         canonical = tuple(sorted([side_a, side_b]))
         return (
+            0 if tp.system_a == tp.system_b else 1,
             0 if tp.same_station else 1,
             tp.walk_minutes,
             canonical[0][0],
