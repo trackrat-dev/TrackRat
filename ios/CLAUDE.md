@@ -130,6 +130,7 @@ xcodebuild -scheme TrackRat -sdk iphonesimulator build \
 - Push notifications for status changes
 - Journey progress with interpolation
 - Track/platform prediction shown on the Lock Screen when available (`predictedTrack` / `predictedTrackConfidence`)
+- Countdown ticks on-device every second via self-updating SwiftUI Date views (`Text(date, style: .relative)` / `Text(timerInterval:countsDown:)`) driven by `departureDate` / `arrivalDate` on `ContentState` — does not freeze between backend pushes (issue #1298)
 
 ## Testing
 
