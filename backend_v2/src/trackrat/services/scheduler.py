@@ -2579,6 +2579,7 @@ class SchedulerService:
         """
         settings = get_settings()
         cutoff_days = settings.retention_days
+        subway_cutoff_days = settings.subway_retention_days
 
         async def do_retention_work() -> None:
             batch_size = 1000
@@ -2591,9 +2592,18 @@ class SchedulerService:
                 logger.info(
                     "starting_retention_cleanup",
                     cutoff_days=cutoff_days,
+                    subway_cutoff_days=subway_cutoff_days,
                 )
 
-                # Phase 1: Delete old train_journeys in batches
+                # Phase 1: Delete old train_journeys in batches.
+                # SUBWAY uses a shorter retention window than other providers: it
+                # is the highest-volume data source (~70% of journey storage) and
+                # is real-time / frequency-based, so old subway journeys have little
+                # analytical value. The per-provider cutoff is applied via a CASE
+                # so the batched subquery shape (and its index usage) is unchanged.
+                # Deletes cascade to journey_stops / segment_transit_times /
+                # station_dwell_times / journey_progress / journey_snapshots via
+                # ON DELETE CASCADE.
                 while True:
                     async with get_session() as db:
                         result = cast(
@@ -2603,11 +2613,18 @@ class SchedulerService:
                                     "DELETE FROM train_journeys "
                                     "WHERE id IN ("
                                     "  SELECT id FROM train_journeys "
-                                    "  WHERE journey_date < CURRENT_DATE - make_interval(days => :days) "
+                                    "  WHERE journey_date < CURRENT_DATE - make_interval(days => "
+                                    "    CASE WHEN data_source = 'SUBWAY' "
+                                    "         THEN :subway_days ELSE :days END"
+                                    "  ) "
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
-                                {"days": cutoff_days, "batch_size": batch_size},
+                                {
+                                    "days": cutoff_days,
+                                    "subway_days": subway_cutoff_days,
+                                    "batch_size": batch_size,
+                                },
                             ),
                         )
                         deleted = result.rowcount or 0
