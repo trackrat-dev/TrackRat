@@ -275,7 +275,7 @@ def test_d8c07a8efd43_drops_track_occupancy_lookup_and_tunes_autovacuum():
         "20260630_2021-d8c07a8efd43_drop_unused_idx_track_occupancy_lookup_"
     )
     assert migration.revision == "d8c07a8efd43"
-    assert migration.down_revision == "896c9fb11394"
+    assert migration.down_revision == "b9f37157aada"
 
     statements: list[str] = []
     mock_op = types.SimpleNamespace(execute=lambda sql: statements.append(str(sql)))
