@@ -18,6 +18,7 @@ from trackrat.models.database import (
     SchedulerTaskRun,
     ServiceAlert,
     StationDwellTime,
+    TrainJourney,
     ValidationResult,
 )
 
@@ -37,8 +38,6 @@ DROPPED_INDEXES = {
 
 RETAINED_INDEXES = {
     "idx_station_times",
-    "idx_journey_sequence",
-    "idx_track_occupancy_lookup",
     "idx_stop_track_distribution",
     "idx_stop_delay_forecaster",
     "idx_stop_journey_station_seq",
@@ -117,11 +116,11 @@ def test_retained_indexes_still_present_on_journey_stops():
     indexes = _get_index_names(JourneyStop)
     expected = {
         "idx_station_times",
-        "idx_journey_sequence",
-        "idx_track_occupancy_lookup",
         "idx_stop_track_distribution",
         "idx_stop_delay_forecaster",
         "idx_stop_journey_station_seq",
+        # Covering index that supersedes the dropped idx_journey_sequence.
+        "idx_journey_stops_sequence_lookup",
     }
     missing = expected - indexes
     assert not missing, (
@@ -130,13 +129,18 @@ def test_retained_indexes_still_present_on_journey_stops():
     )
 
 
-def test_track_occupancy_lookup_explicitly_retained():
-    """idx_track_occupancy_lookup must be kept — track_occupancy.py uses it."""
+def test_track_occupancy_lookup_dropped():
+    """idx_track_occupancy_lookup was dropped (migration d8c07a8efd43).
+
+    Reverses the earlier decision to retain it: track_occupancy.py filters
+    station_code + a scheduled_departure window, which idx_station_times serves,
+    so the planner never used this index (0 scans on production against billions
+    elsewhere) and it had bloated to ~4 GB.
+    """
     indexes = _get_index_names(JourneyStop)
-    assert "idx_track_occupancy_lookup" in indexes, (
-        "idx_track_occupancy_lookup must NOT be dropped; "
-        "track_occupancy.py queries on (station_code, has_departed_station, "
-        "scheduled_departure)"
+    assert "idx_track_occupancy_lookup" not in indexes, (
+        "idx_track_occupancy_lookup should be removed from JourneyStop; "
+        "it is redundant with idx_station_times for the track-occupancy query"
     )
 
 
@@ -235,8 +239,12 @@ def test_migration_drops_exactly_eleven_indexes():
     assert len(calls) == 11, f"Expected 11 drop_index calls, got {len(calls)}"
 
 
-def test_migration_does_not_drop_track_occupancy_lookup():
-    """idx_track_occupancy_lookup must NOT be in the migration drop list."""
+def test_d170389c0848_does_not_drop_track_occupancy_lookup():
+    """The #986 cleanup (d170389c0848) deferred dropping this index.
+
+    Historical guard: that migration left idx_track_occupancy_lookup in place.
+    The drop happens later in d8c07a8efd43 — see the test below.
+    """
     migration = importlib.import_module(
         "trackrat.db.migrations.versions."
         "20260423_1749-d170389c0848_drop_unused_indexes"
@@ -257,10 +265,36 @@ def test_migration_does_not_drop_track_occupancy_lookup():
         else:
             delattr(migration, "op")
 
-    assert "idx_track_occupancy_lookup" not in calls, (
-        "Migration must NOT drop idx_track_occupancy_lookup; "
-        "it is actively used by track_occupancy.py"
+    assert "idx_track_occupancy_lookup" not in calls
+
+
+def test_d8c07a8efd43_drops_track_occupancy_lookup_and_tunes_autovacuum():
+    """The new migration drops the dead index and tightens autovacuum."""
+    migration = importlib.import_module(
+        "trackrat.db.migrations.versions."
+        "20260630_2021-d8c07a8efd43_drop_unused_idx_track_occupancy_lookup_"
     )
+    assert migration.revision == "d8c07a8efd43"
+    assert migration.down_revision == "896c9fb11394"
+
+    statements: list[str] = []
+    mock_op = types.SimpleNamespace(execute=lambda sql: statements.append(str(sql)))
+
+    original_op = getattr(migration, "op", None)
+    try:
+        migration.op = mock_op
+        migration.upgrade()
+    finally:
+        migration.op = original_op
+
+    joined = "\n".join(statements)
+    assert "DROP INDEX IF EXISTS idx_track_occupancy_lookup" in joined
+    # Autovacuum tightened on all three high-churn tables.
+    for table in ("journey_stops", "segment_transit_times", "train_journeys"):
+        assert any(
+            table in s and "autovacuum_vacuum_scale_factor = 0.02" in s
+            for s in statements
+        ), f"missing autovacuum tuning for {table}"
 
 
 def test_migration_downgrade_recreates_all_eleven_indexes():
@@ -293,3 +327,73 @@ def test_migration_downgrade_recreates_all_eleven_indexes():
         f"but created {created_names}"
     )
     assert len(calls) == 11, f"Expected 11 create_index calls, got {len(calls)}"
+
+
+# ---------------------------------------------------------------------------
+# Redundant prefix-index reconciliation (migration fd85e7f3abb3)
+# ---------------------------------------------------------------------------
+
+# Indexes dropped because they are a strict leading-column prefix of a wider
+# index that already serves the same predicates.
+REDUNDANT_PREFIX_DROPPED = {
+    "idx_journey_date",  # -> idx_journey_date_source
+    "idx_journey_sequence",  # -> idx_journey_stops_sequence_lookup
+    "idx_last_updated",  # -> idx_congestion_journey_lookup
+}
+
+
+def test_redundant_prefix_indexes_removed_from_models():
+    """The three superseded prefix indexes must be gone from the models."""
+    train_journey_idx = _get_index_names(TrainJourney)
+    journey_stop_idx = _get_index_names(JourneyStop)
+    all_idx = train_journey_idx | journey_stop_idx
+    overlap = REDUNDANT_PREFIX_DROPPED & all_idx
+    assert not overlap, f"Models still declare dropped prefix indexes: {overlap}"
+
+
+def test_superseding_indexes_present_in_models():
+    """The wider indexes that absorb the dropped prefixes must be declared.
+
+    These existed in production (migration 5b4681856a79) but were missing from
+    the models, which is what made the prefix indexes look load-bearing.
+    """
+    train_journey_idx = _get_index_names(TrainJourney)
+    journey_stop_idx = _get_index_names(JourneyStop)
+    assert "idx_journey_date_source" in train_journey_idx
+    assert "idx_congestion_journey_lookup" in train_journey_idx
+    assert "idx_journey_stops_sequence_lookup" in journey_stop_idx
+
+
+def test_idx_delay_forecaster_declared_in_model():
+    """idx_delay_forecaster stays in the model; the migration creates it in prod."""
+    assert "idx_delay_forecaster" in _get_index_names(TrainJourney)
+
+
+def test_fd85e7f3abb3_upgrade_statements():
+    """The migration creates idx_delay_forecaster, drops the prefixes, tunes vacuum."""
+    migration = importlib.import_module(
+        "trackrat.db.migrations.versions."
+        "20260630_2303-fd85e7f3abb3_drop_redundant_prefix_indexes_create_"
+    )
+    assert migration.revision == "fd85e7f3abb3"
+    assert migration.down_revision == "d8c07a8efd43"
+
+    statements: list[str] = []
+    mock_op = types.SimpleNamespace(execute=lambda sql: statements.append(str(sql)))
+
+    original_op = getattr(migration, "op", None)
+    try:
+        migration.op = mock_op
+        migration.upgrade()
+    finally:
+        migration.op = original_op
+
+    joined = "\n".join(statements)
+    assert "CREATE INDEX IF NOT EXISTS idx_delay_forecaster" in joined
+    for name in REDUNDANT_PREFIX_DROPPED:
+        assert f"DROP INDEX IF EXISTS {name}" in joined, f"missing drop for {name}"
+    for table in ("journey_stops", "segment_transit_times", "train_journeys"):
+        assert any(
+            table in s and "autovacuum_vacuum_cost_limit = 1000" in s
+            for s in statements
+        ), f"missing cost_limit tuning for {table}"

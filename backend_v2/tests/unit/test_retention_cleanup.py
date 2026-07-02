@@ -18,9 +18,9 @@ class TestRetentionSettings:
     """Test retention_days setting configuration."""
 
     def test_default_retention_days(self):
-        """Default retention_days should be 120."""
+        """Default retention_days should be 60."""
         settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
-        assert settings.retention_days == 120
+        assert settings.retention_days == 60
 
     def test_custom_retention_days(self):
         """retention_days should be configurable via environment."""

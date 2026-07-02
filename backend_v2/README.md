@@ -91,7 +91,7 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 5 minutes**: Route alert evaluation and push notifications
 - **Hourly at :05**: Validation across key routes
-- **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 120 days; active service alerts are kept regardless of age)
+- **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
 **Note**: PATH, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, Subway, BART, MBTA, and Metra use GTFS-RT feeds with shared logic in `mta_common.py`. WMATA uses its REST API. PATCO uses GTFS static schedules only (no real-time API).
