@@ -29,6 +29,7 @@ from trackrat.services.alert_evaluator import (
     _compute_alert_hash,
     _compute_train_alert_hash,
     _filter_by_direction,
+    _generate_digest_summary,
     _is_significantly_delayed,
     _is_within_time_window,
     evaluate_morning_digests,
@@ -2344,3 +2345,219 @@ class TestNotifyTypeToggles:
         assert count == 0, "Train delay alert suppressed when notify_delay=False"
         apns.send_alert_notification.assert_not_called()
         print("  Verified: train notify_delay=False suppresses delay")
+
+
+@pytest.mark.asyncio
+class TestMorningDigestRollback:
+    """Regression tests for issue #1334 — morning_digest_evaluation must
+    rollback when summary generation fails so the shared session can be
+    reused by subsequent subscriptions in the loop. Without rollback,
+    asyncpg refuses further queries with "Can't reconnect until invalid
+    transaction is rolled back."
+    """
+
+    async def test_generate_digest_summary_rolls_back_on_summary_error(
+        self, db_session: AsyncSession
+    ):
+        """When SummaryService raises, _generate_digest_summary must call
+        db.rollback() before returning None. Otherwise the shared loop
+        session stays in an invalid-transaction state and every subsequent
+        subscription fails."""
+        mock_summary_service = AsyncMock()
+        mock_summary_service.get_route_summary = AsyncMock(
+            side_effect=Exception("simulated SQL failure")
+        )
+
+        rollback_calls = 0
+        original_rollback = db_session.rollback
+
+        async def spy_rollback() -> None:
+            nonlocal rollback_calls
+            rollback_calls += 1
+            await original_rollback()
+
+        with patch.object(db_session, "rollback", side_effect=spy_rollback):
+            result = await _generate_digest_summary(
+                db_session,
+                mock_summary_service,
+                data_source="NJT",
+                line_id=None,
+                direction=None,
+                from_station_code="NY",
+                to_station_code="TR",
+                train_id=None,
+            )
+
+        assert result is None, "summary should return None on error"
+        assert rollback_calls == 1, (
+            f"db.rollback() must be called exactly once on summary error; "
+            f"got {rollback_calls}"
+        )
+        print("  Verified: digest summary rolls back on error")
+
+    async def test_digest_loop_continues_after_one_subscription_errors(
+        self, db_session: AsyncSession
+    ):
+        """If one subscription's summary call raises, subsequent subscriptions
+        in the same loop must still be evaluated successfully. This is the
+        end-to-end behavior protected by the rollback fix in
+        _generate_digest_summary."""
+        # Choose a digest_time_minutes that matches "now" so both subs evaluate
+        local_now = datetime.now(ZoneInfo("America/New_York"))
+        current_minutes = local_now.hour * 60 + local_now.minute
+        weekday_mask = 1 << local_now.weekday()
+
+        _make_device_and_sub(
+            db_session,
+            device_id="digest-rb-fail",
+            apns_token="fake-token-fail",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        _make_device_and_sub(
+            db_session,
+            device_id="digest-rb-ok",
+            apns_token="fake-token-ok",
+            data_source="NJT",
+            from_station="NP",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        # Commit setup before evaluation: the production fix calls
+        # db.rollback() on the first sub's failure, which would otherwise
+        # wipe uncommitted test fixtures and mask the real assertion.
+        await db_session.commit()
+
+        apns = _make_apns()
+
+        # First subscription's summary call raises; second returns a usable
+        # body. Both reuse the same session, so without rollback the second
+        # call would fail with "invalid transaction".
+        call_count = 0
+        ok_result = AsyncMock()
+        ok_result.body = "Service running normally."
+        ok_result.headline = "On time"
+
+        async def fake_get_route_summary(db, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("simulated SQL failure")
+            return ok_result
+
+        # SummaryService is imported inside evaluate_morning_digests, so patch
+        # the source module (trackrat.services.summary).
+        with patch("trackrat.services.summary.SummaryService") as MockSvc:
+            MockSvc.return_value.get_route_summary = AsyncMock(
+                side_effect=fake_get_route_summary
+            )
+            sent = await evaluate_morning_digests(db_session, apns)
+
+        assert call_count == 2, (
+            f"Both subscriptions must invoke get_route_summary; got "
+            f"{call_count} call(s) — the loop bailed out after the first error"
+        )
+        assert sent == 1, f"Exactly one digest should send (the second sub); got {sent}"
+        apns.send_alert_notification.assert_called_once()
+        print("  Verified: digest loop continues after one subscription errors")
+
+    async def test_earlier_digest_timestamp_survives_later_rollback(
+        self, db_session: AsyncSession
+    ):
+        """If sub A's digest sends successfully and sub B's summary then
+        raises, sub A's `last_digest_at` must still be persisted. Without
+        per-iteration commit, sub B's rollback discards sub A's pending
+        ORM assignment and the same digest re-fires on the next 5-minute
+        scheduler tick — exactly what the user has already received via
+        APNS once.
+        """
+        local_now = datetime.now(ZoneInfo("America/New_York"))
+        current_minutes = local_now.hour * 60 + local_now.minute
+        weekday_mask = 1 << local_now.weekday()
+
+        # Sub A is created first and succeeds; sub B is iterated second and
+        # raises. Insertion order is also iteration order because both
+        # devices come back from the same selectinload query, and the
+        # subscriptions are flat-iterated in device order.
+        _, sub_a = _make_device_and_sub(
+            db_session,
+            device_id="digest-persist-ok",
+            apns_token="fake-token-ok",
+            data_source="NJT",
+            from_station="NP",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        _, sub_b = _make_device_and_sub(
+            db_session,
+            device_id="digest-persist-fail",
+            apns_token="fake-token-fail",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        await db_session.commit()
+
+        apns = _make_apns()
+
+        # First summary call succeeds (sub A), second raises (sub B).
+        call_count = 0
+        ok_result = AsyncMock()
+        ok_result.body = "Service running normally."
+        ok_result.headline = "On time"
+
+        async def fake_get_route_summary(db, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return ok_result
+            raise Exception("simulated SQL failure on sub B")
+
+        sub_a_id = sub_a.id
+        sub_b_id = sub_b.id
+
+        with patch("trackrat.services.summary.SummaryService") as MockSvc:
+            MockSvc.return_value.get_route_summary = AsyncMock(
+                side_effect=fake_get_route_summary
+            )
+            sent = await evaluate_morning_digests(db_session, apns)
+
+        assert sent == 1, f"Exactly one digest should send (sub A); got {sent}"
+        assert call_count == 2, (
+            f"Both subscriptions must invoke get_route_summary; got " f"{call_count}"
+        )
+
+        # Re-read sub_a from the database in a fresh transaction to confirm
+        # the timestamp was actually committed, not just left as an
+        # uncommitted in-memory ORM assignment that would later be lost.
+        await db_session.rollback()
+        result = await db_session.execute(
+            select(RouteAlertSubscription).where(RouteAlertSubscription.id == sub_a_id)
+        )
+        sub_a_after = result.scalar_one()
+        assert sub_a_after.last_digest_at is not None, (
+            "sub A's last_digest_at must be persisted to the DB even when "
+            "sub B's later summary call triggered a rollback. Without "
+            "per-iteration commit this is None and the digest re-fires next tick."
+        )
+
+        # Sub B never sent, so its timestamp must remain None.
+        result = await db_session.execute(
+            select(RouteAlertSubscription).where(RouteAlertSubscription.id == sub_b_id)
+        )
+        sub_b_after = result.scalar_one()
+        assert (
+            sub_b_after.last_digest_at is None
+        ), "sub B never sent a digest; last_digest_at must remain None"
+        print("  Verified: earlier digest timestamp survives later rollback")
