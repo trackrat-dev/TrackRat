@@ -34,7 +34,7 @@ from trackrat.utils.time import (
     now_et,
     parse_njt_time,
 )
-from trackrat.utils.train import is_njt_stop_cancelled
+from trackrat.utils.train import is_njt_stop_cancelled, normalize_njt_destination
 
 logger = get_logger(__name__)
 
@@ -526,6 +526,7 @@ class JourneyCollector(BaseJourneyCollector):
         - "New York -SEC &#9992" -> "new york"
         - "Penn Station New York" -> "new york"
         - "Trenton" -> "trenton"
+        - "TRENTON TRANSIT CENTER" -> "trenton"
         """
         if not destination:
             return ""
@@ -544,7 +545,14 @@ class JourneyCollector(BaseJourneyCollector):
         # Remove extra whitespace
         normalized = " ".join(normalized.split())
 
-        return normalized.strip()
+        # Collapse NJT's schedule-API " TRANSIT CENTER" suffix so the full
+        # official name ("TRENTON TRANSIT CENTER") and the real-time short
+        # name ("Trenton") for the same station compare equal. A journey
+        # merged/promoted from a SCHEDULED row carries the schedule-API
+        # destination; without this it would be falsely flagged as a
+        # DESTINATION_MISMATCH and expired on the next collection pass before
+        # update_journey_metadata could heal the field (issue #1329).
+        return normalize_njt_destination(normalized)
 
     async def _is_same_journey(
         self,

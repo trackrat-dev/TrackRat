@@ -40,6 +40,7 @@ from trackrat.utils.train import (
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
+    normalize_njt_destination,
 )
 
 logger = get_logger(__name__)
@@ -58,8 +59,10 @@ def _destination_prefix(destination: str | None) -> str:
     """Normalize a destination string for similarity comparison.
 
     NJT's schedule API and real-time API sometimes return the same terminus
-    with different suffixes ("Suffern" vs "Suffern via Hoboken"). Lowercase
-    the string, trim whitespace, and strip any " via ..." suffix so the two
+    with different suffixes ("Suffern" vs "Suffern via Hoboken", "Trenton"
+    vs "TRENTON TRANSIT CENTER"). Lowercase the string, trim whitespace,
+    strip any " via ..." suffix, and strip the generic NJT schedule-API
+    " TRANSIT CENTER" suffix (see ``normalize_njt_destination``) so the two
     forms compare equal — but preserve the rest of the destination so that
     distinct termini sharing a leading word ("Long Branch" vs "Long Island",
     "Atlantic City" vs "Atlantic Highlands") still compare unequal. Empty
@@ -71,7 +74,7 @@ def _destination_prefix(destination: str | None) -> str:
     via_idx = normalized.find(" via ")
     if via_idx > 0:
         normalized = normalized[:via_idx].rstrip()
-    return normalized
+    return normalize_njt_destination(normalized)
 
 
 # Tracks station codes currently being refreshed in background tasks.
