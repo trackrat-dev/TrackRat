@@ -294,6 +294,7 @@ The APScheduler runs in-process and handles:
 - **Every 90 sec**: Departure cache pre-computation
 - **Every 5 min**: Route history cache pre-computation
 - **Every 15 min**: Congestion cache pre-computation
+- **Every 15 min**: Resource usage check (logs data-disk and database size for Cloud Monitoring alerting)
 - **Every 15 min**: Service alerts collection (MTA + NJT)
 - **Every 1 min**: Live Activity push notification updates
 - **Hourly**: Live Activity token cleanup
@@ -485,6 +486,7 @@ TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on start
 TRACKRAT_BACKUP_INTERVAL_SECONDS=300             # GCS backup frequency (default 5min)
 TRACKRAT_RETENTION_DAYS=60                       # Days to retain journey data (min 30)
 TRACKRAT_SUBWAY_RETENTION_DAYS=14                # Days to retain SUBWAY journey data (shorter; high-volume/real-time, min 1)
+TRACKRAT_DATA_DISK_PATH=/mnt/disks/data           # Mount path of the persistent data disk to monitor
 
 # APNS Auth Key Content (alternative to file path)
 APNS_AUTH_KEY=                                   # Raw P8 key content (fallback if APNS_AUTH_KEY_PATH unavailable)
@@ -768,6 +770,7 @@ The backend is organized into service classes for better maintainability:
 ## Recent Improvements & Known Issues
 
 ### Recent Improvements (June 2026)
+- ✅ Added periodic data-disk / database-size logging (`SchedulerService.check_resource_usage`) feeding new Terraform alert policies, so disk exhaustion is caught automatically instead of found by manually SSHing in (issue #1344, `services/scheduler.py`, `infra_v2/terraform/metrics.tf`, `infra_v2/terraform/monitoring.tf`). Also fixed `/health`, `/admin/stats`, and `/metrics` to check the mounted persistent disk (`TRACKRAT_DATA_DISK_PATH`) instead of the container's boot filesystem.
 - ✅ Live Activity materializes a SCHEDULED `train_journeys` row from GTFS at registration when none exists, so the push job has a row to update immediately instead of logging `journey_not_found_for_live_activity` every cycle (issue #1298, `api/live_activities.py`, `services/gtfs.py::GTFSService.materialize_scheduled_journey`)
 - ✅ Live Activity materialization gated to `MATERIALIZE_SCHEDULED_SOURCES = {NJT, AMTRAK}` — GTFS-RT systems mint their own train_ids on discovery and would orphan the materialized row (issue #1298 follow-up, `services/gtfs.py`)
 - ✅ Retention sweep extended to inactive `service_alerts` so long-resolved alerts no longer accumulate (issue #1269, `services/scheduler.py`)

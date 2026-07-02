@@ -173,3 +173,59 @@ resource "google_logging_metric" "provider_auth_failures" {
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
+
+# =============================================================================
+# DATA DISK USAGE METRIC
+# Tracks: persistent data disk utilization, logged periodically by
+# SchedulerService.check_resource_usage (services/scheduler.py).
+# Drives the "Data Disk Usage" alerts in monitoring.tf.
+# =============================================================================
+resource "google_logging_metric" "data_disk_usage_percent" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "data_disk_usage_percent"
+  description = "Persistent data disk utilization percentage"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"data_disk_usage_check\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "GAUGE"
+    value_type  = "DOUBLE"
+    unit        = "%"
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.usage_percent)"
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}
+
+# =============================================================================
+# DATABASE SIZE METRIC
+# Tracks: Postgres database size in GB, for trend visibility (no alert —
+# see the "Data Disk Usage" alerts in monitoring.tf for the actual paging
+# signal, since the disk is what actually runs out of space).
+# =============================================================================
+resource "google_logging_metric" "database_size_gb" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "database_size_gb"
+  description = "Postgres database size in GB"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"database_size_check\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "GAUGE"
+    value_type  = "DOUBLE"
+    unit        = "GBy"
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.size_gb)"
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}

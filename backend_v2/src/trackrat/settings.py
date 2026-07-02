@@ -171,6 +171,12 @@ class Settings(BaseSettings):
         ge=1,
     )
 
+    # Resource Monitoring
+    data_disk_path: str = Field(
+        default="/mnt/disks/data",
+        description="Mount path of the persistent data disk to monitor for usage alerts",
+    )
+
     # Validation Settings
     internal_api_url: str = Field(
         default="http://localhost:8000",

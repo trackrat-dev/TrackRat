@@ -68,8 +68,12 @@ services:
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-prod}
       APNS_AUTH_KEY_PATH: ${APNS_AUTH_KEY_PATH:-}
+      # Resource monitoring - mount path must match the volume below (issue #1344)
+      TRACKRAT_DATA_DISK_PATH: ${DATA_DIR:-/mnt/disks/data}
     volumes:
       - ${DATA_DIR:-./}/compose/apns_auth_key.p8:/app/certs/apns_auth_key.p8:ro
+      # Read-only so the API can report data-disk usage without write access (issue #1344)
+      - ${DATA_DIR:-/mnt/disks/data}:${DATA_DIR:-/mnt/disks/data}:ro
     ports:
       - "8000:8000"
     restart: unless-stopped

@@ -103,6 +103,7 @@ class TestSchedulerService:
                 ("live_activity_updates", IntervalTrigger, {"minutes": 1}),
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),
                 ("congestion_cache_precompute", IntervalTrigger, {"minutes": 15}),
+                ("resource_usage_check", IntervalTrigger, {"minutes": 15}),
                 ("departure_cache_precompute", IntervalTrigger, {"seconds": 90}),
                 ("route_history_cache_precompute", IntervalTrigger, {"minutes": 5}),
                 ("train_validation", IntervalTrigger, {"hours": 1}),
@@ -1521,3 +1522,140 @@ class TestCollectJourneyLogging:
                     train_id="9999",
                     error="No result returned from collection",
                 )
+
+
+class TestCheckResourceUsage:
+    """Tests for SchedulerService.check_resource_usage (issue #1344).
+
+    Verifies the disk-usage and database-size structured log events that
+    infra_v2/terraform/metrics.tf + monitoring.tf turn into Cloud Monitoring
+    alerts, since the production data disk previously filled to 86% with
+    no automated warning.
+    """
+
+    @pytest.fixture
+    def test_settings(self):
+        return Settings(
+            njt_api_token="test_token",
+            discovery_interval_minutes=30,
+            journey_update_interval_minutes=15,
+            data_staleness_seconds=60,
+            environment="testing",
+            data_disk_path="/mnt/disks/data",
+        )
+
+    @pytest.fixture
+    def mock_apns_service(self):
+        service = AsyncMock()
+        service.send_update = AsyncMock()
+        return service
+
+    @pytest.fixture
+    def scheduler_service(self, test_settings, mock_apns_service):
+        with patch("trackrat.services.scheduler.NJTransitClient"):
+            return SchedulerService(
+                settings=test_settings, apns_service=mock_apns_service
+            )
+
+    @staticmethod
+    def _session_context(session):
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    @staticmethod
+    async def _run_task_func(db, task_name, minimum_interval_seconds, task_func):
+        await task_func()
+        return True
+
+    @pytest.mark.asyncio
+    async def test_logs_disk_usage_and_database_size(self, scheduler_service):
+        """A healthy check logs both the disk usage and DB size events."""
+        freshness_session = AsyncMock()
+        work_session = AsyncMock()
+        db_result = Mock()
+        db_result.scalar.return_value = 5368709120  # 5 GiB
+        work_session.execute = AsyncMock(return_value=db_result)
+
+        with (
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch("trackrat.services.scheduler.get_disk_usage") as mock_get_disk_usage,
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=self._run_task_func,
+            ) as mock_freshness,
+        ):
+            mock_get_session.side_effect = [
+                self._session_context(freshness_session),
+                self._session_context(work_session),
+            ]
+            mock_get_disk_usage.return_value = {
+                "usage_percent": 86.2,
+                "used_gb": 49.0,
+                "total_gb": 59.0,
+                "free_gb": 10.0,
+            }
+
+            await scheduler_service.check_resource_usage()
+
+            mock_get_disk_usage.assert_called_once_with("/mnt/disks/data")
+            mock_logger.info.assert_any_call(
+                "data_disk_usage_check",
+                usage_percent=86.2,
+                used_gb=49.0,
+                total_gb=59.0,
+            )
+            mock_logger.info.assert_any_call("database_size_check", size_gb=5.0)
+
+            call_kwargs = mock_freshness.call_args.kwargs
+            assert call_kwargs["task_name"] == "resource_usage_check"
+            assert call_kwargs["minimum_interval_seconds"] == 780  # (15-2)*60
+
+    @pytest.mark.asyncio
+    async def test_warns_when_disk_path_unavailable(self, scheduler_service):
+        """If the data disk mount isn't visible, warn instead of failing silently."""
+        freshness_session = AsyncMock()
+        work_session = AsyncMock()
+        db_result = Mock()
+        db_result.scalar.return_value = 0
+        work_session.execute = AsyncMock(return_value=db_result)
+
+        with (
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch("trackrat.services.scheduler.get_disk_usage", return_value={}),
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=self._run_task_func,
+            ),
+        ):
+            mock_get_session.side_effect = [
+                self._session_context(freshness_session),
+                self._session_context(work_session),
+            ]
+
+            await scheduler_service.check_resource_usage()
+
+            mock_logger.warning.assert_any_call(
+                "data_disk_usage_check_unavailable", path="/mnt/disks/data"
+            )
+
+    @pytest.mark.asyncio
+    async def test_skipped_when_fresh(self, scheduler_service):
+        """No disk/db work should happen when the freshness check says skip."""
+        with (
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch("trackrat.services.scheduler.get_disk_usage") as mock_get_disk_usage,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                return_value=False,
+            ),
+        ):
+            mock_db = AsyncMock()
+            mock_get_session.return_value.__aenter__.return_value = mock_db
+
+            await scheduler_service.check_resource_usage()
+
+            mock_get_disk_usage.assert_not_called()
