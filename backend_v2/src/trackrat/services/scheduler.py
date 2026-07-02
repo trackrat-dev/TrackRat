@@ -2418,11 +2418,12 @@ class SchedulerService:
                 journey_status = "NOT_DEPARTED"
         else:
             # Train has departed user's origin
-            journey_status = (
-                journey.snapshots[-1].train_status
-                if journey and journey.snapshots and journey.snapshots[-1].train_status
-                else "EN ROUTE"
-            )
+            if journey and journey.is_cancelled:
+                journey_status = "CANCELLED"
+            elif journey and journey.is_completed:
+                journey_status = "COMPLETED"
+            else:
+                journey_status = "EN ROUTE"
 
         # Create content state with all required fields
         content_state = {
@@ -2571,8 +2572,8 @@ class SchedulerService:
         """Delete old train journey data and auxiliary records.
 
         Deletes train_journeys older than retention_days (cascading to
-        journey_stops, journey_snapshots, journey_progress,
-        segment_transit_times, station_dwell_times via ON DELETE CASCADE).
+        journey_stops, journey_progress, segment_transit_times,
+        station_dwell_times via ON DELETE CASCADE).
         Also prunes discovery_runs, validation_results, and inactive
         service_alerts that haven't been refreshed by the collector.
         """
@@ -3083,7 +3084,6 @@ class SchedulerService:
                             .limit(1)
                             .options(
                                 selectinload(TrainJourney.stops),
-                                selectinload(TrainJourney.snapshots),
                                 selectinload(TrainJourney.segment_times),
                                 selectinload(TrainJourney.dwell_times),
                                 selectinload(TrainJourney.progress),

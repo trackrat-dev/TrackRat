@@ -38,7 +38,6 @@ TrackRat supports multiple transit systems through a unified data model while ac
 ├─────────────────────────────────────────────────────────────────────────┤
 │  TrainJourney (one per train per day)                                   │
 │  JourneyStop (one per station per journey)                              │
-│  JourneySnapshot (status snapshots for history)                         │
 └────────────────────────────────────────────────────────────────────────┘
                           │
                           v

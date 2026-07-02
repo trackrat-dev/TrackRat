@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
 from trackrat.services.departure import DepartureService
-from trackrat.models.database import TrainJourney, JourneyStop, JourneySnapshot
+from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et
 from tests.factories.amtrak import create_amtrak_train_data, create_amtrak_station_data
 
@@ -119,13 +119,6 @@ class TestAmtrakCollectionPipeline:
             assert journey.line_name == "Amtrak"
             # Use stops_count instead of lazy loading
             assert journey.stops_count == 3  # NYP, NWK, TRE
-            # Query snapshots separately
-            snapshots_stmt = select(JourneySnapshot).where(
-                JourneySnapshot.journey_id == journey.id
-            )
-            snapshots_result = await db_session.execute(snapshots_stmt)
-            snapshots = snapshots_result.scalars().all()
-            assert len(snapshots) >= 1
 
         # Step 5: Query via departure service
         departure_service = DepartureService()
@@ -598,17 +591,3 @@ class TestAmtrakCollectionPipeline:
         assert tr_stop.station_name == "Trenton"
         assert tr_stop.scheduled_arrival is not None
         assert tr_stop.raw_amtrak_status == "Enroute"
-
-        # Check snapshots by querying separately
-        snapshots_stmt = select(JourneySnapshot).where(
-            JourneySnapshot.journey_id == db_journey.id
-        )
-        snapshots_result = await db_session.execute(snapshots_stmt)
-        snapshots = snapshots_result.scalars().all()
-        assert len(snapshots) == 1
-        snapshot = snapshots[0]
-        assert snapshot.train_status == "EN ROUTE"
-        assert snapshot.completed_stops == 1  # NYP departed
-        assert snapshot.total_stops == 3
-        # raw_stop_list_data is now empty to reduce database size - full data is in journey_stops
-        assert snapshot.raw_stop_list_data == {}

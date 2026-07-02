@@ -72,39 +72,6 @@ class TestIsNjtStopCancelled:
         assert is_njt_stop_cancelled(status) is expected
 
 
-class TestDetermineTrainStatus:
-    """determine_train_status() is a pure function — no DB needed."""
-
-    @staticmethod
-    def _stop(status: str | None) -> NJTransitStopData:
-        # The Pydantic validator uppercases STOP_STATUS on construction, so
-        # "canceled" becomes "CANCELED" — which the previous literal check
-        # still missed. The helper catches both spellings post-validation.
-        return NJTransitStopData(STOP_STATUS=status)
-
-    def test_all_cancelled_returns_cancelled(self):
-        stops = [self._stop("CANCELLED")] * 3
-        collector = JourneyCollector(AsyncMock(spec=NJTransitClient))
-        assert collector.determine_train_status(stops) == "CANCELLED"
-
-    def test_mixed_spelling_returns_cancelled(self):
-        # 3830-shaped: one CANCELED + the rest CANCELLED
-        stops = [
-            self._stop("CANCELED"),
-            self._stop("CANCELLED"),
-            self._stop("CANCELLED"),
-        ]
-        collector = JourneyCollector(AsyncMock(spec=NJTransitClient))
-        assert collector.determine_train_status(stops) == "CANCELLED"
-
-    def test_one_cancelled_stop_is_not_all_cancelled(self):
-        stops = [self._stop("ON TIME"), self._stop("CANCELLED"), self._stop("ON TIME")]
-        collector = JourneyCollector(AsyncMock(spec=NJTransitClient))
-        # Only "CANCELLED" when every stop is cancelled. Otherwise this returns
-        # something else ("NOT_DEPARTED" / "BOARDING" / etc.) based on DEPARTED.
-        assert collector.determine_train_status(stops) != "CANCELLED"
-
-
 # ---------------------------------------------------------------------------
 # SQLite in-memory fixtures — same pattern as test_terminal_stop_completion.py
 # ---------------------------------------------------------------------------

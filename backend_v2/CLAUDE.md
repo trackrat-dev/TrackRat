@@ -146,13 +146,6 @@ journey_progress (
     prediction_confidence, prediction_based_on
 )
 
--- Historical snapshots for ML training
-journey_snapshots (
-    journey_id, captured_at, raw_stop_list_data,
-    train_status, delay_minutes, completed_stops, total_stops,
-    track_assignments
-)
-
 -- API response caching
 cached_api_responses (
     id, endpoint, params_hash, params, response, created_at, expires_at
@@ -781,6 +774,7 @@ The backend is organized into service classes for better maintainability:
 - ✅ Route summary uses live estimate for boarding-stop departure on-time calculation; falls back to arrival estimate when departure is absent (issue #1282, `services/summary.py`)
 - ✅ Congestion map level now reflects cancellations alongside delays (issue #1246, `services/congestion.py`, `services/congestion_types.py`, `services/segment_normalizer.py`)
 - ✅ Metra UP-NW line code length increased on departures endpoint to prevent truncation (issue #1241, `models/api.py`)
+- ✅ Removed the write-only `journey_snapshots` table — every write set `raw_stop_list_data={}` and the only reader (Live Activity's post-departure status fallback in `services/scheduler.py`) now derives `CANCELLED`/`COMPLETED`/`EN ROUTE` directly from `TrainJourney.is_cancelled`/`is_completed` instead (issue #1345, `models/database.py`, all journey collectors, migration `b9f37157aada`)
 
 ### Recent Improvements (May 2026)
 - ✅ Train share metadata now includes route times for richer link previews (`api/share.py`)

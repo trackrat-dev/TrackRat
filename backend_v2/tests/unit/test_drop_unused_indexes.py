@@ -13,7 +13,6 @@ from sqlalchemy import Index, UniqueConstraint
 from trackrat.models.database import (
     DiscoveryRun,
     GTFSFeedInfo,
-    JourneySnapshot,
     JourneyStop,
     RouteAlertSubscription,
     SchedulerTaskRun,
@@ -60,14 +59,6 @@ def _get_index_names(model_class):
         if isinstance(arg, Index):
             names.add(arg.name)
     return names
-
-
-def test_dropped_indexes_not_in_journey_snapshots_model():
-    indexes = _get_index_names(JourneySnapshot)
-    assert "idx_captured_at" not in indexes, (
-        f"idx_captured_at should be removed from JourneySnapshot, "
-        f"found indexes: {indexes}"
-    )
 
 
 def test_dropped_indexes_not_in_station_dwell_times_model():
@@ -149,13 +140,6 @@ def test_track_occupancy_lookup_explicitly_retained():
     )
 
 
-def test_retained_indexes_still_present_on_journey_snapshots():
-    indexes = _get_index_names(JourneySnapshot)
-    assert (
-        "idx_journey_time" in indexes
-    ), f"idx_journey_time should be retained on JourneySnapshot"
-
-
 def test_retained_indexes_still_present_on_service_alerts():
     indexes = _get_index_names(ServiceAlert)
     assert (
@@ -192,7 +176,6 @@ def test_no_dropped_index_appears_in_any_model():
     """Cross-check: none of the 11 dropped indexes appear in any model."""
     all_models = [
         JourneyStop,
-        JourneySnapshot,
         StationDwellTime,
         DiscoveryRun,
         ValidationResult,

@@ -430,7 +430,6 @@ class TestRetentionCleanupSQLStatements:
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""
         from trackrat.models.database import (
             JourneyStop,
-            JourneySnapshot,
             JourneyProgress,
             SegmentTransitTime,
             StationDwellTime,
@@ -438,7 +437,6 @@ class TestRetentionCleanupSQLStatements:
 
         child_models = [
             JourneyStop,
-            JourneySnapshot,
             JourneyProgress,
             SegmentTransitTime,
             StationDwellTime,

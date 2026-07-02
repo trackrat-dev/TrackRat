@@ -23,7 +23,7 @@ from trackrat.collectors.njt.client import (
 from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
-from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
@@ -73,7 +73,6 @@ def _journey_eager_options() -> list[Any]:
     """
     return [
         selectinload(TrainJourney.stops),
-        selectinload(TrainJourney.snapshots),
         selectinload(TrainJourney.segment_times),
         selectinload(TrainJourney.dwell_times),
         selectinload(TrainJourney.progress),
@@ -1085,9 +1084,6 @@ class JourneyCollector(BaseJourneyCollector):
         if not skip_enhancement:
             await self.enhance_with_departure_board_data(journey, train_data)
 
-        # Create snapshot for historical analysis
-        await self.create_journey_snapshot(session, journey, train_data)
-
         # Update journey metadata
         await self.update_journey_metadata(session, journey, train_data)
 
@@ -1131,80 +1127,6 @@ class JourneyCollector(BaseJourneyCollector):
             destination=train_data.DESTINATION,
             update_count=journey.update_count,
         )
-
-    async def create_journey_snapshot(
-        self,
-        session: AsyncSession,
-        journey: TrainJourney,
-        train_data: NJTransitTrainData,
-    ) -> JourneySnapshot:
-        """Create a historical snapshot of the journey data.
-
-        NOTE: Only keeps one snapshot per journey to prevent database growth.
-        Replaces any existing snapshots for this journey.
-
-        Args:
-            session: Database session
-            journey: Journey record
-            train_data: Raw API response data
-
-        Returns:
-            Created snapshot
-        """
-        # Delete existing snapshots for this journey to maintain single snapshot per journey.
-        # Use synchronize_session=False to avoid desync between the Core SQL delete
-        # and the ORM identity map's snapshots collection, which can cause
-        # MissingGreenlet errors during subsequent flush cascade/orphan processing.
-        await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id),
-            execution_options={"synchronize_session": False},
-        )
-        # Clear the in-memory collection to match DB state.
-        # This prevents flush from seeing stale deleted objects in the collection.
-        journey.snapshots.clear()
-
-        # Extract metrics
-        completed_stops = sum(1 for stop in train_data.STOPS if stop.DEPARTED == "YES")
-
-        # Extract track assignments
-        track_assignments = {
-            stop.STATION_2CHAR: stop.TRACK for stop in train_data.STOPS if stop.TRACK
-        }
-
-        # Calculate overall delay (from last departed stop)
-        delay_minutes = 0
-        for stop in reversed(train_data.STOPS):
-            if stop.DEPARTED == "YES" and stop.STOP_STATUS:
-                # Parse delay from status if available
-                if "LATE" in (stop.STOP_STATUS or ""):
-                    # Extract delay if in format "X MINUTES LATE" or "X MINS LATE"
-                    try:
-                        parts = stop.STOP_STATUS.split()
-                        if "MINUTES" in parts:
-                            idx = parts.index("MINUTES")
-                            if idx > 0:
-                                delay_minutes = int(parts[idx - 1])
-                        elif "MINS" in parts:
-                            idx = parts.index("MINS")
-                            if idx > 0:
-                                delay_minutes = int(parts[idx - 1])
-                    except (ValueError, IndexError):
-                        pass
-                break
-
-        snapshot = JourneySnapshot(
-            journey_id=journey.id,
-            captured_at=now_et(),
-            raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
-            train_status=self.determine_train_status(train_data.STOPS),
-            delay_minutes=delay_minutes,
-            completed_stops=completed_stops,
-            total_stops=len(train_data.STOPS),
-            track_assignments=track_assignments,
-        )
-
-        session.add(snapshot)
-        return snapshot
 
     async def update_journey_metadata(
         self,
@@ -2467,36 +2389,6 @@ class JourneyCollector(BaseJourneyCollector):
                 origin_station=journey.origin_station_code,
                 error=str(e),
             )
-
-    def determine_train_status(self, stops_data: list[NJTransitStopData]) -> str:
-        """Determine overall train status from stops.
-
-        Args:
-            stops_data: List of stop data
-
-        Returns:
-            Overall status string
-        """
-        if not stops_data:
-            return "UNKNOWN"
-
-        # Check if all stops are cancelled
-        if all(is_njt_stop_cancelled(stop.STOP_STATUS) for stop in stops_data):
-            return "CANCELLED"
-
-        # Find current position
-        for i, stop in enumerate(stops_data):
-            if stop.DEPARTED != "YES":
-                # This is the next stop
-                if i == 0:
-                    return "NOT_DEPARTED"
-                elif stop.TRACK:
-                    return "BOARDING"
-                else:
-                    return "IN_TRANSIT"
-
-        # All stops departed
-        return "COMPLETED"
 
     async def collect_single_journey(
         self, train_id: str, journey_date: datetime | None = None

@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
-from trackrat.models.database import TrainJourney, JourneyStop, JourneySnapshot
+from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et
 from tests.factories.amtrak import create_amtrak_train_data, create_amtrak_station_data
 
@@ -112,20 +112,6 @@ class TestAmtrakDatabaseIntegration:
                 assert ny_stop.track == "15"
                 assert ny_stop.has_departed_station is True
 
-                # Verify snapshot was created
-                from trackrat.models.database import JourneySnapshot
-
-                snapshots_stmt = select(JourneySnapshot).where(
-                    JourneySnapshot.journey_id == db_journey.id
-                )
-                snapshots_result = await db_session.execute(snapshots_stmt)
-                snapshots = snapshots_result.scalars().all()
-                assert len(snapshots) == 1  # All journeys get snapshots
-
-                snapshot = snapshots[0]
-                assert snapshot.train_status == "EN ROUTE"
-                assert snapshot.total_stops == 3
-
     async def test_journey_update_existing(self, db_session: AsyncSession):
         """Test updating an existing journey."""
         collector = AmtrakJourneyCollector()
@@ -202,15 +188,6 @@ class TestAmtrakDatabaseIntegration:
                 assert ny_stop.raw_amtrak_status == "Departed"
                 assert ny_stop.has_departed_station is True
                 assert ny_stop.actual_departure is not None
-
-                # Verify new snapshot was added by querying database
-                snapshots_stmt = select(JourneySnapshot).where(
-                    JourneySnapshot.journey_id == updated_result.id
-                )
-                snapshots_result = await db_session.execute(snapshots_stmt)
-                snapshots = snapshots_result.scalars().all()
-                # Now only keeps 1 snapshot per journey to prevent database growth
-                assert len(snapshots) == 1
 
     async def test_journey_query_operations(self, db_session: AsyncSession):
         """Test database query operations for Amtrak journeys."""
@@ -339,51 +316,6 @@ class TestAmtrakDatabaseIntegration:
 
                 station_codes = {stop.station_code for stop in stops}
                 assert station_codes == {"BOS", "NY", "PH", "NP", "WS"}
-
-    async def test_journey_snapshots_creation(self, db_session: AsyncSession):
-        """Test that journey snapshots are properly created."""
-        collector = AmtrakJourneyCollector()
-
-        train_data = create_amtrak_train_data(
-            train_id="2150-4",
-            train_num="2150",
-            train_state="Active",
-            stations=[
-                create_amtrak_station_data(
-                    code="NYP", sch_dep="2025-07-05T14:30:00-05:00", status="Departed"
-                ),
-                create_amtrak_station_data(
-                    code="NWK", sch_arr="2025-07-05T14:45:00-05:00", status="Enroute"
-                ),
-            ],
-        )
-
-        with patch.object(collector, "_get_train_data") as mock_get_train_data:
-            mock_get_train_data.return_value = train_data
-
-            with patch(
-                "trackrat.collectors.amtrak.journey.get_session"
-            ) as mock_get_session:
-                mock_get_session.return_value.__aenter__.return_value = db_session
-
-                result = await collector.collect_journey("2150-4")
-
-                assert result is not None
-                # Query snapshots separately to avoid relationship access
-                snapshots_stmt = select(JourneySnapshot).where(
-                    JourneySnapshot.journey_id == result.id
-                )
-                snapshots_result = await db_session.execute(snapshots_stmt)
-                snapshots = snapshots_result.scalars().all()
-                assert len(snapshots) == 1
-
-                snapshot = snapshots[0]
-                assert isinstance(snapshot, JourneySnapshot)
-                assert snapshot.train_status == "EN ROUTE"
-                assert snapshot.completed_stops == 1  # NYP departed
-                assert snapshot.total_stops == 2
-                # raw_stop_list_data is now empty to reduce database size - full data is in journey_stops
-                assert snapshot.raw_stop_list_data == {}
 
     async def test_concurrent_journey_updates(self, db_session: AsyncSession):
         """Test handling of concurrent journey updates."""
