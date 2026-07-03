@@ -8,6 +8,7 @@ for displaying train schedules on future days.
 import csv
 import io
 import zipfile
+from collections.abc import Iterator
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
@@ -227,6 +228,25 @@ def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
     if len(parts) == 2 and "-" in parts[1] and parts[0].isdigit():
         return parts[0]
     return None
+
+
+def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
+    """Iterate a GTFS CSV file as dicts with whitespace-stripped keys/values.
+
+    Some feeds (e.g. Metra's static schedule) use ", " rather than "," as
+    the field separator. csv.DictReader splits only on the literal comma,
+    so every header/value after the first column keeps a leading space
+    (e.g. fieldname " trip_id" instead of "trip_id"), which makes every
+    row.get("trip_id") lookup silently miss. Stripping both keys and
+    values here is a no-op for well-formed feeds and fixes the malformed
+    ones.
+    """
+    reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
+    for row in reader:
+        yield {
+            (k.strip() if k else k): (v.strip() if isinstance(v, str) else v)
+            for k, v in row.items()
+        }
 
 
 class GTFSService:
@@ -483,8 +503,7 @@ class GTFSService:
         routes: dict[str, int] = {}
 
         with zf.open("routes.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 route_id = row.get("route_id", "")
                 if route_id in routes:
                     continue
@@ -510,8 +529,7 @@ class GTFSService:
         services: set[str] = set()
 
         with zf.open("calendar.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 service_id = row.get("service_id", "")
                 if not service_id or service_id in services:
                     continue
@@ -543,8 +561,7 @@ class GTFSService:
         seen_keys: set[tuple[str, str]] = set()
 
         with zf.open("calendar_dates.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 service_id = row.get("service_id", "")
                 date_str = row.get("date", "")
                 exception_type = row.get("exception_type", "")
@@ -574,8 +591,7 @@ class GTFSService:
         stops: dict[str, str] = {}
 
         with zf.open("stops.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 stop_id = row.get("stop_id", "")
                 stop_name = row.get("stop_name", "")
                 if stop_id and stop_name:
@@ -597,8 +613,7 @@ class GTFSService:
         batch_size = 500
 
         with zf.open("trips.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 # Sanitize trip_id: replace spaces with underscores for URL safety.
                 # PATCO GTFS uses trip_ids like "Sunday Westbound_T25" which break
                 # HTTP requests when used as path parameters.
@@ -666,8 +681,7 @@ class GTFSService:
         batch_size = 1000
 
         with zf.open("stop_times.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 # Must match the sanitization applied in _parse_trips
                 trip_id = row.get("trip_id", "").replace(" ", "_")
                 if trip_id not in trips:
