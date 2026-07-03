@@ -8,6 +8,8 @@ close enough for a passenger to walk between. They are discovered by:
 4. Intra-subway complexes where different subway lines meet (e.g., Union Sq L + 4/5/6)
 5. Intra-system junctions where different routes within the same system share a station
    (e.g., PATH Journal Sq where NWK-WTC meets JSQ-33)
+6. Cross-modal mega-hubs where a commuter-rail / PATH station shares a building
+   with a subway complex (e.g., NJT Penn <-> 34 St-Penn subway) — see CROSS_MODAL_HUBS
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from dataclasses import dataclass
 
 from trackrat.config.route_topology import ALL_ROUTES
 from trackrat.config.stations.common import (
+    CROSS_MODAL_HUBS,
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
@@ -266,6 +269,21 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
                     lines_a=station_line_codes,
                     lines_b=station_line_codes,
                 )
+
+    # --- Source 6: Cross-modal mega-hub transfers ---
+    # Commuter-rail / PATH stations that share a building with a subway complex
+    # (Penn, Grand Central, WTC). Modeled as transfers (short in-station walk)
+    # so trip search connects e.g. NJT Penn -> subway rather than treating the
+    # subway platform as the same station. Emitted to every subway platform code
+    # in the complex; onward line changes are handled by the subway equivalence
+    # and intra-subway transfers (Source 4).
+    for rail_code, subway_codes in CROSS_MODAL_HUBS:
+        rail_systems = station_systems.get(rail_code, set())
+        for subway_code in subway_codes:
+            if "SUBWAY" not in station_systems.get(subway_code, set()):
+                continue
+            for rail_sys in rail_systems:
+                _add(rail_code, rail_sys, subway_code, "SUBWAY", 0.0, True)
 
     return tuple(sorted(transfers, key=lambda t: (t.system_a, t.system_b, t.station_a)))
 

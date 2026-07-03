@@ -739,8 +739,11 @@ trip_bidi() {
 # 2+ transfers (e.g., NJT→Union Sq needs NJT→1/2/3→4/5/6) are excluded.
 # NJT↔LIRR (via NY Penn)
 trip_bidi "NJT→LIRR Trenton↔Jamaica"        "TR"   "JAM"  "transfer"
-# NJT↔Subway (via Penn Station subway complex: 1/2/3/A/C/E lines)
-trip_bidi "NJT→SUBWAY Trenton↔34StPenn"     "TR"   "S128" "transfer"
+# NJT↔Subway: Trenton -> NJT to Penn Station -> transfer to 1/2/3 -> Times Sq.
+# (Destination is on a line through the Penn subway complex, so it's a genuine
+# single-transfer trip. Trenton->34St-Penn itself is not tested as a transfer:
+# S128 sits inside the NJT arrival complex, so there is no onward train leg.)
+trip_bidi "NJT→SUBWAY Trenton↔TimesSq"      "TR"   "S127" "transfer"
 # Amtrak↔LIRR (via NY Penn)
 trip_bidi "Amtrak→LIRR WAS↔Jamaica"         "WS"   "JAM"  "transfer"
 # LIRR↔MNR (Penn→GCT via subway/walk)

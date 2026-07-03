@@ -84,6 +84,24 @@ def get_station_name(code: str) -> str:
     return STATION_NAMES.get(code, code)
 
 
+# Multimodal mega-hubs: a commuter-rail / PATH station that shares a building
+# with a subway complex (Penn, Grand Central, World Trade Center). These are
+# modeled as TRANSFERS, not same-station equivalences — a rider arriving on
+# NJT/MNR/PATH who continues on the subway is making a transfer, not a
+# same-station move. Keeping the rail/PATH code out of the equivalence groups
+# means departure boards, alerts, and summaries for the rail station don't pool
+# in subway trains, and trip search returns a proper multi-leg itinerary
+# (e.g. Trenton -> Times Sq). transfer_points.py consumes this to emit the
+# rail<->subway transfer edge; the subway platforms on each side stay mutually
+# equivalent (added to STATION_EQUIVALENCE_GROUPS below) because they connect
+# inside fare control.
+# Each entry: (rail/PATH code, subway platform codes at the same complex).
+CROSS_MODAL_HUBS: list[tuple[str, frozenset[str]]] = [
+    ("NY", frozenset({"S128", "SA28"})),  # Penn Station / 34 St-Penn Station
+    ("GCT", frozenset({"S631", "S723", "S901"})),  # Grand Central-42 St
+    ("PWC", frozenset({"S138", "S228", "SA36", "SE01", "SR25"})),  # WTC / Oculus
+]
+
 # Station code equivalence groups for physically identical stations.
 # Each set contains all codes for the same physical station across systems.
 # Cross-system: Amtrak / Metro-North shared stations.
@@ -105,13 +123,13 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     {"SEL", "SSM"},  # Selma-Smithfield / Selma (Amtrak aliases)
     {"CHI", "CUS"},  # Chicago Union Station (Amtrak CHI / Metra CUS)
     *SUBWAY_STATION_COMPLEXES,
-    # Cross-system equivalences linking commuter rail / PATH hubs to their
-    # adjacent subway complexes. The matching subway-only groups are intentionally
-    # absent from SUBWAY_STATION_COMPLEXES so each station code belongs to exactly
-    # one equivalence group (see test_equivalence_groups_have_no_overlap).
-    {"NY", "S128", "SA28"},  # Penn Station / 34 St-Penn Station
-    {"GCT", "S631", "S723", "S901"},  # Grand Central Terminal / Grand Central-42 St
-    {"PWC", "S138", "S228", "SA36", "SE01", "SR25"},  # World Trade Center / Oculus
+    # Subway platforms at the multimodal mega-hubs (Penn, GCT, WTC) stay
+    # equivalent to each other — they connect inside fare control. The adjacent
+    # commuter-rail / PATH code is a transfer, not an equivalence (see
+    # CROSS_MODAL_HUBS above). These subway-only groups are intentionally absent
+    # from SUBWAY_STATION_COMPLEXES so each code belongs to exactly one
+    # equivalence group (see test_equivalence_groups_have_no_overlap).
+    *[set(subway_codes) for _, subway_codes in CROSS_MODAL_HUBS],
     # WMATA transfer stations (dual-platform codes for the same physical station)
     *[{a, b} for a, b in WMATA_TRANSFER_STATIONS],
 ]

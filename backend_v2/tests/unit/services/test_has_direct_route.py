@@ -70,15 +70,17 @@ class TestHasDirectRoute:
         Searching PNK to TR on NJT should find NJT NEC via the NP equivalence."""
         assert _has_direct_route("PNK", "TR", ["NJT"]) is True
 
-    def test_penn_subway_equivalence_finds_njt_route(self):
-        """34 St-Penn subway platforms should resolve to NY for NJT routes."""
-        assert _has_direct_route("TR", "S128", ["NJT"]) is True
-        assert _has_direct_route("TR", "SA28", ["NJT"]) is True
+    def test_penn_subway_is_not_njt_equivalent(self):
+        """34 St-Penn subway platforms are a transfer from NY, not an
+        equivalence (#1355) — no direct NJT route reaches them."""
+        assert _has_direct_route("TR", "S128", ["NJT"]) is False
+        assert _has_direct_route("TR", "SA28", ["NJT"]) is False
 
-    def test_grand_central_subway_equivalence_finds_mnr_route(self):
-        """Grand Central subway platforms should resolve to GCT for MNR routes."""
-        assert _has_direct_route("MSTM", "S631", ["MNR"]) is True
-        assert _has_direct_route("MSTM", "S723", ["MNR"]) is True
+    def test_grand_central_subway_is_not_mnr_equivalent(self):
+        """Grand Central subway platforms are a transfer from GCT, not an
+        equivalence (#1355) — no direct MNR route reaches them."""
+        assert _has_direct_route("MSTM", "S631", ["MNR"]) is False
+        assert _has_direct_route("MSTM", "S723", ["MNR"]) is False
 
     def test_union_square_is_not_grand_central_equivalent(self):
         """S635 is 14 St-Union Sq, not Grand Central."""
