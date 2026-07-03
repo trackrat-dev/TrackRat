@@ -2,6 +2,7 @@
 Unit tests for GTFS static schedule service.
 """
 
+import io
 from datetime import date, datetime, time, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
@@ -11,6 +12,7 @@ from trackrat.services.gtfs import (
     GTFS_DOWNLOAD_INTERVAL_HOURS,
     NJT_LINE_CODE_MAPPING,
     _extract_lirr_train_number,
+    _gtfs_csv_rows,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
     _strip_source_prefix,
@@ -1407,3 +1409,78 @@ class TestGetScheduledDeparturesTimeFrom:
         assert (
             GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:00:00"
         )
+
+
+class TestGtfsCsvRows:
+    """Tests for _gtfs_csv_rows().
+
+    Regression coverage for issue #1356: Metra's static GTFS feed uses ", "
+    (comma + space) as its field separator instead of ",". csv.DictReader
+    splits only on the literal comma, so every header/value after the first
+    column keeps a leading space (e.g. fieldname " trip_id" instead of
+    "trip_id"), which makes every row.get("trip_id") lookup silently miss —
+    _parse_trips/_parse_stop_times/_parse_calendar all use that lookup
+    pattern, so this went undetected as 0 trips/stop_times parsed with no
+    error or warning.
+    """
+
+    def _rows(self, csv_text: str) -> list[dict[str, str]]:
+        return list(_gtfs_csv_rows(io.BytesIO(csv_text.encode("utf-8"))))
+
+    def test_standard_comma_csv_unaffected(self):
+        """A well-formed feed (no stray whitespace) parses exactly as before."""
+        csv_text = (
+            "route_id,service_id,trip_id,trip_headsign,direction_id\n"
+            "BNSF,A1,BNSF_BN1200_V4_A,Chicago Union Station,1\n"
+        )
+        rows = self._rows(csv_text)
+        assert rows == [
+            {
+                "route_id": "BNSF",
+                "service_id": "A1",
+                "trip_id": "BNSF_BN1200_V4_A",
+                "trip_headsign": "Chicago Union Station",
+                "direction_id": "1",
+            }
+        ]
+
+    def test_comma_space_delimiter_strips_keys_and_values(self):
+        """Reproduces Metra's real feed format byte-for-byte.
+
+        Before the fix, row.get("trip_id") returned "" for every row here
+        (the real dict key was " trip_id"), which is exactly why Metra's
+        static import silently produced trip_count=0 in production.
+        """
+        csv_text = (
+            "route_id, service_id, trip_id, trip_headsign, direction_id\n"
+            "BNSF, A1, BNSF_BN1200_V4_A, Chicago Union Station,  1\n"
+        )
+        rows = self._rows(csv_text)
+        assert len(rows) == 1
+        row = rows[0]
+
+        # Keys must be stripped, or these lookups (as used throughout
+        # gtfs.py's _parse_* methods) silently return the default.
+        assert row.get("trip_id") == "BNSF_BN1200_V4_A"
+        assert row.get("service_id") == "A1"
+        assert row.get("direction_id") == "1"
+
+        # No leaky " trip_id"-style keys should remain.
+        assert set(row.keys()) == {
+            "route_id",
+            "service_id",
+            "trip_id",
+            "trip_headsign",
+            "direction_id",
+        }
+
+    def test_preserves_internal_spaces_in_values(self):
+        """Only leading/trailing whitespace is stripped, not internal spaces."""
+        csv_text = "route_id, trip_headsign\nBNSF, Chicago Union Station\n"
+        rows = self._rows(csv_text)
+        assert rows[0]["trip_headsign"] == "Chicago Union Station"
+
+    def test_empty_file_yields_no_rows(self):
+        """A header-only file yields an empty iterator, not an error."""
+        csv_text = "route_id, service_id, trip_id\n"
+        assert self._rows(csv_text) == []
