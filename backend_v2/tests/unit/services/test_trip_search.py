@@ -291,13 +291,23 @@ class TestFindRelevantTransferPoints:
 class TestStationLinesExpanded:
     """Test line lookup across physical station equivalences."""
 
-    def test_penn_station_rail_code_expands_to_subway_lines(self):
-        lines = _get_station_lines_expanded("NY", "SUBWAY")
+    def test_penn_station_subway_platforms_expand_to_all_lines(self):
+        # S128 (1/2/3) and SA28 (A/C/E) are equivalent subway platforms at Penn
+        # Station; the rail code NY is a transfer, not an equivalence (#1355).
+        lines = _get_station_lines_expanded("S128", "SUBWAY")
         assert {"1", "2", "3", "A", "C", "E"} <= set(lines)
 
-    def test_grand_central_rail_code_expands_to_subway_lines(self):
-        lines = _get_station_lines_expanded("GCT", "SUBWAY")
+    def test_grand_central_subway_platforms_expand_to_all_lines(self):
+        # S631 (4/5/6), S723 (7), and S901 (GS shuttle) are equivalent subway
+        # platforms at Grand Central; GCT is a transfer, not an equivalence (#1355).
+        lines = _get_station_lines_expanded("S631", "SUBWAY")
         assert {"4", "5", "6", "7", "GS"} <= set(lines)
+
+    def test_penn_station_rail_code_no_longer_expands_to_subway_lines(self):
+        # NY (rail) and the subway platforms are a transfer, not an
+        # equivalence, so the rail code alone yields no subway lines.
+        lines = _get_station_lines_expanded("NY", "SUBWAY")
+        assert lines == frozenset()
 
 
 class TestOrientTransfer:
