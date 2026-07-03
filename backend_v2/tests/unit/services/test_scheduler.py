@@ -1569,14 +1569,23 @@ class TestCheckResourceUsage:
         await task_func()
         return True
 
+    @staticmethod
+    def _empty_vacuum_result():
+        """A pg_stat_user_tables query result with no monitored tables found."""
+        result = Mock()
+        result.mappings.return_value = []
+        return result
+
     @pytest.mark.asyncio
     async def test_logs_disk_usage_and_database_size(self, scheduler_service):
         """A healthy check logs both the disk usage and DB size events."""
         freshness_session = AsyncMock()
         work_session = AsyncMock()
-        db_result = Mock()
-        db_result.scalar.return_value = 5368709120  # 5 GiB
-        work_session.execute = AsyncMock(return_value=db_result)
+        db_size_result = Mock()
+        db_size_result.scalar.return_value = 5368709120  # 5 GiB
+        work_session.execute = AsyncMock(
+            side_effect=[db_size_result, self._empty_vacuum_result()]
+        )
 
         with (
             patch("trackrat.services.scheduler.get_session") as mock_get_session,
@@ -1618,9 +1627,11 @@ class TestCheckResourceUsage:
         """If the data disk mount isn't visible, warn instead of failing silently."""
         freshness_session = AsyncMock()
         work_session = AsyncMock()
-        db_result = Mock()
-        db_result.scalar.return_value = 0
-        work_session.execute = AsyncMock(return_value=db_result)
+        db_size_result = Mock()
+        db_size_result.scalar.return_value = 0
+        work_session.execute = AsyncMock(
+            side_effect=[db_size_result, self._empty_vacuum_result()]
+        )
 
         with (
             patch("trackrat.services.scheduler.get_session") as mock_get_session,
@@ -1659,3 +1670,87 @@ class TestCheckResourceUsage:
             await scheduler_service.check_resource_usage()
 
             mock_get_disk_usage.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_logs_vacuum_health_for_monitored_tables(self, scheduler_service):
+        """Logs per-table dead-tuple ratio and vacuum/analyze timestamps for
+        the high-churn tables (issue #1359: journey_stops went its entire
+        lifetime with zero completed vacuum/analyze passes, causing a stale
+        visibility map that surfaced as production query timeouts).
+        """
+        freshness_session = AsyncMock()
+        work_session = AsyncMock()
+        db_size_result = Mock()
+        db_size_result.scalar.return_value = 5368709120
+
+        vacuum_result = Mock()
+        vacuum_result.mappings.return_value = [
+            {
+                "table_name": "journey_stops",
+                "n_live_tup": 71725,
+                "n_dead_tup": 410613,
+                "last_vacuum": None,
+                "last_autovacuum": None,
+                "last_analyze": None,
+                "last_autoanalyze": None,
+            },
+            {
+                "table_name": "train_journeys",
+                "n_live_tup": 1614076,
+                "n_dead_tup": 17666,
+                "last_vacuum": None,
+                "last_autovacuum": datetime(2026, 7, 3, 16, 34, 13, tzinfo=UTC),
+                "last_analyze": None,
+                "last_autoanalyze": datetime(2026, 7, 3, 16, 28, 12, tzinfo=UTC),
+            },
+        ]
+        work_session.execute = AsyncMock(side_effect=[db_size_result, vacuum_result])
+
+        with (
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.get_disk_usage",
+                return_value={"usage_percent": 10.0, "used_gb": 1.0, "total_gb": 10.0},
+            ),
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=self._run_task_func,
+            ),
+        ):
+            mock_get_session.side_effect = [
+                self._session_context(freshness_session),
+                self._session_context(work_session),
+            ]
+
+            await scheduler_service.check_resource_usage()
+
+            # Bloated table: ~85% dead tuples, never vacuumed/analyzed.
+            mock_logger.info.assert_any_call(
+                "table_vacuum_health_check",
+                table_name="journey_stops",
+                dead_tuple_ratio_pct=85.13,
+                live_tup=71725,
+                dead_tup=410613,
+                last_vacuum=None,
+                last_autovacuum=None,
+                last_analyze=None,
+                last_autoanalyze=None,
+            )
+            # Healthy table: low dead ratio, autovacuum/autoanalyze current.
+            mock_logger.info.assert_any_call(
+                "table_vacuum_health_check",
+                table_name="train_journeys",
+                dead_tuple_ratio_pct=1.08,
+                live_tup=1614076,
+                dead_tup=17666,
+                last_vacuum=None,
+                last_autovacuum="2026-07-03T16:34:13+00:00",
+                last_analyze=None,
+                last_autoanalyze="2026-07-03T16:28:12+00:00",
+            )
+
+            call_kwargs = work_session.execute.call_args_list[1]
+            assert call_kwargs.args[1] == {
+                "table_names": list(SchedulerService.VACUUM_MONITORED_TABLES)
+            }

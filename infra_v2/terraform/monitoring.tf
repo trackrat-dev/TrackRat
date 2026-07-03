@@ -211,3 +211,57 @@ resource "google_monitoring_alert_policy" "data_disk_usage_critical" {
     time_sleep.wait_disk_usage_metric,
   ]
 }
+
+# Alert policy - per-table vacuum/analyze health on the high-churn tables
+# (journey_stops, train_journeys, segment_transit_times). Backed by
+# google_logging_metric.table_dead_tuple_ratio_pct (see metrics.tf), populated
+# by SchedulerService.check_resource_usage every 15 minutes. Added after
+# journey_stops went its entire lifetime with zero completed vacuum/analyze
+# passes, silently bloating until a query started timing out in production
+# (issue #1359) — this catches the same drift automatically going forward.
+resource "time_sleep" "wait_vacuum_health_metric" {
+  count = var.environment == "production" ? 1 : 0
+
+  depends_on      = [google_logging_metric.table_dead_tuple_ratio_pct]
+  create_duration = "60s"
+
+  triggers = {
+    metric_name = google_logging_metric.table_dead_tuple_ratio_pct[0].name
+  }
+}
+
+resource "google_monitoring_alert_policy" "table_vacuum_health" {
+  count = var.environment == "production" ? 1 : 0
+
+  display_name = "Table Vacuum Health (dead tuples > 30%)"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Dead tuple ratio above 30% on a monitored table"
+
+    condition_threshold {
+      filter          = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.table_dead_tuple_ratio_pct[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 30
+      duration        = "0s"
+
+      aggregations {
+        alignment_period     = "1800s"
+        per_series_aligner   = "ALIGN_MEAN"
+        cross_series_reducer = "REDUCE_MAX"
+        group_by_fields      = ["metric.label.table_name"]
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email[0].name]
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  depends_on = [
+    google_project_service.apis["monitoring.googleapis.com"],
+    time_sleep.wait_vacuum_health_metric,
+  ]
+}

@@ -229,3 +229,42 @@ resource "google_logging_metric" "database_size_gb" {
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
+
+# =============================================================================
+# TABLE VACUUM HEALTH METRIC
+# Tracks: dead-tuple ratio (%) per high-churn table, logged periodically by
+# SchedulerService.check_resource_usage (services/scheduler.py). Added after
+# journey_stops (35M+ rows) went its entire lifetime with zero completed
+# vacuum/analyze passes, causing a stale visibility map that surfaced as
+# production query timeouts on route-history precompute (issue #1359) instead
+# of as an alert. Drives the "Table Vacuum Health" alert in monitoring.tf.
+# =============================================================================
+resource "google_logging_metric" "table_dead_tuple_ratio_pct" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "table_dead_tuple_ratio_pct"
+  description = "Dead tuple ratio (%) per monitored high-churn table"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"table_vacuum_health_check\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "GAUGE"
+    value_type  = "DOUBLE"
+    unit        = "%"
+
+    labels {
+      key        = "table_name"
+      value_type = "STRING"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.dead_tuple_ratio_pct)"
+  label_extractors = {
+    "table_name" = "EXTRACT(jsonPayload.table_name)"
+  }
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}
