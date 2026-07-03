@@ -323,6 +323,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 )
 
                 stop_data = {
+                    "journey_date": journey.journey_date,
                     "station_name": get_station_name(internal_code),
                     "stop_sequence": stop_sequence,
                     "scheduled_arrival": sched_arr,
@@ -688,6 +689,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 # Create new stop
                 new_stop = JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=internal_code,
                     station_name=station_name,
                     stop_sequence=stop_sequence,

@@ -431,6 +431,7 @@ class WMATACollector:
 
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=station_code,
                 station_name=get_station_name(station_code),
                 stop_sequence=seq + 1,

@@ -31,6 +31,7 @@ from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
+from trackrat.db.partitioning import drop_old_partitions, ensure_future_partitions
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
@@ -2583,10 +2584,12 @@ class SchedulerService:
         """Delete old train journey data and auxiliary records.
 
         Deletes train_journeys older than retention_days (cascading to
-        journey_stops, journey_progress, segment_transit_times,
-        station_dwell_times via ON DELETE CASCADE).
-        Also prunes discovery_runs, validation_results, and inactive
-        service_alerts that haven't been refreshed by the collector.
+        journey_progress and station_dwell_times via ON DELETE CASCADE;
+        journey_stops and segment_transit_times are partitioned by month
+        (issue #1343) and are instead reclaimed by dropping whole aged-out
+        partitions — see phase 5). Also prunes discovery_runs,
+        validation_results, and inactive service_alerts that haven't been
+        refreshed by the collector.
         """
         settings = get_settings()
         cutoff_days = settings.retention_days
@@ -2598,6 +2601,7 @@ class SchedulerService:
             total_discovery = 0
             total_validation = 0
             total_service_alerts = 0
+            partitions_dropped: dict[str, list[str]] = {}
 
             try:
                 logger.info(
@@ -2605,6 +2609,13 @@ class SchedulerService:
                     cutoff_days=cutoff_days,
                     subway_cutoff_days=subway_cutoff_days,
                 )
+
+                # Phase 0: top up the rolling partition window for
+                # journey_stops / segment_transit_times so upcoming writes
+                # (including schedule-generated future journeys) always have
+                # a partition to land in. Idempotent.
+                async with get_session() as db:
+                    await ensure_future_partitions(db)
 
                 # Phase 1: Delete old train_journeys in batches.
                 # SUBWAY uses a shorter retention window than other providers: it
@@ -2714,6 +2725,20 @@ class SchedulerService:
                     if deleted < batch_size:
                         break
 
+                # Phase 5: Drop journey_stops / segment_transit_times
+                # partitions that are entirely older than cutoff_days. Uses
+                # the general (longer) cutoff, not SUBWAY's shorter one,
+                # because a monthly partition mixes rows from every data
+                # source — dropping it early would discard non-SUBWAY rows
+                # still inside their retention window. SUBWAY rows within a
+                # not-yet-dropped partition are still pruned granularly by
+                # phase 1's cascade delete; the partition catches up once
+                # fully aged out. DROP TABLE is instant and returns space to
+                # the filesystem immediately, unlike DELETE + autovacuum.
+                cutoff_date = date.today() - timedelta(days=cutoff_days)
+                async with get_session() as db:
+                    partitions_dropped = await drop_old_partitions(db, cutoff_date)
+
                 logger.info(
                     "retention_cleanup_completed",
                     cutoff_days=cutoff_days,
@@ -2721,6 +2746,7 @@ class SchedulerService:
                     discovery_runs_deleted=total_discovery,
                     validation_results_deleted=total_validation,
                     service_alerts_deleted=total_service_alerts,
+                    partitions_dropped=partitions_dropped,
                 )
 
             except Exception as e:
@@ -2732,6 +2758,7 @@ class SchedulerService:
                     discovery_runs_deleted_so_far=total_discovery,
                     validation_results_deleted_so_far=total_validation,
                     service_alerts_deleted_so_far=total_service_alerts,
+                    partitions_dropped_so_far=partitions_dropped,
                 )
 
         async with get_session() as db:

@@ -1083,6 +1083,7 @@ class TestExplicitCancellationReason:
         for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
@@ -1153,6 +1154,7 @@ class TestExplicitCancellationReason:
         for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
@@ -1228,6 +1230,7 @@ class TestExplicitCancellationReason:
         ):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
@@ -1305,6 +1308,7 @@ class TestExplicitCancellationReason:
         for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
@@ -1391,6 +1395,7 @@ class TestTerminalStopActualArrival:
         for code, name, seq in stops_info:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1496,6 +1501,7 @@ class TestTerminalStopActualArrival:
         for code, name, seq in [("TR", "Trenton", 0), ("NY", "New York", 1)]:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1646,6 +1652,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         for code, name, seq, source, departed, sched_dep in stop_specs:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1742,6 +1749,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         for code, name, seq, source, departed, sched_dep in stop_specs:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,

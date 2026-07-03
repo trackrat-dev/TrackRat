@@ -366,6 +366,7 @@ class MBTACollector:
                 for stop_data in merged_stops:
                     stop = JourneyStop(
                         journey_id=journey.id,
+                        journey_date=journey.journey_date,
                         station_code=stop_data["station_code"],
                         station_name=get_station_name(stop_data["station_code"]),
                         stop_sequence=stop_data["stop_sequence"],
@@ -389,6 +390,7 @@ class MBTACollector:
                     origin_actual = first_arrival.arrival_time - ORIGIN_TRAVEL_BUFFER
                     stop = JourneyStop(
                         journey_id=journey.id,
+                        journey_date=journey.journey_date,
                         station_code=inferred_origin,
                         station_name=get_station_name(inferred_origin),
                         stop_sequence=1,
@@ -418,6 +420,7 @@ class MBTACollector:
                     delay = timedelta(seconds=arr.delay_seconds)
                     stop = JourneyStop(
                         journey_id=journey.id,
+                        journey_date=journey.journey_date,
                         station_code=arr.station_code,
                         station_name=get_station_name(arr.station_code),
                         stop_sequence=seq,

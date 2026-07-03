@@ -734,6 +734,7 @@ class PathCollector:
 
                 stop = JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=station_code,
                     station_name=get_station_name(station_code),
                     stop_sequence=sequence,
@@ -757,6 +758,7 @@ class PathCollector:
             origin_code = journey.origin_station_code or ""
             origin_stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=origin_code,
                 station_name=get_station_name(origin_code) if origin_code else "",
                 stop_sequence=1,
@@ -772,6 +774,7 @@ class PathCollector:
                 terminal_arrival = departure_time + timedelta(minutes=20)
                 dest_stop = JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=destination_station,
                     station_name=get_station_name(destination_station),
                     stop_sequence=2,

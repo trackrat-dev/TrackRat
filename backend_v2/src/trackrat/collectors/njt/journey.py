@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1410,19 +1410,34 @@ class JourneyCollector(BaseJourneyCollector):
                 # discovery creating the same stop.  This avoids begin_nested()
                 # savepoints whose rollback expires eagerly-loaded relationship
                 # state and triggers MissingGreenlet on the next flush.
+                insert_values: dict[str, Any] = {
+                    "journey_id": journey.id,
+                    "journey_date": journey.journey_date,
+                    "station_code": stop_data.STATION_2CHAR,
+                    "station_name": stop_data.STATIONNAME
+                    or get_station_name(stop_data.STATION_2CHAR or ""),
+                    "stop_sequence": sequence,
+                    "scheduled_arrival": best_scheduled_arrival,
+                    "scheduled_departure": best_scheduled_departure,
+                }
+                if dialect_name == "sqlite":
+                    # SQLite has no ROWID-alias autoincrement for a column in
+                    # a composite primary key (`id` is part of
+                    # `(id, journey_date)` since issue #1343), and Core-level
+                    # inserts bypass the ORM `before_insert` event that
+                    # backstops this for session.add()-based inserts. Assign
+                    # one explicitly; Postgres uses a real Identity() column
+                    # and must not receive an explicit id.
+                    insert_values["id"] = (
+                        await session.execute(
+                            text("SELECT COALESCE(MAX(id), 0) + 1 FROM journey_stops")
+                        )
+                    ).scalar_one()
                 insert_stmt = (
                     dialect_insert(JourneyStop)
-                    .values(
-                        journey_id=journey.id,
-                        station_code=stop_data.STATION_2CHAR,
-                        station_name=stop_data.STATIONNAME
-                        or get_station_name(stop_data.STATION_2CHAR or ""),
-                        stop_sequence=sequence,
-                        scheduled_arrival=best_scheduled_arrival,
-                        scheduled_departure=best_scheduled_departure,
-                    )
+                    .values(**insert_values)
                     .on_conflict_do_nothing(
-                        index_elements=["journey_id", "station_code"]
+                        index_elements=["journey_id", "station_code", "journey_date"]
                     )
                 )
                 insert_result = await session.execute(insert_stmt)
