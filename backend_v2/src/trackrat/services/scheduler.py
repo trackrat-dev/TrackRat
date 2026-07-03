@@ -2747,8 +2747,18 @@ class SchedulerService:
             if not executed:
                 logger.debug("retention_cleanup_skipped_still_fresh")
 
+    # High-churn tables monitored for vacuum/analyze staleness by
+    # check_resource_usage. Kept in sync with the tables tuned by migration
+    # fd85e7f3abb3 (autovacuum_vacuum_cost_limit / scale_factor overrides).
+    VACUUM_MONITORED_TABLES = (
+        "journey_stops",
+        "train_journeys",
+        "segment_transit_times",
+    )
+
     async def check_resource_usage(self) -> None:
-        """Log data-disk utilization and Postgres database size.
+        """Log data-disk utilization, Postgres database size, and per-table
+        vacuum/analyze staleness for the high-churn tables.
 
         Emits structured log events that Terraform log-based metrics
         (`infra_v2/terraform/metrics.tf`) turn into Cloud Monitoring alerts,
@@ -2756,6 +2766,16 @@ class SchedulerService:
         manually SSHing in and running `df -h` (issue #1344). Checks
         `settings.data_disk_path` (the mounted persistent disk), not the
         container's boot filesystem.
+
+        The vacuum-staleness check exists because `journey_stops` (35M+ rows,
+        updated continuously by every 4-min GTFS-RT collector) was found with
+        zero completed vacuum/analyze passes in its lifetime, causing a stale
+        visibility map and a ~34% query slowdown that surfaced as production
+        TimeoutErrors on route-history precompute (issue #1359). Autovacuum
+        itself wasn't broken (other tables kept vacuuming fine) — the bloat
+        just went undetected until a query started timing out. This check
+        surfaces `dead_tuple_ratio_pct` per table so Cloud Monitoring pages
+        before that happens again, instead of after.
         """
         settings = get_settings()
 
@@ -2783,6 +2803,48 @@ class SchedulerService:
                     "database_size_check",
                     size_gb=round(size_bytes / (1024**3), 2),
                 )
+
+                vacuum_result = await db.execute(
+                    text("""
+                        SELECT relname AS table_name, n_live_tup, n_dead_tup,
+                               last_vacuum, last_autovacuum,
+                               last_analyze, last_autoanalyze
+                        FROM pg_stat_user_tables
+                        WHERE relname = ANY(:table_names)
+                        """),
+                    {"table_names": list(self.VACUUM_MONITORED_TABLES)},
+                )
+                for row in vacuum_result.mappings():
+                    live = row["n_live_tup"] or 0
+                    dead = row["n_dead_tup"] or 0
+                    dead_ratio_pct = round(dead / max(live + dead, 1) * 100, 2)
+                    logger.info(
+                        "table_vacuum_health_check",
+                        table_name=row["table_name"],
+                        dead_tuple_ratio_pct=dead_ratio_pct,
+                        live_tup=live,
+                        dead_tup=dead,
+                        last_vacuum=(
+                            row["last_vacuum"].isoformat()
+                            if row["last_vacuum"]
+                            else None
+                        ),
+                        last_autovacuum=(
+                            row["last_autovacuum"].isoformat()
+                            if row["last_autovacuum"]
+                            else None
+                        ),
+                        last_analyze=(
+                            row["last_analyze"].isoformat()
+                            if row["last_analyze"]
+                            else None
+                        ),
+                        last_autoanalyze=(
+                            row["last_autoanalyze"].isoformat()
+                            if row["last_autoanalyze"]
+                            else None
+                        ),
+                    )
 
         async with get_session() as db:
             safe_interval = calculate_safe_interval(15)
