@@ -247,6 +247,25 @@ class JourneyStop(Base):
             "station_code",
             "stop_sequence",
         ),
+        # Companion to idx_station_times for the "actual if present, else
+        # scheduled" departure-window filter used by summary.py and
+        # congestion queries. Without this, that OR condition can't use an
+        # index on either branch, so Postgres falls back to whichever
+        # station_code-prefixed index is cheapest to scan (frequently
+        # idx_stop_track_distribution) and filters ~everything else out by
+        # hand — a multi-minute scan on busy stations (issue #1354). Partial
+        # on IS NOT NULL since most rows never populate actual_departure
+        # until the stop is actually observed departing, keeping this index
+        # meaningfully smaller than a full one. Must be built CONCURRENTLY
+        # by hand on any loaded database before this migration runs there —
+        # see 67a02e68d9aa (a plain CREATE INDEX would hold a long lock on
+        # this high-churn table, the same failure mode that sank f7a8b9c0d1e2).
+        Index(
+            "idx_stop_actual_departure",
+            "station_code",
+            "actual_departure",
+            postgresql_where=actual_departure.isnot(None),
+        ),
     )
 
 
