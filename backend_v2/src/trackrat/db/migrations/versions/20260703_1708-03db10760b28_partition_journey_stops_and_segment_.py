@@ -14,15 +14,21 @@ check failures; this migration is designed to avoid that entirely.) Instead:
 1. Rename the existing tables to `*_legacy` (instant, metadata-only). Their
    `ON DELETE CASCADE` FK from train_journeys follows the table through the
    rename, so retention_cleanup's existing batched DELETE keeps draining them
-   exactly as before — no code change needed for the legacy data. Once fully
-   drained (`retention_days`, default 60 days), an operator can `DROP TABLE`
-   them to reclaim the remaining space in one shot.
+   exactly as before — no code change needed for the legacy data.
 2. Create new, empty tables under the original names, partitioned by month
    (RANGE on `journey_date` / `departure_time`). All new writes land here.
    Retention can then `DROP TABLE` an aged-out partition directly instead of
    relying on DELETE + autovacuum.
 3. Bootstrap a rolling partition window (previous/current/+2 months) plus a
    DEFAULT catch-all partition for each table.
+
+This migration deliberately does no data movement itself (no backfill, no
+scan) so startup stays fast. The recent-window backfill from `*_legacy` into
+the new partitions — and dropping each `*_legacy` table once its backfill
+finishes — runs as an idempotent, batched background task
+(`SchedulerService.backfill_legacy_partitions`) after the app is up, so
+recent history stays readable and the ~33 GB comes back in one shot instead
+of over a 60-day drain.
 
 `journey_stops` gains a `journey_date` column (denormalized from
 `train_journeys.journey_date`) because Postgres requires every unique/primary
@@ -33,7 +39,7 @@ journey_id). `segment_transit_times` already had a NOT NULL `departure_time`
 column, so no new column is needed there.
 
 Revision ID: 03db10760b28
-Revises: fd85e7f3abb3
+Revises: 67a02e68d9aa
 Create Date: 2026-07-03 17:08:39.489186
 
 """
@@ -46,7 +52,7 @@ from trackrat.db.partitioning import initial_setup_sql
 
 # revision identifiers, used by Alembic.
 revision = "03db10760b28"
-down_revision = "fd85e7f3abb3"
+down_revision = "67a02e68d9aa"
 branch_labels = None
 depends_on = None
 
@@ -85,6 +91,11 @@ def upgrade() -> None:
         "idx_stop_track_distribution",
         "idx_stop_delay_forecaster",
         "idx_stop_journey_station_seq",
+        # Added by 67a02e68d9aa (#1354). Index names are schema-scoped, so it
+        # must move out of the way before the new table recreates it, or the
+        # CREATE INDEX below collides with the copy that followed the table
+        # into *_legacy.
+        "idx_stop_actual_departure",
     ):
         op.execute(f"ALTER INDEX {index_name} RENAME TO {index_name}_legacy")
 
@@ -161,6 +172,13 @@ def upgrade() -> None:
         "CREATE INDEX idx_stop_journey_station_seq ON journey_stops "
         "(journey_id, station_code, stop_sequence)"
     )
+    # Partial index from 67a02e68d9aa (#1354) folded into the partition
+    # rebuild. On these fresh, empty partitions the build is instant, so
+    # unlike the standalone 67a02e68d9aa it needs no CONCURRENT hand-build.
+    op.execute(
+        "CREATE INDEX idx_stop_actual_departure ON journey_stops "
+        "(station_code, actual_departure) WHERE actual_departure IS NOT NULL"
+    )
 
     # 3. Create the new partitioned segment_transit_times table.
     op.execute("""
@@ -200,8 +218,26 @@ def upgrade() -> None:
     for statement in initial_setup_sql(date.today()):
         op.execute(statement)
 
+    # 5. Progress cursor for the background backfill of *_legacy rows into the
+    # new partitions (SchedulerService.backfill_legacy_partitions). Rows are
+    # inserted lazily by the task on first sight, so no seed rows here.
+    op.execute("""
+        CREATE TABLE partition_backfill_state (
+            legacy_table VARCHAR(64) PRIMARY KEY,
+            last_copied_id INTEGER,
+            completed BOOLEAN NOT NULL DEFAULT false,
+            rows_copied INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+        )
+        """)
+
 
 def downgrade() -> None:
+    # Only reversible before the background backfill has dropped the *_legacy
+    # tables (dev/CI, or prod immediately post-deploy). Once a *_legacy table
+    # is dropped its data is gone and this downgrade cannot restore it.
+    op.execute("DROP TABLE IF EXISTS partition_backfill_state")
+
     # Dropping a partitioned parent drops all its partitions in one step.
     op.execute("DROP TABLE journey_stops")
     op.execute("DROP TABLE segment_transit_times")
@@ -228,6 +264,7 @@ def downgrade() -> None:
         "idx_stop_track_distribution",
         "idx_stop_delay_forecaster",
         "idx_stop_journey_station_seq",
+        "idx_stop_actual_departure",
     ):
         op.execute(f"ALTER INDEX {index_name}_legacy RENAME TO {index_name}")
 

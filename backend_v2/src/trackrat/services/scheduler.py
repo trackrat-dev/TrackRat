@@ -31,7 +31,11 @@ from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
-from trackrat.db.partitioning import drop_old_partitions, ensure_future_partitions
+from trackrat.db.partitioning import (
+    drop_old_partitions,
+    ensure_future_partitions,
+    run_legacy_backfill_batches,
+)
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
@@ -437,6 +441,22 @@ class SchedulerService:
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=3600,
+        )
+
+        # One-time #1343 backfill: copy the recent retention window from the
+        # *_legacy tables into the new partitions, then drop each legacy table.
+        # Runs every 2 min until complete, then no-ops cheaply (legacy tables
+        # gone). Coordinated across replicas via the freshness check inside.
+        self.scheduler.add_job(
+            self.backfill_legacy_partitions,
+            trigger=IntervalTrigger(
+                minutes=2, start_date=now + timedelta(minutes=3), jitter=30
+            ),
+            id="legacy_partition_backfill",
+            name="Legacy Partition Backfill (#1343)",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
         )
 
         # Start the scheduler
@@ -2774,6 +2794,43 @@ class SchedulerService:
             if not executed:
                 logger.debug("retention_cleanup_skipped_still_fresh")
 
+    async def backfill_legacy_partitions(self) -> None:
+        """One-time #1343 backfill: copy the recent retention window from the
+        `*_legacy` tables (renamed by migration 03db10760b28) into the new
+        partitioned tables, in bounded batches newest-first, then drop each
+        legacy table once its copy completes.
+
+        Restores read-continuity for route history / congestion / segment
+        analytics after the partition cutover, and reclaims the ~33 GB in one
+        `DROP TABLE` instead of over a 60-day cascade drain. Idempotent and
+        resumable via `partition_backfill_state`; a cheap no-op once the legacy
+        tables are gone. Coordinated across replicas by the freshness check so
+        only one runner advances the cursor per interval (segment rows have no
+        unique key, so concurrent runners could otherwise duplicate).
+        """
+        settings = get_settings()
+
+        async def do_backfill_work() -> None:
+            cutoff_date = date.today() - timedelta(days=settings.retention_days)
+            async with get_session() as db:
+                summary = await run_legacy_backfill_batches(db, cutoff_date)
+                await db.commit()
+            if any(v["rows_copied"] or v["completed"] for v in summary.values()):
+                logger.info("legacy_partition_backfill_run", summary=summary)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(2)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="legacy_partition_backfill",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_backfill_work,
+            )
+
+            if not executed:
+                logger.debug("legacy_partition_backfill_skipped_still_fresh")
+
     # High-churn tables monitored for vacuum/analyze staleness by
     # check_resource_usage. Kept in sync with the tables tuned by migration
     # fd85e7f3abb3 (autovacuum_vacuum_cost_limit / scale_factor overrides).
@@ -2831,13 +2888,32 @@ class SchedulerService:
                     size_gb=round(size_bytes / (1024**3), 2),
                 )
 
+                # journey_stops and segment_transit_times are partitioned
+                # (issue #1343): their parent row in pg_stat_user_tables always
+                # reports 0 tuples, so matching the parent by name would mask
+                # real bloat. Expand each monitored partitioned parent into its
+                # child partitions (reported individually, so a single bloated
+                # hot month still trips the >30% alert) while non-partitioned
+                # tables like train_journeys report themselves. The transient
+                # *_legacy tables are excluded — they aren't partitions of a
+                # monitored parent and their expected drain-bloat isn't
+                # actionable.
                 vacuum_result = await db.execute(
                     text("""
                         SELECT relname AS table_name, n_live_tup, n_dead_tup,
                                last_vacuum, last_autovacuum,
                                last_analyze, last_autoanalyze
-                        FROM pg_stat_user_tables
-                        WHERE relname = ANY(:table_names)
+                        FROM pg_stat_user_tables s
+                        WHERE (
+                            s.relname = ANY(:table_names)
+                            AND s.relid NOT IN (SELECT inhparent FROM pg_inherits)
+                        )
+                        OR s.relid IN (
+                            SELECT i.inhrelid
+                            FROM pg_inherits i
+                            JOIN pg_class p ON p.oid = i.inhparent
+                            WHERE p.relname = ANY(:table_names)
+                        )
                         """),
                     {"table_names": list(self.VACUUM_MONITORED_TABLES)},
                 )

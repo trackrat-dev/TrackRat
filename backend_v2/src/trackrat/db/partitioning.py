@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time, timezone
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -220,3 +220,243 @@ async def drop_old_partitions(
             dropped[pt.name] = droppable
 
     return dropped
+
+
+# ---------------------------------------------------------------------------
+# Legacy-table backfill (issue #1343)
+#
+# Migration 03db10760b28 renames the pre-partition tables to `*_legacy` and
+# creates fresh, empty partitioned tables under the original names. It does no
+# data movement itself (a full-table scan at startup is what got f7a8b9c0d1e2
+# reverted). Instead this backfill runs as a batched background task
+# (`SchedulerService.backfill_legacy_partitions`) after the app is up: it
+# copies the most recent `retention_days` of rows from each `*_legacy` table
+# into the new partitions (newest first, so recent history — route history,
+# congestion, segment analytics — becomes readable again fastest), then drops
+# each `*_legacy` table once its copy completes, reclaiming the ~33 GB in one
+# shot instead of over a 60-day cascade drain.
+#
+# Progress is tracked in `partition_backfill_state` (created by the migration)
+# rather than via ON CONFLICT, because segment_transit_times has no natural
+# unique key to dedupe on. We copy by descending legacy `id` and persist the
+# lowest id copied so far, so a mid-backfill restart resumes without
+# re-copying (and thus without duplicating). Fresh target ids are assigned by
+# the new table's own identity/sequence — legacy ids are never preserved, so
+# they can't collide with the ids live collectors are already writing.
+# ---------------------------------------------------------------------------
+
+BACKFILL_STATE_TABLE = "partition_backfill_state"
+BACKFILL_BATCH_SIZE = 10_000
+# Batches copied per scheduler invocation, per legacy table. Bounds how long a
+# single run holds a connection / how big its transaction gets; the task runs
+# on a short interval so the backfill still completes within hours.
+BACKFILL_MAX_BATCHES_PER_RUN = 20
+
+
+@dataclass(frozen=True)
+class LegacyBackfill:
+    legacy_table: str
+    target_table: str
+    # SELECT that returns the next batch of legacy ids to copy (newest first),
+    # restricted to the retention window. `{cursor}` is filled with either ""
+    # (first batch) or the "id < :cursor" guard for resumption.
+    select_ids_sql: str
+    cursor_clause: str
+    # INSERT ... SELECT that copies the chosen legacy ids into the new table.
+    insert_sql: str
+    # journey_stops filters on train_journeys.journey_date (a DATE); segments
+    # filter on their own departure_time (a timestamptz). True => bind the
+    # cutoff as a UTC datetime so asyncpg types it correctly for timestamptz.
+    cutoff_is_timestamptz: bool
+
+
+LEGACY_BACKFILLS: tuple[LegacyBackfill, ...] = (
+    LegacyBackfill(
+        legacy_table="journey_stops_legacy",
+        target_table="journey_stops",
+        select_ids_sql=(
+            "SELECT l.id FROM journey_stops_legacy l "
+            "JOIN train_journeys tj ON tj.id = l.journey_id "
+            "WHERE tj.journey_date >= :cutoff {cursor} "
+            "ORDER BY l.id DESC LIMIT :batch"
+        ),
+        cursor_clause="AND l.id < :cursor",
+        insert_sql=(
+            "INSERT INTO journey_stops ("
+            "journey_id, journey_date, station_code, station_name, stop_sequence, "
+            "scheduled_arrival, scheduled_departure, updated_arrival, "
+            "updated_departure, actual_arrival, actual_departure, raw_amtrak_status, "
+            "raw_njt_departed_flag, has_departed_station, departure_source, "
+            "arrival_source, track, track_assigned_at, pickup_only, dropoff_only, "
+            "created_at, updated_at) "
+            "SELECT l.journey_id, tj.journey_date, l.station_code, l.station_name, "
+            "l.stop_sequence, l.scheduled_arrival, l.scheduled_departure, "
+            "l.updated_arrival, l.updated_departure, l.actual_arrival, "
+            "l.actual_departure, l.raw_amtrak_status, l.raw_njt_departed_flag, "
+            "l.has_departed_station, l.departure_source, l.arrival_source, l.track, "
+            "l.track_assigned_at, l.pickup_only, l.dropoff_only, l.created_at, "
+            "l.updated_at "
+            "FROM journey_stops_legacy l "
+            "JOIN train_journeys tj ON tj.id = l.journey_id "
+            "WHERE l.id = ANY(:ids)"
+        ),
+        cutoff_is_timestamptz=False,
+    ),
+    LegacyBackfill(
+        legacy_table="segment_transit_times_legacy",
+        target_table="segment_transit_times",
+        select_ids_sql=(
+            "SELECT id FROM segment_transit_times_legacy "
+            "WHERE departure_time >= :cutoff {cursor} "
+            "ORDER BY id DESC LIMIT :batch"
+        ),
+        cursor_clause="AND id < :cursor",
+        insert_sql=(
+            "INSERT INTO segment_transit_times ("
+            "journey_id, from_station_code, to_station_code, data_source, line_code, "
+            "scheduled_minutes, actual_minutes, delay_minutes, departure_time, "
+            "hour_of_day, day_of_week, created_at) "
+            "SELECT journey_id, from_station_code, to_station_code, data_source, "
+            "line_code, scheduled_minutes, actual_minutes, delay_minutes, "
+            "departure_time, hour_of_day, day_of_week, created_at "
+            "FROM segment_transit_times_legacy WHERE id = ANY(:ids)"
+        ),
+        cutoff_is_timestamptz=True,
+    ),
+)
+
+
+async def _table_exists(db: AsyncSession, table: str) -> bool:
+    result = await db.execute(text("SELECT to_regclass(:t)"), {"t": table})
+    return result.scalar() is not None
+
+
+async def _get_backfill_state(
+    db: AsyncSession, legacy_table: str
+) -> tuple[int | None, bool]:
+    """Return (last_copied_id, completed) for a legacy table, creating the
+    state row on first sight. last_copied_id is the lowest legacy id copied so
+    far (we copy newest-first); None means nothing copied yet."""
+    result = await db.execute(
+        text(
+            f"SELECT last_copied_id, completed FROM {BACKFILL_STATE_TABLE} "
+            "WHERE legacy_table = :t"
+        ),
+        {"t": legacy_table},
+    )
+    row = result.first()
+    if row is None:
+        await db.execute(
+            text(
+                f"INSERT INTO {BACKFILL_STATE_TABLE} (legacy_table) VALUES (:t) "
+                "ON CONFLICT (legacy_table) DO NOTHING"
+            ),
+            {"t": legacy_table},
+        )
+        return None, False
+    return row[0], row[1]
+
+
+async def backfill_one_batch(
+    db: AsyncSession,
+    cfg: LegacyBackfill,
+    cutoff_date: date,
+    batch_size: int = BACKFILL_BATCH_SIZE,
+) -> tuple[int, bool]:
+    """Copy one batch of rows from a `*_legacy` table into its partitioned
+    replacement. Returns (rows_copied, completed_now). Idempotent across
+    restarts via the persisted cursor. No-op (0, True) once already complete."""
+    last_copied_id, completed = await _get_backfill_state(db, cfg.legacy_table)
+    if completed:
+        return 0, True
+
+    cutoff: date | datetime = cutoff_date
+    if cfg.cutoff_is_timestamptz:
+        cutoff = datetime.combine(cutoff_date, time.min, tzinfo=timezone.utc)
+
+    params: dict[str, object] = {"cutoff": cutoff, "batch": batch_size}
+    cursor_sql = ""
+    if last_copied_id is not None:
+        cursor_sql = cfg.cursor_clause
+        params["cursor"] = last_copied_id
+
+    id_rows = await db.execute(
+        text(cfg.select_ids_sql.format(cursor=cursor_sql)), params
+    )
+    ids = [r[0] for r in id_rows]
+
+    if not ids:
+        await db.execute(
+            text(
+                f"UPDATE {BACKFILL_STATE_TABLE} SET completed = true, "
+                "updated_at = now() WHERE legacy_table = :t"
+            ),
+            {"t": cfg.legacy_table},
+        )
+        logger.info("legacy_backfill_completed", legacy_table=cfg.legacy_table)
+        return 0, True
+
+    await db.execute(text(cfg.insert_sql), {"ids": ids})
+    await db.execute(
+        text(
+            f"UPDATE {BACKFILL_STATE_TABLE} SET last_copied_id = :min_id, "
+            "rows_copied = rows_copied + :n, updated_at = now() "
+            "WHERE legacy_table = :t"
+        ),
+        {"min_id": min(ids), "n": len(ids), "t": cfg.legacy_table},
+    )
+    logger.info(
+        "legacy_backfill_batch",
+        legacy_table=cfg.legacy_table,
+        rows_copied=len(ids),
+        min_id=min(ids),
+    )
+    return len(ids), False
+
+
+async def drop_backfilled_legacy_table(db: AsyncSession, cfg: LegacyBackfill) -> bool:
+    """Drop a `*_legacy` table once its backfill has completed, reclaiming its
+    space in one shot. Returns True if a drop happened. Safe/idempotent: only
+    drops when state says completed and the table still exists."""
+    _, completed = await _get_backfill_state(db, cfg.legacy_table)
+    if not completed or not await _table_exists(db, cfg.legacy_table):
+        return False
+    await db.execute(text(f"DROP TABLE IF EXISTS {cfg.legacy_table}"))
+    logger.info("legacy_table_dropped", legacy_table=cfg.legacy_table)
+    return True
+
+
+async def run_legacy_backfill_batches(
+    db: AsyncSession,
+    cutoff_date: date,
+    max_batches: int = BACKFILL_MAX_BATCHES_PER_RUN,
+    batch_size: int = BACKFILL_BATCH_SIZE,
+) -> dict[str, dict[str, object]]:
+    """Advance the legacy backfill by up to `max_batches` per legacy table, and
+    drop any legacy table whose backfill has just completed. No-op for tables
+    already dropped. Returns a per-legacy-table summary. The caller owns the
+    transaction (commit after this returns)."""
+    summary: dict[str, dict[str, object]] = {}
+    for cfg in LEGACY_BACKFILLS:
+        if not await _table_exists(db, cfg.legacy_table):
+            continue
+
+        copied_total = 0
+        completed = False
+        for _ in range(max_batches):
+            copied, completed = await backfill_one_batch(
+                db, cfg, cutoff_date, batch_size
+            )
+            copied_total += copied
+            if completed or copied == 0:
+                break
+
+        if completed:
+            await drop_backfilled_legacy_table(db, cfg)
+
+        summary[cfg.legacy_table] = {
+            "rows_copied": copied_total,
+            "completed": completed,
+        }
+
+    return summary

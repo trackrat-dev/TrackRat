@@ -23,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
+    false,
     func,
 )
 from sqlalchemy.engine import Connection
@@ -599,6 +600,29 @@ def _create_segment_transit_times_partitions(
         return
     ensure_future_partitions_sync_for_table(
         connection, get_partitioned_table("segment_transit_times")
+    )
+
+
+class PartitionBackfillState(Base):
+    """Progress cursor for the one-time #1343 backfill of `*_legacy` rows into
+    the new partitioned tables. One row per legacy table. `last_copied_id` is
+    the lowest legacy id copied so far (the backfill copies newest-first);
+    `completed` flips true once the retention window is exhausted, after which
+    the legacy table is dropped. See `db/partitioning.py`.
+    """
+
+    __tablename__ = "partition_backfill_state"
+
+    # server_default (not default=) throughout: the backfill inserts new rows
+    # via raw SQL (INSERT ... (legacy_table) VALUES (...)), which bypasses ORM
+    # client-side defaults, so the DDL must carry the defaults itself — and it
+    # must match migration 03db10760b28's CREATE TABLE.
+    legacy_table = Column(String(64), primary_key=True)
+    last_copied_id = Column(Integer, nullable=True)
+    completed = Column(Boolean, nullable=False, server_default=false())
+    rows_copied = Column(Integer, nullable=False, server_default="0")
+    updated_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 

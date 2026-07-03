@@ -248,14 +248,30 @@ SQLite (used by some collector unit tests) rejects autoincrement on a
 composite primary key.
 
 Migration `03db10760b28` renamed the existing tables to `*_legacy` (instant,
-metadata-only — no backfill or table rewrite of the existing ~30+ GB of data,
-learning from a prior reverted backfill migration, f7a8b9c0d1e2, that caused
-MIG health-check failures) and created fresh, empty partitioned tables under
-the original names; all new writes land there. The `*_legacy` tables keep
-draining via the existing `ON DELETE CASCADE` from `train_journeys` (their FK
-follows the table through the rename) until empty, at which point an operator
-can `DROP TABLE` them to reclaim the remaining space in one shot — tracked
-separately as a one-time follow-up in issue #1343.
+metadata-only — no table rewrite or scan at startup, learning from a prior
+reverted backfill migration, f7a8b9c0d1e2, that caused MIG health-check
+failures) and created fresh, empty partitioned tables under the original
+names; all new writes land there immediately.
+
+Because nothing reads `*_legacy`, a hard cutover would make all pre-migration
+history (route history, congestion, segment analytics) invisible until the
+new tables refilled. To avoid that, an idempotent background task
+(`SchedulerService.backfill_legacy_partitions`, helpers in `db/partitioning.py`)
+copies the most recent `retention_days` of rows from each `*_legacy` table
+into the new partitions — newest-first, in bounded batches, coordinated across
+replicas — so recent history becomes readable again within hours of deploy
+rather than over the retention window. `journey_stops_legacy` has no
+`journey_date` column (it's the new partition key), so the copy derives it by
+joining `train_journeys`; `segment_transit_times_legacy` already has
+`departure_time`. Progress is tracked in `partition_backfill_state` (copy by
+descending legacy `id`, persisting the lowest id copied) rather than via
+`ON CONFLICT`, since `segment_transit_times` has no natural unique key to
+dedupe on; fresh target ids are assigned by the new tables' own sequences so
+they can't collide with ids live collectors are already writing. Once a
+table's backfill completes, that `*_legacy` table is `DROP TABLE`d
+automatically, reclaiming the ~33 GB in one shot (rows older than
+`retention_days` are past retention and intentionally discarded with it). The
+task then no-ops cheaply once the legacy tables are gone.
 
 ### 3. API Endpoints
 

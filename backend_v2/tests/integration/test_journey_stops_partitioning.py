@@ -15,7 +15,11 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trackrat.db.partitioning import drop_old_partitions, ensure_future_partitions
+from trackrat.db.partitioning import (
+    drop_old_partitions,
+    ensure_future_partitions,
+    run_legacy_backfill_batches,
+)
 from trackrat.models.database import JourneyStop, SegmentTransitTime, TrainJourney
 
 
@@ -230,3 +234,180 @@ class TestJourneyStopsPartitioning:
             )
         )
         assert result.scalar_one() == 1
+
+
+# Pre-partition schema of the two tables, as migration 03db10760b28 leaves them
+# renamed to *_legacy. create_all() (this harness) only builds the new
+# partitioned tables, so the backfill tests recreate the legacy shape here.
+_CREATE_JOURNEY_STOPS_LEGACY = """
+    CREATE TABLE journey_stops_legacy (
+        id SERIAL PRIMARY KEY,
+        journey_id INTEGER NOT NULL REFERENCES train_journeys(id) ON DELETE CASCADE,
+        station_code VARCHAR(10) NOT NULL,
+        station_name VARCHAR(100) NOT NULL,
+        stop_sequence INTEGER,
+        scheduled_arrival TIMESTAMPTZ,
+        scheduled_departure TIMESTAMPTZ,
+        updated_arrival TIMESTAMPTZ,
+        updated_departure TIMESTAMPTZ,
+        actual_arrival TIMESTAMPTZ,
+        actual_departure TIMESTAMPTZ,
+        raw_amtrak_status VARCHAR(50),
+        raw_njt_departed_flag VARCHAR(10),
+        has_departed_station BOOLEAN NOT NULL DEFAULT false,
+        departure_source VARCHAR(30),
+        arrival_source VARCHAR(30),
+        track VARCHAR(5),
+        track_assigned_at TIMESTAMPTZ,
+        pickup_only BOOLEAN NOT NULL DEFAULT false,
+        dropoff_only BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+"""
+
+_CREATE_SEGMENTS_LEGACY = """
+    CREATE TABLE segment_transit_times_legacy (
+        id SERIAL PRIMARY KEY,
+        journey_id INTEGER NOT NULL REFERENCES train_journeys(id) ON DELETE CASCADE,
+        from_station_code VARCHAR(10) NOT NULL,
+        to_station_code VARCHAR(10) NOT NULL,
+        data_source VARCHAR(10) NOT NULL,
+        line_code VARCHAR(15),
+        scheduled_minutes INTEGER NOT NULL,
+        actual_minutes INTEGER NOT NULL,
+        delay_minutes INTEGER NOT NULL,
+        departure_time TIMESTAMPTZ NOT NULL,
+        hour_of_day INTEGER NOT NULL,
+        day_of_week INTEGER NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+"""
+
+
+async def _add_legacy_stop(db: AsyncSession, journey_id: int, station: str) -> None:
+    await db.execute(
+        text(
+            "INSERT INTO journey_stops_legacy "
+            "(journey_id, station_code, station_name, has_departed_station) "
+            "VALUES (:jid, :code, :name, true)"
+        ),
+        {"jid": journey_id, "code": station, "name": station},
+    )
+
+
+async def _add_legacy_segment(
+    db: AsyncSession, journey_id: int, departure_time: datetime
+) -> None:
+    await db.execute(
+        text(
+            "INSERT INTO segment_transit_times_legacy "
+            "(journey_id, from_station_code, to_station_code, data_source, "
+            "scheduled_minutes, actual_minutes, delay_minutes, departure_time, "
+            "hour_of_day, day_of_week) "
+            "VALUES (:jid, 'NY', 'WAS', 'AMTRAK', 180, 185, 5, :dt, 12, 3)"
+        ),
+        {"jid": journey_id, "dt": departure_time},
+    )
+
+
+async def _table_exists(db: AsyncSession, table: str) -> bool:
+    result = await db.execute(text("SELECT to_regclass(:t)"), {"t": table})
+    return result.scalar() is not None
+
+
+@pytest.mark.asyncio
+class TestLegacyBackfill:
+    async def test_backfill_copies_recent_window_derives_journey_date_and_drops(
+        self, db_session: AsyncSession
+    ):
+        """The backfill copies only rows within the retention window into the
+        new partitions, derives journey_date from train_journeys for
+        journey_stops, and drops each *_legacy table once complete. Rows older
+        than the window are discarded with the legacy table (they're past
+        retention)."""
+        recent = _make_journey(date.today(), train_id="RECENT")
+        old = _make_journey(date.today() - timedelta(days=400), train_id="OLD")
+        db_session.add_all([recent, old])
+        await db_session.flush()
+
+        await db_session.execute(text(_CREATE_JOURNEY_STOPS_LEGACY))
+        await db_session.execute(text(_CREATE_SEGMENTS_LEGACY))
+        await _add_legacy_stop(db_session, recent.id, "NY")
+        await _add_legacy_stop(db_session, old.id, "NY")
+        await _add_legacy_segment(db_session, recent.id, recent.scheduled_departure)
+        await _add_legacy_segment(
+            db_session, old.id, old.scheduled_departure
+        )
+        await db_session.commit()
+
+        cutoff = date.today() - timedelta(days=60)
+        summary = await run_legacy_backfill_batches(db_session, cutoff)
+        await db_session.commit()
+
+        assert summary["journey_stops_legacy"]["completed"] is True
+        assert summary["segment_transit_times_legacy"]["completed"] is True
+
+        stops = (await db_session.execute(select(JourneyStop))).scalars().all()
+        assert len(stops) == 1
+        assert stops[0].journey_id == recent.id
+        # journey_date is not a column on the legacy table — it must come from
+        # the train_journeys join.
+        assert stops[0].journey_date == recent.journey_date
+
+        segments = (
+            await db_session.execute(select(SegmentTransitTime))
+        ).scalars().all()
+        assert len(segments) == 1
+        assert segments[0].journey_id == recent.id
+
+        assert not await _table_exists(db_session, "journey_stops_legacy")
+        assert not await _table_exists(db_session, "segment_transit_times_legacy")
+
+    async def test_backfill_is_resumable_without_duplicating(
+        self, db_session: AsyncSession
+    ):
+        """Copying in tiny batches across multiple invocations (as a restart
+        would) copies every windowed row exactly once — the persisted cursor
+        prevents re-copying, which matters because segment rows have no unique
+        key to dedupe on."""
+        journey = _make_journey(date.today(), train_id="RESUME")
+        db_session.add(journey)
+        await db_session.flush()
+
+        await db_session.execute(text(_CREATE_JOURNEY_STOPS_LEGACY))
+        await db_session.execute(text(_CREATE_SEGMENTS_LEGACY))
+        for station in ("NY", "NP", "TR", "PJ", "WAS"):
+            await _add_legacy_stop(db_session, journey.id, station)
+        await db_session.commit()
+
+        cutoff = date.today() - timedelta(days=60)
+
+        # One row per invocation. Segments finish immediately (none present).
+        completed = False
+        runs = 0
+        while not completed and runs < 20:
+            summary = await run_legacy_backfill_batches(
+                db_session, cutoff, max_batches=1, batch_size=1
+            )
+            await db_session.commit()
+            completed = summary.get("journey_stops_legacy", {}).get(
+                "completed", True
+            )
+            runs += 1
+
+        stop_count = await db_session.scalar(
+            select(func.count()).select_from(JourneyStop)
+        )
+        assert stop_count == 5  # all copied, none duplicated
+        assert not await _table_exists(db_session, "journey_stops_legacy")
+
+    async def test_backfill_noop_when_no_legacy_tables(
+        self, db_session: AsyncSession
+    ):
+        """Once the legacy tables are gone (steady state), the task is a cheap
+        no-op that copies nothing and reports no tables."""
+        summary = await run_legacy_backfill_batches(
+            db_session, date.today() - timedelta(days=60)
+        )
+        assert summary == {}
