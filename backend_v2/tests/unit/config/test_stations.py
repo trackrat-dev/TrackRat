@@ -9,6 +9,7 @@ import pytest
 
 from trackrat.config.stations import (
     AMTRAK_TO_INTERNAL_STATION_MAP,
+    CROSS_MODAL_HUBS,
     INTERNAL_TO_MNR_GTFS_STOP_MAP,
     INTERNAL_TO_SUBWAY_GTFS_STOP_MAP,
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
@@ -685,14 +686,19 @@ class TestStationEquivalences:
                 f"expected all of {sorted(expected_ts)}"
             )
 
-        # Grand Central-42 St: includes GCT commuter rail and S901/GS shuttle
-        expected_gc = {"GCT", "S631", "S723", "S901"}
+        # Grand Central-42 St subway complex: S631 (4/5/6), S723 (7), S901 (shuttle).
+        # The GCT commuter-rail code is a cross-modal hub (transfer), not part of
+        # this equivalence — see CROSS_MODAL_HUBS.
+        expected_gc = {"S631", "S723", "S901"}
         for code in expected_gc:
             result = expand_station_codes(code)
             assert set(result) == expected_gc, (
                 f"expand_station_codes('{code}') returned {result}, "
                 f"expected all of {sorted(expected_gc)}"
             )
+        assert expand_station_codes("GCT") == [
+            "GCT"
+        ], "GCT (commuter rail) is a cross-modal hub, not a subway equivalence"
 
     def test_canonical_station_code_deterministic_for_subway(self):
         """canonical_station_code returns the same code for all members of a subway complex."""
@@ -713,14 +719,14 @@ class TestStationEquivalences:
             ({"S119", "SA18"}, "103 St West Side (1 + A/B/C)"),
             ({"S120", "SA19"}, "96 St West Side (1/2/3 + A/B/C)"),
             ({"S126", "SA25"}, "50 St (1/2 + A/C/E)"),
-            ({"NY", "S128", "SA28"}, "Penn Station / 34 St-Penn Station"),
+            ({"S128", "SA28"}, "34 St-Penn Station subway (1/2/3 + A/C/E)"),
             (
                 {"S135", "S639", "SA34", "SM20", "SQ01", "SR23"},
                 "Canal St (1/2 + 4/6 + A/C/E + J/Z + Q + N/R/W)",
             ),
             (
-                {"PWC", "S138", "S228", "SA36", "SE01", "SR25"},
-                "WTC Cortlandt / Chambers / Cortlandt / Park Pl",
+                {"S138", "S228", "SA36", "SE01", "SR25"},
+                "WTC / Oculus subway: Cortlandt / Chambers / Park Pl",
             ),
             ({"S208", "S503"}, "Gun Hill Rd (2 + 5)"),
             ({"S211", "S504"}, "Pelham Pkwy (2 + 5)"),
@@ -775,44 +781,29 @@ class TestStationEquivalences:
                 f"SUBWAY_STATION_COMPLEXES"
             )
 
-    def test_cross_system_wtc_complex_in_equivalence_groups(self):
-        """WTC/Oculus cross-system complex (PATH + Subway) is in STATION_EQUIVALENCE_GROUPS."""
-        wtc_expected = {"PWC", "S138", "S228", "SA36", "SE01", "SR25"}
-        found = False
-        for group in STATION_EQUIVALENCE_GROUPS:
-            if wtc_expected.issubset(group):
-                found = True
-                break
-        assert found, (
-            f"Expected WTC cross-system complex {sorted(wtc_expected)} not found in "
-            f"STATION_EQUIVALENCE_GROUPS"
-        )
+    def test_cross_modal_hub_subway_is_equivalence_rail_is_transfer(self):
+        """Cross-modal mega-hubs (Penn, GCT, WTC) model the subway platforms as a
+        same-station equivalence, while the adjacent rail/PATH code is a separate
+        cross-modal transfer, not an equivalence (see CROSS_MODAL_HUBS, #1355).
 
-    @pytest.mark.parametrize(
-        "expected_codes,description",
-        [
-            ({"NY", "S128", "SA28"}, "Penn Station / 34 St-Penn Station"),
-            (
-                {"GCT", "S631", "S723", "S901"},
-                "Grand Central Terminal / Grand Central-42 St",
-            ),
-        ],
-    )
-    def test_cross_system_rail_subway_complexes_in_equivalence_groups(
-        self, expected_codes, description
-    ):
-        """Major rail hubs should expand to connected subway complexes."""
-        found = False
-        for group in STATION_EQUIVALENCE_GROUPS:
-            if expected_codes.issubset(group):
-                found = True
-                break
-        assert found, (
-            f"Expected {description} complex {sorted(expected_codes)} not found in "
-            f"STATION_EQUIVALENCE_GROUPS"
-        )
-        for code in expected_codes:
-            assert set(expand_station_codes(code)) == expected_codes
+        The rail/PATH code must NOT be pooled into the subway equivalence group,
+        so its departure boards / alerts don't mix in subway trains.
+        """
+        for rail_code, subway_codes in CROSS_MODAL_HUBS:
+            subway_set = set(subway_codes)
+            # The subway platforms form exactly one equivalence group.
+            for code in subway_set:
+                assert set(expand_station_codes(code)) == subway_set, (
+                    f"{code} should expand to the subway complex "
+                    f"{sorted(subway_set)}, got {expand_station_codes(code)}"
+                )
+            # The rail/PATH code is standalone (a transfer, not an equivalence).
+            assert rail_code not in subway_set
+            assert expand_station_codes(rail_code) == [rail_code], (
+                f"{rail_code} must not be pooled into the subway equivalence "
+                f"group (it is a cross-modal transfer), got "
+                f"{expand_station_codes(rail_code)}"
+            )
 
     def test_unified_complexes_canonical_code_deterministic(self):
         """canonical_station_code is the same for all members of unified complexes."""

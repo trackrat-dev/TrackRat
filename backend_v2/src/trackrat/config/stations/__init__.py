@@ -127,6 +127,7 @@ __all__ = [
     "map_wmata_api_stop",
     # Common
     "STATION_COORDINATES",
+    "CROSS_MODAL_HUBS",
     "STATION_EQUIVALENCE_GROUPS",
     "STATION_EQUIVALENTS",
     "STATION_NAMES",
@@ -165,6 +166,7 @@ from trackrat.config.stations.bart import (
 
 # Common (unified data + shared functions)
 from trackrat.config.stations.common import (
+    CROSS_MODAL_HUBS,
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
