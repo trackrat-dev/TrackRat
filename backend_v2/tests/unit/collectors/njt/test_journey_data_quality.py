@@ -1090,6 +1090,7 @@ class TestExplicitCancellationReason:
                 scheduled_departure=base_time + timedelta(minutes=i * 30),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # NJT says all stops cancelled
@@ -1161,6 +1162,7 @@ class TestExplicitCancellationReason:
                 scheduled_departure=base_time + timedelta(minutes=i * 30),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # NJT returns UPPERCASE 'CANCELLED' for all stops
@@ -1237,6 +1239,7 @@ class TestExplicitCancellationReason:
                 scheduled_departure=base_time + timedelta(minutes=i * 15),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()
@@ -1315,6 +1318,7 @@ class TestExplicitCancellationReason:
                 scheduled_departure=base_time + timedelta(minutes=i * 30),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()
@@ -1418,6 +1422,7 @@ class TestTerminalStopActualArrival:
                 stop.departure_source = "api_explicit"
                 stop.actual_departure = base_time + timedelta(minutes=1)
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # Build API stop data — terminal has TIME (arrival estimate) but no DEPARTED
@@ -1515,6 +1520,7 @@ class TestTerminalStopActualArrival:
             if code == "NY":
                 stop.actual_arrival = original_arrival  # Already set
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()
@@ -1666,6 +1672,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
                 departure_source=source,
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # API still returns all 6 stops; no DEPARTED=YES for SE or NY.
@@ -1764,6 +1771,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
                 actual_departure=sched_dep if departed else None,
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()

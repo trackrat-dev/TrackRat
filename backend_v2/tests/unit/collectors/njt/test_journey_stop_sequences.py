@@ -64,6 +64,7 @@ class TestPhantomStopDeletion:
         # Create phantom Trenton stop (from schedule generation)
         phantom_stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",  # Trenton
             station_name="Trenton",
             stop_sequence=0,  # BUG: This conflicts with real first stop
@@ -137,6 +138,7 @@ class TestPhantomStopDeletion:
         # (The code only updates scheduled times when they're currently None)
         tr_stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=0,
@@ -209,6 +211,7 @@ class TestPhantomStopDeletion:
         for station in ["TR", "HL"]:
             phantom = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=station,
                 station_name=station,
                 stop_sequence=0,
@@ -287,6 +290,7 @@ class TestStopSequenceReordering:
         # Create phantom TR with sequence=0
         phantom = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=0,
@@ -363,6 +367,7 @@ class TestStopSequenceReordering:
         for station, seq in [("TR", 0), ("HL", 0), ("PJ", 2)]:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=station,
                 station_name=station,
                 stop_sequence=seq,
@@ -436,6 +441,7 @@ class TestSQLAlchemyDirtyTracking:
         # Create stop with sequence=0
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=0,
@@ -519,6 +525,7 @@ class TestCorruptedTimeDataHandling:
         # Trenton: departure 1:58 PM < arrival 2:08 PM (CORRUPTED - impossible!)
         trenton = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=1,  # Wrong sequence due to previous bug
@@ -534,6 +541,7 @@ class TestCorruptedTimeDataHandling:
         # Hamilton: normal data (departure > arrival)
         hamilton = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="HL",
             station_name="Hamilton",
             stop_sequence=0,  # Wrong sequence due to previous bug
@@ -549,6 +557,7 @@ class TestCorruptedTimeDataHandling:
         # Princeton Junction: normal data
         princeton = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="PJ",
             station_name="Princeton Junction",
             stop_sequence=2,
@@ -635,6 +644,7 @@ class TestCorruptedTimeDataHandling:
         for i, (code, name, arr, dep) in enumerate(stops_data):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=2 - i,  # Reverse order to test sorting
@@ -689,6 +699,7 @@ class TestCorruptedTimeDataHandling:
         # Origin station with departure only (no arrival)
         trenton = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=1,
@@ -700,6 +711,7 @@ class TestCorruptedTimeDataHandling:
         # Next stop with both times
         hamilton = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="HL",
             station_name="Hamilton",
             stop_sequence=0,
@@ -753,6 +765,7 @@ class TestCorruptedTimeDataHandling:
         # First stop
         trenton = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton",
             stop_sequence=1,
@@ -764,6 +777,7 @@ class TestCorruptedTimeDataHandling:
         # Terminal station with arrival only (no departure)
         ny_penn = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,

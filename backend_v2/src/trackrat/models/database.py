@@ -4,6 +4,7 @@ SQLAlchemy database models for TrackRat V2.
 Follows the simplified single-journey design documented in backend_v2/CLAUDE.md.
 """
 
+import itertools
 from typing import Any
 
 from sqlalchemy import (
@@ -23,7 +24,6 @@ from sqlalchemy import (
     UniqueConstraint,
     event,
     func,
-    text,
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Mapped, Mapper, declarative_base, relationship, validates
@@ -309,6 +309,9 @@ class JourneyStop(Base):
     )
 
 
+_sqlite_journey_stop_ids = itertools.count(1)
+
+
 @event.listens_for(JourneyStop, "before_insert")
 def _assign_sqlite_id(
     mapper: Mapper[Any], connection: Connection, target: "JourneyStop"
@@ -318,12 +321,15 @@ def _assign_sqlite_id(
     `id` is never auto-populated there as it would be under a single-column
     PK. Postgres uses a real `Identity()` column and is unaffected — this
     only backstops the in-memory SQLite engine some collector unit tests use.
+
+    Uses an in-memory counter rather than `SELECT MAX(id)`: SQLAlchemy
+    batches same-mapper inserts within one flush (fires every `before_insert`
+    before executing any of their INSERTs), so a DB-query-based counter would
+    read the same stale MAX for every row in a batch and assign duplicates.
     """
     if target.id is not None or connection.dialect.name != "sqlite":
         return
-    target.id = connection.execute(
-        text("SELECT COALESCE(MAX(id), 0) + 1 FROM journey_stops")
-    ).scalar_one()
+    target.id = next(_sqlite_journey_stop_ids)
 
 
 @event.listens_for(JourneyStop.__table__, "after_create")
@@ -571,6 +577,9 @@ class SegmentTransitTime(Base):
     )
 
 
+_sqlite_segment_transit_time_ids = itertools.count(1)
+
+
 @event.listens_for(SegmentTransitTime, "before_insert")
 def _assign_sqlite_id_segment(
     mapper: Mapper[Any], connection: Connection, target: "SegmentTransitTime"
@@ -578,9 +587,7 @@ def _assign_sqlite_id_segment(
     """See `_assign_sqlite_id` on JourneyStop — same rationale."""
     if target.id is not None or connection.dialect.name != "sqlite":
         return
-    target.id = connection.execute(
-        text("SELECT COALESCE(MAX(id), 0) + 1 FROM segment_transit_times")
-    ).scalar_one()
+    target.id = next(_sqlite_segment_transit_time_ids)
 
 
 @event.listens_for(SegmentTransitTime.__table__, "after_create")

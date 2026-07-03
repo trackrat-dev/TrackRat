@@ -60,6 +60,7 @@ async def _add_njt_nec_journey(
     db.add(
         JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code=from_station,
             station_name=from_station,
             stop_sequence=1,
@@ -70,6 +71,7 @@ async def _add_njt_nec_journey(
     db.add(
         JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code=to_station,
             station_name=to_station,
             stop_sequence=2,
