@@ -257,6 +257,10 @@ class GTFSService:
     # per (source, date) pair on every departure call.
     _service_id_cache: dict[tuple[str, date], set[str]] = {}
 
+    # Keys for which the "no active services" warning has already fired today,
+    # so a broken feed logs once per (source, date) instead of every call.
+    _empty_service_warned: set[tuple[str, date]] = set()
+
     def __init__(self, timeout: float = 120.0):
         """Initialize the GTFS service.
 
@@ -349,6 +353,9 @@ class GTFSService:
                 k: v
                 for k, v in GTFSService._service_id_cache.items()
                 if k[0] != data_source
+            }
+            GTFSService._empty_service_warned = {
+                k for k in GTFSService._empty_service_warned if k[0] != data_source
             }
 
             logger.info(
@@ -877,15 +884,28 @@ class GTFSService:
         active_services -= removed_services
 
         # Cache the result — service IDs are stable for a given date.
-        # Evict stale entries for past dates to prevent unbounded growth.
+        # Evict entries older than yesterday to prevent unbounded growth, while
+        # keeping yesterday's so an empty result doesn't get recomputed (and its
+        # warning re-fired) on every call for still-active overnight trips
+        # (journey_date can trail today by up to a day, e.g. lirr/collector.py).
         # Use pop() instead of dict replacement to avoid clobbering concurrent inserts.
         from trackrat.utils.time import now_et as _now_et
 
-        today = _now_et().date()
-        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < today]
+        cutoff = _now_et().date() - timedelta(days=1)
+        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < cutoff]
         for k in stale_keys:
             GTFSService._service_id_cache.pop(k, None)
-        GTFSService._service_id_cache[cache_key] = active_services
+        stale_warned_keys = [
+            k for k in GTFSService._empty_service_warned if k[1] < cutoff
+        ]
+        for k in stale_warned_keys:
+            GTFSService._empty_service_warned.discard(k)
+
+        # Don't cache an empty result: it usually means a broken/partial GTFS
+        # import rather than a genuine service-free day, so the next call
+        # should re-check rather than serve the poisoned empty set all day.
+        if active_services:
+            GTFSService._service_id_cache[cache_key] = active_services
 
         return active_services
 
@@ -2244,11 +2264,14 @@ class GTFSService:
         """
         service_ids = await self.get_active_service_ids(db, data_source, target_date)
         if not service_ids:
-            logger.warning(
-                "gtfs_static_no_active_services",
-                data_source=data_source,
-                target_date=str(target_date),
-            )
+            warn_key = (data_source, target_date)
+            if warn_key not in GTFSService._empty_service_warned:
+                GTFSService._empty_service_warned.add(warn_key)
+                logger.error(
+                    "gtfs_static_no_active_services",
+                    data_source=data_source,
+                    target_date=str(target_date),
+                )
             return None
 
         trip_row = await self._find_trip_in_source(

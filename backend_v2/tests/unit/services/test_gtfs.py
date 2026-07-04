@@ -243,6 +243,7 @@ class TestActiveServiceIds:
     def setup_method(self):
         """Clear the service ID cache before each test to prevent cross-test pollution."""
         GTFSService._service_id_cache.clear()
+        GTFSService._empty_service_warned.clear()
 
     @pytest.mark.asyncio
     async def test_weekday_service(self):
@@ -333,6 +334,34 @@ class TestActiveServiceIds:
 
         # Service should be removed
         assert "REGULAR_SERVICE" not in result
+
+    @pytest.mark.asyncio
+    async def test_empty_result_not_cached(self):
+        """An empty active-service set (broken/partial GTFS import) must not be
+        cached, so the next call re-queries instead of serving the poisoned
+        empty result for the rest of the day (issue #1370)."""
+        service = GTFSService()
+        target_date = date(2026, 1, 21)
+
+        mock_db = AsyncMock()
+        call_count = [0]
+
+        async def mock_execute(query):
+            result = MagicMock()
+            call_count[0] += 1
+            result.all.return_value = []  # no calendar or calendar_dates rows
+            return result
+
+        mock_db.execute = mock_execute
+
+        first = await service.get_active_service_ids(mock_db, "LIRR", target_date)
+        assert first == set()
+        assert ("LIRR", target_date) not in GTFSService._service_id_cache
+        assert call_count[0] == 2  # calendar + calendar_dates queries ran
+
+        second = await service.get_active_service_ids(mock_db, "LIRR", target_date)
+        assert second == set()
+        assert call_count[0] == 4  # re-queried instead of hitting a cached empty set
 
 
 class TestStationMapping:
@@ -853,6 +882,7 @@ class TestGetStaticStopTimes:
 
     def setup_method(self):
         self.service = GTFSService()
+        GTFSService._empty_service_warned.clear()
 
     @pytest.mark.asyncio
     async def test_returns_stops_for_valid_trip(self):
@@ -923,6 +953,63 @@ class TestGetStaticStopTimes:
             )
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_warns_once_per_source_and_date(self):
+        """The no-active-services warning should log once per (data_source,
+        target_date), not on every call, since a broken feed is polled every
+        collector cycle (issue #1370)."""
+        mock_db = AsyncMock()
+        target_date = date(2026, 2, 6)
+
+        with (
+            patch.object(self.service, "get_active_service_ids", return_value=set()),
+            patch("trackrat.services.gtfs.logger") as mock_logger,
+        ):
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", target_date
+            )
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", target_date
+            )
+
+        assert mock_logger.error.call_count == 1
+        assert mock_logger.error.call_args.args[0] == "gtfs_static_no_active_services"
+
+    @pytest.mark.asyncio
+    async def test_warns_once_for_yesterdays_overnight_date(self):
+        """Overnight trips can carry journey_date == yesterday (e.g.
+        lirr/collector.py's `journey_date >= today - 1` stale window). The
+        real get_active_service_ids must not evict yesterday's warned-key on
+        every call, or the dedupe added for issue #1370 is defeated for
+        exactly this still-broken-overnight-feed case (Codex review on
+        PR #1385)."""
+        today = date(2026, 2, 7)
+        yesterday = date(2026, 2, 6)
+        mock_db = AsyncMock()
+
+        async def mock_execute(query):
+            result = MagicMock()
+            result.all.return_value = []  # no calendar or calendar_dates rows
+            return result
+
+        mock_db.execute = mock_execute
+
+        with (
+            patch(
+                "trackrat.utils.time.now_et",
+                return_value=datetime.combine(today, time(1, 0), tzinfo=ET),
+            ),
+            patch("trackrat.services.gtfs.logger") as mock_logger,
+        ):
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", yesterday
+            )
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", yesterday
+            )
+
+        assert mock_logger.error.call_count == 1
 
     @pytest.mark.asyncio
     async def test_returns_none_when_trip_not_found(self):
