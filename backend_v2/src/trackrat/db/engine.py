@@ -168,6 +168,13 @@ def get_engine() -> AsyncEngine:
                     "application_name": "trackrat-v2",  # For monitoring
                     "jit": "off",  # Disable JIT for faster connections
                     "timezone": "America/New_York",  # Match app timezone
+                    # Server-side kill switch just below command_timeout above,
+                    # scoped to this pool only (not migrations, which connect
+                    # separately via database_url_sync with no server_settings)
+                    # so Postgres cancels runaway queries itself instead of
+                    # relying solely on the client-side cancel, which races
+                    # connection teardown under load (issue #1366).
+                    "statement_timeout": "55000",
                 },
             },
         }
