@@ -110,7 +110,7 @@ class DeepLinkTests: XCTestCase {
         XCTAssertEqual(link.generateURL()?.absoluteString, "https://apiv2.trackrat.net/share/train/A174")
     }
 
-    func testGenerateURL_roundTripsThroughParsing() {
+    func testGenerateURL_roundTripsThroughParsing() throws {
         let date = easternDate(year: 2026, month: 3, day: 15)
         let original = DeepLink(trainId: "A174", date: date, fromStationCode: "NY", toStationCode: "PH")
 
