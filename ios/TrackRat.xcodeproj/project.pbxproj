@@ -87,6 +87,7 @@
 		A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899492E8063F90079E596 /* TrainListViewModelTests.swift */; };
 		A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */; };
 		A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899522E8067020079E596 /* TrainV2Tests.swift */; };
+		B86BBB016A200D12D03DB66E /* V2APIModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B660A48497E01536D4936ACD /* V2APIModelsTests.swift */; };
 		A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899562E8069AC0079E596 /* MockProtocols.swift */; };
 		A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */; };
 		A19E912D2E3F8E4A0011F777 /* LegacyBottomSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912C2E3F8E4A0011F777 /* LegacyBottomSheetView.swift */; };
@@ -266,6 +267,7 @@
 		A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsViewModelTests.swift; path = TrackRatTests/ViewModels/TrainDetailsViewModelTests.swift; sourceTree = "<group>"; };
 		A19899492E8063F90079E596 /* TrainListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListViewModelTests.swift; path = TrackRatTests/ViewModels/TrainListViewModelTests.swift; sourceTree = "<group>"; };
 		A19899522E8067020079E596 /* TrainV2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2Tests.swift; path = TrackRatTests/Models/TrainV2Tests.swift; sourceTree = "<group>"; };
+		B660A48497E01536D4936ACD /* V2APIModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModelsTests.swift; path = TrackRatTests/Models/V2APIModelsTests.swift; sourceTree = "<group>"; };
 		A19899562E8069AC0079E596 /* MockProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockProtocols.swift; path = TrackRatTests/TestUtilities/MockProtocols.swift; sourceTree = "<group>"; };
 		A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MapContainerView.swift; path = Views/Screens/MapContainerView.swift; sourceTree = "<group>"; };
 		A19E912C2E3F8E4A0011F777 /* LegacyBottomSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegacyBottomSheetView.swift; path = Views/Components/LegacyBottomSheetView.swift; sourceTree = "<group>"; };
@@ -383,6 +385,7 @@
 				A1WIDGET242DFC73650002FB39 /* Frameworks */,
 				A16D6EE62E16A558008C6996 /* Recovered References */,
 				A19899522E8067020079E596 /* TrainV2Tests.swift */,
+				B660A48497E01536D4936ACD /* V2APIModelsTests.swift */,
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
 				B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */,
 				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
@@ -849,6 +852,7 @@
 				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
+				B86BBB016A200D12D03DB66E /* V2APIModelsTests.swift in Sources */,
 				A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
 				A12C31472F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,

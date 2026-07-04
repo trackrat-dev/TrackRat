@@ -65,6 +65,35 @@ class CongestionMapViewModelTests: XCTestCase {
         XCTAssertEqual(response.totalTrains, 50, "total_trains from metadata")
     }
 
+    func testDecodeCongestionResponseWithNullMetadataValue() throws {
+        // A null value anywhere in metadata (e.g. a not-yet-computed stat) must
+        // decode via CodableValue's .null case instead of failing the whole response.
+        let json = """
+        {
+            "individual_segments": [],
+            "aggregated_segments": [],
+            "train_positions": [],
+            "generated_at": "2026-03-28T12:00:00-04:00",
+            "time_window_hours": 2,
+            "max_per_segment": 100,
+            "metadata": {
+                "total_individual_segments": 500,
+                "total_aggregated_segments": 100,
+                "total_trains": 50,
+                "unavailable_stat": null
+            }
+        }
+        """
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
+        let data = json.data(using: .utf8)!
+        let response = try decoder.decode(CongestionMapResponse.self, from: data)
+
+        XCTAssertEqual(response.totalTrains, 50, "decode should succeed despite the null metadata value")
+    }
+
     func testFetchCongestionMapDataError() async {
         mockAPIService.fetchCongestionMapDataResult = .failure(MockTestError.networkError)
 
