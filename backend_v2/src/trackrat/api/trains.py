@@ -45,7 +45,12 @@ from trackrat.services.direct_forecaster import DirectArrivalForecaster
 from trackrat.services.gtfs import GTFSService
 from trackrat.services.jit import JustInTimeUpdateService
 from trackrat.utils.request_stats import get_request_stats
-from trackrat.utils.time import DATETIME_MIN_ET, now_et, safe_datetime_subtract
+from trackrat.utils.time import (
+    DATETIME_MIN_ET,
+    now_et,
+    now_for_provider,
+    safe_datetime_subtract,
+)
 from trackrat.utils.train import (
     effective_njt_updated_times,
     get_effective_observation_type,
@@ -313,9 +318,10 @@ async def get_train_details(
         data_source=data_source,
     )
 
-    # Default to today
+    # Default to today, in the requested provider's local timezone since
+    # journey_date is keyed to each provider's local service day
     if date is None:
-        date = now_et().date()
+        date = (now_for_provider(data_source) if data_source else now_et()).date()
 
     # For future dates, use GTFS static schedule data
     today = now_et().date()
