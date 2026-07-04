@@ -92,10 +92,12 @@ class MockAPIService: APIServiceProtocol {
                 fromStation: from,
                 toStation: to,
                 totalTrains: 100,
-                dataSource: dataSource
+                dataSource: dataSource,
+                baselineTrainCount: nil
             ),
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: 85.0,
+                onTimeSource: nil,
                 averageDelayMinutes: 5.2,
                 averageDepartureDelayMinutes: 3.1,
                 cancellationRate: 2.0,
