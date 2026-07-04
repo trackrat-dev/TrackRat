@@ -884,16 +884,19 @@ class GTFSService:
         active_services -= removed_services
 
         # Cache the result — service IDs are stable for a given date.
-        # Evict stale entries for past dates to prevent unbounded growth.
+        # Evict entries older than yesterday to prevent unbounded growth, while
+        # keeping yesterday's so an empty result doesn't get recomputed (and its
+        # warning re-fired) on every call for still-active overnight trips
+        # (journey_date can trail today by up to a day, e.g. lirr/collector.py).
         # Use pop() instead of dict replacement to avoid clobbering concurrent inserts.
         from trackrat.utils.time import now_et as _now_et
 
-        today = _now_et().date()
-        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < today]
+        cutoff = _now_et().date() - timedelta(days=1)
+        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < cutoff]
         for k in stale_keys:
             GTFSService._service_id_cache.pop(k, None)
         stale_warned_keys = [
-            k for k in GTFSService._empty_service_warned if k[1] < today
+            k for k in GTFSService._empty_service_warned if k[1] < cutoff
         ]
         for k in stale_warned_keys:
             GTFSService._empty_service_warned.discard(k)

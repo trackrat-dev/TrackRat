@@ -977,6 +977,41 @@ class TestGetStaticStopTimes:
         assert mock_logger.error.call_args.args[0] == "gtfs_static_no_active_services"
 
     @pytest.mark.asyncio
+    async def test_warns_once_for_yesterdays_overnight_date(self):
+        """Overnight trips can carry journey_date == yesterday (e.g.
+        lirr/collector.py's `journey_date >= today - 1` stale window). The
+        real get_active_service_ids must not evict yesterday's warned-key on
+        every call, or the dedupe added for issue #1370 is defeated for
+        exactly this still-broken-overnight-feed case (Codex review on
+        PR #1385)."""
+        today = date(2026, 2, 7)
+        yesterday = date(2026, 2, 6)
+        mock_db = AsyncMock()
+
+        async def mock_execute(query):
+            result = MagicMock()
+            result.all.return_value = []  # no calendar or calendar_dates rows
+            return result
+
+        mock_db.execute = mock_execute
+
+        with (
+            patch(
+                "trackrat.utils.time.now_et",
+                return_value=datetime.combine(today, time(1, 0), tzinfo=ET),
+            ),
+            patch("trackrat.services.gtfs.logger") as mock_logger,
+        ):
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", yesterday
+            )
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", yesterday
+            )
+
+        assert mock_logger.error.call_count == 1
+
+    @pytest.mark.asyncio
     async def test_returns_none_when_trip_not_found(self):
         """Should return None when the GTFS trip_id doesn't match any trip."""
         mock_db = AsyncMock()
