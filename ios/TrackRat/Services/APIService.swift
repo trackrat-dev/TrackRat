@@ -62,7 +62,7 @@ final class APIService: ObservableObject {
         throw lastError ?? APIError.noData
     }
 
-    /// Determine if an error is retryable (transient network issues)
+    /// Determine if an error is retryable (transient network issues, including 5xx responses)
     private func isRetryableError(_ error: Error) -> Bool {
         if let urlError = error as? URLError {
             switch urlError.code {
@@ -73,9 +73,28 @@ final class APIService: ObservableObject {
                 return false
             }
         }
+        if let apiError = error as? APIError, case .serverError = apiError {
+            return true
+        }
         return false
     }
-    
+
+    /// Throw a typed `APIError` for non-2xx HTTP responses, so callers get a consistent
+    /// server-error/not-found/invalid-parameters state instead of attempting to decode
+    /// an error body as a success response.
+    func validate(_ response: URLResponse) throws {
+        guard let httpResponse = response as? HTTPURLResponse else { return }
+        if httpResponse.statusCode == 404 {
+            throw APIError.notFound
+        }
+        if httpResponse.statusCode >= 500 {
+            throw APIError.serverError
+        }
+        if httpResponse.statusCode >= 400 {
+            throw APIError.invalidParameters
+        }
+    }
+
     func updateServerEnvironment(_ environment: ServerEnvironment) {
         self.baseURL = environment.baseURL
     }
@@ -148,7 +167,8 @@ final class APIService: ObservableObject {
         }
 
         return try await executeWithRetry {
-            let (data, _) = try await self.session.data(from: url)
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
 
             do {
                 let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
@@ -159,7 +179,7 @@ final class APIService: ObservableObject {
                 if let jsonString = String(data: data, encoding: .utf8) {
                     print("🔴 RAW DATA: \(jsonString.prefix(500))")
                 }
-                throw error
+                throw APIError.decodingError
             }
         }
     }
@@ -202,7 +222,8 @@ final class APIService: ObservableObject {
         }
 
         return try await executeWithRetry {
-            let (data, _) = try await self.session.data(from: url)
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
             do {
                 let response = try self.decoder.decode(V2DeparturesResponse.self, from: data)
                 return response.departures.map { self.adaptV2DepartureToTrainV2($0) }
@@ -211,7 +232,7 @@ final class APIService: ObservableObject {
                 if let jsonString = String(data: data, encoding: .utf8) {
                     print("🔴 RAW DATA: \(jsonString.prefix(500))")
                 }
-                throw error
+                throw APIError.decodingError
             }
         }
     }
@@ -232,9 +253,15 @@ final class APIService: ObservableObject {
         }
 
         return try await executeWithRetry {
-            let (data, _) = try await self.session.data(from: url)
-            let response = try self.decoder.decode(V2ServiceAlertsResponse.self, from: data)
-            return response.alerts
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
+            do {
+                let response = try self.decoder.decode(V2ServiceAlertsResponse.self, from: data)
+                return response.alerts
+            } catch {
+                print("🔴 DECODING ERROR (fetchServiceAlerts): \(error)")
+                throw APIError.decodingError
+            }
         }
     }
 
@@ -252,12 +279,14 @@ final class APIService: ObservableObject {
         guard let url = components.url else {
             throw APIError.invalidURL
         }
-        let (data, response) = try await session.data(from: url)
-        if let httpResp = response as? HTTPURLResponse {
-            if httpResp.statusCode == 404 { throw APIError.notFound }
-            if httpResp.statusCode >= 400 { throw APIError.serverError }
+        let (data, urlResponse) = try await session.data(from: url)
+        try validate(urlResponse)
+        do {
+            return try decoder.decode(RoutePreferenceResponse.self, from: data)
+        } catch {
+            print("🔴 DECODING ERROR (fetchRoutePreference): \(error)")
+            throw APIError.decodingError
         }
-        return try decoder.decode(RoutePreferenceResponse.self, from: data)
     }
 
     func saveRoutePreference(deviceId: String, from: String, to: String, enabledSystems: [String: [String]]) async throws {
@@ -276,10 +305,8 @@ final class APIService: ObservableObject {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (_, response) = try await session.data(for: request)
-        if let httpResp = response as? HTTPURLResponse, httpResp.statusCode >= 400 {
-            throw APIError.serverError
-        }
+        let (_, urlResponse) = try await session.data(for: request)
+        try validate(urlResponse)
     }
 
     // MARK: - Trip Search
@@ -326,7 +353,8 @@ final class APIService: ObservableObject {
         print("🔵 DEBUG API: Searching trips from URL: \(url)")
 
         return try await executeWithRetry {
-            let (data, _) = try await self.session.data(from: url)
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
 
             do {
                 let response = try self.decoder.decode(V2TripSearchResponse.self, from: data)
@@ -338,7 +366,7 @@ final class APIService: ObservableObject {
                 if let jsonString = String(data: data, encoding: .utf8) {
                     print("🔴 RAW DATA: \(jsonString.prefix(500))")
                 }
-                throw error
+                throw APIError.decodingError
             }
         }
     }
@@ -380,8 +408,15 @@ final class APIService: ObservableObject {
         return try await executeWithRetry {
             let (data, response) = try await self.session.data(from: url)
 
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
-                throw APIError.noData
+            if let httpResponse = response as? HTTPURLResponse {
+                // 404 maps to .noData (not .notFound) because callers key off it
+                // specifically to show "Train not found" (TrainDetailsView, DeparturePickerView).
+                if httpResponse.statusCode == 404 {
+                    throw APIError.noData
+                }
+                if httpResponse.statusCode >= 500 {
+                    throw APIError.serverError
+                }
             }
 
             do {
@@ -389,7 +424,7 @@ final class APIService: ObservableObject {
                 return self.adaptV2TrainDetailsToTrainV2(detailsResponse.train, fromStationCode: fromStationCode, trackPrediction: detailsResponse.trackPrediction)
             } catch {
                 print("🔴 V2 DECODING ERROR (fetchTrainDetails for id: \(id)): \(error)")
-                throw error
+                throw APIError.decodingError
             }
         }
     }
@@ -419,23 +454,16 @@ final class APIService: ObservableObject {
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }
-        
+
         print("📊 Fetching historical data from: \(url)")
 
-        let (data, _) = try await session.data(from: url)
-        
-        // Debug: Print raw response
-        if let jsonString = String(data: data, encoding: .utf8) {
-            print("📊 Raw historical data response: \(jsonString.prefix(500))...")
-        }
-        
         // Define response structure for V2 history endpoint
         struct V2HistoryResponse: Decodable {
             let trainId: String
             let statistics: V2Statistics
             let routeStatistics: V2Statistics?
             let dataSource: String?
-            
+
             struct V2Statistics: Decodable {
                 let totalJourneys: Int
                 let onTimePercentage: Double
@@ -443,13 +471,13 @@ final class APIService: ObservableObject {
                 let cancellationRate: Double
                 let delayBreakdown: DelayBreakdown?
                 let trackUsage: [String: Int]?
-                
+
                 struct DelayBreakdown: Decodable {
                     let onTime: Int
                     let slight: Int
                     let significant: Int
                     let major: Int
-                    
+
                     private enum CodingKeys: String, CodingKey {
                         case onTime = "on_time"
                         case slight
@@ -457,7 +485,7 @@ final class APIService: ObservableObject {
                         case major
                     }
                 }
-                
+
                 private enum CodingKeys: String, CodingKey {
                     case totalJourneys = "total_journeys"
                     case onTimePercentage = "on_time_percentage"
@@ -467,7 +495,7 @@ final class APIService: ObservableObject {
                     case trackUsage = "track_usage"
                 }
             }
-            
+
             private enum CodingKeys: String, CodingKey {
                 case trainId = "train_id"
                 case statistics
@@ -475,13 +503,21 @@ final class APIService: ObservableObject {
                 case dataSource = "data_source"
             }
         }
-        
-        let response: V2HistoryResponse
-        do {
-            response = try decoder.decode(V2HistoryResponse.self, from: data)
-        } catch {
-            print("❌ Failed to decode historical data: \(error)")
-            throw error
+
+        let response: V2HistoryResponse = try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
+
+            if let jsonString = String(data: data, encoding: .utf8) {
+                print("📊 Raw historical data response: \(jsonString.prefix(500))...")
+            }
+
+            do {
+                return try self.decoder.decode(V2HistoryResponse.self, from: data)
+            } catch {
+                print("❌ Failed to decode historical data: \(error)")
+                throw APIError.decodingError
+            }
         }
         
         // Transform V2 response to iOS HistoricalData model
@@ -588,8 +624,6 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
         
-        let (data, _) = try await session.data(from: url)
-
         // Define response structure for route history endpoint
         struct RouteHistoryResponse: Decodable {
             let route: RouteInfo
@@ -673,12 +707,16 @@ final class APIService: ObservableObject {
             }
         }
         
-        let response: RouteHistoryResponse
-        do {
-            response = try decoder.decode(RouteHistoryResponse.self, from: data)
-        } catch {
-            print("❌ Failed to decode route historical data: \(error)")
-            throw error
+        let response: RouteHistoryResponse = try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
+
+            do {
+                return try self.decoder.decode(RouteHistoryResponse.self, from: data)
+            } catch {
+                print("❌ Failed to decode route historical data: \(error)")
+                throw APIError.decodingError
+            }
         }
         
         // Transform to RouteHistoricalData model
@@ -748,14 +786,12 @@ final class APIService: ObservableObject {
         
         do {
             let (_, response) = try await session.data(for: request)
-            
+
             if let httpResponse = response as? HTTPURLResponse {
                 print("📱 Device token registration response: \(httpResponse.statusCode)")
-                if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-                    throw APIError.invalidParameters
-                }
             }
-            
+            try validate(response)
+
             print("✅ Device token registered successfully")
         } catch {
             print("❌ Failed to register device token: \(error)")
@@ -809,19 +845,16 @@ final class APIService: ObservableObject {
         }
         
         let (data, response) = try await session.data(for: request)
-        
+
         if let httpResponse = response as? HTTPURLResponse {
             print("📱 Live Activity token registration response: \(httpResponse.statusCode)")
-            
+
             if let responseString = String(data: data, encoding: .utf8) {
                 print("📱 Live Activity registration response body: \(responseString)")
             }
-            
-            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-                throw APIError.invalidParameters
-            }
         }
-        
+        try validate(response)
+
         print("✅ Live Activity token registered for train \(trainId)")
     }
     
@@ -871,13 +904,8 @@ final class APIService: ObservableObject {
         #endif
         
         let (_, response) = try await session.data(for: request)
-        
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-                throw APIError.invalidParameters
-            }
-        }
-        
+        try validate(response)
+
         print("✅ Live Activity token registered for train \(trainNumber)")
     }
     
@@ -912,21 +940,19 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
         
-        let (data, response) = try await session.data(from: url)
-        
-        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 404 {
-            throw APIError.noData
-        }
-        
-        do {
-            let response = try decoder.decode(V2OccupiedTracksResponse.self, from: data)
-            return response
-        } catch {
-            print("🔴 V2 DECODING ERROR (fetchOccupiedTracks for station: \(stationCode)): \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+        return try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
+
+            do {
+                return try self.decoder.decode(V2OccupiedTracksResponse.self, from: data)
+            } catch {
+                print("🔴 V2 DECODING ERROR (fetchOccupiedTracks for station: \(stationCode)): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw APIError.decodingError
             }
-            throw error
         }
     }
     
@@ -951,17 +977,19 @@ final class APIService: ObservableObject {
             throw APIError.invalidURL
         }
         
-        let (data, _) = try await session.data(from: url)
-        
-        do {
-            let response = try decoder.decode(CongestionMapResponse.self, from: data)
-            return response
-        } catch {
-            print("🔴 DECODING ERROR (fetchCongestionData): \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
+        return try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
+
+            do {
+                return try self.decoder.decode(CongestionMapResponse.self, from: data)
+            } catch {
+                print("🔴 DECODING ERROR (fetchCongestionData): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw APIError.decodingError
             }
-            throw error
         }
     }
     
@@ -1011,26 +1039,21 @@ final class APIService: ObservableObject {
 
         print("📊 Fetching operations summary from: \(url)")
 
-        let (data, response) = try await session.data(from: url)
+        return try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
+            try self.validate(urlResponse)
 
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode == 400 {
-                throw APIError.invalidParameters
-            } else if httpResponse.statusCode != 200 {
-                throw APIError.noData
+            do {
+                let response = try self.decoder.decode(OperationsSummaryResponse.self, from: data)
+                print("✅ Operations summary decoded: \(response.headline)")
+                return response
+            } catch {
+                print("🔴 DECODING ERROR (fetchOperationsSummary): \(error)")
+                if let jsonString = String(data: data, encoding: .utf8) {
+                    print("🔴 RAW DATA: \(jsonString.prefix(500))")
+                }
+                throw APIError.decodingError
             }
-        }
-
-        do {
-            let response = try decoder.decode(OperationsSummaryResponse.self, from: data)
-            print("✅ Operations summary decoded: \(response.headline)")
-            return response
-        } catch {
-            print("🔴 DECODING ERROR (fetchOperationsSummary): \(error)")
-            if let jsonString = String(data: data, encoding: .utf8) {
-                print("🔴 RAW DATA: \(jsonString.prefix(500))")
-            }
-            throw error
         }
     }
 
@@ -1282,31 +1305,25 @@ final class APIService: ObservableObject {
 
         print("🌐 [APIService] Fetching predictions from: \(url.absoluteString)")
 
-        let (data, response) = try await session.data(from: url)
+        return try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
 
-        if let httpResponse = response as? HTTPURLResponse {
-            print("📡 [APIService] Response status: \(httpResponse.statusCode)")
-            if httpResponse.statusCode == 404 {
-                throw APIError.notFound
+            if let httpResponse = urlResponse as? HTTPURLResponse {
+                print("📡 [APIService] Response status: \(httpResponse.statusCode)")
             }
-            if httpResponse.statusCode != 200 {
+            try self.validate(urlResponse)
+
+            do {
+                let prediction = try self.decoder.decode(PlatformPrediction.self, from: data)
+                print("✅ [APIService] Successfully decoded platform prediction")
+                return prediction
+            } catch {
+                print("❌ [APIService] Decoding error: \(error)")
                 if let responseStr = String(data: data, encoding: .utf8) {
-                    print("   Response body: \(responseStr)")
+                    print("   Raw response: \(responseStr.prefix(500))...")
                 }
-                throw APIError.serverError
+                throw APIError.decodingError
             }
-        }
-
-        do {
-            let prediction = try decoder.decode(PlatformPrediction.self, from: data)
-            print("✅ [APIService] Successfully decoded platform prediction")
-            return prediction
-        } catch {
-            print("❌ [APIService] Decoding error: \(error)")
-            if let responseStr = String(data: data, encoding: .utf8) {
-                print("   Raw response: \(responseStr.prefix(500))...")
-            }
-            throw error
         }
     }
 
@@ -1337,28 +1354,25 @@ final class APIService: ObservableObject {
 
         print("🌐 [APIService] Fetching delay forecast from: \(url.absoluteString)")
 
-        let (data, response) = try await session.data(from: url)
+        return try await executeWithRetry {
+            let (data, urlResponse) = try await self.session.data(from: url)
 
-        if let httpResponse = response as? HTTPURLResponse {
-            print("📡 [APIService] Response status: \(httpResponse.statusCode)")
-            if httpResponse.statusCode != 200 {
-                print("⚠️ [APIService] Non-200 status code")
+            if let httpResponse = urlResponse as? HTTPURLResponse {
+                print("📡 [APIService] Response status: \(httpResponse.statusCode)")
+            }
+            try self.validate(urlResponse)
+
+            do {
+                let forecast = try self.decoder.decode(DelayForecastResponse.self, from: data)
+                print("✅ [APIService] Successfully decoded delay forecast")
+                return forecast
+            } catch {
+                print("❌ [APIService] Decoding error: \(error)")
                 if let responseStr = String(data: data, encoding: .utf8) {
-                    print("   Response body: \(responseStr)")
+                    print("   Raw response: \(responseStr.prefix(500))...")
                 }
+                throw APIError.decodingError
             }
-        }
-
-        do {
-            let forecast = try decoder.decode(DelayForecastResponse.self, from: data)
-            print("✅ [APIService] Successfully decoded delay forecast")
-            return forecast
-        } catch {
-            print("❌ [APIService] Decoding error: \(error)")
-            if let responseStr = String(data: data, encoding: .utf8) {
-                print("   Raw response: \(responseStr.prefix(500))...")
-            }
-            throw error
         }
     }
 
@@ -1413,12 +1427,7 @@ final class APIService: ObservableObject {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (_, response) = try await session.data(for: request)
-
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-                throw APIError.invalidParameters
-            }
-        }
+        try validate(response)
 
         print("✅ Feedback submitted successfully")
     }
@@ -1560,11 +1569,12 @@ extension APIService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse,
-           httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-            throw APIError.invalidParameters
+        try validate(response)
+        do {
+            return try JSONDecoder().decode(DeviceRegisterResponse.self, from: data)
+        } catch {
+            throw APIError.decodingError
         }
-        return try JSONDecoder().decode(DeviceRegisterResponse.self, from: data)
     }
 
     func syncAlertSubscriptions(deviceId: String, subscriptions: [RouteAlertSubscription]) async throws {
@@ -1630,10 +1640,7 @@ extension APIService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (_, response) = try await session.data(for: request)
-        if let httpResponse = response as? HTTPURLResponse,
-           httpResponse.statusCode != 200 && httpResponse.statusCode != 201 {
-            throw APIError.invalidParameters
-        }
+        try validate(response)
     }
 
 }
