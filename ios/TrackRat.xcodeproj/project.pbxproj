@@ -214,6 +214,8 @@
 		A1TESTTRIPDETAILVIEW0000 /* TripDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C182D065DE7062F61B8F2446 /* TripDetailsView.swift */; };
 		A1TESTADVCONFIGVIEW00000 /* AdvancedConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */; };
 		A1TESTRATMASCOT000000000 /* TrackRatMascot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */; };
+		A1TESTADDROUTEALERT00000 /* AddRouteAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */; };
+		A1TESTACTIVETRIPSSEC0000 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -967,6 +969,8 @@
 				A1TESTTRIPDETAILVIEW0000 /* TripDetailsView.swift in Sources */,
 				A1TESTADVCONFIGVIEW00000 /* AdvancedConfigurationView.swift in Sources */,
 				A1TESTRATMASCOT000000000 /* TrackRatMascot.swift in Sources */,
+				A1TESTADDROUTEALERT00000 /* AddRouteAlertView.swift in Sources */,
+				A1TESTACTIVETRIPSSEC0000 /* ActiveTripsSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
