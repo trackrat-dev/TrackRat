@@ -5,6 +5,7 @@ Uses the MBTAClient to fetch GTFS-RT data and creates/updates TrainJourney recor
 Follows the same pattern as the LIRR collector.
 """
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -21,6 +22,7 @@ from trackrat.collectors.mta_common import (
     group_candidate_trips_by_overlap,
     infer_missing_origin,
     select_matching_trip,
+    set_stop_track,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -35,6 +37,11 @@ from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.time import ET, now_et
 
 logger = logging.getLogger(__name__)
+
+# Outer bound on the feed fetch. Generous relative to the client's own HTTP
+# timeout, but still leaves the bulk of the 480s scheduler budget for DB
+# work when the upstream MBTA endpoint is degraded.
+_FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
 
 def _generate_train_id(trip_id: str) -> str:
@@ -135,8 +142,22 @@ class MBTACollector:
         try:
             collection_start = now_et()
 
-            # Fetch all arrivals
-            arrivals = await self.client.get_all_arrivals()
+            # Fetch all arrivals. Wrap in wait_for so an upstream MBTA outage
+            # (hung connects, stalled reads beyond the client's own timeout)
+            # can't consume the whole 480s scheduler budget — we bail with
+            # empty stats and pick it up next cycle (~4 min).
+            try:
+                arrivals = await asyncio.wait_for(
+                    self.client.get_all_arrivals(),
+                    timeout=_FEED_FETCH_TIMEOUT_SECONDS,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "mbta_feed_fetch_timed_out | timeout_s=%.1f",
+                    _FEED_FETCH_TIMEOUT_SECONDS,
+                )
+                return stats
+
             stats["total_arrivals"] = len(arrivals)
 
             if not arrivals:
@@ -156,16 +177,19 @@ class MBTACollector:
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             trips_in_batch = 0
+            analyzed_journeys: list[TrainJourney] = []
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
-                        result = await self._process_trip(
+                        result, journey = await self._process_trip(
                             session, trip_id, trip_arrivals
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
+                        if journey is not None and journey.id is not None:
+                            analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing MBTA trip {trip_id}: {e}")
                     stats["errors"] += 1
@@ -181,6 +205,12 @@ class MBTACollector:
                     f"MBTA collection: all {stats['errors']} trips failed, "
                     f"no successful discoveries or updates"
                 )
+
+            # Batched segment analysis for all processed journeys. Moving this
+            # out of the per-trip loop eliminates the O(trips * stops)
+            # per-segment SELECTs that dominate per-cycle cost.
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
             # Expire active OBSERVED journeys not seen in this collection cycle
             today = collection_start.date()
@@ -221,15 +251,21 @@ class MBTACollector:
 
     async def _process_trip(
         self, session: AsyncSession, trip_id: str, arrivals: list[MbtaArrival]
-    ) -> str | None:
+    ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
 
         Creates a new TrainJourney if this trip doesn't exist,
         or updates the existing one with new stop times.
+
+        Returns:
+            Tuple of (result_type, journey) where result_type is
+            "discovered", "updated", or None. The journey reference is
+            returned so the caller can batch post-processing (e.g.,
+            TransitAnalyzer) after the per-trip loop completes.
         """
         if not arrivals:
-            return None
+            return None, None
 
         # Sort arrivals by time
         arrivals.sort(key=lambda a: a.arrival_time)
@@ -313,7 +349,7 @@ class MBTACollector:
                     trip_id,
                     effective_stop_count,
                 )
-                return None
+                return None, None
 
             # Compute scheduled times
             if merged_stops:
@@ -449,26 +485,19 @@ class MBTACollector:
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Discovered MBTA train {train_id}")
-            return "discovered"
+            return "discovered", journey
 
         else:
             # Update existing journey
             journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
+            # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries).
+            # journey.stops was loaded via selectinload on the existence check above.
+            stops_by_code = {s.station_code: s for s in journey.stops}
             for arr in arrivals:
-                stop_result = await session.execute(
-                    select(JourneyStop).where(
-                        JourneyStop.journey_id == journey.id,
-                        JourneyStop.station_code == arr.station_code,
-                    )
-                )
-                existing_stop = stop_result.scalar_one_or_none()
+                existing_stop = stops_by_code.get(arr.station_code)
 
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
@@ -477,28 +506,20 @@ class MBTACollector:
                     if arr.departure_time:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
-                    if arr.track:
-                        if not existing_stop.track:
-                            existing_stop.track_assigned_at = now_et()
-                        existing_stop.track = arr.track
+                    set_stop_track(
+                        existing_stop, arr.track, "MBTA", journey.train_id, now_et()
+                    )
 
-            # Update departure status and journey metadata
+            # Update departure status and journey metadata using the in-memory
+            # stops collection — no re-query needed.
             now = now_et()
-            stop_result = await session.execute(
-                select(JourneyStop)
-                .where(JourneyStop.journey_id == journey.id)
-                .order_by(JourneyStop.stop_sequence)
-            )
-            journey_stops = list(stop_result.scalars().all())
+            journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Updated MBTA train {train_id}")
-            return "updated"
+            return "updated", journey
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
@@ -548,10 +569,7 @@ class MBTACollector:
                 if arr.departure_time:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
-                if arr.track:
-                    if not stop.track:
-                        stop.track_assigned_at = now_et()
-                    stop.track = arr.track
+                set_stop_track(stop, arr.track, "MBTA", journey.train_id, now_et())
 
         first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)
