@@ -757,6 +757,12 @@ class SummaryMetricsResponse(BaseModel):
     average_delay_minutes: float | None = Field(
         None, ge=0.0, description="Average delay in minutes"
     )
+    arrival_on_time_percentage: float | None = Field(
+        None, ge=0.0, le=100.0, description="Percentage of trains on-time by arrival"
+    )
+    arrival_average_delay_minutes: float | None = Field(
+        None, ge=0.0, description="Average arrival delay in minutes"
+    )
     cancellation_count: int | None = Field(
         None, ge=0, description="Number of cancellations"
     )
