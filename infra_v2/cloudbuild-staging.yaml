@@ -113,11 +113,13 @@ steps:
           # Create new staging disk from production snapshot
           # Size is inherited from the snapshot so staging always matches production
           # (never hardcode --size — a smaller value breaks once the prod disk grows).
+          # Type is NOT inherited from the snapshot, so it must match storage.tf's
+          # google_compute_disk.data type (pd-balanced) or staging drifts from prod.
           echo "Creating new staging disk from production snapshot..."
           if ! gcloud compute disks create ${_STAGING_DISK} \
             --source-snapshot=staging-clone-${BUILD_ID} \
             --zone=${_ZONE} \
-            --type=pd-ssd \
+            --type=pd-balanced \
             --labels=app=trackrat,environment=staging; then
             echo "ERROR: Failed to create staging disk. Cleaning up snapshot..."
             gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet || true
