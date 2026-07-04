@@ -191,6 +191,17 @@
 		A1TESTTRAINLISTVIEW00000 /* TrainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FF2DE39F23002F3214 /* TrainListView.swift */; };
 		A1TESTSTATIONCOORDS00000 /* StationCoordinates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */; };
 		A1TESTSTATIONDEPART00000 /* StationDepartures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D142E106D1B003DA39F /* StationDepartures.swift */; };
+		A1TESTRATSENSESVC0000000 /* RatSenseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F92DE39F0F002F3215 /* RatSenseService.swift */; };
+		A1TESTONBOARDVIEW0000000 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
+		A1TESTDEEPLINKSVC0000000 /* DeepLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55B2E25BBD800958ABA /* DeepLinkService.swift */; };
+		A1TESTBACKENDWAKE0000000 /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */; };
+		A1TESTMAPCONTAINER000000 /* MapContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */; };
+		A1TESTLOADINGVIEW0000000 /* TrackRatLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */; };
+		A1TESTSHARESVC0000000000 /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
+		A1TESTSTATICTRACKSVC0000 /* StaticTrackDistributionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */; };
+		A1TESTPENNSTATION0000000 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
+		A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1TRNROW01000000000000A1 /* TrainRow.swift */; };
+		A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1STDETAIL00000000000000A1 /* StationDetailsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -921,6 +932,17 @@
 				A1TESTTRAINLISTVIEW00000 /* TrainListView.swift in Sources */,
 				A1TESTSTATIONCOORDS00000 /* StationCoordinates.swift in Sources */,
 				A1TESTSTATIONDEPART00000 /* StationDepartures.swift in Sources */,
+				A1TESTRATSENSESVC0000000 /* RatSenseService.swift in Sources */,
+				A1TESTONBOARDVIEW0000000 /* OnboardingView.swift in Sources */,
+				A1TESTDEEPLINKSVC0000000 /* DeepLinkService.swift in Sources */,
+				A1TESTBACKENDWAKE0000000 /* BackendWakeupService.swift in Sources */,
+				A1TESTMAPCONTAINER000000 /* MapContainerView.swift in Sources */,
+				A1TESTLOADINGVIEW0000000 /* TrackRatLoadingView.swift in Sources */,
+				A1TESTSHARESVC0000000000 /* ShareService.swift in Sources */,
+				A1TESTSTATICTRACKSVC0000 /* StaticTrackDistributionService.swift in Sources */,
+				A1TESTPENNSTATION0000000 /* PennStationGuideView.swift in Sources */,
+				A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */,
+				A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
