@@ -304,6 +304,7 @@ struct MockDataFactory {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: isCancelled,
+            cancellationReason: nil,
             isCompleted: isCompleted,
             dataSource: "NJT",
             stops: stops
