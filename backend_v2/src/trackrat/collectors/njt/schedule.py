@@ -16,6 +16,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.time import now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -487,6 +488,11 @@ class NJTScheduleCollector:
                 train_id=journey.train_id,
             )
             return
+
+        # Serialize this journey's writers across replicas (issue #1369):
+        # this delete+recreate can otherwise race the JIT/scheduled
+        # collection paths' phantom-stop delete and stop updates.
+        await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
 
         # Delete the single placeholder stop we created during schedule collection
         from sqlalchemy import delete

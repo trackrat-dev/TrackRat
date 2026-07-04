@@ -9,6 +9,8 @@ from collections.abc import Callable, Coroutine
 from datetime import date, datetime
 from typing import Any
 
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -136,3 +138,38 @@ async def with_train_lock(
             logger.debug(
                 "released_train_lock", train_id=train_id, journey_date=journey_date
             )
+
+
+async def acquire_njt_journey_lock(
+    session: AsyncSession, train_id: str | None, journey_date: date | None
+) -> None:
+    """Take a transaction-scoped Postgres advisory lock for one NJT journey.
+
+    Unlike `with_train_lock`, this is a database lock, so it serializes NJT's
+    three writers of `journey_stops` (JIT refresh, scheduled collection, and
+    the nightly schedule rebuild) across replicas, not just within one
+    process. It is released automatically when the current transaction
+    commits or rolls back.
+
+    No-op on non-PostgreSQL dialects (e.g. the SQLite engine some unit tests
+    use): advisory locks are PostgreSQL-specific, and those tests run
+    single-threaded with no cross-replica writer to guard against.
+    """
+    if not train_id or not journey_date:
+        raise ValueError(
+            "train_id and journey_date are required to acquire journey lock"
+        )
+
+    # getattr, not session.bind directly: AsyncSession.bind is proxied via
+    # __getattr__ to the underlying sync session rather than being a real
+    # class attribute, so Mock(spec=AsyncSession) in tests raises
+    # AttributeError on access instead of returning None.
+    bind = getattr(session, "bind", None)
+    dialect_name = bind.dialect.name if bind else "postgresql"
+    if dialect_name != "postgresql":
+        return
+
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"NJT_{train_id}_{journey_date.isoformat()}"},
+    )
