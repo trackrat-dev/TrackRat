@@ -6,17 +6,14 @@ import XCTest
 class LiveActivityServiceTests: XCTestCase {
 
     var liveActivityService: LiveActivityService!
-    var mockAPIService: MockAPIService!
 
     override func setUp() {
         super.setUp()
-        mockAPIService = MockAPIService()
         liveActivityService = LiveActivityService.shared
     }
 
     override func tearDown() {
         liveActivityService = nil
-        mockAPIService = nil
         super.tearDown()
     }
 
@@ -25,87 +22,6 @@ class LiveActivityServiceTests: XCTestCase {
     func testServiceInitialization() {
         XCTAssertNotNil(liveActivityService)
         XCTAssertFalse(liveActivityService.isActivityActive)
-    }
-
-    func testMockAPIServiceTrainFetch() async throws {
-        // Setup mock train
-        let mockTrain = MockDataFactory.createMockTrainV2(
-            trainId: "TEST123",
-            fromStationCode: "NY",
-            destination: "Philadelphia"
-        )
-
-        mockAPIService.fetchTrainDetailsResult = .success(mockTrain)
-
-        // Test the mock
-        let result = try await mockAPIService.fetchTrainDetails(
-            id: "TEST123",
-            fromStationCode: "NY"
-        )
-
-        XCTAssertEqual(result.trainId, "TEST123")
-        XCTAssertEqual(result.destination, "Philadelphia")
-        XCTAssertEqual(mockAPIService.fetchTrainDetailsCallCount, 1)
-    }
-
-    func testMockAPIServiceTokenRegistration() async throws {
-        mockAPIService.registerTokenResult = .success(())
-
-        // Test registration
-        try await mockAPIService.registerLiveActivityToken(
-            pushToken: "test-token",
-            activityId: "test-activity",
-            trainNumber: "123",
-            originCode: "NY",
-            destinationCode: "PH"
-        )
-
-        XCTAssertEqual(mockAPIService.registerTokenCallCount, 1)
-        XCTAssertEqual(mockAPIService.lastPushToken, "test-token")
-        XCTAssertEqual(mockAPIService.lastActivityId, "test-activity")
-    }
-
-    func testMockAPIServiceTokenUnregistration() async throws {
-        mockAPIService.unregisterTokenResult = .success(())
-
-        // Test unregistration
-        try await mockAPIService.unregisterLiveActivityToken(pushToken: "test-token")
-
-        XCTAssertEqual(mockAPIService.unregisterTokenCallCount, 1)
-        XCTAssertEqual(mockAPIService.lastPushToken, "test-token")
-    }
-
-    // MARK: - Error Handling Tests
-
-    func testAPIServiceErrorHandling() async {
-        mockAPIService.fetchTrainDetailsResult = .failure(MockTestError.networkError)
-
-        do {
-            _ = try await mockAPIService.fetchTrainDetails(
-                id: "TEST123",
-                fromStationCode: "NY"
-            )
-            XCTFail("Should have thrown error")
-        } catch {
-            XCTAssertTrue(error is MockTestError)
-        }
-    }
-
-    func testTokenRegistrationError() async {
-        mockAPIService.registerTokenResult = .failure(MockTestError.networkError)
-
-        do {
-            try await mockAPIService.registerLiveActivityToken(
-                pushToken: "test-token",
-                activityId: "test-activity",
-                trainNumber: "123",
-                originCode: "NY",
-                destinationCode: "PH"
-            )
-            XCTFail("Should have thrown error")
-        } catch {
-            XCTAssertTrue(error is MockTestError)
-        }
     }
 
     // MARK: - Journey Progress Tests

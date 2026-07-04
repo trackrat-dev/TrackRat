@@ -168,6 +168,7 @@
 		B1SYSCHP02000000000000A1 /* SystemChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SYSCHP01000000000000A1 /* SystemChips.swift */; };
 		B8A1C2D3E4F5A6B7C8D9E0F2 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
 		C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */; };
+		2A354A797E735BBC8AAEBEA4 /* DeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C77C078D1370E5873D6DB7B /* DeepLinkTests.swift */; };
 		C2E7D99AB1388D3535BAD93F /* TripDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C182D065DE7062F61B8F2446 /* TripDetailsView.swift */; };
 /* End PBXBuildFile section */
 
@@ -322,6 +323,7 @@
 		BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainSystemTests.swift; sourceTree = "<group>"; };
 		C182D065DE7062F61B8F2446 /* TripDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripDetailsView.swift; path = Views/Screens/TripDetailsView.swift; sourceTree = "<group>"; };
 		C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTopologyTests.swift; sourceTree = "<group>"; };
+		7C77C078D1370E5873D6DB7B /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
 		F1ALERTS01000000000000A1 /* ServiceAlertsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ServiceAlertsSection.swift; path = TrackRat/Views/Components/ServiceAlertsSection.swift; sourceTree = "<group>"; };
 		F1SYSROW01000000000000A1 /* SystemRouteListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SystemRouteListRow.swift; path = TrackRat/Views/Components/SystemRouteListRow.swift; sourceTree = "<group>"; };
 		F1LINSEL01000000000000A1 /* LineSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LineSelectionView.swift; path = TrackRat/Views/Components/LineSelectionView.swift; sourceTree = "<group>"; };
@@ -523,6 +525,7 @@
 		A1BA60F42DFC73650002FB39 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				7C77C078D1370E5873D6DB7B /* DeepLinkTests.swift */,
 				C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */,
 				A1BA60E52DFC73650002FB39 /* StationsTests.swift */,
 				BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */,
@@ -829,6 +832,7 @@
 				A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */,
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
 				C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */,
+				2A354A797E735BBC8AAEBEA4 /* DeepLinkTests.swift in Sources */,
 				446F271841A8FA59C62FA628 /* TrainSystemTests.swift in Sources */,
 				A1BA60EE2DFC73650002FB39 /* TrainTests.swift in Sources */,
 				A1BA60EF2DFC73650002FB39 /* APIServiceTests.swift in Sources */,
