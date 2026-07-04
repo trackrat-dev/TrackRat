@@ -92,29 +92,12 @@ private func debugLog(_ message: String, context: ActivityViewContext<TrainActiv
     }
 }
 
-// Helper functions for data freshness
-func dataFreshnessText(_ timestamp: TimeInterval) -> String {
-    let secondsAgo = Int(Date().timeIntervalSince1970 - timestamp)
-    
-    if secondsAgo < 60 {
-        return "\(secondsAgo) sec ago"
-    } else {
-        let minutesAgo = secondsAgo / 60
-        return "\(minutesAgo) min ago"
-    }
-}
-
 // Helper function to strip "Station" suffix from station names
 func stripStationSuffix(_ stationName: String) -> String {
     if stationName.hasSuffix(" Station") {
         return String(stationName.dropLast(8)) // Remove " Station"
     }
     return stationName
-}
-
-func isDataStaleCheck(_ timestamp: TimeInterval) -> Bool {
-    let secondsAgo = Date().timeIntervalSince1970 - timestamp
-    return secondsAgo > 180  // 3 minutes
 }
 
 @available(iOS 16.1, *)
@@ -190,31 +173,15 @@ struct TrainLiveActivity: Widget {
                     debugLog("🟢 Compact appeared", context: context)
                 }
             } compactTrailing: {
-                // Compact trailing (right side) - track, or a self-updating
-                // countdown timer so it ticks on-device between pushes (issue #1298).
-                Group {
-                    if context.state.isBoarding, let track = context.state.trackDisplay {
-                        Text(track)
-                    } else if !context.state.hasTrainDeparted,
-                              let departureDate = context.state.departureDate,
-                              departureDate > Date() {
-                        Text(timerInterval: Date()...departureDate, countsDown: true)
-                            .frame(maxWidth: 44)
-                            .multilineTextAlignment(.trailing)
-                    } else if context.state.hasTrainDeparted,
-                              let arrivalDate = context.state.arrivalDate,
-                              arrivalDate > Date() {
-                        Text(timerInterval: Date()...arrivalDate, countsDown: true)
-                            .frame(maxWidth: 44)
-                            .multilineTextAlignment(.trailing)
-                    } else {
-                        Text(context.state.compactTrailingText)
-                    }
-                }
-                .font(.caption)
-                .monospacedDigit()
-                .fontWeight(.medium)
-                .foregroundColor(.white)
+                // Compact trailing (right side) - track (boarding) or minutes to
+                // departure/arrival. Rendered as a minute-granular string rather
+                // than a ticking timer: the underlying schedule only has minute
+                // resolution, so a MM:SS countdown would imply false precision.
+                Text(context.state.compactTrailingText)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .fontWeight(.medium)
+                    .foregroundColor(.white)
             } minimal: {
                 // Minimal view (when multiple activities)
                 Image(systemName: "tram.fill")
@@ -230,28 +197,7 @@ struct TrainLiveActivity: Widget {
 @available(iOS 16.1, *)
 struct TrainLiveActivityView: View {
     let context: ActivityViewContext<TrainActivityAttributes>
-    @State private var currentTime = Date()
-    
-    // Timer to update freshness display every 10 seconds
-    let timer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
-    
-    // Real-time freshness calculation
-    private var freshnessText: String {
-        let secondsAgo = Int(currentTime.timeIntervalSince1970 - context.state.dataTimestamp)
-        
-        if secondsAgo < 60 {
-            return "\(secondsAgo) sec ago"
-        } else {
-            let minutesAgo = secondsAgo / 60
-            return "\(minutesAgo) min ago"
-        }
-    }
-    
-    private var isDataStale: Bool {
-        let secondsAgo = currentTime.timeIntervalSince1970 - context.state.dataTimestamp
-        return secondsAgo > 180  // 3 minutes
-    }
-    
+
     var body: some View {
         VStack(spacing: 8) {
             // Header
@@ -314,13 +260,10 @@ struct TrainLiveActivityView: View {
                             .foregroundColor(.white)
                     } else if !context.state.hasTrainDeparted {
                         // Show departure timing when train hasn't departed yet.
-                        // Use a self-updating relative Date so the countdown ticks
-                        // on-device between pushes (issue #1298).
-                        if let departureDate = context.state.departureDate, departureDate > Date() {
-                            Text("Departing \(departureDate, style: .relative)")
-                                .foregroundColor(.white)
-                        } else if context.state.departureDate != nil {
-                            Text("Departing now")
+                        // Minute-granular text (refreshed by backend pushes) — the
+                        // schedule has no sub-minute precision to display.
+                        if let minutes = context.state.minutesUntilDeparture {
+                            Text(minutes > 1 ? "Departing in \(minutes) minutes" : minutes == 1 ? "Departing in 1 minute" : minutes == 0 ? "Departing now" : "Departing late")
                                 .foregroundColor(.white)
                         } else {
                             Text("Preparing to depart")
@@ -328,11 +271,8 @@ struct TrainLiveActivityView: View {
                         }
                     } else {
                         // Show arrival timing when train has departed
-                        if let arrivalDate = context.state.arrivalDate, arrivalDate > Date() {
-                            Text("Arriving \(arrivalDate, style: .relative)")
-                                .foregroundColor(.white)
-                        } else if context.state.arrivalDate != nil {
-                            Text("Arriving now")
+                        if let minutes = context.state.minutesUntilArrival {
+                            Text(minutes > 1 ? "Arriving in \(minutes) minutes" : minutes == 1 ? "Arriving in 1 minute" : minutes == 0 ? "Arriving now" : "Arrived")
                                 .foregroundColor(.white)
                         } else {
                             Text("En route")
@@ -364,11 +304,8 @@ struct TrainLiveActivityView: View {
             }
         }
         .padding()
-        .onReceive(timer) { _ in
-            currentTime = Date()
-        }
     }
-    
+
     func statusColor(for status: String) -> Color {
         switch status {
         case "BOARDING":
@@ -392,29 +329,27 @@ private struct CenterStatusView: View {
     let state: TrainActivityAttributes.ContentState
     let theme: String
 
-    var body: some View {
-        // Render countdowns with a self-updating relative Date so they tick
-        // on-device between pushes rather than freezing on a stale minute count
-        // (issue #1298).
-        Group {
-            if state.isBoarding {
-                Text("Boarding on Track \(state.track ?? "")")
-            } else if !state.hasTrainDeparted, let departureDate = state.departureDate, departureDate > Date() {
-                Text("Departing \(departureDate, style: .relative)")
-            } else if !state.hasTrainDeparted, state.departureDate != nil {
-                Text("Departing now")
-            } else if state.hasTrainDeparted, let arrivalDate = state.arrivalDate, arrivalDate > Date() {
-                Text("Arriving \(arrivalDate, style: .relative)")
-            } else if state.hasTrainDeparted, state.arrivalDate != nil {
-                Text("Arriving now")
-            } else if state.hasTrainDeparted {
-                Text("En Route")
-            } else {
-                Text("Scheduled")
-            }
+    // Minute-granular countdown text. The schedule has no sub-minute precision,
+    // so a ticking seconds display would be misleadingly precise; this string is
+    // refreshed by backend pushes instead.
+    private var displayText: String {
+        if state.isBoarding {
+            return "Boarding on Track \(state.track ?? "")"
+        } else if !state.hasTrainDeparted, let minutes = state.minutesUntilDeparture {
+            return minutes > 0 ? "Departing in \(minutes)m" : "Departing now"
+        } else if state.hasTrainDeparted, let minutes = state.minutesUntilArrival {
+            return minutes > 0 ? "Arriving in \(minutes)m" : (minutes == 0 ? "Arriving now" : "Arriving late")
+        } else if state.hasTrainDeparted {
+            return "En Route"
+        } else {
+            return "Scheduled"
         }
-        .font(.caption)
-        .fontWeight(.semibold)
-        .foregroundColor(departingTextColor(for: theme))
+    }
+
+    var body: some View {
+        Text(displayText)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(departingTextColor(for: theme))
     }
 }
