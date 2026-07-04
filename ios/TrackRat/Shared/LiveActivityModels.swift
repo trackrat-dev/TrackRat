@@ -27,44 +27,7 @@ struct TrainActivityAttributes: ActivityAttributes {
         let predictedTrack: String?
         let predictedTrackConfidence: Double?
         
-        // Computed property for data freshness
-        var freshnessText: String {
-            let now = Date().timeIntervalSince1970
-            let secondsAgo = Int(now - dataTimestamp)
-            
-            if secondsAgo < 60 {
-                return "\(secondsAgo) sec ago"
-            } else {
-                let minutesAgo = secondsAgo / 60
-                return "\(minutesAgo) min ago"
-            }
-        }
-        
-        // Check if data is stale (older than 3 minutes)
-        var isDataStale: Bool {
-            let now = Date().timeIntervalSince1970
-            return (now - dataTimestamp) > 180  // 3 minutes
-        }
-        
         // MARK: - New Computed Properties for Time-Based Display
-
-        /// Parsed scheduled departure `Date` for the user's origin station.
-        /// Live Activity widget bodies only re-render on a push or app foreground,
-        /// so countdowns must be rendered with a self-updating `Text(_:style:)`
-        /// driven by this `Date` rather than a precomputed minute string — otherwise
-        /// the displayed minutes freeze between pushes (issue #1298).
-        var departureDate: Date? {
-            guard !hasTrainDeparted,
-                  let departureTimeString = scheduledDepartureTime else { return nil }
-            return Date.fromISO8601(departureTimeString)
-        }
-
-        /// Parsed scheduled arrival `Date` for the user's destination station.
-        /// Used for the same self-updating countdown rendering as `departureDate`.
-        var arrivalDate: Date? {
-            guard let arrivalTimeString = scheduledArrivalTime else { return nil }
-            return Date.fromISO8601(arrivalTimeString)
-        }
 
         /// Minutes until train departs from user's origin station
         var minutesUntilDeparture: Int? {

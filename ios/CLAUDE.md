@@ -132,7 +132,7 @@ CI: `.github/workflows/ios-ci.yml` builds and runs the test suite on every push/
 - Push notifications for status changes
 - Journey progress with interpolation
 - Track/platform prediction shown on the Lock Screen when available (`predictedTrack` / `predictedTrackConfidence`)
-- Countdown ticks on-device every second via self-updating SwiftUI Date views (`Text(date, style: .relative)` / `Text(timerInterval:countsDown:)`) driven by `departureDate` / `arrivalDate` on `ContentState` — does not freeze between backend pushes (issue #1298)
+- Departure/arrival countdown shown as minute-granular text (`minutesUntilDeparture` / `minutesUntilArrival` on `ContentState`, e.g. "Departing in 5 minutes" / "~5 min"), refreshed by the 30s backend pushes. Deliberately not a seconds-ticking `Text(timerInterval:)` / `.relative` view: the schedule has only minute resolution, so a MM:SS countdown would imply false precision.
 
 ## Testing
 
