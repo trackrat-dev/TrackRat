@@ -29,12 +29,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      - name: Select simulator destination
+        id: sim
+        run: |
+          NAME=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(select(.key | contains("iOS"))) | map(.value) | flatten | .[0].name // empty')
+          if [ -z "$NAME" ]; then
+            echo "::error::No available iOS simulator found on this runner"
+            xcrun simctl list
+            exit 1
+          fi
+          echo "Selected simulator: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build and test
         working-directory: ios
         run: |
           xcodebuild test \
             -scheme TrackRat \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
 
