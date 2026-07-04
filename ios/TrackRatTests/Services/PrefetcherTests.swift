@@ -303,4 +303,68 @@ final class TrainCacheServiceTests: XCTestCase {
         XCTAssertEqual(cached?.train.trainId, "400")
         XCTAssertEqual(cached?.train.dataSource, "NJT")
     }
+
+    func testSourcelessLookupIsDeterministicAcrossCollidingSources() {
+        // Two systems can legitimately share a train number on the same date
+        // (e.g. NJT 500 and AMTRAK 500). A source-less lookup can only return
+        // one of them; sourceQualifiedKeysMatching breaks the tie by sorting
+        // keys, so the alphabetically-first data source always wins rather
+        // than whichever the underlying Set happened to iterate first.
+        let date = Date()
+        cacheService.cacheTrain(makeTrain(trainId: "500", dataSource: "NJT"), trainNumber: "500", date: date, dataSource: "NJT")
+        cacheService.cacheTrain(makeTrain(trainId: "500", dataSource: "AMTRAK"), trainNumber: "500", date: date, dataSource: "AMTRAK")
+
+        let cached = cacheService.getCachedTrain(trainNumber: "500", date: date, dataSource: nil)
+
+        XCTAssertEqual(cached?.train.dataSource, "AMTRAK", "AMTRAK sorts before NJT, so it must win the source-less lookup")
+    }
+
+    // MARK: - Expiry
+
+    func testExpiredEntryReturnsNilFromGetCachedTrain() {
+        let date = Date()
+        let train = makeTrain(trainId: "600", dataSource: "NJT")
+        // Cached 301 seconds ago — just past the 5-minute cache window.
+        let staleTimestamp = Date().addingTimeInterval(-301)
+        cacheService.injectTrainForTesting(train, trainNumber: "600", date: date, dataSource: "NJT", cachedAt: staleTimestamp)
+
+        XCTAssertNil(cacheService.getCachedTrain(trainNumber: "600", date: date, dataSource: "NJT"))
+    }
+
+    func testFreshEntryWithinCacheWindowReturnsHit() {
+        let date = Date()
+        let train = makeTrain(trainId: "601", dataSource: "NJT")
+        // Cached 60 seconds ago — well within the 5-minute cache window.
+        let recentTimestamp = Date().addingTimeInterval(-60)
+        cacheService.injectTrainForTesting(train, trainNumber: "601", date: date, dataSource: "NJT", cachedAt: recentTimestamp)
+
+        let cached = cacheService.getCachedTrain(trainNumber: "601", date: date, dataSource: "NJT")
+        XCTAssertEqual(cached?.train.trainId, "601")
+    }
+
+    // MARK: - Persistence
+
+    func testPersistedEntrySurvivesMemoryCacheClear() {
+        let date = Date()
+        let train = makeTrain(trainId: "700", dataSource: "NJT")
+        cacheService.cacheTrain(train, trainNumber: "700", date: date, dataSource: "NJT")
+
+        // Simulate a fresh app launch: memory cache is empty, only UserDefaults persists.
+        cacheService.clearMemoryCacheForTesting()
+
+        let cached = cacheService.getCachedTrain(trainNumber: "700", date: date, dataSource: "NJT")
+        XCTAssertEqual(cached?.train.trainId, "700", "Entry must be recoverable from UserDefaults after memory cache is cleared")
+    }
+
+    // MARK: - LRU eviction
+
+    func testMemoryCacheEvictsAtCapacity() {
+        // Cap is 50; seed 51 distinct entries so the oldest must be evicted.
+        for i in 0..<51 {
+            let train = makeTrain(trainId: "\(800 + i)", dataSource: "NJT")
+            cacheService.cacheTrain(train, trainNumber: "\(800 + i)", date: Date(), dataSource: "NJT")
+        }
+
+        XCTAssertEqual(cacheService.cachedEntryCountForTesting, 50, "Memory cache must not grow past its LRU cap")
+    }
 }

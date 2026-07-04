@@ -11,14 +11,6 @@ class StaticTrackDistributionService {
 
     private init() {}
 
-    /// Generate ML-based prediction data for a train
-    /// Returns nil for unsupported stations
-    func getPredictionData(for train: TrainV2) -> PredictionData? {
-        // Note: This is now a synchronous method but the actual prediction is async
-        // For synchronous access, return nil - UI should use async methods
-        return nil
-    }
-
     /// Check if predictions should be shown for a given train
     func shouldShowPredictions(for train: TrainV2) -> Bool {
         // Show predictions if:
