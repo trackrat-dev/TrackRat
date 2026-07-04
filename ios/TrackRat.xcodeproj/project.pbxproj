@@ -202,6 +202,7 @@
 		A1TESTPENNSTATION0000000 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
 		A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1TRNROW01000000000000A1 /* TrainRow.swift */; };
 		A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1STDETAIL00000000000000A1 /* StationDetailsView.swift */; };
+		A1TESTSTATIONPICKER00000 /* StationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1STNPK0012F6000000000001 /* StationPickerSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -943,6 +944,7 @@
 				A1TESTPENNSTATION0000000 /* PennStationGuideView.swift in Sources */,
 				A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */,
 				A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */,
+				A1TESTSTATIONPICKER00000 /* StationPickerSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
