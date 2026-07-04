@@ -495,7 +495,12 @@ class LiveActivityService: ObservableObject {
                 if Task.isCancelled { return }
                 if state == .dismissed || state == .ended {
                     print("📴 Live Activity \(state == .dismissed ? "dismissed" : "ended") externally - cleaning up")
-                    await self?.endCurrentActivity()
+                    // Run cleanup in its own unstructured task: endCurrentActivity() cancels
+                    // stateTask, and if that cleanup ran on stateTask itself, cancelling it
+                    // would also cancel the in-flight token-unregistration request.
+                    Task { [weak self] in
+                        await self?.endCurrentActivity()
+                    }
                     return
                 }
             }
