@@ -43,6 +43,69 @@ class TrainSystemTests: XCTestCase {
         XCTAssertEqual(scheduleOnly.count, 1, "Expected 1 schedule-only system: \(scheduleOnly)")
     }
 
+    // MARK: - Availability (feature flag)
+
+    func testAvailableCases_excludesDisabledSystems() {
+        let available = TrainSystem.availableCases
+        for system in TrainSystem.disabledSystems {
+            XCTAssertFalse(
+                available.contains(system),
+                "\(system.displayName) is disabled and must not appear in availableCases"
+            )
+        }
+        // BART, DC Metro, MBTA, and Metra are the currently disabled systems.
+        XCTAssertEqual(
+            available.count,
+            TrainSystem.allCases.count - TrainSystem.disabledSystems.count,
+            "availableCases should be allCases minus the disabled set: \(available)"
+        )
+    }
+
+    func testAvailableCases_preservesAllCasesOrderMinusDisabled() {
+        let expected = TrainSystem.allCases.filter { !TrainSystem.disabledSystems.contains($0) }
+        XCTAssertEqual(
+            TrainSystem.availableCases,
+            expected,
+            "availableCases must preserve allCases order with disabled systems removed"
+        )
+    }
+
+    func testAllCases_stillContainsDisabledSystems_forDecoding() {
+        // Disabled systems are only hidden from *display*; decoding/lookup of a
+        // persisted selection for one must still succeed, so allCases must keep them.
+        for system in TrainSystem.disabledSystems {
+            XCTAssertTrue(
+                TrainSystem.allCases.contains(system),
+                "\(system.displayName) must remain in allCases so persisted data still decodes"
+            )
+            XCTAssertEqual(
+                TrainSystem(rawValue: system.rawValue),
+                system,
+                "\(system.rawValue) must still decode from its raw value"
+            )
+        }
+    }
+
+    func testIsDisabled_matchesDisabledSet() {
+        for system in TrainSystem.allCases {
+            XCTAssertEqual(
+                system.isDisabled,
+                TrainSystem.disabledSystems.contains(system),
+                "\(system.displayName).isDisabled must agree with disabledSystems membership"
+            )
+        }
+    }
+
+    func testSetAll_excludesDisabledSystems() {
+        let all: Set<TrainSystem> = .all
+        for system in TrainSystem.disabledSystems {
+            XCTAssertFalse(
+                all.contains(system),
+                "Set<TrainSystem>.all must not include disabled system \(system.displayName)"
+            )
+        }
+    }
+
     // MARK: - Alert-capable filtering (Set extension)
 
     func testAlertCapableFiltering() {

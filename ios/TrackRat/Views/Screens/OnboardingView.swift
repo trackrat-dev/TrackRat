@@ -177,7 +177,7 @@ struct OnboardingView: View {
 
             // System selection cards
             VStack(spacing: 12) {
-                let sortedSystems = TrainSystem.allCases.sorted { $0.displayName < $1.displayName }
+                let sortedSystems = TrainSystem.availableCases.sorted { $0.displayName < $1.displayName }
                 let mainSystems = sortedSystems.filter { !$0.isBeta }
                 let betaSystems = sortedSystems.filter { $0.isBeta }
 

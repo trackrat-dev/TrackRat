@@ -467,11 +467,16 @@ async def collect_service_alerts() -> dict[str, Any]:
     This is the main entry point called by the scheduler.
     Fetches all feeds, upserts alerts, and returns stats.
     """
+    from trackrat.settings import get_settings
+
+    settings = get_settings()
     all_stats: dict[str, Any] = {}
 
     async with get_session() as session:
         # MTA feeds (GTFS-RT)
         for data_source, feed_url in MTA_ALERT_FEEDS.items():
+            if settings.is_data_source_disabled(data_source):
+                continue
             try:
                 alerts = await fetch_and_parse_alerts(feed_url, data_source)
                 # Use savepoint so a DB error on one feed doesn't poison
@@ -500,44 +505,48 @@ async def collect_service_alerts() -> dict[str, Any]:
                 all_stats[data_source] = {"error": str(e)}
 
         # NJT feed (getStationMSG API)
-        try:
-            njt_alerts = await fetch_and_parse_njt_alerts()
-            async with session.begin_nested():
-                stats = await upsert_service_alerts(session, njt_alerts, "NJT")
-            all_stats["NJT"] = {
-                "total_parsed": len(njt_alerts),
-                **stats,
-            }
-            logger.info("Service alerts collected for NJT: %s", stats)
-        except NJTransitAPIError as e:
-            logger.warning("Failed to fetch NJT service alerts: %s", e)
-            all_stats["NJT"] = {"error": str(e)}
-        except Exception as e:
-            logger.error(
-                "Error collecting NJT service alerts: %s",
-                e,
-                exc_info=True,
-            )
-            all_stats["NJT"] = {"error": str(e)}
-
-        # WMATA feed (Rail Incidents API)
-        try:
-            wmata_alerts = await _fetch_and_parse_wmata_alerts()
-            if wmata_alerts is not None:
+        if not settings.is_data_source_disabled("NJT"):
+            try:
+                njt_alerts = await fetch_and_parse_njt_alerts()
                 async with session.begin_nested():
-                    stats = await upsert_service_alerts(session, wmata_alerts, "WMATA")
-                all_stats["WMATA"] = {
-                    "total_parsed": len(wmata_alerts),
+                    stats = await upsert_service_alerts(session, njt_alerts, "NJT")
+                all_stats["NJT"] = {
+                    "total_parsed": len(njt_alerts),
                     **stats,
                 }
-                logger.info("Service alerts collected for WMATA: %s", stats)
-        except Exception as e:
-            logger.error(
-                "Error collecting WMATA service alerts: %s",
-                e,
-                exc_info=True,
-            )
-            all_stats["WMATA"] = {"error": str(e)}
+                logger.info("Service alerts collected for NJT: %s", stats)
+            except NJTransitAPIError as e:
+                logger.warning("Failed to fetch NJT service alerts: %s", e)
+                all_stats["NJT"] = {"error": str(e)}
+            except Exception as e:
+                logger.error(
+                    "Error collecting NJT service alerts: %s",
+                    e,
+                    exc_info=True,
+                )
+                all_stats["NJT"] = {"error": str(e)}
+
+        # WMATA feed (Rail Incidents API)
+        if not settings.is_data_source_disabled("WMATA"):
+            try:
+                wmata_alerts = await _fetch_and_parse_wmata_alerts()
+                if wmata_alerts is not None:
+                    async with session.begin_nested():
+                        stats = await upsert_service_alerts(
+                            session, wmata_alerts, "WMATA"
+                        )
+                    all_stats["WMATA"] = {
+                        "total_parsed": len(wmata_alerts),
+                        **stats,
+                    }
+                    logger.info("Service alerts collected for WMATA: %s", stats)
+            except Exception as e:
+                logger.error(
+                    "Error collecting WMATA service alerts: %s",
+                    e,
+                    exc_info=True,
+                )
+                all_stats["WMATA"] = {"error": str(e)}
 
         await session.commit()
 

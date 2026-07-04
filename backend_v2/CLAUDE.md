@@ -546,6 +546,7 @@ TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY=20      # Max missing trains to verify
 
 # Feature Flags (optional)
 TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS=true  # Database-aggregated patterns
+TRACKRAT_DISABLED_DATA_SOURCES=                  # Comma-separated data sources to fully disable (collection + alerts + serving), e.g. BART,WMATA,MBTA,METRA
 TRACKRAT_ENABLE_SQL_LOGGING=false                    # SQLAlchemy query logging
 
 # Server Settings (optional)

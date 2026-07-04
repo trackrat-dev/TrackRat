@@ -218,7 +218,7 @@ struct SettingsSection: View {
                             .padding(.vertical, 8)
                     }
 
-                    let sortedSystems = TrainSystem.allCases.sorted {
+                    let sortedSystems = TrainSystem.availableCases.sorted {
                         if $0.isBeta != $1.isBeta { return !$0.isBeta }
                         return $0.displayName < $1.displayName
                     }
@@ -242,7 +242,7 @@ struct SettingsSection: View {
                         }
                     }
                 } else {
-                    let selectedSystems = TrainSystem.allCases
+                    let selectedSystems = TrainSystem.availableCases
                         .filter { appState.isSystemSelected($0) }
                         .sorted {
                             if $0.isBeta != $1.isBeta { return !$0.isBeta }

@@ -28,6 +28,7 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.settings import get_settings
 from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
@@ -149,6 +150,17 @@ ALL_DATA_SOURCES: list[str] = [
 ]
 
 
+def active_data_sources(requested: list[str] | None) -> list[str]:
+    """Resolve the effective data_source list, dropping any globally disabled sources.
+
+    Applies to both an explicit ``requested`` list and the ``ALL_DATA_SOURCES``
+    default, so disabled systems are never queried or served to any client.
+    """
+    settings = get_settings()
+    sources = requested if requested else ALL_DATA_SOURCES
+    return [s for s in sources if not settings.is_data_source_disabled(s)]
+
+
 def _has_direct_route(
     from_station: str,
     to_station: str,
@@ -267,7 +279,7 @@ class DepartureService:
                 ]
                 response.metadata["count"] = len(response.departures)
             if to_station:
-                all_sources = data_sources or ALL_DATA_SOURCES
+                all_sources = active_data_sources(data_sources)
                 response.has_direct_route = _has_direct_route(
                     from_station, to_station, all_sources
                 )
@@ -318,7 +330,7 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        allowed_sources = active_data_sources(data_sources)
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
@@ -696,7 +708,7 @@ class DepartureService:
             TrainJourney.journey_date <= now.date(),
         )
 
-        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        allowed_sources = active_data_sources(data_sources)
         from_codes = expand_station_codes(from_station)
         to_codes = expand_station_codes(to_station) if to_station else []
 
