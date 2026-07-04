@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -46,6 +46,14 @@ PARTITIONED_TABLES: tuple[PartitionedTable, ...] = (
 # days ahead, so 2 months of forward buffer comfortably covers both even
 # right at a month boundary; 1 month back covers any late-arriving writes for
 # journeys that started just before a boundary.
+#
+# MONTHS_BACK is the steady-state floor: live collectors only ever write rows
+# dated today-or-forward, so one month back is plenty for ongoing top-ups. The
+# migration bootstrap needs a *wider* back-window because the one-time
+# legacy->partition backfill writes up to `retention_days` of history at once;
+# it passes an explicit `months_back` from `months_back_for_retention` so those
+# historical rows land in real dated partitions instead of spilling into the
+# DEFAULT partition (which retention can never DROP). See issue #1343 follow-up.
 MONTHS_BACK = 1
 MONTHS_FORWARD = 2
 
@@ -58,6 +66,28 @@ def _add_months(year: int, month: int, delta: int) -> tuple[int, int]:
     """Add `delta` months to a (year, month) pair (1-indexed month)."""
     index = year * 12 + (month - 1) + delta
     return index // 12, index % 12 + 1
+
+
+def months_back_for_retention(reference_date: date, retention_days: int) -> int:
+    """Number of month-buckets back from ``reference_date`` needed so a dated
+    partition exists for every calendar month the retention window
+    ``[reference_date - retention_days, reference_date]`` can touch.
+
+    A span of N days can straddle up to ``(N // ~28) + 1`` calendar months, so
+    any static back-count is only correct for one retention value. Deriving it
+    from the actual oldest in-retention date keeps the two aligned when
+    ``retention_days`` changes. Floored at ``MONTHS_BACK`` so a short retention
+    still keeps the previous month for late-arriving boundary writes.
+
+    Example: on 2026-07-04 with 60-day retention the oldest in-retention date is
+    2026-05-05, so this returns 2 — ensuring a ``*_y2026_m05`` partition exists
+    for the legacy backfill instead of dumping May rows into ``*_default``.
+    """
+    oldest = reference_date - timedelta(days=retention_days)
+    months = (reference_date.year * 12 + reference_date.month) - (
+        oldest.year * 12 + oldest.month
+    )
+    return max(MONTHS_BACK, months)
 
 
 def month_start(year: int, month: int) -> date:
@@ -128,13 +158,23 @@ def get_partitioned_table(name: str) -> PartitionedTable:
     raise KeyError(f"{name!r} is not a managed partitioned table")
 
 
-def initial_setup_sql(reference_date: date) -> list[str]:
+def initial_setup_sql(
+    reference_date: date, months_back: int = MONTHS_BACK
+) -> list[str]:
     """All SQL needed to bootstrap the rolling partition window for every
     managed table. Used by the Alembic migration, where every managed table
-    already exists by the time it runs."""
+    already exists by the time it runs.
+
+    ``months_back`` defaults to the steady-state floor. The migration overrides
+    it with ``months_back_for_retention(...)`` so the one-time legacy backfill's
+    historical rows land in dated partitions rather than the DEFAULT partition;
+    this is only safe at migration time, when the tables are empty (creating a
+    back-dated partition once DEFAULT already holds matching rows errors)."""
     statements: list[str] = []
     for pt in PARTITIONED_TABLES:
-        statements.extend(rolling_window_sql(pt, reference_date))
+        statements.extend(
+            rolling_window_sql(pt, reference_date, months_back=months_back)
+        )
     return statements
 
 
