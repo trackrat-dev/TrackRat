@@ -196,6 +196,80 @@ gcloud compute disks create trackrat-production-data \
 gcloud compute instance-groups managed resize trackrat-production-mig --size=1 --zone=us-east4-a
 ```
 
+### Shrinking / retyping the data disk (destructive — production first)
+
+GCP persistent disks **cannot be shrunk in place**, and a snapshot can only be
+restored to a disk **≥** the source size — so reducing the data disk (e.g. 60GB →
+40GB) or changing its type (`pd-ssd` → `pd-balanced`, immutable) requires a manual
+copy-out / recreate / copy-back that preserves the canonical disk name. Only
+`pgdata` holds irreplaceable state; the startup script rebuilds `bin/`, `compose/`,
+`.env`, `.docker`, and `logs/` on every boot.
+
+**Order matters: migrate production before staging.** Staging's disk is cloned from
+a production snapshot on every deploy (`cloudbuild-staging.yaml`), and you cannot
+create a 40GB disk from a 60GB snapshot. Once production is at 40GB, staging inherits
+the new **size** automatically on its next deploy (the clone passes no `--size`).
+The clone's **type**, however, is hardcoded (`--type=pd-ssd` in
+`cloudbuild-staging.yaml`), so that line must also be switched to `pd-balanced`
+alongside the `storage.tf` change — otherwise staging keeps recreating a `pd-ssd`
+disk and never matches production.
+
+**Terraform sequencing:** perform the manual migration to the *exact* target
+(size + type + same name) **before** merging the matching `variables.tf` /
+`storage.tf` change. Otherwise the next `cloudbuild-terraform` apply sees a `size`
+decrease / `type` change and destroys+recreates the live database volume. After the
+manual migration, the merged config matches reality and `terraform plan` is a no-op
+for the disk.
+
+```bash
+ZONE=us-east4-a
+DISK=trackrat-production-data
+MIG=trackrat-production-mig
+BUCKET=trackrat-v2-deploy-production
+
+# 1. Safety snapshot (in addition to the daily auto-snapshot)
+gcloud compute snapshots create ${DISK}-premigrate-$(date +%Y%m%d) \
+  --source-disk=$DISK --source-disk-zone=$ZONE
+
+# 2. Quiesce Postgres cleanly on the running instance (start of downtime)
+#    SSH to the instance, then:
+#    cd /mnt/disks/data/compose && /mnt/disks/data/bin/docker-compose stop
+
+# 3. Detach the disk from production FIRST by scaling the MIG down.
+#    A disk that is still attached read-write to the prod VM cannot be
+#    attached to the utility VM, so this must happen before step 4.
+gcloud compute instance-groups managed resize $MIG --size=0 --zone=$ZONE
+
+# 4. Copy pgdata off the old disk via a temporary utility VM (Debian, same
+#    zone). Attach $DISK (now free), mount it, and stage to GCS
+#    (~26GB -> ~15GB compressed):
+#    tar -C /mnt/disks/data -cf - pgdata | gzip | \
+#      gsutil cp - gs://$BUCKET/pgdata-migrate.tgz
+#    Then detach $DISK from the utility VM.
+
+# 5. Delete the old disk and recreate it with the SAME name at the new size/type
+gcloud compute disks delete $DISK --zone=$ZONE --quiet
+gcloud compute disks create $DISK --size=40 --type=pd-balanced --zone=$ZONE
+
+# 6. Restore pgdata onto the new disk via the same utility VM:
+#    attach $DISK, mkfs.ext4 <dev>, mount, then:
+#    gsutil cp gs://$BUCKET/pgdata-migrate.tgz - | tar -C /mnt/new -xzf - ; sync
+#    Detach $DISK, then delete the utility VM.
+
+# 7. Bring the MIG back up; startup script sees populated pgdata (no reformat)
+gcloud compute instance-groups managed resize $MIG --size=1 --zone=$ZONE
+# Verify: curl https://apiv2.trackrat.net/health/ready
+
+# 8. Merge the matching variables.tf (disk_size_gb=40), storage.tf
+#    (type="pd-balanced"), and cloudbuild-staging.yaml (--type=pd-balanced)
+#    changes; terraform plan should show no disk changes.
+#    A subsequent terraform apply re-attaches the snapshot schedule if needed.
+```
+
+**Backout:** as long as the pre-migration snapshot exists (retention is
+`snapshot_retention_days`, default 35), recreate `$DISK` from it at the original
+`--size=60 --type=pd-ssd` and scale the MIG back up.
+
 ### Force Instance Replacement
 
 ```bash
