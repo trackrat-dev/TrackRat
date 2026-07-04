@@ -411,11 +411,15 @@ final class APIService: ObservableObject {
             if let httpResponse = response as? HTTPURLResponse {
                 // 404 maps to .noData (not .notFound) because callers key off it
                 // specifically to show "Train not found" (TrainDetailsView, DeparturePickerView).
+                // Every other non-2xx status routes through the same mapping as validate(_:).
                 if httpResponse.statusCode == 404 {
                     throw APIError.noData
                 }
                 if httpResponse.statusCode >= 500 {
                     throw APIError.serverError
+                }
+                if httpResponse.statusCode >= 400 {
+                    throw APIError.invalidParameters
                 }
             }
 
