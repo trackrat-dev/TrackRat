@@ -31,7 +31,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.gtfs import GTFSService
 from trackrat.services.transit_analyzer import TransitAnalyzer
-from trackrat.utils.time import ET, now_et
+from trackrat.utils.time import now_for_provider
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class BARTCollector:
         }
 
         try:
-            collection_start = now_et()
+            collection_start = now_for_provider("BART")
 
             # Fetch all arrivals. Wrap in wait_for so an upstream BART outage
             # (hung connects, stalled reads beyond the client's own timeout)
@@ -265,10 +265,12 @@ class BARTCollector:
         # Generate train ID
         train_id = _generate_train_id(trip_id)
 
-        # Determine journey date (in Eastern time for consistency with
-        # all other providers — see design doc timezone strategy)
-        arrival_et = first_arrival.arrival_time.astimezone(ET)
-        journey_date = arrival_et.date()
+        # Determine journey date in Pacific Time (BART's local service day)
+        from trackrat.utils.time import PROVIDER_TIMEZONE
+
+        pt = PROVIDER_TIMEZONE["BART"]
+        arrival_pt = first_arrival.arrival_time.astimezone(pt)
+        journey_date = arrival_pt.date()
 
         # Check if journey already exists
         existing = await session.execute(
@@ -413,7 +415,7 @@ class BARTCollector:
 
             # Infer departure status for trains discovered mid-journey
             await session.flush()
-            now = now_et()
+            now = now_for_provider("BART")
             update_stop_departure_status(created_stops, now)
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
@@ -442,7 +444,7 @@ class BARTCollector:
 
             # Update departure status and journey metadata using the in-memory
             # stops collection — no re-query needed.
-            now = now_et()
+            now = now_for_provider("BART")
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now, journey_stops)
@@ -516,7 +518,7 @@ class BARTCollector:
         journey.actual_arrival = last_stop.arrival_time
 
         # Update departure status and journey metadata
-        now = now_et()
+        now = now_for_provider("BART")
         stop_result = await session.execute(
             select(JourneyStop)
             .where(JourneyStop.journey_id == journey.id)
