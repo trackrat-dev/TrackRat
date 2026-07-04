@@ -237,7 +237,14 @@ class SummaryService:
         counts grouped by line. This avoids loading thousands of ORM
         objects + stops that can exhaust /dev/shm on large result sets.
         """
-        # Subquery: last stop per journey (highest stop_sequence)
+        conditions = [TrainJourney.last_updated_at >= cutoff_time]
+        if data_source:
+            conditions.append(TrainJourney.data_source == data_source)
+
+        # Subquery: last stop per journey (highest stop_sequence). Restricted
+        # to journeys matching the outer filters so Postgres can use
+        # idx_journey_stops_sequence_lookup (journey_id, stop_sequence, ...)
+        # instead of sorting the entire journey_stops history (issue #1366).
         last_stops = (
             select(
                 JourneyStop.journey_id,
@@ -246,16 +253,17 @@ class SummaryService:
                 JourneyStop.arrival_source,
             )
             .distinct(JourneyStop.journey_id)
+            .where(
+                JourneyStop.journey_id.in_(
+                    select(TrainJourney.id).where(and_(*conditions))
+                )
+            )
             .order_by(
                 JourneyStop.journey_id,
                 func.coalesce(JourneyStop.stop_sequence, 0).desc(),
             )
             .subquery("last_stops")
         )
-
-        conditions = [TrainJourney.last_updated_at >= cutoff_time]
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
 
         line_key_expr = func.coalesce(
             func.nullif(TrainJourney.line_name, ""),
