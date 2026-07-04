@@ -241,10 +241,13 @@ class SummaryService:
         if data_source:
             conditions.append(TrainJourney.data_source == data_source)
 
-        # Subquery: last stop per journey (highest stop_sequence). Restricted
-        # to journeys matching the outer filters so Postgres can use
+        # Subquery: last stop per journey (highest stop_sequence). The join to
+        # TrainJourney and the cutoff/data_source filter must live INSIDE this
+        # subquery so DISTINCT ON only has to sort the recent journeys' stops,
+        # not every journey_stops row ever written — Postgres can't push a join
+        # predicate through a DISTINCT ON. This lets it use
         # idx_journey_stops_sequence_lookup (journey_id, stop_sequence, ...)
-        # instead of sorting the entire journey_stops history (issue #1366).
+        # instead of sorting the entire journey_stops history (issues #1365, #1366).
         last_stops = (
             select(
                 JourneyStop.journey_id,
@@ -252,15 +255,12 @@ class SummaryService:
                 JourneyStop.scheduled_arrival,
                 JourneyStop.arrival_source,
             )
+            .join(TrainJourney, TrainJourney.id == JourneyStop.journey_id)
+            .where(and_(*conditions))
             .distinct(JourneyStop.journey_id)
-            .where(
-                JourneyStop.journey_id.in_(
-                    select(TrainJourney.id).where(and_(*conditions))
-                )
-            )
             .order_by(
                 JourneyStop.journey_id,
-                func.coalesce(JourneyStop.stop_sequence, 0).desc(),
+                JourneyStop.stop_sequence.desc().nulls_last(),
             )
             .subquery("last_stops")
         )
