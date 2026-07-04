@@ -1516,6 +1516,8 @@ async def get_operations_summary(
         metrics = SummaryMetricsResponse(
             on_time_percentage=summary.metrics.on_time_percentage,
             average_delay_minutes=summary.metrics.average_delay_minutes,
+            arrival_on_time_percentage=summary.metrics.arrival_on_time_percentage,
+            arrival_average_delay_minutes=summary.metrics.arrival_average_delay_minutes,
             cancellation_count=summary.metrics.cancellation_count,
             train_count=summary.metrics.train_count,
             trains_by_category=_convert_train_dict(summary.metrics.trains_by_category),
