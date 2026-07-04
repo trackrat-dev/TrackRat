@@ -1509,6 +1509,7 @@ class DepartureService:
                     pg_insert(JourneyStop)
                     .values(
                         journey_id=journey.id,
+                        journey_date=journey.journey_date,
                         station_code=station_code,
                         station_name=stop_data.get("STATIONNAME", ""),
                         stop_sequence=i,

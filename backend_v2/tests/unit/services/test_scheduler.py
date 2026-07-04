@@ -115,6 +115,7 @@ class TestSchedulerService:
                 ("morning_digest_evaluation", IntervalTrigger, {"minutes": 5}),
                 ("service_alerts_collection", IntervalTrigger, {"minutes": 15}),
                 ("retention_cleanup", CronTrigger, {"hour": 3, "minute": 30}),
+                ("legacy_partition_backfill", IntervalTrigger, {"minutes": 2}),
             ]
 
             assert mock_add_job.call_count == len(expected_jobs)

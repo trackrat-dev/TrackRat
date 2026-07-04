@@ -1083,12 +1083,14 @@ class TestExplicitCancellationReason:
         for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
                 scheduled_departure=base_time + timedelta(minutes=i * 30),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # NJT says all stops cancelled
@@ -1153,12 +1155,14 @@ class TestExplicitCancellationReason:
         for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
                 scheduled_departure=base_time + timedelta(minutes=i * 30),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # NJT returns UPPERCASE 'CANCELLED' for all stops
@@ -1228,12 +1232,14 @@ class TestExplicitCancellationReason:
         ):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
                 scheduled_departure=base_time + timedelta(minutes=i * 15),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()
@@ -1305,12 +1311,14 @@ class TestExplicitCancellationReason:
         for i, (code, name) in enumerate([("TR", "Trenton"), ("NY", "New York")]):
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=i,
                 scheduled_departure=base_time + timedelta(minutes=i * 30),
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()
@@ -1391,6 +1399,7 @@ class TestTerminalStopActualArrival:
         for code, name, seq in stops_info:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1413,6 +1422,7 @@ class TestTerminalStopActualArrival:
                 stop.departure_source = "api_explicit"
                 stop.actual_departure = base_time + timedelta(minutes=1)
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # Build API stop data — terminal has TIME (arrival estimate) but no DEPARTED
@@ -1496,6 +1506,7 @@ class TestTerminalStopActualArrival:
         for code, name, seq in [("TR", "Trenton", 0), ("NY", "New York", 1)]:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1509,6 +1520,7 @@ class TestTerminalStopActualArrival:
             if code == "NY":
                 stop.actual_arrival = original_arrival  # Already set
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()
@@ -1646,6 +1658,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         for code, name, seq, source, departed, sched_dep in stop_specs:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1659,6 +1672,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
                 departure_source=source,
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         # API still returns all 6 stops; no DEPARTED=YES for SE or NY.
@@ -1742,6 +1756,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
         for code, name, seq, source, departed, sched_dep in stop_specs:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -1756,6 +1771,7 @@ class TestPenultimateTimeInferenceDoesNotCompleteJourney:
                 actual_departure=sched_dep if departed else None,
             )
             sqlite_session.add(stop)
+            await sqlite_session.flush()
         await sqlite_session.flush()
 
         builder = StopBuilder()

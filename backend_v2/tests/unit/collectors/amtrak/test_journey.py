@@ -561,6 +561,7 @@ class TestAmtrakOrphanStopRemoval:
             db_session.add(
                 JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=code,
                     station_name=name,
                     stop_sequence=seq,
@@ -689,6 +690,7 @@ class TestAmtrakCompletionOnExpiry:
         # made it to its terminal.
         penultimate = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="BWI",
             station_name="Baltimore-Washington Intl",
             stop_sequence=0,
@@ -697,6 +699,7 @@ class TestAmtrakCompletionOnExpiry:
         )
         terminal = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="WS",
             station_name="Washington Union",
             stop_sequence=1,
@@ -764,6 +767,7 @@ class TestAmtrakCompletionOnExpiry:
         # Penultimate has NOT departed — backstop returns without marking complete.
         penultimate = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="BWI",
             station_name="Baltimore-Washington Intl",
             stop_sequence=0,
@@ -772,6 +776,7 @@ class TestAmtrakCompletionOnExpiry:
         )
         terminal = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="WS",
             station_name="Washington Union",
             stop_sequence=1,

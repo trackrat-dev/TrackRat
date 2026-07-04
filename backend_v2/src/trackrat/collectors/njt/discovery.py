@@ -236,6 +236,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     async with session.begin_nested():
                         stop = JourneyStop(
                             journey_id=journey.id,
+                            journey_date=journey.journey_date,
                             station_code=station_code,
                             station_name=get_station_name(station_code),
                             # Don't set stop_sequence - let journey collector handle it exclusively
@@ -336,6 +337,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     async with session.begin_nested():
                         stop = JourneyStop(
                             journey_id=journey.id,
+                            journey_date=journey.journey_date,
                             station_code=station_code,
                             station_name=get_station_name(station_code),
                             updated_arrival=time_field,

@@ -240,6 +240,7 @@ class TestAlertEvaluator:
             sched_arrival = sched + timedelta(minutes=i * 5 + 60)
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code="TR",
                 station_name="Trenton",
                 stop_sequence=5,

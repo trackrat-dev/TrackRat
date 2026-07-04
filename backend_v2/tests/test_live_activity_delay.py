@@ -30,6 +30,7 @@ async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
     # Add stops with delay information
     stop1 = JourneyStop(
         journey_id=journey.id,
+        journey_date=journey.journey_date,
         station_code="NY",
         station_name="New York Penn",
         stop_sequence=1,
@@ -41,6 +42,7 @@ async def test_amtrak_journey_with_null_delay_minutes(db_session: AsyncSession):
     )
     stop2 = JourneyStop(
         journey_id=journey.id,
+        journey_date=journey.journey_date,
         station_code="WAS",
         station_name="Washington Union",
         stop_sequence=2,
@@ -112,6 +114,7 @@ async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
     # Add stops
     stop1 = JourneyStop(
         journey_id=journey.id,
+        journey_date=journey.journey_date,
         station_code="NY",
         station_name="New York Penn",
         stop_sequence=1,
@@ -123,6 +126,7 @@ async def test_njt_journey_with_delay_minutes(db_session: AsyncSession):
     )
     stop2 = JourneyStop(
         journey_id=journey.id,
+        journey_date=journey.journey_date,
         station_code="TR",
         station_name="Trenton",
         stop_sequence=2,

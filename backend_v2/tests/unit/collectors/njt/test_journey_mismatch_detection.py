@@ -106,6 +106,7 @@ class TestStaleOriginDetection:
         for code, name, dep_time, seq in stops_data:
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -189,6 +190,7 @@ class TestStaleOriginDetection:
         # Create stops matching the journey
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -251,6 +253,7 @@ class TestStaleOriginDetection:
 
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -314,6 +317,7 @@ class TestStaleOriginDetection:
         # Create matching stop
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -393,6 +397,7 @@ class TestStaleOriginDetection:
         # Stops table reflects the actual schedule
         ny_stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -519,6 +524,7 @@ class TestStaleOriginDetection:
         # stale-origin recovery path is not triggered.
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -587,6 +593,7 @@ class TestStaleOriginDetection:
 
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -676,6 +683,7 @@ class TestStaleOriginDetection:
         # This is the proof-of-life that the running-train guard relies on.
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -765,6 +773,7 @@ class TestStaleOriginDetection:
         # in is_expired=True after three strikes.
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -865,6 +874,7 @@ class TestStalePriorRunDetection:
 
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -931,6 +941,7 @@ class TestStalePriorRunDetection:
 
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -1028,6 +1039,7 @@ class TestStalePriorRunDetection:
         # stop the completion backstop cannot fire, so expiry is the outcome.
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -1109,6 +1121,7 @@ class TestStalePriorRunDetection:
         # Origin (used by _is_same_journey for the stored-departure lookup).
         origin_stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -1118,6 +1131,7 @@ class TestStalePriorRunDetection:
         # backstop's precondition.
         penultimate_stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NP",
             station_name="Newark Penn Station",
             stop_sequence=5,
@@ -1129,6 +1143,7 @@ class TestStalePriorRunDetection:
         # Terminal arrival in the past (yesterday) → "due".
         terminal_stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="TR",
             station_name="Trenton Station",
             stop_sequence=10,
@@ -1204,6 +1219,7 @@ class TestStalePriorRunDetection:
 
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
@@ -1273,6 +1289,7 @@ class TestStalePriorRunDetection:
         # The train physically ran (departed origin) — proof it must stay active.
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,

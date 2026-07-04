@@ -57,6 +57,7 @@ async def _create_journey(
         actual_arrival = stop_data.get("actual_arrival")
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code=stop_data["station_code"],
             station_name=stop_data.get("station_name", stop_data["station_code"]),
             stop_sequence=stop_data.get("stop_sequence", i),
@@ -1842,6 +1843,7 @@ class TestCancelledTrainsWithoutDestinationStops:
         db_session.add(
             JourneyStop(
                 journey_id=cancelled_journey.id,
+                journey_date=cancelled_journey.journey_date,
                 station_code="NY",
                 station_name="New York Penn Station",
                 stop_sequence=None,
@@ -1905,6 +1907,7 @@ class TestCancelledTrainsWithoutDestinationStops:
         db_session.add(
             JourneyStop(
                 journey_id=cancelled_journey.id,
+                journey_date=cancelled_journey.journey_date,
                 station_code="NB",  # New Brunswick, not NY
                 station_name="New Brunswick",
                 stop_sequence=None,
@@ -2083,6 +2086,7 @@ class TestCancelledTrainsWithSubDayWindow:
         db_session.add(
             JourneyStop(
                 journey_id=cancelled_journey.id,
+                journey_date=cancelled_journey.journey_date,
                 station_code="NY",
                 station_name="New York Penn Station",
                 stop_sequence=None,

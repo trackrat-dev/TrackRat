@@ -184,6 +184,7 @@ async def _make_journey_with_stops(
         session.add(
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -192,6 +193,13 @@ async def _make_journey_with_stops(
                 scheduled_arrival=sched,
             )
         )
+        # Flush per-stop: SQLite has no rowid-alias autoincrement for a
+        # composite PK, so batching multiple JourneyStop inserts in one
+        # flush makes SQLAlchemy's Identity() postfetch reuse id=1 for
+        # every row in the batch, tripping the (id, journey_date) unique
+        # constraint. Flushing one row at a time avoids the batched
+        # insertmanyvalues path.
+        await session.flush()
         stops_data.append(
             NJTransitStopData(
                 STATION_2CHAR=code,

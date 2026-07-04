@@ -31,6 +31,7 @@ from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 @pytest.fixture
 async def sqlite_engine():
     """Create an in-memory SQLite engine for testing."""
+    import itertools
     import pytz
     from sqlalchemy import DateTime as SADateTime, TypeDecorator
 
@@ -61,10 +62,26 @@ async def sqlite_engine():
             if isinstance(column.type, SADateTime) and column.type.timezone:
                 column.type = TZDateTime()
 
+    # JourneyStop.id is Identity()-backed for Postgres' composite-PK
+    # partitioning (id, journey_date). SQLite doesn't support server-side
+    # identity generation, and since id is no longer a lone rowid-alias
+    # column, SQLAlchemy's client-side Identity() postfetch reuses the same
+    # value for every row in a batched insert (production code, e.g.
+    # NJTScheduleCollector, adds many stops before one flush). Assign
+    # sequential ids ourselves for the lifetime of this engine.
+    _next_stop_id = itertools.count(1)
+
+    def _assign_journey_stop_id(mapper, connection, target):
+        target.id = next(_next_stop_id)
+
+    event.listen(JourneyStop, "before_insert", _assign_journey_stop_id)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
+
+    event.remove(JourneyStop, "before_insert", _assign_journey_stop_id)
 
     for table in Base.metadata.tables.values():
         for column in table.columns:

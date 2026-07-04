@@ -14,6 +14,29 @@ from unittest.mock import AsyncMock, Mock, patch, call, MagicMock
 from trackrat.settings import Settings
 
 
+def make_empty_partition_drop_session() -> AsyncMock:
+    """Session stub for retention_cleanup's phase 5 (drop_old_partitions).
+
+    `drop_old_partitions` issues a SELECT against pg_inherits per managed
+    table and iterates the result; returning an empty iterable means no
+    partitions are found droppable, so no further DROP TABLE calls happen.
+    """
+    session = AsyncMock()
+    empty_result = MagicMock()
+    empty_result.__iter__ = Mock(return_value=iter([]))
+    session.execute = AsyncMock(return_value=empty_result)
+    return session
+
+
+def make_ctx(session: AsyncMock) -> AsyncMock:
+    """Wrap a session mock in an async context manager, as returned by
+    `get_session()`."""
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx
+
+
 class TestRetentionSettings:
     """Test retention_days setting configuration."""
 
@@ -225,7 +248,8 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness session, then 4 batch sessions
+            # First call = freshness session, then partition-bootstrap (phase 0),
+            # then 4 batch sessions, then partition-drop (phase 5)
             ctxs = []
             # Freshness session (opened first)
             ctx_fresh = AsyncMock()
@@ -233,22 +257,29 @@ class TestRetentionCleanupBatchLogic:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
-            # Batch sessions
-            for result in execute_results:
+            def _make_batch_ctx(result):
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
-                ctx = AsyncMock()
-                ctx.__aenter__ = AsyncMock(return_value=s)
-                ctx.__aexit__ = AsyncMock(return_value=False)
-                ctxs.append(ctx)
+                return make_ctx(s)
+
+            ctxs.append(
+                _make_batch_ctx(Mock(rowcount=0))
+            )  # phase 0: ensure_future_partitions
+
+            # Batch sessions
+            for result in execute_results:
+                ctxs.append(_make_batch_ctx(result))
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
-            # 1 freshness + 2 journey batches + 1 discovery + 1 validation
-            # + 1 service_alerts = 6 sessions
-            assert mock_get_session.call_count == 6
+            # 1 freshness + 1 partition-bootstrap + 2 journey batches
+            # + 1 discovery + 1 validation + 1 service_alerts
+            # + 1 partition-drop = 8 sessions
+            assert mock_get_session.call_count == 8
 
     @pytest.mark.asyncio
     async def test_cleanup_skipped_when_still_fresh(self, mock_settings):
@@ -327,12 +358,15 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness, then 4 batch sessions (one per table)
+            # First call = freshness, then partition-bootstrap (phase 0),
+            # then 4 batch sessions (one per table), then partition-drop (phase 5)
             ctxs = []
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
+
+            ctxs.append(make_ctx(make_capture_session()))  # phase 0
 
             for _ in range(4):
                 ctx = AsyncMock()
@@ -340,11 +374,14 @@ class TestRetentionCleanupBatchLogic:
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
 
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
-            # All four DELETE calls should use days=90
+            # All four DELETE calls should use days=90 (partition-bootstrap
+            # and partition-drop pass no params, so they aren't captured)
             assert len(executed_params) == 4
             for params in executed_params:
                 assert params["days"] == 90
@@ -405,11 +442,20 @@ class TestRetentionCleanupBatchLogic:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            # Phase 0 (ensure_future_partitions) passes no params, so it
+            # would only pollute `captured` with noise — use a plain
+            # non-capturing session instead.
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=empty_result)
+            ctxs.append(make_ctx(plain_session))
+
             for _ in range(4):
                 ctx = AsyncMock()
                 ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
@@ -661,6 +707,10 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=Mock(rowcount=0))
+            ctxs.append(make_ctx(plain_session))  # phase 0
+
             for result in execute_results:
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
@@ -669,13 +719,15 @@ class TestServiceAlertsRetention:
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
 
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
-            # 1 freshness + 1 journey + 1 discovery + 1 validation
-            # + 3 service_alerts = 7 sessions
-            assert mock_get_session.call_count == 7
+            # 1 freshness + 1 partition-bootstrap + 1 journey + 1 discovery
+            # + 1 validation + 3 service_alerts + 1 partition-drop = 9 sessions
+            assert mock_get_session.call_count == 9
 
     @pytest.mark.asyncio
     async def test_service_alerts_delete_passes_correct_params(self, mock_settings):
@@ -727,11 +779,21 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            # Phases 0 and 5 (partition bootstrap/drop) issue their own SQL
+            # unrelated to the four per-table DELETEs under test — route them
+            # through non-capturing sessions so they don't pollute the
+            # executed_statements/executed_params assertions below.
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=empty_result)
+            ctxs.append(make_ctx(plain_session))  # phase 0
+
             for _ in range(4):
                 ctx = AsyncMock()
                 ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
@@ -790,6 +852,10 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=Mock(rowcount=0))
+            ctxs.append(make_ctx(plain_session))  # phase 0
+
             for result in execute_results:
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
@@ -797,6 +863,8 @@ class TestServiceAlertsRetention:
                 ctx.__aenter__ = AsyncMock(return_value=s)
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
