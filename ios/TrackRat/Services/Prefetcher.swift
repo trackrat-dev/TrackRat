@@ -172,7 +172,11 @@ final class Prefetcher {
     // MARK: - Internals
 
     private func recordTrips(_ trips: [TripOption], key: String) {
-        tripsCache[key] = CachedTrips(trips: trips, cachedAt: Date())
+        insert(CachedTrips(trips: trips, cachedAt: Date()), key: key)
+    }
+
+    private func insert(_ entry: CachedTrips, key: String) {
+        tripsCache[key] = entry
         tripsCacheOrder.removeAll { $0 == key }
         tripsCacheOrder.append(key)
         while tripsCache.count > maxTripsCacheEntries, let oldest = tripsCacheOrder.first {
@@ -221,8 +225,6 @@ final class Prefetcher {
         cachedAt: Date = Date()
     ) {
         let key = tripsCacheKey(from: from, to: to, date: date, systems: systems)
-        tripsCache[key] = CachedTrips(trips: trips, cachedAt: cachedAt)
-        tripsCacheOrder.removeAll { $0 == key }
-        tripsCacheOrder.append(key)
+        insert(CachedTrips(trips: trips, cachedAt: cachedAt), key: key)
     }
 }
