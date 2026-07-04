@@ -43,7 +43,7 @@ API Service (fetch + cache)
   - `trackrat:favorites` - favorite stations, sorted by date added
   - `trackrat:favoriteRoutes` - favorite routes
   - `trackrat:lastRoute` - last selected from/to pair (auto-restored on mount)
-  - `trackrat:systems` - enabled transit systems
+  - `trackrat:systems` - enabled transit systems (entries in `DISABLED_SYSTEMS` are stripped on load)
   - `trackrat:homeStation` - home station for quick access
   - `trackrat:workStation` - work station for quick access
   - `trackrat:tripHistory` - trip search history
@@ -154,7 +154,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems)
+│   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES)
 │   │   ├── routeTopology.ts # Route topology for smart search and filtering
 │   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/

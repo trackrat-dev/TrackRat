@@ -276,6 +276,11 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Horizontal Scaling: Database-coordinated scheduler with row-level locking and task-level timeouts
 - API Response Caching: 15-minute pre-computed responses for congestion endpoints
 
+**Disabled Train Systems (feature flag):**
+- `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
+- iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
+- Currently `BART,WMATA,MBTA,METRA` are disabled in staging and production (set in `infra_v2/terraform/compute.tf`)
+
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)
 - Singleton services pattern (`APIService.shared`, `LiveActivityService.shared`)
@@ -383,6 +388,8 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
+**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes; `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (dynamically selects an available simulator).
+
 ## GCP Log Viewing (Cloud Environment)
 
 The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes `GCP_SA_KEY_JSON` to `/root/.config/gcloud/service-account.json`. This hook is required for authentication.
@@ -477,7 +484,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
-- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, migrations/)
+- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
 - Backend tests: `backend_v2/tests/`
 - iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`

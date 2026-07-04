@@ -125,6 +125,7 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY`: Max missing trains to verify in detail (default: 20)
 - `TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS`: Use database-aggregated pattern analysis (default: true)
 - `TRACKRAT_MBTA_API_KEY`: MBTA API key for higher rate limits (optional, public feed works without)
+- `TRACKRAT_DISABLED_DATA_SOURCES`: Comma-separated data sources to fully disable — collection, service alerts, and API serving (e.g. `BART,WMATA,MBTA,METRA`; default: none)
 - `TRACKRAT_ENABLE_SQL_LOGGING`: Enable SQLAlchemy query logging (default: false)
 
 ### APNS Certificate Setup

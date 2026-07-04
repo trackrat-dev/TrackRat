@@ -24,6 +24,8 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 | Metra | All lines (Chicago) | Metra GTFS-RT | Yes |
 | PATCO | Lindenwold–15-16th & Locust | GTFS Static | Schedule only |
 
+> **Note:** Any system can be disabled deployment-wide via the `TRACKRAT_DISABLED_DATA_SOURCES` env var (skips collection and filters API responses). The hosted TrackRat apps currently have BART, WMATA, MBTA, and Metra disabled; self-hosted deployments can enable them.
+
 ## What It Does
 
 - **Track Predictions** — Predict platform assignments at Penn Station and other terminals
@@ -119,6 +121,7 @@ open TrackRat.xcodeproj
 | `TRACKRAT_WMATA_API_KEY` | No | WMATA developer API key (for DC Metro) |
 | `TRACKRAT_METRA_API_TOKEN` | No | Metra GTFS-RT API token (for Chicago) |
 | `TRACKRAT_MBTA_API_KEY` | No | MBTA API key (optional, for higher rate limits) |
+| `TRACKRAT_DISABLED_DATA_SOURCES` | No | Comma-separated systems to fully disable (e.g. `BART,WMATA,MBTA,METRA`) |
 | `APNS_TEAM_ID` | No | Apple Developer Team ID (for Live Activities) |
 | `APNS_KEY_ID` | No | Apple Push Notification key ID |
 | `APNS_AUTH_KEY_PATH` | No | Path to `.p8` auth key file |
