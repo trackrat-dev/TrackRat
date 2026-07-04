@@ -48,7 +48,8 @@ from datetime import date
 
 from alembic import op
 
-from trackrat.db.partitioning import initial_setup_sql
+from trackrat.db.partitioning import initial_setup_sql, months_back_for_retention
+from trackrat.settings import get_settings
 
 # revision identifiers, used by Alembic.
 revision = "03db10760b28"
@@ -213,9 +214,18 @@ def upgrade() -> None:
         "(data_source, hour_of_day, day_of_week, departure_time)"
     )
 
-    # 4. Bootstrap the rolling partition window (previous/current/+2 months)
-    # plus a DEFAULT catch-all partition for each table.
-    for statement in initial_setup_sql(date.today()):
+    # 4. Bootstrap the rolling partition window plus a DEFAULT catch-all
+    # partition for each table. The back-window is widened to cover the full
+    # retention horizon (not just the previous month) so the one-time
+    # legacy->partition backfill — which copies up to `retention_days` of
+    # history right after startup — lands its oldest rows in real dated
+    # partitions. Without this those rows spill into the DEFAULT partition,
+    # which retention can never DROP, silently reintroducing the DELETE-bloat
+    # this migration exists to eliminate. Safe to widen here because the tables
+    # are empty at migration time; the daily top-up keeps the narrow floor.
+    today = date.today()
+    months_back = months_back_for_retention(today, get_settings().retention_days)
+    for statement in initial_setup_sql(today, months_back=months_back):
         op.execute(statement)
 
     # 5. Progress cursor for the background backfill of *_legacy rows into the

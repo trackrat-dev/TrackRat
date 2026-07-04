@@ -13,6 +13,7 @@ from datetime import date
 import pytest
 
 from trackrat.db.partitioning import (
+    MONTHS_BACK,
     PARTITIONED_TABLES,
     PartitionedTable,
     create_default_partition_sql,
@@ -22,6 +23,7 @@ from trackrat.db.partitioning import (
     initial_setup_sql,
     month_end_exclusive,
     month_start,
+    months_back_for_retention,
     partition_name,
     rolling_window_sql,
 )
@@ -109,6 +111,42 @@ class TestRollingWindowSql:
         assert len(statements) == 2
 
 
+class TestMonthsBackForRetention:
+    """The migration's back-window must cover the whole retention horizon, or
+    the one-time legacy backfill spills its oldest rows into DEFAULT (issue
+    #1343 follow-up: 60-day retention with a 1-month back-window dumped ~26 days
+    of May journey_stops into journey_stops_default on staging)."""
+
+    def test_month_start_60_days_reaches_two_months_back(self):
+        # 2026-07-04 - 60d = 2026-05-05 -> May is 2 buckets back from July.
+        assert months_back_for_retention(date(2026, 7, 4), 60) == 2
+
+    def test_month_end_60_days_reaches_one_month_back(self):
+        # 2026-07-31 - 60d = 2026-06-01 -> June is 1 bucket back from July.
+        assert months_back_for_retention(date(2026, 7, 31), 60) == 1
+
+    def test_spans_three_calendar_months(self):
+        # 2026-07-01 - 60d = 2026-05-02: window touches May, June, July.
+        assert months_back_for_retention(date(2026, 7, 1), 60) == 2
+
+    def test_year_boundary(self):
+        # 2026-01-15 - 60d = 2025-11-16 -> Nov 2025 is 2 buckets back from Jan.
+        assert months_back_for_retention(date(2026, 1, 15), 60) == 2
+
+    def test_long_retention_reaches_further_back(self):
+        # 2026-07-04 - 120d = 2026-03-06 -> March is 4 buckets back from July.
+        assert months_back_for_retention(date(2026, 7, 4), 120) == 4
+
+    def test_short_retention_floored_at_months_back(self):
+        # 2026-07-15 - 5d = 2026-07-10: same month (0), floored to the
+        # steady-state minimum so boundary late-writes still have last month.
+        assert months_back_for_retention(date(2026, 7, 15), 5) == MONTHS_BACK
+
+    def test_min_retention_30_days(self):
+        # 2026-07-15 - 30d = 2026-06-15 -> June is 1 bucket back.
+        assert months_back_for_retention(date(2026, 7, 15), 30) == 1
+
+
 class TestInitialSetupSql:
     def test_covers_every_managed_table(self):
         statements = initial_setup_sql(date(2026, 7, 15))
@@ -119,6 +157,27 @@ class TestInitialSetupSql:
         # 5 statements per table (1 default + 4 dated) with default window
         statements = initial_setup_sql(date(2026, 7, 15))
         assert len(statements) == 5 * len(PARTITIONED_TABLES)
+
+    def test_default_window_omits_two_months_back(self):
+        # Regression guard: the steady-state (default) window must NOT reach two
+        # months back — that was the bug for the migration path, but the daily
+        # top-up must stay narrow to avoid creating a back-partition over a
+        # DEFAULT that already holds matching rows (which errors in Postgres).
+        statements = initial_setup_sql(date(2026, 7, 4))
+        assert not any("journey_stops_y2026_m05" in s for s in statements)
+
+    def test_retention_aware_window_includes_oldest_in_retention_month(self):
+        # Migration path: with 60-day retention on 2026-07-04, a May partition
+        # must exist so backfilled May rows don't land in DEFAULT.
+        months_back = months_back_for_retention(date(2026, 7, 4), 60)
+        statements = initial_setup_sql(date(2026, 7, 4), months_back=months_back)
+        assert any(
+            "journey_stops_y2026_m05" in s and "('2026-05-01') TO ('2026-06-01')" in s
+            for s in statements
+        )
+        assert any(
+            "segment_transit_times_y2026_m05" in s for s in statements
+        )
 
 
 class TestGetPartitionedTable:
