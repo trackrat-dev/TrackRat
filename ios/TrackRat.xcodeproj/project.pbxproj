@@ -205,6 +205,19 @@
 		A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1TRNROW01000000000000A1 /* TrainRow.swift */; };
 		A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1STDETAIL00000000000000A1 /* StationDetailsView.swift */; };
 		A1TESTSTATIONPICKER00000 /* StationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1STNPK0012F6000000000001 /* StationPickerSheet.swift */; };
+		A1TESTCONFETTIVIEW000000 /* ConfettiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CNFTI0012F7000000000001 /* ConfettiView.swift */; };
+		A1TESTSETTINGSVIEW000000 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1875C7E2E400F4F00FCC7FC /* SettingsView.swift */; };
+		A1TESTDEEPLINKMODEL00000 /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5552E25BBC700958ABA /* DeepLink.swift */; };
+		A1TESTTRIPSELECTVIEW0000 /* TripSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E9865E92DE39F23002F3214 /* TripSelectionView.swift */; };
+		A1TESTFEEDBACKPROMPT0000 /* JourneyFeedbackPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00022F00000000000002 /* JourneyFeedbackPromptView.swift */; };
+		A1TESTSYSDETAILVIEW00000 /* TrainSystemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB28502E3D6189004A49E6 /* TrainSystemDetailView.swift */; };
+		A1TESTDEPARTPICKER000000 /* DeparturePickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E98072DE39F23002F3214 /* DeparturePickerView.swift */; };
+		A1TESTDESTPICKERVIEW0000 /* DestinationPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FC2DE39F23002F3214 /* DestinationPickerView.swift */; };
+		A1TESTTRIPDETAILVIEW0000 /* TripDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C182D065DE7062F61B8F2446 /* TripDetailsView.swift */; };
+		A1TESTADVCONFIGVIEW00000 /* AdvancedConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282E2E3D6189004A49E6 /* AdvancedConfigurationView.swift */; };
+		A1TESTRATMASCOT000000000 /* TrackRatMascot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB82DEF00EE001FA904 /* TrackRatMascot.swift */; };
+		A1TESTADDROUTEALERT00000 /* AddRouteAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */; };
+		A1TESTACTIVETRIPSSEC0000 /* ActiveTripsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54452DEB8B0000AB2B74 /* ActiveTripsSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -953,6 +966,19 @@
 				A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */,
 				A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */,
 				A1TESTSTATIONPICKER00000 /* StationPickerSheet.swift in Sources */,
+				A1TESTCONFETTIVIEW000000 /* ConfettiView.swift in Sources */,
+				A1TESTSETTINGSVIEW000000 /* SettingsView.swift in Sources */,
+				A1TESTDEEPLINKMODEL00000 /* DeepLink.swift in Sources */,
+				A1TESTTRIPSELECTVIEW0000 /* TripSelectionView.swift in Sources */,
+				A1TESTFEEDBACKPROMPT0000 /* JourneyFeedbackPromptView.swift in Sources */,
+				A1TESTSYSDETAILVIEW00000 /* TrainSystemDetailView.swift in Sources */,
+				A1TESTDEPARTPICKER000000 /* DeparturePickerView.swift in Sources */,
+				A1TESTDESTPICKERVIEW0000 /* DestinationPickerView.swift in Sources */,
+				A1TESTTRIPDETAILVIEW0000 /* TripDetailsView.swift in Sources */,
+				A1TESTADVCONFIGVIEW00000 /* AdvancedConfigurationView.swift in Sources */,
+				A1TESTRATMASCOT000000000 /* TrackRatMascot.swift in Sources */,
+				A1TESTADDROUTEALERT00000 /* AddRouteAlertView.swift in Sources */,
+				A1TESTACTIVETRIPSSEC0000 /* ActiveTripsSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
