@@ -38,8 +38,8 @@ class TrainSystemTests: XCTestCase {
             allSystems.count,
             "Every TrainSystem must be classified as either alert-capable or schedule-only"
         )
-        // Current expectations: 7 real-time, 1 schedule-only
-        XCTAssertEqual(alertCapable.count, 7, "Expected 7 alert-capable systems: \(alertCapable)")
+        // Current expectations: 10 real-time, 1 schedule-only (PATCO)
+        XCTAssertEqual(alertCapable.count, 10, "Expected 10 alert-capable systems: \(alertCapable)")
         XCTAssertEqual(scheduleOnly.count, 1, "Expected 1 schedule-only system: \(scheduleOnly)")
     }
 
@@ -192,7 +192,7 @@ class TrainSystemTests: XCTestCase {
 
     func testSystemsForStation_singleSystem() {
         // A pure LIRR station
-        let systems = Stations.systemsForStation("JM")
+        let systems = Stations.systemsForStation("JAM")
         XCTAssertTrue(systems.contains(.lirr), "Jamaica should include LIRR, got: \(systems)")
     }
 
