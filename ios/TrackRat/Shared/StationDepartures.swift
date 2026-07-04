@@ -25,7 +25,7 @@ extension Stations {
         ("Washington Union Station", "WS"),
         ("Richmond Staples Mill Road", "RVR"),
         // New England
-        ("Springfield", "SPG"),
+        ("Springfield, MA", "SPG"),
         // Southeast hubs
         ("Charlotte", "CLT"),
         ("Raleigh", "RGH"),
@@ -42,7 +42,7 @@ extension Stations {
         ("Hicksville", "LHVL"),
         ("Ronkonkoma", "RON"),
         ("Babylon", "BTA"),
-        ("Huntington", "LHUN"),
+        ("Huntington LIRR", "LHUN"),
         ("Port Washington", "PWS"),
         ("Long Beach", "LBH"),
         // MNR hubs
@@ -55,10 +55,10 @@ extension Stations {
         ("Croton-Harmon", "MCRH"),
 
         // MBTA Commuter Rail hubs
-        ("South Station", "BOS"),
+        ("Boston South", "BOS"),
         ("North Station", "BNST"),
-        ("Back Bay", "BBY"),
-        ("Worcester", "WOR"),
+        ("Boston Back Bay", "BBY"),
+        ("Worcester Union", "WOR"),
         ("Providence", "PVD"),
         ("Braintree", "BBRN"),
         ("Lowell", "BLOW"),
@@ -67,16 +67,16 @@ extension Stations {
         ("Fitchburg", "BFIT"),
 
         // NYC Subway hubs
-        ("Times Sq-42 St (1/2/3)", "S127"),
-        ("14 St-Union Sq (4/5/6)", "S635"),
-        ("Atlantic Av-Barclays Ctr (2/3/4)", "S235"),
-        ("Fulton St (2/3)", "S229"),
-        ("34 St-Herald Sq (B/D/F/M)", "SD17"),
-        ("Jay St-MetroTech (A/C/F)", "SA41"),
-        ("125 St (1)", "S116"),
-        ("Jackson Hts-Roosevelt Av", "SG14"),
+        ("Times Sq-42 St", "S127"),
+        ("14 St-Union Sq", "S635"),
+        ("Atlantic Av-Barclays Ctr", "S235"),
+        ("Fulton St (2/3/4/5/A/C/J/Z)", "S229"),
+        ("34 St-Herald Sq", "SD17"),
+        ("Jay St-MetroTech", "SA41"),
+        ("125 St", "S116"),
+        ("Jackson Hts-Roosevelt Av", "S710"),
         ("Flushing-Main St", "S701"),
-        ("59 St-Columbus Circle (1/2)", "S125"),
+        ("59 St-Columbus Circle", "S125"),
         // WMATA (DC Metro) - key hub stations
         ("Metro Center", "A01"),
         ("Gallery Pl-Chinatown", "B01"),

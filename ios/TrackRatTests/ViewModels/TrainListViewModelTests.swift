@@ -164,17 +164,34 @@ class TrainListViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isLoading)
         XCTAssertNil(viewModel.error)
 
+        // Observe the full emission sequence. The cache-hit path renders synchronously
+        // via applyTrips *before* awaiting the silent network refresh, so the first
+        // non-empty trains emission is the cached single trip and isLoading never flips.
+        // This is network-independent: whether the silent refresh succeeds (replacing
+        // trains with live results) or fails, neither the spinner nor the first render
+        // change.
+        var loadingValues: [Bool] = []
+        var firstNonEmptyCount: Int?
+        var firstNonEmptyFirstId: String?
+        viewModel.$isLoading.sink { loadingValues.append($0) }.store(in: &cancellables)
+        viewModel.$trains.sink { trains in
+            if firstNonEmptyCount == nil, !trains.isEmpty {
+                firstNonEmptyCount = trains.count
+                firstNonEmptyFirstId = trains.first?.trainId
+            }
+        }.store(in: &cancellables)
+
         await viewModel.loadTrains(destination: "Newark Penn Station",
                                    fromStationCode: "NY",
                                    date: date,
                                    selectedSystems: systems)
 
-        // After loadTrains returns: trains populated from cache, no spinner, no error.
-        // The silent refresh that runs after cache-hit may have failed (no network in
-        // test) — that path catches and logs without setting `error`.
-        XCTAssertEqual(viewModel.trains.count, 1, "Cache-seeded trip must render as one TrainV2")
-        XCTAssertEqual(viewModel.trains.first?.trainId, "T1")
-        XCTAssertFalse(viewModel.isLoading, "Cache-hit path must not flip the spinner on")
+        // The cached trip rendered instantly as one TrainV2, ahead of any refresh.
+        XCTAssertEqual(firstNonEmptyCount, 1, "Cache-seeded trip must render first as one TrainV2")
+        XCTAssertEqual(firstNonEmptyFirstId, "T1")
+        // The spinner never turned on at any point during the cache-hit load.
+        XCTAssertFalse(loadingValues.contains(true), "Cache-hit path must not flip the spinner on")
+        XCTAssertFalse(viewModel.isLoading)
         XCTAssertTrue(viewModel.hasStartedLoading)
         XCTAssertNil(viewModel.error, "Silent-refresh failures must not surface as user-visible error")
     }

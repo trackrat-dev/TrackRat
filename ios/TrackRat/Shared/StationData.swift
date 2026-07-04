@@ -260,14 +260,14 @@ extension Stations {
         "Rouses Point", "Route 128", "Rutland", "St. Albans, VT", "Saco", "Saratoga Springs",
         "St. Catherines", "Schenectady", "St-Lambert", "Toronto", "Utica", "Ferrisburgh",
         "Waterbury-Stowe", "Wells", "Whitehall", "Windsor-Mt. Ascutney", "Woburn", "Worcester Union",
-        "White River Junction", "Westport", "Albany", "Bellingham", "Bingen-White Salmon", "Browning",
+        "White River Junction", "Albany", "Bellingham", "Bingen-White Salmon", "Browning",
         "Chemult", "Centralia, WA", "Cut Bank", "Edmonds", "Ephrata", "Essex",
         "Everett", "Glasgow", "Granby", "Kelso-Longview", "Klamath Falls", "Libby",
         "Leavenworth", "Malta", "Mount Vernon", "Olympia-Lacey", "Oregon City", "Provo",
         "Pasco", "Shelby", "Sandpoint", "Stanwood", "Tukwila", "Vancouver, WA",
         "Vancouver, BC", "Wenatchee", "West Glacier", "Wishram", "Wolf Point", "Anniston",
         "Bay St Louis", "Bradenton", "Biloxi Amtrak Sta", "Camden", "Deerfield Beach", "Denmark",
-        "Gainesville, FL", "Gulfport Amtrak Sta", "Hattiesburg", "Hollywood, FL",
+        "Gainesville, FL", "Gulfport Amtrak Sta", "Hattiesburg",
         "Laurel", "Meridian Union", "Okeechobee", "Pascagoula", "Picayune",
         "Sebring", "Slidell", "Sanford Amtrak Auto Train", "St. Petersburg", "Tuscaloosa",
         "Wildwood", "Yemassee", "Burke Centre", "Burlington, NC", "Clifton Forge",
@@ -863,7 +863,7 @@ extension Stations {
         // MBTA Commuter Rail Stations
         // Shared hubs (some already listed above for Amtrak)
         "North Station", "Ruggles", "Forest Hills MBTA", "Hyde Park", "Readville",
-        "Canton Junction", "JFK/UMass", "Quincy Center",
+        "Canton Junction", "JFK/UMass", "Quincy Center", "Braintree",
         "Porter", "Chelsea", "Malden Center", "Oak Grove",
 
         // Fairmount Line

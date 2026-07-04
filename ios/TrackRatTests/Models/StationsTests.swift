@@ -55,12 +55,17 @@ class StationsTests: XCTestCase {
     }
     
     func testStationCodeUniqueness() {
-        let codes = Array(Stations.stationCodes.values)
-        let uniqueCodes = Set(codes)
-        
-        // Account for expected duplicate: "Trenton" and "Trenton Transit Center" both use "TR"
-        let expectedDuplicates = 1  // Only TR should be duplicated
-        XCTAssertEqual(codes.count - expectedDuplicates, uniqueCodes.count, "Station codes should be unique (except for expected Trenton variants)")
+        // Codes must be unique among user-facing stations (those in `all`).
+        // Lookup-only aliases whose name is NOT in `all` (e.g. "Trenton Transit Center",
+        // "Princeton NJ", "Cary NC") intentionally share their canonical station's code so
+        // API-returned name variants resolve to the same code — those are not collisions.
+        let userFacingNames = Set(Stations.all)
+        let userFacingCodes = Stations.stationCodes
+            .filter { userFacingNames.contains($0.key) }
+            .map { $0.value }
+        let collisions = Dictionary(grouping: userFacingCodes, by: { $0 }).filter { $0.value.count > 1 }
+        XCTAssertTrue(collisions.isEmpty,
+                     "Codes for user-facing stations must be unique. Collisions: \(collisions.keys.sorted())")
     }
     
     func testGetStationCode() {
@@ -158,7 +163,8 @@ class StationsTests: XCTestCase {
     
     func testStationSearchResultLimit() {
         let results = Stations.search("a") // Should match many stations
-        XCTAssertLessThanOrEqual(results.count, 8, "Search should limit results to 8")
+        XCTAssertLessThanOrEqual(results.count, Stations.defaultSearchLimit,
+                                 "Search should cap results at the default search limit")
     }
     
     func testStationSearchNoMatches() {
@@ -197,16 +203,17 @@ class StationsTests: XCTestCase {
     }
     
     func testStationCodeFormat() {
+        // Codes are alphanumeric plus '-'/'_' separators used by Metra/subway IDs
+        // (e.g. "103RD-BEV", "55-56-57TH"), which run longer than the 2-4 char
+        // NJT/Amtrak codes.
+        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         for (_, code) in Stations.stationCodes {
-            // Station codes should be uppercase letters and numbers only
-            let allowedCharacters = CharacterSet.alphanumerics
             let codeCharacters = CharacterSet(charactersIn: code)
-            XCTAssertTrue(allowedCharacters.isSuperset(of: codeCharacters), 
-                         "Station code '\(code)' should only contain alphanumeric characters")
-            
-            // Most codes should be 2-4 characters
+            XCTAssertTrue(allowedCharacters.isSuperset(of: codeCharacters),
+                         "Station code '\(code)' should only contain alphanumerics, '-' or '_'")
+
             XCTAssertGreaterThanOrEqual(code.count, 2, "Station code '\(code)' should be at least 2 characters")
-            XCTAssertLessThanOrEqual(code.count, 5, "Station code '\(code)' should be at most 5 characters")
+            XCTAssertLessThanOrEqual(code.count, 10, "Station code '\(code)' should be at most 10 characters")
         }
     }
     
@@ -449,7 +456,8 @@ class StationsTests: XCTestCase {
     }
 
     func testSystemMappingReturnsValidSystems() {
-        let validSystems: Set<String> = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "MBTA"]
+        let validSystems: Set<String> = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR",
+                                         "SUBWAY", "MBTA", "WMATA", "BART", "METRA"]
         let allCodes = Set(Stations.stationCodes.values)
 
         for code in allCodes {
