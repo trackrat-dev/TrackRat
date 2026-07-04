@@ -1,0 +1,46 @@
+# TrackRat iOS CI
+# Separate from ci-cd-v2.yml so iOS-only changes don't trigger backend/terraform/docker jobs.
+
+name: iOS CI
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-ios:
+    name: iOS Build & Test
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Build and test
+        working-directory: ios
+        run: |
+          xcodebuild test \
+            -scheme TrackRat \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ios-test-results
+          path: ios/TestResults.xcresult
