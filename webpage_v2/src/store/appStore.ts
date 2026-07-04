@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Station, TripPair, FavoriteStation, TransitSystem } from '../types';
 import { storageService } from '../services/storage';
+import { AVAILABLE_SYSTEMS, DISABLED_SYSTEMS } from '../data/stations';
 
 interface AppState {
   // Journey Selection
@@ -169,8 +170,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // System Preferences
   toggleSystem: (system) => {
     const current = get().preferredSystems;
-    const allSystems: TransitSystem[] = ['NJT', 'AMTRAK', 'PATH', 'PATCO', 'LIRR', 'MNR', 'SUBWAY', 'METRA', 'WMATA', 'BART', 'MBTA'];
-    const baseSystems = current.length === 0 ? allSystems : current;
+    // Empty preferredSystems means "all on"; materialize that baseline from the
+    // available (non-disabled) systems so toggling never reintroduces a disabled one.
+    const baseSystems = current.length === 0 ? AVAILABLE_SYSTEMS : current;
     const updated = baseSystems.includes(system)
       ? baseSystems.filter(s => s !== system)
       : [...baseSystems, system];
@@ -179,7 +181,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   loadPreferredSystems: () => {
-    const systems = storageService.getPreferredSystems();
+    // Drop any systems that have since been disabled app-wide so a stale persisted
+    // selection can't resurface a hidden system.
+    const systems = storageService.getPreferredSystems().filter(s => !DISABLED_SYSTEMS.has(s));
     set({ preferredSystems: systems });
   },
 }));

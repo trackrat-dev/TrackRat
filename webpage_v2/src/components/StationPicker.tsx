@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Station } from '../types';
-import { searchStations, getGroupedPrimaryStations, SYSTEM_ORDER, SYSTEM_NAMES } from '../data/stations';
+import { searchStations, getGroupedPrimaryStations, AVAILABLE_SYSTEMS, SYSTEM_NAMES } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import { SubwayLineChips } from './SubwayLineChips';
 
@@ -114,7 +114,7 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
           />
           {/* System filter chips */}
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
-            {SYSTEM_ORDER.map(system => {
+            {AVAILABLE_SYSTEMS.map(system => {
               const active = preferredSystems.length === 0 || preferredSystems.includes(system);
               return (
                 <button

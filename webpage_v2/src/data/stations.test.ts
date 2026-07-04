@@ -7,6 +7,9 @@ import {
   getGroupedPrimaryStations,
   SYSTEM_ORDER,
   PRIMARY_STATIONS,
+  AVAILABLE_SYSTEMS,
+  DISABLED_SYSTEMS,
+  SYSTEM_NAMES,
 } from './stations';
 
 describe('STATIONS', () => {
@@ -208,5 +211,32 @@ describe('getGroupedPrimaryStations', () => {
   it('uses SYSTEM_NAMES for group names', () => {
     const groups = getGroupedPrimaryStations(['NJT']);
     expect(groups[0].name).toBe('NJ Transit');
+  });
+});
+
+describe('AVAILABLE_SYSTEMS', () => {
+  it('excludes every disabled system', () => {
+    for (const system of DISABLED_SYSTEMS) {
+      expect(AVAILABLE_SYSTEMS).not.toContain(system);
+    }
+  });
+
+  it('is SYSTEM_ORDER minus the disabled set, preserving order', () => {
+    const expected = SYSTEM_ORDER.filter(s => !DISABLED_SYSTEMS.has(s));
+    expect(AVAILABLE_SYSTEMS).toEqual(expected);
+    expect(AVAILABLE_SYSTEMS.length).toBe(SYSTEM_ORDER.length - DISABLED_SYSTEMS.size);
+  });
+
+  it('currently hides BART, WMATA, MBTA, and Metra', () => {
+    expect([...DISABLED_SYSTEMS].sort()).toEqual(['BART', 'MBTA', 'METRA', 'WMATA']);
+  });
+
+  it('keeps disabled systems in SYSTEM_ORDER and SYSTEM_NAMES for code lookups', () => {
+    // Disabled systems are only hidden from display; persisted/historical data on
+    // them must still resolve a name and stay part of the canonical order.
+    for (const system of DISABLED_SYSTEMS) {
+      expect(SYSTEM_ORDER).toContain(system);
+      expect(SYSTEM_NAMES[system]).toBeTruthy();
+    }
   });
 });
