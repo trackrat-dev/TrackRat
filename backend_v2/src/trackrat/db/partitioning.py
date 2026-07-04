@@ -236,13 +236,20 @@ async def drop_old_partitions(
 # each `*_legacy` table once its copy completes, reclaiming the ~33 GB in one
 # shot instead of over a 60-day cascade drain.
 #
-# Progress is tracked in `partition_backfill_state` (created by the migration)
-# rather than via ON CONFLICT, because segment_transit_times has no natural
-# unique key to dedupe on. We copy by descending legacy `id` and persist the
-# lowest id copied so far, so a mid-backfill restart resumes without
-# re-copying (and thus without duplicating). Fresh target ids are assigned by
-# the new table's own identity/sequence — legacy ids are never preserved, so
-# they can't collide with the ids live collectors are already writing.
+# Progress is tracked in `partition_backfill_state` (created by the migration):
+# we copy by descending legacy `id` and persist the lowest id copied so far, so
+# a mid-backfill restart resumes without re-copying (and thus without
+# duplicating). This cursor is the *only* dedup mechanism for
+# segment_transit_times, which has no natural unique key. journey_stops does
+# have one (unique_journey_stop), so its copy additionally carries
+# `ON CONFLICT (journey_id, station_code, journey_date) DO NOTHING` — not for
+# resumption (the cursor covers that) but for cross-writer collisions: a
+# collector may re-insert a stop for a pre-cutover journey into the new table
+# before the backfill reaches its legacy row, and without the clause that
+# unique violation would abort the batch forever (see insert_sql below).
+# Fresh target ids are assigned by the new table's own identity/sequence —
+# legacy ids are never preserved, so they can't collide with the ids live
+# collectors are already writing.
 # ---------------------------------------------------------------------------
 
 BACKFILL_STATE_TABLE = "partition_backfill_state"
@@ -298,7 +305,18 @@ LEGACY_BACKFILLS: tuple[LegacyBackfill, ...] = (
             "l.updated_at "
             "FROM journey_stops_legacy l "
             "JOIN train_journeys tj ON tj.id = l.journey_id "
-            "WHERE l.id = ANY(:ids)"
+            "WHERE l.id = ANY(:ids) "
+            # A pre-cutover journey whose collector re-ran after the migration
+            # already has a live row for this (journey_id, station_code,
+            # journey_date) in the new table (Amtrak's create-if-absent path
+            # and NJT's own on_conflict insert both write there). Without this
+            # clause a single such collision aborts the whole 10k-id batch on
+            # unique_journey_stop, the cursor never advances, and every
+            # subsequent run re-hits the identical batch — a permanent stall
+            # that leaves journey_stops_legacy (the ~33 GB we're reclaiming)
+            # forever undropped. DO NOTHING keeps the collector's newer row and
+            # drops the stale legacy copy, which is the correct resolution.
+            "ON CONFLICT (journey_id, station_code, journey_date) DO NOTHING"
         ),
         cutoff_is_timestamptz=False,
     ),
@@ -397,6 +415,11 @@ async def backfill_one_batch(
         return 0, True
 
     await db.execute(text(cfg.insert_sql), {"ids": ids})
+    # rows_copied counts legacy ids *processed*, not rows actually inserted:
+    # journey_stops' ON CONFLICT DO NOTHING silently skips keys a collector
+    # already wrote post-cutover, so this can overcount. That's fine — the
+    # cursor (last_copied_id) and `completed` drive the DROP TABLE decision,
+    # not this counter, which is only an operational progress signal.
     await db.execute(
         text(
             f"UPDATE {BACKFILL_STATE_TABLE} SET last_copied_id = :min_id, "

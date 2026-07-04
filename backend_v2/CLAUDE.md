@@ -264,10 +264,17 @@ rather than over the retention window. `journey_stops_legacy` has no
 `journey_date` column (it's the new partition key), so the copy derives it by
 joining `train_journeys`; `segment_transit_times_legacy` already has
 `departure_time`. Progress is tracked in `partition_backfill_state` (copy by
-descending legacy `id`, persisting the lowest id copied) rather than via
-`ON CONFLICT`, since `segment_transit_times` has no natural unique key to
-dedupe on; fresh target ids are assigned by the new tables' own sequences so
-they can't collide with ids live collectors are already writing. Once a
+descending legacy `id`, persisting the lowest id copied); this cursor is the
+sole dedupe mechanism for `segment_transit_times`, which has no natural unique
+key. The `journey_stops` copy additionally carries
+`ON CONFLICT (journey_id, station_code, journey_date) DO NOTHING` — not for
+resumption (the cursor handles that) but because a collector may have already
+written a live row for a pre-cutover journey under that key before the backfill
+reaches its legacy row (Amtrak's create-if-absent path, NJT's on-conflict
+insert); without the clause that unique violation would abort the whole batch
+and stall the backfill permanently. `DO NOTHING` keeps the collector's newer
+row. Fresh target ids are assigned by the new tables' own sequences so they
+can't collide with ids live collectors are already writing. Once a
 table's backfill completes, that `*_legacy` table is `DROP TABLE`d
 automatically, reclaiming the ~33 GB in one shot (rows older than
 `retention_days` are past retention and intentionally discarded with it). The

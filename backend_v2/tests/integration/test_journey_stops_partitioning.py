@@ -402,6 +402,58 @@ class TestLegacyBackfill:
         assert stop_count == 5  # all copied, none duplicated
         assert not await _table_exists(db_session, "journey_stops_legacy")
 
+    async def test_backfill_skips_rows_a_collector_already_wrote(
+        self, db_session: AsyncSession
+    ):
+        """A collector that re-runs after the cutover writes a live row for a
+        pre-migration journey into the new table under the same
+        (journey_id, station_code, journey_date) key the backfill will later
+        try to copy from legacy. Without ON CONFLICT that unique violation
+        aborts the whole batch and the cursor never advances — a permanent
+        stall that leaves journey_stops_legacy (the ~33 GB) undropped.
+
+        The backfill must instead: keep the collector's newer row, skip the
+        stale legacy copy of that key, still copy the non-colliding legacy
+        rows, complete, and drop the legacy table.
+        """
+        journey = _make_journey(date.today(), train_id="COLLIDE")
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Collector's post-cutover row already in the new partitioned table.
+        db_session.add(
+            JourneyStop(
+                journey_id=journey.id,
+                journey_date=journey.journey_date,
+                station_code="NY",
+                station_name="COLLECTOR_NY",
+            )
+        )
+        await db_session.flush()
+
+        # Legacy has the same key (collides) plus one that doesn't (WAS).
+        await db_session.execute(text(_CREATE_JOURNEY_STOPS_LEGACY))
+        await _add_legacy_stop(db_session, journey.id, "NY")
+        await _add_legacy_stop(db_session, journey.id, "WAS")
+        await db_session.commit()
+
+        cutoff = date.today() - timedelta(days=60)
+        summary = await run_legacy_backfill_batches(db_session, cutoff)
+        await db_session.commit()
+
+        assert summary["journey_stops_legacy"]["completed"] is True
+        assert not await _table_exists(db_session, "journey_stops_legacy")
+
+        stops = {
+            s.station_code: s
+            for s in (await db_session.execute(select(JourneyStop))).scalars().all()
+        }
+        assert set(stops) == {"NY", "WAS"}
+        # The colliding key kept the collector's row, not the legacy copy.
+        assert stops["NY"].station_name == "COLLECTOR_NY"
+        # The non-colliding legacy row was still copied.
+        assert stops["WAS"].journey_date == journey.journey_date
+
     async def test_backfill_noop_when_no_legacy_tables(
         self, db_session: AsyncSession
     ):
