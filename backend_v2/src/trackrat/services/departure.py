@@ -264,24 +264,28 @@ class DepartureService:
             aware_time_from = (
                 ensure_timezone_aware(time_from) if time_from is not None else None
             )
+            # Resolve globally-disabled sources out once, then use the same list
+            # for the GTFS query, the response filter, and the direct-route check
+            # so a disabled feed's static schedule can't leak on future-date
+            # requests (whether via the ALL_DATA_SOURCES default or an explicit
+            # &data_sources=<disabled>).
+            allowed_sources = active_data_sources(data_sources)
             response = await gtfs_service.get_scheduled_departures(
                 db=db,
                 from_station=from_station,
                 to_station=to_station,
                 target_date=target_date,
                 limit=limit,
-                data_sources=data_sources,
+                data_sources=allowed_sources,
                 time_from=aware_time_from,
             )
-            if data_sources:
-                response.departures = [
-                    d for d in response.departures if d.data_source in data_sources
-                ]
-                response.metadata["count"] = len(response.departures)
+            response.departures = [
+                d for d in response.departures if d.data_source in allowed_sources
+            ]
+            response.metadata["count"] = len(response.departures)
             if to_station:
-                all_sources = active_data_sources(data_sources)
                 response.has_direct_route = _has_direct_route(
-                    from_station, to_station, all_sources
+                    from_station, to_station, allowed_sources
                 )
             return response
 

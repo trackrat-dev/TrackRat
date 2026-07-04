@@ -56,7 +56,10 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
     searchInputRef.current?.focus();
   }, []);
 
-  const activeFilter = preferredSystems.length > 0 ? preferredSystems : undefined;
+  // Default (empty preferredSystems) means "all on" — but search/grouping must
+  // still exclude disabled systems, so fall back to AVAILABLE_SYSTEMS rather than
+  // an undefined filter (whose default path scans the full, disabled-inclusive list).
+  const activeFilter = preferredSystems.length > 0 ? preferredSystems : AVAILABLE_SYSTEMS;
 
   const handleSearch = (value: string) => {
     setQuery(value);

@@ -239,4 +239,13 @@ describe('AVAILABLE_SYSTEMS', () => {
       expect(SYSTEM_NAMES[system]).toBeTruthy();
     }
   });
+
+  it('grouping through AVAILABLE_SYSTEMS yields no disabled-system groups', () => {
+    // The picker's default (all-on) path passes AVAILABLE_SYSTEMS to
+    // getGroupedPrimaryStations, so disabled-system stations must not appear.
+    const groups = getGroupedPrimaryStations(AVAILABLE_SYSTEMS);
+    for (const group of groups) {
+      expect(DISABLED_SYSTEMS.has(group.system)).toBe(false);
+    }
+  });
 });

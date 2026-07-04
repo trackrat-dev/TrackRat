@@ -57,7 +57,9 @@ export function TripSelectionPage() {
   const activeSystems = preferredSystems.length > 0 ? preferredSystems : undefined;
   const { stationResults, otherSystemStationResults } = useMemo(() => {
     if (!searchQuery.trim()) return { stationResults: [], otherSystemStationResults: [] };
-    if (!activeSystems) return { stationResults: searchStations(searchQuery), otherSystemStationResults: [] };
+    // All-on (no explicit selection): filter to AVAILABLE_SYSTEMS so disabled-system
+    // stations don't surface in the default search results.
+    if (!activeSystems) return { stationResults: searchStations(searchQuery, AVAILABLE_SYSTEMS), otherSystemStationResults: [] };
     const { matched, other } = searchStationsPartitioned(searchQuery, activeSystems);
     return { stationResults: matched, otherSystemStationResults: other };
   }, [searchQuery, activeSystems]);
