@@ -25,6 +25,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
+from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
     DATETIME_MAX_ET,
@@ -856,6 +857,11 @@ class JourneyCollector(BaseJourneyCollector):
         """
         # Track start time for performance measurement
         start_time = now_et()
+
+        # Serialize this journey's writers across replicas (issue #1369):
+        # scheduled collection, JIT refresh, and the nightly schedule rebuild
+        # can otherwise interleave a phantom-stop delete with a stop update.
+        await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
 
         logger.debug(
             "collecting_journey_details",

@@ -28,6 +28,7 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
     DATETIME_MAX_ET,
@@ -1478,6 +1479,10 @@ class DepartureService:
         Uses PostgreSQL ON CONFLICT to safely handle concurrent updates from
         multiple sessions (e.g., cache precomputation vs user request).
         """
+        # Serialize this journey's writers across replicas (issue #1369):
+        # this bulk station-board refresh mutates the same journey_stops
+        # rows as collect_journey_details and _update_journey_with_stops.
+        await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
 
         # Build lookup from eagerly-loaded stops to avoid N+1 queries and
         # prevent greenlet_spawn errors from fetching stops outside the ORM
