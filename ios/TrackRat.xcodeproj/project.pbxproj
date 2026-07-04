@@ -169,6 +169,16 @@
 		B8A1C2D3E4F5A6B7C8D9E0F2 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
 		C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */; };
 		C2E7D99AB1388D3535BAD93F /* TripDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C182D065DE7062F61B8F2446 /* TripDetailsView.swift */; };
+		A1TESTV2APIMODELS0000000 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
+		A1TESTTRAINV200000000000 /* TrainV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5562E25BBC700958ABA /* TrainV2.swift */; };
+		A1TESTROUTESTATUS0000000 /* RouteStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ROUTE0012F5000000000001 /* RouteStatusView.swift */; };
+		A1TESTSTATIONS0000000000 /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D082E106D1B003DA39F /* Stations.swift */; };
+		A1TESTJRNYFEEDBK00000000 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
+		A1TESTLIVEACTSVC00000000 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
+		A1TESTTRACKRATAPP0000000 /* TrackRatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */; };
+		A1TESTSTORAGESVC00000000 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F72DE39EF9002F3214 /* StorageService.swift */; };
+		A1TESTTRIPOPTION00000000 /* TripOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1TRIP0012F60000000000002 /* TripOption.swift */; };
+		A1TESTTRAINMODEL00000000 /* Train.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F32DE39EDD002F3214 /* Train.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -877,6 +887,16 @@
 				A12AADF12EF8407600407794 /* TrainFrequencyChart.swift in Sources */,
 				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,
 				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
+				A1TESTV2APIMODELS0000000 /* V2APIModels.swift in Sources */,
+				A1TESTTRAINV200000000000 /* TrainV2.swift in Sources */,
+				A1TESTROUTESTATUS0000000 /* RouteStatusView.swift in Sources */,
+				A1TESTSTATIONS0000000000 /* Stations.swift in Sources */,
+				A1TESTJRNYFEEDBK00000000 /* JourneyFeedbackService.swift in Sources */,
+				A1TESTLIVEACTSVC00000000 /* LiveActivityService.swift in Sources */,
+				A1TESTTRACKRATAPP0000000 /* TrackRatApp.swift in Sources */,
+				A1TESTSTORAGESVC00000000 /* StorageService.swift in Sources */,
+				A1TESTTRIPOPTION00000000 /* TripOption.swift in Sources */,
+				A1TESTTRAINMODEL00000000 /* Train.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
