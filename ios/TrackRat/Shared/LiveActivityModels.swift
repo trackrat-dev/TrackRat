@@ -37,10 +37,11 @@ struct TrainActivityAttributes: ActivityAttributes {
             
             let now = Date()
             let interval = departureTime.timeIntervalSince(now)
-            
-            // If departure is in the past, return nil
-            if interval < 0 { return nil }
-            
+
+            // Can be negative if departure is overdue (past scheduled time but
+            // the backend hasn't flagged the train departed yet). Callers render
+            // negative minutes as "Departing now"/"late"; only a missing or
+            // unparseable time yields nil (rendered as "Preparing to depart").
             return Int(interval / 60)
         }
         
