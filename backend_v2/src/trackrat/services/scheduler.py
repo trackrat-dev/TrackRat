@@ -475,6 +475,11 @@ class SchedulerService:
         logger.info(
             "scheduler_started", jobs=[job.id for job in self.scheduler.get_jobs()]
         )
+        if self.settings.disabled_data_source_set:
+            logger.info(
+                "data_sources_disabled",
+                sources=sorted(self.settings.disabled_data_source_set),
+            )
 
     async def _run_startup_collectors(self) -> None:
         """Launch startup collectors with staggered delays to avoid CPU spike."""
@@ -531,6 +536,8 @@ class SchedulerService:
 
     async def run_njt_discovery(self) -> None:
         """Run NJ Transit train discovery for all configured stations."""
+        if self.settings.is_data_source_disabled("NJT"):
+            return
         task_id = f"njt_discovery_{now_et().isoformat()}"
 
         async def do_discovery_work() -> None:
@@ -596,6 +603,8 @@ class SchedulerService:
 
     async def run_amtrak_discovery(self) -> None:
         """Run Amtrak train discovery for trains serving NYP."""
+        if self.settings.is_data_source_disabled("AMTRAK"):
+            return
         task_id = f"amtrak_discovery_{now_et().isoformat()}"
 
         async def do_amtrak_discovery_work() -> None:
@@ -652,6 +661,8 @@ class SchedulerService:
 
     async def run_path_collection(self) -> None:
         """Run unified PATH collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("PATH"):
+            return
         task_id = f"path_collection_{now_et().isoformat()}"
 
         async def do_path_collection_work() -> dict[str, Any]:
@@ -699,6 +710,8 @@ class SchedulerService:
 
     async def run_lirr_collection(self) -> None:
         """Run unified LIRR collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("LIRR"):
+            return
         task_id = f"lirr_collection_{now_et().isoformat()}"
 
         async def do_lirr_collection_work() -> dict[str, Any]:
@@ -749,6 +762,8 @@ class SchedulerService:
 
     async def run_mnr_collection(self) -> None:
         """Run unified Metro-North collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("MNR"):
+            return
         task_id = f"mnr_collection_{now_et().isoformat()}"
 
         async def do_mnr_collection_work() -> dict[str, Any]:
@@ -799,6 +814,8 @@ class SchedulerService:
 
     async def run_subway_collection(self) -> None:
         """Run unified NYC Subway collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("SUBWAY"):
+            return
         task_id = f"subway_collection_{now_et().isoformat()}"
 
         async def do_subway_collection_work() -> dict[str, Any]:
@@ -844,6 +861,8 @@ class SchedulerService:
 
     async def run_metra_collection(self) -> None:
         """Run unified Metra collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("METRA"):
+            return
         task_id = f"metra_collection_{now_et().isoformat()}"
 
         async def do_metra_collection_work() -> dict[str, Any]:
@@ -889,6 +908,8 @@ class SchedulerService:
 
     async def run_wmata_collection(self) -> None:
         """Run unified WMATA collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("WMATA"):
+            return
         task_id = f"wmata_collection_{now_et().isoformat()}"
 
         async def do_wmata_collection_work() -> dict[str, Any]:
@@ -936,6 +957,8 @@ class SchedulerService:
 
     async def run_bart_collection(self) -> None:
         """Run unified BART collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("BART"):
+            return
         task_id = f"bart_collection_{now_et().isoformat()}"
 
         async def do_bart_collection_work() -> dict[str, Any]:
@@ -981,6 +1004,8 @@ class SchedulerService:
 
     async def run_mbta_collection(self) -> None:
         """Run unified MBTA collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("MBTA"):
+            return
         task_id = f"mbta_collection_{now_et().isoformat()}"
 
         async def do_mbta_collection_work() -> dict[str, Any]:
@@ -3001,6 +3026,8 @@ class SchedulerService:
                 results: dict[str, bool] = {}
                 async with get_session() as db:
                     for source in self.GTFS_SOURCES:
+                        if self.settings.is_data_source_disabled(source):
+                            continue
                         result = await gtfs_service.refresh_feed(db, source)
                         results[source] = result
                         logger.info(
@@ -3051,6 +3078,8 @@ class SchedulerService:
             async with get_session() as db:
                 availability: dict[str, bool] = {}
                 for source in self.GTFS_SOURCES:
+                    if self.settings.is_data_source_disabled(source):
+                        continue
                     availability[source] = await gtfs_service.is_feed_available(
                         db, source
                     )
@@ -3698,6 +3727,8 @@ class SchedulerService:
         and creates SCHEDULED journey records for trains that haven't
         been observed yet.
         """
+        if self.settings.is_data_source_disabled("NJT"):
+            return
         task_id = f"njt_schedules_{now_et().isoformat()}"
 
         async def do_schedule_collection() -> None:
@@ -3758,6 +3789,8 @@ class SchedulerService:
         Amtrak train data to identify patterns and create SCHEDULED journey
         records for trains that are expected to run today.
         """
+        if self.settings.is_data_source_disabled("AMTRAK"):
+            return
         task_id = f"amtrak_schedules_{now_et().isoformat()}"
 
         async def do_schedule_generation() -> None:

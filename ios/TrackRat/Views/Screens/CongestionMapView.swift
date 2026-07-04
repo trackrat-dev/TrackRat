@@ -325,7 +325,7 @@ struct CongestionMapView: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
 
-            ForEach(TrainSystem.allCases, id: \.self) { system in
+            ForEach(TrainSystem.availableCases, id: \.self) { system in
                 let isSelected = appState.isSystemSelected(system)
                 let atFreeLimit = !subscriptionService.isPro
                     && !isSelected
@@ -1026,7 +1026,7 @@ struct FilterSheet: View {
                 Section("Data Source") {
                     Picker("Source", selection: $selectedDataSource) {
                         Text("All").tag("All")
-                        ForEach(TrainSystem.allCases) { system in
+                        ForEach(TrainSystem.availableCases) { system in
                             Text(system.displayName).tag(system.rawValue)
                         }
                     }

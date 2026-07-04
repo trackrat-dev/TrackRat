@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useAppStore } from './appStore';
-import { Station } from '../types';
+import { Station, TransitSystem } from '../types';
+import { storageService } from '../services/storage';
 
 const NY: Station = { code: 'NY', name: 'New York Penn Station' };
 const NP: Station = { code: 'NP', name: 'Newark Penn Station' };
@@ -174,5 +175,23 @@ describe('favorite routes and commute profile', () => {
 
     expect(useAppStore.getState().preferredSystems).not.toContain('NJT');
     expect(useAppStore.getState().preferredSystems).toContain('AMTRAK');
+  });
+
+  it('never reintroduces a disabled system when toggling from the all-on default', () => {
+    // Empty preferredSystems = all-on; the materialized baseline must exclude
+    // disabled systems so toggling can't resurface one.
+    useAppStore.getState().toggleSystem('NJT');
+    const result = useAppStore.getState().preferredSystems;
+    for (const disabled of ['BART', 'WMATA', 'MBTA', 'METRA'] as TransitSystem[]) {
+      expect(result).not.toContain(disabled);
+    }
+  });
+
+  it('strips disabled systems from a persisted selection on load', () => {
+    storageService.savePreferredSystems(
+      ['NJT', 'BART', 'SUBWAY', 'WMATA'] as TransitSystem[],
+    );
+    useAppStore.getState().loadPreferredSystems();
+    expect(useAppStore.getState().preferredSystems).toEqual(['NJT', 'SUBWAY']);
   });
 });

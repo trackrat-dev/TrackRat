@@ -942,7 +942,11 @@ final class AppState: ObservableObject {
             let migrated = stored.contains("AMTRAK_NEC")
                 ? stored.replacingOccurrences(of: "AMTRAK_NEC", with: "AMTRAK")
                 : stored
+            // Drop any systems that have since been disabled app-wide so a stale
+            // persisted selection can't resurface a hidden system. If this empties
+            // the set, fall through to onboarding via `.defaultEnabled` (self-heal).
             let loaded = Set<TrainSystem>.from(commaSeparated: migrated)
+                .subtracting(TrainSystem.disabledSystems)
             selectedSystems = loaded.isEmpty ? .defaultEnabled : loaded
         } else {
             selectedSystems = .defaultEnabled
@@ -973,7 +977,7 @@ final class AppState: ObservableObject {
 
     /// Select all systems
     func selectAllSystems() {
-        selectedSystems = Set(TrainSystem.allCases)
+        selectedSystems = Set(TrainSystem.availableCases)
     }
 
     // MARK: - Map Settings

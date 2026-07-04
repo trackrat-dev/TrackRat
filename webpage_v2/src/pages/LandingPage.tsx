@@ -45,7 +45,7 @@ const features = [
 ];
 
 const unifiedFeature = {
-  title: 'NYC Subway, LIRR, Metro-North, PATH, and 7 more systems',
+  title: 'NYC Subway, LIRR, Metro-North, PATH, and 3 more systems',
   images: [
     `${BASE}images/mtn.webp`,
     `${BASE}images/5.webp`,
@@ -62,10 +62,6 @@ const transitSystems = [
   { name: 'LIRR', region: 'New York' },
   { name: 'Metro-North', region: 'New York' },
   { name: 'NYC Subway', region: 'New York' },
-  { name: 'DC Metro (beta)', region: 'DC' },
-  { name: 'MBTA Commuter Rail (beta)', region: 'Boston' },
-  { name: 'Metra (beta)', region: 'Chicago' },
-  { name: 'BART (beta)', region: 'Bay Area' },
 ];
 
 function IOSBanner() {

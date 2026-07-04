@@ -20,6 +20,27 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Backend data source string
     var dataSource: String { rawValue }
 
+    // MARK: - Availability (feature flag)
+
+    /// Systems fully disabled app-wide: hidden from every selection/display surface,
+    /// and not collected or served by the backend (mirrors the backend's
+    /// `TRACKRAT_DISABLED_DATA_SOURCES` flag). Kept independent of `isBeta` so any
+    /// system can be pulled without reworking the beta grouping.
+    ///
+    /// NOTE: `allCases` is intentionally left unfiltered so decoding and lookup of an
+    /// already-persisted selection for a disabled system still succeed. Only *display*
+    /// sites use `availableCases`.
+    static let disabledSystems: Set<TrainSystem> = [.bart, .wmata, .mbta, .metra]
+
+    /// User-facing systems: `allCases` minus `disabledSystems`. Use this anywhere a
+    /// system is presented to the user for selection or display.
+    static var availableCases: [TrainSystem] {
+        allCases.filter { !disabledSystems.contains($0) }
+    }
+
+    /// Whether this system is currently disabled app-wide.
+    var isDisabled: Bool { Self.disabledSystems.contains(self) }
+
     /// Human-readable display name
     var displayName: String {
         switch self {
@@ -149,9 +170,9 @@ extension Set where Element == TrainSystem {
         Set(commaSeparated.split(separator: ",").compactMap { TrainSystem(rawValue: String($0)) })
     }
 
-    /// All systems selected
+    /// All available (non-disabled) systems selected
     static var all: Set<TrainSystem> {
-        Set(TrainSystem.allCases)
+        Set(TrainSystem.availableCases)
     }
 
     /// Empty by default — user picks during onboarding.

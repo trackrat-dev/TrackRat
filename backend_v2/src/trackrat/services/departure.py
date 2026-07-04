@@ -28,6 +28,7 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.settings import get_settings
 from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
@@ -149,6 +150,17 @@ ALL_DATA_SOURCES: list[str] = [
 ]
 
 
+def active_data_sources(requested: list[str] | None) -> list[str]:
+    """Resolve the effective data_source list, dropping any globally disabled sources.
+
+    Applies to both an explicit ``requested`` list and the ``ALL_DATA_SOURCES``
+    default, so disabled systems are never queried or served to any client.
+    """
+    settings = get_settings()
+    sources = requested if requested else ALL_DATA_SOURCES
+    return [s for s in sources if not settings.is_data_source_disabled(s)]
+
+
 def _has_direct_route(
     from_station: str,
     to_station: str,
@@ -252,24 +264,28 @@ class DepartureService:
             aware_time_from = (
                 ensure_timezone_aware(time_from) if time_from is not None else None
             )
+            # Resolve globally-disabled sources out once, then use the same list
+            # for the GTFS query, the response filter, and the direct-route check
+            # so a disabled feed's static schedule can't leak on future-date
+            # requests (whether via the ALL_DATA_SOURCES default or an explicit
+            # &data_sources=<disabled>).
+            allowed_sources = active_data_sources(data_sources)
             response = await gtfs_service.get_scheduled_departures(
                 db=db,
                 from_station=from_station,
                 to_station=to_station,
                 target_date=target_date,
                 limit=limit,
-                data_sources=data_sources,
+                data_sources=allowed_sources,
                 time_from=aware_time_from,
             )
-            if data_sources:
-                response.departures = [
-                    d for d in response.departures if d.data_source in data_sources
-                ]
-                response.metadata["count"] = len(response.departures)
+            response.departures = [
+                d for d in response.departures if d.data_source in allowed_sources
+            ]
+            response.metadata["count"] = len(response.departures)
             if to_station:
-                all_sources = data_sources or ALL_DATA_SOURCES
                 response.has_direct_route = _has_direct_route(
-                    from_station, to_station, all_sources
+                    from_station, to_station, allowed_sources
                 )
             return response
 
@@ -318,7 +334,7 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        allowed_sources = active_data_sources(data_sources)
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
@@ -696,7 +712,7 @@ class DepartureService:
             TrainJourney.journey_date <= now.date(),
         )
 
-        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        allowed_sources = active_data_sources(data_sources)
         from_codes = expand_station_codes(from_station)
         to_codes = expand_station_codes(to_station) if to_station else []
 

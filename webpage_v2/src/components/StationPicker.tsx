@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Station } from '../types';
-import { searchStations, getGroupedPrimaryStations, SYSTEM_ORDER, SYSTEM_NAMES } from '../data/stations';
+import { searchStations, getGroupedPrimaryStations, AVAILABLE_SYSTEMS, SYSTEM_NAMES } from '../data/stations';
 import { useAppStore } from '../store/appStore';
 import { SubwayLineChips } from './SubwayLineChips';
 
@@ -56,7 +56,10 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
     searchInputRef.current?.focus();
   }, []);
 
-  const activeFilter = preferredSystems.length > 0 ? preferredSystems : undefined;
+  // Default (empty preferredSystems) means "all on" — but search/grouping must
+  // still exclude disabled systems, so fall back to AVAILABLE_SYSTEMS rather than
+  // an undefined filter (whose default path scans the full, disabled-inclusive list).
+  const activeFilter = preferredSystems.length > 0 ? preferredSystems : AVAILABLE_SYSTEMS;
 
   const handleSearch = (value: string) => {
     setQuery(value);
@@ -114,7 +117,7 @@ export function StationPicker({ title, onSelect, onClose }: StationPickerProps) 
           />
           {/* System filter chips */}
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1 scrollbar-hide">
-            {SYSTEM_ORDER.map(system => {
+            {AVAILABLE_SYSTEMS.map(system => {
               const active = preferredSystems.length === 0 || preferredSystems.includes(system);
               return (
                 <button

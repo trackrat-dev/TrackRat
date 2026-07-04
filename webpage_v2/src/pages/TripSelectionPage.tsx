@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
-import { getStationByCode, searchStations, searchStationsPartitioned, SYSTEM_NAMES, SYSTEM_ORDER } from '../data/stations';
+import { getStationByCode, searchStations, searchStationsPartitioned, SYSTEM_NAMES, AVAILABLE_SYSTEMS } from '../data/stations';
 import { Station, TransitSystem } from '../types';
 import { storageService } from '../services/storage';
 import { getSuggestedRoute } from '../utils/ratsense';
@@ -57,7 +57,9 @@ export function TripSelectionPage() {
   const activeSystems = preferredSystems.length > 0 ? preferredSystems : undefined;
   const { stationResults, otherSystemStationResults } = useMemo(() => {
     if (!searchQuery.trim()) return { stationResults: [], otherSystemStationResults: [] };
-    if (!activeSystems) return { stationResults: searchStations(searchQuery), otherSystemStationResults: [] };
+    // All-on (no explicit selection): filter to AVAILABLE_SYSTEMS so disabled-system
+    // stations don't surface in the default search results.
+    if (!activeSystems) return { stationResults: searchStations(searchQuery, AVAILABLE_SYSTEMS), otherSystemStationResults: [] };
     const { matched, other } = searchStationsPartitioned(searchQuery, activeSystems);
     return { stationResults: matched, otherSystemStationResults: other };
   }, [searchQuery, activeSystems]);
@@ -208,7 +210,7 @@ export function TripSelectionPage() {
         />
 
         <div className="flex gap-1.5 overflow-x-auto pt-3">
-          {SYSTEM_ORDER.map((system) => {
+          {AVAILABLE_SYSTEMS.map((system) => {
             const active = preferredSystems.length === 0 || preferredSystems.includes(system);
             return (
               <button
