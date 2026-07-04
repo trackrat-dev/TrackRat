@@ -186,6 +186,11 @@
 		A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D102E106D1B003DA39F /* StationData.swift */; };
 		A1TESTTRACKRATTHEME00000 /* TrackRatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */; };
 		A1TESTCONGESTIONMAPVIEW0 /* CongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */; };
+		A1TESTHISTDATAVIEW000000 /* HistoricalDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */; };
+		A1TESTTRAINDETAILVIEW000 /* TrainDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */; };
+		A1TESTTRAINLISTVIEW00000 /* TrainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FF2DE39F23002F3214 /* TrainListView.swift */; };
+		A1TESTSTATIONCOORDS00000 /* StationCoordinates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */; };
+		A1TESTSTATIONDEPART00000 /* StationDepartures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D142E106D1B003DA39F /* StationDepartures.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -911,6 +916,11 @@
 				A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */,
 				A1TESTTRACKRATTHEME00000 /* TrackRatTheme.swift in Sources */,
 				A1TESTCONGESTIONMAPVIEW0 /* CongestionMapView.swift in Sources */,
+				A1TESTHISTDATAVIEW000000 /* HistoricalDataView.swift in Sources */,
+				A1TESTTRAINDETAILVIEW000 /* TrainDetailsView.swift in Sources */,
+				A1TESTTRAINLISTVIEW00000 /* TrainListView.swift in Sources */,
+				A1TESTSTATIONCOORDS00000 /* StationCoordinates.swift in Sources */,
+				A1TESTSTATIONDEPART00000 /* StationDepartures.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
