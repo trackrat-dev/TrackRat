@@ -385,12 +385,27 @@ for route in "${ROUTES[@]}"; do
   elif [[ "$sched" -eq 0 ]]; then
     fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
     FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")
-  elif [[ "$obs" -eq 0 && "$count" -le 4 ]]; then
-    # Low-frequency routes (1-4 daily trains) may not have OBSERVED data yet
-    warn "No OBSERVED trains ($sched scheduled) — low-frequency route"
   elif [[ "$obs" -eq 0 ]]; then
-    fail "No OBSERVED trains ($sched scheduled, 0 observed)"
-    FAILED_ROUTES+=("$label ($from -> $to): 0 OBSERVED trains")
+    # Nothing can be OBSERVED before it has run. Only fail if a SCHEDULED
+    # train's departure is already in the past (real discovery miss) —
+    # otherwise this route just hasn't had a departure yet today.
+    overdue=$(python3 -c "
+import json
+from datetime import datetime, timezone
+d = json.load(open('$TMPDIR/dep.json'))
+now = datetime.now(timezone.utc)
+print('1' if any(
+    dep['departure']['scheduled_time'] and
+    datetime.fromisoformat(dep['departure']['scheduled_time']) < now
+    for dep in d['departures'] if dep['observation_type'] == 'SCHEDULED'
+) else '0')
+" 2>/dev/null || echo 0)
+    if [[ "$overdue" == "1" ]]; then
+      fail "No OBSERVED trains ($sched scheduled, 0 observed) — earliest SCHEDULED already overdue"
+      FAILED_ROUTES+=("$label ($from -> $to): 0 OBSERVED trains")
+    else
+      warn "No OBSERVED trains ($sched scheduled) — all still in the future"
+    fi
   else
     pass "Mix: $sched scheduled + $obs observed"
   fi
