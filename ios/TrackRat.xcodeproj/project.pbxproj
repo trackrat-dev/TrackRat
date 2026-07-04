@@ -184,6 +184,8 @@
 		A1TESTEXTENSIONS00000000 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
 		A1TESTLIVEACTMODELS00000 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */; };
 		A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D102E106D1B003DA39F /* StationData.swift */; };
+		A1TESTTRACKRATTHEME00000 /* TrackRatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */; };
+		A1TESTCONGESTIONMAPVIEW0 /* CongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -907,6 +909,8 @@
 				A1TESTEXTENSIONS00000000 /* Extensions.swift in Sources */,
 				A1TESTLIVEACTMODELS00000 /* LiveActivityModels.swift in Sources */,
 				A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */,
+				A1TESTTRACKRATTHEME00000 /* TrackRatTheme.swift in Sources */,
+				A1TESTCONGESTIONMAPVIEW0 /* CongestionMapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
