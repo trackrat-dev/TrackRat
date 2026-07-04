@@ -169,6 +169,40 @@
 		B8A1C2D3E4F5A6B7C8D9E0F2 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
 		C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A1B2C3D4E5F60718293A4C /* RouteTopologyTests.swift */; };
 		C2E7D99AB1388D3535BAD93F /* TripDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C182D065DE7062F61B8F2446 /* TripDetailsView.swift */; };
+		A1TESTV2APIMODELS0000000 /* V2APIModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4ABD2E1949A400E13005 /* V2APIModels.swift */; };
+		A1TESTTRAINV200000000000 /* TrainV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E5562E25BBC700958ABA /* TrainV2.swift */; };
+		A1TESTROUTESTATUS0000000 /* RouteStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ROUTE0012F5000000000001 /* RouteStatusView.swift */; };
+		A1TESTSTATIONS0000000000 /* Stations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D082E106D1B003DA39F /* Stations.swift */; };
+		A1TESTJRNYFEEDBK00000000 /* JourneyFeedbackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JF00012F00000000000001 /* JourneyFeedbackService.swift */; };
+		A1TESTLIVEACTSVC00000000 /* LiveActivityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */; };
+		A1TESTTRACKRATAPP0000000 /* TrackRatApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EF2DE39EC1002F3214 /* TrackRatApp.swift */; };
+		A1TESTSTORAGESVC00000000 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F72DE39EF9002F3214 /* StorageService.swift */; };
+		A1TESTTRIPOPTION00000000 /* TripOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1TRIP0012F60000000000002 /* TripOption.swift */; };
+		A1TESTTRAINMODEL00000000 /* Train.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F32DE39EDD002F3214 /* Train.swift */; };
+		A1TESTTHEMEMGR0000000000 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10684802E36B6EC0052C4AE /* ThemeManager.swift */; };
+		A1TESTCONTENTVIEW0000000 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EE2DE39EC1002F3214 /* ContentView.swift */; };
+		A1TESTEXTENSIONS00000000 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
+		A1TESTLIVEACTMODELS00000 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */; };
+		A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D102E106D1B003DA39F /* StationData.swift */; };
+		A1TESTTRACKRATTHEME00000 /* TrackRatTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB22DEF00BB001FA904 /* TrackRatTheme.swift */; };
+		A1TESTCONGESTIONMAPVIEW0 /* CongestionMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1CB282F2E3D6189004A49E6 /* CongestionMapView.swift */; };
+		A1TESTHISTDATAVIEW000000 /* HistoricalDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FD2DE39F23002F3214 /* HistoricalDataView.swift */; };
+		A1TESTTRAINDETAILVIEW000 /* TrainDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FE2DE39F23002F3214 /* TrainDetailsView.swift */; };
+		A1TESTTRAINLISTVIEW00000 /* TrainListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FF2DE39F23002F3214 /* TrainListView.swift */; };
+		A1TESTSTATIONCOORDS00000 /* StationCoordinates.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D122E106D1B003DA39F /* StationCoordinates.swift */; };
+		A1TESTSTATIONDEPART00000 /* StationDepartures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D142E106D1B003DA39F /* StationDepartures.swift */; };
+		A1TESTRATSENSESVC0000000 /* RatSenseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F92DE39F0F002F3215 /* RatSenseService.swift */; };
+		A1TESTONBOARDVIEW0000000 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17329632E54A8A2006BF187 /* OnboardingView.swift */; };
+		A1TESTDEEPLINKSVC0000000 /* DeepLinkService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55B2E25BBD800958ABA /* DeepLinkService.swift */; };
+		A1TESTBACKENDWAKE0000000 /* BackendWakeupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */; };
+		A1TESTMAPCONTAINER000000 /* MapContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */; };
+		A1TESTLOADINGVIEW0000000 /* TrackRatLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AA1BB42DEF00CC001FA904 /* TrackRatLoadingView.swift */; };
+		A1TESTSHARESVC0000000000 /* ShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A126E55C2E25BBD800958ABA /* ShareService.swift */; };
+		A1TESTSTATICTRACKSVC0000 /* StaticTrackDistributionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */; };
+		A1TESTPENNSTATION0000000 /* PennStationGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A1C2D3E4F5A6B7C8D9E0F1 /* PennStationGuideView.swift */; };
+		A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1TRNROW01000000000000A1 /* TrainRow.swift */; };
+		A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1STDETAIL00000000000000A1 /* StationDetailsView.swift */; };
+		A1TESTSTATIONPICKER00000 /* StationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1STNPK0012F6000000000001 /* StationPickerSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -877,6 +911,40 @@
 				A12AADF12EF8407600407794 /* TrainFrequencyChart.swift in Sources */,
 				A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */,
 				A1BA60F32DFC73650002FB39 /* XCTestCase+Extensions.swift in Sources */,
+				A1TESTV2APIMODELS0000000 /* V2APIModels.swift in Sources */,
+				A1TESTTRAINV200000000000 /* TrainV2.swift in Sources */,
+				A1TESTROUTESTATUS0000000 /* RouteStatusView.swift in Sources */,
+				A1TESTSTATIONS0000000000 /* Stations.swift in Sources */,
+				A1TESTJRNYFEEDBK00000000 /* JourneyFeedbackService.swift in Sources */,
+				A1TESTLIVEACTSVC00000000 /* LiveActivityService.swift in Sources */,
+				A1TESTTRACKRATAPP0000000 /* TrackRatApp.swift in Sources */,
+				A1TESTSTORAGESVC00000000 /* StorageService.swift in Sources */,
+				A1TESTTRIPOPTION00000000 /* TripOption.swift in Sources */,
+				A1TESTTRAINMODEL00000000 /* Train.swift in Sources */,
+				A1TESTTHEMEMGR0000000000 /* ThemeManager.swift in Sources */,
+				A1TESTCONTENTVIEW0000000 /* ContentView.swift in Sources */,
+				A1TESTEXTENSIONS00000000 /* Extensions.swift in Sources */,
+				A1TESTLIVEACTMODELS00000 /* LiveActivityModels.swift in Sources */,
+				A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */,
+				A1TESTTRACKRATTHEME00000 /* TrackRatTheme.swift in Sources */,
+				A1TESTCONGESTIONMAPVIEW0 /* CongestionMapView.swift in Sources */,
+				A1TESTHISTDATAVIEW000000 /* HistoricalDataView.swift in Sources */,
+				A1TESTTRAINDETAILVIEW000 /* TrainDetailsView.swift in Sources */,
+				A1TESTTRAINLISTVIEW00000 /* TrainListView.swift in Sources */,
+				A1TESTSTATIONCOORDS00000 /* StationCoordinates.swift in Sources */,
+				A1TESTSTATIONDEPART00000 /* StationDepartures.swift in Sources */,
+				A1TESTRATSENSESVC0000000 /* RatSenseService.swift in Sources */,
+				A1TESTONBOARDVIEW0000000 /* OnboardingView.swift in Sources */,
+				A1TESTDEEPLINKSVC0000000 /* DeepLinkService.swift in Sources */,
+				A1TESTBACKENDWAKE0000000 /* BackendWakeupService.swift in Sources */,
+				A1TESTMAPCONTAINER000000 /* MapContainerView.swift in Sources */,
+				A1TESTLOADINGVIEW0000000 /* TrackRatLoadingView.swift in Sources */,
+				A1TESTSHARESVC0000000000 /* ShareService.swift in Sources */,
+				A1TESTSTATICTRACKSVC0000 /* StaticTrackDistributionService.swift in Sources */,
+				A1TESTPENNSTATION0000000 /* PennStationGuideView.swift in Sources */,
+				A1TESTTRAINROW0000000000 /* TrainRow.swift in Sources */,
+				A1TESTSTATIONDETAIL00000 /* StationDetailsView.swift in Sources */,
+				A1TESTSTATIONPICKER00000 /* StationPickerSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

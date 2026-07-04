@@ -292,7 +292,7 @@ private struct WrappingHStackLayout: Layout {
     }
 
     private func rows(for subviews: Subviews, maxWidth: CGFloat?) -> (items: [Row], width: CGFloat, height: CGFloat) {
-        let availableWidth = maxWidth.flatMap { $0.isFinite ? max(0, $0) : nil } ?? .greatestFiniteMagnitude
+        let availableWidth = maxWidth.flatMap { $0.isFinite ? max(0, $0) : nil } ?? CGFloat.greatestFiniteMagnitude
         let measuredItems = subviews.indices.map { index in
             Item(index: index, size: subviews[index].sizeThatFits(.unspecified))
         }

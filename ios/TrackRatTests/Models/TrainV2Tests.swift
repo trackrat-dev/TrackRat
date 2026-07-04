@@ -54,6 +54,7 @@ class TrainV2Tests: XCTestCase {
             dataFreshness: nil,
             observationType: observationType,
             isCancelled: isCancelled,
+            cancellationReason: nil,
             isCompleted: isCompleted,
             dataSource: dataSource,
             stops: stops
@@ -487,6 +488,7 @@ class TrainV2Tests: XCTestCase {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: false,
+            cancellationReason: nil,
             isCompleted: false,
             dataSource: "AMTRAK"
         )

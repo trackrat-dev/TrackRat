@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrackRat
 
+@MainActor
 class LineSelectionViewTests: XCTestCase {
 
     // MARK: - hasContent

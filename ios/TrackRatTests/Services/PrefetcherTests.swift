@@ -207,6 +207,7 @@ final class TrainCacheServiceTests: XCTestCase {
             dataFreshness: nil,
             observationType: nil,
             isCancelled: false,
+            cancellationReason: nil,
             isCompleted: false,
             dataSource: dataSource,
             stops: nil
