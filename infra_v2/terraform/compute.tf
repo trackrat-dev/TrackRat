@@ -29,7 +29,7 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    disk_size_gb = 20 # Increased from 10GB for Docker image storage
+    disk_size_gb = 10 # COS minimum; only container images live here (~0.6GB), all state is on the data disk
   }
 
   network_interface {
