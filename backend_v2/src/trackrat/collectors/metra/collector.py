@@ -5,6 +5,7 @@ Uses the MetraClient to fetch GTFS-RT data and creates/updates TrainJourney reco
 Follows the same pattern as the LIRR collector.
 """
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -39,6 +40,11 @@ from trackrat.utils.time import now_for_provider
 logger = logging.getLogger(__name__)
 
 DATA_SOURCE = "METRA"
+
+# Outer bound on the feed fetch. Generous relative to the client's own HTTP
+# timeout, but still leaves the bulk of the 480s scheduler budget for DB
+# work when the upstream Metra endpoint is degraded.
+_FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
 # Module-level counter that persists across collector instantiations (same process).
 # Reset on any successful non-empty fetch. Exposed as a structured log field on
@@ -139,12 +145,24 @@ class MetraCollector:
         try:
             collection_start = now_for_provider(DATA_SOURCE)
 
-            # Fetch all arrivals — let MetraFetchError propagate
+            # Fetch all arrivals — let MetraFetchError propagate. Also wrap in
+            # wait_for so a hung request (beyond the client's own timeout)
+            # can't consume the whole 480s scheduler budget — we bail with
+            # empty stats and pick it up next cycle (~4 min).
             try:
-                arrivals = await self.client.get_all_arrivals()
+                arrivals = await asyncio.wait_for(
+                    self.client.get_all_arrivals(),
+                    timeout=_FEED_FETCH_TIMEOUT_SECONDS,
+                )
             except MetraFetchError as e:
                 _consecutive_empty_cycles = 0
                 raise RuntimeError(f"Metra feed fetch failed: {e}") from e
+            except TimeoutError:
+                logger.warning(
+                    "metra_feed_fetch_timed_out | timeout_s=%.1f",
+                    _FEED_FETCH_TIMEOUT_SECONDS,
+                )
+                return stats
 
             stats["total_arrivals"] = len(arrivals)
 
@@ -181,16 +199,19 @@ class MetraCollector:
             # to preserve partial progress on timeout or late-stage failure.
             batch_size = 50
             trips_in_batch = 0
+            analyzed_journeys: list[TrainJourney] = []
             for trip_id, trip_arrivals in trips.items():
                 try:
                     async with session.begin_nested():
-                        result = await self._process_trip(
+                        result, journey = await self._process_trip(
                             session, trip_id, trip_arrivals
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
+                        if journey is not None and journey.id is not None:
+                            analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing Metra trip {trip_id}: {e}")
                     stats["errors"] += 1
@@ -206,6 +227,12 @@ class MetraCollector:
                     f"Metra collection: all {stats['errors']} trips failed, "
                     f"no successful discoveries or updates"
                 )
+
+            # Batched segment analysis for all processed journeys. Moving this
+            # out of the per-trip loop eliminates the O(trips * stops)
+            # per-segment SELECTs that dominate per-cycle cost.
+            transit_analyzer = TransitAnalyzer()
+            await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
             # Expire active OBSERVED journeys not seen in this collection cycle
             today = collection_start.date()
@@ -248,7 +275,7 @@ class MetraCollector:
 
     async def _process_trip(
         self, session: AsyncSession, trip_id: str, arrivals: list[MetraArrival]
-    ) -> str | None:
+    ) -> tuple[str | None, TrainJourney | None]:
         """
         Process a single trip from the GTFS-RT feed.
 
@@ -261,10 +288,13 @@ class MetraCollector:
             arrivals: List of arrivals for this trip
 
         Returns:
-            "discovered", "updated", or None
+            Tuple of (result_type, journey) where result_type is
+            "discovered", "updated", or None. The journey reference is
+            returned so the caller can batch post-processing (e.g.,
+            TransitAnalyzer) after the per-trip loop completes.
         """
         if not arrivals:
-            return None
+            return None, None
 
         # Sort arrivals by time to get stop sequence
         arrivals.sort(key=lambda a: a.arrival_time)
@@ -352,7 +382,7 @@ class MetraCollector:
                     trip_id,
                     effective_stop_count,
                 )
-                return None
+                return None, None
 
             # Compute scheduled times
             if merged_stops:
@@ -488,27 +518,19 @@ class MetraCollector:
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Discovered Metra train {train_id}")
-            return "discovered"
+            return "discovered", journey
 
         else:
             # Update existing journey
             journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
-            # Update stops
+            # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries).
+            # journey.stops was loaded via selectinload on the existence check above.
+            stops_by_code = {s.station_code: s for s in journey.stops}
             for arr in arrivals:
-                stop_result = await session.execute(
-                    select(JourneyStop).where(
-                        JourneyStop.journey_id == journey.id,
-                        JourneyStop.station_code == arr.station_code,
-                    )
-                )
-                existing_stop = stop_result.scalar_one_or_none()
+                existing_stop = stops_by_code.get(arr.station_code)
 
                 if existing_stop:
                     existing_stop.actual_arrival = arr.arrival_time
@@ -518,24 +540,16 @@ class MetraCollector:
                         existing_stop.actual_departure = arr.departure_time
                         existing_stop.updated_departure = arr.departure_time
 
-            # Update departure status and journey metadata
+            # Update departure status and journey metadata using the in-memory
+            # stops collection — no re-query needed.
             now = now_for_provider(DATA_SOURCE)
-            stop_result = await session.execute(
-                select(JourneyStop)
-                .where(JourneyStop.journey_id == journey.id)
-                .order_by(JourneyStop.stop_sequence)
-            )
-            journey_stops = list(stop_result.scalars().all())
+            journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
             update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
-            # Analyze segments for congestion data
-            transit_analyzer = TransitAnalyzer()
-            await transit_analyzer.analyze_new_segments(session, journey)
-
             logger.debug(f"Updated Metra train {train_id}")
-            return "updated"
+            return "updated", journey
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
