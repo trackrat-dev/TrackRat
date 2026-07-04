@@ -426,13 +426,17 @@ class NJTScheduleCollector:
 
         for journey in scheduled_journeys:
             stats["stop_collections_attempted"] += 1
+            # Snapshot before the try: a savepoint rollback below expires
+            # journey's ORM attributes, and re-reading them from the async
+            # session in the except handler raises MissingGreenlet.
+            train_id = journey.train_id
 
             try:
                 # Small delay to be nice to the API
                 await asyncio.sleep(0.25)
 
                 # Fetch the train stop list
-                train_data = await self.client.get_train_stop_list(journey.train_id)
+                train_data = await self.client.get_train_stop_list(train_id)
 
                 # Use savepoint so a single train failure doesn't poison the
                 # session for all subsequent trains in this batch.
@@ -443,7 +447,7 @@ class NJTScheduleCollector:
 
                 logger.debug(
                     "collected_stops_for_scheduled_train",
-                    train_id=journey.train_id,
+                    train_id=train_id,
                     stop_count=len(train_data.STOPS) if train_data.STOPS else 0,
                 )
 
@@ -451,9 +455,10 @@ class NJTScheduleCollector:
                 stats["stop_collections_failed"] += 1
                 logger.warning(
                     "failed_to_collect_stops_for_scheduled_train",
-                    train_id=journey.train_id,
+                    train_id=train_id,
                     error=str(e),
                     error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 # Continue with next train instead of failing entire collection
                 continue
