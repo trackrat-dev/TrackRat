@@ -219,7 +219,11 @@ class NJTransitClient:
 
         return response
 
-    @track_api_call(api_name="njtransit", endpoint="train_stop_list")
+    @track_api_call(
+        api_name="njtransit",
+        endpoint="train_stop_list",
+        quiet_exceptions=(NJTransitNullDataError, TrainNotFoundError),
+    )
     async def get_train_stop_list(self, train_id: str) -> NJTransitTrainData:
         """Get detailed stop list for a specific train.
 
@@ -278,7 +282,7 @@ class NJTransitClient:
         # a genuine TrainNotFoundError and should NOT count toward expiry.
         required_fields = ["TRAIN_ID", "LINECODE", "BACKCOLOR", "DESTINATION"]
         if all(response.get(field) is None for field in required_fields):
-            logger.warning(
+            logger.info(
                 "train_null_data_response",
                 train_id=train_id,
                 response_keys=list(response.keys()),
