@@ -106,4 +106,59 @@ class APIServiceTests: XCTestCase {
         XCTAssertEqual(APIError.notFound.errorDescription, "Resource not found")
         XCTAssertEqual(APIError.serverError.errorDescription, "Server error")
     }
+
+    // MARK: - validate(_:) status mapping
+    // Guards issue #1375: every endpoint must map HTTP status the same way,
+    // so a 5xx from a load-balancer blip surfaces as .serverError (retryable)
+    // instead of being decoded as a success body and blowing up as a DecodingError.
+
+    private func httpResponse(statusCode: Int) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: URL(string: "https://staging.apiv2.trackrat.net/api/v2/routes/summary")!,
+            statusCode: statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: nil
+        )!
+    }
+
+    @MainActor
+    func testValidateThrowsNotFoundOn404() {
+        XCTAssertThrowsError(try apiService.validate(httpResponse(statusCode: 404))) { error in
+            guard let apiError = error as? APIError else {
+                return XCTFail("Expected APIError, got \(error)")
+            }
+            XCTAssertEqual(apiError.errorDescription, APIError.notFound.errorDescription)
+        }
+    }
+
+    @MainActor
+    func testValidateThrowsServerErrorOn5xx() {
+        for statusCode in [500, 502, 503, 504] {
+            XCTAssertThrowsError(try apiService.validate(httpResponse(statusCode: statusCode))) { error in
+                guard let apiError = error as? APIError else {
+                    return XCTFail("Expected APIError for status \(statusCode), got \(error)")
+                }
+                XCTAssertEqual(apiError.errorDescription, APIError.serverError.errorDescription, "Status \(statusCode) should map to .serverError")
+            }
+        }
+    }
+
+    @MainActor
+    func testValidateThrowsInvalidParametersOnOther4xx() {
+        for statusCode in [400, 401, 403, 422] {
+            XCTAssertThrowsError(try apiService.validate(httpResponse(statusCode: statusCode))) { error in
+                guard let apiError = error as? APIError else {
+                    return XCTFail("Expected APIError for status \(statusCode), got \(error)")
+                }
+                XCTAssertEqual(apiError.errorDescription, APIError.invalidParameters.errorDescription, "Status \(statusCode) should map to .invalidParameters")
+            }
+        }
+    }
+
+    @MainActor
+    func testValidateDoesNotThrowOn2xx() {
+        for statusCode in [200, 201, 204] {
+            XCTAssertNoThrow(try apiService.validate(httpResponse(statusCode: statusCode)), "Status \(statusCode) should not throw")
+        }
+    }
 }
