@@ -949,14 +949,14 @@ test = ["objgraph", "psutil", "setuptools"]
 
 [[package]]
 name = "gtfs-realtime-bindings"
-version = "2.0.0"
+version = "2.1.0"
 description = "Python classes generated from the GTFS-realtime protocol buffer specification."
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
 files = [
-    {file = "gtfs_realtime_bindings-2.0.0-py3-none-any.whl", hash = "sha256:e66e581dfccad20e3b9eaed36aae106f945c2f5e506b03a63d37070096b8de39"},
-    {file = "gtfs_realtime_bindings-2.0.0.tar.gz", hash = "sha256:861a9dcf4c40f9a59520044d870e336b00894ad5638bcf2c4a9b998923543b42"},
+    {file = "gtfs_realtime_bindings-2.1.0-py3-none-any.whl", hash = "sha256:02d00999c429691430b3d21ef619e1697e543926a4ca1dc0521204bad6a723ed"},
+    {file = "gtfs_realtime_bindings-2.1.0.tar.gz", hash = "sha256:1507ca39628ee8df2d3aae38f9eed881d4a82aa8246930d608ba6428d5ca3a56"},
 ]
 
 [package.dependencies]
