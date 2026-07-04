@@ -272,23 +272,6 @@ struct V2RouteInfo: Codable {
     }
 }
 
-struct V2CurrentStatus: Codable {
-    let status: String
-    let location: String
-    let delayMinutes: Int
-    let isCancelled: Bool
-    let isCompleted: Bool
-    let lastUpdate: Date
-    
-    enum CodingKeys: String, CodingKey {
-        case status, location
-        case delayMinutes = "delay_minutes"
-        case isCancelled = "is_cancelled"
-        case isCompleted = "is_completed"
-        case lastUpdate = "last_update"
-    }
-}
-
 struct V2RawStopStatus: Codable {
     let amtrakStatus: String?
     let njtDepartedFlag: String?
@@ -399,79 +382,7 @@ struct V2TrainDetailsResponse: Codable {
     }
 }
 
-// MARK: - History Endpoint Models
-
-struct V2HistoricalJourney: Codable {
-    let journeyDate: Date
-    let scheduledDeparture: Date
-    let actualDeparture: Date?
-    let scheduledArrival: Date
-    let actualArrival: Date?
-    let delayMinutes: Int
-    let wasCancelled: Bool
-    let trackAssignments: [String: String?]
-    
-    enum CodingKeys: String, CodingKey {
-        case journeyDate = "journey_date"
-        case scheduledDeparture = "scheduled_departure"
-        case actualDeparture = "actual_departure"
-        case scheduledArrival = "scheduled_arrival"
-        case actualArrival = "actual_arrival"
-        case delayMinutes = "delay_minutes"
-        case wasCancelled = "was_cancelled"
-        case trackAssignments = "track_assignments"
-    }
-}
-
-struct V2TrainHistoryResponse: Codable {
-    let trainId: String
-    let journeys: [V2HistoricalJourney]
-    let statistics: V2HistoryStatistics?
-    
-    enum CodingKeys: String, CodingKey {
-        case trainId = "train_id"
-        case journeys, statistics
-    }
-}
-
-struct V2HistoryStatistics: Codable {
-    let totalJourneys: Int
-    let onTimePercentage: Double
-    let averageDelayMinutes: Double
-    let cancellationRate: Double
-    
-    enum CodingKeys: String, CodingKey {
-        case totalJourneys = "total_journeys"
-        case onTimePercentage = "on_time_percentage"
-        case averageDelayMinutes = "average_delay_minutes"
-        case cancellationRate = "cancellation_rate"
-    }
-}
-
 // MARK: - Occupied Tracks Endpoint Models
-
-struct V2OccupiedTrack: Codable {
-    let trackNumber: String
-    let trainId: String
-    let line: V2LineInfo
-    let destination: String
-    let scheduledDeparture: Date
-    let updatedDeparture: Date?
-    let actualDeparture: Date?
-    let status: String
-    let trackAssignedAt: Date?
-    let platform: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case trackNumber = "track_number"
-        case trainId = "train_id"
-        case line, destination, status, platform
-        case scheduledDeparture = "scheduled_departure"
-        case updatedDeparture = "updated_departure"
-        case actualDeparture = "actual_departure"
-        case trackAssignedAt = "track_assigned_at"
-    }
-}
 
 struct V2OccupiedTracksResponse: Codable {
     let stationCode: String
@@ -486,20 +397,6 @@ struct V2OccupiedTracksResponse: Codable {
         case occupiedTracks = "occupied_tracks"
         case lastUpdated = "last_updated"
         case cacheExpiresAt = "cache_expires_at"
-    }
-}
-
-struct V2OccupiedTracksMetadata: Codable {
-    let station: V2StationMetadata
-    let generatedAt: Date
-    let totalTracks: Int
-    let occupiedCount: Int
-    
-    enum CodingKeys: String, CodingKey {
-        case station
-        case generatedAt = "generated_at"
-        case totalTracks = "total_tracks"
-        case occupiedCount = "occupied_count"
     }
 }
 
@@ -635,11 +532,14 @@ enum CodableValue: Codable {
     case bool(Bool)
     case array([CodableValue])
     case dictionary([String: CodableValue])
+    case null
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
 
-        if let intValue = try? container.decode(Int.self) {
+        if container.decodeNil() {
+            self = .null
+        } else if let intValue = try? container.decode(Int.self) {
             self = .int(intValue)
         } else if let stringValue = try? container.decode(String.self) {
             self = .string(stringValue)
@@ -671,6 +571,8 @@ enum CodableValue: Codable {
             try container.encode(value)
         case .dictionary(let value):
             try container.encode(value)
+        case .null:
+            try container.encodeNil()
         }
     }
 
@@ -952,6 +854,13 @@ enum DelayCategory: String, Codable {
     case slightDelay = "slight_delay"
     case delayed = "delayed"
     case cancelled = "cancelled"
+    case unknown
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = DelayCategory(rawValue: rawValue) ?? .unknown
+    }
 }
 
 /// Summary of a single train's delay for visualization
