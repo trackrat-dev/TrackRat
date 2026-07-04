@@ -30,7 +30,7 @@ resource "google_artifact_registry_repository" "trackrat" {
 # Persistent disk for PostgreSQL data and application state
 resource "google_compute_disk" "data" {
   name = "trackrat-${var.environment}-data"
-  type = "pd-ssd"
+  type = "pd-balanced"
   zone = var.zone
   size = var.disk_size_gb
 
