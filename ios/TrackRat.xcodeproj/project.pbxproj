@@ -179,6 +179,11 @@
 		A1TESTSTORAGESVC00000000 /* StorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F72DE39EF9002F3214 /* StorageService.swift */; };
 		A1TESTTRIPOPTION00000000 /* TripOption.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1TRIP0012F60000000000002 /* TripOption.swift */; };
 		A1TESTTRAINMODEL00000000 /* Train.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97F32DE39EDD002F3214 /* Train.swift */; };
+		A1TESTTHEMEMGR0000000000 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10684802E36B6EC0052C4AE /* ThemeManager.swift */; };
+		A1TESTCONTENTVIEW0000000 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97EE2DE39EC1002F3214 /* ContentView.swift */; };
+		A1TESTEXTENSIONS00000000 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
+		A1TESTLIVEACTMODELS00000 /* LiveActivityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D0B2E106D32003DA39F /* LiveActivityModels.swift */; };
+		A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AD0D102E106D1B003DA39F /* StationData.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -897,6 +902,11 @@
 				A1TESTSTORAGESVC00000000 /* StorageService.swift in Sources */,
 				A1TESTTRIPOPTION00000000 /* TripOption.swift in Sources */,
 				A1TESTTRAINMODEL00000000 /* Train.swift in Sources */,
+				A1TESTTHEMEMGR0000000000 /* ThemeManager.swift in Sources */,
+				A1TESTCONTENTVIEW0000000 /* ContentView.swift in Sources */,
+				A1TESTEXTENSIONS00000000 /* Extensions.swift in Sources */,
+				A1TESTLIVEACTMODELS00000 /* LiveActivityModels.swift in Sources */,
+				A1TESTSTATIONDATA0000000 /* StationData.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
