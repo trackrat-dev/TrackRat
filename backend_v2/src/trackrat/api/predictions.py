@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.api.utils import handle_errors
+from trackrat.api.utils import ensure_source_enabled, handle_errors
 from trackrat.config.station_configs import (
     STATION_PREDICTION_CONFIGS,
     get_tracks_for_station,
@@ -116,6 +116,9 @@ async def predict_track(
                 status_code=404,
                 detail=f"Train {train_id} not found",
             )
+
+    # Don't serve predictions for a residual journey from a disabled source.
+    ensure_source_enabled(train_journey.data_source)
 
     # Generate prediction with timing
     import time
@@ -332,6 +335,9 @@ async def predict_delay(
                 status_code=404,
                 detail=f"Train {train_id} not found",
             )
+
+    # Don't serve forecasts for a residual journey from a disabled source.
+    ensure_source_enabled(train_journey.data_source)
 
     # Generate forecast
     prediction_start = time.time()

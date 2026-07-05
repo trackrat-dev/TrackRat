@@ -21,6 +21,7 @@ from structlog import get_logger
 from trackrat.config.stations import expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion_types import FREQUENCY_FIRST_SOURCES
+from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import now_et
 from trackrat.utils.train import effective_njt_updated_times
 
@@ -238,8 +239,14 @@ class SummaryService:
         objects + stops that can exhaust /dev/shm on large result sets.
         """
         conditions = [TrainJourney.last_updated_at >= cutoff_time]
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
+        # Constrain to active sources: a specific one when given, else every
+        # enabled source — so globally-disabled feeds are excluded from the
+        # network/all-sources aggregate, not only when a source is named.
+        conditions.append(
+            TrainJourney.data_source.in_(
+                active_data_sources([data_source] if data_source else None)
+            )
+        )
 
         # Subquery: last stop per journey (highest stop_sequence). The join to
         # TrainJourney and the cutoff/data_source filter must live INSIDE this
@@ -389,8 +396,13 @@ class SummaryService:
                 ),
             ),
         ]
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
+        # Constrain to active sources (see get_network_summary): a specific one
+        # when given, else every enabled source, so disabled feeds are excluded.
+        conditions.append(
+            TrainJourney.data_source.in_(
+                active_data_sources([data_source] if data_source else None)
+            )
+        )
 
         # Prioritize journeys with actual departure data over scheduled-only
         # This ensures when deduplicating by train_id, we keep the most accurate record

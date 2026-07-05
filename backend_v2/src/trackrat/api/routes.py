@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
-from trackrat.api.utils import handle_errors
+from trackrat.api.utils import ensure_source_enabled, handle_errors
 from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.db.engine import get_db, get_session
 from trackrat.models.api import (
@@ -37,9 +37,9 @@ from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.api_cache import ApiCacheService
+from trackrat.services.api_cache import CONGESTION_PROVIDERS, ApiCacheService
 from trackrat.services.congestion import CongestionAnalyzer
-from trackrat.services.departure import DepartureService
+from trackrat.services.departure import DepartureService, active_data_sources
 from trackrat.services.summary import TrainDelaySummary
 from trackrat.utils.time import ensure_timezone_aware, now_et
 
@@ -119,6 +119,9 @@ async def get_route_history(
             status_code=400,
             detail=f"data_source must be one of: {', '.join(valid_sources)}",
         )
+
+    # A globally-disabled source has no live data; don't serve residual history.
+    ensure_source_enabled(data_source)
 
     # Check cache first (skip when highlight_train is provided - uncommon, user-specific)
     cache_service = ApiCacheService()
@@ -864,12 +867,45 @@ async def get_route_congestion(
     effective_time_window = max(time_window_hours, 2)
 
     # Parse systems parameter
-    requested_systems: list[str] | None = None
+    parsed_systems: list[str] | None = None
     if systems:
-        requested_systems = [s.strip().upper() for s in systems.split(",") if s.strip()]
+        parsed_systems = [s.strip().upper() for s in systems.split(",") if s.strip()]
     elif data_source:
         # Legacy single data_source is equivalent to systems=<data_source>
-        requested_systems = [data_source.upper()]
+        parsed_systems = [data_source.upper()]
+
+    # Drop globally-disabled sources up front so a disabled feed's residual
+    # journeys never surface — whether the client asked for "all" (systems and
+    # data_source both omitted) or named a disabled source explicitly. After
+    # this, requested_systems is always a concrete list of active providers, so
+    # every downstream path (cache lookup, merge, per-provider compute) operates
+    # on active sources only and the analyzer is never queried unfiltered.
+    requested_systems = active_data_sources(parsed_systems or CONGESTION_PROVIDERS)
+    if not requested_systems:
+        # Every requested system is disabled — nothing to serve.
+        empty = CongestionMapResponse(
+            individual_segments=[],
+            aggregated_segments=[],
+            train_positions=[],
+            generated_at=now_et(),
+            time_window_hours=effective_time_window,
+            max_per_segment=max_per_segment,
+            metadata={
+                "total_individual_segments": 0,
+                "total_aggregated_segments": 0,
+                "congestion_levels": {
+                    "normal": 0,
+                    "moderate": 0,
+                    "heavy": 0,
+                    "severe": 0,
+                },
+                "total_trains": 0,
+            },
+        )
+        return Response(
+            content=json_mod.dumps(empty.model_dump(mode="json")),
+            media_type="application/json",
+        )
 
     # --- Cache lookup ---
     if not force_refresh:
@@ -892,12 +928,10 @@ async def get_route_congestion(
                 )
 
         else:
-            # Multi-provider or all: merge per-provider caches
-            from trackrat.services.api_cache import CONGESTION_PROVIDERS
-
-            merge_systems = requested_systems or CONGESTION_PROVIDERS
+            # Multi-provider or all: merge per-provider caches. requested_systems
+            # is already the normalized active set (disabled sources dropped).
             merged = await cache_service.merge_congestion_from_provider_caches(
-                db, merge_systems, effective_time_window, max_per_segment
+                db, requested_systems, effective_time_window, max_per_segment
             )
             if merged:
                 return Response(
@@ -1205,9 +1239,13 @@ async def get_segment_train_details(
         ),
     ]
 
-    # Apply data source filter if specified
-    if data_source:
-        conditions.append(TrainJourney.data_source == data_source)
+    # Constrain to active sources: a specific one when given, else every enabled
+    # source — so an unscoped segment request never returns disabled-feed trains.
+    conditions.append(
+        TrainJourney.data_source.in_(
+            active_data_sources([data_source] if data_source else None)
+        )
+    )
 
     stmt = (
         select(TrainJourney)

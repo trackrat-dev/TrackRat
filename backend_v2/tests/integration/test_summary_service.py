@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.summary import SummaryService
+from trackrat.settings import get_settings
 from trackrat.utils.time import now_et
 
 
@@ -154,3 +155,92 @@ class TestQueryLineStatsSqlIntegration:
         # minute delay recorded mid-journey at Newark Penn.
         assert stats.total_delay_minutes == pytest.approx(1.0, abs=0.1)
         assert stats.on_time_count == 1
+
+
+@pytest.mark.asyncio
+class TestQueryLineStatsSqlDisabledSources:
+    """A globally-disabled source must not appear in the all-sources summary."""
+
+    async def test_network_scope_excludes_disabled_source(
+        self, db_session: AsyncSession, monkeypatch
+    ):
+        """With BART disabled, an in-window BART journey is dropped from the
+        network summary even though its row/stops are present in the database,
+        while an enabled NJT journey still contributes."""
+        monkeypatch.setenv("TRACKRAT_DISABLED_DATA_SOURCES", "BART")
+        get_settings.cache_clear()
+        try:
+            now = now_et()
+            cutoff = now - timedelta(minutes=120)
+
+            njt = _make_journey(
+                train_id="1001", last_updated_at=now - timedelta(minutes=10)
+            )
+            njt.stops = [
+                JourneyStop(
+                    station_code="NY",
+                    station_name="New York",
+                    stop_sequence=0,
+                    scheduled_arrival=now - timedelta(minutes=90),
+                    actual_arrival=now - timedelta(minutes=90),
+                    has_departed_station=True,
+                ),
+                JourneyStop(
+                    station_code="TR",
+                    station_name="Trenton",
+                    stop_sequence=1,
+                    scheduled_arrival=now - timedelta(minutes=30),
+                    actual_arrival=now - timedelta(minutes=28),
+                    arrival_source="api_observed",
+                    has_departed_station=True,
+                ),
+            ]
+
+            # BART is disabled: this journey must be filtered out entirely even
+            # though it is in-window and has a valid last stop (i.e. it WOULD
+            # otherwise contribute a "BART:Richmond" line to the summary).
+            bart = _make_journey(
+                train_id="BART-1",
+                data_source="BART",
+                line_code="RED",
+                line_name="Richmond",
+                destination="Richmond",
+                origin_station_code="MONT",
+                terminal_station_code="RICH",
+                last_updated_at=now - timedelta(minutes=10),
+            )
+            bart.stops = [
+                JourneyStop(
+                    station_code="MONT",
+                    station_name="Montgomery St",
+                    stop_sequence=0,
+                    scheduled_arrival=now - timedelta(minutes=60),
+                    actual_arrival=now - timedelta(minutes=60),
+                    has_departed_station=True,
+                ),
+                JourneyStop(
+                    station_code="RICH",
+                    station_name="Richmond",
+                    stop_sequence=1,
+                    scheduled_arrival=now - timedelta(minutes=20),
+                    actual_arrival=now - timedelta(minutes=18),
+                    arrival_source="api_observed",
+                    has_departed_station=True,
+                ),
+            ]
+
+            db_session.add_all([njt, bart])
+            await db_session.commit()
+
+            service = SummaryService()
+            line_stats = await service._query_line_stats_sql(
+                db_session, cutoff, data_source=None
+            )
+
+            assert "NJT:Northeast Corridor" in line_stats
+            assert not any(key.startswith("BART") for key in line_stats), (
+                "Disabled BART must be excluded from the network summary, "
+                f"got: {list(line_stats)}"
+            )
+        finally:
+            get_settings.cache_clear()

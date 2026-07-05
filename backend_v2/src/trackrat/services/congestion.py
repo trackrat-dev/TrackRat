@@ -28,6 +28,7 @@ from trackrat.services.congestion_types import (
     get_congestion_level,
     get_frequency_level,
 )
+from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
@@ -188,9 +189,16 @@ class CongestionAnalyzer:
             TrainJourney.is_completed.is_not(True),
         ]
 
-        # Add data_source filter if specified
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
+        # Constrain to active sources: a specific data_source when given, else
+        # every enabled source. This drops globally-disabled feeds' residual
+        # journeys from train_positions even if this method is ever called with
+        # data_source=None (the congestion endpoint already normalizes to a
+        # concrete active provider, but this keeps the query correct in isolation).
+        conditions.append(
+            TrainJourney.data_source.in_(
+                active_data_sources([data_source] if data_source else None)
+            )
+        )
 
         # OPTIMIZATION: Don't load stops here - they're not needed for basic journey info
         # We only need stops for current position, which we'll load separately below
