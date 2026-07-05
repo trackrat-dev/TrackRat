@@ -598,16 +598,27 @@ class TestRetentionCleanupSQLStatements:
         assert source.count("WHERE id IN (") == 4
 
     def test_make_interval_day_args_are_cast_to_int(self):
-        """Every make_interval(days => ...) must cast its arg to int.
+        """Every make_interval(days => ...) must cast its arg to int, using a
+        cast form that survives SQLAlchemy's ``text()`` bind parser.
 
         asyncpg sends bound parameters untyped, so Postgres resolves
         ``make_interval(days => $1)`` against the nonexistent
         ``make_interval(days => text)`` overload and raises
-        ``UndefinedFunctionError``, silently breaking retention cleanup.
-        An explicit ``::int`` cast pins the type at parse time. Guards
-        against regression of that fix across all four DELETE phases.
+        ``UndefinedFunctionError`` — the original regression.
+
+        The obvious fix, a Postgres ``:days::int`` cast, is itself broken:
+        SQLAlchemy's bind regex ``(?<![:\\w\\x5c]):(\\w+)(?!:)`` refuses to let a
+        param name butt up against ``::``, so ``:days::int`` parses as bind
+        param ``day`` (trailing ``s`` dropped) plus a stray literal ``s::int``.
+        The statement then wants a ``day`` param the code never supplies and the
+        leftover text is malformed SQL, so every phase raises and the job's
+        ``except`` swallows it — nothing is pruned. ``CAST(:days AS integer)``
+        keeps the param name intact while still pinning the type at parse time.
+
+        Guards against regression of both bugs across all four DELETE phases.
         """
         import re
+        from sqlalchemy import text
         from trackrat.services.scheduler import SchedulerService
         import inspect
 
@@ -620,13 +631,34 @@ class TestRetentionCleanupSQLStatements:
         # One make_interval per phase (train_journeys, discovery_runs,
         # validation_results, service_alerts).
         assert collapsed.count("make_interval(days =>") == 4
-        # The three simple phases must use the cast form, never the bare param.
-        assert "make_interval(days => :days::int)" in collapsed
+        # The three simple phases must cast via CAST(...), never the bare param
+        # (untyped -> text overload) and never ``::int`` (breaks bind parsing).
+        assert "make_interval(days => CAST(:days AS integer))" in collapsed
         assert "make_interval(days => :days)" not in collapsed
+        assert ":days::int" not in collapsed
         # The train_journeys CASE must cast both branches to int.
-        assert "THEN :subway_days::int ELSE :days::int END" in collapsed
-        assert "THEN :subway_days " not in collapsed
-        assert "ELSE :days END" not in collapsed
+        assert (
+            "THEN CAST(:subway_days AS integer) ELSE CAST(:days AS integer) END"
+            in collapsed
+        )
+        assert ":subway_days::int" not in collapsed
+
+        # The cast form must leave the bind names intact when SQLAlchemy parses
+        # the statement — this is the actual failure ``::int`` caused. Rebuild
+        # the two shapes used by the method and assert the full names resolve.
+        case_stmt = text(
+            "make_interval(days => CASE WHEN data_source = 'SUBWAY' "
+            "THEN CAST(:subway_days AS integer) ELSE CAST(:days AS integer) END)"
+        )
+        assert set(case_stmt._bindparams) == {"days", "subway_days"}, (
+            "cast form must preserve :days/:subway_days bind names; "
+            f"got {sorted(case_stmt._bindparams)}"
+        )
+        simple_stmt = text("make_interval(days => CAST(:days AS integer))")
+        assert set(simple_stmt._bindparams) == {"days"}, (
+            "cast form must preserve the :days bind name; "
+            f"got {sorted(simple_stmt._bindparams)}"
+        )
 
     def test_cascade_covers_all_dependent_tables(self):
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""
