@@ -10,6 +10,7 @@ import pytest
 from trackrat.services.gtfs import (
     GTFSService,
     GTFS_DOWNLOAD_INTERVAL_HOURS,
+    GTFS_EXPIRY_EXEMPT_SOURCES,
     NJT_LINE_CODE_MAPPING,
     _extract_lirr_train_number,
     _gtfs_csv_rows,
@@ -362,6 +363,71 @@ class TestActiveServiceIds:
         second = await service.get_active_service_ids(mock_db, "LIRR", target_date)
         assert second == set()
         assert call_count[0] == 4  # re-queried instead of hitting a cached empty set
+
+    @pytest.mark.asyncio
+    async def test_expiry_exempt_source_skips_end_date_bound(self):
+        """PATH's upstream Trillium feed ships a calendar that already expired
+        (end_date 2026-06-01). The expiry exemption must drop the end_date bound
+        from the calendar query so the frozen weekly schedule keeps applying via
+        the day-of-week match, instead of contributing zero scheduled departures
+        and leaving trip search to rely on the sparse real-time feed (#1419)."""
+        assert "PATH" in GTFS_EXPIRY_EXEMPT_SOURCES
+
+        service = GTFSService()
+        # A Sunday well past the PATH feed's 2026-06-01 end_date.
+        target_date = date(2026, 7, 5)
+        captured: dict[str, str] = {}
+
+        async def mock_execute(query):
+            sql = str(query)
+            result = MagicMock()
+            if "gtfs_calendar_dates" in sql:
+                result.all.return_value = []
+            else:
+                captured["calendar_sql"] = sql
+                result.all.return_value = [("PATH_SUNDAY",)]
+            return result
+
+        mock_db = AsyncMock()
+        mock_db.execute = mock_execute
+
+        result = await service.get_active_service_ids(mock_db, "PATH", target_date)
+
+        # The frozen service is still returned despite the target date being
+        # past the feed's expiration.
+        assert "PATH_SUNDAY" in result
+        # The calendar query must NOT constrain on end_date for exempt sources...
+        assert "end_date" not in captured["calendar_sql"]
+        # ...while the start_date lower bound (and day-of-week match) remain.
+        assert "start_date" in captured["calendar_sql"]
+
+    @pytest.mark.asyncio
+    async def test_non_exempt_source_keeps_end_date_bound(self):
+        """A non-exempt source (NJT) must still enforce the calendar end_date so
+        a genuinely expired service is not served — the exemption is scoped to
+        the allowlist, not applied globally (#1419)."""
+        assert "NJT" not in GTFS_EXPIRY_EXEMPT_SOURCES
+
+        service = GTFSService()
+        target_date = date(2026, 7, 5)
+        captured: dict[str, str] = {}
+
+        async def mock_execute(query):
+            sql = str(query)
+            result = MagicMock()
+            if "gtfs_calendar_dates" not in sql:
+                captured["calendar_sql"] = sql
+            result.all.return_value = []
+            return result
+
+        mock_db = AsyncMock()
+        mock_db.execute = mock_execute
+
+        await service.get_active_service_ids(mock_db, "NJT", target_date)
+
+        # Non-exempt sources keep both the start_date and end_date bounds.
+        assert "end_date" in captured["calendar_sql"]
+        assert "start_date" in captured["calendar_sql"]
 
 
 class TestStationMapping:

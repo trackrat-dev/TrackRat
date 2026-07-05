@@ -67,6 +67,18 @@ GTFS_FEED_URLS = {
     "MBTA": "https://cdn.mbta.com/MBTA_GTFS.zip",
 }
 
+# Data sources whose upstream GTFS feed ships an already-expired service
+# calendar (its ``end_date`` is in the past) but whose weekly service pattern is
+# still broadly accurate. For these, ``get_active_service_ids`` ignores the
+# calendar ``end_date`` bound so the frozen weekly schedule keeps rolling
+# forward (the day-of-week match still applies). Without this the source
+# contributes zero scheduled departures, leaving trip search / departure boards
+# to rely solely on the sparse real-time feed — which produced empty PATH
+# transfer results on low-frequency nights (issue #1419). PATH's Trillium feed
+# expired 2026-06-01. Scoped deliberately: holiday exceptions (calendar_dates)
+# and long-term schedule drift are NOT corrected by this.
+GTFS_EXPIRY_EXEMPT_SOURCES: frozenset[str] = frozenset({"PATH"})
+
 # Minimum hours between feed downloads (rate limiting)
 GTFS_DOWNLOAD_INTERVAL_HOURS = 24
 
@@ -850,16 +862,20 @@ class GTFSService:
             GTFSCalendar.sunday,
         ]
 
-        # Get services from calendar that run on this day of week
+        # Get services from calendar that run on this day of week.
+        # Expiry-exempt sources (e.g. PATH, whose upstream feed's calendar has
+        # already expired) skip the end_date bound so their stale-but-accurate
+        # weekly schedule keeps applying via the day-of-week match (issue #1419).
+        calendar_conditions = [
+            GTFSCalendar.data_source == data_source,
+            GTFSCalendar.start_date <= target_date,
+            dow_columns[dow] == True,  # noqa: E712
+        ]
+        if data_source not in GTFS_EXPIRY_EXEMPT_SOURCES:
+            calendar_conditions.append(GTFSCalendar.end_date >= target_date)
+
         result = await db.execute(
-            select(GTFSCalendar.service_id).where(
-                and_(
-                    GTFSCalendar.data_source == data_source,
-                    GTFSCalendar.start_date <= target_date,
-                    GTFSCalendar.end_date >= target_date,
-                    dow_columns[dow] == True,  # noqa: E712
-                )
-            )
+            select(GTFSCalendar.service_id).where(and_(*calendar_conditions))
         )
         for row in result.all():
             active_services.add(row[0])
