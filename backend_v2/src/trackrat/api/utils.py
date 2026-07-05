@@ -11,8 +11,30 @@ from sqlalchemy.exc import DatabaseError, OperationalError
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitAPIError
+from trackrat.settings import get_settings
 
 logger = get_logger(__name__)
+
+
+def ensure_source_enabled(data_source: str | None) -> None:
+    """Raise 404 if ``data_source`` is globally disabled.
+
+    Guards the train_id/source-scoped endpoints (train detail, train history,
+    track/delay predictions, route history) so residual rows from a source in
+    ``TRACKRAT_DISABLED_DATA_SOURCES`` — still present within the retention
+    window after the source was turned off — are never served, even to a caller
+    that already holds a disabled-source train_id. List/aggregate endpoints
+    resolve the active set via ``active_data_sources()`` instead; this guard is
+    for the paths that look a record up directly and so can't filter by list.
+
+    A ``None`` data_source is a no-op: the caller didn't scope to a source, so
+    there is nothing to reject here.
+    """
+    if data_source and get_settings().is_data_source_disabled(data_source):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Data source '{data_source}' is not available",
+        )
 
 
 def get_client_ip(request: Request) -> str:

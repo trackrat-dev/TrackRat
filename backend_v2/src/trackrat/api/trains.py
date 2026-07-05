@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 from structlog import get_logger
 
-from trackrat.api.utils import handle_errors
+from trackrat.api.utils import ensure_source_enabled, handle_errors
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.config.stations import (
     STATION_NAMES,
@@ -318,6 +318,10 @@ async def get_train_details(
         data_source=data_source,
     )
 
+    # Reject an explicit disabled source before any lookup; the resolved
+    # journey's source is re-checked below for train_id-only requests.
+    ensure_source_enabled(data_source)
+
     # Default to today, in the requested provider's local timezone since
     # journey_date is keyed to each provider's local service day
     if date is None:
@@ -450,6 +454,10 @@ async def get_train_details(
                 status_code=404,
                 detail=f"Train {train_id} not found for date {date}",
             ) from None
+
+    # A train_id-only request can resolve a residual journey from a disabled
+    # source (data still within retention); don't serve it.
+    ensure_source_enabled(journey.data_source)
 
     # Build stop details
     stops = []
@@ -714,6 +722,11 @@ async def get_train_history(
 
     result = await db.execute(stmt)
     journeys = list(result.scalars().all())
+
+    # All journeys for a train_id share one data_source; if it's globally
+    # disabled, don't serve residual history rows.
+    if journeys:
+        ensure_source_enabled(journeys[0].data_source)
 
     # Query route-wide data if requested
     route_journeys = []

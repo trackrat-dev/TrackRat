@@ -19,7 +19,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.api import CongestionMapResponse
 from trackrat.models.database import CachedApiResponse
 from trackrat.services.congestion import CongestionAnalyzer
-from trackrat.services.departure import DepartureService
+from trackrat.services.departure import DepartureService, active_data_sources
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
@@ -274,8 +274,10 @@ class ApiCacheService:
         # Per-provider cache entries only. "All systems" requests are assembled
         # by merging per-provider caches at query time (see merge_congestion_from_provider_caches),
         # which avoids the expensive unfiltered SQL queries.
+        # Skip globally-disabled sources so their congestion caches are never
+        # (re)built — otherwise the merge path would keep serving them.
         param_sets: list[dict[str, Any]] = []
-        for provider in CONGESTION_PROVIDERS:
+        for provider in active_data_sources(CONGESTION_PROVIDERS):
             # Both summary (maxPerSegment=0) and trains (maxPerSegment=100) modes.
             # The congestion endpoint enforces min 2-hour window (max(requested, 2)),
             # so time_window_hours=2 covers all requests of 1 or 2.
