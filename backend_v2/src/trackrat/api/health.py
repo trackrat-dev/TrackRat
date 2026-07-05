@@ -13,6 +13,7 @@ from structlog import get_logger
 
 from trackrat.db.engine import get_db
 from trackrat.models.database import DiscoveryRun, TrainJourney
+from trackrat.services.departure import ALL_DATA_SOURCES
 from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.system_stats import get_disk_usage, get_memory_usage
@@ -35,6 +36,16 @@ async def health_check(
         "timestamp": now_et().isoformat(),
         "version": "2.0.0",
         "environment": settings.environment,
+        # Which transit systems this deployment actually collects and serves.
+        # `disabled` reflects TRACKRAT_DISABLED_DATA_SOURCES; clients (and the
+        # E2E suite) read this to avoid querying systems that are turned off.
+        "data_sources": {
+            "all": ALL_DATA_SOURCES,
+            "active": [
+                s for s in ALL_DATA_SOURCES if not settings.is_data_source_disabled(s)
+            ],
+            "disabled": sorted(settings.disabled_data_source_set),
+        },
         "checks": {},
     }
 
