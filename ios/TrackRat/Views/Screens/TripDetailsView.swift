@@ -305,6 +305,12 @@ private struct LegDetailSection: View {
                     ForEach(displayableStops) { stop in
                         StopRowV2(
                             stop: stop,
+                            stationDisplayName: Stations.stopDisplayName(
+                                stopCode: stop.stationCode,
+                                stopName: stop.stationName,
+                                pickedOriginCode: leg.boarding.code,
+                                pickedDestinationCode: leg.alighting.code
+                            ),
                             isDestination: Stations.areEquivalentStations(stop.stationCode, leg.alighting.code),
                             isDeparture: Stations.areEquivalentStations(stop.stationCode, leg.boarding.code),
                             isBoarding: false,

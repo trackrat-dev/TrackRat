@@ -651,4 +651,79 @@ class StationsTests: XCTestCase {
         XCTAssertEqual(sfia.longitude, -122.391954, accuracy: 0.001,
                        "SFO Airport longitude should be ~-122.392")
     }
+
+    // MARK: - Stop Display Name Tests (issue #1418)
+
+    func testStopDisplayNameRelabelsOriginToPickedName() {
+        // The reported bug: a rider searches from "Metropolitan Av" (SG29) and
+        // boards an L train. The L platform in that complex is Lorimer St (SL10),
+        // so the backend names the stop "Lorimer St". The boarding stop must be
+        // relabeled to the name the rider picked so they recognize it.
+        let result = Stations.stopDisplayName(
+            stopCode: "SL10",
+            stopName: "Lorimer St",
+            pickedOriginCode: "SG29",
+            pickedDestinationCode: "S635"
+        )
+        XCTAssertEqual(result, "Metropolitan Av",
+                       "Boarding stop should show the picked name 'Metropolitan Av', not 'Lorimer St'")
+        XCTAssertNotEqual(result, "Lorimer St",
+                          "Boarding stop should NOT show the train's own platform name")
+    }
+
+    func testStopDisplayNameRelabelsDestinationToPickedName() {
+        // Reverse of the origin case: the rider picks "Metropolitan Av" (SG29) as
+        // their destination and rides an L train arriving at Lorimer St (SL10).
+        let result = Stations.stopDisplayName(
+            stopCode: "SL10",
+            stopName: "Lorimer St",
+            pickedOriginCode: "S635",       // Union Sq (unrelated to this stop)
+            pickedDestinationCode: "SG29"   // Metropolitan Av
+        )
+        XCTAssertEqual(result, "Metropolitan Av",
+                       "Alighting stop should show the picked destination name 'Metropolitan Av'")
+        XCTAssertNotEqual(result, "Lorimer St",
+                          "Alighting stop should NOT show the train's own platform name")
+    }
+
+    func testStopDisplayNameLeavesIntermediateStopsUnchanged() {
+        // A stop that is neither the picked origin nor destination keeps its own
+        // name. Bedford Av (SL08) is an intermediate L stop for this rider.
+        let result = Stations.stopDisplayName(
+            stopCode: "SL08",
+            stopName: "Bedford Av",
+            pickedOriginCode: "SG29",
+            pickedDestinationCode: "S635"
+        )
+        XCTAssertEqual(result, "Bedford Av",
+                       "Intermediate stops should keep their own name")
+    }
+
+    func testStopDisplayNameWithNoPicksUsesStopName() {
+        // With no picked origin/destination there is nothing to match, so the
+        // stop keeps its own name (unchanged from prior behavior).
+        let result = Stations.stopDisplayName(
+            stopCode: "SL10",
+            stopName: "Lorimer St",
+            pickedOriginCode: nil,
+            pickedDestinationCode: nil
+        )
+        XCTAssertEqual(result, "Lorimer St",
+                       "With no picked origin/destination, the stop keeps its own name")
+    }
+
+    func testStopDisplayNameWithUnrelatedPickFallsBackToStopName() {
+        // Documents the known limitation: if the picked origin/destination are
+        // stale/unrelated codes (e.g. a NJT route NY→HL still selected while
+        // viewing a subway train, as in the issue's feedback), no stop matches
+        // and the platform name is shown.
+        let result = Stations.stopDisplayName(
+            stopCode: "SL10",
+            stopName: "Lorimer St",
+            pickedOriginCode: "NY",       // Penn Station (not in this complex)
+            pickedDestinationCode: "HL"   // Hamilton, NJT (not in this complex)
+        )
+        XCTAssertEqual(result, "Lorimer St",
+                       "Unrelated picked origin/destination should not relabel the stop")
+    }
 }
