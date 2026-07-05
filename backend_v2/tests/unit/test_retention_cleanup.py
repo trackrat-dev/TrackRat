@@ -597,6 +597,37 @@ class TestRetentionCleanupSQLStatements:
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert source.count("WHERE id IN (") == 4
 
+    def test_make_interval_day_args_are_cast_to_int(self):
+        """Every make_interval(days => ...) must cast its arg to int.
+
+        asyncpg sends bound parameters untyped, so Postgres resolves
+        ``make_interval(days => $1)`` against the nonexistent
+        ``make_interval(days => text)`` overload and raises
+        ``UndefinedFunctionError``, silently breaking retention cleanup.
+        An explicit ``::int`` cast pins the type at parse time. Guards
+        against regression of that fix across all four DELETE phases.
+        """
+        import re
+        from trackrat.services.scheduler import SchedulerService
+        import inspect
+
+        source = inspect.getsource(SchedulerService.retention_cleanup)
+        # Collapse Python string-concatenation boundaries ("..." "...") and
+        # surrounding whitespace so the CASE expression reads as one line.
+        collapsed = re.sub(r'"\s*"', "", source)
+        collapsed = re.sub(r"\s+", " ", collapsed)
+
+        # One make_interval per phase (train_journeys, discovery_runs,
+        # validation_results, service_alerts).
+        assert collapsed.count("make_interval(days =>") == 4
+        # The three simple phases must use the cast form, never the bare param.
+        assert "make_interval(days => :days::int)" in collapsed
+        assert "make_interval(days => :days)" not in collapsed
+        # The train_journeys CASE must cast both branches to int.
+        assert "THEN :subway_days::int ELSE :days::int END" in collapsed
+        assert "THEN :subway_days " not in collapsed
+        assert "ELSE :days END" not in collapsed
+
     def test_cascade_covers_all_dependent_tables(self):
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""
         from trackrat.models.database import (
