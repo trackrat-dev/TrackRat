@@ -308,6 +308,30 @@ struct Stations {
         guard let group = stationEquivalents[code1] else { return false }
         return group.contains(code2)
     }
+
+    /// Display name for a journey stop, preferring the name the user picked for
+    /// their boarding or alighting station when it refers to the same physical
+    /// complex as the stop. Subway complexes expose one platform per line under
+    /// its own name (the L stops at "Lorimer St", the G at "Metropolitan Av" in
+    /// the same complex); a rider who searched from "Metropolitan Av" then sees
+    /// that name at their stop instead of the train's platform name (issue #1418).
+    ///
+    /// Falls back to the stop's own name for every other stop, so this only
+    /// relabels the two endpoints the user actually selected.
+    static func stopDisplayName(
+        stopCode: String,
+        stopName: String,
+        pickedOriginCode: String?,
+        pickedDestinationCode: String?
+    ) -> String {
+        if let origin = pickedOriginCode, areEquivalentStations(stopCode, origin) {
+            return displayName(for: origin)
+        }
+        if let destination = pickedDestinationCode, areEquivalentStations(stopCode, destination) {
+            return displayName(for: destination)
+        }
+        return displayName(for: stopName)
+    }
 }
 
 // MARK: - Default Map Region
