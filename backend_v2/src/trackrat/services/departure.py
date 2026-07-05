@@ -369,7 +369,8 @@ class DepartureService:
         # Cancelled trains are shown only if their scheduled time is still upcoming,
         # to avoid duplication with the recent-departures endpoint.
         if hide_departed:
-            past_cutoff = now_et() - timedelta(minutes=5)
+            now = now_et()
+            past_cutoff = now - timedelta(minutes=5)
             departure_filters.append(
                 or_(
                     # Train hasn't departed (normal case)
@@ -382,6 +383,17 @@ class DepartureService:
                             JourneyStop.scheduled_departure > past_cutoff,
                         ),
                     ),
+                    # Departure still upcoming: keep even if has_departed_station
+                    # was latched True. The flag is set monotonically (never reset),
+                    # so a train dwelling at its origin terminal can carry it while
+                    # its real departure is still in the future; without this branch
+                    # hide_departed would wrongly hide it (issue #1422). actual_departure
+                    # takes precedence so a train that left early stays hidden.
+                    func.coalesce(
+                        JourneyStop.actual_departure,
+                        JourneyStop.scheduled_departure,
+                    )
+                    > now,
                     # Cancelled trains only if scheduled departure is still upcoming
                     and_(
                         TrainJourney.is_cancelled.is_(True),
