@@ -24,6 +24,47 @@ def test_health_check(client):
     assert "data_freshness" in data["checks"]
 
 
+def test_health_reports_data_sources(client):
+    """Health should expose the all/active/disabled data-source lists.
+
+    Clients and the E2E suite read this to skip systems that are turned off
+    via TRACKRAT_DISABLED_DATA_SOURCES. With nothing disabled (default test
+    settings), active must equal the full list and disabled must be empty.
+    """
+    from trackrat.services.departure import ALL_DATA_SOURCES
+
+    data = client.get("/health").json()
+    assert "data_sources" in data
+    ds = data["data_sources"]
+    assert ds["all"] == ALL_DATA_SOURCES
+    assert ds["disabled"] == []
+    assert ds["active"] == ALL_DATA_SOURCES
+
+
+def test_health_reflects_disabled_data_sources(client):
+    """When systems are disabled, health drops them from `active`."""
+    from trackrat.main import app
+    from trackrat.services.departure import ALL_DATA_SOURCES
+    from trackrat.settings import Settings, get_settings
+
+    disabled_settings = Settings(
+        environment="testing",
+        database_url="postgresql+asyncpg://x:x@localhost/x",
+        njt_api_token="test_token",
+        disabled_data_sources="MBTA, wmata",  # mixed case + spacing on purpose
+    )
+    # The `client` fixture clears dependency_overrides on teardown, so this
+    # override only affects the current test.
+    app.dependency_overrides[get_settings] = lambda: disabled_settings
+    ds = client.get("/health").json()["data_sources"]
+
+    assert ds["all"] == ALL_DATA_SOURCES
+    assert ds["disabled"] == ["MBTA", "WMATA"]  # uppercased + sorted
+    assert "MBTA" not in ds["active"]
+    assert "WMATA" not in ds["active"]
+    assert set(ds["active"]) == set(ALL_DATA_SOURCES) - {"MBTA", "WMATA"}
+
+
 def test_liveness_probe(client):
     """Test the liveness probe endpoint."""
     response = client.get("/health/live")

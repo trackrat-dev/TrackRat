@@ -110,7 +110,33 @@ if [[ "$code" != "200" ]]; then
 fi
 status=$(jq -r '.status' "$TMPDIR/resp.json")
 env=$(jq -r '.environment // "unknown"' "$TMPDIR/resp.json")
-echo -e "Status: $status | Environment: $env\n"
+echo -e "Status: $status | Environment: $env"
+
+# Data sources this deployment has turned off via TRACKRAT_DISABLED_DATA_SOURCES,
+# read from /health. Disabled systems serve no departures/trips, so we SKIP them
+# instead of reporting spurious failures (mirrors the weekday-only skip below).
+DISABLED_SOURCES=$(jq -r '.data_sources.disabled // [] | join(" ")' "$TMPDIR/resp.json" 2>/dev/null || echo "")
+if [[ -n "$DISABLED_SOURCES" ]]; then
+  echo -e "Disabled data sources: ${DISABLED_SOURCES}"
+fi
+echo ""
+
+# True if data source $1 is disabled on this deployment (case-insensitive).
+is_source_disabled() {
+  local needle=" ${1^^} " haystack=" ${DISABLED_SOURCES^^} "
+  [[ -n "$DISABLED_SOURCES" && "$haystack" == *"$needle"* ]]
+}
+
+# Map a station code to its transit system, but only for systems that can be
+# disabled AND appear in trip-search pairs. Only BART uses a distinguishable
+# prefix here; the other disabled-capable systems (WMATA/MBTA/METRA) are not
+# part of the transfer network, so they never reach trip search.
+station_system() {
+  case "$1" in
+    BART_*) echo "BART" ;;
+    *) echo "" ;;
+  esac
+}
 
 # --- Congestion API (network-wide, tested once per data source) ---
 
@@ -175,6 +201,10 @@ fi
 
 # Test per data source (smoke test: just check HTTP 200)
 for cong_src in NJT AMTRAK PATH LIRR MNR SUBWAY PATCO BART MBTA METRA WMATA; do
+  if is_source_disabled "$cong_src"; then
+    skip "Congestion ($cong_src): data source disabled"
+    continue
+  fi
   code=$(api "$API/routes/congestion?data_source=$cong_src")
   if [[ "$code" != "200" ]]; then
     fail "Congestion ($cong_src): HTTP $code"
@@ -302,6 +332,9 @@ for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',
 
     while IFS= read -r line; do
       IFS='|' read -r _ from to source _ <<< "$line"
+      if is_source_disabled "$source"; then
+        continue
+      fi
       if ! grep -qxF "${from}|${to}|${source}" "$TMPDIR/fixed.keys"; then
         ROUTES+=("$line")
       fi
@@ -332,6 +365,15 @@ for route in "${ROUTES[@]}"; do
   if [[ "$IS_WEEKEND" == "true" && "$flags" == *w* ]]; then
     echo -e "${YELLOW}--- $label ($from -> $to) ---${NC}"
     skip "$label (weekday-only, today is $DOW_NAME)"
+    echo ""
+    IDX=$((IDX + 1))
+    continue
+  fi
+
+  # Skip data sources this deployment has disabled (no data is served for them)
+  if is_source_disabled "$source"; then
+    echo -e "${YELLOW}--- $label ($from -> $to) ---${NC}"
+    skip "$label ($source disabled on this deployment)"
     echo ""
     IDX=$((IDX + 1))
     continue
@@ -733,7 +775,17 @@ trip_test() {
 #                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
 trip_bidi() {
   local label="$1" from="$2" to="$3" expected="$4" always_expect="${5:-false}"
-  local fwd_ok=0 rev_ok=0
+  local fwd_ok=0 rev_ok=0 sys_from sys_to
+
+  # Skip pairs whose endpoints belong to a disabled data source.
+  sys_from=$(station_system "$from")
+  sys_to=$(station_system "$to")
+  if { [[ -n "$sys_from" ]] && is_source_disabled "$sys_from"; } ||
+     { [[ -n "$sys_to" ]] && is_source_disabled "$sys_to"; }; then
+    echo -e "  ${BOLD}$label${NC}"
+    skip "$label (data source disabled)"
+    return 0
+  fi
 
   echo -e "  ${BOLD}$label${NC}"
   trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" "$always_expect" && fwd_ok=1
@@ -833,7 +885,11 @@ total=$((PASS + FAIL))
 echo -e "  ${GREEN}PASS${NC}: $PASS"
 echo -e "  ${RED}FAIL${NC}: $FAIL"
 [[ "$WARN" -gt 0 ]] && echo -e "  ${YELLOW}WARN${NC}: $WARN"
-[[ "$SKIP" -gt 0 ]] && echo -e "  ${YELLOW}SKIP${NC}: $SKIP (weekday-only routes, today is $DOW_NAME)"
+if [[ "$SKIP" -gt 0 ]]; then
+  skip_note="weekday-only routes, today is $DOW_NAME"
+  [[ -n "$DISABLED_SOURCES" ]] && skip_note="$skip_note; disabled sources: $DISABLED_SOURCES"
+  echo -e "  ${YELLOW}SKIP${NC}: $SKIP ($skip_note)"
+fi
 echo -e "  Total: $total checks across ${#ROUTES[@]} routes"
 if [[ "${#ROUTES[@]}" -gt "$FIXED_COUNT" ]]; then
   echo -e "  Fixed: $FIXED_COUNT | Random: $((${#ROUTES[@]} - FIXED_COUNT))"
