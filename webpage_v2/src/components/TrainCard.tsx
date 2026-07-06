@@ -1,8 +1,9 @@
 import type { KeyboardEvent } from 'react';
 import { Train } from '../types';
-import { formatTime, getDelayMinutes } from '../utils/date';
+import { formatRelativeMinutes, getDelayMinutes, isToday } from '../utils/date';
 import { formatDelayText, getStatusBadgeClass } from '../utils/formatting';
 import { ShareButton } from './ShareButton';
+import { TimeDisplay } from './TimeDisplay';
 import { buildTrainShareData } from '../utils/share';
 
 interface TrainCardProps {
@@ -19,6 +20,12 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
 
   const bestArrivalTime = train.arrival.actual_time || train.arrival.updated_time || undefined;
   const arrivalDelayMinutes = getDelayMinutes(train.arrival.scheduled_time, bestArrivalTime);
+
+  // "in N min" countdown, only for today's live journeys (not future-date searches).
+  const countdown =
+    !train.is_cancelled && !departed && isToday(train.journey_date)
+      ? formatRelativeMinutes(bestDepartureTime || train.departure.scheduled_time)
+      : null;
 
   // Detect boarding: train is at our departure station and hasn't departed yet
   const isBoarding =
@@ -68,28 +75,33 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           </div>
           <div className="text-sm text-text-muted">{train.line.name}</div>
         </div>
-        <div className="flex items-center gap-2">
-          <ShareButton
-            shareData={buildTrainShareData({
-              trainId: train.train_id,
-              origin: train.departure.name,
-              destination: train.destination,
-              from: from,
-              to: to,
-              journeyDate: train.journey_date,
-              dataSource: train.data_source,
-            })}
-            className="scale-90"
-          />
-          <span className={getStatusBadgeClass(status)}>
-            {status === 'cancelled'
-              ? 'Cancelled'
-              : status === 'departed'
-              ? 'Departed'
-              : status === 'boarding'
-              ? 'Boarding'
-              : formatDelayText(delayMinutes)}
-          </span>
+        <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <ShareButton
+              shareData={buildTrainShareData({
+                trainId: train.train_id,
+                origin: train.departure.name,
+                destination: train.destination,
+                from: from,
+                to: to,
+                journeyDate: train.journey_date,
+                dataSource: train.data_source,
+              })}
+              className="scale-90"
+            />
+            <span className={getStatusBadgeClass(status)}>
+              {status === 'cancelled'
+                ? 'Cancelled'
+                : status === 'departed'
+                ? 'Departed'
+                : status === 'boarding'
+                ? 'Boarding'
+                : formatDelayText(delayMinutes)}
+            </span>
+          </div>
+          {countdown && (
+            <span className="text-sm font-semibold text-accent">{countdown}</span>
+          )}
         </div>
       </div>
 
@@ -102,25 +114,23 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-sm text-text-muted">Departure</div>
-          <div className="font-medium text-text-primary">
-            {formatTime(train.departure.scheduled_time)}
-            {bestDepartureTime && delayMinutes > 0 && (
-              <span className="text-warning ml-2">
-                ({formatTime(bestDepartureTime)})
-              </span>
-            )}
+          <div>
+            <TimeDisplay
+              scheduledTime={train.departure.scheduled_time}
+              liveTime={bestDepartureTime}
+              delayMinutes={delayMinutes}
+            />
           </div>
         </div>
 
         <div className="flex items-center justify-between">
           <div className="text-sm text-text-muted">Arrival</div>
-          <div className="font-medium text-text-primary">
-            {formatTime(train.arrival.scheduled_time)}
-            {bestArrivalTime && arrivalDelayMinutes > 0 && (
-              <span className="text-warning ml-2">
-                ({formatTime(bestArrivalTime)})
-              </span>
-            )}
+          <div>
+            <TimeDisplay
+              scheduledTime={train.arrival.scheduled_time}
+              liveTime={bestArrivalTime}
+              delayMinutes={arrivalDelayMinutes}
+            />
           </div>
         </div>
 

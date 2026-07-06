@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { formatTime, getDelayMinutes, getTodayDateString, isToday, formatDate } from './date';
+import { formatTime, getDelayMinutes, getTodayDateString, isToday, formatDate, formatRelativeMinutes } from './date';
 
 describe('formatTime', () => {
   it('formats ISO datetime to 12-hour time', () => {
@@ -107,6 +107,43 @@ describe('isToday', () => {
     expect(isToday('2025-06-20T23:59:59Z')).toBe(true);
     expect(isToday('2025-06-21')).toBe(false);
     expect(isToday('2025-06-19')).toBe(false);
+  });
+});
+
+describe('formatRelativeMinutes', () => {
+  // Fixed reference "now" so the tests are independent of the wall clock.
+  const now = new Date('2025-01-15T12:00:00Z');
+
+  it('returns null for a time in the past', () => {
+    expect(formatRelativeMinutes('2025-01-15T11:55:00Z', now)).toBeNull();
+  });
+
+  it("returns 'now' for a time 0-1 minutes away", () => {
+    expect(formatRelativeMinutes('2025-01-15T12:00:00Z', now)).toBe('now');
+    expect(formatRelativeMinutes('2025-01-15T12:01:00Z', now)).toBe('now');
+  });
+
+  it("returns 'in N min' for a time within 90 minutes", () => {
+    expect(formatRelativeMinutes('2025-01-15T12:02:00Z', now)).toBe('in 2 min');
+    expect(formatRelativeMinutes('2025-01-15T12:45:00Z', now)).toBe('in 45 min');
+  });
+
+  it('includes the 90-minute boundary', () => {
+    expect(formatRelativeMinutes('2025-01-15T13:30:00Z', now)).toBe('in 90 min');
+  });
+
+  it('returns null beyond 90 minutes away', () => {
+    expect(formatRelativeMinutes('2025-01-15T13:31:00Z', now)).toBeNull();
+  });
+
+  it('returns null for invalid or empty date strings', () => {
+    expect(formatRelativeMinutes('not-a-date', now)).toBeNull();
+    expect(formatRelativeMinutes('', now)).toBeNull();
+  });
+
+  it('defaults to the current time when "now" is omitted', () => {
+    const in30 = new Date(Date.now() + 30 * 60000).toISOString();
+    expect(formatRelativeMinutes(in30)).toMatch(/^in (29|30) min$/);
   });
 });
 
