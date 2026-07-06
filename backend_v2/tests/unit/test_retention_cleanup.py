@@ -7,9 +7,9 @@ discovery_runs, and validation_results, and that the retention_days
 setting is properly configured.
 """
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import AsyncMock, Mock, patch, call, MagicMock
 
 from trackrat.settings import Settings
 
@@ -115,13 +115,13 @@ class TestRetentionCleanupSchedulerRegistration:
         from trackrat.services.scheduler import SchedulerService
 
         assert hasattr(SchedulerService, "retention_cleanup")
-        assert callable(getattr(SchedulerService, "retention_cleanup"))
+        assert callable(SchedulerService.retention_cleanup)
 
     def test_retention_cleanup_job_registered_in_schedule_jobs(self):
         """The _schedule_jobs method should register retention_cleanup."""
-        from trackrat.services.scheduler import SchedulerService
-
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService)
         assert 'id="retention_cleanup"' in source
@@ -129,9 +129,9 @@ class TestRetentionCleanupSchedulerRegistration:
 
     def test_retention_cleanup_uses_cron_trigger(self):
         """retention_cleanup should use CronTrigger at 3:30 AM ET."""
-        from trackrat.services.scheduler import SchedulerService
-
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService)
         # Find the retention_cleanup job registration block
@@ -188,20 +188,25 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness session, then 3 batch sessions
+            # Sessions in call order: freshness, phase-0 partition bootstrap,
+            # 4 batch deletes (journey/discovery/validation/service_alerts),
+            # phase-5 partition drop.
             ctxs = []
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            phase0_session = AsyncMock()
+            phase0_session.execute = AsyncMock(return_value=Mock(rowcount=0))
+            ctxs.append(make_ctx(phase0_session))  # phase 0
+
             for result in execute_results:
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
-                ctx = AsyncMock()
-                ctx.__aenter__ = AsyncMock(return_value=s)
-                ctx.__aexit__ = AsyncMock(return_value=False)
-                ctxs.append(ctx)
+                ctxs.append(make_ctx(s))
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
@@ -478,7 +483,14 @@ class TestRetentionCleanupBatchLogic:
 
     @pytest.mark.asyncio
     async def test_cleanup_handles_exception_gracefully(self, mock_settings):
-        """If a DELETE fails, the error should be logged but not crash."""
+        """If a DELETE fails, do_retention_work logs and re-raises; the freshness
+        wrapper catches it so the public method does not crash.
+
+        The re-raise is deliberate: run_with_freshness_check only records a run
+        as successful when task_func returns without raising, so swallowing the
+        error here would falsely mark the failed run fresh. This mock emulates
+        the real wrapper's catch.
+        """
         from trackrat.services.scheduler import SchedulerService
 
         service = SchedulerService.__new__(SchedulerService)
@@ -502,8 +514,13 @@ class TestRetentionCleanupBatchLogic:
             async def execute_task_func(
                 db, task_name, minimum_interval_seconds, task_func
             ):
-                await task_func()
-                return True
+                # Mirror run_with_freshness_check: a raising task_func is caught
+                # and reported as a failed (not successful) run.
+                try:
+                    await task_func()
+                    return True
+                except Exception:
+                    return False
 
             mock_freshness.side_effect = execute_task_func
 
@@ -532,8 +549,9 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_targets_journey_date_column(self):
         """The train_journeys DELETE should filter on journey_date."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM train_journeys" in source
@@ -541,8 +559,9 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_applies_subway_case_in_journey_delete(self):
         """The train_journeys DELETE should branch SUBWAY onto its own cutoff."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "data_source = 'SUBWAY'" in source
@@ -553,8 +572,9 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_targets_discovery_runs_run_at(self):
         """The discovery_runs DELETE should filter on run_at."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM discovery_runs" in source
@@ -562,16 +582,18 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_targets_validation_results_run_at(self):
         """The validation_results DELETE should filter on run_at."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM validation_results" in source
 
     def test_cleanup_targets_inactive_service_alerts(self):
         """The service_alerts DELETE should only prune inactive rows by updated_at."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM service_alerts" in source
@@ -582,8 +604,9 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_uses_batch_limit(self):
         """All DELETE statements should use LIMIT for batching."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         # Should have 4 LIMIT clauses (one per table)
@@ -591,25 +614,29 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_uses_subquery_pattern(self):
         """DELETEs should use id IN (SELECT id ... LIMIT) for efficient batching."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert source.count("WHERE id IN (") == 4
 
     def test_make_interval_day_args_are_cast_to_int(self):
-        """Every make_interval(days => ...) must cast its arg to int.
+        """Every make_interval(days => ...) must cast its arg to int via CAST().
 
-        asyncpg sends bound parameters untyped, so Postgres resolves
-        ``make_interval(days => $1)`` against the nonexistent
-        ``make_interval(days => text)`` overload and raises
-        ``UndefinedFunctionError``, silently breaking retention cleanup.
-        An explicit ``::int`` cast pins the type at parse time. Guards
-        against regression of that fix across all four DELETE phases.
+        asyncpg sends bound parameters untyped, so a bare
+        ``make_interval(days => CASE ... END)`` over untyped params resolves to
+        the nonexistent ``make_interval(days => text)`` overload and raises
+        ``UndefinedFunctionError``. The cast must be spelled ``CAST(:name AS
+        int)`` and NOT ``:name::int``: SQLAlchemy's ``text()`` bind-param parser
+        refuses to substitute a ``:name`` immediately followed by ``::``, so the
+        literal ``:name`` reaches Postgres and it raises a syntax error. Guards
+        against regression of both forms across all four DELETE phases.
         """
-        import re
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+        import re
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         # Collapse Python string-concatenation boundaries ("..." "...") and
@@ -620,19 +647,19 @@ class TestRetentionCleanupSQLStatements:
         # One make_interval per phase (train_journeys, discovery_runs,
         # validation_results, service_alerts).
         assert collapsed.count("make_interval(days =>") == 4
-        # The three simple phases must use the cast form, never the bare param.
-        assert "make_interval(days => :days::int)" in collapsed
-        assert "make_interval(days => :days)" not in collapsed
-        # The train_journeys CASE must cast both branches to int.
-        assert "THEN :subway_days::int ELSE :days::int END" in collapsed
-        assert "THEN :subway_days " not in collapsed
-        assert "ELSE :days END" not in collapsed
+        # The ``::int`` cast operator is broken inside SQLAlchemy text() — it
+        # must never appear.
+        assert "::int" not in collapsed
+        # The three simple phases must use the CAST() form.
+        assert collapsed.count("make_interval(days => CAST(:days AS int))") == 3
+        # The train_journeys CASE must CAST() both branches to int.
+        assert "THEN CAST(:subway_days AS int) ELSE CAST(:days AS int) END" in collapsed
 
     def test_cascade_covers_all_dependent_tables(self):
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""
         from trackrat.models.database import (
-            JourneyStop,
             JourneyProgress,
+            JourneyStop,
             SegmentTransitTime,
             StationDwellTime,
         )
@@ -664,9 +691,10 @@ class TestRetentionCleanupFreshnessCheck:
 
     def test_uses_24_hour_safe_interval(self):
         """retention_cleanup should use calculate_safe_interval(24 * 60)."""
+        import inspect
+
         from trackrat.services.scheduler import SchedulerService
         from trackrat.utils.scheduler_utils import calculate_safe_interval
-        import inspect
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "calculate_safe_interval(24 * 60)" in source
@@ -677,8 +705,9 @@ class TestRetentionCleanupFreshnessCheck:
 
     def test_task_name_is_retention_cleanup(self):
         """The task should be registered as 'retention_cleanup' in freshness check."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert 'task_name="retention_cleanup"' in source
@@ -953,8 +982,13 @@ class TestServiceAlertsRetention:
             async def execute_task_func(
                 db, task_name, minimum_interval_seconds, task_func
             ):
-                await task_func()
-                return True
+                # Mirror run_with_freshness_check: catch the re-raised failure so
+                # the run is reported as failed (not successful).
+                try:
+                    await task_func()
+                    return True
+                except Exception:
+                    return False
 
             mock_freshness.side_effect = execute_task_func
 
