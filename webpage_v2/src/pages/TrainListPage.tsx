@@ -182,31 +182,25 @@ export function TrainListPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-4 flex items-center gap-3">
         <button
           onClick={() => navigate('/departures')}
-          className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
+          className="shrink-0 -ml-1 p-1 text-xl leading-none text-accent hover:text-accent/80"
+          aria-label="Back"
         >
-          ← Back
+          ←
         </button>
-        <h2 className="text-2xl font-bold text-text-primary text-center">
+        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold text-text-primary">
           {fromStation.name} → {toStation.name}
         </h2>
-        <div className="flex items-center justify-center gap-4 mt-2">
-          {lastUpdated && (
-            <span className="text-sm text-text-muted">
-              Updated at {formatTime(lastUpdated.toISOString())}
-            </span>
-          )}
-          {directRouteDataSource && !isTransferSearch && (
-            <Link
-              to={routeStatusUrl}
-              className="text-sm text-accent hover:text-accent/80 font-medium"
-            >
-              Route Status →
-            </Link>
-          )}
-        </div>
+        {directRouteDataSource && !isTransferSearch && (
+          <Link
+            to={routeStatusUrl}
+            className="shrink-0 text-sm font-medium text-accent hover:text-accent/80"
+          >
+            Route Status →
+          </Link>
+        )}
       </div>
 
       {/* Service alerts for MTA systems */}
@@ -280,11 +274,17 @@ export function TrainListPage() {
         </div>
       )}
 
+      {lastUpdated && (
+        <div className="mb-1 text-right text-xs text-text-muted">
+          Updated {formatTime(lastUpdated.toISOString())}
+        </div>
+      )}
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => fetchTrains()}
           disabled={loading}
           className="py-3 px-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
+          aria-label="Refresh"
         >
           {loading ? '...' : '🔄'}
         </button>

@@ -47,6 +47,7 @@ API Service (fetch + cache)
   - `trackrat:homeStation` - home station for quick access
   - `trackrat:workStation` - work station for quick access
   - `trackrat:tripHistory` - trip search history
+  - `trackrat:mapExpanded` - route map expand/collapse preference (default collapsed)
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
 ## Design System
@@ -255,7 +256,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
 - **No Push Notifications** - Browser notifications not implemented
-- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Dark Matter tiles, no API key)
+- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Positron light tiles, no API key; collapsed by default)
 - **No Backend Auth** - Stateless, no user accounts
 
 ### Intentional Simplifications
