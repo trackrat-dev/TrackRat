@@ -9,6 +9,7 @@ import {
   PRIMARY_STATIONS,
   AVAILABLE_SYSTEMS,
   DISABLED_SYSTEMS,
+  ALERT_CAPABLE_SYSTEMS,
   SYSTEM_NAMES,
 } from './stations';
 
@@ -246,6 +247,26 @@ describe('AVAILABLE_SYSTEMS', () => {
     const groups = getGroupedPrimaryStations(AVAILABLE_SYSTEMS);
     for (const group of groups) {
       expect(DISABLED_SYSTEMS.has(group.system)).toBe(false);
+    }
+  });
+});
+
+describe('ALERT_CAPABLE_SYSTEMS', () => {
+  it('is the MTA systems plus NJT', () => {
+    expect([...ALERT_CAPABLE_SYSTEMS].sort()).toEqual(['LIRR', 'MNR', 'NJT', 'SUBWAY']);
+  });
+
+  it('contains no app-wide-disabled systems', () => {
+    for (const system of ALERT_CAPABLE_SYSTEMS) {
+      expect(DISABLED_SYSTEMS.has(system)).toBe(false);
+    }
+  });
+
+  it('only lists systems the backend actually serves alerts for', () => {
+    // Every entry must be a known transit system (present in SYSTEM_ORDER),
+    // guarding against typos that would silently gate the banner off.
+    for (const system of ALERT_CAPABLE_SYSTEMS) {
+      expect(SYSTEM_ORDER).toContain(system);
     }
   });
 });
