@@ -6,7 +6,7 @@ import { getStationByCode } from '../data/stations';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
-import { UpcomingTrains } from '../components/UpcomingTrains';
+import { DeparturesTimeline } from '../components/DeparturesTimeline';
 
 type Period = '1h' | '6h' | '24h' | '7d' | '30d' | '90d';
 
@@ -110,8 +110,8 @@ export function RouteStatusPage() {
         </div>
       )}
 
-      {/* Upcoming trains */}
-      <UpcomingTrains from={from} to={to} />
+      {/* Recent + upcoming departures timeline (polls every 30s) */}
+      <DeparturesTimeline from={from} to={to} dataSource={dataSource} />
 
       {/* Period selector */}
       <div className="flex gap-1.5 mb-4">
