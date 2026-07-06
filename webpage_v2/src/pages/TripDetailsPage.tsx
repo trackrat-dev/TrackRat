@@ -10,6 +10,7 @@ import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TransferIndicator } from '../components/TransferTripCard';
 import { formatTime } from '../utils/date';
 import { buildTrainUrl, parseTripParam } from '../utils/routes';
+import { useBackNavigation } from '../utils/useBackNavigation';
 import { storageService } from '../services/storage';
 
 /** Filter stops to the boarding→alighting range for a leg */
@@ -137,6 +138,7 @@ export function TripDetailsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
+  const goBack = useBackNavigation('/departures');
   const trip = parseTripParam(searchParams.get('trip'))
     ?? (location.state as { trip?: TripOption } | null)?.trip
     ?? null;
@@ -208,7 +210,7 @@ export function TripDetailsPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back
