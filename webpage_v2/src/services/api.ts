@@ -169,7 +169,7 @@ export class APIService {
   ): Promise<DeparturesResponse> {
     const params = new URLSearchParams({ from });
     if (options.to) params.set('to', options.to);
-    if (options.windowMinutes !== undefined) params.set('window_minutes', options.windowMinutes.toString());
+    params.set('window_minutes', String(options.windowMinutes ?? 120));
     if (options.dataSources) params.set('data_sources', options.dataSources);
     if (options.limit !== undefined) params.set('limit', options.limit.toString());
     const url = `${BASE_URL}/trains/recent-departures?${params.toString()}`;

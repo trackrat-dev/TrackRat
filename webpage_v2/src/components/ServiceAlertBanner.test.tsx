@@ -41,7 +41,8 @@ describe('ServiceAlertBanner', () => {
     render(<ServiceAlertBanner dataSource="NJT" />);
 
     expect(await screen.findByText('NJT service change')).toBeInTheDocument();
-    expect(mockedGetServiceAlerts).toHaveBeenCalledWith('NJT');
+    // usePolling threads an AbortSignal through so in-flight fetches cancel on unmount.
+    expect(mockedGetServiceAlerts).toHaveBeenCalledWith('NJT', undefined, expect.any(AbortSignal));
   });
 
   it('still fetches and renders MTA (SUBWAY) alerts — existing behavior unchanged', async () => {
@@ -50,7 +51,7 @@ describe('ServiceAlertBanner', () => {
     render(<ServiceAlertBanner dataSource="SUBWAY" />);
 
     expect(await screen.findByText('Subway delays')).toBeInTheDocument();
-    expect(mockedGetServiceAlerts).toHaveBeenCalledWith('SUBWAY');
+    expect(mockedGetServiceAlerts).toHaveBeenCalledWith('SUBWAY', undefined, expect.any(AbortSignal));
   });
 
   it('does not fetch and renders nothing for a system without backend alerts (PATH)', async () => {
