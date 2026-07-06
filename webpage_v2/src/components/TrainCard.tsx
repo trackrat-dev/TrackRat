@@ -1,7 +1,8 @@
 import type { KeyboardEvent } from 'react';
 import { Train } from '../types';
 import { formatRelativeMinutes, getDelayMinutes, isToday } from '../utils/date';
-import { formatDelayText, getStatusBadgeClass } from '../utils/formatting';
+import { formatDelayText } from '../utils/formatting';
+import { StatusBadge } from './StatusBadge';
 import { ShareButton } from './ShareButton';
 import { TimeDisplay } from './TimeDisplay';
 import { buildTrainShareData } from '../utils/share';
@@ -89,15 +90,14 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
               })}
               className="scale-90"
             />
-            <span className={getStatusBadgeClass(status)}>
-              {status === 'cancelled'
-                ? 'Cancelled'
-                : status === 'departed'
-                ? 'Departed'
-                : status === 'boarding'
-                ? 'Boarding'
-                : formatDelayText(delayMinutes)}
-            </span>
+            <StatusBadge
+              status={status}
+              label={
+                status === 'cancelled' || status === 'departed' || status === 'boarding'
+                  ? undefined
+                  : formatDelayText(delayMinutes)
+              }
+            />
           </div>
           {countdown && (
             <span className="text-sm font-semibold text-accent">{countdown}</span>

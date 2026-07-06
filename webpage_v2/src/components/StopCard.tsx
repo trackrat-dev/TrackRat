@@ -25,7 +25,7 @@ export function StopCard({ stop, isOrigin = false, isDestination = false, curren
   const departureDelay = getDelayMinutes(stop.scheduled_departure, departureBest);
 
   return (
-    <div className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4">
+    <div className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
           <div className="font-semibold text-text-primary flex items-center gap-1.5">

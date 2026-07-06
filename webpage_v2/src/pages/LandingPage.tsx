@@ -100,7 +100,7 @@ function IOSBanner() {
           href={APP_STORE_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg shrink-0"
+          className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-xl shrink-0"
         >
           Open
         </a>

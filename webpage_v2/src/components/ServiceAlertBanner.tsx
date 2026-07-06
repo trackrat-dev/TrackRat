@@ -2,6 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { apiService } from '../services/api';
 import { ServiceAlert, TransitSystem } from '../types';
 import { ALERT_CAPABLE_SYSTEMS } from '../data/stations';
+import { AlertIcon, ElevatorIcon, WarningIcon, ChevronIcon } from './icons';
+
+/** Icon for each alert type; mirrors the ordering in getAlertStyle. */
+function AlertTypeIcon({ alertType, className }: { alertType: string; className?: string }) {
+  if (alertType === 'alert') return <AlertIcon size={18} className={className} />;
+  if (alertType === 'elevator') return <ElevatorIcon size={18} className={className} />;
+  return <WarningIcon size={18} className={className} />;
+}
 
 interface ServiceAlertBannerProps {
   dataSource: string;
@@ -81,9 +89,7 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
               className="w-full flex items-start gap-3 p-3 text-left"
               aria-expanded={isExpanded}
             >
-              <span className={`${style.icon} text-lg leading-none mt-0.5`}>
-                {alert.alert_type === 'alert' ? '!' : alert.alert_type === 'elevator' ? '⬆' : '⚠'}
-              </span>
+              <AlertTypeIcon alertType={alert.alert_type} className={`${style.icon} mt-0.5 shrink-0`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className={`text-xs font-semibold ${style.icon}`}>
@@ -98,7 +104,7 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
                 </div>
                 <p className="text-sm text-text-primary line-clamp-2">{alert.header_text}</p>
               </div>
-              <span className="text-text-muted text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
+              <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0 mt-0.5" />
             </button>
             {isExpanded && alert.description_text && (
               <div className="px-3 pb-3 pl-9">

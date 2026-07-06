@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { TrainDistributionChart } from './TrainDistributionChart';
+import { ChevronIcon } from './icons';
 
 interface Props {
   trainId: string;
@@ -31,7 +32,7 @@ export function SimilarTrainsPanel({ trainId, from, to, dataSource }: Props) {
       >
         <div className="flex items-center justify-between">
           <div className="text-sm font-medium text-text-primary">{summary.headline}</div>
-          <span className="text-text-muted text-xs ml-2">{expanded ? '▲' : '▼'}</span>
+          <ChevronIcon direction={expanded ? 'up' : 'down'} size={16} className="text-text-muted ml-2 shrink-0" />
         </div>
         {expanded && (
           <>

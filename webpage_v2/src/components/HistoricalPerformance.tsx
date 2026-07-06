@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { TrainHistoryStatistics } from '../types';
+import { ChevronIcon } from './icons';
 
 interface HistoricalPerformanceProps {
   trainId: string;
@@ -67,7 +68,7 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
           <span className={`text-lg font-bold ${onTimeColor}`}>
             {onTimePct}%
           </span>
-          <span className="text-text-muted text-xs">{expanded ? '▲' : '▼'}</span>
+          <ChevronIcon direction={expanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0" />
         </div>
       </button>
 

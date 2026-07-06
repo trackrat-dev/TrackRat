@@ -8,6 +8,7 @@ import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TransferIndicator } from '../components/TransferTripCard';
+import { StatusBadge } from '../components/StatusBadge';
 import { formatTime } from '../utils/date';
 import { buildTrainUrl, parseTripParam } from '../utils/routes';
 import { useBackNavigation } from '../utils/useBackNavigation';
@@ -64,11 +65,7 @@ function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: Tra
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {leg.is_cancelled && (
-              <span className="px-2 py-0.5 bg-error/20 text-error rounded text-xs font-semibold">
-                Cancelled
-              </span>
-            )}
+            {leg.is_cancelled && <StatusBadge status="cancelled" />}
             <button
               onClick={() => navigate(buildTrainUrl({
                 trainId: leg.train_id,

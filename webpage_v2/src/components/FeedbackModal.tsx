@@ -74,7 +74,7 @@ export function FeedbackModal({ onClose }: FeedbackModalProps) {
             <button
               type="submit"
               disabled={!message.trim() || submitting}
-              className="w-full py-2.5 rounded-xl bg-accent text-white font-semibold text-sm hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full py-2.5 rounded-xl bg-accent text-white font-semibold text-sm hover:bg-accent/85 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {submitting ? 'Sending...' : 'Send Feedback'}
             </button>

@@ -10,6 +10,7 @@ import { TrainCard } from '../components/TrainCard';
 import { TransferTripCard } from '../components/TransferTripCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
+import { ChevronIcon, RefreshIcon } from '../components/icons';
 import { getStationByCode } from '../data/stations';
 import { formatTime, getTodayDateString } from '../utils/date';
 import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
@@ -232,7 +233,7 @@ export function TrainListPage() {
         >
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium text-text-primary">{summary.headline}</div>
-            <span className="text-text-muted text-xs ml-2">{summaryExpanded ? '▲' : '▼'}</span>
+            <ChevronIcon direction={summaryExpanded ? 'up' : 'down'} size={16} className="text-text-muted ml-2 shrink-0" />
           </div>
           {summaryExpanded && (
             <>
@@ -286,9 +287,9 @@ export function TrainListPage() {
           onClick={() => fetchTrains()}
           disabled={loading}
           className="py-3 px-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
-          aria-label="Refresh"
+          aria-label="Refresh departures"
         >
-          {loading ? '...' : '🔄'}
+          <RefreshIcon size={18} className={loading ? 'animate-spin' : ''} />
         </button>
         <input
           type="date"

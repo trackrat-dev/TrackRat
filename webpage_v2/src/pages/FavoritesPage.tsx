@@ -4,6 +4,7 @@ import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
 import { Station } from '../types';
 import { SubwayLineChips } from '../components/SubwayLineChips';
+import { StarIcon } from '../components/icons';
 
 export function FavoritesPage() {
   const navigate = useNavigate();
@@ -62,7 +63,7 @@ export function FavoritesPage() {
             setPickerMode('favorite');
             setShowPicker(true);
           }}
-          className="px-4 py-2 bg-accent text-white rounded-lg font-semibold hover:bg-accent/80 transition-colors"
+          className="px-4 py-2 bg-accent text-white rounded-xl font-semibold hover:bg-accent/85 transition-colors"
         >
           + Add
         </button>
@@ -109,19 +110,19 @@ export function FavoritesPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => navigate(`/trains/${route.departureCode}/${route.destinationCode}`)}
-                    className="px-3 py-2 bg-accent text-white rounded-lg hover:bg-accent/80 transition-colors font-semibold"
+                    className="px-3 py-2 bg-accent text-white rounded-xl hover:bg-accent/85 transition-colors font-semibold"
                   >
                     Use
                   </button>
                   <button
                     onClick={() => navigate(`/trains/${route.destinationCode}/${route.departureCode}`)}
-                    className="px-3 py-2 bg-surface border border-text-muted/20 text-text-primary rounded-lg hover:bg-background transition-colors font-semibold"
+                    className="px-3 py-2 bg-surface border border-text-muted/20 text-text-primary rounded-xl hover:bg-background transition-colors font-semibold"
                   >
                     Reverse
                   </button>
                   <button
                     onClick={() => removeFavoriteRoute(route.id)}
-                    className="px-3 py-2 bg-error/20 text-error rounded-lg hover:bg-error/30 transition-colors font-semibold"
+                    className="px-3 py-2 bg-error/20 text-error rounded-xl hover:bg-error/30 transition-colors font-semibold"
                   >
                     Remove
                   </button>
@@ -134,14 +135,14 @@ export function FavoritesPage() {
 
       {favoriteStations.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-4xl mb-4">⭐</div>
+          <StarIcon size={48} className="block mx-auto mb-4 text-text-muted/40" />
           <div className="text-text-muted mb-4">No favorite stations yet</div>
           <button
             onClick={() => {
               setPickerMode('favorite');
               setShowPicker(true);
             }}
-            className="px-6 py-3 bg-accent text-white rounded-lg font-semibold hover:bg-accent/80 transition-colors"
+            className="px-6 py-3 bg-accent text-white rounded-xl font-semibold hover:bg-accent/85 transition-colors"
           >
             Add Your First Favorite
           </button>
@@ -163,7 +164,7 @@ export function FavoritesPage() {
               </div>
               <button
                 onClick={() => removeFavorite(station.id)}
-                className="px-3 py-2 bg-error/20 text-error rounded-lg hover:bg-error/30 transition-colors font-semibold"
+                className="px-3 py-2 bg-error/20 text-error rounded-xl hover:bg-error/30 transition-colors font-semibold"
               >
                 Remove
               </button>
@@ -207,14 +208,14 @@ function ProfileStationCard({
       <div className="flex gap-2 mt-4">
         <button
           onClick={onSet}
-          className="px-3 py-2 bg-accent text-white rounded-lg font-semibold hover:bg-accent/80 transition-colors"
+          className="px-3 py-2 bg-accent text-white rounded-xl font-semibold hover:bg-accent/85 transition-colors"
         >
           {station ? 'Change' : 'Set'}
         </button>
         {onClear && (
           <button
             onClick={onClear}
-            className="px-3 py-2 bg-error/20 text-error rounded-lg font-semibold hover:bg-error/30 transition-colors"
+            className="px-3 py-2 bg-error/20 text-error rounded-xl font-semibold hover:bg-error/30 transition-colors"
           >
             Clear
           </button>
