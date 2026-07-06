@@ -69,7 +69,9 @@ export interface Train {
   line: LineInfo;
   destination: string;
   departure: StationTiming;
-  arrival: StationTiming;
+  // Optional: single-station departure boards (`/trains/departures?from=X` with
+  // no `to`) return no arrival timing — there is no destination to arrive at.
+  arrival?: StationTiming | null;
   train_position?: {
     last_departed_station_code?: string;
     at_station_code?: string | null;

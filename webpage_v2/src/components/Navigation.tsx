@@ -48,13 +48,16 @@ export function Navigation() {
     return location.pathname === path;
   };
 
+  // The single-station board (/station/:code) is part of the Departures family.
+  const isDeparturesActive = isActive('/departures') || location.pathname.startsWith('/station');
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 md:relative md:bottom-auto bg-surface/80 backdrop-blur-xl border-t border-text-muted/20 md:border-none">
       <div className="flex items-center justify-around md:justify-start md:gap-4 px-4 py-3">
         <Link
           to="/departures"
           className={`flex flex-col md:flex-row items-center gap-1 md:gap-2 px-3 py-2 rounded-lg transition-colors ${
-            isActive('/departures') ? 'text-accent font-semibold' : 'text-text-secondary hover:text-text-primary'
+            isDeparturesActive ? 'text-accent font-semibold' : 'text-text-secondary hover:text-text-primary'
           }`}
         >
           <DeparturesIcon />

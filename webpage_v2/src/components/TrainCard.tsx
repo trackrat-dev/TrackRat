@@ -17,8 +17,10 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
   const bestDepartureTime = train.departure.actual_time || train.departure.updated_time || undefined;
   const delayMinutes = getDelayMinutes(train.departure.scheduled_time, bestDepartureTime);
 
-  const bestArrivalTime = train.arrival.actual_time || train.arrival.updated_time || undefined;
-  const arrivalDelayMinutes = getDelayMinutes(train.arrival.scheduled_time, bestArrivalTime);
+  // arrival is absent on single-station departure boards (no destination).
+  const arrival = train.arrival ?? undefined;
+  const bestArrivalTime = arrival ? (arrival.actual_time || arrival.updated_time || undefined) : undefined;
+  const arrivalDelayMinutes = arrival ? getDelayMinutes(arrival.scheduled_time, bestArrivalTime) : 0;
 
   // Detect boarding: train is at our departure station and hasn't departed yet
   const isBoarding =
@@ -112,17 +114,19 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-text-muted">Arrival</div>
-          <div className="font-medium text-text-primary">
-            {formatTime(train.arrival.scheduled_time)}
-            {bestArrivalTime && arrivalDelayMinutes > 0 && (
-              <span className="text-warning ml-2">
-                ({formatTime(bestArrivalTime)})
-              </span>
-            )}
+        {arrival && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-text-muted">Arrival</div>
+            <div className="font-medium text-text-primary">
+              {formatTime(arrival.scheduled_time)}
+              {bestArrivalTime && arrivalDelayMinutes > 0 && (
+                <span className="text-warning ml-2">
+                  ({formatTime(bestArrivalTime)})
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex items-center justify-between text-sm">
           <div className="text-text-muted">{train.destination}</div>

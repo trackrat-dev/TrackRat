@@ -91,6 +91,9 @@ export function TripSelectionPage() {
   const handleSearch = () => {
     if (selectedDeparture && selectedDestination) {
       navigate(`/trains/${selectedDeparture.code}/${selectedDestination.code}`);
+    } else if (selectedDeparture) {
+      // From-only: show the single-station departure board.
+      navigate(`/station/${selectedDeparture.code}`);
     }
   };
 
@@ -334,10 +337,12 @@ export function TripSelectionPage() {
 
         <button
           onClick={handleSearch}
-          disabled={!selectedDeparture || !selectedDestination}
+          disabled={!selectedDeparture}
           className="w-full bg-accent text-white font-semibold py-4 rounded-xl hover:bg-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Search Trains
+          {selectedDeparture && !selectedDestination
+            ? `View departures from ${selectedDeparture.name}`
+            : 'Search Trains'}
         </button>
 
         {selectedDeparture && selectedDestination && (

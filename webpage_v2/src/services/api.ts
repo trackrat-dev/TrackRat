@@ -1,4 +1,4 @@
-import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse } from '../types';
+import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse, DeparturesResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -124,6 +124,14 @@ export class APIService {
     let url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
     if (date) url += `&date=${encodeURIComponent(date)}`;
     return this.fetch<TripSearchResponse>(url, false, signal); // Don't cache — 30s polling needs fresh data
+  }
+
+  async getStationDepartures(stationCode: string, limit = 50, signal?: AbortSignal): Promise<DeparturesResponse> {
+    // Single-station board: /departures with no `to` returns every upcoming
+    // train leaving this station across all lines (hide_departed drops ones
+    // that already left). The backend filters out globally-disabled systems.
+    const url = `${BASE_URL}/trains/departures?from=${encodeURIComponent(stationCode)}&hide_departed=true&limit=${limit}`;
+    return this.fetch<DeparturesResponse>(url, false, signal); // Don't cache — 30s polling needs fresh data
   }
 
   async getRouteSummary(from: string, to: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {

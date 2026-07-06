@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { LandingPage } from './pages/LandingPage';
 import { TripSelectionPage } from './pages/TripSelectionPage';
 import { TrainListPage } from './pages/TrainListPage';
+import { StationDeparturesPage } from './pages/StationDeparturesPage';
 import { TrainDetailsPage } from './pages/TrainDetailsPage';
 import { TripDetailsPage } from './pages/TripDetailsPage';
 import { FavoritesPage } from './pages/FavoritesPage';
@@ -19,6 +20,7 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route element={<Layout />}>
           <Route path="/departures" element={<TripSelectionPage />} />
+          <Route path="/station/:code" element={<StationDeparturesPage />} />
           <Route path="/trains/:from/:to" element={<TrainListPage />} />
           <Route path="/route/:from/:to" element={<RouteStatusPage />} />
           <Route path="/trip" element={<TripDetailsPage />} />
