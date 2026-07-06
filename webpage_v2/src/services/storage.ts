@@ -10,6 +10,7 @@ const HOME_STATION_KEY = 'trackrat:homeStation';
 const WORK_STATION_KEY = 'trackrat:workStation';
 const HOME_WORK_NUDGE_DISMISSED_KEY = 'trackrat:homeWorkNudgeDismissed';
 const TRIP_HISTORY_KEY = 'trackrat:tripHistory';
+const MAP_EXPANDED_KEY = 'trackrat:mapExpanded';
 
 const MAX_RECENT_TRIPS = 10;
 const MAX_FAVORITE_ROUTES = 10;
@@ -196,6 +197,15 @@ class StorageService {
 
   dismissHomeWorkNudge(): void {
     this.writeData(HOME_WORK_NUDGE_DISMISSED_KEY, true);
+  }
+
+  // Route Map expand/collapse preference (default collapsed)
+  getMapExpanded(): boolean {
+    return this.readData<boolean>(MAP_EXPANDED_KEY) === true;
+  }
+
+  setMapExpanded(expanded: boolean): void {
+    this.writeData(MAP_EXPANDED_KEY, expanded);
   }
 
   // Trip History

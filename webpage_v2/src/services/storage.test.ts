@@ -248,6 +248,35 @@ describe('Home/Work Nudge Dismissal', () => {
   });
 });
 
+describe('Map Expanded Preference', () => {
+  it('defaults to collapsed (false) when nothing stored', () => {
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+
+  it('persists an expanded choice across reads', () => {
+    storageService.setMapExpanded(true);
+    expect(storageService.getMapExpanded()).toBe(true);
+  });
+
+  it('persists a collapsed choice across reads', () => {
+    storageService.setMapExpanded(true);
+    storageService.setMapExpanded(false);
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+
+  it('writes a versioned envelope', () => {
+    storageService.setMapExpanded(true);
+    const raw = JSON.parse(localStorage.getItem('trackrat:mapExpanded')!);
+    expect(raw.v).toBe(1);
+    expect(raw.data).toBe(true);
+  });
+
+  it('returns false on corrupted data', () => {
+    localStorage.setItem('trackrat:mapExpanded', '{not-json');
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+});
+
 describe('Trip History', () => {
   it('stores viewed trains with replay links', () => {
     storageService.saveViewedTrainTrip(makeMinimalTrain('3515', 'TR', 'NY'));
