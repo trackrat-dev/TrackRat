@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
+import { ReactElement } from 'react';
 import { StopCard } from './StopCard';
 import { Stop } from '../types';
+
+// StopCard links known station names to /station/:code, so it needs a Router.
+function render(ui: ReactElement) {
+  return rtlRender(<BrowserRouter>{ui}</BrowserRouter>);
+}
 
 function makeStop(overrides: Partial<Stop> = {}): Stop {
   return {

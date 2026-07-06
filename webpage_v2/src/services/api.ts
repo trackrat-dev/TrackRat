@@ -1,4 +1,4 @@
-import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse } from '../types';
+import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse, DeparturesResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -124,6 +124,29 @@ export class APIService {
     let url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
     if (date) url += `&date=${encodeURIComponent(date)}`;
     return this.fetch<TripSearchResponse>(url, false, signal); // Don't cache — 30s polling needs fresh data
+  }
+
+  async getDepartures(
+    from: string,
+    opts?: { to?: string; limit?: number; signal?: AbortSignal }
+  ): Promise<DeparturesResponse> {
+    const params = new URLSearchParams({ from });
+    if (opts?.to) params.set('to', opts.to);
+    params.set('limit', String(opts?.limit ?? 50));
+    const url = `${BASE_URL}/trains/departures?${params.toString()}`;
+    return this.fetch<DeparturesResponse>(url, false, opts?.signal); // Uncached — the station board polls
+  }
+
+  async getRecentDepartures(
+    from: string,
+    opts?: { to?: string; windowMinutes?: number; limit?: number; signal?: AbortSignal }
+  ): Promise<DeparturesResponse> {
+    const params = new URLSearchParams({ from });
+    if (opts?.to) params.set('to', opts.to);
+    params.set('window_minutes', String(opts?.windowMinutes ?? 120));
+    params.set('limit', String(opts?.limit ?? 50));
+    const url = `${BASE_URL}/trains/recent-departures?${params.toString()}`;
+    return this.fetch<DeparturesResponse>(url, false, opts?.signal); // Uncached — the station board polls
   }
 
   async getRouteSummary(from: string, to: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {

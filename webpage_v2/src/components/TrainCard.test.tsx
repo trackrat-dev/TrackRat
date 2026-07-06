@@ -117,6 +117,14 @@ describe('TrainCard', () => {
     expect(screen.getByText('NJT')).toBeInTheDocument();
   });
 
+  it('omits the arrival row when arrival is null (station-only board)', () => {
+    renderCard(makeTrain({ arrival: null }));
+
+    // Departure timing still renders; the arrival row is hidden without crashing.
+    expect(screen.getByText('Departure')).toBeInTheDocument();
+    expect(screen.queryByText('Arrival')).not.toBeInTheDocument();
+  });
+
   it('applies dimmed styling when departed', () => {
     const { container } = renderCard(makeTrain(), { departed: true });
 

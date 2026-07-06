@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
-import { getStationByCode, searchStations, searchStationsPartitioned, SYSTEM_NAMES, AVAILABLE_SYSTEMS } from '../data/stations';
+import { searchStations, searchStationsPartitioned, SYSTEM_NAMES, AVAILABLE_SYSTEMS } from '../data/stations';
 import { Station, TransitSystem } from '../types';
 import { storageService } from '../services/storage';
 import { getSuggestedRoute } from '../utils/ratsense';
@@ -428,18 +428,9 @@ export function TripSelectionPage() {
           <h3 className="text-lg font-semibold mb-3">Favorite Stations</h3>
           <div className="grid grid-cols-2 gap-2">
             {favoriteStations.map((station) => (
-              <button
+              <Link
                 key={station.id}
-                onClick={() => {
-                  const st = getStationByCode(station.id);
-                  if (st) {
-                    if (!selectedDeparture) {
-                      setDeparture(st);
-                    } else {
-                      setDestination(st);
-                    }
-                  }
-                }}
+                to={`/station/${station.id}`}
                 className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-3 text-left hover:bg-surface transition-all"
               >
                 <div className="font-medium text-sm text-text-primary flex items-center gap-1">
@@ -447,7 +438,7 @@ export function TripSelectionPage() {
                   <SubwayLineChips stationCode={station.id} size={14} />
                 </div>
                 <div className="text-xs text-text-muted mt-1">{station.id}</div>
-              </button>
+              </Link>
             ))}
           </div>
         </div>

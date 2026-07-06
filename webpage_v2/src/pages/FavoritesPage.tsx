@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAppStore } from '../store/appStore';
 import { StationPicker } from '../components/StationPicker';
 import { Station } from '../types';
@@ -154,13 +154,16 @@ export function FavoritesPage() {
               key={station.id}
               className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 flex items-center justify-between"
             >
-              <div>
+              <Link
+                to={`/station/${station.id}`}
+                className="min-w-0 hover:opacity-80 transition-opacity"
+              >
                 <div className="font-semibold text-lg text-text-primary flex items-center gap-1.5">
                   {station.name}
                   <SubwayLineChips stationCode={station.id} />
                 </div>
                 <div className="text-sm text-text-muted">{station.id}</div>
-              </div>
+              </Link>
               <button
                 onClick={() => removeFavorite(station.id)}
                 className="px-3 py-2 bg-error/20 text-error rounded-lg hover:bg-error/30 transition-colors font-semibold"
@@ -197,10 +200,17 @@ function ProfileStationCard({
   return (
     <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
       <div className="text-sm text-text-muted mb-1">{label}</div>
-      <div className="font-semibold text-text-primary flex items-center gap-1.5">
-        {station ? station.name : 'Not set'}
-        {station?.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
-      </div>
+      {station ? (
+        <Link
+          to={`/station/${station.code}`}
+          className="font-semibold text-text-primary flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+        >
+          {station.name}
+          {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
+        </Link>
+      ) : (
+        <div className="font-semibold text-text-primary">Not set</div>
+      )}
       {station && (
         <div className="text-sm text-text-muted mt-1">{station.code}</div>
       )}
