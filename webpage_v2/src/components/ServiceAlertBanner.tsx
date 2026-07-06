@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { apiService } from '../services/api';
-import { ServiceAlert } from '../types';
+import { ServiceAlert, TransitSystem } from '../types';
+import { ALERT_CAPABLE_SYSTEMS } from '../data/stations';
 
 interface ServiceAlertBannerProps {
   dataSource: string;
@@ -38,9 +39,8 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
   const routeIdsKey = useMemo(() => routeIds?.sort().join(',') ?? '', [routeIds]);
 
   useEffect(() => {
-    // Only fetch for MTA systems that have service alerts
-    const mtaSystems = ['SUBWAY', 'LIRR', 'MNR'];
-    if (!mtaSystems.includes(dataSource)) return;
+    // Only fetch for systems with backend service-alert collection (MTA + NJT).
+    if (!ALERT_CAPABLE_SYSTEMS.includes(dataSource as TransitSystem)) return;
 
     apiService.getServiceAlerts(dataSource)
       .then(res => {
