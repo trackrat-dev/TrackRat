@@ -8,6 +8,7 @@ const LAST_ROUTE_KEY = 'trackrat:lastRoute';
 const SYSTEMS_KEY = 'trackrat:systems';
 const HOME_STATION_KEY = 'trackrat:homeStation';
 const WORK_STATION_KEY = 'trackrat:workStation';
+const HOME_WORK_NUDGE_DISMISSED_KEY = 'trackrat:homeWorkNudgeDismissed';
 const TRIP_HISTORY_KEY = 'trackrat:tripHistory';
 
 const MAX_RECENT_TRIPS = 10;
@@ -186,6 +187,15 @@ class StorageService {
       return;
     }
     localStorage.removeItem(WORK_STATION_KEY);
+  }
+
+  // Home/Work Nudge
+  isHomeWorkNudgeDismissed(): boolean {
+    return this.readData<boolean>(HOME_WORK_NUDGE_DISMISSED_KEY) === true;
+  }
+
+  dismissHomeWorkNudge(): void {
+    this.writeData(HOME_WORK_NUDGE_DISMISSED_KEY, true);
   }
 
   // Trip History

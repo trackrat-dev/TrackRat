@@ -213,6 +213,41 @@ describe('Commute Profile', () => {
   });
 });
 
+describe('Home/Work Nudge Dismissal', () => {
+  it('reports not dismissed when nothing is stored', () => {
+    expect(storageService.isHomeWorkNudgeDismissed()).toBe(false);
+  });
+
+  it('persists dismissal so it survives across reloads', () => {
+    storageService.dismissHomeWorkNudge();
+
+    // A fresh read (mimicking a reload) still reports the nudge as dismissed.
+    expect(storageService.isHomeWorkNudgeDismissed()).toBe(true);
+  });
+
+  it('writes a versioned envelope for the dismissal flag', () => {
+    storageService.dismissHomeWorkNudge();
+
+    const raw = JSON.parse(localStorage.getItem('trackrat:homeWorkNudgeDismissed')!);
+    expect(raw.v).toBe(1);
+    expect(raw.data).toBe(true);
+  });
+
+  it('reports not dismissed on corrupted data', () => {
+    localStorage.setItem('trackrat:homeWorkNudgeDismissed', 'not-json');
+
+    expect(storageService.isHomeWorkNudgeDismissed()).toBe(false);
+  });
+
+  it('fails silently on quota exceeded when dismissing', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    expect(() => storageService.dismissHomeWorkNudge()).not.toThrow();
+  });
+});
+
 describe('Trip History', () => {
   it('stores viewed trains with replay links', () => {
     storageService.saveViewedTrainTrip(makeMinimalTrain('3515', 'TR', 'NY'));
