@@ -347,7 +347,7 @@ export function TrainListPage() {
             <TransferTripCard
               key={`transfer-${trip.legs.map(l => `${l.train_id}:${l.journey_date}`).join('|')}`}
               trip={trip}
-              onClick={() => navigate(buildTripUrl(trip))}
+              onClick={() => navigate(buildTripUrl(trip), { state: { trip } })}
             />
           ))}
         </div>
