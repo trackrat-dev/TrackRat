@@ -8,6 +8,7 @@ import { storageService } from '../services/storage';
 import { getSuggestedRoute } from '../utils/ratsense';
 import { buildTrainUrl } from '../utils/routes';
 import { getTrainSearchCandidates, inferTrainSearchSystem } from '../utils/trainSearch';
+import { resolveStationSlot, collidingStationNames } from '../utils/stationSelection';
 import { APIRequestError, apiService } from '../services/api';
 import { SubwayLineChips } from '../components/SubwayLineChips';
 
@@ -39,6 +40,8 @@ export function TripSelectionPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchingTrain, setIsSearchingTrain] = useState(false);
   const [trainSearchError, setTrainSearchError] = useState<string | null>(null);
+  // Station tapped while both From and To are set: prompts the From-or-To chooser.
+  const [pendingStation, setPendingStation] = useState<Station | null>(null);
 
   useEffect(() => {
     loadLastRoute();
@@ -81,6 +84,21 @@ export function TripSelectionPage() {
   );
   const shouldShowSearchResults = searchQuery.trim().length > 0;
 
+  // Resolve favorite codes to full stations so cards can show line chips and,
+  // only when two favorites share a name, the disambiguating system name.
+  const favoriteStationCards = useMemo(
+    () => favoriteStations.map((favorite) => ({ favorite, station: getStationByCode(favorite.id) })),
+    [favoriteStations]
+  );
+  const favoriteNameCollisions = useMemo(
+    () => collidingStationNames(
+      favoriteStationCards
+        .map((entry) => entry.station)
+        .filter((station): station is Station => station !== undefined)
+    ),
+    [favoriteStationCards]
+  );
+
   const currentRouteId = selectedDeparture && selectedDestination
     ? `${selectedDeparture.code}-${selectedDestination.code}`
     : null;
@@ -101,17 +119,34 @@ export function TripSelectionPage() {
     setDestination(selectedDeparture);
   };
 
-  const handleStationSearchSelection = (station: Station) => {
+  // Shared by quick search and the favorites grid: fill the empty slot, or ask
+  // From-or-To when the route is already full instead of silently overwriting To.
+  const applyStationSelection = (station: Station) => {
     setTrainSearchError(null);
-
-    if (!selectedDeparture) {
+    const decision = resolveStationSlot({
+      hasDeparture: !!selectedDeparture,
+      hasDestination: !!selectedDestination,
+    });
+    if (decision.action === 'choose') {
+      setPendingStation(station);
+      return;
+    }
+    if (decision.slot === 'from') {
       setDeparture(station);
-    } else if (!selectedDestination) {
-      setDestination(station);
     } else {
       setDestination(station);
     }
+    setSearchQuery('');
+  };
 
+  const chooseSlotForPending = (slot: 'from' | 'to') => {
+    if (!pendingStation) return;
+    if (slot === 'from') {
+      setDeparture(pendingStation);
+    } else {
+      setDestination(pendingStation);
+    }
+    setPendingStation(null);
     setSearchQuery('');
   };
 
@@ -230,10 +265,6 @@ export function TripSelectionPage() {
 
         {shouldShowSearchResults && (
           <div className="mt-4 space-y-3">
-            <div className="text-xs text-text-muted">
-              Search fills <span className="font-semibold text-text-secondary">From</span> first, then <span className="font-semibold text-text-secondary">To</span>. When both are set, quick search updates your destination.
-            </div>
-
             {trainSearchLabel && (
               <button
                 onClick={handleTrainSearch}
@@ -264,7 +295,7 @@ export function TripSelectionPage() {
               <SearchResultSection
                 title="Favorite stations"
                 stations={favoriteStationMatches}
-                onSelect={handleStationSearchSelection}
+                onSelect={applyStationSelection}
               />
             )}
 
@@ -272,7 +303,7 @@ export function TripSelectionPage() {
               <SearchResultSection
                 title="Stations"
                 stations={standardStationMatches.slice(0, 6)}
-                onSelect={handleStationSearchSelection}
+                onSelect={applyStationSelection}
               />
             )}
 
@@ -280,7 +311,7 @@ export function TripSelectionPage() {
               <SearchResultSection
                 title="Other systems"
                 stations={otherSystemStationResults.slice(0, 6)}
-                onSelect={handleStationSearchSelection}
+                onSelect={applyStationSelection}
                 subdued
               />
             )}
@@ -427,26 +458,22 @@ export function TripSelectionPage() {
         <div>
           <h3 className="text-lg font-semibold mb-3">Favorite Stations</h3>
           <div className="grid grid-cols-2 gap-2">
-            {favoriteStations.map((station) => (
+            {favoriteStationCards.map(({ favorite, station }) => (
               <button
-                key={station.id}
+                key={favorite.id}
                 onClick={() => {
-                  const st = getStationByCode(station.id);
-                  if (st) {
-                    if (!selectedDeparture) {
-                      setDeparture(st);
-                    } else {
-                      setDestination(st);
-                    }
-                  }
+                  if (station) applyStationSelection(station);
                 }}
-                className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-3 text-left hover:bg-surface transition-all"
+                disabled={!station}
+                className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-3 text-left hover:bg-surface transition-all disabled:opacity-50"
               >
                 <div className="font-medium text-sm text-text-primary flex items-center gap-1">
-                  {station.name}
-                  <SubwayLineChips stationCode={station.id} size={14} />
+                  {favorite.name}
+                  <SubwayLineChips stationCode={favorite.id} size={14} />
                 </div>
-                <div className="text-xs text-text-muted mt-1">{station.id}</div>
+                {station?.system && favoriteNameCollisions.has(station.name) && (
+                  <div className="text-xs text-text-muted mt-1">{SYSTEM_NAMES[station.system]}</div>
+                )}
               </button>
             ))}
           </div>
@@ -475,6 +502,82 @@ export function TripSelectionPage() {
           onClose={() => setShowDestinationPicker(false)}
         />
       )}
+
+      {pendingStation && (
+        <StationSlotChooser
+          station={pendingStation}
+          fromName={selectedDeparture?.name ?? null}
+          toName={selectedDestination?.name ?? null}
+          onChoose={chooseSlotForPending}
+          onClose={() => setPendingStation(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Asked when a favorite/quick-search station is tapped while both slots are full,
+// so the user can point it at From or To instead of always overwriting To.
+function StationSlotChooser({
+  station,
+  fromName,
+  toName,
+  onChoose,
+  onClose,
+}: {
+  station: Station;
+  fromName: string | null;
+  toName: string | null;
+  onChoose: (slot: 'from' | 'to') => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="slotchooser-title"
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      onClick={onClose}
+      className="fixed inset-0 bg-text-primary/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-surface w-full md:max-w-md md:rounded-2xl rounded-t-2xl p-5"
+      >
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <div className="text-sm text-text-muted">Add to your route</div>
+            <h2 id="slotchooser-title" className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
+              {station.name}
+              {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="flex items-center justify-center w-11 h-11 -mr-2 -mt-1 rounded-full text-text-secondary hover:text-text-primary hover:bg-background text-2xl leading-none transition-colors"
+          >
+            ×
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            autoFocus
+            onClick={() => onChoose('from')}
+            className="bg-accent text-white rounded-xl p-3 text-left hover:bg-accent/80 transition-colors"
+          >
+            <div className="text-sm font-semibold">Set as From</div>
+            {fromName && <div className="text-xs text-white/80 mt-1 truncate">Replaces {fromName}</div>}
+          </button>
+          <button
+            onClick={() => onChoose('to')}
+            className="bg-surface border border-text-muted/20 text-text-primary rounded-xl p-3 text-left hover:bg-background transition-colors"
+          >
+            <div className="text-sm font-semibold">Set as To</div>
+            {toName && <div className="text-xs text-text-muted mt-1 truncate">Replaces {toName}</div>}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -507,15 +610,12 @@ function SearchResultSection({
             }`}
           >
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-medium text-text-primary flex items-center gap-1.5">
-                  {station.name}
-                  {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
-                </div>
-                <div className="text-sm text-text-muted">{station.code}</div>
+              <div className="font-medium text-text-primary flex items-center gap-1.5">
+                {station.name}
+                {station.system === 'SUBWAY' && <SubwayLineChips stationCode={station.code} />}
               </div>
               {station.system && (
-                <div className="text-xs text-text-muted bg-surface/80 px-2 py-1 rounded-full">
+                <div className="text-xs text-text-muted bg-surface/80 px-2 py-1 rounded-full whitespace-nowrap">
                   {formatSystemLabel(station.system)}
                 </div>
               )}
