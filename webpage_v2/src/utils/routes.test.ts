@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TripOption } from '../types';
-import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseTripParam } from './routes';
+import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseTripLegsParam, parseTripParam } from './routes';
 
 describe('buildTrainUrl', () => {
   it('builds a route-scoped train URL with query params', () => {
@@ -80,15 +80,77 @@ describe('trip URL helpers', () => {
     is_direct: false,
   };
 
-  it('round-trips trip data through the URL query string', () => {
-    const url = buildTripUrl(trip);
-    const query = url.split('?')[1];
-    const params = new URLSearchParams(query);
+  const paramsOf = (url: string) => new URLSearchParams(url.split('?')[1]);
 
-    expect(parseTripParam(params.get('trip'))).toEqual(trip);
+  it('builds a compact, self-contained trip URL', () => {
+    const url = buildTripUrl(trip);
+    const params = paramsOf(url);
+
+    expect(url.startsWith('/trip?')).toBe(true);
+    expect(url.length).toBeLessThan(200);
+    expect(params.get('date')).toBe('2025-03-28');
+    expect(params.get('legs')).toBe('NJT:3515:TR:SEC,AMTRAK:A174:SEC:NYP');
+    expect(params.get('walk')).toBe('0');
   });
 
-  it('returns null for invalid trip payloads', () => {
+  it('round-trips a trip through the compact legs format', () => {
+    expect(parseTripLegsParam(paramsOf(buildTripUrl(trip)))).toEqual({
+      date: '2025-03-28',
+      legs: [
+        { dataSource: 'NJT', trainId: '3515', boardingCode: 'TR', alightingCode: 'SEC' },
+        { dataSource: 'AMTRAK', trainId: 'A174', boardingCode: 'SEC', alightingCode: 'NYP' },
+      ],
+      walkMinutes: [0],
+    });
+  });
+
+  it('encodes and parses one walk value per transfer junction', () => {
+    const walkedTrip: TripOption = {
+      ...trip,
+      transfers: [{ ...trip.transfers[0], walk_minutes: 7, same_station: false }],
+    };
+    expect(paramsOf(buildTripUrl(walkedTrip)).get('walk')).toBe('7');
+
+    const twoTransfers = new URLSearchParams(
+      'date=2025-03-28&legs=NJT:1:A:B,PATH:2:B:C,AMTRAK:3:C:D&walk=0,7'
+    );
+    expect(parseTripLegsParam(twoTransfers)?.walkMinutes).toEqual([0, 7]);
+  });
+
+  it('parses a direct (single-leg) trip with no walk param', () => {
+    const single = new URLSearchParams('date=2025-03-28&legs=NJT:3515:TR:NYP');
+    expect(parseTripLegsParam(single)).toEqual({
+      date: '2025-03-28',
+      legs: [{ dataSource: 'NJT', trainId: '3515', boardingCode: 'TR', alightingCode: 'NYP' }],
+      walkMinutes: [],
+    });
+  });
+
+  it('returns null for malformed compact legs', () => {
+    // Missing date / missing legs
+    expect(parseTripLegsParam(new URLSearchParams('legs=NJT:3515:TR:SEC'))).toBeNull();
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28'))).toBeNull();
+    // Wrong field count in a leg
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:3515:TR'))).toBeNull();
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:3515:TR:SEC:EXTRA'))).toBeNull();
+    // Empty field in a leg
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT::TR:SEC'))).toBeNull();
+    // Walk count does not match transfer count
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:1:A:B,PATH:2:B:C&walk=0,1'))).toBeNull();
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:1:A:B,PATH:2:B:C'))).toBeNull();
+    // Non-numeric / negative walk
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:1:A:B,PATH:2:B:C&walk=x'))).toBeNull();
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:1:A:B,PATH:2:B:C&walk=-1'))).toBeNull();
+    // Walk present on a single-leg (zero-transfer) trip
+    expect(parseTripLegsParam(new URLSearchParams('date=2025-03-28&legs=NJT:3515:TR:NYP&walk=3'))).toBeNull();
+  });
+
+  it('still parses legacy ?trip=<JSON> links', () => {
+    const legacyUrl = `/trip?trip=${encodeURIComponent(JSON.stringify(trip))}`;
+    expect(parseTripParam(paramsOf(legacyUrl).get('trip'))).toEqual(trip);
+  });
+
+  it('returns null for invalid legacy trip payloads', () => {
     expect(parseTripParam('not-json')).toBeNull();
   });
 });

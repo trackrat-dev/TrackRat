@@ -280,7 +280,14 @@ describe('Trip History', () => {
     const history = storageService.getTripHistory();
     expect(history).toHaveLength(1);
     expect(history[0].kind).toBe('trip');
-    expect(history[0].href).toContain('/trip?trip=');
+
+    // Compact, shareable replay link — not the old full-JSON payload.
+    const url = new URL(history[0].href, 'https://trackrat.net');
+    expect(url.pathname).toBe('/trip');
+    expect(url.searchParams.get('date')).toBe('2026-04-01');
+    expect(url.searchParams.get('legs')).toBe('NJT:3515:TR:SEC,AMTRAK:A174:SEC:NY');
+    expect(url.searchParams.get('walk')).toBe('0');
+    expect(history[0].href).not.toContain('trip=');
   });
 
   it('limits to 50 entries', () => {
