@@ -4,13 +4,14 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { RouteStatusPage } from './RouteStatusPage';
 import { AggregateStats, RouteHistoryResponse } from '../types';
 
-// RouteStatusPage and its children (UpcomingTrains, ServiceAlertBanner) all read
-// from apiService, so mock the whole module.
+// RouteStatusPage and its children (DeparturesTimeline, ServiceAlertBanner) all
+// read from apiService, so mock the whole module.
 vi.mock('../services/api', () => ({
   apiService: {
     getRouteHistory: vi.fn(),
     getRouteSummary: vi.fn(),
     searchTrips: vi.fn(),
+    getRecentDepartures: vi.fn(),
     getServiceAlerts: vi.fn(),
   },
 }));
@@ -53,6 +54,7 @@ describe('RouteStatusPage', () => {
     vi.mocked(apiService.getRouteHistory).mockReset();
     vi.mocked(apiService.getRouteSummary).mockResolvedValue(null);
     vi.mocked(apiService.searchTrips).mockResolvedValue({ trips: [] } as never);
+    vi.mocked(apiService.getRecentDepartures).mockResolvedValue({ departures: [] } as never);
     vi.mocked(apiService.getServiceAlerts).mockResolvedValue({ alerts: [] } as never);
   });
 
