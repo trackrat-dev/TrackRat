@@ -140,6 +140,17 @@ export class APIService {
     return this.fetch<TripSearchResponse>(url, false, signal); // Don't cache — 30s polling needs fresh data
   }
 
+  async getDepartures(
+    from: string,
+    opts?: { to?: string; limit?: number; signal?: AbortSignal }
+  ): Promise<DeparturesResponse> {
+    const params = new URLSearchParams({ from });
+    if (opts?.to) params.set('to', opts.to);
+    params.set('limit', String(opts?.limit ?? 50));
+    const url = `${BASE_URL}/trains/departures?${params.toString()}`;
+    return this.fetch<DeparturesResponse>(url, false, opts?.signal); // Uncached — the station board polls
+  }
+
   /**
    * Recently-departed trains from a station (last `windowMinutes`, default 120).
    * Mirrors the departures shape but returns trains already gone — used to build

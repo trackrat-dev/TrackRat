@@ -69,7 +69,9 @@ export interface Train {
   line: LineInfo;
   destination: string;
   departure: StationTiming;
-  arrival: StationTiming;
+  // Null when the departures query omits a destination (station-only board):
+  // the backend has no "to" stop to time against. See DepartureService.
+  arrival: StationTiming | null;
   train_position?: {
     last_departed_station_code?: string;
     at_station_code?: string | null;
@@ -89,10 +91,11 @@ export interface DeparturesResponse {
       code: string;
       name: string;
     };
+    // Null for a station-only query (no destination filter).
     to_station: {
       code: string;
       name: string;
-    };
+    } | null;
     count: number;
     generated_at: string;
   };

@@ -1,5 +1,7 @@
+import { Link } from 'react-router-dom';
 import { Stop } from '../types';
 import { formatTime, getDelayMinutes } from '../utils/date';
+import { getStationByCode } from '../data/stations';
 import { SubwayLineChips } from './SubwayLineChips';
 import { TimeDisplay } from './TimeDisplay';
 
@@ -29,7 +31,16 @@ export function StopCard({ stop, isOrigin = false, isDestination = false, curren
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1">
           <div className="font-semibold text-text-primary flex items-center gap-1.5">
-            {stop.station.name}
+            {getStationByCode(stop.station.code) ? (
+              <Link
+                to={`/station/${stop.station.code}`}
+                className="hover:text-accent transition-colors"
+              >
+                {stop.station.name}
+              </Link>
+            ) : (
+              stop.station.name
+            )}
             <SubwayLineChips stationCode={stop.station.code} excludeLine={currentLine} />
           </div>
           <div className="text-sm text-text-muted">{stop.station.code}</div>

@@ -19,8 +19,13 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
   const bestDepartureTime = train.departure.actual_time || train.departure.updated_time || undefined;
   const delayMinutes = getDelayMinutes(train.departure.scheduled_time, bestDepartureTime);
 
-  const bestArrivalTime = train.arrival.actual_time || train.arrival.updated_time || undefined;
-  const arrivalDelayMinutes = getDelayMinutes(train.arrival.scheduled_time, bestArrivalTime);
+  // arrival is absent on a station-only departure board (no destination stop).
+  const bestArrivalTime = train.arrival
+    ? train.arrival.actual_time || train.arrival.updated_time || undefined
+    : undefined;
+  const arrivalDelayMinutes = train.arrival
+    ? getDelayMinutes(train.arrival.scheduled_time, bestArrivalTime)
+    : 0;
 
   // "in N min" countdown, only for today's live journeys (not future-date searches).
   const countdown =
@@ -123,16 +128,18 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-text-muted">Arrival</div>
-          <div>
-            <TimeDisplay
-              scheduledTime={train.arrival.scheduled_time}
-              liveTime={bestArrivalTime}
-              delayMinutes={arrivalDelayMinutes}
-            />
+        {train.arrival && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-text-muted">Arrival</div>
+            <div>
+              <TimeDisplay
+                scheduledTime={train.arrival.scheduled_time}
+                liveTime={bestArrivalTime}
+                delayMinutes={arrivalDelayMinutes}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex items-center justify-between text-sm">
           <div className="text-text-muted">{train.destination}</div>

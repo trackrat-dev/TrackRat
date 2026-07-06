@@ -532,3 +532,59 @@ describe('abort handling', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 });
+
+describe('getDepartures', () => {
+  it('constructs a station-only departures URL', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB', { limit: 30 });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('/trains/departures?');
+    expect(url).toContain('from=HB');
+    expect(url).toContain('limit=30');
+    expect(url).not.toContain('to=');
+  });
+
+  it('includes an optional destination when provided', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB', { to: 'NY' });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('from=HB');
+    expect(url).toContain('to=NY');
+  });
+
+  it('does not cache (polling needs fresh data)', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB');
+    await api.getDepartures('HB');
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getRecentDepartures', () => {
+  it('constructs a recent-departures URL with the look-back window', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getRecentDepartures('HB', { windowMinutes: 120, limit: 10 });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('/trains/recent-departures?');
+    expect(url).toContain('from=HB');
+    expect(url).toContain('window_minutes=120');
+    expect(url).toContain('limit=10');
+  });
+
+  it('defaults the window to 120 minutes', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getRecentDepartures('HB');
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('window_minutes=120');
+  });
+});
