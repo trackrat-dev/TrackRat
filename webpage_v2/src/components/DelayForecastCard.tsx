@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { apiService } from '../services/api';
 import { DelayForecastResponse } from '../types';
+import { usePolling } from '../utils/usePolling';
 
 interface DelayForecastCardProps {
   trainId: string;
   stationCode: string;
   journeyDate: string;
 }
+
+/** Forecasts drift as trains move; refresh often enough to stay current. */
+const FORECAST_POLL_MS = 60_000;
 
 function getProbabilityColor(probability: number): string {
   if (probability < 0.2) return 'text-success';
@@ -26,14 +30,34 @@ function formatPercent(value: number): string {
 
 export function DelayForecastCard({ trainId, stationCode, journeyDate }: DelayForecastCardProps) {
   const [forecast, setForecast] = useState<DelayForecastResponse | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    apiService.getDelayForecast(trainId, stationCode, journeyDate)
-      .then(setForecast)
-      .catch(() => {});
+  const fetchForecast = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const result = await apiService.getDelayForecast(trainId, stationCode, journeyDate, signal);
+      setForecast(result);
+      setFailed(false);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setFailed(true);
+    }
   }, [trainId, stationCode, journeyDate]);
 
-  if (!forecast) return null;
+  usePolling(fetchForecast, [trainId, stationCode, journeyDate], { intervalMs: FORECAST_POLL_MS });
+
+  // No data yet: show a muted note if the last fetch failed, otherwise render
+  // nothing (this train/station simply has no forecast). Once data arrives we
+  // keep showing it even if a later poll fails (stale-while-error).
+  if (!forecast) {
+    if (failed) {
+      return (
+        <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
+          <p className="text-sm text-text-muted">Couldn’t load delay forecast</p>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const onTimePct = forecast.delay_probabilities.on_time;
   const cancellationPct = forecast.cancellation_probability;

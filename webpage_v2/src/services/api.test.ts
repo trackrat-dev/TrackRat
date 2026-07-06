@@ -170,11 +170,17 @@ describe('searchTrips', () => {
 });
 
 describe('getRouteSummary', () => {
-  it('returns null on failure (fail-silent)', async () => {
-    mockFetch.mockReturnValue(jsonResponse(null, 500));
+  it('returns null when the route has no summary (404)', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getRouteSummary('NY', 'NP');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getRouteSummary('NY', 'NP')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs correct URL with scope=route', async () => {
@@ -190,11 +196,17 @@ describe('getRouteSummary', () => {
 });
 
 describe('getPlatformPrediction', () => {
-  it('returns null on failure (fail-silent)', async () => {
+  it('returns null when predictions are unavailable (404)', async () => {
     mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getPlatformPrediction('NY', '3515', '2025-01-15');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getPlatformPrediction('NY', '3515', '2025-01-15')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs correct URL', async () => {
@@ -210,11 +222,17 @@ describe('getPlatformPrediction', () => {
 });
 
 describe('getDelayForecast', () => {
-  it('returns null on failure (fail-silent)', async () => {
-    mockFetch.mockReturnValue(jsonResponse(null, 500));
+  it('returns null when a forecast is unavailable (404)', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getDelayForecast('3515', 'NY', '2025-01-15');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getDelayForecast('3515', 'NY', '2025-01-15')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs correct URL', async () => {
@@ -230,11 +248,17 @@ describe('getDelayForecast', () => {
 });
 
 describe('getTrainHistory', () => {
-  it('returns null on failure (fail-silent)', async () => {
-    mockFetch.mockReturnValue(jsonResponse(null, 500));
+  it('returns null when no history exists (404)', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getTrainHistory('3515');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getTrainHistory('3515')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs URL with default days=365', async () => {

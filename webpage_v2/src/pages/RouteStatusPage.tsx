@@ -65,7 +65,8 @@ export function RouteStatusPage() {
     const { days, hours } = periodToApiParams(period);
     Promise.all([
       apiService.getRouteHistory(from, to, dataSource, days, hours),
-      apiService.getRouteSummary(from, to),
+      // Summary is optional context; a failure here must not blank the whole page.
+      apiService.getRouteSummary(from, to).catch(() => null),
     ])
       .then(([historyRes, summaryRes]) => {
         setHistory(historyRes);

@@ -84,6 +84,20 @@ export class APIService {
     }
   }
 
+  /**
+   * Error policy for optional endpoints (predictions, summaries, history).
+   * These endpoints are not present for every train/station, so a 404 means
+   * "not available here" and is reported as an empty result (null). Every other
+   * failure — network error, timeout, 5xx — is a genuine problem that the caller
+   * must be able to surface (e.g. an inline "couldn't load" note), so it is
+   * re-thrown. AbortError is always re-thrown so pollers can ignore cancellation.
+   */
+  private nullOn404(error: unknown): null {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    if (error instanceof APIRequestError && error.status === 404) return null;
+    throw error;
+  }
+
   async getTrainDetails(
     trainId: string,
     date?: string,
@@ -156,37 +170,35 @@ export class APIService {
       const url = `${BASE_URL}/routes/summary?scope=route&from_station=${encodeURIComponent(from)}&to_station=${encodeURIComponent(to)}`;
       return await this.fetch<OperationsSummaryResponse>(url, true, signal);
     } catch (err) {
-      // Re-throw aborts so callers can ignore them; swallow real failures (summary is optional)
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      return null;
+      return this.nullOn404(err);
     }
   }
 
   async getPlatformPrediction(
     stationCode: string,
     trainId: string,
-    journeyDate: string
+    journeyDate: string,
+    signal?: AbortSignal
   ): Promise<PlatformPrediction | null> {
     try {
       const url = `${BASE_URL}/predictions/track?station_code=${stationCode}&train_id=${trainId}&journey_date=${journeyDate}`;
-      return await this.fetch<PlatformPrediction>(url, false); // Don't cache predictions
-    } catch {
-      // Fail silently - predictions are optional
-      return null;
+      return await this.fetch<PlatformPrediction>(url, false, signal); // Don't cache predictions
+    } catch (err) {
+      return this.nullOn404(err);
     }
   }
 
   async getDelayForecast(
     trainId: string,
     stationCode: string,
-    journeyDate: string
+    journeyDate: string,
+    signal?: AbortSignal
   ): Promise<DelayForecastResponse | null> {
     try {
       const url = `${BASE_URL}/predictions/delay?train_id=${encodeURIComponent(trainId)}&station_code=${encodeURIComponent(stationCode)}&journey_date=${encodeURIComponent(journeyDate)}`;
-      return await this.fetch<DelayForecastResponse>(url, false);
-    } catch {
-      // Fail silently - delay predictions are optional
-      return null;
+      return await this.fetch<DelayForecastResponse>(url, false, signal);
+    } catch (err) {
+      return this.nullOn404(err);
     }
   }
 
@@ -195,24 +207,24 @@ export class APIService {
     return this.fetch<SupportedStationsResponse>(url);
   }
 
-  async getTrainHistory(trainId: string, days = 365, fromStation?: string, toStation?: string): Promise<TrainHistoryResponse | null> {
+  async getTrainHistory(trainId: string, days = 365, fromStation?: string, toStation?: string, signal?: AbortSignal): Promise<TrainHistoryResponse | null> {
     try {
       const params = new URLSearchParams({ days: days.toString() });
       if (fromStation) params.set('from_station', fromStation);
       if (toStation) params.set('to_station', toStation);
       const url = `${BASE_URL}/trains/${encodeURIComponent(trainId)}/history?${params.toString()}`;
-      return await this.fetch<TrainHistoryResponse>(url);
-    } catch {
-      return null;
+      return await this.fetch<TrainHistoryResponse>(url, true, signal);
+    } catch (err) {
+      return this.nullOn404(err);
     }
   }
 
-  async getTrainSummary(trainId: string, from: string, to: string): Promise<OperationsSummaryResponse | null> {
+  async getTrainSummary(trainId: string, from: string, to: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
     try {
       const url = `${BASE_URL}/routes/summary?scope=train&train_id=${encodeURIComponent(trainId)}&from_station=${encodeURIComponent(from)}&to_station=${encodeURIComponent(to)}`;
-      return await this.fetch<OperationsSummaryResponse>(url);
-    } catch {
-      return null;
+      return await this.fetch<OperationsSummaryResponse>(url, true, signal);
+    } catch (err) {
+      return this.nullOn404(err);
     }
   }
 
@@ -250,13 +262,13 @@ export class APIService {
     }
   }
 
-  async getServiceAlerts(dataSource?: string, alertType?: string): Promise<ServiceAlertsResponse> {
+  async getServiceAlerts(dataSource?: string, alertType?: string, signal?: AbortSignal): Promise<ServiceAlertsResponse> {
     const params = new URLSearchParams();
     if (dataSource) params.set('data_source', dataSource);
     if (alertType) params.set('alert_type', alertType);
     const query = params.toString();
     const url = `${BASE_URL}/alerts/service${query ? `?${query}` : ''}`;
-    return this.fetch<ServiceAlertsResponse>(url);
+    return this.fetch<ServiceAlertsResponse>(url, true, signal);
   }
 
   async submitFeedback(feedback: FeedbackRequest): Promise<void> {
