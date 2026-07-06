@@ -39,6 +39,7 @@ export function TripSelectionPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchingTrain, setIsSearchingTrain] = useState(false);
   const [trainSearchError, setTrainSearchError] = useState<string | null>(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(() => storageService.isHomeWorkNudgeDismissed());
 
   useEffect(() => {
     loadLastRoute();
@@ -99,6 +100,13 @@ export function TripSelectionPage() {
 
     setDeparture(selectedDestination);
     setDestination(selectedDeparture);
+  };
+
+  const showHomeWorkNudge = (!homeStation || !workStation) && !nudgeDismissed;
+
+  const dismissHomeWorkNudge = () => {
+    storageService.dismissHomeWorkNudge();
+    setNudgeDismissed(true);
   };
 
   const handleStationSearchSelection = (station: Station) => {
@@ -162,7 +170,7 @@ export function TripSelectionPage() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6 text-center text-text-primary">Where would you like to go?</h2>
+      <h2 className="text-2xl font-bold mb-4 text-center text-text-primary">Where would you like to go?</h2>
 
       {suggestedRoute && (
         <button
@@ -182,19 +190,31 @@ export function TripSelectionPage() {
         </button>
       )}
 
-      {(!homeStation || !workStation) && (
-        <button
-          onClick={() => navigate('/favorites')}
-          className="w-full mb-6 bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 text-left hover:bg-surface transition-all"
-        >
-          <div className="text-sm font-semibold text-text-primary">Set your home and work stations</div>
-          <div className="text-sm text-text-muted mt-1">
-            Save your commute once so TrackRat can surface quicker suggestions.
-          </div>
-        </button>
+      {showHomeWorkNudge && (
+        <div className="relative mb-4">
+          <button
+            onClick={() => navigate('/favorites')}
+            className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 pr-10 text-left hover:bg-surface transition-all"
+          >
+            <div className="text-sm font-semibold text-text-primary">Set your home and work stations</div>
+            <div className="text-sm text-text-muted mt-1">
+              Save your commute once so TrackRat can surface quicker suggestions.
+            </div>
+          </button>
+          <button
+            onClick={dismissHomeWorkNudge}
+            aria-label="Dismiss"
+            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full text-text-muted hover:bg-surface hover:text-text-primary transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18" />
+              <path d="m6 6 12 12" />
+            </svg>
+          </button>
+        </div>
       )}
 
-      <div className="mb-6 bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
+      <div className="mb-4 bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
         <div className="text-sm font-semibold text-text-primary mb-3">Quick search</div>
         <input
           type="text"
@@ -209,23 +229,26 @@ export function TripSelectionPage() {
           className="w-full px-4 py-3 bg-background border border-text-muted/30 rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent"
         />
 
-        <div className="flex gap-1.5 overflow-x-auto pt-3">
-          {AVAILABLE_SYSTEMS.map((system) => {
-            const active = preferredSystems.length === 0 || preferredSystems.includes(system);
-            return (
-              <button
-                key={system}
-                onClick={() => toggleSystem(system)}
-                className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-                  active
-                    ? 'bg-accent text-white'
-                    : 'bg-surface border border-text-muted/20 text-text-muted hover:text-text-secondary'
-                }`}
-              >
-                {SYSTEM_NAMES[system]}
-              </button>
-            );
-          })}
+        <div className="relative pt-3">
+          <div className="flex gap-1.5 overflow-x-auto pr-8">
+            {AVAILABLE_SYSTEMS.map((system) => {
+              const active = preferredSystems.length === 0 || preferredSystems.includes(system);
+              return (
+                <button
+                  key={system}
+                  onClick={() => toggleSystem(system)}
+                  className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                    active
+                      ? 'bg-accent text-white'
+                      : 'bg-surface border border-text-muted/20 text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {SYSTEM_NAMES[system]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="pointer-events-none absolute top-3 right-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent" />
         </div>
 
         {shouldShowSearchResults && (
@@ -295,47 +318,56 @@ export function TripSelectionPage() {
       </div>
 
       {/* Station Selection */}
-      <div className="space-y-4 mb-8">
-        <button
-          onClick={() => setShowDeparturePicker(true)}
-          className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 text-left hover:bg-surface transition-all"
-        >
-          <div className="text-sm text-text-muted mb-1">From</div>
-          <div className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
-            {selectedDeparture ? selectedDeparture.name : 'Choose a station'}
-            {selectedDeparture?.system === 'SUBWAY' && <SubwayLineChips stationCode={selectedDeparture.code} />}
-          </div>
-          {selectedDeparture && (
-            <div className="text-sm text-text-muted mt-1">{selectedDeparture.code}</div>
-          )}
-        </button>
+      <div className="mb-8">
+        <div className="relative space-y-3">
+          <button
+            onClick={() => setShowDeparturePicker(true)}
+            className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 pr-14 text-left hover:bg-surface transition-all"
+          >
+            <div className="text-sm text-text-muted mb-1">From</div>
+            <div className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
+              {selectedDeparture ? selectedDeparture.name : 'Choose a station'}
+              {selectedDeparture?.system === 'SUBWAY' && <SubwayLineChips stationCode={selectedDeparture.code} />}
+            </div>
+            {selectedDeparture && (
+              <div className="text-sm text-text-muted mt-1">{selectedDeparture.code}</div>
+            )}
+          </button>
 
-        <button
-          onClick={() => setShowDestinationPicker(true)}
-          className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-6 text-left hover:bg-surface transition-all"
-        >
-          <div className="text-sm text-text-muted mb-1">To</div>
-          <div className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
-            {selectedDestination ? selectedDestination.name : 'Choose a station'}
-            {selectedDestination?.system === 'SUBWAY' && <SubwayLineChips stationCode={selectedDestination.code} />}
-          </div>
-          {selectedDestination && (
-            <div className="text-sm text-text-muted mt-1">{selectedDestination.code}</div>
-          )}
-        </button>
+          <button
+            onClick={() => setShowDestinationPicker(true)}
+            className="w-full bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4 pr-14 text-left hover:bg-surface transition-all"
+          >
+            <div className="text-sm text-text-muted mb-1">To</div>
+            <div className="text-lg font-semibold text-text-primary flex items-center gap-1.5">
+              {selectedDestination ? selectedDestination.name : 'Choose a station'}
+              {selectedDestination?.system === 'SUBWAY' && <SubwayLineChips stationCode={selectedDestination.code} />}
+            </div>
+            {selectedDestination && (
+              <div className="text-sm text-text-muted mt-1">{selectedDestination.code}</div>
+            )}
+          </button>
 
-        <button
-          onClick={handleSwapStations}
-          disabled={!selectedDeparture || !selectedDestination}
-          className="w-full bg-surface/40 backdrop-blur-xl border border-text-muted/20 text-text-primary font-semibold py-3 rounded-xl hover:bg-surface transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Swap Route
-        </button>
+          {/* Compact swap button overlapping the From/To seam */}
+          <button
+            onClick={handleSwapStations}
+            disabled={!selectedDeparture || !selectedDestination}
+            aria-label="Swap stations"
+            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-surface border border-text-muted/30 text-text-primary shadow-sm hover:bg-background transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m21 16-4 4-4-4" />
+              <path d="M17 20V4" />
+              <path d="m3 8 4-4 4 4" />
+              <path d="M7 4v16" />
+            </svg>
+          </button>
+        </div>
 
         <button
           onClick={handleSearch}
           disabled={!selectedDeparture || !selectedDestination}
-          className="w-full bg-accent text-white font-semibold py-4 rounded-xl hover:bg-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full mt-3 bg-accent text-white font-semibold py-4 rounded-xl hover:bg-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Search Trains
         </button>
@@ -344,7 +376,7 @@ export function TripSelectionPage() {
           <button
             onClick={() => addFavoriteRoute(selectedDeparture, selectedDestination)}
             disabled={currentRouteIsFavorited}
-            className="w-full bg-surface/50 backdrop-blur-xl border border-text-muted/20 text-text-primary font-semibold py-3 rounded-xl hover:bg-surface transition-colors disabled:opacity-60 disabled:cursor-default"
+            className="w-full mt-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 text-text-primary font-semibold py-3 rounded-xl hover:bg-surface transition-colors disabled:opacity-60 disabled:cursor-default"
           >
             {currentRouteIsFavorited ? 'Route Saved' : 'Save This Route'}
           </button>
