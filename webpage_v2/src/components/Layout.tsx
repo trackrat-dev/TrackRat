@@ -28,6 +28,7 @@ export function Layout() {
               </span>
             </Link>
           </h1>
+          <Navigation variant="header" />
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowFeedback(true)}
@@ -62,7 +63,7 @@ export function Layout() {
         </div>
       </main>
 
-      <Navigation />
+      <Navigation variant="bottom" />
     </div>
   );
 }
