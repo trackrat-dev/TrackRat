@@ -12,10 +12,16 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
   const [stats, setStats] = useState<TrainHistoryStatistics | null>(null);
   const [trackDistribution, setTrackDistribution] = useState<Record<string, number>>({});
   const [expanded, setExpanded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
+  // History is stable within a session, so fetch once (not polled). The
+  // AbortController cancels the in-flight request if the component unmounts.
   useEffect(() => {
-    apiService.getTrainHistory(trainId, 365, fromStation, toStation)
-      .then(res => {
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await apiService.getTrainHistory(trainId, 365, fromStation, toStation, controller.signal);
+        setFailed(false);
         if (!res || res.statistics.total_journeys < 5) return;
         setStats(res.statistics);
 
@@ -38,11 +44,24 @@ export function HistoricalPerformance({ trainId, fromStation, toStation }: Histo
             setTrackDistribution(dist);
           }
         }
-      })
-      .catch(() => {});
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setFailed(true);
+      }
+    })();
+    return () => controller.abort();
   }, [trainId, fromStation, toStation]);
 
-  if (!stats) return null;
+  if (!stats) {
+    if (failed) {
+      return (
+        <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
+          <p className="text-sm text-text-muted">Couldn’t load historical performance</p>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const onTimePct = Math.round(stats.on_time_percentage);
   const onTimeColor = onTimePct >= 80 ? 'text-success' : onTimePct >= 60 ? 'text-warning' : 'text-error';

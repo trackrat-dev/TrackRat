@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Train, TripOption } from '../types';
 import { apiService } from '../services/api';
+import { usePolling } from '../utils/usePolling';
 import { formatTime, getDelayMinutes } from '../utils/date';
 import { buildTrainUrl } from '../utils/routes';
 
@@ -11,24 +12,41 @@ interface Props {
 }
 
 const MAX_TRAINS = 3;
+/** Departures move quickly; keep this list live like the main departure board. */
+const UPCOMING_POLL_MS = 60_000;
 
 export function UpcomingTrains({ from, to }: Props) {
   const [trains, setTrains] = useState<Train[]>([]);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    apiService.searchTrips(from, to, 10)
-      .then(response => {
-        const direct = response.trips
-          .filter(t => t.is_direct)
-          .map(tripToTrain)
-          .filter(t => !t.is_cancelled && !hasTrainDeparted(t))
-          .slice(0, MAX_TRAINS);
-        setTrains(direct);
-      })
-      .catch(() => {}); // Fail silently
+  const fetchUpcoming = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await apiService.searchTrips(from, to, 10, undefined, signal);
+      const direct = response.trips
+        .filter(t => t.is_direct)
+        .map(tripToTrain)
+        .filter(t => !t.is_cancelled && !hasTrainDeparted(t))
+        .slice(0, MAX_TRAINS);
+      setTrains(direct);
+      setFailed(false);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setFailed(true);
+    }
   }, [from, to]);
 
-  if (trains.length === 0) return null;
+  usePolling(fetchUpcoming, [from, to], { intervalMs: UPCOMING_POLL_MS });
+
+  if (trains.length === 0) {
+    if (failed) {
+      return (
+        <div className="mb-4 bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
+          <p className="text-sm text-text-muted">Couldn’t load upcoming trains</p>
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className="mb-4 bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">

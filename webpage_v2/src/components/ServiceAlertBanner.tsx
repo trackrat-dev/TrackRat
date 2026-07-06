@@ -1,12 +1,18 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { apiService } from '../services/api';
 import { ServiceAlert } from '../types';
+import { usePolling } from '../utils/usePolling';
 
 interface ServiceAlertBannerProps {
   dataSource: string;
   /** Optional route/line IDs to filter alerts by relevance */
   routeIds?: string[];
 }
+
+/** MTA systems are the only ones with a service-alert feed. */
+const MTA_ALERT_SYSTEMS = ['SUBWAY', 'LIRR', 'MNR'];
+/** Alerts are cached ~2min server-side, so polling faster buys nothing. */
+const ALERTS_POLL_MS = 120_000;
 
 function getAlertStyle(alertType: string): { bg: string; border: string; icon: string } {
   switch (alertType) {
@@ -33,31 +39,45 @@ function getAlertTypeLabel(alertType: string): string {
 export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerProps) {
   const [alerts, setAlerts] = useState<ServiceAlert[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  // Stabilize routeIds reference for useEffect dependency
+  // Stabilize routeIds reference for the polling dependency
   const routeIdsKey = useMemo(() => routeIds?.sort().join(',') ?? '', [routeIds]);
+  const isMtaSystem = MTA_ALERT_SYSTEMS.includes(dataSource);
 
-  useEffect(() => {
-    // Only fetch for MTA systems that have service alerts
-    const mtaSystems = ['SUBWAY', 'LIRR', 'MNR'];
-    if (!mtaSystems.includes(dataSource)) return;
-
-    apiService.getServiceAlerts(dataSource)
-      .then(res => {
-        let filtered = res.alerts;
-        // If routeIds provided, only show relevant alerts
-        if (routeIds && routeIds.length > 0) {
-          filtered = filtered.filter(alert =>
-            alert.affected_route_ids.length === 0 ||
-            alert.affected_route_ids.some(id => routeIds.includes(id))
-          );
-        }
-        setAlerts(filtered);
-      })
-      .catch(() => {}); // Fail silently
+  const fetchAlerts = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await apiService.getServiceAlerts(dataSource, undefined, signal);
+      let filtered = res.alerts;
+      // If routeIds provided, only show relevant alerts
+      if (routeIds && routeIds.length > 0) {
+        filtered = filtered.filter(alert =>
+          alert.affected_route_ids.length === 0 ||
+          alert.affected_route_ids.some(id => routeIds.includes(id))
+        );
+      }
+      setAlerts(filtered);
+      setFailed(false);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setFailed(true);
+    }
+    // routeIdsKey stands in for routeIds' contents (see useMemo above)
   }, [dataSource, routeIdsKey]);
 
-  if (alerts.length === 0) return null;
+  usePolling(fetchAlerts, [dataSource, routeIdsKey], { intervalMs: ALERTS_POLL_MS, enabled: isMtaSystem });
+
+  if (alerts.length === 0) {
+    // Only MTA systems fetch; surface a muted note if that fetch failed.
+    if (isMtaSystem && failed) {
+      return (
+        <div className="mb-4 px-3 py-2 rounded-xl border border-text-muted/20 bg-surface/50">
+          <p className="text-sm text-text-muted">Couldn’t load service alerts</p>
+        </div>
+      );
+    }
+    return null;
+  }
 
   // Sort: real-time alerts first, then planned work, then elevator
   const sortedAlerts = [...alerts].sort((a, b) => {

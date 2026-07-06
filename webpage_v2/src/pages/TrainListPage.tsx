@@ -50,6 +50,7 @@ export function TrainListPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [summaryError, setSummaryError] = useState(false);
 
   const isViewingFutureDate = selectedDate !== null && selectedDate !== getTodayDateString();
 
@@ -117,9 +118,13 @@ export function TrainListPage() {
 
     const controller = new AbortController();
     apiService.getRouteSummary(from, to, controller.signal)
-      .then(setSummary)
+      .then((res) => {
+        setSummary(res);
+        setSummaryError(false);
+      })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
+        setSummaryError(true);
       });
     return () => controller.abort();
     // fromStation/toStation are derived from from/to and need not be deps
@@ -253,6 +258,13 @@ export function TrainListPage() {
             </>
           )}
         </button>
+      )}
+
+      {/* Route summary failed to load — muted note; recovers on next route change */}
+      {!summary && summaryError && !isTransferSearch && (
+        <div className="w-full mb-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4">
+          <p className="text-sm text-text-muted">Couldn’t load route summary</p>
+        </div>
       )}
 
       {/* Transfer search banner */}
