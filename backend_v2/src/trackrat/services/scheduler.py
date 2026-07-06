@@ -2682,7 +2682,8 @@ class SchedulerService:
                                     "  SELECT id FROM train_journeys "
                                     "  WHERE journey_date < CURRENT_DATE - make_interval(days => "
                                     "    CASE WHEN data_source = 'SUBWAY' "
-                                    "         THEN :subway_days::int ELSE :days::int END"
+                                    "         THEN CAST(:subway_days AS int) "
+                                    "         ELSE CAST(:days AS int) END"
                                     "  ) "
                                     "  LIMIT :batch_size"
                                     ")"
@@ -2709,7 +2710,7 @@ class SchedulerService:
                                     "DELETE FROM discovery_runs "
                                     "WHERE id IN ("
                                     "  SELECT id FROM discovery_runs "
-                                    "  WHERE run_at < NOW() - make_interval(days => :days::int)"
+                                    "  WHERE run_at < NOW() - make_interval(days => CAST(:days AS int))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2731,7 +2732,7 @@ class SchedulerService:
                                     "DELETE FROM validation_results "
                                     "WHERE id IN ("
                                     "  SELECT id FROM validation_results "
-                                    "  WHERE run_at < NOW() - make_interval(days => :days::int)"
+                                    "  WHERE run_at < NOW() - make_interval(days => CAST(:days AS int))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2758,7 +2759,7 @@ class SchedulerService:
                                     "WHERE id IN ("
                                     "  SELECT id FROM service_alerts "
                                     "  WHERE is_active = false "
-                                    "    AND updated_at < NOW() - make_interval(days => :days::int)"
+                                    "    AND updated_at < NOW() - make_interval(days => CAST(:days AS int))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2805,6 +2806,14 @@ class SchedulerService:
                     service_alerts_deleted_so_far=total_service_alerts,
                     partitions_dropped_so_far=partitions_dropped,
                 )
+                # Re-raise so run_with_freshness_check records this as a failed
+                # run. Swallowing it here let a failed cleanup masquerade as a
+                # success: the freshness wrapper only updates last_successful_run
+                # when task_func returns without raising, so every failure was
+                # bumping the timestamp — masking the failure in
+                # scheduler_task_runs and skipping the next scheduled run as
+                # "still fresh" for ~21h.
+                raise
 
         async with get_session() as db:
             safe_interval = calculate_safe_interval(24 * 60)
