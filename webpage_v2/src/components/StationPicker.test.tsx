@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { StationPicker } from './StationPicker';
+import { useAppStore } from '../store/appStore';
+import { storageService } from '../services/storage';
+import { getStationByCode } from '../data/stations';
 
 describe('StationPicker', () => {
   let onSelect: ReturnType<typeof vi.fn>;
@@ -9,6 +12,17 @@ describe('StationPicker', () => {
   beforeEach(() => {
     onSelect = vi.fn();
     onClose = vi.fn();
+    localStorage.clear();
+    useAppStore.setState({
+      selectedDeparture: null,
+      selectedDestination: null,
+      recentTrips: [],
+      favoriteRoutes: [],
+      favoriteStations: [],
+      preferredSystems: [],
+      homeStation: null,
+      workStation: null,
+    });
   });
 
   afterEach(() => {
@@ -126,6 +140,78 @@ describe('StationPicker', () => {
       renderPicker();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('has a touch target of at least 44x44 (w-11 h-11)', () => {
+      renderPicker();
+      const closeBtn = screen.getByRole('button', { name: 'Close' });
+      expect(closeBtn.className).toContain('w-11');
+      expect(closeBtn.className).toContain('h-11');
+    });
+  });
+
+  describe('Your stations section', () => {
+    function seedSavedStations() {
+      // home / work carry full stations; favorites + recents are code-only in storage.
+      storageService.setHomeStation(getStationByCode('NY')!);
+      storageService.setWorkStation(getStationByCode('NP')!);
+      storageService.addFavoriteStation({ id: 'S127', name: getStationByCode('S127')!.name });
+      storageService.saveRecentTrip({
+        departureCode: 'HB',
+        departureName: 'Hoboken',
+        destinationCode: 'SE',
+        destinationName: 'Secaucus Upper Lvl',
+      });
+    }
+
+    it('is absent when the user has no saved stations or trips', () => {
+      renderPicker();
+      expect(screen.queryByText('Your stations')).not.toBeInTheDocument();
+    });
+
+    it('renders home, work, favorites, and recents above the system groups', () => {
+      seedSavedStations();
+      renderPicker();
+
+      const header = screen.getByText('Your stations');
+      expect(header).toBeInTheDocument();
+
+      // Scope to the "Your stations" section (these names also appear in the
+      // NJT system group below, so an unscoped query would match twice).
+      const section = within(header.parentElement as HTMLElement);
+      expect(section.getByRole('button', { name: /New York Penn Station/ })).toBeInTheDocument();
+      expect(section.getByRole('button', { name: /Newark Penn Station/ })).toBeInTheDocument();
+      // Recent-trip stations surface too.
+      expect(section.getByRole('button', { name: /Hoboken/ })).toBeInTheDocument();
+      expect(section.getByRole('button', { name: /Secaucus Upper Lvl/ })).toBeInTheDocument();
+    });
+
+    it('never shows raw station codes as subtitles', () => {
+      seedSavedStations();
+      renderPicker();
+      // Codes like the subway id "S127" must not leak as visible text anywhere.
+      expect(screen.queryByText('S127')).not.toBeInTheDocument();
+      expect(screen.queryByText('NY')).not.toBeInTheDocument();
+      expect(screen.queryByText('HB')).not.toBeInTheDocument();
+    });
+
+    it('selecting a Your-stations row selects that station and closes', () => {
+      seedSavedStations();
+      renderPicker();
+      // The first "New York Penn Station" button is the Home row (rendered above the groups).
+      fireEvent.click(screen.getAllByRole('button', { name: /New York Penn Station/ })[0]);
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect.mock.calls[0][0].code).toBe('NY');
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides Your stations once a query is typed', () => {
+      seedSavedStations();
+      renderPicker();
+      fireEvent.change(screen.getByPlaceholderText('Search stations...'), {
+        target: { value: 'Newark' },
+      });
+      expect(screen.queryByText('Your stations')).not.toBeInTheDocument();
     });
   });
 });
