@@ -1,4 +1,4 @@
-import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse } from '../types';
+import { TrainDetails, TrainDetailsResponse, PlatformPrediction, OperationsSummaryResponse, TripSearchResponse, SupportedStationsResponse, DelayForecastResponse, FeedbackRequest, ServiceAlertsResponse, TrainHistoryResponse, RouteHistoryResponse, CongestionResponse, DeparturesResponse } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://apiv2.trackrat.net/api/v2';
 const CACHE_DURATION = 120000; // 2 minutes in milliseconds
@@ -124,6 +124,31 @@ export class APIService {
     let url = `${BASE_URL}/trips/search?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&limit=${limit}&hide_departed=true`;
     if (date) url += `&date=${encodeURIComponent(date)}`;
     return this.fetch<TripSearchResponse>(url, false, signal); // Don't cache — 30s polling needs fresh data
+  }
+
+  /**
+   * Recently-departed trains from a station (last `windowMinutes`, default 120).
+   * Mirrors the departures shape but returns trains already gone — used to build
+   * the Route Status "did I just miss my train?" timeline. Uncached: 30s polling
+   * needs fresh data.
+   */
+  async getRecentDepartures(
+    from: string,
+    options: {
+      to?: string;
+      windowMinutes?: number;
+      dataSources?: string;
+      limit?: number;
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<DeparturesResponse> {
+    const params = new URLSearchParams({ from });
+    if (options.to) params.set('to', options.to);
+    if (options.windowMinutes !== undefined) params.set('window_minutes', options.windowMinutes.toString());
+    if (options.dataSources) params.set('data_sources', options.dataSources);
+    if (options.limit !== undefined) params.set('limit', options.limit.toString());
+    const url = `${BASE_URL}/trains/recent-departures?${params.toString()}`;
+    return this.fetch<DeparturesResponse>(url, false, options.signal);
   }
 
   async getRouteSummary(from: string, to: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {

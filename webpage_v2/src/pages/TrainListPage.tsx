@@ -14,28 +14,11 @@ import { ChevronIcon, RefreshIcon } from '../components/icons';
 import { getStationByCode } from '../data/stations';
 import { formatTime, getTodayDateString } from '../utils/date';
 import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
+import { tripLegToTrain } from '../utils/trips';
 import { usePolling } from '../utils/usePolling';
 import { useBackNavigation } from '../utils/useBackNavigation';
 
 const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ default: m.RouteMap })));
-
-/** Convert a direct TripOption (1 leg) to a Train for the existing TrainCard */
-function tripLegToTrain(trip: TripOption): Train {
-  const leg = trip.legs[0];
-  return {
-    train_id: leg.train_id,
-    journey_date: leg.journey_date,
-    line: leg.line,
-    destination: leg.destination,
-    departure: leg.boarding,
-    arrival: leg.alighting,
-    train_position: leg.train_position,
-    data_freshness: { last_updated: '', age_seconds: 0, update_count: 0, collection_method: null },
-    data_source: leg.data_source,
-    observation_type: (leg.observation_type as 'OBSERVED' | 'SCHEDULED') || 'OBSERVED',
-    is_cancelled: leg.is_cancelled,
-  };
-}
 
 export function TrainListPage() {
   const { from, to } = useParams<{ from: string; to: string }>();

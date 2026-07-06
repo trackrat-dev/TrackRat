@@ -101,6 +101,7 @@ useEffect(() => {
 
 ### Endpoints Used
 1. `GET /trips/search?from={code}&to={code}&limit=50&hide_departed=true&date={YYYY-MM-DD}` (departure/trip list, optional date)
+   - `GET /trains/recent-departures?from={code}&to={code}&window_minutes=120&data_sources={src}&limit={n}` (recently-departed trains for the Route Status timeline; uncached, 30s polling)
 2. `GET /trains/{trainId}?date={YYYY-MM-DD}` (train details, polled every 30s)
 3. `GET /trains/{trainId}/history?days=365&from_station={code}&to_station={code}` (historical performance)
 4. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
@@ -135,7 +136,7 @@ webpage_v2/
 │   │   ├── RouteMap.tsx          # MapLibre GL route map
 │   │   ├── SimilarTrainsPanel.tsx # Similar trains suggestion panel
 │   │   ├── TrainDistributionChart.tsx # Track distribution chart
-│   │   ├── UpcomingTrains.tsx    # Upcoming trains widget
+│   │   ├── DeparturesTimeline.tsx # Recent (dimmed) + NOW divider + upcoming departures (Route Status)
 │   │   ├── SubwayLineChips.tsx  # Subway line badge chips
 │   │   ├── ErrorBoundary.tsx     # React error boundary
 │   │   └── ErrorMessage.tsx
@@ -166,7 +167,8 @@ webpage_v2/
 │       ├── ratsense.ts     # AI journey predictions (RatSense)
 │       ├── routes.ts       # Route path helpers and URL builders
 │       ├── share.ts        # Web Share API helper + train URL builder
-│       └── trainSearch.ts  # Train search and filtering logic
+│       ├── trainSearch.ts  # Train search and filtering logic
+│       └── trips.ts        # TripOption → Train conversion (shared by departures list + timeline)
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
