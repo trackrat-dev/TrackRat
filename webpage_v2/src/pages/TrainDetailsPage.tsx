@@ -15,6 +15,7 @@ import { SimilarTrainsPanel } from '../components/SimilarTrainsPanel';
 import { storageService } from '../services/storage';
 import { getTodayDateString, formatTime, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
+import { useBackNavigation } from '../utils/useBackNavigation';
 
 export function TrainDetailsPage() {
   const { trainId, from: fromPath, to: toPath } = useParams<{ trainId: string; from?: string; to?: string }>();
@@ -27,6 +28,7 @@ export function TrainDetailsPage() {
   const to = toPath || searchParams.get('to') || undefined;
   const journeyDate = searchParams.get('date') || undefined;
   const dataSource = searchParams.get('data_source') || undefined;
+  const goBack = useBackNavigation(from && to ? `/trains/${from}/${to}` : '/departures');
 
   const [train, setTrain] = useState<TrainDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -178,7 +180,7 @@ export function TrainDetailsPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back

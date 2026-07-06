@@ -14,6 +14,7 @@ import { getStationByCode } from '../data/stations';
 import { formatTime, getTodayDateString } from '../utils/date';
 import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
 import { usePolling } from '../utils/usePolling';
+import { useBackNavigation } from '../utils/useBackNavigation';
 
 const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ default: m.RouteMap })));
 
@@ -38,6 +39,7 @@ function tripLegToTrain(trip: TripOption): Train {
 export function TrainListPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
   const navigate = useNavigate();
+  const goBack = useBackNavigation('/departures');
   const { addRecentTrip } = useAppStore();
 
   const [trains, setTrains] = useState<Train[]>([]);
@@ -184,7 +186,7 @@ export function TrainListPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-4 flex items-center gap-3">
         <button
-          onClick={() => navigate('/departures')}
+          onClick={goBack}
           className="shrink-0 -ml-1 p-1 text-xl leading-none text-accent hover:text-accent/80"
           aria-label="Back"
         >

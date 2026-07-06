@@ -7,6 +7,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { UpcomingTrains } from '../components/UpcomingTrains';
+import { useBackNavigation } from '../utils/useBackNavigation';
 
 type Period = '1h' | '6h' | '24h' | '7d' | '30d' | '90d';
 
@@ -40,6 +41,7 @@ export function RouteStatusPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const goBack = useBackNavigation(from && to ? `/trains/${from}/${to}` : '/departures');
 
   const [history, setHistory] = useState<RouteHistoryResponse | null>(null);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
@@ -83,7 +85,7 @@ export function RouteStatusPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <button
-          onClick={() => navigate(`/trains/${from}/${to}`)}
+          onClick={goBack}
           className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back to departures
