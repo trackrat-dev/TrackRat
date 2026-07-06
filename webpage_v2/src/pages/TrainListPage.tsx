@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { TrainCardSkeleton } from '../components/Skeleton';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { TrainCard } from '../components/TrainCard';
@@ -315,7 +315,12 @@ export function TrainListPage() {
       </div>
 
       {loading && !hasResults ? (
-        <LoadingSpinner />
+        <div className="space-y-3" role="status" aria-label="Loading departures" aria-busy="true">
+          {[0, 1, 2, 3].map((i) => (
+            <TrainCardSkeleton key={i} />
+          ))}
+          <span className="sr-only">Loading departures</span>
+        </div>
       ) : error ? (
         <ErrorMessage message={error} onRetry={() => fetchTrains()} />
       ) : isEmpty ? (

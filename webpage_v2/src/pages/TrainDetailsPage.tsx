@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { TrainDetails, StationPredictionSupport } from '../types';
 import { apiService } from '../services/api';
 import { usePolling } from '../utils/usePolling';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { TrainDetailsSkeleton } from '../components/Skeleton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
@@ -154,7 +154,7 @@ export function TrainDetailsPage() {
   }
 
   if (loading && !train) {
-    return <LoadingSpinner />;
+    return <TrainDetailsSkeleton />;
   }
 
   if (error || !train) {
