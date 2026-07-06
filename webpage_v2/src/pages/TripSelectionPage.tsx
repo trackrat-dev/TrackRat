@@ -335,7 +335,7 @@ export function TripSelectionPage() {
         <button
           onClick={handleSearch}
           disabled={!selectedDeparture || !selectedDestination}
-          className="w-full bg-accent text-white font-semibold py-4 rounded-xl hover:bg-accent/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-accent text-white font-semibold py-4 rounded-xl hover:bg-accent/85 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Search Trains
         </button>
@@ -369,13 +369,13 @@ export function TripSelectionPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => navigate(`/trains/${route.departureCode}/${route.destinationCode}`)}
-                      className="px-3 py-2 bg-accent text-white rounded-lg text-sm font-semibold hover:bg-accent/80 transition-colors"
+                      className="px-3 py-2 bg-accent text-white rounded-xl text-sm font-semibold hover:bg-accent/85 transition-colors"
                     >
                       Use
                     </button>
                     <button
                       onClick={() => navigate(`/trains/${route.destinationCode}/${route.departureCode}`)}
-                      className="px-3 py-2 bg-surface border border-text-muted/20 text-text-primary rounded-lg text-sm font-semibold hover:bg-background transition-colors"
+                      className="px-3 py-2 bg-surface border border-text-muted/20 text-text-primary rounded-xl text-sm font-semibold hover:bg-background transition-colors"
                     >
                       Reverse
                     </button>

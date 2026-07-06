@@ -12,7 +12,7 @@ export function getStatusBadgeClass(status: string): string {
     case 'boarding':
       return `${baseClass} bg-accent/20 text-accent`;
     case 'departed':
-      return `${baseClass} bg-blue-500/20 text-blue-400`;
+      return `${baseClass} bg-info/15 text-info`;
     case 'delayed':
       return `${baseClass} bg-warning/20 text-warning`;
     case 'cancelled':

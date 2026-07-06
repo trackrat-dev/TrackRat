@@ -12,6 +12,7 @@ import { DelayForecastCard } from '../components/DelayForecastCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { HistoricalPerformance } from '../components/HistoricalPerformance';
 import { SimilarTrainsPanel } from '../components/SimilarTrainsPanel';
+import { StatusBadge } from '../components/StatusBadge';
 import { storageService } from '../services/storage';
 import { getTodayDateString, formatTime, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
@@ -203,11 +204,7 @@ export function TrainDetailsPage() {
                 dataSource: train.data_source,
               })}
             />
-            {train.is_cancelled && (
-              <span className="px-3 py-1 bg-error/20 text-error rounded-full text-sm font-semibold">
-                Cancelled
-              </span>
-            )}
+            {train.is_cancelled && <StatusBadge status="cancelled" />}
           </div>
         </div>
 

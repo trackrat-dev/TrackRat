@@ -4,6 +4,7 @@ import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse } from '.
 import { apiService } from '../services/api';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
+import { ChevronIcon } from '../components/icons';
 import { formatTime } from '../utils/date';
 import { usePolling } from '../utils/usePolling';
 
@@ -161,7 +162,7 @@ export function NetworkStatusPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${getCongestionBg(status)} ${getCongestionColor(status)} font-medium`}>
                     {getCongestionLabel(status)}
                   </span>
-                  <span className="text-text-muted text-xs">{isExpanded ? '▲' : '▼'}</span>
+                  <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0" />
                 </div>
               </button>
 
