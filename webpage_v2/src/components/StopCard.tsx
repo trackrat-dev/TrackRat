@@ -1,6 +1,7 @@
 import { Stop } from '../types';
 import { formatTime, getDelayMinutes } from '../utils/date';
 import { SubwayLineChips } from './SubwayLineChips';
+import { TimeDisplay } from './TimeDisplay';
 
 interface StopCardProps {
   stop: Stop;
@@ -10,26 +11,18 @@ interface StopCardProps {
 }
 
 /**
- * Get the best available time and its source label.
- * Priority: actual > updated/estimated > scheduled
+ * Best available time. Priority: actual > updated/estimated > scheduled.
  */
-function getBestTime(
-  scheduled?: string,
-  updated?: string,
-  actual?: string
-): { time: string; label: 'actual' | 'updated' | 'scheduled' } | null {
-  if (actual) return { time: actual, label: 'actual' };
-  if (updated) return { time: updated, label: 'updated' };
-  if (scheduled) return { time: scheduled, label: 'scheduled' };
-  return null;
+function getBestTime(scheduled?: string, updated?: string, actual?: string): string | undefined {
+  return actual || updated || scheduled;
 }
 
 export function StopCard({ stop, isOrigin = false, isDestination = false, currentLine }: StopCardProps) {
   const arrivalBest = getBestTime(stop.scheduled_arrival, stop.updated_arrival, stop.actual_arrival);
   const departureBest = getBestTime(stop.scheduled_departure, stop.updated_departure, stop.actual_departure);
 
-  const arrivalDelay = getDelayMinutes(stop.scheduled_arrival, arrivalBest?.time);
-  const departureDelay = getDelayMinutes(stop.scheduled_departure, departureBest?.time);
+  const arrivalDelay = getDelayMinutes(stop.scheduled_arrival, arrivalBest);
+  const departureDelay = getDelayMinutes(stop.scheduled_departure, departureBest);
 
   return (
     <div className="bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4">
@@ -52,13 +45,12 @@ export function StopCard({ stop, isOrigin = false, isDestination = false, curren
         {stop.scheduled_arrival && !isOrigin && (
           <div className="flex justify-between">
             <span className="text-text-muted">Arrival:</span>
-            <span className="font-medium text-text-primary">
-              {formatTime(stop.scheduled_arrival)}
-              {arrivalBest && arrivalBest.label !== 'scheduled' && arrivalDelay !== 0 && (
-                <span className={arrivalDelay > 0 ? 'text-warning ml-2' : 'text-success ml-2'}>
-                  ({formatTime(arrivalBest.time)}{arrivalDelay > 0 ? ` +${arrivalDelay}m` : ''})
-                </span>
-              )}
+            <span>
+              <TimeDisplay
+                scheduledTime={stop.scheduled_arrival}
+                liveTime={arrivalBest}
+                delayMinutes={arrivalDelay}
+              />
             </span>
           </div>
         )}
@@ -75,13 +67,12 @@ export function StopCard({ stop, isOrigin = false, isDestination = false, curren
         {stop.scheduled_departure && !isDestination && (
           <div className="flex justify-between">
             <span className="text-text-muted">Departure:</span>
-            <span className="font-medium text-text-primary">
-              {formatTime(stop.scheduled_departure)}
-              {departureBest && departureBest.label !== 'scheduled' && departureDelay !== 0 && (
-                <span className={departureDelay > 0 ? 'text-warning ml-2' : 'text-success ml-2'}>
-                  ({formatTime(departureBest.time)}{departureDelay > 0 ? ` +${departureDelay}m` : ''})
-                </span>
-              )}
+            <span>
+              <TimeDisplay
+                scheduledTime={stop.scheduled_departure}
+                liveTime={departureBest}
+                delayMinutes={departureDelay}
+              />
             </span>
           </div>
         )}

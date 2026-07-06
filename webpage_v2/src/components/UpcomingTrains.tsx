@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Train, TripOption } from '../types';
 import { apiService } from '../services/api';
-import { formatTime, getDelayMinutes } from '../utils/date';
+import { getDelayMinutes } from '../utils/date';
 import { buildTrainUrl } from '../utils/routes';
+import { TimeDisplay } from './TimeDisplay';
 
 interface Props {
   from: string;
@@ -35,10 +36,8 @@ export function UpcomingTrains({ from, to }: Props) {
       <h4 className="text-sm font-semibold text-text-primary mb-3">Upcoming Trains</h4>
       <div className="space-y-2">
         {trains.map(train => {
-          const delayMins = getDelayMinutes(
-            train.departure.scheduled_time,
-            train.departure.updated_time || train.departure.actual_time || undefined
-          );
+          const liveTime = train.departure.actual_time || train.departure.updated_time || undefined;
+          const delayMins = getDelayMinutes(train.departure.scheduled_time, liveTime);
           return (
             <Link
               key={train.train_id}
@@ -65,14 +64,13 @@ export function UpcomingTrains({ from, to }: Props) {
                   <div className="text-[10px] text-text-muted">Track {train.departure.track}</div>
                 )}
               </div>
-              {/* Time + delay */}
-              <div className="text-right flex-shrink-0">
-                <div className="text-sm font-medium text-text-primary">
-                  {formatTime(train.departure.scheduled_time)}
-                </div>
-                {delayMins > 0 && (
-                  <div className="text-[10px] text-warning font-medium">{delayMins}m late</div>
-                )}
+              {/* Time (live primary, scheduled struck through when delayed) */}
+              <div className="text-right flex-shrink-0 text-sm">
+                <TimeDisplay
+                  scheduledTime={train.departure.scheduled_time}
+                  liveTime={liveTime}
+                  delayMinutes={delayMins}
+                />
               </div>
             </Link>
           );
