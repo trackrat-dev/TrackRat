@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse } from '../types';
+import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse, TransitSystem } from '../types';
 import { apiService } from '../services/api';
+import { DISABLED_SYSTEMS } from '../data/stations';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { formatTime } from '../utils/date';
@@ -73,7 +74,14 @@ export function NetworkStatusPage() {
         apiService.getCongestion(signal),
         apiService.getNetworkSummary(signal),
       ]);
-      setSegments(congestion.aggregated_segments);
+      // Drop segments for systems disabled app-wide (mirrors backend
+      // TRACKRAT_DISABLED_DATA_SOURCES). Filtering here cascades to every
+      // derived value — grouping, counts, and ordering below.
+      setSegments(
+        congestion.aggregated_segments.filter(
+          (seg) => !DISABLED_SYSTEMS.has(seg.data_source as TransitSystem),
+        ),
+      );
       setGeneratedAt(congestion.generated_at);
       setSummary(networkSummary);
       setError(null);
