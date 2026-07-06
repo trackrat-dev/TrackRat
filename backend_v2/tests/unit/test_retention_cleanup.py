@@ -598,14 +598,26 @@ class TestRetentionCleanupSQLStatements:
         assert source.count("WHERE id IN (") == 4
 
     def test_make_interval_day_args_are_cast_to_int(self):
-        """Every make_interval(days => ...) must cast its arg to int.
+        """Every make_interval(days => ...) must cast its arg to int using CAST().
 
-        asyncpg sends bound parameters untyped, so Postgres resolves
-        ``make_interval(days => $1)`` against the nonexistent
-        ``make_interval(days => text)`` overload and raises
-        ``UndefinedFunctionError``, silently breaking retention cleanup.
-        An explicit ``::int`` cast pins the type at parse time. Guards
-        against regression of that fix across all four DELETE phases.
+        Two failure modes this guards against:
+
+        1. A bare bound param — ``make_interval(days => :days)`` — is sent
+           untyped, so Postgres resolves it against the nonexistent
+           ``make_interval(days => text)`` overload and raises
+           ``UndefinedFunctionError``.
+        2. The postfix cast form ``:days::int`` looks like it fixes (1) but
+           breaks SQLAlchemy's ``text()`` bind-param parsing: its regex skips
+           a ``:name`` immediately followed by ``::``, so ``:days`` is left
+           literal in the SQL and asyncpg raises ``syntax error at or near
+           ":"``. (This is what actually shipped and aborted every run.)
+
+        The working form is ``CAST(:days AS integer)``: it pins the type at
+        parse time *and* keeps the param adjacent to whitespace so SQLAlchemy
+        still binds it. Guards all four DELETE phases. The real end-to-end
+        proof lives in tests/integration/test_retention_cleanup_execution.py,
+        which runs the SQL against Postgres; this is the fast source-level
+        tripwire.
         """
         import re
         from trackrat.services.scheduler import SchedulerService
@@ -620,13 +632,16 @@ class TestRetentionCleanupSQLStatements:
         # One make_interval per phase (train_journeys, discovery_runs,
         # validation_results, service_alerts).
         assert collapsed.count("make_interval(days =>") == 4
-        # The three simple phases must use the cast form, never the bare param.
-        assert "make_interval(days => :days::int)" in collapsed
+        # The three simple phases must use CAST(), never a bare or ::-cast param.
+        assert "make_interval(days => CAST(:days AS integer))" in collapsed
         assert "make_interval(days => :days)" not in collapsed
-        # The train_journeys CASE must cast both branches to int.
-        assert "THEN :subway_days::int ELSE :days::int END" in collapsed
-        assert "THEN :subway_days " not in collapsed
-        assert "ELSE :days END" not in collapsed
+        # The ::-cast form is what broke bind-param parsing — it must be gone.
+        assert "::int" not in collapsed
+        # The train_journeys CASE must CAST both branches to int.
+        assert (
+            "THEN CAST(:subway_days AS integer) ELSE CAST(:days AS integer) END"
+            in collapsed
+        )
 
     def test_cascade_covers_all_dependent_tables(self):
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""

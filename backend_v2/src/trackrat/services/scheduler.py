@@ -2682,7 +2682,8 @@ class SchedulerService:
                                     "  SELECT id FROM train_journeys "
                                     "  WHERE journey_date < CURRENT_DATE - make_interval(days => "
                                     "    CASE WHEN data_source = 'SUBWAY' "
-                                    "         THEN :subway_days::int ELSE :days::int END"
+                                    "         THEN CAST(:subway_days AS integer) "
+                                    "         ELSE CAST(:days AS integer) END"
                                     "  ) "
                                     "  LIMIT :batch_size"
                                     ")"
@@ -2709,7 +2710,7 @@ class SchedulerService:
                                     "DELETE FROM discovery_runs "
                                     "WHERE id IN ("
                                     "  SELECT id FROM discovery_runs "
-                                    "  WHERE run_at < NOW() - make_interval(days => :days::int)"
+                                    "  WHERE run_at < NOW() - make_interval(days => CAST(:days AS integer))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2731,7 +2732,7 @@ class SchedulerService:
                                     "DELETE FROM validation_results "
                                     "WHERE id IN ("
                                     "  SELECT id FROM validation_results "
-                                    "  WHERE run_at < NOW() - make_interval(days => :days::int)"
+                                    "  WHERE run_at < NOW() - make_interval(days => CAST(:days AS integer))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2758,7 +2759,7 @@ class SchedulerService:
                                     "WHERE id IN ("
                                     "  SELECT id FROM service_alerts "
                                     "  WHERE is_active = false "
-                                    "    AND updated_at < NOW() - make_interval(days => :days::int)"
+                                    "    AND updated_at < NOW() - make_interval(days => CAST(:days AS integer))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
