@@ -150,6 +150,10 @@ The ground-truth validation script also accepts `WMATA_API_KEY` as a fallback.
 Shows how the server is being used: API traffic breakdown, route searches, train follows,
 client versions, latency, scheduler health, errors, and warnings. Queries GCP load balancer
 logs and backend endpoints. Requires GCP service account credentials (same as gcp-logs.py).
+The report also breaks traffic out by client class (`client_breakdown` in JSON, "iOS app vs
+Web app" section in text): `ios` (TrackRat iOS app), `web` (browser = the web app), and
+`other` (Android/curl/scripts), each with request count, unique users, and top routes.
+Health probes and `/metrics` are excluded server-side so a 24h window reports real traffic.
 
 ```bash
 # Production, last 1 hour (default)
@@ -175,6 +179,25 @@ script and provide a narrative summary that highlights:
 - **Health concerns**: any errors, notable warnings, slow endpoints (route_history and
   congestion_cache are known to be slow). Zero errors is worth calling out.
 - **Scanner noise**: mention probe count but don't dwell on it unless unusual.
+- **iOS vs Web**: from `client_breakdown`, contrast the two apps — e.g. "iOS: 240 requests
+  from 18 users, mostly Trenton -> NY Penn; Web: 55 requests from 9 users, mostly BWI ->
+  Boston. Android/scripts negligible."
+
+**Daily Usage Report Routine:**
+
+A Claude Code Routine (`create_trigger`, fresh session per fire, daily) generates this report
+automatically and sends it back via the run's completion notification. The routine prompt is:
+
+> Generate the TrackRat daily usage report. Run
+> `bash scripts/server-usage.sh --env production --hours 24 --json` (let it install GCP deps
+> if prompted). From the JSON, write a concise narrative summarizing the last 24h: total API
+> requests and unique users; the iOS-app vs web-app breakout (use `api_traffic.client_breakdown`
+> if present — requests, unique users, and top routes for `ios`, `web`, and `other` =
+> Android/curl/scripts; otherwise derive the split from `api_traffic.clients`); the most-searched
+> routes overall with station names; engagement (Live Activity registrations, device
+> registrations, alert subscriptions, feedback); and any errors or notable warnings (call out
+> zero errors explicitly). Keep it short and readable. If the script fails (e.g. missing GCP
+> creds), report the exact error instead.
 
 **Other Utility Scripts:**
 
