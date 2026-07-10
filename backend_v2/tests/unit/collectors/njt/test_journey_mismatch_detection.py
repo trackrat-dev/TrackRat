@@ -543,6 +543,7 @@ class TestStaleOriginDetection:
         # Stops table has the CORRECT (current) scheduled departure for NY
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code="NY",
             station_name="New York Penn Station",
             stop_sequence=0,
