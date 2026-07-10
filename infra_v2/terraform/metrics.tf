@@ -191,13 +191,25 @@ resource "google_logging_metric" "data_disk_usage_percent" {
     "jsonPayload.event=\"data_disk_usage_check\"",
   ])
 
+  # Logs-based metrics only support counter (INT64) or DISTRIBUTION value types;
+  # a scalar value_extractor requires DISTRIBUTION (GCP rejects it on any other
+  # type). The alert reads this via ALIGN_MEAN, which uses the distribution's
+  # exact mean, so bucket boundaries don't affect the threshold.
   metric_descriptor {
-    metric_kind = "GAUGE"
-    value_type  = "DOUBLE"
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
     unit        = "%"
   }
 
   value_extractor = "EXTRACT(jsonPayload.usage_percent)"
+
+  bucket_options {
+    linear_buckets {
+      num_finite_buckets = 20
+      width              = 5
+      offset             = 0
+    }
+  }
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
@@ -219,13 +231,24 @@ resource "google_logging_metric" "database_size_gb" {
     "jsonPayload.event=\"database_size_check\"",
   ])
 
+  # DISTRIBUTION (not GAUGE/DOUBLE): a value_extractor is only valid on a
+  # distribution-typed logs metric. Exponential buckets span a wide GB range
+  # as the database grows; ALIGN_MEAN reads the exact mean regardless.
   metric_descriptor {
-    metric_kind = "GAUGE"
-    value_type  = "DOUBLE"
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
     unit        = "GBy"
   }
 
   value_extractor = "EXTRACT(jsonPayload.size_gb)"
+
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
@@ -250,9 +273,12 @@ resource "google_logging_metric" "table_dead_tuple_ratio_pct" {
     "jsonPayload.event=\"table_vacuum_health_check\"",
   ])
 
+  # DISTRIBUTION (not GAUGE/DOUBLE): a value_extractor is only valid on a
+  # distribution-typed logs metric. The alert aggregates per table_name with
+  # ALIGN_MEAN + REDUCE_MAX, reading each distribution's exact mean.
   metric_descriptor {
-    metric_kind = "GAUGE"
-    value_type  = "DOUBLE"
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
     unit        = "%"
 
     labels {
@@ -264,6 +290,14 @@ resource "google_logging_metric" "table_dead_tuple_ratio_pct" {
   value_extractor = "EXTRACT(jsonPayload.dead_tuple_ratio_pct)"
   label_extractors = {
     "table_name" = "EXTRACT(jsonPayload.table_name)"
+  }
+
+  bucket_options {
+    linear_buckets {
+      num_finite_buckets = 20
+      width              = 5
+      offset             = 0
+    }
   }
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
