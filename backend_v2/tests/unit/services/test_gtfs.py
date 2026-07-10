@@ -2,6 +2,7 @@
 Unit tests for GTFS static schedule service.
 """
 
+import io
 from datetime import date, datetime, time, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
@@ -9,8 +10,10 @@ import pytest
 from trackrat.services.gtfs import (
     GTFSService,
     GTFS_DOWNLOAD_INTERVAL_HOURS,
+    GTFS_EXPIRY_EXEMPT_SOURCES,
     NJT_LINE_CODE_MAPPING,
     _extract_lirr_train_number,
+    _gtfs_csv_rows,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
     _strip_source_prefix,
@@ -241,6 +244,7 @@ class TestActiveServiceIds:
     def setup_method(self):
         """Clear the service ID cache before each test to prevent cross-test pollution."""
         GTFSService._service_id_cache.clear()
+        GTFSService._empty_service_warned.clear()
 
     @pytest.mark.asyncio
     async def test_weekday_service(self):
@@ -331,6 +335,99 @@ class TestActiveServiceIds:
 
         # Service should be removed
         assert "REGULAR_SERVICE" not in result
+
+    @pytest.mark.asyncio
+    async def test_empty_result_not_cached(self):
+        """An empty active-service set (broken/partial GTFS import) must not be
+        cached, so the next call re-queries instead of serving the poisoned
+        empty result for the rest of the day (issue #1370)."""
+        service = GTFSService()
+        target_date = date(2026, 1, 21)
+
+        mock_db = AsyncMock()
+        call_count = [0]
+
+        async def mock_execute(query):
+            result = MagicMock()
+            call_count[0] += 1
+            result.all.return_value = []  # no calendar or calendar_dates rows
+            return result
+
+        mock_db.execute = mock_execute
+
+        first = await service.get_active_service_ids(mock_db, "LIRR", target_date)
+        assert first == set()
+        assert ("LIRR", target_date) not in GTFSService._service_id_cache
+        assert call_count[0] == 2  # calendar + calendar_dates queries ran
+
+        second = await service.get_active_service_ids(mock_db, "LIRR", target_date)
+        assert second == set()
+        assert call_count[0] == 4  # re-queried instead of hitting a cached empty set
+
+    @pytest.mark.asyncio
+    async def test_expiry_exempt_source_skips_end_date_bound(self):
+        """PATH's upstream Trillium feed ships a calendar that already expired
+        (end_date 2026-06-01). The expiry exemption must drop the end_date bound
+        from the calendar query so the frozen weekly schedule keeps applying via
+        the day-of-week match, instead of contributing zero scheduled departures
+        and leaving trip search to rely on the sparse real-time feed (#1419)."""
+        assert "PATH" in GTFS_EXPIRY_EXEMPT_SOURCES
+
+        service = GTFSService()
+        # A Sunday well past the PATH feed's 2026-06-01 end_date.
+        target_date = date(2026, 7, 5)
+        captured: dict[str, str] = {}
+
+        async def mock_execute(query):
+            sql = str(query)
+            result = MagicMock()
+            if "gtfs_calendar_dates" in sql:
+                result.all.return_value = []
+            else:
+                captured["calendar_sql"] = sql
+                result.all.return_value = [("PATH_SUNDAY",)]
+            return result
+
+        mock_db = AsyncMock()
+        mock_db.execute = mock_execute
+
+        result = await service.get_active_service_ids(mock_db, "PATH", target_date)
+
+        # The frozen service is still returned despite the target date being
+        # past the feed's expiration.
+        assert "PATH_SUNDAY" in result
+        # The calendar query must NOT constrain on end_date for exempt sources...
+        assert "end_date" not in captured["calendar_sql"]
+        # ...while the start_date lower bound (and day-of-week match) remain.
+        assert "start_date" in captured["calendar_sql"]
+
+    @pytest.mark.asyncio
+    async def test_non_exempt_source_keeps_end_date_bound(self):
+        """A non-exempt source (NJT) must still enforce the calendar end_date so
+        a genuinely expired service is not served — the exemption is scoped to
+        the allowlist, not applied globally (#1419)."""
+        assert "NJT" not in GTFS_EXPIRY_EXEMPT_SOURCES
+
+        service = GTFSService()
+        target_date = date(2026, 7, 5)
+        captured: dict[str, str] = {}
+
+        async def mock_execute(query):
+            sql = str(query)
+            result = MagicMock()
+            if "gtfs_calendar_dates" not in sql:
+                captured["calendar_sql"] = sql
+            result.all.return_value = []
+            return result
+
+        mock_db = AsyncMock()
+        mock_db.execute = mock_execute
+
+        await service.get_active_service_ids(mock_db, "NJT", target_date)
+
+        # Non-exempt sources keep both the start_date and end_date bounds.
+        assert "end_date" in captured["calendar_sql"]
+        assert "start_date" in captured["calendar_sql"]
 
 
 class TestStationMapping:
@@ -851,6 +948,7 @@ class TestGetStaticStopTimes:
 
     def setup_method(self):
         self.service = GTFSService()
+        GTFSService._empty_service_warned.clear()
 
     @pytest.mark.asyncio
     async def test_returns_stops_for_valid_trip(self):
@@ -921,6 +1019,63 @@ class TestGetStaticStopTimes:
             )
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_warns_once_per_source_and_date(self):
+        """The no-active-services warning should log once per (data_source,
+        target_date), not on every call, since a broken feed is polled every
+        collector cycle (issue #1370)."""
+        mock_db = AsyncMock()
+        target_date = date(2026, 2, 6)
+
+        with (
+            patch.object(self.service, "get_active_service_ids", return_value=set()),
+            patch("trackrat.services.gtfs.logger") as mock_logger,
+        ):
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", target_date
+            )
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", target_date
+            )
+
+        assert mock_logger.error.call_count == 1
+        assert mock_logger.error.call_args.args[0] == "gtfs_static_no_active_services"
+
+    @pytest.mark.asyncio
+    async def test_warns_once_for_yesterdays_overnight_date(self):
+        """Overnight trips can carry journey_date == yesterday (e.g.
+        lirr/collector.py's `journey_date >= today - 1` stale window). The
+        real get_active_service_ids must not evict yesterday's warned-key on
+        every call, or the dedupe added for issue #1370 is defeated for
+        exactly this still-broken-overnight-feed case (Codex review on
+        PR #1385)."""
+        today = date(2026, 2, 7)
+        yesterday = date(2026, 2, 6)
+        mock_db = AsyncMock()
+
+        async def mock_execute(query):
+            result = MagicMock()
+            result.all.return_value = []  # no calendar or calendar_dates rows
+            return result
+
+        mock_db.execute = mock_execute
+
+        with (
+            patch(
+                "trackrat.utils.time.now_et",
+                return_value=datetime.combine(today, time(1, 0), tzinfo=ET),
+            ),
+            patch("trackrat.services.gtfs.logger") as mock_logger,
+        ):
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", yesterday
+            )
+            await self.service.get_static_stop_times(
+                mock_db, "LIRR", "GO103_25_181", yesterday
+            )
+
+        assert mock_logger.error.call_count == 1
 
     @pytest.mark.asyncio
     async def test_returns_none_when_trip_not_found(self):
@@ -1407,3 +1562,78 @@ class TestGetScheduledDeparturesTimeFrom:
         assert (
             GTFSService._gtfs_time_cutoff(cutoff, target_date, "SUBWAY") == "08:00:00"
         )
+
+
+class TestGtfsCsvRows:
+    """Tests for _gtfs_csv_rows().
+
+    Regression coverage for issue #1356: Metra's static GTFS feed uses ", "
+    (comma + space) as its field separator instead of ",". csv.DictReader
+    splits only on the literal comma, so every header/value after the first
+    column keeps a leading space (e.g. fieldname " trip_id" instead of
+    "trip_id"), which makes every row.get("trip_id") lookup silently miss —
+    _parse_trips/_parse_stop_times/_parse_calendar all use that lookup
+    pattern, so this went undetected as 0 trips/stop_times parsed with no
+    error or warning.
+    """
+
+    def _rows(self, csv_text: str) -> list[dict[str, str]]:
+        return list(_gtfs_csv_rows(io.BytesIO(csv_text.encode("utf-8"))))
+
+    def test_standard_comma_csv_unaffected(self):
+        """A well-formed feed (no stray whitespace) parses exactly as before."""
+        csv_text = (
+            "route_id,service_id,trip_id,trip_headsign,direction_id\n"
+            "BNSF,A1,BNSF_BN1200_V4_A,Chicago Union Station,1\n"
+        )
+        rows = self._rows(csv_text)
+        assert rows == [
+            {
+                "route_id": "BNSF",
+                "service_id": "A1",
+                "trip_id": "BNSF_BN1200_V4_A",
+                "trip_headsign": "Chicago Union Station",
+                "direction_id": "1",
+            }
+        ]
+
+    def test_comma_space_delimiter_strips_keys_and_values(self):
+        """Reproduces Metra's real feed format byte-for-byte.
+
+        Before the fix, row.get("trip_id") returned "" for every row here
+        (the real dict key was " trip_id"), which is exactly why Metra's
+        static import silently produced trip_count=0 in production.
+        """
+        csv_text = (
+            "route_id, service_id, trip_id, trip_headsign, direction_id\n"
+            "BNSF, A1, BNSF_BN1200_V4_A, Chicago Union Station,  1\n"
+        )
+        rows = self._rows(csv_text)
+        assert len(rows) == 1
+        row = rows[0]
+
+        # Keys must be stripped, or these lookups (as used throughout
+        # gtfs.py's _parse_* methods) silently return the default.
+        assert row.get("trip_id") == "BNSF_BN1200_V4_A"
+        assert row.get("service_id") == "A1"
+        assert row.get("direction_id") == "1"
+
+        # No leaky " trip_id"-style keys should remain.
+        assert set(row.keys()) == {
+            "route_id",
+            "service_id",
+            "trip_id",
+            "trip_headsign",
+            "direction_id",
+        }
+
+    def test_preserves_internal_spaces_in_values(self):
+        """Only leading/trailing whitespace is stripped, not internal spaces."""
+        csv_text = "route_id, trip_headsign\nBNSF, Chicago Union Station\n"
+        rows = self._rows(csv_text)
+        assert rows[0]["trip_headsign"] == "Chicago Union Station"
+
+    def test_empty_file_yields_no_rows(self):
+        """A header-only file yields an empty iterator, not an error."""
+        csv_text = "route_id, service_id, trip_id\n"
+        assert self._rows(csv_text) == []

@@ -8,11 +8,13 @@ for displaying train schedules on future days.
 import csv
 import io
 import zipfile
+from collections.abc import Iterator
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
 import httpx
 from sqlalchemy import and_, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -43,6 +45,8 @@ from trackrat.models.database import (
     GTFSRoute,
     GTFSStopTime,
     GTFSTrip,
+    JourneyStop,
+    TrainJourney,
 )
 from trackrat.utils.time import DATETIME_MAX_ET, ET, PROVIDER_TIMEZONE, now_et
 
@@ -62,6 +66,18 @@ GTFS_FEED_URLS = {
     "BART": "https://www.bart.gov/dev/schedules/google_transit.zip",
     "MBTA": "https://cdn.mbta.com/MBTA_GTFS.zip",
 }
+
+# Data sources whose upstream GTFS feed ships an already-expired service
+# calendar (its ``end_date`` is in the past) but whose weekly service pattern is
+# still broadly accurate. For these, ``get_active_service_ids`` ignores the
+# calendar ``end_date`` bound so the frozen weekly schedule keeps rolling
+# forward (the day-of-week match still applies). Without this the source
+# contributes zero scheduled departures, leaving trip search / departure boards
+# to rely solely on the sparse real-time feed — which produced empty PATH
+# transfer results on low-frequency nights (issue #1419). PATH's Trillium feed
+# expired 2026-06-01. Scoped deliberately: holiday exceptions (calendar_dates)
+# and long-term schedule drift are NOT corrected by this.
+GTFS_EXPIRY_EXEMPT_SOURCES: frozenset[str] = frozenset({"PATH"})
 
 # Minimum hours between feed downloads (rate limiting)
 GTFS_DOWNLOAD_INTERVAL_HOURS = 24
@@ -109,6 +125,14 @@ NJT_LINE_CODE_MAPPING = {
     # Princeton Shuttle (Dinky)
     "PRIN": "PR",
 }
+
+# Sources whose discovery upgrades a SCHEDULED journey to OBSERVED *in place*,
+# matched on the unique_train_journey key (train_id, journey_date, data_source).
+# Only these can have a row materialized from GTFS at Live Activity registration:
+# their real-time collectors adopt that exact row. GTFS-RT systems (subway, LIRR,
+# MNR, BART, MBTA, Metra, PATH, WMATA) mint their own train_ids and would create a
+# *separate* OBSERVED row, orphaning the materialized one (issue #1298 follow-up).
+MATERIALIZE_SCHEDULED_SOURCES = {"NJT", "AMTRAK"}
 
 
 def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
@@ -218,6 +242,25 @@ def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
     return None
 
 
+def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
+    """Iterate a GTFS CSV file as dicts with whitespace-stripped keys/values.
+
+    Some feeds (e.g. Metra's static schedule) use ", " rather than "," as
+    the field separator. csv.DictReader splits only on the literal comma,
+    so every header/value after the first column keeps a leading space
+    (e.g. fieldname " trip_id" instead of "trip_id"), which makes every
+    row.get("trip_id") lookup silently miss. Stripping both keys and
+    values here is a no-op for well-formed feeds and fixes the malformed
+    ones.
+    """
+    reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
+    for row in reader:
+        yield {
+            (k.strip() if k else k): (v.strip() if isinstance(v, str) else v)
+            for k, v in row.items()
+        }
+
+
 class GTFSService:
     """Service for managing GTFS static schedule data."""
 
@@ -225,6 +268,10 @@ class GTFSService:
     # Service IDs don't change intra-day, so caching eliminates ~2 DB queries
     # per (source, date) pair on every departure call.
     _service_id_cache: dict[tuple[str, date], set[str]] = {}
+
+    # Keys for which the "no active services" warning has already fired today,
+    # so a broken feed logs once per (source, date) instead of every call.
+    _empty_service_warned: set[tuple[str, date]] = set()
 
     def __init__(self, timeout: float = 120.0):
         """Initialize the GTFS service.
@@ -318,6 +365,9 @@ class GTFSService:
                 k: v
                 for k, v in GTFSService._service_id_cache.items()
                 if k[0] != data_source
+            }
+            GTFSService._empty_service_warned = {
+                k for k in GTFSService._empty_service_warned if k[0] != data_source
             }
 
             logger.info(
@@ -472,8 +522,7 @@ class GTFSService:
         routes: dict[str, int] = {}
 
         with zf.open("routes.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 route_id = row.get("route_id", "")
                 if route_id in routes:
                     continue
@@ -499,8 +548,7 @@ class GTFSService:
         services: set[str] = set()
 
         with zf.open("calendar.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 service_id = row.get("service_id", "")
                 if not service_id or service_id in services:
                     continue
@@ -532,8 +580,7 @@ class GTFSService:
         seen_keys: set[tuple[str, str]] = set()
 
         with zf.open("calendar_dates.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 service_id = row.get("service_id", "")
                 date_str = row.get("date", "")
                 exception_type = row.get("exception_type", "")
@@ -563,8 +610,7 @@ class GTFSService:
         stops: dict[str, str] = {}
 
         with zf.open("stops.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 stop_id = row.get("stop_id", "")
                 stop_name = row.get("stop_name", "")
                 if stop_id and stop_name:
@@ -586,8 +632,7 @@ class GTFSService:
         batch_size = 500
 
         with zf.open("trips.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 # Sanitize trip_id: replace spaces with underscores for URL safety.
                 # PATCO GTFS uses trip_ids like "Sunday Westbound_T25" which break
                 # HTTP requests when used as path parameters.
@@ -655,8 +700,7 @@ class GTFSService:
         batch_size = 1000
 
         with zf.open("stop_times.txt") as f:
-            reader = csv.DictReader(io.TextIOWrapper(f, encoding="utf-8-sig"))
-            for row in reader:
+            for row in _gtfs_csv_rows(f):
                 # Must match the sanitization applied in _parse_trips
                 trip_id = row.get("trip_id", "").replace(" ", "_")
                 if trip_id not in trips:
@@ -818,16 +862,20 @@ class GTFSService:
             GTFSCalendar.sunday,
         ]
 
-        # Get services from calendar that run on this day of week
+        # Get services from calendar that run on this day of week.
+        # Expiry-exempt sources (e.g. PATH, whose upstream feed's calendar has
+        # already expired) skip the end_date bound so their stale-but-accurate
+        # weekly schedule keeps applying via the day-of-week match (issue #1419).
+        calendar_conditions = [
+            GTFSCalendar.data_source == data_source,
+            GTFSCalendar.start_date <= target_date,
+            dow_columns[dow] == True,  # noqa: E712
+        ]
+        if data_source not in GTFS_EXPIRY_EXEMPT_SOURCES:
+            calendar_conditions.append(GTFSCalendar.end_date >= target_date)
+
         result = await db.execute(
-            select(GTFSCalendar.service_id).where(
-                and_(
-                    GTFSCalendar.data_source == data_source,
-                    GTFSCalendar.start_date <= target_date,
-                    GTFSCalendar.end_date >= target_date,
-                    dow_columns[dow] == True,  # noqa: E712
-                )
-            )
+            select(GTFSCalendar.service_id).where(and_(*calendar_conditions))
         )
         for row in result.all():
             active_services.add(row[0])
@@ -852,15 +900,28 @@ class GTFSService:
         active_services -= removed_services
 
         # Cache the result — service IDs are stable for a given date.
-        # Evict stale entries for past dates to prevent unbounded growth.
+        # Evict entries older than yesterday to prevent unbounded growth, while
+        # keeping yesterday's so an empty result doesn't get recomputed (and its
+        # warning re-fired) on every call for still-active overnight trips
+        # (journey_date can trail today by up to a day, e.g. lirr/collector.py).
         # Use pop() instead of dict replacement to avoid clobbering concurrent inserts.
         from trackrat.utils.time import now_et as _now_et
 
-        today = _now_et().date()
-        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < today]
+        cutoff = _now_et().date() - timedelta(days=1)
+        stale_keys = [k for k in GTFSService._service_id_cache if k[1] < cutoff]
         for k in stale_keys:
             GTFSService._service_id_cache.pop(k, None)
-        GTFSService._service_id_cache[cache_key] = active_services
+        stale_warned_keys = [
+            k for k in GTFSService._empty_service_warned if k[1] < cutoff
+        ]
+        for k in stale_warned_keys:
+            GTFSService._empty_service_warned.discard(k)
+
+        # Don't cache an empty result: it usually means a broken/partial GTFS
+        # import rather than a genuine service-free day, so the next call
+        # should re-check rather than serve the poisoned empty set all day.
+        if active_services:
+            GTFSService._service_id_cache[cache_key] = active_services
 
         return active_services
 
@@ -2069,6 +2130,130 @@ class GTFSService:
             predicted_arrival=None,
         )
 
+    async def materialize_scheduled_journey(
+        self,
+        db: AsyncSession,
+        train_id: str,
+        target_date: date,
+        data_source: str | None = None,
+    ) -> TrainJourney | None:
+        """Create a SCHEDULED ``train_journeys`` row from GTFS static data.
+
+        Live Activities can be started for SCHEDULED trains that exist only in
+        the GTFS static schedule (no ``train_journeys`` row until discovery
+        observes the train). The Live Activity push job queries ``train_journeys``
+        exclusively and has no GTFS fallback, so without a row it logs
+        ``journey_not_found_for_live_activity`` every cycle and never pushes an
+        update — the on-device countdown goes static (issue #1298).
+
+        Materializing a SCHEDULED row lets the push job deliver scheduled-time
+        updates immediately. NJT/Amtrak discovery later upgrades the same row to
+        OBSERVED in place, matched via the ``unique_train_journey`` key
+        (train_id, journey_date, data_source), so no duplicate is created. Only
+        sources in ``MATERIALIZE_SCHEDULED_SOURCES`` are eligible — GTFS-RT
+        systems mint their own train_ids and would orphan the materialized row.
+
+        Returns the existing or newly-created journey, or ``None`` if the train
+        is not present in GTFS, has no usable scheduled departure, or belongs to
+        a source without in-place SCHEDULED→OBSERVED upgrade.
+        """
+        existing: TrainJourney | None = await db.scalar(
+            self._scheduled_journey_lookup(train_id, target_date, data_source)
+        )
+        if existing:
+            return existing
+
+        details = await self.get_train_details(
+            db, train_id, target_date, data_source=data_source
+        )
+        if details is None or not details.stops:
+            return None
+
+        # Gate on the *resolved* source: a null data_source (older iOS clients)
+        # only resolves to a concrete source after get_train_details' two-phase
+        # search. Materializing for any other source would create a row no
+        # collector adopts, silently re-introducing stale Live Activities.
+        if details.data_source not in MATERIALIZE_SCHEDULED_SOURCES:
+            return None
+
+        origin = details.stops[0]
+        dest = details.stops[-1]
+        # ``scheduled_departure`` is NOT NULL on TrainJourney; fall back to the
+        # origin's scheduled arrival, then bail if neither is available.
+        scheduled_departure = origin.scheduled_departure or origin.scheduled_arrival
+        if scheduled_departure is None:
+            logger.info(
+                "gtfs_materialize_no_scheduled_departure",
+                train_id=train_id,
+                target_date=str(target_date),
+            )
+            return None
+
+        journey = TrainJourney(
+            train_id=details.train_id,
+            journey_date=target_date,
+            line_code=details.line.code[:15],
+            line_name=details.line.name,
+            line_color=details.line.color,
+            destination=details.route.destination[:100],
+            origin_station_code=details.route.origin_code,
+            terminal_station_code=details.route.destination_code,
+            data_source=details.data_source,
+            observation_type="SCHEDULED",
+            scheduled_departure=scheduled_departure,
+            scheduled_arrival=dest.scheduled_arrival or dest.scheduled_departure,
+            has_complete_journey=False,
+            stops_count=len(details.stops),
+        )
+        db.add(journey)
+        for stop in details.stops:
+            db.add(
+                JourneyStop(
+                    journey=journey,
+                    station_code=stop.station.code,
+                    station_name=stop.station.name,
+                    stop_sequence=stop.stop_sequence,
+                    scheduled_arrival=stop.scheduled_arrival,
+                    scheduled_departure=stop.scheduled_departure,
+                    has_departed_station=False,
+                )
+            )
+
+        try:
+            await db.flush()
+        except IntegrityError:
+            # A concurrent request or discovery created the row first — adopt it
+            # via the unique_train_journey key instead of failing.
+            await db.rollback()
+            adopted: TrainJourney | None = await db.scalar(
+                self._scheduled_journey_lookup(
+                    details.train_id, target_date, details.data_source
+                )
+            )
+            return adopted
+
+        logger.info(
+            "gtfs_scheduled_journey_materialized",
+            train_id=details.train_id,
+            journey_date=str(target_date),
+            data_source=details.data_source,
+            stops_count=len(details.stops),
+        )
+        return journey
+
+    @staticmethod
+    def _scheduled_journey_lookup(
+        train_id: str, target_date: date, data_source: str | None
+    ) -> Any:
+        """Build the existence query used to dedupe materialized journeys."""
+        conditions = [
+            TrainJourney.train_id == train_id,
+            TrainJourney.journey_date == target_date,
+        ]
+        if data_source:
+            conditions.append(TrainJourney.data_source == data_source)
+        return select(TrainJourney).where(and_(*conditions))
+
     async def get_static_stop_times(
         self,
         db: AsyncSession,
@@ -2095,11 +2280,14 @@ class GTFSService:
         """
         service_ids = await self.get_active_service_ids(db, data_source, target_date)
         if not service_ids:
-            logger.warning(
-                "gtfs_static_no_active_services",
-                data_source=data_source,
-                target_date=str(target_date),
-            )
+            warn_key = (data_source, target_date)
+            if warn_key not in GTFSService._empty_service_warned:
+                GTFSService._empty_service_warned.add(warn_key)
+                logger.error(
+                    "gtfs_static_no_active_services",
+                    data_source=data_source,
+                    target_date=str(target_date),
+                )
             return None
 
         trip_row = await self._find_trip_in_source(

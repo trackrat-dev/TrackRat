@@ -34,6 +34,7 @@ from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 @pytest.fixture
 async def sqlite_engine():
     """Create an in-memory SQLite engine with timezone-aware datetime handling."""
+    import itertools
     import pytz
 
     _ET = pytz.timezone("America/New_York")
@@ -65,10 +66,25 @@ async def sqlite_engine():
             if isinstance(column.type, SADateTime) and column.type.timezone:
                 column.type = TZDateTime()
 
+    # JourneyStop.id is Identity()-backed for Postgres' composite-PK
+    # partitioning (id, journey_date). SQLite doesn't support server-side
+    # identity generation, and since id is no longer a lone rowid-alias
+    # column, SQLAlchemy's client-side Identity() postfetch reuses the same
+    # value for every row in a batched insert. Assign sequential ids
+    # ourselves for the lifetime of this engine.
+    _next_stop_id = itertools.count(1)
+
+    def _assign_journey_stop_id(mapper, connection, target):
+        target.id = next(_next_stop_id)
+
+    event.listen(JourneyStop, "before_insert", _assign_journey_stop_id)
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
+
+    event.remove(JourneyStop, "before_insert", _assign_journey_stop_id)
 
     for table in Base.metadata.tables.values():
         for column in table.columns:
@@ -194,6 +210,7 @@ async def _create_tr_to_ny_journey(
             source = "api_explicit"
         stop = JourneyStop(
             journey_id=journey.id,
+            journey_date=journey.journey_date,
             station_code=code,
             station_name=name,
             stop_sequence=seq,
@@ -531,6 +548,7 @@ class TestStopSequenceRobustness:
         stops_db = [
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code="TR",
                 station_name="Trenton",
                 stop_sequence=0,
@@ -539,6 +557,7 @@ class TestStopSequenceRobustness:
             ),
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code="NP",
                 station_name="Newark Penn",
                 stop_sequence=1,
@@ -549,6 +568,7 @@ class TestStopSequenceRobustness:
             # stop_sequence=2 was deleted (phantom stop)
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code="NY",
                 station_name="New York Penn",
                 stop_sequence=3,

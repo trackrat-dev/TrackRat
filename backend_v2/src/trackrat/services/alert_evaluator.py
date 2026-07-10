@@ -7,6 +7,7 @@ or when train frequency drops significantly below normal levels.
 """
 
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -112,7 +113,9 @@ def _is_system_wide(sub: RouteAlertSubscription) -> bool:
     )
 
 
-def _route_contains_station_pair(route: Route, from_station: str, to_station: str) -> bool:
+def _route_contains_station_pair(
+    route: Route, from_station: str, to_station: str
+) -> bool:
     """Check a route for a station pair, honoring station equivalence groups."""
     to_codes = expand_station_codes(to_station)
     for from_code in expand_station_codes(from_station):
@@ -953,6 +956,29 @@ def _build_train_alert_message(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class _DigestWorkItem:
+    """Snapshot of one subscription's data needed for digest evaluation.
+
+    See ``evaluate_morning_digests`` for why we materialize subscription
+    fields up front instead of reading them inside the loop body.
+    """
+
+    device_id: str | None
+    apns_token: str | None
+    digest_time_minutes: int | None
+    timezone: str | None
+    active_days: int
+    last_digest_at: datetime | None
+    data_source: str | None
+    line_id: str | None
+    direction: str | None
+    from_station_code: str | None
+    to_station_code: str | None
+    train_id: str | None
+    route_name: str
+
+
 async def evaluate_morning_digests(
     db: AsyncSession, apns_service: SimpleAPNSService
 ) -> int:
@@ -969,79 +995,123 @@ async def evaluate_morning_digests(
     )
     devices = result.scalars().all()
 
+    # Materialize the work list into plain (sub, snapshot) pairs up front.
+    # _generate_digest_summary calls db.rollback() on error (issue #1334)
+    # which expires every ORM instance attached to this session; later reads
+    # of `sub.X` / `device.X` would then trigger an implicit refresh from
+    # sync attribute access and raise MissingGreenlet. Keeping the data in
+    # plain snapshots decouples loop iteration from ORM state. `sub` is
+    # still kept around as a handle for the eventual last_digest_at write —
+    # attribute *assignment* on an expired instance is safe; only reads
+    # trigger a refresh.
+    work_items: list[tuple[RouteAlertSubscription, _DigestWorkItem]] = []
+    for device in devices:
+        for sub in device.subscriptions:
+            work_items.append(
+                (
+                    sub,
+                    _DigestWorkItem(
+                        device_id=device.device_id,
+                        apns_token=device.apns_token,
+                        digest_time_minutes=sub.digest_time_minutes,
+                        timezone=sub.timezone,
+                        active_days=sub.active_days or 0,
+                        last_digest_at=sub.last_digest_at,
+                        data_source=sub.data_source,
+                        line_id=sub.line_id,
+                        direction=sub.direction,
+                        from_station_code=sub.from_station_code,
+                        to_station_code=sub.to_station_code,
+                        train_id=sub.train_id,
+                        route_name=_get_route_name(sub),
+                    ),
+                )
+            )
+
     summary_service = SummaryService()
     digests_sent = 0
 
-    for device in devices:
-        for sub in device.subscriptions:
-            if sub.digest_time_minutes is None or not sub.timezone:
+    for sub, snap in work_items:
+        if snap.digest_time_minutes is None or not snap.timezone:
+            continue
+
+        try:
+            local_now = datetime.now(ZoneInfo(snap.timezone))
+        except (KeyError, ValueError):
+            continue
+
+        # Check if within ±2 min window of digest time
+        current_minutes = local_now.hour * 60 + local_now.minute
+        diff = abs(current_minutes - snap.digest_time_minutes)
+        # Handle midnight wrap (e.g., current=1438, digest=2 → diff should be 4)
+        if diff > 720:
+            diff = 1440 - diff
+        if diff > 2:
+            continue
+
+        # Day-of-week check
+        day_bit = 1 << local_now.weekday()
+        if not (snap.active_days & day_bit):
+            continue
+
+        # Already sent today?
+        if snap.last_digest_at:
+            last_digest_local = snap.last_digest_at.astimezone(ZoneInfo(snap.timezone))
+            if last_digest_local.date() == local_now.date():
                 continue
 
-            try:
-                local_now = datetime.now(ZoneInfo(sub.timezone))
-            except (KeyError, ValueError):
-                continue
+        summary = await _generate_digest_summary(
+            db,
+            summary_service,
+            data_source=snap.data_source,
+            line_id=snap.line_id,
+            direction=snap.direction,
+            from_station_code=snap.from_station_code,
+            to_station_code=snap.to_station_code,
+            train_id=snap.train_id,
+        )
 
-            # Check if within ±2 min window of digest time
-            current_minutes = local_now.hour * 60 + local_now.minute
-            diff = abs(current_minutes - sub.digest_time_minutes)
-            # Handle midnight wrap (e.g., current=1438, digest=2 → diff should be 4)
-            if diff > 720:
-                diff = 1440 - diff
-            if diff > 2:
-                continue
+        if not summary or not snap.apns_token:
+            continue
 
-            # Day-of-week check
-            day_bit = 1 << local_now.weekday()
-            if not ((sub.active_days or 0) & day_bit):
-                continue
-
-            # Already sent today?
-            if sub.last_digest_at:
-                last_digest_local = sub.last_digest_at.astimezone(
-                    ZoneInfo(sub.timezone)
-                )
-                if last_digest_local.date() == local_now.date():
-                    continue
-
-            # Generate summary
-            route_name = _get_route_name(sub)
-            summary = await _generate_digest_summary(db, sub, summary_service)
-
-            if not summary or not device.apns_token:
-                continue
-
-            title = route_name
-            custom_data = {
-                "route_alert": {
-                    "data_source": sub.data_source,
-                    "line_id": sub.line_id,
-                    "direction": sub.direction,
-                    "from_station_code": sub.from_station_code,
-                    "to_station_code": sub.to_station_code,
-                    "train_id": sub.train_id,
-                    "alert_type": "digest",
-                }
+        custom_data = {
+            "route_alert": {
+                "data_source": snap.data_source,
+                "line_id": snap.line_id,
+                "direction": snap.direction,
+                "from_station_code": snap.from_station_code,
+                "to_station_code": snap.to_station_code,
+                "train_id": snap.train_id,
+                "alert_type": "digest",
             }
-            body = f"Daily digest: {summary}"
-            sent = await apns_service.send_alert_notification(
-                device.apns_token, title, body, custom_data=custom_data
+        }
+        body = f"Daily digest: {summary}"
+        sent = await apns_service.send_alert_notification(
+            snap.apns_token, snap.route_name, body, custom_data=custom_data
+        )
+
+        if sent:
+            # Assignment is safe on an expired ORM instance: it sets the
+            # pending value without triggering a refresh.
+            #
+            # Commit immediately rather than batching at the end of the loop:
+            # a later subscription's summary failure triggers db.rollback()
+            # inside _generate_digest_summary, which would discard any
+            # uncommitted last_digest_at assignments from prior iterations.
+            # The push has already been delivered to APNS at that point, so
+            # losing the timestamp would cause the same digest to re-fire on
+            # the next 5-minute scheduler tick.
+            sub.last_digest_at = datetime.now(UTC)
+            await db.commit()
+            digests_sent += 1
+
+            logger.info(
+                "morning_digest_sent",
+                device_id=snap.device_id,
+                data_source=snap.data_source,
+                line_id=snap.line_id,
+                route_name=snap.route_name,
             )
-
-            if sent:
-                sub.last_digest_at = datetime.now(UTC)
-                digests_sent += 1
-
-                logger.info(
-                    "morning_digest_sent",
-                    device_id=device.device_id,
-                    data_source=sub.data_source,
-                    line_id=sub.line_id,
-                    route_name=route_name,
-                )
-
-    if digests_sent > 0:
-        await db.commit()
 
     logger.info("morning_digest_evaluation_complete", digests_sent=digests_sent)
     return digests_sent
@@ -1049,43 +1119,55 @@ async def evaluate_morning_digests(
 
 async def _generate_digest_summary(
     db: AsyncSession,
-    sub: RouteAlertSubscription,
     summary_service: "SummaryService",
+    *,
+    data_source: str | None,
+    line_id: str | None,
+    direction: str | None,
+    from_station_code: str | None,
+    to_station_code: str | None,
+    train_id: str | None,
 ) -> str | None:
-    """Generate digest text for a subscription using SummaryService."""
+    """Generate digest text for a subscription using SummaryService.
+
+    Accepts primitive subscription fields (not the ORM instance) because the
+    caller's loop runs over many subs sharing one session: a SQL failure here
+    triggers `db.rollback()` (issue #1334), which expires every ORM instance
+    attached to the session. Reading expired attributes from sync code in the
+    next iteration would raise MissingGreenlet, so the caller pre-materializes
+    the values it needs.
+    """
     try:
-        if sub.line_id:
-            route = _ROUTES_BY_ID.get(sub.line_id)
+        if line_id:
+            route = _ROUTES_BY_ID.get(line_id)
             if not route:
                 return None
             stations = route.stations
-            from_station = (
-                stations[0] if sub.direction == stations[-1] else stations[-1]
-            )
-            to_station = sub.direction or stations[-1]
+            from_station = stations[0] if direction == stations[-1] else stations[-1]
+            to_station = direction or stations[-1]
             result = await summary_service.get_route_summary(
                 db,
                 from_station=from_station,
                 to_station=to_station,
-                data_source=sub.data_source,
+                data_source=data_source,
             )
-        elif sub.from_station_code and sub.to_station_code:
+        elif from_station_code and to_station_code:
             result = await summary_service.get_route_summary(
                 db,
-                from_station=sub.from_station_code,
-                to_station=sub.to_station_code,
-                data_source=sub.data_source,
+                from_station=from_station_code,
+                to_station=to_station_code,
+                data_source=data_source,
             )
-        elif sub.train_id:
+        elif train_id:
             result = await summary_service.get_train_summary(
                 db,
-                train_id=sub.train_id,
+                train_id=train_id,
             )
         else:
             # System-wide: use network summary for the data source
             result = await summary_service.get_network_summary(
                 db,
-                data_source=sub.data_source,
+                data_source=data_source,
             )
 
         # For push notifications, use body (descriptive) over headline (terse)
@@ -1097,10 +1179,24 @@ async def _generate_digest_summary(
             return result.headline
         return None
     except Exception:
+        # Roll back so the next subscription in the loop reuses a clean
+        # session. Without this, any SQL failure (timeout, deadlock, etc.)
+        # inside summary_service leaves the asyncpg connection's transaction
+        # in an invalid state and subsequent queries fail with "Can't
+        # reconnect until invalid transaction is rolled back."
+        try:
+            await db.rollback()
+        except Exception:
+            logger.warning(
+                "digest_summary_rollback_failed",
+                data_source=data_source,
+                line_id=line_id,
+                exc_info=True,
+            )
         logger.warning(
             "digest_summary_generation_failed",
-            data_source=sub.data_source,
-            line_id=sub.line_id,
+            data_source=data_source,
+            line_id=line_id,
             exc_info=True,
         )
         return None

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { apiService } from '../services/api';
 import { PlatformPrediction } from '../types';
+import { usePolling } from '../utils/usePolling';
 
 interface TrackPredictionBarProps {
   trainId: string;
@@ -13,28 +14,35 @@ interface PlatformSegment {
   probability: number;
 }
 
+/** Track assignments firm up as departure nears; keep the prediction current. */
+const PREDICTION_POLL_MS = 60_000;
+
+const PREDICTION_CARD_CLASS = 'mt-3 p-3 bg-accent/5 border border-accent/20 rounded-xl';
+
 export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: TrackPredictionBarProps) {
   const [prediction, setPrediction] = useState<PlatformPrediction | null>(null);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    async function fetchPrediction() {
-      setLoading(true);
-      const result = await apiService.getPlatformPrediction(
-        originStationCode,
-        trainId,
-        journeyDate
-      );
+  const fetchPrediction = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const result = await apiService.getPlatformPrediction(originStationCode, trainId, journeyDate, signal);
       setPrediction(result);
+      setFailed(false);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setFailed(true);
+    } finally {
+      // Only the first run gates the skeleton; subsequent polls keep it false.
       setLoading(false);
     }
-
-    fetchPrediction();
   }, [originStationCode, trainId, journeyDate]);
 
-  if (loading) {
+  usePolling(fetchPrediction, [originStationCode, trainId, journeyDate], { intervalMs: PREDICTION_POLL_MS });
+
+  if (loading && !prediction) {
     return (
-      <div className="mt-3 p-3 bg-accent/5 border border-accent/20 rounded-xl">
+      <div className={PREDICTION_CARD_CLASS}>
         <div className="flex items-center gap-2 mb-2">
           <span className="text-lg">🚋</span>
           <span className="text-sm font-semibold text-text-primary">Track Predictions</span>
@@ -45,7 +53,19 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
   }
 
   if (!prediction || !prediction.platform_probabilities) {
-    return null; // Fail silently if no predictions
+    // Distinguish "no prediction here" (render nothing) from a real fetch failure.
+    if (failed) {
+      return (
+        <div className={PREDICTION_CARD_CLASS}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">🚋</span>
+            <span className="text-sm font-semibold text-text-primary">Track Predictions</span>
+          </div>
+          <p className="text-sm text-text-muted">Couldn’t load track predictions</p>
+        </div>
+      );
+    }
+    return null;
   }
 
   // Convert to segments and sort by platform number
@@ -73,7 +93,7 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
   const hasOnlyLowConfidence = visibleSegments.every(s => s.probability < 0.17);
 
   return (
-    <div className="mt-3 p-3 bg-accent/5 border border-accent/20 rounded-xl">
+    <div className={PREDICTION_CARD_CLASS}>
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">🚋</span>
         <span className="text-sm font-semibold text-text-primary">Track Predictions</span>

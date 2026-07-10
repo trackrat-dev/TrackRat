@@ -208,7 +208,13 @@ def load_station_names():
 # Data Collection
 # ---------------------------------------------------------------------------
 def fetch_lb_logs(token, env, hours):
-    """Fetch GCP load balancer logs for the given environment and time window."""
+    """Fetch GCP load balancer logs for the given environment and time window.
+
+    Health probes (/health*) and metrics scrapes (/metrics) are excluded
+    server-side: over a multi-hour window they dominate the logs and would
+    otherwise consume the pagination budget and truncate real API traffic.
+    Pagination scales with the window so a full day of traffic still fits.
+    """
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
@@ -217,8 +223,10 @@ def fetch_lb_logs(token, env, hours):
         f'resource.type="http_load_balancer"'
         f' AND resource.labels.forwarding_rule_name="{rule}"'
         f' AND timestamp>="{since}"'
+        f' AND NOT httpRequest.requestUrl=~"://[^/]+/(health|metrics)([/?]|$)"'
     )
-    return query_logs(token, log_filter, limit=1000, max_pages=20)
+    max_pages = min(60, max(20, round(hours * 2)))
+    return query_logs(token, log_filter, limit=1000, max_pages=max_pages)
 
 
 def fetch_app_logs(token, instance_id, hours, level=None, search=None):
@@ -320,6 +328,19 @@ def parse_user_agent(ua):
     return "other"
 
 
+def client_class(ua_label):
+    """Map a parsed client label to a coarse class for the iOS/web breakout.
+
+    Returns "ios" (TrackRat iOS app), "web" (browser = the web app), or
+    "other" (Android, curl, scripts, scanners, health checks).
+    """
+    if ua_label.startswith("iOS/"):
+        return "ios"
+    if ua_label == "browser":
+        return "web"
+    return "other"
+
+
 def analyze_lb_entries(entries, station_names):
     """Analyze load balancer log entries into structured report data."""
     # Counters
@@ -330,6 +351,15 @@ def analyze_lb_entries(entries, station_names):
     status_codes = Counter()
     latencies = defaultdict(list)
     unique_ips = set()
+    # Per-client-class breakout (iOS app vs web app vs other).
+    per_class = defaultdict(
+        lambda: {
+            "requests": 0,
+            "ips": set(),
+            "routes": Counter(),
+            "endpoints": Counter(),
+        }
+    )
     total_api = 0
     total_non_api = 0
     scanner_count = 0
@@ -373,6 +403,12 @@ def analyze_lb_entries(entries, station_names):
         user_agents[ua] += 1
         latencies[category].append(lat)
 
+        cls = client_class(ua)
+        cls_data = per_class[cls]
+        cls_data["requests"] += 1
+        cls_data["ips"].add(remote_ip)
+        cls_data["endpoints"][category] += 1
+
         # Extract business details
         if category == "departures":
             from_s = (params.get("from", params.get("from_station", ["?"])) or ["?"])[0]
@@ -380,6 +416,7 @@ def analyze_lb_entries(entries, station_names):
             from_name = station_names.get(from_s, from_s)
             to_name = station_names.get(to_s, to_s)
             route_searches[f"{from_name} -> {to_name}"] += 1
+            cls_data["routes"][f"{from_name} -> {to_name}"] += 1
 
         elif category == "train_detail":
             parts = path.split("/trains/")
@@ -399,6 +436,15 @@ def analyze_lb_entries(entries, station_names):
         "status_codes": status_codes,
         "latencies": latencies,
         "unique_ips": len(unique_ips),
+        "client_breakdown": {
+            cls: {
+                "requests": data["requests"],
+                "unique_users": len(data["ips"]),
+                "routes": data["routes"],
+                "endpoints": data["endpoints"],
+            }
+            for cls, data in per_class.items()
+        },
     }
 
 
@@ -558,6 +604,30 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
         lines.append(f"    {count:>5}  {ua}")
     lines.append("")
 
+    # iOS app vs Web app breakout
+    lines.append(f"  {b}iOS app vs Web app:{nc}")
+    class_labels = {
+        "ios": "iOS app",
+        "web": "Web app",
+        "other": "Other (Android/curl/scripts)",
+    }
+    breakdown = la["client_breakdown"]
+    for cls in ("ios", "web", "other"):
+        info = breakdown.get(cls)
+        if not info:
+            continue
+        lines.append(
+            f"    {b}{class_labels[cls]}:{nc}  "
+            f"{info['requests']} requests, {info['unique_users']} unique users"
+        )
+        top_routes = info["routes"].most_common(5)
+        if top_routes:
+            for route, count in top_routes:
+                lines.append(f"        {count:>4}x  {route}")
+        else:
+            lines.append(f"        {d}(no route searches){nc}")
+    lines.append("")
+
     # --- Section 3: Business Activity ---
     lines.append(f"{b}{'=' * 60}{nc}")
     lines.append(f"{b}BUSINESS ACTIVITY{nc}")
@@ -671,6 +741,15 @@ def build_json_report(env, hours, health, scheduler, lb_analysis, app_analysis):
             "endpoints": dict(la["endpoint_counts"].most_common()),
             "status_codes": {str(k): v for k, v in la["status_codes"].items()},
             "clients": dict(la["user_agents"].most_common()),
+            "client_breakdown": {
+                cls: {
+                    "requests": cb["requests"],
+                    "unique_users": cb["unique_users"],
+                    "top_routes": dict(cb["routes"].most_common(10)),
+                    "endpoints": dict(cb["endpoints"].most_common()),
+                }
+                for cls, cb in la["client_breakdown"].items()
+            },
         },
         "business_activity": {
             "route_searches": dict(la["route_searches"].most_common(20)),

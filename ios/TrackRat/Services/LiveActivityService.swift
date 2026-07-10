@@ -14,7 +14,9 @@ class LiveActivityService: ObservableObject {
 
     private var updateTimer: Timer?
     private var pushTokenTask: Task<Void, Never>?
+    private var stateTask: Task<Void, Never>?
     private var currentPushToken: Data?
+    private var isEndingActivity = false
     private let cacheService = TrainCacheService.shared
 
     /// Tracks whether train has departed from user's origin (fires events once on transition)
@@ -155,6 +157,10 @@ class LiveActivityService: ObservableObject {
             // Subscribe to push token updates (async)
             startPushTokenSubscription(for: activity, train: train, from: originCode, to: destinationCode)
 
+            // Watch for the user dismissing the activity (or the system ending it) so we
+            // stop polling and unregister the push token instead of running as a zombie
+            observeActivityState(activity)
+
             // Start periodic updates every 30 seconds (must be on main thread for Timer)
             await MainActor.run {
                 startPeriodicUpdates()
@@ -183,10 +189,18 @@ class LiveActivityService: ObservableObject {
     
     /// End the current Live Activity
     func endCurrentActivity() async {
-        guard let activity = currentActivity else { return }
+        // isEndingActivity guards against the state observer below re-entering this
+        // method while we're still in the middle of ending the activity ourselves.
+        guard let activity = currentActivity, !isEndingActivity else { return }
+        isEndingActivity = true
+        defer { isEndingActivity = false }
 
         // Stop periodic updates first
         stopPeriodicUpdates()
+
+        // Stop watching activity state - we're ending it ourselves
+        stateTask?.cancel()
+        stateTask = nil
 
         // Finalize trip recording (only matters if train departed)
         TripRecordingService.shared.finalizeTrip()
@@ -469,23 +483,67 @@ class LiveActivityService: ObservableObject {
         }
     }
     
-    // MARK: - Utilities
-    
-    private func checkCurrentActivity() {
-        // Check if there's an existing activity
-        if let activity = Activity<TrainActivityAttributes>.activities.first {
-            self.currentActivity = activity
-            self.isActivityActive = true
-            // Ensure timer is scheduled on main thread
-            DispatchQueue.main.async { [weak self] in
-                self?.startPeriodicUpdates()
+    // MARK: - Activity State Observation
+
+    /// Watch for the user dismissing the Live Activity (Lock Screen swipe) or the
+    /// system/backend ending it, so we stop polling and unregister the push token
+    /// instead of continuing to treat a dead activity as live.
+    private func observeActivityState(_ activity: Activity<TrainActivityAttributes>) {
+        stateTask?.cancel()
+        stateTask = Task { [weak self] in
+            for await state in activity.activityStateUpdates {
+                if Task.isCancelled { return }
+                if state == .dismissed || state == .ended {
+                    print("📴 Live Activity \(state == .dismissed ? "dismissed" : "ended") externally - cleaning up")
+                    // Run cleanup in its own unstructured task: endCurrentActivity() cancels
+                    // stateTask, and if that cleanup ran on stateTask itself, cancelling it
+                    // would also cancel the in-flight token-unregistration request.
+                    Task { [weak self] in
+                        await self?.endCurrentActivity()
+                    }
+                    return
+                }
             }
-            
-            // Note: For existing activities, we don't start a new push token subscription
-            // since we don't have the original train data. The activity should already
-            // be registered if it was created properly.
-            print("📱 Found existing Live Activity: \(activity.id)")
         }
+    }
+
+    /// Recover the push token for an activity we adopted after relaunch (e.g. from
+    /// `checkCurrentActivity`), where we don't have the original train data needed
+    /// to re-register with the server. ActivityKit re-delivers the already-known
+    /// token to a new subscriber, so this just needs to capture it locally.
+    private func resubscribeToPushToken(for activity: Activity<TrainActivityAttributes>) {
+        pushTokenTask?.cancel()
+        pushTokenTask = Task { [weak self] in
+            for await token in activity.pushTokenUpdates {
+                if Task.isCancelled { return }
+                await MainActor.run { [weak self] in
+                    self?.currentPushToken = token
+                }
+                return
+            }
+        }
+    }
+
+    // MARK: - Utilities
+
+    private func checkCurrentActivity() {
+        // Only adopt activities still visible to the user - skip ones already
+        // dismissed or ended so we don't resurrect a zombie on relaunch.
+        guard let activity = Activity<TrainActivityAttributes>.activities.first(where: {
+            $0.activityState == .active || $0.activityState == .stale
+        }) else { return }
+
+        self.currentActivity = activity
+        self.isActivityActive = true
+        // Ensure timer is scheduled on main thread
+        DispatchQueue.main.async { [weak self] in
+            self?.startPeriodicUpdates()
+        }
+
+        resubscribeToPushToken(for: activity)
+        observeActivityState(activity)
+
+        print("📱 Found existing Live Activity: \(activity.id)")
     }
     
     // MARK: - Helper Methods

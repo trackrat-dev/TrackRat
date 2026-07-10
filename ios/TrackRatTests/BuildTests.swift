@@ -96,7 +96,7 @@ class StationNameWithBadgesLayoutTests: XCTestCase {
         host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 100)
         host.view.layoutIfNeeded()
 
-        let fitted = host.sizeThatFits(in: CGSize(width: 320, height: .greatestFiniteMagnitude))
+        let fitted = host.sizeThatFits(in: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
         XCTAssertGreaterThan(
             fitted.height, 10,
             "Station name with no badges must contribute non-zero height (regression: TrainDetailsView non-subway stops rendered no station name)"
@@ -118,7 +118,7 @@ class StationNameWithBadgesLayoutTests: XCTestCase {
         host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 100)
         host.view.layoutIfNeeded()
 
-        let fitted = host.sizeThatFits(in: CGSize(width: 320, height: .greatestFiniteMagnitude))
+        let fitted = host.sizeThatFits(in: CGSize(width: 320, height: CGFloat.greatestFiniteMagnitude))
         XCTAssertGreaterThan(fitted.height, 10, "Subway stop with chips must also render with positive height")
     }
 
@@ -159,6 +159,6 @@ class StationNameWithBadgesLayoutTests: XCTestCase {
         let host = UIHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: width, height: 200)
         host.view.layoutIfNeeded()
-        return host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+        return host.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)).height
     }
 }

@@ -847,6 +847,7 @@ class AmtrakPatternScheduler:
                         for stop in stops:
                             new_stop = JourneyStop(
                                 journey_id=existing_journey.id,
+                                journey_date=existing_journey.journey_date,
                                 station_code=stop.station_code,
                                 station_name=stop.station_name,
                                 stop_sequence=stop.stop_sequence,

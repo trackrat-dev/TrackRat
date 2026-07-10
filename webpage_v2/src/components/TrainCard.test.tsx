@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { TrainCard } from './TrainCard';
@@ -82,6 +82,28 @@ describe('TrainCard', () => {
     expect(screen.getByText('5 mins late')).toBeInTheDocument();
   });
 
+  it('leads with the live time and strikes through the scheduled time when delayed', () => {
+    const { container } = renderCard(makeTrain({
+      departure: {
+        code: 'TR',
+        name: 'Trenton',
+        scheduled_time: '2025-01-15T14:00:00-05:00',
+        updated_time: '2025-01-15T14:21:00-05:00',
+      },
+    }));
+
+    // Badge reports the magnitude; the scheduled time is struck through so the
+    // rider's eye lands on the real (delayed) time.
+    expect(screen.getByText('21 mins late')).toBeInTheDocument();
+    expect(container.querySelector('.line-through')).toBeInTheDocument();
+  });
+
+  it('renders no strikethrough for an on-time train', () => {
+    const { container } = renderCard(makeTrain());
+
+    expect(container.querySelector('.line-through')).not.toBeInTheDocument();
+  });
+
   it('shows "Boarding" when train is at departure station', () => {
     renderCard(
       makeTrain({
@@ -117,10 +139,61 @@ describe('TrainCard', () => {
     expect(screen.getByText('NJT')).toBeInTheDocument();
   });
 
+  it('omits the arrival row when arrival is null (station-only board)', () => {
+    renderCard(makeTrain({ arrival: null }));
+
+    // Departure timing still renders; the arrival row is hidden without crashing.
+    expect(screen.getByText('Departure')).toBeInTheDocument();
+    expect(screen.queryByText('Arrival')).not.toBeInTheDocument();
+  });
+
   it('applies dimmed styling when departed', () => {
     const { container } = renderCard(makeTrain(), { departed: true });
 
     const card = container.querySelector('[role="button"]');
     expect(card?.className).toContain('opacity-60');
+  });
+
+  describe('countdown', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('shows an "in N min" countdown for today\'s upcoming train', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-06T16:00:00Z'));
+
+      renderCard(makeTrain({
+        journey_date: '2026-07-06',
+        departure: { code: 'TR', name: 'Trenton', scheduled_time: '2026-07-06T16:20:00Z' },
+      }));
+
+      expect(screen.getByText('in 20 min')).toBeInTheDocument();
+    });
+
+    it('hides the countdown for future-date searches', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-06T16:00:00Z'));
+
+      renderCard(makeTrain({
+        journey_date: '2026-07-08',
+        departure: { code: 'TR', name: 'Trenton', scheduled_time: '2026-07-08T16:20:00Z' },
+      }));
+
+      expect(screen.queryByText(/in \d+ min/)).not.toBeInTheDocument();
+    });
+
+    it('hides the countdown for cancelled trains even today', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-07-06T16:00:00Z'));
+
+      renderCard(makeTrain({
+        is_cancelled: true,
+        journey_date: '2026-07-06',
+        departure: { code: 'TR', name: 'Trenton', scheduled_time: '2026-07-06T16:20:00Z' },
+      }));
+
+      expect(screen.queryByText(/in \d+ min/)).not.toBeInTheDocument();
+    });
   });
 });

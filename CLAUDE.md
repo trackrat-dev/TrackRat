@@ -150,6 +150,10 @@ The ground-truth validation script also accepts `WMATA_API_KEY` as a fallback.
 Shows how the server is being used: API traffic breakdown, route searches, train follows,
 client versions, latency, scheduler health, errors, and warnings. Queries GCP load balancer
 logs and backend endpoints. Requires GCP service account credentials (same as gcp-logs.py).
+The report also breaks traffic out by client class (`client_breakdown` in JSON, "iOS app vs
+Web app" section in text): `ios` (TrackRat iOS app), `web` (browser = the web app), and
+`other` (Android/curl/scripts), each with request count, unique users, and top routes.
+Health probes and `/metrics` are excluded server-side so a 24h window reports real traffic.
 
 ```bash
 # Production, last 1 hour (default)
@@ -175,6 +179,25 @@ script and provide a narrative summary that highlights:
 - **Health concerns**: any errors, notable warnings, slow endpoints (route_history and
   congestion_cache are known to be slow). Zero errors is worth calling out.
 - **Scanner noise**: mention probe count but don't dwell on it unless unusual.
+- **iOS vs Web**: from `client_breakdown`, contrast the two apps — e.g. "iOS: 240 requests
+  from 18 users, mostly Trenton -> NY Penn; Web: 55 requests from 9 users, mostly BWI ->
+  Boston. Android/scripts negligible."
+
+**Daily Usage Report Routine:**
+
+A Claude Code Routine (`create_trigger`, fresh session per fire, daily) generates this report
+automatically and sends it back via the run's completion notification. The routine prompt is:
+
+> Generate the TrackRat daily usage report. Run
+> `bash scripts/server-usage.sh --env production --hours 24 --json` (let it install GCP deps
+> if prompted). From the JSON, write a concise narrative summarizing the last 24h: total API
+> requests and unique users; the iOS-app vs web-app breakout (use `api_traffic.client_breakdown`
+> if present — requests, unique users, and top routes for `ios`, `web`, and `other` =
+> Android/curl/scripts; otherwise derive the split from `api_traffic.clients`); the most-searched
+> routes overall with station names; engagement (Live Activity registrations, device
+> registrations, alert subscriptions, feedback); and any errors or notable warnings (call out
+> zero errors explicitly). Keep it short and readable. If the script fails (e.g. missing GCP
+> creds), report the exact error instead.
 
 **Other Utility Scripts:**
 
@@ -275,6 +298,11 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Single Journey Record: One database row per train per day
 - Horizontal Scaling: Database-coordinated scheduler with row-level locking and task-level timeouts
 - API Response Caching: 15-minute pre-computed responses for congestion endpoints
+
+**Disabled Train Systems (feature flag):**
+- `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
+- iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
+- Currently `BART,WMATA,MBTA,METRA` are disabled in staging and production (set in `infra_v2/terraform/compute.tf`)
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)
@@ -383,6 +411,8 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
+**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes; `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (dynamically selects an available simulator).
+
 ## GCP Log Viewing (Cloud Environment)
 
 The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes `GCP_SA_KEY_JSON` to `/root/.config/gcloud/service-account.json`. This hook is required for authentication.
@@ -477,7 +507,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
-- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, migrations/)
+- Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
 - Backend tests: `backend_v2/tests/`
 - iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`

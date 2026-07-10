@@ -1,6 +1,6 @@
 # TrackRat Web
 
-A mobile-first web application for tracking trains across 11 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA) in real-time.
+A mobile-first web application for tracking trains across 11 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA) in real-time. BART, WMATA, MBTA, and Metra are currently disabled app-wide via `DISABLED_SYSTEMS` in `src/data/stations.ts` (mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag).
 
 ## Features
 

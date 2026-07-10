@@ -31,6 +31,11 @@ from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
+from trackrat.db.partitioning import (
+    drop_old_partitions,
+    ensure_future_partitions,
+    run_legacy_backfill_batches,
+)
 from trackrat.models.database import LiveActivityToken, TrainJourney
 from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
@@ -47,6 +52,7 @@ from trackrat.utils.scheduler_utils import (
     commit_with_retry,
     run_with_freshness_check,
 )
+from trackrat.utils.system_stats import get_disk_usage
 from trackrat.utils.time import (
     ensure_timezone_aware,
     now_et,
@@ -298,6 +304,16 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule data disk / database size check (every 15 minutes)
+        self.scheduler.add_job(
+            self.check_resource_usage,
+            trigger=IntervalTrigger(minutes=15, jitter=60),
+            id="resource_usage_check",
+            name="Resource Usage Check",
+            replace_existing=True,
+            max_instances=1,
+        )
+
         # Schedule departures API cache pre-computation (every 90 seconds)
         self.scheduler.add_job(
             self.precompute_departure_cache,
@@ -427,6 +443,22 @@ class SchedulerService:
             misfire_grace_time=3600,
         )
 
+        # One-time #1343 backfill: copy the recent retention window from the
+        # *_legacy tables into the new partitions, then drop each legacy table.
+        # Runs every 2 min until complete, then no-ops cheaply (legacy tables
+        # gone). Coordinated across replicas via the freshness check inside.
+        self.scheduler.add_job(
+            self.backfill_legacy_partitions,
+            trigger=IntervalTrigger(
+                minutes=2, start_date=now + timedelta(minutes=3), jitter=30
+            ),
+            id="legacy_partition_backfill",
+            name="Legacy Partition Backfill (#1343)",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
         # Start the scheduler
         self.scheduler.start()
 
@@ -443,6 +475,11 @@ class SchedulerService:
         logger.info(
             "scheduler_started", jobs=[job.id for job in self.scheduler.get_jobs()]
         )
+        if self.settings.disabled_data_source_set:
+            logger.info(
+                "data_sources_disabled",
+                sources=sorted(self.settings.disabled_data_source_set),
+            )
 
     async def _run_startup_collectors(self) -> None:
         """Launch startup collectors with staggered delays to avoid CPU spike."""
@@ -499,6 +536,8 @@ class SchedulerService:
 
     async def run_njt_discovery(self) -> None:
         """Run NJ Transit train discovery for all configured stations."""
+        if self.settings.is_data_source_disabled("NJT"):
+            return
         task_id = f"njt_discovery_{now_et().isoformat()}"
 
         async def do_discovery_work() -> None:
@@ -564,6 +603,8 @@ class SchedulerService:
 
     async def run_amtrak_discovery(self) -> None:
         """Run Amtrak train discovery for trains serving NYP."""
+        if self.settings.is_data_source_disabled("AMTRAK"):
+            return
         task_id = f"amtrak_discovery_{now_et().isoformat()}"
 
         async def do_amtrak_discovery_work() -> None:
@@ -620,6 +661,8 @@ class SchedulerService:
 
     async def run_path_collection(self) -> None:
         """Run unified PATH collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("PATH"):
+            return
         task_id = f"path_collection_{now_et().isoformat()}"
 
         async def do_path_collection_work() -> dict[str, Any]:
@@ -667,6 +710,8 @@ class SchedulerService:
 
     async def run_lirr_collection(self) -> None:
         """Run unified LIRR collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("LIRR"):
+            return
         task_id = f"lirr_collection_{now_et().isoformat()}"
 
         async def do_lirr_collection_work() -> dict[str, Any]:
@@ -717,6 +762,8 @@ class SchedulerService:
 
     async def run_mnr_collection(self) -> None:
         """Run unified Metro-North collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("MNR"):
+            return
         task_id = f"mnr_collection_{now_et().isoformat()}"
 
         async def do_mnr_collection_work() -> dict[str, Any]:
@@ -767,6 +814,8 @@ class SchedulerService:
 
     async def run_subway_collection(self) -> None:
         """Run unified NYC Subway collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("SUBWAY"):
+            return
         task_id = f"subway_collection_{now_et().isoformat()}"
 
         async def do_subway_collection_work() -> dict[str, Any]:
@@ -812,6 +861,8 @@ class SchedulerService:
 
     async def run_metra_collection(self) -> None:
         """Run unified Metra collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("METRA"):
+            return
         task_id = f"metra_collection_{now_et().isoformat()}"
 
         async def do_metra_collection_work() -> dict[str, Any]:
@@ -857,6 +908,8 @@ class SchedulerService:
 
     async def run_wmata_collection(self) -> None:
         """Run unified WMATA collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("WMATA"):
+            return
         task_id = f"wmata_collection_{now_et().isoformat()}"
 
         async def do_wmata_collection_work() -> dict[str, Any]:
@@ -904,6 +957,8 @@ class SchedulerService:
 
     async def run_bart_collection(self) -> None:
         """Run unified BART collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("BART"):
+            return
         task_id = f"bart_collection_{now_et().isoformat()}"
 
         async def do_bart_collection_work() -> dict[str, Any]:
@@ -949,6 +1004,8 @@ class SchedulerService:
 
     async def run_mbta_collection(self) -> None:
         """Run unified MBTA collection (discovery + journey updates)."""
+        if self.settings.is_data_source_disabled("MBTA"):
+            return
         task_id = f"mbta_collection_{now_et().isoformat()}"
 
         async def do_mbta_collection_work() -> dict[str, Any]:
@@ -2418,11 +2475,12 @@ class SchedulerService:
                 journey_status = "NOT_DEPARTED"
         else:
             # Train has departed user's origin
-            journey_status = (
-                journey.snapshots[-1].train_status
-                if journey and journey.snapshots and journey.snapshots[-1].train_status
-                else "EN ROUTE"
-            )
+            if journey and journey.is_cancelled:
+                journey_status = "CANCELLED"
+            elif journey and journey.is_completed:
+                journey_status = "COMPLETED"
+            else:
+                journey_status = "EN ROUTE"
 
         # Create content state with all required fields
         content_state = {
@@ -2571,13 +2629,16 @@ class SchedulerService:
         """Delete old train journey data and auxiliary records.
 
         Deletes train_journeys older than retention_days (cascading to
-        journey_stops, journey_snapshots, journey_progress,
-        segment_transit_times, station_dwell_times via ON DELETE CASCADE).
-        Also prunes discovery_runs, validation_results, and inactive
-        service_alerts that haven't been refreshed by the collector.
+        journey_progress and station_dwell_times via ON DELETE CASCADE;
+        journey_stops and segment_transit_times are partitioned by month
+        (issue #1343) and are instead reclaimed by dropping whole aged-out
+        partitions — see phase 5). Also prunes discovery_runs,
+        validation_results, and inactive service_alerts that haven't been
+        refreshed by the collector.
         """
         settings = get_settings()
         cutoff_days = settings.retention_days
+        subway_cutoff_days = settings.subway_retention_days
 
         async def do_retention_work() -> None:
             batch_size = 1000
@@ -2585,14 +2646,31 @@ class SchedulerService:
             total_discovery = 0
             total_validation = 0
             total_service_alerts = 0
+            partitions_dropped: dict[str, list[str]] = {}
 
             try:
                 logger.info(
                     "starting_retention_cleanup",
                     cutoff_days=cutoff_days,
+                    subway_cutoff_days=subway_cutoff_days,
                 )
 
-                # Phase 1: Delete old train_journeys in batches
+                # Phase 0: top up the rolling partition window for
+                # journey_stops / segment_transit_times so upcoming writes
+                # (including schedule-generated future journeys) always have
+                # a partition to land in. Idempotent.
+                async with get_session() as db:
+                    await ensure_future_partitions(db)
+
+                # Phase 1: Delete old train_journeys in batches.
+                # SUBWAY uses a shorter retention window than other providers: it
+                # is the highest-volume data source (~70% of journey storage) and
+                # is real-time / frequency-based, so old subway journeys have little
+                # analytical value. The per-provider cutoff is applied via a CASE
+                # so the batched subquery shape (and its index usage) is unchanged.
+                # Deletes cascade to journey_stops / segment_transit_times /
+                # station_dwell_times / journey_progress / journey_snapshots via
+                # ON DELETE CASCADE.
                 while True:
                     async with get_session() as db:
                         result = cast(
@@ -2602,11 +2680,19 @@ class SchedulerService:
                                     "DELETE FROM train_journeys "
                                     "WHERE id IN ("
                                     "  SELECT id FROM train_journeys "
-                                    "  WHERE journey_date < CURRENT_DATE - make_interval(days => :days) "
+                                    "  WHERE journey_date < CURRENT_DATE - make_interval(days => "
+                                    "    CASE WHEN data_source = 'SUBWAY' "
+                                    "         THEN CAST(:subway_days AS int) "
+                                    "         ELSE CAST(:days AS int) END"
+                                    "  ) "
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
-                                {"days": cutoff_days, "batch_size": batch_size},
+                                {
+                                    "days": cutoff_days,
+                                    "subway_days": subway_cutoff_days,
+                                    "batch_size": batch_size,
+                                },
                             ),
                         )
                         deleted = result.rowcount or 0
@@ -2624,7 +2710,7 @@ class SchedulerService:
                                     "DELETE FROM discovery_runs "
                                     "WHERE id IN ("
                                     "  SELECT id FROM discovery_runs "
-                                    "  WHERE run_at < NOW() - make_interval(days => :days) "
+                                    "  WHERE run_at < NOW() - make_interval(days => CAST(:days AS int))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2646,7 +2732,7 @@ class SchedulerService:
                                     "DELETE FROM validation_results "
                                     "WHERE id IN ("
                                     "  SELECT id FROM validation_results "
-                                    "  WHERE run_at < NOW() - make_interval(days => :days) "
+                                    "  WHERE run_at < NOW() - make_interval(days => CAST(:days AS int))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2673,7 +2759,7 @@ class SchedulerService:
                                     "WHERE id IN ("
                                     "  SELECT id FROM service_alerts "
                                     "  WHERE is_active = false "
-                                    "    AND updated_at < NOW() - make_interval(days => :days) "
+                                    "    AND updated_at < NOW() - make_interval(days => CAST(:days AS int))"
                                     "  LIMIT :batch_size"
                                     ")"
                                 ),
@@ -2685,6 +2771,20 @@ class SchedulerService:
                     if deleted < batch_size:
                         break
 
+                # Phase 5: Drop journey_stops / segment_transit_times
+                # partitions that are entirely older than cutoff_days. Uses
+                # the general (longer) cutoff, not SUBWAY's shorter one,
+                # because a monthly partition mixes rows from every data
+                # source — dropping it early would discard non-SUBWAY rows
+                # still inside their retention window. SUBWAY rows within a
+                # not-yet-dropped partition are still pruned granularly by
+                # phase 1's cascade delete; the partition catches up once
+                # fully aged out. DROP TABLE is instant and returns space to
+                # the filesystem immediately, unlike DELETE + autovacuum.
+                cutoff_date = date.today() - timedelta(days=cutoff_days)
+                async with get_session() as db:
+                    partitions_dropped = await drop_old_partitions(db, cutoff_date)
+
                 logger.info(
                     "retention_cleanup_completed",
                     cutoff_days=cutoff_days,
@@ -2692,6 +2792,7 @@ class SchedulerService:
                     discovery_runs_deleted=total_discovery,
                     validation_results_deleted=total_validation,
                     service_alerts_deleted=total_service_alerts,
+                    partitions_dropped=partitions_dropped,
                 )
 
             except Exception as e:
@@ -2703,7 +2804,16 @@ class SchedulerService:
                     discovery_runs_deleted_so_far=total_discovery,
                     validation_results_deleted_so_far=total_validation,
                     service_alerts_deleted_so_far=total_service_alerts,
+                    partitions_dropped_so_far=partitions_dropped,
                 )
+                # Re-raise so run_with_freshness_check records this as a failed
+                # run. Swallowing it here let a failed cleanup masquerade as a
+                # success: the freshness wrapper only updates last_successful_run
+                # when task_func returns without raising, so every failure was
+                # bumping the timestamp — masking the failure in
+                # scheduler_task_runs and skipping the next scheduled run as
+                # "still fresh" for ~21h.
+                raise
 
         async with get_session() as db:
             safe_interval = calculate_safe_interval(24 * 60)
@@ -2717,6 +2827,174 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("retention_cleanup_skipped_still_fresh")
+
+    async def backfill_legacy_partitions(self) -> None:
+        """One-time #1343 backfill: copy the recent retention window from the
+        `*_legacy` tables (renamed by migration 03db10760b28) into the new
+        partitioned tables, in bounded batches newest-first, then drop each
+        legacy table once its copy completes.
+
+        Restores read-continuity for route history / congestion / segment
+        analytics after the partition cutover, and reclaims the ~33 GB in one
+        `DROP TABLE` instead of over a 60-day cascade drain. Idempotent and
+        resumable via `partition_backfill_state`; a cheap no-op once the legacy
+        tables are gone. Coordinated across replicas by the freshness check so
+        only one runner advances the cursor per interval (segment rows have no
+        unique key, so concurrent runners could otherwise duplicate).
+        """
+        settings = get_settings()
+
+        async def do_backfill_work() -> None:
+            cutoff_date = date.today() - timedelta(days=settings.retention_days)
+            async with get_session() as db:
+                summary = await run_legacy_backfill_batches(db, cutoff_date)
+                await db.commit()
+            if any(v["rows_copied"] or v["completed"] for v in summary.values()):
+                logger.info("legacy_partition_backfill_run", summary=summary)
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(2)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="legacy_partition_backfill",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_backfill_work,
+            )
+
+            if not executed:
+                logger.debug("legacy_partition_backfill_skipped_still_fresh")
+
+    # High-churn tables monitored for vacuum/analyze staleness by
+    # check_resource_usage. Kept in sync with the tables tuned by migration
+    # fd85e7f3abb3 (autovacuum_vacuum_cost_limit / scale_factor overrides).
+    VACUUM_MONITORED_TABLES = (
+        "journey_stops",
+        "train_journeys",
+        "segment_transit_times",
+    )
+
+    async def check_resource_usage(self) -> None:
+        """Log data-disk utilization, Postgres database size, and per-table
+        vacuum/analyze staleness for the high-churn tables.
+
+        Emits structured log events that Terraform log-based metrics
+        (`infra_v2/terraform/metrics.tf`) turn into Cloud Monitoring alerts,
+        so disk exhaustion is caught automatically instead of found by
+        manually SSHing in and running `df -h` (issue #1344). Checks
+        `settings.data_disk_path` (the mounted persistent disk), not the
+        container's boot filesystem.
+
+        The vacuum-staleness check exists because `journey_stops` (35M+ rows,
+        updated continuously by every 4-min GTFS-RT collector) was found with
+        zero completed vacuum/analyze passes in its lifetime, causing a stale
+        visibility map and a ~34% query slowdown that surfaced as production
+        TimeoutErrors on route-history precompute (issue #1359). Autovacuum
+        itself wasn't broken (other tables kept vacuuming fine) — the bloat
+        just went undetected until a query started timing out. This check
+        surfaces `dead_tuple_ratio_pct` per table so Cloud Monitoring pages
+        before that happens again, instead of after.
+        """
+        settings = get_settings()
+
+        async def do_check_work() -> None:
+            disk = get_disk_usage(settings.data_disk_path)
+            if disk:
+                logger.info(
+                    "data_disk_usage_check",
+                    usage_percent=disk["usage_percent"],
+                    used_gb=disk["used_gb"],
+                    total_gb=disk["total_gb"],
+                )
+            else:
+                logger.warning(
+                    "data_disk_usage_check_unavailable",
+                    path=settings.data_disk_path,
+                )
+
+            async with get_session() as db:
+                result = await db.execute(
+                    text("SELECT pg_database_size(current_database())")
+                )
+                size_bytes = result.scalar() or 0
+                logger.info(
+                    "database_size_check",
+                    size_gb=round(size_bytes / (1024**3), 2),
+                )
+
+                # journey_stops and segment_transit_times are partitioned
+                # (issue #1343): their parent row in pg_stat_user_tables always
+                # reports 0 tuples, so matching the parent by name would mask
+                # real bloat. Expand each monitored partitioned parent into its
+                # child partitions (reported individually, so a single bloated
+                # hot month still trips the >30% alert) while non-partitioned
+                # tables like train_journeys report themselves. The transient
+                # *_legacy tables are excluded — they aren't partitions of a
+                # monitored parent and their expected drain-bloat isn't
+                # actionable.
+                vacuum_result = await db.execute(
+                    text("""
+                        SELECT relname AS table_name, n_live_tup, n_dead_tup,
+                               last_vacuum, last_autovacuum,
+                               last_analyze, last_autoanalyze
+                        FROM pg_stat_user_tables s
+                        WHERE (
+                            s.relname = ANY(:table_names)
+                            AND s.relid NOT IN (SELECT inhparent FROM pg_inherits)
+                        )
+                        OR s.relid IN (
+                            SELECT i.inhrelid
+                            FROM pg_inherits i
+                            JOIN pg_class p ON p.oid = i.inhparent
+                            WHERE p.relname = ANY(:table_names)
+                        )
+                        """),
+                    {"table_names": list(self.VACUUM_MONITORED_TABLES)},
+                )
+                for row in vacuum_result.mappings():
+                    live = row["n_live_tup"] or 0
+                    dead = row["n_dead_tup"] or 0
+                    dead_ratio_pct = round(dead / max(live + dead, 1) * 100, 2)
+                    logger.info(
+                        "table_vacuum_health_check",
+                        table_name=row["table_name"],
+                        dead_tuple_ratio_pct=dead_ratio_pct,
+                        live_tup=live,
+                        dead_tup=dead,
+                        last_vacuum=(
+                            row["last_vacuum"].isoformat()
+                            if row["last_vacuum"]
+                            else None
+                        ),
+                        last_autovacuum=(
+                            row["last_autovacuum"].isoformat()
+                            if row["last_autovacuum"]
+                            else None
+                        ),
+                        last_analyze=(
+                            row["last_analyze"].isoformat()
+                            if row["last_analyze"]
+                            else None
+                        ),
+                        last_autoanalyze=(
+                            row["last_autoanalyze"].isoformat()
+                            if row["last_autoanalyze"]
+                            else None
+                        ),
+                    )
+
+        async with get_session() as db:
+            safe_interval = calculate_safe_interval(15)
+
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="resource_usage_check",
+                minimum_interval_seconds=safe_interval,
+                task_func=do_check_work,
+            )
+
+            if not executed:
+                logger.debug("resource_usage_check_skipped_still_fresh")
 
     # All GTFS feed sources — add new systems here
     GTFS_SOURCES = (
@@ -2757,6 +3035,8 @@ class SchedulerService:
                 results: dict[str, bool] = {}
                 async with get_session() as db:
                     for source in self.GTFS_SOURCES:
+                        if self.settings.is_data_source_disabled(source):
+                            continue
                         result = await gtfs_service.refresh_feed(db, source)
                         results[source] = result
                         logger.info(
@@ -2807,6 +3087,8 @@ class SchedulerService:
             async with get_session() as db:
                 availability: dict[str, bool] = {}
                 for source in self.GTFS_SOURCES:
+                    if self.settings.is_data_source_disabled(source):
+                        continue
                     availability[source] = await gtfs_service.is_feed_available(
                         db, source
                     )
@@ -3083,7 +3365,6 @@ class SchedulerService:
                             .limit(1)
                             .options(
                                 selectinload(TrainJourney.stops),
-                                selectinload(TrainJourney.snapshots),
                                 selectinload(TrainJourney.segment_times),
                                 selectinload(TrainJourney.dwell_times),
                                 selectinload(TrainJourney.progress),
@@ -3097,6 +3378,7 @@ class SchedulerService:
                             logger.warning(
                                 "journey_not_found_for_live_activity",
                                 train_number=train_number,
+                                data_source=data_source,
                             )
                             continue
 
@@ -3454,6 +3736,8 @@ class SchedulerService:
         and creates SCHEDULED journey records for trains that haven't
         been observed yet.
         """
+        if self.settings.is_data_source_disabled("NJT"):
+            return
         task_id = f"njt_schedules_{now_et().isoformat()}"
 
         async def do_schedule_collection() -> None:
@@ -3514,6 +3798,8 @@ class SchedulerService:
         Amtrak train data to identify patterns and create SCHEDULED journey
         records for trains that are expected to run today.
         """
+        if self.settings.is_data_source_disabled("AMTRAK"):
+            return
         task_id = f"amtrak_schedules_{now_et().isoformat()}"
 
         async def do_schedule_generation() -> None:

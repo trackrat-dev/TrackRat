@@ -96,6 +96,8 @@ xcodebuild -scheme TrackRat -sdk iphonesimulator build \
   | grep -E "(error|failed|BUILD FAILED)" || echo "BUILD SUCCESSFUL"
 ```
 
+CI: `.github/workflows/ios-ci.yml` builds and runs the test suite on every push/PR touching `ios/` (dynamically selects an available simulator on the macOS runner).
+
 ## Code Conventions
 
 ### Swift Style
@@ -130,6 +132,7 @@ xcodebuild -scheme TrackRat -sdk iphonesimulator build \
 - Push notifications for status changes
 - Journey progress with interpolation
 - Track/platform prediction shown on the Lock Screen when available (`predictedTrack` / `predictedTrackConfidence`)
+- Departure/arrival countdown shown as minute-granular text (`minutesUntilDeparture` / `minutesUntilArrival` on `ContentState`, e.g. "Departing in 5 minutes" / "~5 min"), refreshed by the 30s backend pushes. Deliberately not a seconds-ticking `Text(timerInterval:)` / `.relative` view: the schedule has only minute resolution, so a MM:SS countdown would imply false precision.
 
 ## Testing
 
@@ -142,6 +145,7 @@ Physical device recommended for:
 
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
+- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load.
 - Pro subscription offers 1-week free trial via Apple introductory offer
 - `debugOverrideEnabled` in SubscriptionService controls Pro feature override (defaults to `false`)
 

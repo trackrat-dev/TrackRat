@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
+import { BrowserRouter } from 'react-router-dom';
+import { ReactElement } from 'react';
 import { StopCard } from './StopCard';
 import { Stop } from '../types';
+
+// StopCard links known station names to /station/:code, so it needs a Router.
+function render(ui: ReactElement) {
+  return rtlRender(<BrowserRouter>{ui}</BrowserRouter>);
+}
 
 function makeStop(overrides: Partial<Stop> = {}): Stop {
   return {
@@ -54,14 +61,31 @@ describe('StopCard', () => {
     expect(screen.queryByText('Departure:')).not.toBeInTheDocument();
   });
 
-  it('shows delay when updated time differs from scheduled', () => {
-    render(<StopCard stop={makeStop({
+  it('leads with the live time and strikes through scheduled when delayed', () => {
+    const { container } = render(<StopCard stop={makeStop({
       scheduled_arrival: '2025-01-15T15:10:00-05:00',
       updated_arrival: '2025-01-15T15:20:00-05:00',
     })} />);
 
-    // Should show the delay amount (+10m)
-    expect(screen.getByText(/\+10m/)).toBeInTheDocument();
+    // Scheduled time struck through; live (delayed) time carries the warning color.
+    expect(container.querySelector('.line-through')).toBeInTheDocument();
+    expect(container.querySelector('.text-warning')).toBeInTheDocument();
+  });
+
+  it('colors an early stop green with the scheduled time struck through', () => {
+    const { container } = render(<StopCard stop={makeStop({
+      scheduled_arrival: '2025-01-15T15:10:00-05:00',
+      actual_arrival: '2025-01-15T15:07:00-05:00',
+    })} />);
+
+    expect(container.querySelector('.line-through')).toBeInTheDocument();
+    expect(container.querySelector('.text-success')).toBeInTheDocument();
+  });
+
+  it('shows a single scheduled time with no strikethrough when on schedule', () => {
+    const { container } = render(<StopCard stop={makeStop()} />);
+
+    expect(container.querySelector('.line-through')).not.toBeInTheDocument();
   });
 
   it('shows predicted arrival when available and no actual arrival', () => {

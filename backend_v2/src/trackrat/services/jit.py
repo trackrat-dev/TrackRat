@@ -26,7 +26,12 @@ from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import retry_on_deadlock
 from trackrat.models.database import TrainJourney
 from trackrat.settings import get_settings
-from trackrat.utils.time import is_stale, now_et, safe_datetime_subtract
+from trackrat.utils.time import (
+    is_stale,
+    now_et,
+    now_for_provider,
+    safe_datetime_subtract,
+)
 
 logger = get_logger(__name__)
 
@@ -234,7 +239,9 @@ class JustInTimeUpdateService:
             Updated TrainJourney or None if not found
         """
         if journey_date is None:
-            journey_date = now_et().date()
+            journey_date = (
+                now_for_provider(data_source) if data_source else now_et()
+            ).date()
 
         logger.info(
             "checking_data_freshness",
@@ -260,7 +267,6 @@ class JustInTimeUpdateService:
                 selectinload(TrainJourney.stops),
                 # Load all delete-orphan collections to prevent
                 # greenlet_spawn errors during flush orphan checks
-                selectinload(TrainJourney.snapshots),
                 selectinload(TrainJourney.segment_times),
                 selectinload(TrainJourney.dwell_times),
                 selectinload(TrainJourney.progress),

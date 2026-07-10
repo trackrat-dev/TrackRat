@@ -6,9 +6,11 @@ Collects user feedback about data issues and logs it for review.
 
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from structlog import get_logger
+
+from trackrat.api.utils import get_client_ip
 
 # Use a dedicated logger name for easy filtering in GCP Logs Explorer
 # Filter with: jsonPayload.logger="trackrat.api.feedback"
@@ -37,7 +39,9 @@ class FeedbackResponse(BaseModel):
 
 
 @router.post("", response_model=FeedbackResponse)
-async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
+async def submit_feedback(
+    request: FeedbackRequest, http_request: Request
+) -> FeedbackResponse:
     """Submit user feedback about data accuracy or other issues."""
     logger.info(
         "user_feedback_submitted",
@@ -48,6 +52,7 @@ async def submit_feedback(request: FeedbackRequest) -> FeedbackResponse:
         destination_code=request.destination_code,
         app_version=request.app_version,
         device_model=request.device_model,
+        client_ip=get_client_ip(http_request),
         timestamp=datetime.utcnow().isoformat(),
     )
 

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { TrainDetails, StationPredictionSupport } from '../types';
 import { apiService } from '../services/api';
 import { usePolling } from '../utils/usePolling';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { TrainDetailsSkeleton } from '../components/Skeleton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
@@ -12,9 +12,11 @@ import { DelayForecastCard } from '../components/DelayForecastCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { HistoricalPerformance } from '../components/HistoricalPerformance';
 import { SimilarTrainsPanel } from '../components/SimilarTrainsPanel';
+import { StatusBadge } from '../components/StatusBadge';
 import { storageService } from '../services/storage';
 import { getTodayDateString, formatTime, isToday, formatDate } from '../utils/date';
 import { buildTrainShareData } from '../utils/share';
+import { useBackNavigation } from '../utils/useBackNavigation';
 
 export function TrainDetailsPage() {
   const { trainId, from: fromPath, to: toPath } = useParams<{ trainId: string; from?: string; to?: string }>();
@@ -27,6 +29,7 @@ export function TrainDetailsPage() {
   const to = toPath || searchParams.get('to') || undefined;
   const journeyDate = searchParams.get('date') || undefined;
   const dataSource = searchParams.get('data_source') || undefined;
+  const goBack = useBackNavigation(from && to ? `/trains/${from}/${to}` : '/departures');
 
   const [train, setTrain] = useState<TrainDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -154,7 +157,7 @@ export function TrainDetailsPage() {
   }
 
   if (loading && !train) {
-    return <LoadingSpinner />;
+    return <TrainDetailsSkeleton />;
   }
 
   if (error || !train) {
@@ -178,7 +181,7 @@ export function TrainDetailsPage() {
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
           ← Back
@@ -203,11 +206,7 @@ export function TrainDetailsPage() {
                 dataSource: train.data_source,
               })}
             />
-            {train.is_cancelled && (
-              <span className="px-3 py-1 bg-error/20 text-error rounded-full text-sm font-semibold">
-                Cancelled
-              </span>
-            )}
+            {train.is_cancelled && <StatusBadge status="cancelled" />}
           </div>
         </div>
 

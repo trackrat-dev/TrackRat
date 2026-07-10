@@ -22,10 +22,12 @@ class HistoricalDataViewModelTests: XCTestCase {
                 fromStation: "New York Penn Station",
                 toStation: "Philadelphia",
                 totalTrains: 100,
-                dataSource: "NJT"
+                dataSource: "NJT",
+                baselineTrainCount: nil
             ),
             aggregateStats: RouteHistoricalData.Stats(
                 onTimePercentage: 85.0,
+                onTimeSource: nil,
                 averageDelayMinutes: 5.2,
                 averageDepartureDelayMinutes: 3.1,
                 cancellationRate: 2.0,
@@ -48,7 +50,8 @@ class HistoricalDataViewModelTests: XCTestCase {
             to: "PH",
             dataSource: "NJT",
             highlightTrain: nil,
-            days: 30
+            days: 30,
+            hours: nil
         )
 
         XCTAssertEqual(result.route.totalTrains, 100)
@@ -65,7 +68,8 @@ class HistoricalDataViewModelTests: XCTestCase {
                 to: "PH",
                 dataSource: "NJT",
                 highlightTrain: nil,
-                days: 30
+                days: 30,
+                hours: nil
             )
             XCTFail("Should have thrown error")
         } catch {

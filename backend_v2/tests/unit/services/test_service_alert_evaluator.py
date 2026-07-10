@@ -160,10 +160,12 @@ class TestGetGtfsRouteIdsForSubscription:
 
     def test_station_pair_uses_equivalent_codes(self):
         """Station-pair route inference should honor station equivalence groups."""
+        # SD19 (14 St/6 Av) is equivalent to S132, which is on the 1 line —
+        # NY is no longer equivalent to a subway platform code (#1355).
         sub = RouteAlertSubscription(
             device_id="dev1",
             data_source="SUBWAY",
-            from_station_code="NY",
+            from_station_code="SD19",
             to_station_code="S116",
         )
         result = _get_gtfs_route_ids_for_subscription(sub)
@@ -375,10 +377,12 @@ class TestGetRouteNameForSubscription:
 
     def test_station_pair_route_name_uses_equivalent_codes(self):
         """Station-pair route names should resolve through station equivalences."""
+        # SD19 (14 St/6 Av) is equivalent to S132, which is on the 1 line —
+        # NY is no longer equivalent to a subway platform code (#1355).
         sub = RouteAlertSubscription(
             device_id="dev1",
             data_source="SUBWAY",
-            from_station_code="NY",
+            from_station_code="SD19",
             to_station_code="S116",
         )
         name = _get_route_name_for_subscription(sub)

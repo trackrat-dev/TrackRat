@@ -18,7 +18,7 @@ from trackrat.collectors.base import BaseJourneyCollector
 from trackrat.config.stations import AMTRAK_TO_INTERNAL_STATION_MAP, get_station_name
 from trackrat.db.engine import get_session, with_db_retry
 from trackrat.models.api import AmtrakTrainData
-from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import normalize_to_et, now_et
@@ -28,23 +28,6 @@ logger = get_logger(__name__)
 
 class AmtrakJourneyCollector(BaseJourneyCollector):
     """Collects detailed journey information for Amtrak trains."""
-
-    # Map Amtrak status values to our internal status values
-    STATUS_MAP = {
-        "Departed": "DEPARTED",
-        "Station": "BOARDING",
-        "Enroute": "EN ROUTE",
-        "Cancelled": "CANCELLED",
-        "Terminated": "DEPARTED",
-        "Predeparture": "BOARDING",
-    }
-
-    # Map Amtrak train state to our status
-    TRAIN_STATE_MAP = {
-        "Active": "EN ROUTE",
-        "Predeparture": "BOARDING",
-        "Terminated": "DEPARTED",
-    }
 
     def __init__(self) -> None:
         """Initialize the Amtrak journey collector."""
@@ -340,6 +323,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 )
 
                 stop_data = {
+                    "journey_date": journey.journey_date,
                     "station_name": get_station_name(internal_code),
                     "stop_sequence": stop_sequence,
                     "scheduled_arrival": sched_arr,
@@ -419,26 +403,6 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 # Set actual arrival from last stop
                 if new_stops[-1].actual_arrival:
                     journey.actual_arrival = new_stops[-1].actual_arrival
-
-            # Create snapshot for all journeys (both new and existing)
-            # Journey now has a valid ID after flush/creation
-            # NOTE: Only keeps one snapshot per journey to prevent database growth
-            await session.execute(
-                delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
-            )
-
-            completed_stops_count = sum(
-                1 for stop in new_stops if stop.has_departed_station
-            )
-            snapshot = JourneySnapshot(
-                journey_id=journey.id,
-                captured_at=now_et(),
-                raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
-                train_status=self.TRAIN_STATE_MAP.get(train_data.trainState, "UNKNOWN"),
-                completed_stops=completed_stops_count,
-                total_stops=len(new_stops),
-            )
-            session.add(snapshot)
 
             # Flush to ensure all data is persisted before analysis
             await session.flush()
@@ -725,6 +689,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 # Create new stop
                 new_stop = JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=internal_code,
                     station_name=station_name,
                     stop_sequence=stop_sequence,
@@ -783,24 +748,6 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             journey.scheduled_arrival = tracked_stops[-1].scheduled_arrival
             if journey.is_completed and tracked_stops[-1].actual_arrival:
                 journey.actual_arrival = tracked_stops[-1].actual_arrival
-
-        # Create snapshot - replace existing to maintain single snapshot per journey
-        await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
-        )
-
-        completed_stops_count = sum(
-            1 for stop in tracked_stops if stop.has_departed_station
-        )
-        snapshot = JourneySnapshot(
-            journey_id=journey.id,
-            captured_at=now_et(),
-            raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
-            train_status=self.TRAIN_STATE_MAP.get(train_data.trainState, "UNKNOWN"),
-            completed_stops=completed_stops_count,
-            total_stops=len(tracked_stops),
-        )
-        session.add(snapshot)
 
         logger.info(
             "amtrak_journey_refreshed",

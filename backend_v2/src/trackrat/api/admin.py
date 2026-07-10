@@ -877,7 +877,7 @@ async def stats_page(
     request_data = get_request_stats().snapshot(hours=hours, ios_only=ios_only)
     db_data = await _db_stats(db)
     scheduler_jobs = _scheduler_stats()
-    system_data = get_system_stats()
+    system_data = get_system_stats(settings.data_disk_path)
     html = _render_html(
         request_data,
         db_data,
@@ -893,6 +893,7 @@ async def stats_page(
 @router.get("/admin/stats.json")
 async def stats_json(
     db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
     hours: int | None = Query(None, ge=1, le=168),
     ios_only: bool = Query(False),
 ) -> dict[str, Any]:
@@ -922,7 +923,7 @@ async def stats_json(
 
     # Include scheduler jobs and system metrics (JSON parity with HTML)
     request_data["scheduler_jobs"] = scheduler_jobs
-    request_data["system"] = get_system_stats()
+    request_data["system"] = get_system_stats(settings.data_disk_path)
 
     train_detail_views = {
         f"{entry['train_id']} ({get_station_name(entry['from'])} -> {get_station_name(entry['to'])})": entry[

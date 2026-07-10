@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.collectors.amtrak.journey import AmtrakJourneyCollector
-from trackrat.models.database import TrainJourney, JourneyStop, JourneySnapshot
+from trackrat.models.database import TrainJourney, JourneyStop
 from trackrat.utils.time import now_et
 from tests.factories.amtrak import create_amtrak_train_data, create_amtrak_station_data
 

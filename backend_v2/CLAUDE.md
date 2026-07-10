@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** May 2026
+**Last Updated:** June 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
@@ -112,8 +112,13 @@ train_journeys (
 -- updated_departure = original schedule, updated_arrival = live estimate.
 -- Consumers must use max(updated_departure, updated_arrival) for NJT departures.
 -- See database.py JourneyStop model for full documentation.
+-- PARTITIONED BY RANGE (journey_date) (issue #1343) — see "Partitioning" below.
+-- journey_date is denormalized from train_journeys.journey_date (required by
+-- Postgres so the partition key can sit in journey_stops' composite PK/unique
+-- constraint); auto-populated via a `journey` relationship validator, or must
+-- be set explicitly by callers that only have journey_id.
 journey_stops (
-    journey_id, station_code, station_name, stop_sequence,
+    journey_id, journey_date, station_code, station_name, stop_sequence,
     scheduled_departure, scheduled_arrival,
     updated_departure, updated_arrival,
     actual_departure, actual_arrival,
@@ -124,6 +129,7 @@ journey_stops (
 )
 
 -- Transit time analysis (NEW)
+-- PARTITIONED BY RANGE (departure_time) (issue #1343) — see "Partitioning" below.
 segment_transit_times (
     journey_id, from_station_code, to_station_code,
     scheduled_minutes, actual_minutes, delay_minutes,
@@ -144,13 +150,6 @@ journey_progress (
     initial_delay_minutes, total_delay_minutes,
     cumulative_transit_delay, cumulative_dwell_delay,
     prediction_confidence, prediction_based_on
-)
-
--- Historical snapshots for ML training
-journey_snapshots (
-    journey_id, captured_at, raw_stop_list_data,
-    train_status, delay_minutes, completed_stops, total_stops,
-    track_assignments
 )
 
 -- API response caching
@@ -216,6 +215,70 @@ route_preferences (
     display_order, created_at, updated_at
 )
 ```
+
+**Partitioning (`journey_stops` / `segment_transit_times`, issue #1343):**
+
+These two tables dominate database size (`journey_stops` alone was ~33 GB /
+~70% of journey storage on production). Retention previously pruned them via
+`DELETE` (cascading from `train_journeys`), which marks tuples dead but never
+returns space to the filesystem — reclaiming it needs `VACUUM FULL`/`pg_repack`,
+which need free space roughly equal to the table size to rewrite it in place.
+
+Both tables are now Postgres RANGE partitions — `journey_stops` by
+`journey_date`, `segment_transit_times` by `departure_time` — with monthly
+partitions named `{table}_y{YYYY}_m{MM}` plus a `{table}_default` catch-all.
+Retention (`SchedulerService.retention_cleanup`, `db/partitioning.py`) tops up
+a rolling window (previous/current/+2 months, covering NJT's 27-hour and
+Amtrak's 22-day schedule-generation lead times) and `DROP TABLE`s partitions
+entirely older than `retention_days` — instant, and returns space to the
+filesystem immediately, unlike DELETE + autovacuum. Partition drops use the
+general `retention_days` cutoff, not SUBWAY's shorter one, since a single
+partition mixes rows from every data source; SUBWAY rows are still pruned
+granularly within a not-yet-dropped partition by the existing cascade delete.
+
+`journey_stops` gained a `journey_date` column (denormalized from
+`train_journeys.journey_date`) because Postgres requires every unique/primary
+key constraint on a partitioned table to include the partition key. A
+`@validates("journey")` hook on the model auto-populates it when a stop is
+constructed via the ORM relationship (`JourneyStop(journey=...)` or
+`TrainJourney.stops.append(...)`); collectors that only have a bare
+`journey_id` (most of the GTFS-RT collectors, PATH, WMATA, NJT discovery) set
+it explicitly. `id` uses `Identity()` rather than `autoincrement=True` since
+SQLite (used by some collector unit tests) rejects autoincrement on a
+composite primary key.
+
+Migration `03db10760b28` renamed the existing tables to `*_legacy` (instant,
+metadata-only — no table rewrite or scan at startup, learning from a prior
+reverted backfill migration, f7a8b9c0d1e2, that caused MIG health-check
+failures) and created fresh, empty partitioned tables under the original
+names; all new writes land there immediately.
+
+Because nothing reads `*_legacy`, a hard cutover would make all pre-migration
+history (route history, congestion, segment analytics) invisible until the
+new tables refilled. To avoid that, an idempotent background task
+(`SchedulerService.backfill_legacy_partitions`, helpers in `db/partitioning.py`)
+copies the most recent `retention_days` of rows from each `*_legacy` table
+into the new partitions — newest-first, in bounded batches, coordinated across
+replicas — so recent history becomes readable again within hours of deploy
+rather than over the retention window. `journey_stops_legacy` has no
+`journey_date` column (it's the new partition key), so the copy derives it by
+joining `train_journeys`; `segment_transit_times_legacy` already has
+`departure_time`. Progress is tracked in `partition_backfill_state` (copy by
+descending legacy `id`, persisting the lowest id copied); this cursor is the
+sole dedupe mechanism for `segment_transit_times`, which has no natural unique
+key. The `journey_stops` copy additionally carries
+`ON CONFLICT (journey_id, station_code, journey_date) DO NOTHING` — not for
+resumption (the cursor handles that) but because a collector may have already
+written a live row for a pre-cutover journey under that key before the backfill
+reaches its legacy row (Amtrak's create-if-absent path, NJT's on-conflict
+insert); without the clause that unique violation would abort the whole batch
+and stall the backfill permanently. `DO NOTHING` keeps the collector's newer
+row. Fresh target ids are assigned by the new tables' own sequences so they
+can't collide with ids live collectors are already writing. Once a
+table's backfill completes, that `*_legacy` table is `DROP TABLE`d
+automatically, reclaiming the ~33 GB in one shot (rows older than
+`retention_days` are past retention and intentionally discarded with it). The
+task then no-ops cheaply once the legacy tables are gone.
 
 ### 3. API Endpoints
 
@@ -287,7 +350,7 @@ The APScheduler runs in-process and handles:
 - **Daily at 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Daily at 1:00 AM ET**: Lock manager cleanup
 - **Daily at 3:00 AM ET**: GTFS static schedule refresh
-- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys older than `TRACKRAT_RETENTION_DAYS`)
+- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`; active alerts are kept regardless of age). SUBWAY journeys use the shorter `TRACKRAT_SUBWAY_RETENTION_DAYS` window (it is ~70% of journey storage and real-time/frequency-based). Also tops up the `journey_stops`/`segment_transit_times` rolling partition window and drops partitions entirely older than `TRACKRAT_RETENTION_DAYS` — see "Partitioning" below.
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
 - **Every 4 min**: PATH collection (unified, RidePATH API)
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
@@ -301,6 +364,7 @@ The APScheduler runs in-process and handles:
 - **Every 90 sec**: Departure cache pre-computation
 - **Every 5 min**: Route history cache pre-computation
 - **Every 15 min**: Congestion cache pre-computation
+- **Every 15 min**: Resource usage check (logs data-disk and database size for Cloud Monitoring alerting)
 - **Every 15 min**: Service alerts collection (MTA + NJT)
 - **Every 1 min**: Live Activity push notification updates
 - **Hourly**: Live Activity token cleanup
@@ -308,6 +372,7 @@ The APScheduler runs in-process and handles:
 - **Every 5 min**: Route alert evaluation and push notifications
 - **Every 5 min**: Morning digest evaluation
 - **Automatic startup**: Begins when FastAPI app starts
+- **Disabled sources skipped**: Collection, schedule generation, GTFS refresh, and service-alert polling are skipped entirely for any source in `TRACKRAT_DISABLED_DATA_SOURCES`
 
 **Horizontal Scaling Support:**
 - **Database-based coordination**: Multiple replicas coordinate through `scheduler_task_runs` table
@@ -482,6 +547,7 @@ TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY=20      # Max missing trains to verify
 
 # Feature Flags (optional)
 TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS=true  # Database-aggregated patterns
+TRACKRAT_DISABLED_DATA_SOURCES=                  # Comma-separated data sources to fully disable (collection + alerts + serving), e.g. BART,WMATA,MBTA,METRA
 TRACKRAT_ENABLE_SQL_LOGGING=false                    # SQLAlchemy query logging
 
 # Server Settings (optional)
@@ -490,7 +556,9 @@ TRACKRAT_API_HOST=0.0.0.0                        # API bind host
 TRACKRAT_API_PORT=8000                           # API bind port
 TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on startup
 TRACKRAT_BACKUP_INTERVAL_SECONDS=300             # GCS backup frequency (default 5min)
-TRACKRAT_RETENTION_DAYS=120                      # Days to retain journey data (min 30)
+TRACKRAT_RETENTION_DAYS=60                       # Days to retain journey data (min 30)
+TRACKRAT_SUBWAY_RETENTION_DAYS=14                # Days to retain SUBWAY journey data (shorter; high-volume/real-time, min 1)
+TRACKRAT_DATA_DISK_PATH=/mnt/disks/data           # Mount path of the persistent data disk to monitor
 
 # APNS Auth Key Content (alternative to file path)
 APNS_AUTH_KEY=                                   # Raw P8 key content (fallback if APNS_AUTH_KEY_PATH unavailable)
@@ -772,6 +840,25 @@ The backend is organized into service classes for better maintainability:
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
+
+### Recent Improvements (July 2026)
+- ✅ Closed a disabled-source serving leak: `active_data_sources()` was only wired into the departure / recent-departure / trip-search paths, so the **analytics and train_id-scoped endpoints still served residual rows** from a disabled feed (present until they age out of the retention window). `/routes/congestion` was the standout — `CONGESTION_PROVIDERS` hard-listed the disabled sources, so the ~20-min precompute kept re-warming their caches and the all-systems merge kept serving their `train_positions`. Fixes: precompute + merge now iterate `active_data_sources(CONGESTION_PROVIDERS)` and the congestion endpoint normalizes `requested_systems` to the active set (empty ⇒ empty map); `get_network_congestion_with_trains`, `_query_line_stats_sql`/route-summary, and `/routes/segments/.../trains` constrain `data_source` to the active set even when unscoped; a shared `api/utils.ensure_source_enabled()` 404s the train_id/source-scoped endpoints (`/trains/{id}`, `/trains/{id}/history`, `/predictions/track|delay`, `/routes/history`). (`api/utils.py`, `api/routes.py`, `api/trains.py`, `api/predictions.py`, `services/api_cache.py`, `services/congestion.py`, `services/summary.py`)
+- ✅ Added `TRACKRAT_DISABLED_DATA_SOURCES` feature flag to fully disable train systems — a disabled source is skipped for real-time collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of departure / trip-search API responses (`DepartureService.active_data_sources()`) so no stale data is served. Currently `BART,WMATA,MBTA,METRA` in staging/production via `infra_v2/terraform/compute.tf`; iOS mirrors the set in `TrainSystem.disabledSystems`, web in `DISABLED_SYSTEMS` (`webpage_v2/src/data/stations.ts`) (PR #1401, `settings.py`, `services/scheduler.py`, `services/departure.py`, `collectors/service_alerts.py`)
+- ✅ Partitioned `journey_stops` (RANGE on `journey_date`) and `segment_transit_times` (RANGE on `departure_time`) by month so retention can `DROP TABLE` an aged-out partition instead of relying on `DELETE` + autovacuum, which never returned space to the filesystem (`journey_stops` alone was ~33 GB / ~70% of journey storage on production). Existing rows are not rewritten in place: the prior tables are renamed to `*_legacy`, an idempotent background task (`SchedulerService.backfill_legacy_partitions`) copies the last `retention_days` of rows into the new partitions, and each `*_legacy` table is dropped once its backfill completes — so recent history stays readable and the reclaimed space comes back in one shot instead of over a 60-day drain. See "Partitioning" in the Database Schema section above for the full design. (issue #1343, `db/partitioning.py`, `models/database.py`, `services/scheduler.py`, migration `03db10760b28`)
+- ✅ Added per-table vacuum/analyze health logging (`SchedulerService.check_resource_usage`) for the high-churn tables (`journey_stops`, `train_journeys`, `segment_transit_times`), feeding a new Terraform alert policy on dead-tuple ratio. Added after `journey_stops` (35M+ rows) went its entire lifetime with zero completed vacuum/analyze passes — the resulting stale visibility map surfaced only as a production `TimeoutError` on route-history precompute rather than as an alert. Now aggregates across child partitions so the partitioned parent's zero-row stats don't mask real bloat (issue #1359, `services/scheduler.py`, `infra_v2/terraform/metrics.tf`, `infra_v2/terraform/monitoring.tf`).
+- ✅ Added a `statement_timeout=55000` (ms), below the asyncpg `command_timeout=60s`, scoped to the app's async engine `server_settings` (not a global Postgres default) so Postgres cancels runaway *request* queries itself instead of relying solely on the client-side cancel — while leaving Alembic migrations (a separate connection with no such setting) free to run long index builds without risk of a self-inflicted timeout crash-loop. Also fixed `get_operations_summary`'s `last_stops` subquery, which had no time-window filter and was sorting the entire `journey_stops` table on every request instead of just the journeys in the summary's cutoff window (issue #1366, `db/engine.py`, `services/summary.py`). `max_parallel_workers_per_gather` was deliberately left at `1` rather than `0` — that query genuinely needs parallelism for large scans until further query-level fixes land.
+
+### Recent Improvements (June 2026)
+- ✅ Cross-modal mega-hubs (Penn `NY`, Grand Central `GCT`, WTC `PWC`) are now modeled as **transfers**, not same-station equivalences: a rider arriving on NJT/MNR/PATH who continues on the subway makes a transfer, not a same-station move. The rail/PATH code was removed from the `{NY,S128,SA28}` / `{GCT,S631,…}` / `{PWC,S138,…}` equivalence groups (subway platforms stay mutually equivalent) and a new `CROSS_MODAL_HUBS` constant drives an explicit rail↔subway transfer edge in `transfer_points.py`. This stops the rail station's departure boards / alerts from pooling in subway trains, and makes trip search return proper multi-leg itineraries (e.g. Trenton→Times Sq) instead of a bogus "direct" trip. Removed the now-dead `other_code` cross-modal expansion added by #1231. (issue #1355, `config/stations/common.py`, `config/transfer_points.py`, `services/trip_search.py`)
+- ✅ Added periodic data-disk / database-size logging (`SchedulerService.check_resource_usage`) feeding new Terraform alert policies, so disk exhaustion is caught automatically instead of found by manually SSHing in (issue #1344, `services/scheduler.py`, `infra_v2/terraform/metrics.tf`, `infra_v2/terraform/monitoring.tf`). Also fixed `/health`, `/admin/stats`, and `/metrics` to check the mounted persistent disk (`TRACKRAT_DATA_DISK_PATH`) instead of the container's boot filesystem.
+- ✅ Live Activity materializes a SCHEDULED `train_journeys` row from GTFS at registration when none exists, so the push job has a row to update immediately instead of logging `journey_not_found_for_live_activity` every cycle (fixes frozen countdown for GTFS-only scheduled trains like NJT 3096) (issue #1298, `api/live_activities.py`, `services/gtfs.py::GTFSService.materialize_scheduled_journey`)
+- ✅ Live Activity materialization gated to `MATERIALIZE_SCHEDULED_SOURCES = {NJT, AMTRAK}` — GTFS-RT systems mint their own train_ids on discovery and would orphan the materialized row (issue #1298 follow-up, `services/gtfs.py`)
+- ✅ Retention sweep extended to inactive `service_alerts` so long-resolved alerts no longer accumulate (issue #1269, `services/scheduler.py`)
+- ✅ NJT `updated_arrival` / `updated_departure` inversion normalized at the `/trains/{train_id}` endpoint via `utils/train.py` so consumers don't have to apply `max(updated_departure, updated_arrival)` themselves (issue #1268, `api/trains.py`)
+- ✅ Route summary uses live estimate for boarding-stop departure on-time calculation; falls back to arrival estimate when departure is absent (issue #1282, `services/summary.py`)
+- ✅ Congestion map level now reflects cancellations alongside delays (issue #1246, `services/congestion.py`, `services/congestion_types.py`, `services/segment_normalizer.py`)
+- ✅ Metra UP-NW line code length increased on departures endpoint to prevent truncation (issue #1241, `models/api.py`)
+- ✅ Removed the write-only `journey_snapshots` table — every write set `raw_stop_list_data={}` and the only reader (Live Activity's post-departure status fallback in `services/scheduler.py`) now derives `CANCELLED`/`COMPLETED`/`EN ROUTE` directly from `TrainJourney.is_cancelled`/`is_completed` instead (issue #1345, `models/database.py`, all journey collectors, migration `b9f37157aada`)
 
 ### Recent Improvements (May 2026)
 - ✅ Train share metadata now includes route times for richer link previews (`api/share.py`)

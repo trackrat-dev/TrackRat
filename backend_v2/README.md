@@ -91,7 +91,7 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 5 minutes**: Route alert evaluation and push notifications
 - **Hourly at :05**: Validation across key routes
-- **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys older than `TRACKRAT_RETENTION_DAYS`, default 120 days)
+- **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
 **Note**: PATH, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, Subway, BART, MBTA, and Metra use GTFS-RT feeds with shared logic in `mta_common.py`. WMATA uses its REST API. PATCO uses GTFS static schedules only (no real-time API).
@@ -125,6 +125,7 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY`: Max missing trains to verify in detail (default: 20)
 - `TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS`: Use database-aggregated pattern analysis (default: true)
 - `TRACKRAT_MBTA_API_KEY`: MBTA API key for higher rate limits (optional, public feed works without)
+- `TRACKRAT_DISABLED_DATA_SOURCES`: Comma-separated data sources to fully disable — collection, service alerts, and API serving (e.g. `BART,WMATA,MBTA,METRA`; default: none)
 - `TRACKRAT_ENABLE_SQL_LOGGING`: Enable SQLAlchemy query logging (default: false)
 
 ### APNS Certificate Setup

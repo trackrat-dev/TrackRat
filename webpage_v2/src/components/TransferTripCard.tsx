@@ -1,4 +1,5 @@
 import { TripOption, TripLeg, TransferInfo } from '../types';
+import { StatusBadge } from './StatusBadge';
 import { formatTime } from '../utils/date';
 
 interface TransferTripCardProps {
@@ -21,9 +22,7 @@ function LegRow({ leg }: { leg: TripLeg }) {
           <span className="text-sm font-medium text-text-primary truncate">
             {leg.line.name}
           </span>
-          {leg.is_cancelled && (
-            <span className="text-xs text-error font-medium">Cancelled</span>
-          )}
+          {leg.is_cancelled && <StatusBadge status="cancelled" />}
         </div>
         <div className="text-xs text-text-muted truncate">
           {leg.boarding.name} → {leg.alighting.name}

@@ -33,9 +33,11 @@ TIME_WINDOW_MINUTES = 30
 # Bound distribution queries to recent history so Postgres can use the
 # journey_date index and avoid sorting/hashing the full retention window
 # (which exhausted /dev/shm and surfaced as DiskFullError on staging —
-# issue #1168). Track patterns are stable, so 90 days is far above all
-# MIN_*_RECORDS thresholds at every modeled station.
-HISTORICAL_LOOKBACK_DAYS = 90
+# issue #1168). Track patterns are stable, so 60 days is far above all
+# MIN_*_RECORDS thresholds at every modeled station, and it stays within
+# the data retention window (TRACKRAT_RETENTION_DAYS, default 60) so the
+# query never scans for journeys the retention sweep has already deleted.
+HISTORICAL_LOOKBACK_DAYS = 60
 
 
 class HistoricalTrackPredictor:
@@ -95,31 +97,18 @@ class HistoricalTrackPredictor:
             data_source=data_source,
         )
 
-        # Step 1: Get historical track distributions at each level
-        train_id_dist = await self._get_train_id_distribution(
-            db, station_code, train_id
-        )
-
-        time_line_dist = None
-        if line_code and scheduled_departure:
-            time_line_dist = await self._get_time_line_distribution(
-                db, station_code, line_code, scheduled_departure
-            )
-
-        line_code_dist = None
-        if line_code:
-            line_code_dist = await self._get_line_code_distribution(
-                db, station_code, line_code
-            )
-
-        service_dist = await self._get_service_distribution(
-            db, station_code, data_source
-        )
-
-        # Step 2: Choose which distribution to use (hierarchical)
+        # Steps 1-2: Walk the hierarchy from most to least specific, querying
+        # each level only if the previous ones didn't already meet their
+        # confidence threshold. Each level is the most expensive scan we run
+        # (station+source spans every train at the station), so skipping
+        # levels once a higher-priority match is found avoids running all
+        # four aggregates on every request.
         selected_dist = None
         prediction_level = None
 
+        train_id_dist = await self._get_train_id_distribution(
+            db, station_code, train_id
+        )
         if train_id_dist and train_id_dist["total_records"] >= MIN_TRAIN_ID_RECORDS:
             selected_dist = train_id_dist
             prediction_level = "train_id"
@@ -128,38 +117,57 @@ class HistoricalTrackPredictor:
                 train_id=train_id,
                 records=train_id_dist["total_records"],
             )
-        elif (
-            time_line_dist and time_line_dist["total_records"] >= MIN_TIME_LINE_RECORDS
-        ):
-            selected_dist = time_line_dist
-            prediction_level = "time_line_code"
-            logger.info(
-                "using_time_line_prediction",
-                line_code=line_code,
-                records=time_line_dist["total_records"],
+
+        if selected_dist is None and line_code and scheduled_departure:
+            time_line_dist = await self._get_time_line_distribution(
+                db, station_code, line_code, scheduled_departure
             )
-        elif (
-            line_code_dist and line_code_dist["total_records"] >= MIN_LINE_CODE_RECORDS
-        ):
-            selected_dist = line_code_dist
-            prediction_level = "line_code"
-            logger.info(
-                "using_line_code_prediction",
-                line_code=line_code,
-                records=line_code_dist["total_records"],
+            if (
+                time_line_dist
+                and time_line_dist["total_records"] >= MIN_TIME_LINE_RECORDS
+            ):
+                selected_dist = time_line_dist
+                prediction_level = "time_line_code"
+                logger.info(
+                    "using_time_line_prediction",
+                    line_code=line_code,
+                    records=time_line_dist["total_records"],
+                )
+
+        if selected_dist is None and line_code:
+            line_code_dist = await self._get_line_code_distribution(
+                db, station_code, line_code
             )
-        elif (
-            service_dist
-            and service_dist["total_records"] >= MIN_SERVICE_PROVIDER_RECORDS
-        ):
-            selected_dist = service_dist
-            prediction_level = "service_provider"
-            logger.info(
-                "using_service_prediction",
-                data_source=data_source,
-                records=service_dist["total_records"],
+            if (
+                line_code_dist
+                and line_code_dist["total_records"] >= MIN_LINE_CODE_RECORDS
+            ):
+                selected_dist = line_code_dist
+                prediction_level = "line_code"
+                logger.info(
+                    "using_line_code_prediction",
+                    line_code=line_code,
+                    records=line_code_dist["total_records"],
+                )
+
+        service_dist = None
+        if selected_dist is None:
+            service_dist = await self._get_service_distribution(
+                db, station_code, data_source
             )
-        else:
+            if (
+                service_dist
+                and service_dist["total_records"] >= MIN_SERVICE_PROVIDER_RECORDS
+            ):
+                selected_dist = service_dist
+                prediction_level = "service_provider"
+                logger.info(
+                    "using_service_prediction",
+                    data_source=data_source,
+                    records=service_dist["total_records"],
+                )
+
+        if selected_dist is None:
             # Use static distribution as final fallback
             logger.info(
                 "using_static_fallback",

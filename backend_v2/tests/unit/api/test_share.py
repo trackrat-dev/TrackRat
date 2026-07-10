@@ -433,6 +433,7 @@ class TestShareRoutesWithRealJourney:
         db_session.add(
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code="HB",
                 station_name="Hoboken",
                 stop_sequence=0,
@@ -477,6 +478,7 @@ class TestShareRoutesWithRealJourney:
         db_session.add(
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code="HB",
                 station_name="Hoboken",
                 stop_sequence=0,

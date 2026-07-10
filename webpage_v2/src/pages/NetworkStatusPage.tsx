@@ -1,54 +1,17 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse } from '../types';
+import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse, TransitSystem } from '../types';
 import { apiService } from '../services/api';
+import { DISABLED_SYSTEMS, SYSTEM_NAMES, SYSTEM_ORDER, AVAILABLE_SYSTEMS } from '../data/stations';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
+import { ChevronIcon } from '../components/icons';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { formatTime } from '../utils/date';
 import { usePolling } from '../utils/usePolling';
+import { getCongestionColor, getCongestionBg, getCongestionLabel } from '../utils/congestion';
 
-const SYSTEM_LABELS: Record<string, string> = {
-  NJT: 'NJ Transit',
-  AMTRAK: 'Amtrak',
-  PATH: 'PATH',
-  PATCO: 'PATCO',
-  LIRR: 'LIRR',
-  MNR: 'Metro-North',
-  SUBWAY: 'NYC Subway',
-  WMATA: 'Washington Metro',
-  METRA: 'Metra',
-  BART: 'BART',
-  MBTA: 'MBTA',
-};
-
-const SYSTEM_ORDER = ['NJT', 'AMTRAK', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'PATCO', 'WMATA', 'METRA', 'BART', 'MBTA'];
-
-function getCongestionColor(level: CongestionLevel): string {
-  switch (level) {
-    case 'normal': return 'text-success';
-    case 'moderate': return 'text-warning';
-    case 'heavy': return 'text-error';
-    case 'severe': return 'text-error';
-  }
-}
-
-function getCongestionBg(level: CongestionLevel): string {
-  switch (level) {
-    case 'normal': return 'bg-success/15';
-    case 'moderate': return 'bg-warning/15';
-    case 'heavy': return 'bg-error/15';
-    case 'severe': return 'bg-error/20';
-  }
-}
-
-function getCongestionLabel(level: CongestionLevel): string {
-  switch (level) {
-    case 'normal': return 'Normal';
-    case 'moderate': return 'Moderate delays';
-    case 'heavy': return 'Heavy delays';
-    case 'severe': return 'Severe delays';
-  }
-}
+const CongestionMap = lazy(() => import('../components/CongestionMap').then((m) => ({ default: m.CongestionMap })));
 
 /** Determine overall system status from its segments */
 function getSystemStatus(segments: SegmentCongestion[]): CongestionLevel {
@@ -73,7 +36,14 @@ export function NetworkStatusPage() {
         apiService.getCongestion(signal),
         apiService.getNetworkSummary(signal),
       ]);
-      setSegments(congestion.aggregated_segments);
+      // Drop segments for systems disabled app-wide (mirrors backend
+      // TRACKRAT_DISABLED_DATA_SOURCES). Filtering here cascades to every
+      // derived value — grouping, counts, and ordering below.
+      setSegments(
+        congestion.aggregated_segments.filter(
+          (seg) => !DISABLED_SYSTEMS.has(seg.data_source as TransitSystem),
+        ),
+      );
       setGeneratedAt(congestion.generated_at);
       setSummary(networkSummary);
       setError(null);
@@ -98,12 +68,14 @@ export function NetworkStatusPage() {
     for (const key of Object.keys(groups)) {
       groups[key].sort((a, b) => b.average_delay_minutes - a.average_delay_minutes);
     }
-    // Show known systems in preferred order, then any others alphabetically
-    const knownSystems = SYSTEM_ORDER.filter(sys => groups[sys]);
+    // Show user-facing systems in preferred order, then any others
+    // alphabetically. Disabled systems (in SYSTEM_ORDER but not AVAILABLE_SYSTEMS)
+    // aren't collected by the backend, so they won't have segments here.
+    const knownSystems = AVAILABLE_SYSTEMS.filter(sys => groups[sys]);
     const otherSystems = Object.keys(groups)
-      .filter(sys => !SYSTEM_ORDER.includes(sys))
+      .filter(sys => !SYSTEM_ORDER.includes(sys as TransitSystem))
       .sort();
-    return { systemGroups: groups, orderedSystems: [...knownSystems, ...otherSystems] };
+    return { systemGroups: groups, orderedSystems: [...knownSystems, ...otherSystems] as string[] };
   }, [segments]);
 
   if (loading && segments.length === 0) return <LoadingSpinner />;
@@ -128,6 +100,15 @@ export function NetworkStatusPage() {
         </div>
       )}
 
+      {/* Congestion map (lazy-loaded; shares the MapLibre chunk with RouteMap) */}
+      {segments.length > 0 && (
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={null}>
+            <CongestionMap segments={segments} />
+          </Suspense>
+        </ErrorBoundary>
+      )}
+
       {/* System list */}
       <div className="space-y-3">
         {orderedSystems.map(system => {
@@ -146,7 +127,7 @@ export function NetworkStatusPage() {
                 <div className="flex items-center gap-3">
                   <div className={`w-3 h-3 rounded-full ${getCongestionBg(status)} border-2 ${status === 'normal' ? 'border-success' : status === 'moderate' ? 'border-warning' : 'border-error'}`} />
                   <div>
-                    <div className="font-semibold text-text-primary">{SYSTEM_LABELS[system] || system}</div>
+                    <div className="font-semibold text-text-primary">{SYSTEM_NAMES[system as TransitSystem] || system}</div>
                     <div className="text-xs text-text-muted">
                       {segs.length} segment{segs.length !== 1 ? 's' : ''}
                       {delayedCount > 0 && (
@@ -161,7 +142,7 @@ export function NetworkStatusPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full ${getCongestionBg(status)} ${getCongestionColor(status)} font-medium`}>
                     {getCongestionLabel(status)}
                   </span>
-                  <span className="text-text-muted text-xs">{isExpanded ? '▲' : '▼'}</span>
+                  <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0" />
                 </div>
               </button>
 

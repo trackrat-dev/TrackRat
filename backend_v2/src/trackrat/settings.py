@@ -152,9 +152,29 @@ class Settings(BaseSettings):
 
     # Retention Settings
     retention_days: int = Field(
-        default=120,
+        default=60,
         description="Days to retain train journey data before cleanup (min 30)",
         ge=30,
+    )
+    subway_retention_days: int = Field(
+        default=14,
+        description=(
+            "Days to retain SUBWAY journey data before cleanup. Subway is the "
+            "highest-volume data source (~70% of journey storage) and is "
+            "real-time / frequency-based, so old subway journeys have little "
+            "analytical value and are pruned on a shorter window than other "
+            "providers. Keep this >= ~3 days so the congestion/route-alert "
+            "frequency baseline (a per-hour average over the trailing subway "
+            "segment history, up to a 30-day window) still has samples to "
+            "average."
+        ),
+        ge=1,
+    )
+
+    # Resource Monitoring
+    data_disk_path: str = Field(
+        default="/mnt/disks/data",
+        description="Mount path of the persistent data disk to monitor for usage alerts",
     )
 
     # Validation Settings
@@ -173,6 +193,29 @@ class Settings(BaseSettings):
         default=True,
         description="Use database-aggregated pattern analysis for Amtrak schedules (reduces memory usage by ~99%)",
     )
+    disabled_data_sources: str = Field(
+        default="",
+        description=(
+            "Comma-separated data_source codes to fully disable (collection, "
+            "service-alert polling, GTFS refresh, and API serving), e.g. "
+            "TRACKRAT_DISABLED_DATA_SOURCES=BART,WMATA,MBTA,METRA. "
+            "Case-insensitive; valid values are the codes in ALL_DATA_SOURCES."
+        ),
+    )
+
+    @property
+    def disabled_data_source_set(self) -> set[str]:
+        """Parsed, uppercased set of disabled data_source codes."""
+        return {
+            s.strip().upper()
+            for s in self.disabled_data_sources.split(",")
+            if s.strip()
+        }
+
+    def is_data_source_disabled(self, data_source: str) -> bool:
+        """True if collection/serving for this data_source is turned off."""
+        return data_source.upper() in self.disabled_data_source_set
+
     # Monitoring
     enable_metrics: bool = Field(default=True, description="Enable Prometheus metrics")
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(

@@ -34,8 +34,11 @@ ON_TIME_THRESHOLD = 5
 SLIGHT_DELAY_THRESHOLD = 15
 SIGNIFICANT_DELAY_THRESHOLD = 30
 
-# Historical lookback period (days)
-HISTORICAL_LOOKBACK_DAYS = 365
+# Historical lookback period (days). Capped at the data retention window
+# (TRACKRAT_RETENTION_DAYS, default 60) — older journeys are deleted by the
+# nightly retention sweep, so looking back further only adds query cost for
+# rows that no longer exist.
+HISTORICAL_LOOKBACK_DAYS = 60
 
 
 @dataclass

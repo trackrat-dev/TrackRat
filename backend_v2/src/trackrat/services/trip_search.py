@@ -171,12 +171,10 @@ def _filter_cross_system_direct_trips(
     """Filter direct trips to those whose data_source serves both endpoints.
 
     Station equivalence expansion in the departure service can match trains from
-    systems that don't actually serve the requested station codes (e.g., an Amtrak
-    train to NY matching a query for subway station S128, because NY and S128 are
-    in the same equivalence group).  ``from_systems`` and ``to_systems`` must
-    therefore reflect the *effective* systems each endpoint can use, including
-    cross-modal equivalence partners where appropriate — see
-    ``_systems_for_station(code, other_code=...)``.
+    systems that don't actually serve the requested station codes (e.g., a PATH
+    train to PNK matching a query for NP, because NP and PNK are in the same
+    equivalence group).  ``from_systems`` and ``to_systems`` reflect the systems
+    each endpoint can actually use — see ``_systems_for_station``.
     """
     if not trips:
         return trips
@@ -186,23 +184,21 @@ def _filter_cross_system_direct_trips(
     return [t for t in trips if t.legs[0].data_source in valid_systems]
 
 
-def _systems_for_station(code: str, other_code: str | None = None) -> set[str]:
+def _systems_for_station(code: str) -> set[str]:
     """Return the transit systems available to a passenger at this station.
 
     For non-subway station codes, includes sibling systems from the same
     equivalence group so e.g. NP (Newark Penn Station, NJT/Amtrak) also
     surfaces PATH via its equivalent PNK — both codes refer to the same
     physical building.  SUBWAY is excluded from the expansion of non-subway
-    codes because subway-platform codes in a large complex (e.g. S128 inside
-    NY Penn) are physically separate from the rail concourses and would
-    defeat the cross-system direct-trip filter (#1121).
+    codes because subway-platform codes are physically separate from the rail
+    concourses and would defeat the cross-system direct-trip filter (#1121).
 
-    Subway-only codes are normally kept strict (only SUBWAY) so subway-platform
-    queries don't blanket-match rail trains.  When ``other_code`` is supplied
-    and shares a rail system with this code's equivalence group, however, the
-    function expands to include those shared rail systems.  This makes the
-    direct-trip filter symmetric for cross-modal pairs like TR↔S128 / PHO↔PWC
-    (#1231 Bug B) without polluting pure subway-to-subway queries.
+    Subway-only codes stay strict (only SUBWAY) so subway-platform queries don't
+    blanket-match rail trains.  Cross-modal rail<->subway connections at shared
+    complexes (Penn, GCT, WTC) are modeled as transfers rather than direct
+    service (see ``CROSS_MODAL_HUBS``), so no subway code carries a rail system
+    here and the equivalence expansion never crosses modes.
 
     Alias-only codes (not in any route topology, e.g. TS for Secaucus Lower
     Level) fall back to full equivalence expansion so they resolve to the
@@ -218,24 +214,8 @@ def _systems_for_station(code: str, other_code: str | None = None) -> set[str]:
     if not direct:
         return expanded
     if direct <= {"SUBWAY"}:
-        if other_code:
-            rail_expansion = expanded - {"SUBWAY"}
-            other_systems = _systems_at_code_or_equivalents(other_code)
-            shared_rail = rail_expansion & other_systems
-            if shared_rail:
-                return direct | shared_rail
         return direct
     return expanded - {"SUBWAY"}
-
-
-def _systems_at_code_or_equivalents(code: str) -> set[str]:
-    """Union of systems serving ``code`` and every equivalence-group sibling."""
-    systems = set(get_systems_serving_station(code))
-    group = STATION_EQUIVALENTS.get(code)
-    if group:
-        for equivalent in group:
-            systems |= get_systems_serving_station(equivalent)
-    return systems
 
 
 def _get_station_lines_expanded(station_code: str, system: str) -> frozenset[str]:
@@ -341,18 +321,25 @@ def _rank_transfer_points(
     """Rank transfer points so truncation is deterministic and direction-symmetric.
 
     Sorting keys (ascending = better):
-    1. same_station transfers first (in-station is faster than walking)
-    2. walk_minutes ascending (shorter walks preferred)
-    3. stable tiebreaker on station/system codes (ensures identical ordering
+    1. intra-system transfers first. ``_find_relevant_transfer_points`` only
+       adds an intra-system transfer after verifying its lines connect the
+       origin to the destination, whereas cross-system transfers are added
+       unconditionally for the system pair. Prioritizing the relevance-verified
+       intra-system transfers keeps them inside the MAX_TRANSFER_QUERIES budget
+       instead of being crowded out by speculative cross-system points (#1296).
+    2. same_station transfers first (in-station is faster than walking)
+    3. walk_minutes ascending (shorter walks preferred)
+    4. stable tiebreaker on station/system codes (ensures identical ordering
        regardless of which direction the search runs)
     """
 
-    def _sort_key(tp: TransferPoint) -> tuple[int, int, str, str, str, str]:
+    def _sort_key(tp: TransferPoint) -> tuple[int, int, int, str, str, str, str]:
         # Canonical alphabetical order of the two sides for direction symmetry
         side_a = (tp.station_a, tp.system_a)
         side_b = (tp.station_b, tp.system_b)
         canonical = tuple(sorted([side_a, side_b]))
         return (
+            0 if tp.system_a == tp.system_b else 1,
             0 if tp.same_station else 1,
             tp.walk_minutes,
             canonical[0][0],
@@ -423,12 +410,13 @@ async def search_trips(
         data_sources=data_sources,
     )
 
-    # Systems serving each endpoint, with cross-modal equivalence-group
-    # expansion when the opposite endpoint shares a rail system (#1231 Bug B).
-    # This keeps subway-only queries strict while letting TR↔S128 / PHO↔PWC
-    # surface the rail systems they physically share.
-    from_systems = _systems_for_station(from_station, to_station)
-    to_systems = _systems_for_station(to_station, from_station)
+    # Systems serving each endpoint (with same-station equivalence expansion,
+    # e.g. NP surfacing PATH via PNK). Cross-modal rail<->subway hubs are not
+    # expanded here — they route as transfers (see CROSS_MODAL_HUBS), so a
+    # cross-modal pair like TR<->S127 yields an empty direct intersection and
+    # falls through to transfer search below.
+    from_systems = _systems_for_station(from_station)
+    to_systems = _systems_for_station(to_station)
 
     # --- Step 1: Try direct service ---
     direct_response = await departure_service.get_departures(
@@ -453,7 +441,8 @@ async def search_trips(
             direct_trips.append(trip)
 
     # Filter out cross-system matches that only connected via station equivalence
-    # expansion (e.g., Amtrak to NY appearing as "direct" to subway S128).
+    # expansion of a non-shared system (keeps genuine same-station cross-system
+    # service like NP<->PWC while dropping accidental matches).
     direct_trips = _filter_cross_system_direct_trips(
         direct_trips, from_systems, to_systems
     )

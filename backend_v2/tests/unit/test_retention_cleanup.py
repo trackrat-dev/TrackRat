@@ -7,20 +7,43 @@ discovery_runs, and validation_results, and that the retention_days
 setting is properly configured.
 """
 
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from datetime import date, datetime, timedelta, timezone
-from unittest.mock import AsyncMock, Mock, patch, call, MagicMock
 
 from trackrat.settings import Settings
+
+
+def make_empty_partition_drop_session() -> AsyncMock:
+    """Session stub for retention_cleanup's phase 5 (drop_old_partitions).
+
+    `drop_old_partitions` issues a SELECT against pg_inherits per managed
+    table and iterates the result; returning an empty iterable means no
+    partitions are found droppable, so no further DROP TABLE calls happen.
+    """
+    session = AsyncMock()
+    empty_result = MagicMock()
+    empty_result.__iter__ = Mock(return_value=iter([]))
+    session.execute = AsyncMock(return_value=empty_result)
+    return session
+
+
+def make_ctx(session: AsyncMock) -> AsyncMock:
+    """Wrap a session mock in an async context manager, as returned by
+    `get_session()`."""
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    return ctx
 
 
 class TestRetentionSettings:
     """Test retention_days setting configuration."""
 
     def test_default_retention_days(self):
-        """Default retention_days should be 120."""
+        """Default retention_days should be 60."""
         settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
-        assert settings.retention_days == 120
+        assert settings.retention_days == 60
 
     def test_custom_retention_days(self):
         """retention_days should be configurable via environment."""
@@ -52,6 +75,37 @@ class TestRetentionSettings:
         )
         assert settings.retention_days == 365
 
+    def test_default_subway_retention_days(self):
+        """Default subway_retention_days should be 14."""
+        settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
+        assert settings.subway_retention_days == 14
+
+    def test_custom_subway_retention_days(self):
+        """subway_retention_days should be configurable via environment."""
+        with patch.dict("os.environ", {"TRACKRAT_SUBWAY_RETENTION_DAYS": "21"}):
+            settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
+            assert settings.subway_retention_days == 21
+
+    def test_subway_retention_days_below_general_minimum_allowed(self):
+        """subway_retention_days may be below the 30-day general floor.
+
+        Subway is pruned more aggressively than other providers, so its floor is
+        only 1 (it does not share retention_days' ge=30 constraint).
+        """
+        settings = Settings(
+            database_url="postgresql+asyncpg://x:x@localhost/x",
+            subway_retention_days=14,
+        )
+        assert settings.subway_retention_days == 14
+
+    def test_subway_retention_days_zero_rejected(self):
+        """subway_retention_days below 1 should be rejected."""
+        with pytest.raises(Exception):
+            Settings(
+                database_url="postgresql+asyncpg://x:x@localhost/x",
+                subway_retention_days=0,
+            )
+
 
 class TestRetentionCleanupSchedulerRegistration:
     """Test that retention_cleanup is registered as a scheduler job."""
@@ -61,13 +115,13 @@ class TestRetentionCleanupSchedulerRegistration:
         from trackrat.services.scheduler import SchedulerService
 
         assert hasattr(SchedulerService, "retention_cleanup")
-        assert callable(getattr(SchedulerService, "retention_cleanup"))
+        assert callable(SchedulerService.retention_cleanup)
 
     def test_retention_cleanup_job_registered_in_schedule_jobs(self):
         """The _schedule_jobs method should register retention_cleanup."""
-        from trackrat.services.scheduler import SchedulerService
-
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService)
         assert 'id="retention_cleanup"' in source
@@ -75,9 +129,9 @@ class TestRetentionCleanupSchedulerRegistration:
 
     def test_retention_cleanup_uses_cron_trigger(self):
         """retention_cleanup should use CronTrigger at 3:30 AM ET."""
-        from trackrat.services.scheduler import SchedulerService
-
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService)
         # Find the retention_cleanup job registration block
@@ -94,9 +148,10 @@ class TestRetentionCleanupBatchLogic:
 
     @pytest.fixture
     def mock_settings(self):
-        """Mock settings with retention_days=120."""
+        """Mock settings with retention_days=120, subway_retention_days=14."""
         settings = Mock()
         settings.retention_days = 120
+        settings.subway_retention_days = 14
         return settings
 
     @pytest.mark.asyncio
@@ -133,20 +188,25 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness session, then 3 batch sessions
+            # Sessions in call order: freshness, phase-0 partition bootstrap,
+            # 4 batch deletes (journey/discovery/validation/service_alerts),
+            # phase-5 partition drop.
             ctxs = []
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            phase0_session = AsyncMock()
+            phase0_session.execute = AsyncMock(return_value=Mock(rowcount=0))
+            ctxs.append(make_ctx(phase0_session))  # phase 0
+
             for result in execute_results:
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
-                ctx = AsyncMock()
-                ctx.__aenter__ = AsyncMock(return_value=s)
-                ctx.__aexit__ = AsyncMock(return_value=False)
-                ctxs.append(ctx)
+                ctxs.append(make_ctx(s))
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
@@ -193,7 +253,8 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness session, then 4 batch sessions
+            # First call = freshness session, then partition-bootstrap (phase 0),
+            # then 4 batch sessions, then partition-drop (phase 5)
             ctxs = []
             # Freshness session (opened first)
             ctx_fresh = AsyncMock()
@@ -201,22 +262,29 @@ class TestRetentionCleanupBatchLogic:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
-            # Batch sessions
-            for result in execute_results:
+            def _make_batch_ctx(result):
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
-                ctx = AsyncMock()
-                ctx.__aenter__ = AsyncMock(return_value=s)
-                ctx.__aexit__ = AsyncMock(return_value=False)
-                ctxs.append(ctx)
+                return make_ctx(s)
+
+            ctxs.append(
+                _make_batch_ctx(Mock(rowcount=0))
+            )  # phase 0: ensure_future_partitions
+
+            # Batch sessions
+            for result in execute_results:
+                ctxs.append(_make_batch_ctx(result))
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
-            # 1 freshness + 2 journey batches + 1 discovery + 1 validation
-            # + 1 service_alerts = 6 sessions
-            assert mock_get_session.call_count == 6
+            # 1 freshness + 1 partition-bootstrap + 2 journey batches
+            # + 1 discovery + 1 validation + 1 service_alerts
+            # + 1 partition-drop = 8 sessions
+            assert mock_get_session.call_count == 8
 
     @pytest.mark.asyncio
     async def test_cleanup_skipped_when_still_fresh(self, mock_settings):
@@ -258,6 +326,7 @@ class TestRetentionCleanupBatchLogic:
 
         mock_settings = Mock()
         mock_settings.retention_days = 90
+        mock_settings.subway_retention_days = 14
 
         empty_result = Mock()
         empty_result.rowcount = 0
@@ -294,12 +363,15 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness, then 4 batch sessions (one per table)
+            # First call = freshness, then partition-bootstrap (phase 0),
+            # then 4 batch sessions (one per table), then partition-drop (phase 5)
             ctxs = []
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
+
+            ctxs.append(make_ctx(make_capture_session()))  # phase 0
 
             for _ in range(4):
                 ctx = AsyncMock()
@@ -307,19 +379,118 @@ class TestRetentionCleanupBatchLogic:
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
 
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
-            # All four DELETE calls should use days=90
+            # All four DELETE calls should use days=90 (partition-bootstrap
+            # and partition-drop pass no params, so they aren't captured)
             assert len(executed_params) == 4
             for params in executed_params:
                 assert params["days"] == 90
                 assert params["batch_size"] == 1000
 
     @pytest.mark.asyncio
+    async def test_subway_uses_shorter_retention_window(self):
+        """The train_journeys DELETE carries both the default and subway cutoffs.
+
+        Subway is pruned on a shorter window via a CASE in the train_journeys
+        DELETE; the other phases (discovery_runs, validation_results,
+        service_alerts) only ever use the default cutoff.
+        """
+        from trackrat.services.scheduler import SchedulerService
+
+        service = SchedulerService.__new__(SchedulerService)
+
+        mock_settings = Mock()
+        mock_settings.retention_days = 120
+        mock_settings.subway_retention_days = 14
+
+        empty_result = Mock(rowcount=0)
+        captured: list[tuple[str, dict]] = []
+
+        def make_capture_session():
+            session = AsyncMock()
+
+            async def capture_execute(stmt, params=None):
+                captured.append((str(stmt), dict(params) if params else {}))
+                return empty_result
+
+            session.execute = AsyncMock(side_effect=capture_execute)
+            return session
+
+        freshness_session = AsyncMock()
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings", return_value=mock_settings
+            ),
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check"
+            ) as mock_freshness,
+        ):
+
+            async def execute_task_func(
+                db, task_name, minimum_interval_seconds, task_func
+            ):
+                await task_func()
+                return True
+
+            mock_freshness.side_effect = execute_task_func
+
+            ctxs = []
+            ctx_fresh = AsyncMock()
+            ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
+            ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+            ctxs.append(ctx_fresh)
+
+            # Phase 0 (ensure_future_partitions) passes no params, so it
+            # would only pollute `captured` with noise — use a plain
+            # non-capturing session instead.
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=empty_result)
+            ctxs.append(make_ctx(plain_session))
+
+            for _ in range(4):
+                ctx = AsyncMock()
+                ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
+                ctx.__aexit__ = AsyncMock(return_value=False)
+                ctxs.append(ctx)
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+
+            mock_get_session.side_effect = ctxs
+
+            await service.retention_cleanup()
+
+        # One DELETE per phase (each returns rowcount 0 -> single batch).
+        assert len(captured) == 4
+
+        journey_stmt, journey_params = captured[0]
+        assert "DELETE FROM train_journeys" in journey_stmt
+        assert journey_params["days"] == 120
+        assert journey_params["subway_days"] == 14
+        assert journey_params["batch_size"] == 1000
+
+        # Remaining phases only carry the default cutoff, never subway_days.
+        for stmt, params in captured[1:]:
+            assert "train_journeys" not in stmt
+            assert params["days"] == 120
+            assert "subway_days" not in params
+
+    @pytest.mark.asyncio
     async def test_cleanup_handles_exception_gracefully(self, mock_settings):
-        """If a DELETE fails, the error should be logged but not crash."""
+        """If a DELETE fails, do_retention_work logs and re-raises; the freshness
+        wrapper catches it so the public method does not crash.
+
+        The re-raise is deliberate: run_with_freshness_check only records a run
+        as successful when task_func returns without raising, so swallowing the
+        error here would falsely mark the failed run fresh. This mock emulates
+        the real wrapper's catch.
+        """
         from trackrat.services.scheduler import SchedulerService
 
         service = SchedulerService.__new__(SchedulerService)
@@ -343,8 +514,13 @@ class TestRetentionCleanupBatchLogic:
             async def execute_task_func(
                 db, task_name, minimum_interval_seconds, task_func
             ):
-                await task_func()
-                return True
+                # Mirror run_with_freshness_check: a raising task_func is caught
+                # and reported as a failed (not successful) run.
+                try:
+                    await task_func()
+                    return True
+                except Exception:
+                    return False
 
             mock_freshness.side_effect = execute_task_func
 
@@ -373,17 +549,32 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_targets_journey_date_column(self):
         """The train_journeys DELETE should filter on journey_date."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM train_journeys" in source
         assert "journey_date < CURRENT_DATE" in source
 
+    def test_cleanup_applies_subway_case_in_journey_delete(self):
+        """The train_journeys DELETE should branch SUBWAY onto its own cutoff."""
+        import inspect
+
+        from trackrat.services.scheduler import SchedulerService
+
+        source = inspect.getsource(SchedulerService.retention_cleanup)
+        assert "data_source = 'SUBWAY'" in source
+        assert ":subway_days" in source
+        # The CASE belongs only to the train_journeys phase; the other three
+        # DELETEs stay on the single default cutoff (:days).
+        assert source.count(":subway_days") == 1
+
     def test_cleanup_targets_discovery_runs_run_at(self):
         """The discovery_runs DELETE should filter on run_at."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM discovery_runs" in source
@@ -391,16 +582,18 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_targets_validation_results_run_at(self):
         """The validation_results DELETE should filter on run_at."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM validation_results" in source
 
     def test_cleanup_targets_inactive_service_alerts(self):
         """The service_alerts DELETE should only prune inactive rows by updated_at."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "DELETE FROM service_alerts" in source
@@ -411,8 +604,9 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_uses_batch_limit(self):
         """All DELETE statements should use LIMIT for batching."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         # Should have 4 LIMIT clauses (one per table)
@@ -420,25 +614,58 @@ class TestRetentionCleanupSQLStatements:
 
     def test_cleanup_uses_subquery_pattern(self):
         """DELETEs should use id IN (SELECT id ... LIMIT) for efficient batching."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert source.count("WHERE id IN (") == 4
 
+    def test_make_interval_day_args_are_cast_to_int(self):
+        """Every make_interval(days => ...) must cast its arg to int via CAST().
+
+        asyncpg sends bound parameters untyped, so a bare
+        ``make_interval(days => CASE ... END)`` over untyped params resolves to
+        the nonexistent ``make_interval(days => text)`` overload and raises
+        ``UndefinedFunctionError``. The cast must be spelled ``CAST(:name AS
+        int)`` and NOT ``:name::int``: SQLAlchemy's ``text()`` bind-param parser
+        refuses to substitute a ``:name`` immediately followed by ``::``, so the
+        literal ``:name`` reaches Postgres and it raises a syntax error. Guards
+        against regression of both forms across all four DELETE phases.
+        """
+        import inspect
+        import re
+
+        from trackrat.services.scheduler import SchedulerService
+
+        source = inspect.getsource(SchedulerService.retention_cleanup)
+        # Collapse Python string-concatenation boundaries ("..." "...") and
+        # surrounding whitespace so the CASE expression reads as one line.
+        collapsed = re.sub(r'"\s*"', "", source)
+        collapsed = re.sub(r"\s+", " ", collapsed)
+
+        # One make_interval per phase (train_journeys, discovery_runs,
+        # validation_results, service_alerts).
+        assert collapsed.count("make_interval(days =>") == 4
+        # The ``::int`` cast operator is broken inside SQLAlchemy text() — it
+        # must never appear.
+        assert "::int" not in collapsed
+        # The three simple phases must use the CAST() form.
+        assert collapsed.count("make_interval(days => CAST(:days AS int))") == 3
+        # The train_journeys CASE must CAST() both branches to int.
+        assert "THEN CAST(:subway_days AS int) ELSE CAST(:days AS int) END" in collapsed
+
     def test_cascade_covers_all_dependent_tables(self):
         """All TrainJourney child tables should have ON DELETE CASCADE FKs."""
         from trackrat.models.database import (
-            JourneyStop,
-            JourneySnapshot,
             JourneyProgress,
+            JourneyStop,
             SegmentTransitTime,
             StationDwellTime,
         )
 
         child_models = [
             JourneyStop,
-            JourneySnapshot,
             JourneyProgress,
             SegmentTransitTime,
             StationDwellTime,
@@ -464,9 +691,10 @@ class TestRetentionCleanupFreshnessCheck:
 
     def test_uses_24_hour_safe_interval(self):
         """retention_cleanup should use calculate_safe_interval(24 * 60)."""
+        import inspect
+
         from trackrat.services.scheduler import SchedulerService
         from trackrat.utils.scheduler_utils import calculate_safe_interval
-        import inspect
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert "calculate_safe_interval(24 * 60)" in source
@@ -477,8 +705,9 @@ class TestRetentionCleanupFreshnessCheck:
 
     def test_task_name_is_retention_cleanup(self):
         """The task should be registered as 'retention_cleanup' in freshness check."""
-        from trackrat.services.scheduler import SchedulerService
         import inspect
+
+        from trackrat.services.scheduler import SchedulerService
 
         source = inspect.getsource(SchedulerService.retention_cleanup)
         assert 'task_name="retention_cleanup"' in source
@@ -491,6 +720,7 @@ class TestServiceAlertsRetention:
     def mock_settings(self):
         settings = Mock()
         settings.retention_days = 120
+        settings.subway_retention_days = 14
         return settings
 
     @pytest.mark.asyncio
@@ -537,6 +767,10 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=Mock(rowcount=0))
+            ctxs.append(make_ctx(plain_session))  # phase 0
+
             for result in execute_results:
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
@@ -545,13 +779,15 @@ class TestServiceAlertsRetention:
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
 
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
-            # 1 freshness + 1 journey + 1 discovery + 1 validation
-            # + 3 service_alerts = 7 sessions
-            assert mock_get_session.call_count == 7
+            # 1 freshness + 1 partition-bootstrap + 1 journey + 1 discovery
+            # + 1 validation + 3 service_alerts + 1 partition-drop = 9 sessions
+            assert mock_get_session.call_count == 9
 
     @pytest.mark.asyncio
     async def test_service_alerts_delete_passes_correct_params(self, mock_settings):
@@ -603,11 +839,21 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            # Phases 0 and 5 (partition bootstrap/drop) issue their own SQL
+            # unrelated to the four per-table DELETEs under test — route them
+            # through non-capturing sessions so they don't pollute the
+            # executed_statements/executed_params assertions below.
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=empty_result)
+            ctxs.append(make_ctx(plain_session))  # phase 0
+
             for _ in range(4):
                 ctx = AsyncMock()
                 ctx.__aenter__ = AsyncMock(return_value=make_capture_session())
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
@@ -666,6 +912,10 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
 
+            plain_session = AsyncMock()
+            plain_session.execute = AsyncMock(return_value=Mock(rowcount=0))
+            ctxs.append(make_ctx(plain_session))  # phase 0
+
             for result in execute_results:
                 s = AsyncMock()
                 s.execute = AsyncMock(return_value=result)
@@ -673,6 +923,8 @@ class TestServiceAlertsRetention:
                 ctx.__aenter__ = AsyncMock(return_value=s)
                 ctx.__aexit__ = AsyncMock(return_value=False)
                 ctxs.append(ctx)
+
+            ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
 
             mock_get_session.side_effect = ctxs
 
@@ -730,8 +982,13 @@ class TestServiceAlertsRetention:
             async def execute_task_func(
                 db, task_name, minimum_interval_seconds, task_func
             ):
-                await task_func()
-                return True
+                # Mirror run_with_freshness_check: catch the re-raised failure so
+                # the run is reported as failed (not successful).
+                try:
+                    await task_func()
+                    return True
+                except Exception:
+                    return False
 
             mock_freshness.side_effect = execute_task_func
 

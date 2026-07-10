@@ -33,9 +33,10 @@ describe('getStatusBadgeClass', () => {
     expect(cls).toContain('text-accent');
   });
 
-  it('returns blue colors for "departed"', () => {
+  it('returns info colors for "departed"', () => {
     const cls = getStatusBadgeClass('departed');
-    expect(cls).toContain('text-blue-400');
+    expect(cls).toContain('bg-info/15');
+    expect(cls).toContain('text-info');
   });
 
   it('returns warning colors for "delayed"', () => {

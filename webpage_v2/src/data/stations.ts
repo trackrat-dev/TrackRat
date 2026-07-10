@@ -1650,6 +1650,23 @@ export const SYSTEM_NAMES: Record<TransitSystem, string> = {
 // System display order
 export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'WMATA', 'BART', 'AMTRAK', 'MBTA', 'PATCO', 'METRA'];
 
+// Systems fully disabled app-wide: hidden from every selection/display surface,
+// and not collected or served by the backend (mirrors the backend's
+// TRACKRAT_DISABLED_DATA_SOURCES flag and the iOS app's TrainSystem.disabledSystems).
+// SYSTEM_ORDER / SYSTEM_NAMES are intentionally left intact so lookup-by-code of a
+// user's persisted or historical data on a disabled system still resolves its name.
+export const DISABLED_SYSTEMS: ReadonlySet<TransitSystem> = new Set<TransitSystem>(['BART', 'WMATA', 'MBTA', 'METRA']);
+
+// User-facing systems in display order: SYSTEM_ORDER minus DISABLED_SYSTEMS.
+// Use this anywhere systems are presented to the user for selection or display.
+export const AVAILABLE_SYSTEMS: TransitSystem[] = SYSTEM_ORDER.filter(s => !DISABLED_SYSTEMS.has(s));
+
+// Systems with backend service-alert collection (MTA GTFS-RT feeds + NJT's
+// getStationMSG API). Single source of truth for the ServiceAlertBanner's fetch
+// gate; mirrors the systems iOS treats as alert-capable for planned-work toggles.
+// None of these are disabled, so no DISABLED_SYSTEMS filtering is needed.
+export const ALERT_CAPABLE_SYSTEMS: TransitSystem[] = ['SUBWAY', 'LIRR', 'MNR', 'NJT'];
+
 // Aliases for codes that share a physical station with another system's code.
 // The duplicate entry is hidden from the picker, but route data and shareable
 // URLs may still reference the alias code — resolve those to the canonical entry.

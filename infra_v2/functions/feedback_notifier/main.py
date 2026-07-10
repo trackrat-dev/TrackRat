@@ -28,6 +28,7 @@ def format_github_issue(payload):
     device = payload.get("device_model", "unknown")
     train_id = payload.get("train_id") or "N/A"
     app_version = payload.get("app_version") or "unknown"
+    client_ip = payload.get("client_ip") or "unknown"
     timestamp = payload.get("timestamp", "unknown")
 
     is_suggestion = message.startswith("[Improvement Suggestion] ")
@@ -60,6 +61,7 @@ def format_github_issue(payload):
         f"| **Train** | {train_id} |",
         f"| **Device** | {device} |",
         f"| **App Version** | {app_version} |",
+        f"| **Client IP** | {client_ip} |",
         f"| **Submitted** | {timestamp} |",
         "",
         "---",

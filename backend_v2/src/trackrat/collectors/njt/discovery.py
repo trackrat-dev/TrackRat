@@ -20,7 +20,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
-from trackrat.utils.train import is_amtrak_train
+from trackrat.utils.train import is_amtrak_train, normalize_njt_destination
 
 logger = get_logger(__name__)
 
@@ -236,6 +236,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     async with session.begin_nested():
                         stop = JourneyStop(
                             journey_id=journey.id,
+                            journey_date=journey.journey_date,
                             station_code=station_code,
                             station_name=get_station_name(station_code),
                             # Don't set stop_sequence - let journey collector handle it exclusively
@@ -336,6 +337,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     async with session.begin_nested():
                         stop = JourneyStop(
                             journey_id=journey.id,
+                            journey_date=journey.journey_date,
                             station_code=station_code,
                             station_name=get_station_name(station_code),
                             updated_arrival=time_field,
@@ -382,6 +384,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
 
         Follows the same pattern as PATH's _find_matching_journey().
 
+        Destination comparison strips the generic schedule-API " TRANSIT
+        CENTER" suffix (see ``normalize_njt_destination``) — the schedule API
+        returns "TRENTON TRANSIT CENTER" while the real-time feed returns
+        "Trenton" for the same station, and without normalization the two
+        never match here, leaving a duplicate "Train TBD" SCHEDULED row
+        alongside the real OBSERVED train (issue #1329).
+
         Args:
             session: Database session
             station_code: Discovery station code
@@ -396,6 +405,7 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         time_window = timedelta(minutes=time_tolerance_minutes)
         time_min = scheduled_departure - time_window
         time_max = scheduled_departure + time_window
+        dest_normalized = normalize_njt_destination(destination)
 
         stmt = (
             select(TrainJourney)
@@ -406,8 +416,12 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     TrainJourney.journey_date == journey_date,
                     TrainJourney.observation_type == "SCHEDULED",
                     TrainJourney.is_cancelled.is_(False),
-                    func.lower(func.trim(TrainJourney.destination))
-                    == func.lower(destination.strip()),
+                    func.regexp_replace(
+                        func.lower(func.trim(TrainJourney.destination)),
+                        r"\s+transit center$",
+                        "",
+                    )
+                    == dest_normalized,
                     JourneyStop.station_code == station_code,
                     JourneyStop.scheduled_departure.is_not(None),
                     JourneyStop.scheduled_departure >= time_min,

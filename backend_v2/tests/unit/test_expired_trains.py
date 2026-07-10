@@ -344,23 +344,18 @@ async def test_train_not_found_counted_as_success_in_batch():
     collector = JourneyCollector(njt_client)
 
     # Patch the methods that would be called
-    with patch.object(collector, "create_journey_snapshot", new_callable=AsyncMock):
-        with patch.object(collector, "update_journey_metadata", new_callable=AsyncMock):
+    with patch.object(collector, "update_journey_metadata", new_callable=AsyncMock):
+        with patch.object(collector, "update_journey_stops", new_callable=AsyncMock):
             with patch.object(
-                collector, "update_journey_stops", new_callable=AsyncMock
+                collector, "check_journey_completion", new_callable=AsyncMock
             ):
                 with patch.object(
-                    collector, "check_journey_completion", new_callable=AsyncMock
-                ):
-                    with patch.object(
-                        collector,
-                        "find_historical_trains_for_backfill",
-                        new_callable=AsyncMock,
-                    ) as mock_historical:
-                        mock_historical.return_value = (
-                            []
-                        )  # No historical trains to process
-                        results = await collector.collect(session)
+                    collector,
+                    "find_historical_trains_for_backfill",
+                    new_callable=AsyncMock,
+                ) as mock_historical:
+                    mock_historical.return_value = []  # No historical trains to process
+                    results = await collector.collect(session)
 
     # Both should be counted as successful
     assert results["trains_processed"] == 2

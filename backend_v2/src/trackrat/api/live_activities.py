@@ -16,6 +16,7 @@ from structlog import get_logger
 
 from trackrat.db.engine import get_db
 from trackrat.models.database import LiveActivityToken
+from trackrat.services.gtfs import GTFSService
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
@@ -95,6 +96,31 @@ async def register_live_activity(
         destination=request.destination_code,
         data_source=request.data_source,
     )
+
+    # Ensure the push job has a train_journeys row to update. SCHEDULED trains
+    # that exist only in GTFS static data (not yet discovered) have no row, so
+    # the push job would log journey_not_found_for_live_activity every cycle and
+    # never push — the on-device countdown goes static (issue #1298). Materialize
+    # a SCHEDULED row from GTFS so updates flow until discovery upgrades it to
+    # OBSERVED in place. Best-effort: never fail registration on error.
+    try:
+        materialized = await GTFSService().materialize_scheduled_journey(
+            db,
+            request.train_number,
+            now_et().date(),
+            data_source=request.data_source,
+        )
+        if materialized is not None:
+            await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.warning(
+            "live_activity_journey_materialize_failed",
+            train_number=request.train_number,
+            data_source=request.data_source,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return RegisterResponse(expires_at=expires_at)
 

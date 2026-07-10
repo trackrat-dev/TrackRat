@@ -172,7 +172,7 @@ struct AddRouteAlertView: View {
     }
 
     private var systemGrid: some View {
-        let systems = TrainSystem.allCases
+        let systems = TrainSystem.availableCases
             .filter { $0.supportsAlerts }
             .sorted { $0.displayName < $1.displayName }
 

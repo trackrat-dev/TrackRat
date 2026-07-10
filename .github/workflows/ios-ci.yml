@@ -1,0 +1,58 @@
+# TrackRat iOS CI
+# Separate from ci-cd-v2.yml so iOS-only changes don't trigger backend/terraform/docker jobs.
+
+name: iOS CI
+
+on:
+  push:
+    branches: [main, production]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-ci.yml'
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-ios:
+    name: iOS Build & Test
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Select simulator destination
+        id: sim
+        run: |
+          NAME=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(select(.key | contains("iOS"))) | map(.value) | flatten | .[0].name // empty')
+          if [ -z "$NAME" ]; then
+            echo "::error::No available iOS simulator found on this runner"
+            xcrun simctl list
+            exit 1
+          fi
+          echo "Selected simulator: $NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build and test
+        working-directory: ios
+        run: |
+          xcodebuild test \
+            -scheme TrackRat \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: ios-test-results
+          path: ios/TestResults.xcresult

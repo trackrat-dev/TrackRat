@@ -117,7 +117,11 @@ class TrainCacheService {
         for key in getCacheMetadata().keys.keys where key.hasSuffix(suffix) {
             keys.insert(key)
         }
-        return Array(keys)
+        // Sorted so a source-less lookup deterministically prefers the same
+        // data source every time when two systems cache the same train
+        // number/date (e.g. NJT 7801 vs Amtrak 7801), instead of picking
+        // whichever the Set happened to iterate first.
+        return keys.sorted()
     }
 
     // MARK: - Retrieval
@@ -327,6 +331,11 @@ class TrainCacheService {
 
     // MARK: - Test support
 
+    /// Test-only: number of entries currently held in the in-memory LRU cache.
+    var cachedEntryCountForTesting: Int {
+        memoryCache.count
+    }
+
     /// Test-only: clear cached state from memory and UserDefaults.
     func resetForTesting() {
         let metadata = getCacheMetadata()
@@ -336,6 +345,37 @@ class TrainCacheService {
         userDefaults.removeObject(forKey: cacheMetadataKey)
         memoryCache.removeAll()
         memoryCacheAccessOrder.removeAll()
+    }
+
+    /// Test-only: drop the in-memory cache while leaving UserDefaults intact,
+    /// simulating a fresh app launch reading back persisted entries.
+    func clearMemoryCacheForTesting() {
+        memoryCache.removeAll()
+        memoryCacheAccessOrder.removeAll()
+    }
+
+    /// Test-only: seed a cache entry with an explicit `cachedAt` to exercise expiry.
+    func injectTrainForTesting(
+        _ train: TrainV2,
+        trainNumber: String,
+        date: Date = Date(),
+        dataSource: String? = nil,
+        cachedAt: Date
+    ) {
+        let cacheKey = generateCacheKey(
+            trainNumber: trainNumber,
+            date: date,
+            dataSource: normalizedDataSource(dataSource)
+        )
+        let cached = CachedTrain(train: train, cachedAt: cachedAt, cacheKey: cacheKey)
+
+        addToMemoryCache(key: cacheKey, value: cached)
+        if let encoded = try? JSONEncoder().encode(cached) {
+            userDefaults.set(encoded, forKey: cacheKeyPrefix + cacheKey)
+            var metadata = getCacheMetadata()
+            metadata.keys[cacheKey] = cachedAt
+            saveCacheMetadata(metadata)
+        }
     }
 
     /// Test-only: seed the old trainNumber+date cache shape.

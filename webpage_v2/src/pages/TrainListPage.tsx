@@ -3,41 +3,27 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
-import { LoadingSpinner } from '../components/LoadingSpinner';
+import { TrainCardSkeleton } from '../components/Skeleton';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { TrainCard } from '../components/TrainCard';
 import { TransferTripCard } from '../components/TransferTripCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
+import { ChevronIcon, RefreshIcon } from '../components/icons';
 import { getStationByCode } from '../data/stations';
 import { formatTime, getTodayDateString } from '../utils/date';
 import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
+import { tripLegToTrain } from '../utils/trips';
 import { usePolling } from '../utils/usePolling';
+import { useBackNavigation } from '../utils/useBackNavigation';
 
 const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ default: m.RouteMap })));
-
-/** Convert a direct TripOption (1 leg) to a Train for the existing TrainCard */
-function tripLegToTrain(trip: TripOption): Train {
-  const leg = trip.legs[0];
-  return {
-    train_id: leg.train_id,
-    journey_date: leg.journey_date,
-    line: leg.line,
-    destination: leg.destination,
-    departure: leg.boarding,
-    arrival: leg.alighting,
-    train_position: leg.train_position,
-    data_freshness: { last_updated: '', age_seconds: 0, update_count: 0, collection_method: null },
-    data_source: leg.data_source,
-    observation_type: (leg.observation_type as 'OBSERVED' | 'SCHEDULED') || 'OBSERVED',
-    is_cancelled: leg.is_cancelled,
-  };
-}
 
 export function TrainListPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
   const navigate = useNavigate();
+  const goBack = useBackNavigation('/departures');
   const { addRecentTrip } = useAppStore();
 
   const [trains, setTrains] = useState<Train[]>([]);
@@ -50,6 +36,7 @@ export function TrainListPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [summaryError, setSummaryError] = useState(false);
 
   const isViewingFutureDate = selectedDate !== null && selectedDate !== getTodayDateString();
 
@@ -117,9 +104,13 @@ export function TrainListPage() {
 
     const controller = new AbortController();
     apiService.getRouteSummary(from, to, controller.signal)
-      .then(setSummary)
+      .then((res) => {
+        setSummary(res);
+        setSummaryError(false);
+      })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
+        setSummaryError(true);
       });
     return () => controller.abort();
     // fromStation/toStation are derived from from/to and need not be deps
@@ -182,31 +173,25 @@ export function TrainListPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-4 flex items-center gap-3">
         <button
-          onClick={() => navigate('/departures')}
-          className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
+          onClick={goBack}
+          className="shrink-0 -ml-1 p-1 text-xl leading-none text-accent hover:text-accent/80"
+          aria-label="Back"
         >
-          ← Back
+          ←
         </button>
-        <h2 className="text-2xl font-bold text-text-primary text-center">
+        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold text-text-primary">
           {fromStation.name} → {toStation.name}
         </h2>
-        <div className="flex items-center justify-center gap-4 mt-2">
-          {lastUpdated && (
-            <span className="text-sm text-text-muted">
-              Updated at {formatTime(lastUpdated.toISOString())}
-            </span>
-          )}
-          {directRouteDataSource && !isTransferSearch && (
-            <Link
-              to={routeStatusUrl}
-              className="text-sm text-accent hover:text-accent/80 font-medium"
-            >
-              Route Status →
-            </Link>
-          )}
-        </div>
+        {directRouteDataSource && !isTransferSearch && (
+          <Link
+            to={routeStatusUrl}
+            className="shrink-0 text-sm font-medium text-accent hover:text-accent/80"
+          >
+            Route Status →
+          </Link>
+        )}
       </div>
 
       {/* Service alerts for MTA systems */}
@@ -236,7 +221,7 @@ export function TrainListPage() {
         >
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium text-text-primary">{summary.headline}</div>
-            <span className="text-text-muted text-xs ml-2">{summaryExpanded ? '▲' : '▼'}</span>
+            <ChevronIcon direction={summaryExpanded ? 'up' : 'down'} size={16} className="text-text-muted ml-2 shrink-0" />
           </div>
           {summaryExpanded && (
             <>
@@ -253,6 +238,13 @@ export function TrainListPage() {
             </>
           )}
         </button>
+      )}
+
+      {/* Route summary failed to load — muted note; recovers on next route change */}
+      {!summary && summaryError && !isTransferSearch && (
+        <div className="w-full mb-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl p-4">
+          <p className="text-sm text-text-muted">Couldn’t load route summary</p>
+        </div>
       )}
 
       {/* Transfer search banner */}
@@ -280,13 +272,19 @@ export function TrainListPage() {
         </div>
       )}
 
+      {lastUpdated && (
+        <div className="mb-1 text-right text-xs text-text-muted">
+          Updated {formatTime(lastUpdated.toISOString())}
+        </div>
+      )}
       <div className="flex gap-2 mb-4">
         <button
           onClick={() => fetchTrains()}
           disabled={loading}
           className="py-3 px-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl font-semibold hover:bg-surface transition-all disabled:opacity-50 text-text-primary"
+          aria-label="Refresh departures"
         >
-          {loading ? '...' : '🔄'}
+          <RefreshIcon size={18} className={loading ? 'animate-spin' : ''} />
         </button>
         <input
           type="date"
@@ -315,7 +313,12 @@ export function TrainListPage() {
       </div>
 
       {loading && !hasResults ? (
-        <LoadingSpinner />
+        <div className="space-y-3" role="status" aria-label="Loading departures" aria-busy="true">
+          {[0, 1, 2, 3].map((i) => (
+            <TrainCardSkeleton key={i} />
+          ))}
+          <span className="sr-only">Loading departures</span>
+        </div>
       ) : error ? (
         <ErrorMessage message={error} onRetry={() => fetchTrains()} />
       ) : isEmpty ? (
@@ -344,7 +347,7 @@ export function TrainListPage() {
             <TransferTripCard
               key={`transfer-${trip.legs.map(l => `${l.train_id}:${l.journey_date}`).join('|')}`}
               trip={trip}
-              onClick={() => navigate(buildTripUrl(trip))}
+              onClick={() => navigate(buildTripUrl(trip), { state: { trip } })}
             />
           ))}
         </div>

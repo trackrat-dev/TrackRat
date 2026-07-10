@@ -27,27 +27,8 @@ struct TrainActivityAttributes: ActivityAttributes {
         let predictedTrack: String?
         let predictedTrackConfidence: Double?
         
-        // Computed property for data freshness
-        var freshnessText: String {
-            let now = Date().timeIntervalSince1970
-            let secondsAgo = Int(now - dataTimestamp)
-            
-            if secondsAgo < 60 {
-                return "\(secondsAgo) sec ago"
-            } else {
-                let minutesAgo = secondsAgo / 60
-                return "\(minutesAgo) min ago"
-            }
-        }
-        
-        // Check if data is stale (older than 3 minutes)
-        var isDataStale: Bool {
-            let now = Date().timeIntervalSince1970
-            return (now - dataTimestamp) > 180  // 3 minutes
-        }
-        
         // MARK: - New Computed Properties for Time-Based Display
-        
+
         /// Minutes until train departs from user's origin station
         var minutesUntilDeparture: Int? {
             guard !hasTrainDeparted,
@@ -56,10 +37,11 @@ struct TrainActivityAttributes: ActivityAttributes {
             
             let now = Date()
             let interval = departureTime.timeIntervalSince(now)
-            
-            // If departure is in the past, return nil
-            if interval < 0 { return nil }
-            
+
+            // Can be negative if departure is overdue (past scheduled time but
+            // the backend hasn't flagged the train departed yet). Callers render
+            // negative minutes as "Departing now"/"late"; only a missing or
+            // unparseable time yields nil (rendered as "Preparing to depart").
             return Int(interval / 60)
         }
         

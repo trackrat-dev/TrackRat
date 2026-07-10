@@ -16,6 +16,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.time import now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -426,13 +427,17 @@ class NJTScheduleCollector:
 
         for journey in scheduled_journeys:
             stats["stop_collections_attempted"] += 1
+            # Snapshot before the try: a savepoint rollback below expires
+            # journey's ORM attributes, and re-reading them from the async
+            # session in the except handler raises MissingGreenlet.
+            train_id = journey.train_id
 
             try:
                 # Small delay to be nice to the API
                 await asyncio.sleep(0.25)
 
                 # Fetch the train stop list
-                train_data = await self.client.get_train_stop_list(journey.train_id)
+                train_data = await self.client.get_train_stop_list(train_id)
 
                 # Use savepoint so a single train failure doesn't poison the
                 # session for all subsequent trains in this batch.
@@ -443,7 +448,7 @@ class NJTScheduleCollector:
 
                 logger.debug(
                     "collected_stops_for_scheduled_train",
-                    train_id=journey.train_id,
+                    train_id=train_id,
                     stop_count=len(train_data.STOPS) if train_data.STOPS else 0,
                 )
 
@@ -451,9 +456,10 @@ class NJTScheduleCollector:
                 stats["stop_collections_failed"] += 1
                 logger.warning(
                     "failed_to_collect_stops_for_scheduled_train",
-                    train_id=journey.train_id,
+                    train_id=train_id,
                     error=str(e),
                     error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 # Continue with next train instead of failing entire collection
                 continue
@@ -487,6 +493,11 @@ class NJTScheduleCollector:
                 train_id=journey.train_id,
             )
             return
+
+        # Serialize this journey's writers across replicas (issue #1369):
+        # this delete+recreate can otherwise race the JIT/scheduled
+        # collection paths' phantom-stop delete and stop updates.
+        await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
 
         # Delete the single placeholder stop we created during schedule collection
         from sqlalchemy import delete

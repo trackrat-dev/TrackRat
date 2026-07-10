@@ -7,6 +7,10 @@ import {
   getGroupedPrimaryStations,
   SYSTEM_ORDER,
   PRIMARY_STATIONS,
+  AVAILABLE_SYSTEMS,
+  DISABLED_SYSTEMS,
+  ALERT_CAPABLE_SYSTEMS,
+  SYSTEM_NAMES,
 } from './stations';
 
 describe('STATIONS', () => {
@@ -208,5 +212,61 @@ describe('getGroupedPrimaryStations', () => {
   it('uses SYSTEM_NAMES for group names', () => {
     const groups = getGroupedPrimaryStations(['NJT']);
     expect(groups[0].name).toBe('NJ Transit');
+  });
+});
+
+describe('AVAILABLE_SYSTEMS', () => {
+  it('excludes every disabled system', () => {
+    for (const system of DISABLED_SYSTEMS) {
+      expect(AVAILABLE_SYSTEMS).not.toContain(system);
+    }
+  });
+
+  it('is SYSTEM_ORDER minus the disabled set, preserving order', () => {
+    const expected = SYSTEM_ORDER.filter(s => !DISABLED_SYSTEMS.has(s));
+    expect(AVAILABLE_SYSTEMS).toEqual(expected);
+    expect(AVAILABLE_SYSTEMS.length).toBe(SYSTEM_ORDER.length - DISABLED_SYSTEMS.size);
+  });
+
+  it('currently hides BART, WMATA, MBTA, and Metra', () => {
+    expect([...DISABLED_SYSTEMS].sort()).toEqual(['BART', 'MBTA', 'METRA', 'WMATA']);
+  });
+
+  it('keeps disabled systems in SYSTEM_ORDER and SYSTEM_NAMES for code lookups', () => {
+    // Disabled systems are only hidden from display; persisted/historical data on
+    // them must still resolve a name and stay part of the canonical order.
+    for (const system of DISABLED_SYSTEMS) {
+      expect(SYSTEM_ORDER).toContain(system);
+      expect(SYSTEM_NAMES[system]).toBeTruthy();
+    }
+  });
+
+  it('grouping through AVAILABLE_SYSTEMS yields no disabled-system groups', () => {
+    // The picker's default (all-on) path passes AVAILABLE_SYSTEMS to
+    // getGroupedPrimaryStations, so disabled-system stations must not appear.
+    const groups = getGroupedPrimaryStations(AVAILABLE_SYSTEMS);
+    for (const group of groups) {
+      expect(DISABLED_SYSTEMS.has(group.system)).toBe(false);
+    }
+  });
+});
+
+describe('ALERT_CAPABLE_SYSTEMS', () => {
+  it('is the MTA systems plus NJT', () => {
+    expect([...ALERT_CAPABLE_SYSTEMS].sort()).toEqual(['LIRR', 'MNR', 'NJT', 'SUBWAY']);
+  });
+
+  it('contains no app-wide-disabled systems', () => {
+    for (const system of ALERT_CAPABLE_SYSTEMS) {
+      expect(DISABLED_SYSTEMS.has(system)).toBe(false);
+    }
+  });
+
+  it('only lists systems the backend actually serves alerts for', () => {
+    // Every entry must be a known transit system (present in SYSTEM_ORDER),
+    // guarding against typos that would silently gate the banner off.
+    for (const system of ALERT_CAPABLE_SYSTEMS) {
+      expect(SYSTEM_ORDER).toContain(system);
+    }
   });
 });

@@ -173,6 +173,12 @@ struct TrainV2: Identifiable, Codable {
             return .delayed
         }
 
+        // SCHEDULED trains have no real-time observation, so we can't claim on-time.
+        // Surface .scheduled rather than implying confirmed on-time status.
+        if observationType == "SCHEDULED" {
+            return .scheduled
+        }
+
         return .onTime
     }
     

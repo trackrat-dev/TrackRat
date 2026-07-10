@@ -213,6 +213,70 @@ describe('Commute Profile', () => {
   });
 });
 
+describe('Home/Work Nudge Dismissal', () => {
+  it('reports not dismissed when nothing is stored', () => {
+    expect(storageService.isHomeWorkNudgeDismissed()).toBe(false);
+  });
+
+  it('persists dismissal so it survives across reloads', () => {
+    storageService.dismissHomeWorkNudge();
+
+    // A fresh read (mimicking a reload) still reports the nudge as dismissed.
+    expect(storageService.isHomeWorkNudgeDismissed()).toBe(true);
+  });
+
+  it('writes a versioned envelope for the dismissal flag', () => {
+    storageService.dismissHomeWorkNudge();
+
+    const raw = JSON.parse(localStorage.getItem('trackrat:homeWorkNudgeDismissed')!);
+    expect(raw.v).toBe(1);
+    expect(raw.data).toBe(true);
+  });
+
+  it('reports not dismissed on corrupted data', () => {
+    localStorage.setItem('trackrat:homeWorkNudgeDismissed', 'not-json');
+
+    expect(storageService.isHomeWorkNudgeDismissed()).toBe(false);
+  });
+
+  it('fails silently on quota exceeded when dismissing', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota exceeded', 'QuotaExceededError');
+    });
+
+    expect(() => storageService.dismissHomeWorkNudge()).not.toThrow();
+  });
+});
+
+describe('Map Expanded Preference', () => {
+  it('defaults to collapsed (false) when nothing stored', () => {
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+
+  it('persists an expanded choice across reads', () => {
+    storageService.setMapExpanded(true);
+    expect(storageService.getMapExpanded()).toBe(true);
+  });
+
+  it('persists a collapsed choice across reads', () => {
+    storageService.setMapExpanded(true);
+    storageService.setMapExpanded(false);
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+
+  it('writes a versioned envelope', () => {
+    storageService.setMapExpanded(true);
+    const raw = JSON.parse(localStorage.getItem('trackrat:mapExpanded')!);
+    expect(raw.v).toBe(1);
+    expect(raw.data).toBe(true);
+  });
+
+  it('returns false on corrupted data', () => {
+    localStorage.setItem('trackrat:mapExpanded', '{not-json');
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+});
+
 describe('Trip History', () => {
   it('stores viewed trains with replay links', () => {
     storageService.saveViewedTrainTrip(makeMinimalTrain('3515', 'TR', 'NY'));
@@ -280,7 +344,14 @@ describe('Trip History', () => {
     const history = storageService.getTripHistory();
     expect(history).toHaveLength(1);
     expect(history[0].kind).toBe('trip');
-    expect(history[0].href).toContain('/trip?trip=');
+
+    // Compact, shareable replay link — not the old full-JSON payload.
+    const url = new URL(history[0].href, 'https://trackrat.net');
+    expect(url.pathname).toBe('/trip');
+    expect(url.searchParams.get('date')).toBe('2026-04-01');
+    expect(url.searchParams.get('legs')).toBe('NJT:3515:TR:SEC,AMTRAK:A174:SEC:NY');
+    expect(url.searchParams.get('walk')).toBe('0');
+    expect(history[0].href).not.toContain('trip=');
   });
 
   it('limits to 50 entries', () => {

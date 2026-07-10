@@ -6,10 +6,10 @@
 
 - **Framework**: React 19.2 + TypeScript 6.0 + PWA (vite-plugin-pwa)
 - **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
-- **Styling**: Tailwind CSS 4.2 (utility-first, custom design system)
+- **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 7.14
-- **Date Handling**: date-fns 4.1
+- **Routing**: React Router DOM 7.16
+- **Date Handling**: date-fns 4.4
 - **HTTP Client**: Native `fetch` (no axios)
 - **Maps**: MapLibre GL 5.22 + react-map-gl 8.1
 - **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)
@@ -43,10 +43,11 @@ API Service (fetch + cache)
   - `trackrat:favorites` - favorite stations, sorted by date added
   - `trackrat:favoriteRoutes` - favorite routes
   - `trackrat:lastRoute` - last selected from/to pair (auto-restored on mount)
-  - `trackrat:systems` - enabled transit systems
+  - `trackrat:systems` - enabled transit systems (entries in `DISABLED_SYSTEMS` are stripped on load)
   - `trackrat:homeStation` - home station for quick access
   - `trackrat:workStation` - work station for quick access
   - `trackrat:tripHistory` - trip search history
+  - `trackrat:mapExpanded` - route map expand/collapse preference (default collapsed)
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
 ## Design System
@@ -100,6 +101,7 @@ useEffect(() => {
 
 ### Endpoints Used
 1. `GET /trips/search?from={code}&to={code}&limit=50&hide_departed=true&date={YYYY-MM-DD}` (departure/trip list, optional date)
+   - `GET /trains/recent-departures?from={code}&to={code}&window_minutes=120&data_sources={src}&limit={n}` (recently-departed trains for the Route Status timeline; uncached, 30s polling)
 2. `GET /trains/{trainId}?date={YYYY-MM-DD}` (train details, polled every 30s)
 3. `GET /trains/{trainId}/history?days=365&from_station={code}&to_station={code}` (historical performance)
 4. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
@@ -134,7 +136,7 @@ webpage_v2/
 │   │   ├── RouteMap.tsx          # MapLibre GL route map
 │   │   ├── SimilarTrainsPanel.tsx # Similar trains suggestion panel
 │   │   ├── TrainDistributionChart.tsx # Track distribution chart
-│   │   ├── UpcomingTrains.tsx    # Upcoming trains widget
+│   │   ├── DeparturesTimeline.tsx # Recent (dimmed) + NOW divider + upcoming departures (Route Status)
 │   │   ├── SubwayLineChips.tsx  # Subway line badge chips
 │   │   ├── ErrorBoundary.tsx     # React error boundary
 │   │   └── ErrorMessage.tsx
@@ -154,7 +156,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems)
+│   │   ├── stations.ts     # Static station list (1500+ stations, 11 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES)
 │   │   ├── routeTopology.ts # Route topology for smart search and filtering
 │   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/
@@ -165,7 +167,8 @@ webpage_v2/
 │       ├── ratsense.ts     # AI journey predictions (RatSense)
 │       ├── routes.ts       # Route path helpers and URL builders
 │       ├── share.ts        # Web Share API helper + train URL builder
-│       └── trainSearch.ts  # Train search and filtering logic
+│       ├── trainSearch.ts  # Train search and filtering logic
+│       └── trips.ts        # TripOption → Train conversion (shared by departures list + timeline)
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
@@ -255,7 +258,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
 - **No Push Notifications** - Browser notifications not implemented
-- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Dark Matter tiles, no API key)
+- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Positron light tiles, no API key; collapsed by default)
 - **No Backend Auth** - Stateless, no user accounts
 
 ### Intentional Simplifications

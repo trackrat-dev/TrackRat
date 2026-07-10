@@ -1,12 +1,25 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { apiService } from '../services/api';
-import { ServiceAlert } from '../types';
+import { ServiceAlert, TransitSystem } from '../types';
+import { ALERT_CAPABLE_SYSTEMS } from '../data/stations';
+import { usePolling } from '../utils/usePolling';
+import { AlertIcon, ElevatorIcon, WarningIcon, ChevronIcon } from './icons';
+
+/** Icon for each alert type; mirrors the ordering in getAlertStyle. */
+function AlertTypeIcon({ alertType, className }: { alertType: string; className?: string }) {
+  if (alertType === 'alert') return <AlertIcon size={18} className={className} />;
+  if (alertType === 'elevator') return <ElevatorIcon size={18} className={className} />;
+  return <WarningIcon size={18} className={className} />;
+}
 
 interface ServiceAlertBannerProps {
   dataSource: string;
   /** Optional route/line IDs to filter alerts by relevance */
   routeIds?: string[];
 }
+
+/** Alerts are cached ~2min server-side, so polling faster buys nothing. */
+const ALERTS_POLL_MS = 120_000;
 
 function getAlertStyle(alertType: string): { bg: string; border: string; icon: string } {
   switch (alertType) {
@@ -33,31 +46,46 @@ function getAlertTypeLabel(alertType: string): string {
 export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerProps) {
   const [alerts, setAlerts] = useState<ServiceAlert[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
 
-  // Stabilize routeIds reference for useEffect dependency
+  // Stabilize routeIds reference for the polling dependency
   const routeIdsKey = useMemo(() => routeIds?.sort().join(',') ?? '', [routeIds]);
+  // Systems with backend service-alert collection (MTA + NJT).
+  const isAlertCapable = ALERT_CAPABLE_SYSTEMS.includes(dataSource as TransitSystem);
 
-  useEffect(() => {
-    // Only fetch for MTA systems that have service alerts
-    const mtaSystems = ['SUBWAY', 'LIRR', 'MNR'];
-    if (!mtaSystems.includes(dataSource)) return;
-
-    apiService.getServiceAlerts(dataSource)
-      .then(res => {
-        let filtered = res.alerts;
-        // If routeIds provided, only show relevant alerts
-        if (routeIds && routeIds.length > 0) {
-          filtered = filtered.filter(alert =>
-            alert.affected_route_ids.length === 0 ||
-            alert.affected_route_ids.some(id => routeIds.includes(id))
-          );
-        }
-        setAlerts(filtered);
-      })
-      .catch(() => {}); // Fail silently
+  const fetchAlerts = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await apiService.getServiceAlerts(dataSource, undefined, signal);
+      let filtered = res.alerts;
+      // If routeIds provided, only show relevant alerts
+      if (routeIds && routeIds.length > 0) {
+        filtered = filtered.filter(alert =>
+          alert.affected_route_ids.length === 0 ||
+          alert.affected_route_ids.some(id => routeIds.includes(id))
+        );
+      }
+      setAlerts(filtered);
+      setFailed(false);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setFailed(true);
+    }
+    // routeIdsKey stands in for routeIds' contents (see useMemo above)
   }, [dataSource, routeIdsKey]);
 
-  if (alerts.length === 0) return null;
+  usePolling(fetchAlerts, [dataSource, routeIdsKey], { intervalMs: ALERTS_POLL_MS, enabled: isAlertCapable });
+
+  if (alerts.length === 0) {
+    // Only alert-capable systems fetch; surface a muted note if that fetch failed.
+    if (isAlertCapable && failed) {
+      return (
+        <div className="mb-4 px-3 py-2 rounded-xl border border-text-muted/20 bg-surface/50">
+          <p className="text-sm text-text-muted">Couldn’t load service alerts</p>
+        </div>
+      );
+    }
+    return null;
+  }
 
   // Sort: real-time alerts first, then planned work, then elevator
   const sortedAlerts = [...alerts].sort((a, b) => {
@@ -81,9 +109,7 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
               className="w-full flex items-start gap-3 p-3 text-left"
               aria-expanded={isExpanded}
             >
-              <span className={`${style.icon} text-lg leading-none mt-0.5`}>
-                {alert.alert_type === 'alert' ? '!' : alert.alert_type === 'elevator' ? '⬆' : '⚠'}
-              </span>
+              <AlertTypeIcon alertType={alert.alert_type} className={`${style.icon} mt-0.5 shrink-0`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className={`text-xs font-semibold ${style.icon}`}>
@@ -98,7 +124,7 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
                 </div>
                 <p className="text-sm text-text-primary line-clamp-2">{alert.header_text}</p>
               </div>
-              <span className="text-text-muted text-xs shrink-0">{isExpanded ? '▲' : '▼'}</span>
+              <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0 mt-0.5" />
             </button>
             {isExpanded && alert.description_text && (
               <div className="px-3 pb-3 pl-9">

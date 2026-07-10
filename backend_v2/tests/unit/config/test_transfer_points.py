@@ -283,10 +283,11 @@ class TestLookupIndexes:
         assert get_transfer_points("WMATA", "WMATA") == []
 
     def test_get_transfer_points_njt_njt_has_junction_transfers(self):
-        """NJT intra-system should return junction transfers (e.g., NE/NC at Newark Penn)."""
+        """NJT intra-system should return junction transfers (e.g., Secaucus)."""
         tps = get_transfer_points("NJT", "NJT")
         assert len(tps) > 0, "Expected NJT intra-system junction transfers"
-        # All should be same-station, same-system with different line groups
+        # Each junction is one same-station transfer carrying every line that
+        # meets there on both sides (#1296), so lines_a == lines_b with 2+ lines.
         for tp in tps:
             assert tp.system_a == "NJT" and tp.system_b == "NJT"
             assert (
@@ -294,8 +295,43 @@ class TestLookupIndexes:
             ), f"Intra-system junction should be same station, got {tp.station_a} != {tp.station_b}"
             assert tp.same_station is True
             assert (
-                tp.lines_a != tp.lines_b
-            ), f"Junction should connect different line groups at {tp.station_a}"
+                tp.lines_a == tp.lines_b
+            ), f"Junction should carry all lines on both sides at {tp.station_a}"
+            assert (
+                len(tp.lines_a) >= 2
+            ), f"Junction at {tp.station_a} should have 2+ lines, got {sorted(tp.lines_a)}"
+
+    def test_njt_secaucus_junction_connects_pascack_and_nec(self):
+        """Regression for #1296: Secaucus (SE) must carry Pascack Valley AND the
+        NEC so trip search can route New Bridge Landing -> NY Penn. The old
+        per-line-pair emission collapsed under the _add dedup, dropping every
+        SE line-pair except the first one ({NE}<->{NC})."""
+        se = [
+            tp
+            for tp in get_transfer_points("NJT", "NJT")
+            if tp.station_a == "SE" and tp.station_b == "SE"
+        ]
+        assert len(se) == 1, f"Expected exactly one SE junction transfer, got {len(se)}"
+        lines = se[0].lines_a
+        # Pascack Valley (PV), NEC (NE), and NJCL (NC) all interchange at SE.
+        assert "PV" in lines, f"SE junction missing Pascack Valley, got {sorted(lines)}"
+        assert "NE" in lines, f"SE junction missing NEC, got {sorted(lines)}"
+        assert "NC" in lines, f"SE junction missing NJCL, got {sorted(lines)}"
+
+    def test_lirr_jamaica_junction_carries_all_branches(self):
+        """Regression for #1296: Jamaica (JAM) is where ~all LIRR branches meet.
+        The junction transfer must carry every branch line so any branch->branch
+        transfer resolves, not just the first-generated pair."""
+        jam = [
+            tp
+            for tp in get_transfer_points("LIRR", "LIRR")
+            if tp.station_a == "JAM" and tp.station_b == "JAM"
+        ]
+        assert len(jam) == 1, f"Expected one JAM junction transfer, got {len(jam)}"
+        lines = jam[0].lines_a
+        # Babylon, Ronkonkoma, and Long Beach are distinct branches via JAM.
+        for branch in ("LIRR-BB", "LIRR-RK", "LIRR-LB"):
+            assert branch in lines, f"JAM missing {branch}, got {sorted(lines)}"
 
     def test_get_transfer_points_subway_subway_has_results(self):
         """SUBWAY <-> SUBWAY should return intra-subway transfer points."""
@@ -449,20 +485,64 @@ class TestGetSubwayLinesAtStation:
         assert "L" in lines, "S635 is equivalent to SL03 which is on L"
         assert "N" in lines, "S635 is equivalent to SR20 which is on N/Q/R/W"
 
-    def test_penn_station_subway_lines_from_rail_code(self):
-        """NY should include 34 St-Penn subway lines through station equivalence."""
-        lines = get_subway_lines_at_station("NY")
-        assert {"1", "2", "3", "A", "C", "E"} <= set(lines)
+    def test_penn_rail_code_has_no_subway_lines_directly(self):
+        """NY (Penn commuter rail) is a cross-modal hub: the subway is reached
+        via a transfer, not equivalence, so NY itself carries no subway lines.
+        Its subway platform codes (S128/SA28) hold them (#1355).
+        """
+        assert get_subway_lines_at_station("NY") == frozenset()
+        assert {"1", "2", "3"} <= set(get_subway_lines_at_station("S128"))
+        assert {"A", "C", "E"} <= set(get_subway_lines_at_station("SA28"))
 
-    def test_grand_central_subway_lines_from_rail_code(self):
-        """GCT should include Grand Central-42 St subway lines through equivalence."""
-        lines = get_subway_lines_at_station("GCT")
-        assert {"4", "5", "6", "7", "GS"} <= set(lines)
+    def test_grand_central_rail_code_has_no_subway_lines_directly(self):
+        """GCT (Metro-North) carries no subway lines itself; its subway platform
+        codes (S631/S723/S901) do (#1355)."""
+        assert get_subway_lines_at_station("GCT") == frozenset()
+        assert {"4", "5", "6", "7", "GS"} <= set(get_subway_lines_at_station("S631"))
 
     def test_unknown_station_returns_empty(self):
         """Unknown station returns empty frozenset."""
         lines = get_subway_lines_at_station("ZZZZZ")
         assert lines == frozenset()
+
+
+class TestCrossModalHubTransfers:
+    """Cross-modal mega-hubs (Penn, GCT, WTC) must expose a rail/PATH <-> subway
+    transfer so trip search can route across modes instead of collapsing them
+    into one station (#1355)."""
+
+    @pytest.mark.parametrize(
+        "rail_code,rail_system,subway_code",
+        [
+            ("NY", "NJT", "S128"),  # Penn: NJT -> 34 St-Penn 1/2/3
+            ("NY", "AMTRAK", "SA28"),  # Penn: Amtrak -> 34 St-Penn A/C/E
+            ("GCT", "MNR", "S631"),  # Grand Central: MNR -> 4/5/6
+            ("PWC", "PATH", "S138"),  # WTC: PATH -> subway
+        ],
+    )
+    def test_rail_to_subway_transfer_exists(
+        self, rail_code, rail_system, subway_code
+    ):
+        expected = {(rail_code, rail_system), (subway_code, "SUBWAY")}
+        match = [
+            tp
+            for tp in get_transfers_from_station(rail_code)
+            if {(tp.station_a, tp.system_a), (tp.station_b, tp.system_b)} == expected
+        ]
+        assert match, (
+            f"Expected a {rail_system} {rail_code} <-> SUBWAY {subway_code} "
+            f"cross-modal hub transfer, none found"
+        )
+
+    def test_njt_penn_connects_to_subway_via_system_pair(self):
+        """The rail system pairs with SUBWAY through get_transfer_points, so
+        trip search's cross-system lookup finds the Penn hub."""
+        njt_subway = get_transfer_points("NJT", "SUBWAY")
+        assert any(
+            "NY" in (tp.station_a, tp.station_b)
+            and {tp.station_a, tp.station_b} & {"S128", "SA28"}
+            for tp in njt_subway
+        ), "NJT<->SUBWAY transfers must include NY <-> Penn subway platforms"
 
     def test_non_subway_station_returns_empty(self):
         """Non-subway station (NJT) returns empty frozenset."""

@@ -21,6 +21,7 @@ from structlog import get_logger
 from trackrat.config.stations import expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion_types import FREQUENCY_FIRST_SOURCES
+from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import now_et
 from trackrat.utils.train import effective_njt_updated_times
 
@@ -237,7 +238,23 @@ class SummaryService:
         counts grouped by line. This avoids loading thousands of ORM
         objects + stops that can exhaust /dev/shm on large result sets.
         """
-        # Subquery: last stop per journey (highest stop_sequence)
+        conditions = [TrainJourney.last_updated_at >= cutoff_time]
+        # Constrain to active sources: a specific one when given, else every
+        # enabled source — so globally-disabled feeds are excluded from the
+        # network/all-sources aggregate, not only when a source is named.
+        conditions.append(
+            TrainJourney.data_source.in_(
+                active_data_sources([data_source] if data_source else None)
+            )
+        )
+
+        # Subquery: last stop per journey (highest stop_sequence). The join to
+        # TrainJourney and the cutoff/data_source filter must live INSIDE this
+        # subquery so DISTINCT ON only has to sort the recent journeys' stops,
+        # not every journey_stops row ever written — Postgres can't push a join
+        # predicate through a DISTINCT ON. This lets it use
+        # idx_journey_stops_sequence_lookup (journey_id, stop_sequence, ...)
+        # instead of sorting the entire journey_stops history (issues #1365, #1366).
         last_stops = (
             select(
                 JourneyStop.journey_id,
@@ -245,17 +262,15 @@ class SummaryService:
                 JourneyStop.scheduled_arrival,
                 JourneyStop.arrival_source,
             )
+            .join(TrainJourney, TrainJourney.id == JourneyStop.journey_id)
+            .where(and_(*conditions))
             .distinct(JourneyStop.journey_id)
             .order_by(
                 JourneyStop.journey_id,
-                func.coalesce(JourneyStop.stop_sequence, 0).desc(),
+                JourneyStop.stop_sequence.desc().nulls_last(),
             )
             .subquery("last_stops")
         )
-
-        conditions = [TrainJourney.last_updated_at >= cutoff_time]
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
 
         line_key_expr = func.coalesce(
             func.nullif(TrainJourney.line_name, ""),
@@ -381,8 +396,13 @@ class SummaryService:
                 ),
             ),
         ]
-        if data_source:
-            conditions.append(TrainJourney.data_source == data_source)
+        # Constrain to active sources (see get_network_summary): a specific one
+        # when given, else every enabled source, so disabled feeds are excluded.
+        conditions.append(
+            TrainJourney.data_source.in_(
+                active_data_sources([data_source] if data_source else None)
+            )
+        )
 
         # Prioritize journeys with actual departure data over scheduled-only
         # This ensures when deduplicating by train_id, we keep the most accurate record

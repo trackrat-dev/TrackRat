@@ -5,7 +5,6 @@ These models define the API contract for the V2 backend.
 """
 
 from datetime import date, datetime
-from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
@@ -27,24 +26,6 @@ def serialize_eastern_datetime(dt: datetime | None) -> str | None:
 
         dt = normalize_to_et(dt)
     return dt.isoformat()
-
-
-# Enums
-
-
-class TrainStatus(StrEnum):
-    """Train status values."""
-
-    ON_TIME = "ON_TIME"
-    LATE = "LATE"
-    CANCELLED = "CANCELLED"
-    BOARDING = "BOARDING"
-    ALL_ABOARD = "ALL_ABOARD"
-    DEPARTED = "DEPARTED"
-    IN_TRANSIT = "IN_TRANSIT"
-    APPROACHING = "APPROACHING"
-    ARRIVED = "ARRIVED"
-    UNKNOWN = "UNKNOWN"
 
 
 # Shared Models
@@ -89,19 +70,6 @@ class DataFreshness(BaseModel):
     age_seconds: int = Field(..., ge=0)
     update_count: int | None = Field(None, ge=0)
     collection_method: Literal["scheduled", "just_in_time"] | None = None
-
-    @field_serializer("last_updated")
-    def serialize_dt(self, dt: datetime) -> str:
-        return serialize_eastern_datetime(dt) or ""
-
-
-class CurrentStatus(BaseModel):
-    """Current train status information."""
-
-    status: TrainStatus
-    status_v2: TrainStatus | None = None
-    last_updated: datetime
-    delay_minutes: int = Field(default=0, ge=0)
 
     @field_serializer("last_updated")
     def serialize_dt(self, dt: datetime) -> str:
@@ -756,6 +724,12 @@ class SummaryMetricsResponse(BaseModel):
     )
     average_delay_minutes: float | None = Field(
         None, ge=0.0, description="Average delay in minutes"
+    )
+    arrival_on_time_percentage: float | None = Field(
+        None, ge=0.0, le=100.0, description="Percentage of trains on-time by arrival"
+    )
+    arrival_average_delay_minutes: float | None = Field(
+        None, ge=0.0, description="Average arrival delay in minutes"
     )
     cancellation_count: int | None = Field(
         None, ge=0, description="Number of cancellations"

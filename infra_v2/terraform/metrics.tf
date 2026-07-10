@@ -173,3 +173,98 @@ resource "google_logging_metric" "provider_auth_failures" {
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
+
+# =============================================================================
+# DATA DISK USAGE METRIC
+# Tracks: persistent data disk utilization, logged periodically by
+# SchedulerService.check_resource_usage (services/scheduler.py).
+# Drives the "Data Disk Usage" alerts in monitoring.tf.
+# =============================================================================
+resource "google_logging_metric" "data_disk_usage_percent" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "data_disk_usage_percent"
+  description = "Persistent data disk utilization percentage"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"data_disk_usage_check\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "GAUGE"
+    value_type  = "DOUBLE"
+    unit        = "%"
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.usage_percent)"
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}
+
+# =============================================================================
+# DATABASE SIZE METRIC
+# Tracks: Postgres database size in GB, for trend visibility (no alert —
+# see the "Data Disk Usage" alerts in monitoring.tf for the actual paging
+# signal, since the disk is what actually runs out of space).
+# =============================================================================
+resource "google_logging_metric" "database_size_gb" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "database_size_gb"
+  description = "Postgres database size in GB"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"database_size_check\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "GAUGE"
+    value_type  = "DOUBLE"
+    unit        = "GBy"
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.size_gb)"
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}
+
+# =============================================================================
+# TABLE VACUUM HEALTH METRIC
+# Tracks: dead-tuple ratio (%) per high-churn table, logged periodically by
+# SchedulerService.check_resource_usage (services/scheduler.py). Added after
+# journey_stops (35M+ rows) went its entire lifetime with zero completed
+# vacuum/analyze passes, causing a stale visibility map that surfaced as
+# production query timeouts on route-history precompute (issue #1359) instead
+# of as an alert. Drives the "Table Vacuum Health" alert in monitoring.tf.
+# =============================================================================
+resource "google_logging_metric" "table_dead_tuple_ratio_pct" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "table_dead_tuple_ratio_pct"
+  description = "Dead tuple ratio (%) per monitored high-churn table"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"table_vacuum_health_check\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "GAUGE"
+    value_type  = "DOUBLE"
+    unit        = "%"
+
+    labels {
+      key        = "table_name"
+      value_type = "STRING"
+    }
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.dead_tuple_ratio_pct)"
+  label_extractors = {
+    "table_name" = "EXTRACT(jsonPayload.table_name)"
+  }
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}

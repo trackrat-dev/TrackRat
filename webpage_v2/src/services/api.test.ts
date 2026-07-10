@@ -170,11 +170,17 @@ describe('searchTrips', () => {
 });
 
 describe('getRouteSummary', () => {
-  it('returns null on failure (fail-silent)', async () => {
-    mockFetch.mockReturnValue(jsonResponse(null, 500));
+  it('returns null when the route has no summary (404)', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getRouteSummary('NY', 'NP');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getRouteSummary('NY', 'NP')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs correct URL with scope=route', async () => {
@@ -190,11 +196,17 @@ describe('getRouteSummary', () => {
 });
 
 describe('getPlatformPrediction', () => {
-  it('returns null on failure (fail-silent)', async () => {
+  it('returns null when predictions are unavailable (404)', async () => {
     mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getPlatformPrediction('NY', '3515', '2025-01-15');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getPlatformPrediction('NY', '3515', '2025-01-15')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs correct URL', async () => {
@@ -210,11 +222,17 @@ describe('getPlatformPrediction', () => {
 });
 
 describe('getDelayForecast', () => {
-  it('returns null on failure (fail-silent)', async () => {
-    mockFetch.mockReturnValue(jsonResponse(null, 500));
+  it('returns null when a forecast is unavailable (404)', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getDelayForecast('3515', 'NY', '2025-01-15');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getDelayForecast('3515', 'NY', '2025-01-15')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs correct URL', async () => {
@@ -230,11 +248,17 @@ describe('getDelayForecast', () => {
 });
 
 describe('getTrainHistory', () => {
-  it('returns null on failure (fail-silent)', async () => {
-    mockFetch.mockReturnValue(jsonResponse(null, 500));
+  it('returns null when no history exists (404)', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 404));
 
     const result = await api.getTrainHistory('3515');
     expect(result).toBeNull();
+  });
+
+  it('throws on server error so callers can surface it', async () => {
+    mockFetch.mockReturnValue(jsonResponse(null, 500));
+
+    await expect(api.getTrainHistory('3515')).rejects.toThrow(APIRequestError);
   });
 
   it('constructs URL with default days=365', async () => {
@@ -506,5 +530,61 @@ describe('abort handling', () => {
 
     const init = mockFetch.mock.calls[0][1] as RequestInit;
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+});
+
+describe('getDepartures', () => {
+  it('constructs a station-only departures URL', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB', { limit: 30 });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('/trains/departures?');
+    expect(url).toContain('from=HB');
+    expect(url).toContain('limit=30');
+    expect(url).not.toContain('to=');
+  });
+
+  it('includes an optional destination when provided', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB', { to: 'NY' });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('from=HB');
+    expect(url).toContain('to=NY');
+  });
+
+  it('does not cache (polling needs fresh data)', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB');
+    await api.getDepartures('HB');
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('getRecentDepartures', () => {
+  it('constructs a recent-departures URL with the look-back window', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getRecentDepartures('HB', { windowMinutes: 120, limit: 10 });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('/trains/recent-departures?');
+    expect(url).toContain('from=HB');
+    expect(url).toContain('window_minutes=120');
+    expect(url).toContain('limit=10');
+  });
+
+  it('defaults the window to 120 minutes', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getRecentDepartures('HB');
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('window_minutes=120');
   });
 });

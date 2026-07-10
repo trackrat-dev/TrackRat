@@ -12,7 +12,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -29,7 +29,7 @@ from trackrat.config.stations import (
     get_station_name,
 )
 from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
-from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import normalize_to_et, now_et
@@ -734,6 +734,7 @@ class PathCollector:
 
                 stop = JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=station_code,
                     station_name=get_station_name(station_code),
                     stop_sequence=sequence,
@@ -757,6 +758,7 @@ class PathCollector:
             origin_code = journey.origin_station_code or ""
             origin_stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=origin_code,
                 station_name=get_station_name(origin_code) if origin_code else "",
                 stop_sequence=1,
@@ -772,6 +774,7 @@ class PathCollector:
                 terminal_arrival = departure_time + timedelta(minutes=20)
                 dest_stop = JourneyStop(
                     journey_id=journey.id,
+                    journey_date=journey.journey_date,
                     station_code=destination_station,
                     station_name=get_station_name(destination_station),
                     stop_sequence=2,
@@ -1251,23 +1254,7 @@ class PathCollector:
             )
 
         # Update journey metadata
-        completed_stops = sum(1 for s in stops if s.has_departed_station)
         journey.stops_count = len(stops)
-
-        # Create/update snapshot
-        await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
-        )
-
-        snapshot = JourneySnapshot(
-            journey_id=journey.id,
-            captured_at=now,
-            raw_stop_list_data={},
-            train_status="COMPLETED" if journey.is_completed else "EN ROUTE",
-            completed_stops=completed_stops,
-            total_stops=len(stops),
-        )
-        session.add(snapshot)
 
         # Analyze segments for congestion data
         transit_analyzer = TransitAnalyzer()

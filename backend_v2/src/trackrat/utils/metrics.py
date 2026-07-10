@@ -86,13 +86,14 @@ system_cpu_load_1m = Gauge(
 
 def update_system_metrics() -> None:
     """Update system resource Prometheus gauges from /proc and shutil."""
+    from trackrat.settings import get_settings
     from trackrat.utils.system_stats import (
         get_cpu_load,
         get_disk_usage,
         get_memory_usage,
     )
 
-    disk = get_disk_usage("/")
+    disk = get_disk_usage(get_settings().data_disk_path)
     if disk:
         system_disk_usage_percent.set(disk["usage_percent"])
         system_disk_free_bytes.set(disk["free_gb"] * 1024**3)
@@ -107,7 +108,9 @@ def update_system_metrics() -> None:
 
 
 def track_api_call(
-    api_name: str, endpoint: str
+    api_name: str,
+    endpoint: str,
+    quiet_exceptions: tuple[type[Exception], ...] = (),
 ) -> Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]:
     """
     Decorator to track API calls with Prometheus metrics.
@@ -115,6 +118,10 @@ def track_api_call(
     Args:
         api_name: Name of the API (e.g., 'njtransit', 'amtrak')
         endpoint: Endpoint name (e.g., 'train_schedule', 'train_stops')
+        quiet_exceptions: Exception types that are expected/handled by the
+            caller (e.g. already logged at the raise site). Logged at debug
+            instead of warning to avoid duplicate warning-level noise; the
+            error metric is still incremented for all exception types.
 
     Tracks:
         - Request count by API, endpoint, and status
@@ -140,7 +147,8 @@ def track_api_call(
                     api=api_name, endpoint=endpoint, error_type=error_type
                 ).inc()
 
-                logger.warning(
+                log = logger.debug if isinstance(e, quiet_exceptions) else logger.warning
+                log(
                     "API call failed",
                     api=api_name,
                     endpoint=endpoint,

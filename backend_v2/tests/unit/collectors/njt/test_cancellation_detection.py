@@ -72,39 +72,6 @@ class TestIsNjtStopCancelled:
         assert is_njt_stop_cancelled(status) is expected
 
 
-class TestDetermineTrainStatus:
-    """determine_train_status() is a pure function — no DB needed."""
-
-    @staticmethod
-    def _stop(status: str | None) -> NJTransitStopData:
-        # The Pydantic validator uppercases STOP_STATUS on construction, so
-        # "canceled" becomes "CANCELED" — which the previous literal check
-        # still missed. The helper catches both spellings post-validation.
-        return NJTransitStopData(STOP_STATUS=status)
-
-    def test_all_cancelled_returns_cancelled(self):
-        stops = [self._stop("CANCELLED")] * 3
-        collector = JourneyCollector(AsyncMock(spec=NJTransitClient))
-        assert collector.determine_train_status(stops) == "CANCELLED"
-
-    def test_mixed_spelling_returns_cancelled(self):
-        # 3830-shaped: one CANCELED + the rest CANCELLED
-        stops = [
-            self._stop("CANCELED"),
-            self._stop("CANCELLED"),
-            self._stop("CANCELLED"),
-        ]
-        collector = JourneyCollector(AsyncMock(spec=NJTransitClient))
-        assert collector.determine_train_status(stops) == "CANCELLED"
-
-    def test_one_cancelled_stop_is_not_all_cancelled(self):
-        stops = [self._stop("ON TIME"), self._stop("CANCELLED"), self._stop("ON TIME")]
-        collector = JourneyCollector(AsyncMock(spec=NJTransitClient))
-        # Only "CANCELLED" when every stop is cancelled. Otherwise this returns
-        # something else ("NOT_DEPARTED" / "BOARDING" / etc.) based on DEPARTED.
-        assert collector.determine_train_status(stops) != "CANCELLED"
-
-
 # ---------------------------------------------------------------------------
 # SQLite in-memory fixtures — same pattern as test_terminal_stop_completion.py
 # ---------------------------------------------------------------------------
@@ -217,6 +184,7 @@ async def _make_journey_with_stops(
         session.add(
             JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=code,
                 station_name=name,
                 stop_sequence=seq,
@@ -225,6 +193,13 @@ async def _make_journey_with_stops(
                 scheduled_arrival=sched,
             )
         )
+        # Flush per-stop: SQLite has no rowid-alias autoincrement for a
+        # composite PK, so batching multiple JourneyStop inserts in one
+        # flush makes SQLAlchemy's Identity() postfetch reuse id=1 for
+        # every row in the batch, tripping the (id, journey_date) unique
+        # constraint. Flushing one row at a time avoids the batched
+        # insertmanyvalues path.
+        await session.flush()
         stops_data.append(
             NJTransitStopData(
                 STATION_2CHAR=code,

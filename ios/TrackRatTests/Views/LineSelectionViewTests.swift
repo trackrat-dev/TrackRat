@@ -1,6 +1,7 @@
 import XCTest
 @testable import TrackRat
 
+@MainActor
 class LineSelectionViewTests: XCTestCase {
 
     // MARK: - hasContent
@@ -99,10 +100,11 @@ class LineSelectionViewTests: XCTestCase {
         let vm = RouteStatusViewModel(context: RouteStatusContext(
             dataSource: "NJT", lineId: nil, fromStationCode: "NY", toStationCode: "TR"
         ))
-        // NJT lines don't have GTFS mapping (only MTA systems do)
-        vm.enabledLineIds = ["NJT:NEC"]
+        // NJT/Amtrak line codes map directly to affected_route_ids for alert filtering,
+        // while systems without an alert-route mapping (e.g. PATCO) contribute nothing.
+        vm.enabledLineIds = ["NJT:NEC", "PATCO:PATCO"]
         let gtfsIds = vm.enabledGtfsRouteIds
-        XCTAssertTrue(gtfsIds.isEmpty,
-                     "NJT lines should not produce GTFS IDs (no service alert mapping), got: \(gtfsIds)")
+        XCTAssertEqual(gtfsIds, ["NEC"],
+                     "NJT code maps to its route id; unmapped systems are ignored, got: \(gtfsIds)")
     }
 }

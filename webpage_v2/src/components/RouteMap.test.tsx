@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RouteMap } from './RouteMap';
+import { storageService } from '../services/storage';
 import { Station } from '../types';
 
 // Mock maplibre-gl since jsdom has no WebGL
@@ -15,7 +16,7 @@ vi.mock('maplibre-gl', () => ({
 // Mock react-map-gl/maplibre to render children without WebGL
 vi.mock('react-map-gl/maplibre', () => ({
   default: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
-    <div data-testid="map-container" data-interactive={String(props.interactive)}>
+    <div data-testid="map-container" data-map-style={String(props.mapStyle)}>
       {children}
     </div>
   ),
@@ -42,6 +43,11 @@ const stationWithoutCoords = (code: string, name: string): Station => ({
   system: 'NJT',
 });
 
+/** Reveal the map by clicking the "Show route map" toggle row. */
+function expandMap() {
+  fireEvent.click(screen.getByRole('button', { name: /show route map/i }));
+}
+
 describe('RouteMap', () => {
   // TR → NY: 14 intermediate NEC stations (SE, NP, NA, NZ, EZ, LI, RH, MP, MU, ED, NB, JA, PJ, HL)
   const fromStation = stationWithCoords('TR', 'Trenton', 40.2185, -74.7539);
@@ -49,10 +55,20 @@ describe('RouteMap', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
-  it('renders map with from/to markers, intermediate stops, and a route line', () => {
+  it('is collapsed by default: shows the toggle row but no map', () => {
     render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+
+    expect(screen.getByRole('button', { name: /show route map/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('map-marker')).not.toBeInTheDocument();
+  });
+
+  it('renders map with from/to markers, intermediate stops, and a route line once expanded', () => {
+    render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+    expandMap();
 
     expect(screen.getByTestId('map-container')).toBeInTheDocument();
     expect(screen.getByTestId('map-source')).toBeInTheDocument();
@@ -60,7 +76,6 @@ describe('RouteMap', () => {
 
     const markers = screen.getAllByTestId('map-marker');
     // 14 intermediate + 2 endpoints = 16
-    expect(markers.length).toBeGreaterThanOrEqual(2);
     expect(markers.length).toBe(16);
 
     // Last two markers should be from/to endpoints (rendered after intermediates)
@@ -72,12 +87,23 @@ describe('RouteMap', () => {
     expect(toMarker).toHaveAttribute('data-lat', String(toStation.coordinates!.lat));
   });
 
+  it('uses the CARTO Positron (light) basemap style', () => {
+    render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+    expandMap();
+
+    expect(screen.getByTestId('map-container')).toHaveAttribute(
+      'data-map-style',
+      'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+    );
+  });
+
   it('renders only 2 markers for adjacent stations with no intermediates', () => {
     // PJ and HL are adjacent on NEC
     const pj = stationWithCoords('PJ', 'Princeton Junction', 40.3163, -74.6238);
     const hl = stationWithCoords('HL', 'Hamilton', 40.2553, -74.7041);
 
     render(<RouteMap fromStation={pj} toStation={hl} />);
+    expandMap();
 
     const markers = screen.getAllByTestId('map-marker');
     expect(markers).toHaveLength(2);
@@ -87,6 +113,7 @@ describe('RouteMap', () => {
     // Station on a different system with no shared route
     const bart = stationWithCoords('BART_EMBR', 'Embarcadero', 37.7929, -122.3970, 'BART');
     render(<RouteMap fromStation={fromStation} toStation={bart} />);
+    expandMap();
 
     const markers = screen.getAllByTestId('map-marker');
     expect(markers).toHaveLength(2);
@@ -104,44 +131,49 @@ describe('RouteMap', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('starts collapsed and expands on button click', () => {
+  it('expands on toggle click and collapses again', () => {
     render(<RouteMap fromStation={fromStation} toStation={toStation} />);
 
-    const toggle = screen.getByRole('button', { name: /expand/i });
-    expect(toggle).toBeInTheDocument();
-    expect(toggle).toHaveTextContent('Expand');
-
-    // Map should be non-interactive when collapsed
-    expect(screen.getByTestId('map-container')).toHaveAttribute('data-interactive', 'false');
+    // Collapsed: no map, no nav control
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-control')).not.toBeInTheDocument();
 
     // Expand
-    fireEvent.click(toggle);
-    expect(screen.getByRole('button', { name: /collapse/i })).toHaveTextContent('Collapse');
-
-    // Map should be interactive when expanded
-    expect(screen.getByTestId('map-container')).toHaveAttribute('data-interactive', 'true');
-
-    // Navigation control appears when expanded
+    expandMap();
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
     expect(screen.getByTestId('nav-control')).toBeInTheDocument();
+
+    // Collapse back
+    fireEvent.click(screen.getByRole('button', { name: /hide route map/i }));
+    expect(screen.queryByTestId('map-container')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-control')).not.toBeInTheDocument();
   });
 
-  it('collapses back when clicking collapse button', () => {
+  it('persists the expanded choice to storage', () => {
+    render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+    expect(storageService.getMapExpanded()).toBe(false);
+
+    expandMap();
+    expect(storageService.getMapExpanded()).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /hide route map/i }));
+    expect(storageService.getMapExpanded()).toBe(false);
+  });
+
+  it('starts expanded when storage has the map expanded', () => {
+    storageService.setMapExpanded(true);
     render(<RouteMap fromStation={fromStation} toStation={toStation} />);
 
-    // Expand first
-    fireEvent.click(screen.getByRole('button', { name: /expand/i }));
-    expect(screen.getByTestId('nav-control')).toBeInTheDocument();
-
-    // Collapse
-    fireEvent.click(screen.getByRole('button', { name: /collapse/i }));
-    expect(screen.getByRole('button', { name: /expand/i })).toBeInTheDocument();
-    expect(screen.queryByTestId('nav-control')).not.toBeInTheDocument();
+    // Map is shown immediately, no click needed
+    expect(screen.getByTestId('map-container')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /hide route map/i })).toBeInTheDocument();
   });
 
   it('uses custom lineColor for endpoint markers', () => {
     render(
       <RouteMap fromStation={fromStation} toStation={toStation} lineColor="#003DA5" />,
     );
+    expandMap();
 
     const markers = screen.getAllByTestId('map-marker');
     // Check the from/to endpoint markers (last 2)
@@ -153,6 +185,7 @@ describe('RouteMap', () => {
 
   it('uses default accent color when no lineColor provided', () => {
     render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+    expandMap();
 
     const markers = screen.getAllByTestId('map-marker');
     const fromDot = markers[markers.length - 2].querySelector('div');
@@ -163,6 +196,7 @@ describe('RouteMap', () => {
 
   it('intermediate stop markers are smaller than endpoint markers', () => {
     render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+    expandMap();
 
     const markers = screen.getAllByTestId('map-marker');
     // First marker is an intermediate stop (smaller: w-2 h-2)
@@ -176,6 +210,7 @@ describe('RouteMap', () => {
 
   it('renders route line layer with correct id', () => {
     render(<RouteMap fromStation={fromStation} toStation={toStation} />);
+    expandMap();
 
     const layer = screen.getByTestId('map-layer');
     expect(layer).toHaveAttribute('data-layer-id', 'route-line-layer');

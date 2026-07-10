@@ -536,6 +536,12 @@ struct CombinedDetailsCard: View {
                             Stations.areEquivalentStations(stop.stationCode, appState.departureStationCode!)
                         StopRowV2(
                             stop: stop,
+                            stationDisplayName: Stations.stopDisplayName(
+                                stopCode: stop.stationCode,
+                                stopName: stop.stationName,
+                                pickedOriginCode: appState.departureStationCode,
+                                pickedDestinationCode: selectedDestinationCode
+                            ),
                             isDestination: selectedDestinationCode != nil &&
                                          Stations.areEquivalentStations(stop.stationCode, selectedDestinationCode!),
                             isDeparture: isDepartureStop,
@@ -620,6 +626,10 @@ struct ScheduledTrainInfoBanner: View {
 // MARK: - Stop Row V2
 struct StopRowV2: View {
     let stop: StopV2
+    /// Name to show for this stop, resolved to match what the user picked at
+    /// their boarding/alighting station (issue #1418). Defaults to nil so other
+    /// call sites (e.g. TripDetailsView) keep the stop's own name.
+    var stationDisplayName: String? = nil
     let isDestination: Bool
     let isDeparture: Bool
     let isBoarding: Bool
@@ -785,7 +795,7 @@ struct StopRowV2: View {
     @ViewBuilder
     private var stationHeader: some View {
         HStack(spacing: 6) {
-            Text(Stations.displayName(for: stop.stationName))
+            Text(stationDisplayName ?? Stations.displayName(for: stop.stationName))
                 .font(.subheadline)
                 .foregroundColor(textColor)
 

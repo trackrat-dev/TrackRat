@@ -160,7 +160,7 @@ class TestMBTACollectorCollect:
         mock_client.get_all_arrivals.return_value = arrivals
 
         # Mock _process_trip to count calls
-        collector._process_trip = AsyncMock(return_value="discovered")
+        collector._process_trip = AsyncMock(return_value=("discovered", None))
 
         # Mock session context manager for begin_nested
         mock_session.begin_nested.return_value = AsyncMock()
@@ -243,15 +243,15 @@ class TestMBTACollectorProcessTrip:
 
     @pytest.mark.asyncio
     async def test_empty_arrivals_returns_none(self, collector, mock_session):
-        """Test empty arrivals returns None."""
-        result = await collector._process_trip(mock_session, "trip_1", [])
+        """Test empty arrivals returns (None, None)."""
+        result, journey = await collector._process_trip(mock_session, "trip_1", [])
         assert result is None
+        assert journey is None
 
     @pytest.mark.asyncio
-    @patch("trackrat.collectors.mbta.collector.TransitAnalyzer")
     @patch("trackrat.collectors.mbta.collector.now_et")
     async def test_discovers_new_journey(
-        self, mock_now_et, mock_analyzer_cls, collector, mock_session, sample_arrivals
+        self, mock_now_et, collector, mock_session, sample_arrivals
     ):
         """Test creating a new TrainJourney from arrivals."""
         mock_now_et.return_value = datetime.now(timezone.utc)
@@ -265,28 +265,25 @@ class TestMBTACollectorProcessTrip:
         collector._gtfs_service = MagicMock()
         collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
 
-        # Mock transit analyzer
-        mock_analyzer = AsyncMock()
-        mock_analyzer_cls.return_value = mock_analyzer
-
-        result = await collector._process_trip(
+        result, journey = await collector._process_trip(
             mock_session, "Base-772221-5208", sample_arrivals
         )
 
         assert result == "discovered"
+        assert journey is not None
         # Should have called session.add for journey + stops
         assert mock_session.add.call_count >= 1
 
     @pytest.mark.asyncio
-    @patch("trackrat.collectors.mbta.collector.TransitAnalyzer")
     @patch("trackrat.collectors.mbta.collector.now_et")
     async def test_updates_existing_journey(
-        self, mock_now_et, mock_analyzer_cls, collector, mock_session, sample_arrivals
+        self, mock_now_et, collector, mock_session, sample_arrivals
     ):
         """Test updating an existing TrainJourney."""
         mock_now_et.return_value = datetime.now(timezone.utc)
 
-        # Mock: existing journey found
+        # Mock: existing journey found, with stops already eagerly loaded
+        # (mirrors the selectinload on the existence-check query)
         mock_journey = MagicMock()
         mock_journey.id = 1
         mock_journey.train_id = "B5208"
@@ -295,32 +292,14 @@ class TestMBTACollectorProcessTrip:
 
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_journey
+        mock_session.execute.return_value = mock_result
 
-        # For update path: stop queries return None (no matching stops)
-        mock_stop_result = MagicMock()
-        mock_stop_result.scalar_one_or_none.return_value = None
-
-        # For stop re-query
-        mock_stops_result = MagicMock()
-        mock_stops_result.scalars.return_value.all.return_value = []
-
-        mock_session.execute.side_effect = [
-            mock_result,  # journey lookup
-            mock_stop_result,  # stop 1 lookup
-            mock_stop_result,  # stop 2 lookup
-            mock_stop_result,  # stop 3 lookup
-            mock_stops_result,  # all stops re-query
-            MagicMock(),  # transit analyzer query
-        ]
-
-        mock_analyzer = AsyncMock()
-        mock_analyzer_cls.return_value = mock_analyzer
-
-        result = await collector._process_trip(
+        result, journey = await collector._process_trip(
             mock_session, "Base-772221-5208", sample_arrivals
         )
 
         assert result == "updated"
+        assert journey is mock_journey
 
     @pytest.mark.asyncio
     async def test_arrivals_sorted_by_time(self, collector, mock_session):
@@ -364,20 +343,16 @@ class TestMBTACollectorProcessTrip:
         collector._gtfs_service = MagicMock()
         collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
 
-        mock_analyzer = AsyncMock()
-        with (
-            patch(
-                "trackrat.collectors.mbta.collector.TransitAnalyzer",
-                return_value=mock_analyzer,
-            ),
-            patch(
-                "trackrat.collectors.mbta.collector.now_et",
-                return_value=datetime.now(timezone.utc),
-            ),
+        with patch(
+            "trackrat.collectors.mbta.collector.now_et",
+            return_value=datetime.now(timezone.utc),
         ):
-            result = await collector._process_trip(mock_session, "trip_1", arrivals)
+            result, journey = await collector._process_trip(
+                mock_session, "trip_1", arrivals
+            )
 
         assert result == "discovered"
+        assert journey is not None
 
 
 class TestMBTACollectorJourneyDetails:

@@ -64,6 +64,14 @@ class TestDestinationPrefix:
     def test_via_suffix_with_multi_word_origin(self):
         assert _destination_prefix("Bay Head via Long Branch") == "bay head"
 
+    def test_strips_transit_center_suffix(self):
+        """NJT schedule API 'TRENTON TRANSIT CENTER' vs real-time 'Trenton'."""
+        assert _destination_prefix("TRENTON TRANSIT CENTER") == "trenton"
+        assert _destination_prefix("Trenton") == "trenton"
+        assert _destination_prefix("TRENTON TRANSIT CENTER") == _destination_prefix(
+            "Trenton"
+        )
+
 
 class TestMakeDedupKeys:
     """Tests for _make_dedup_keys function."""
@@ -263,6 +271,38 @@ class TestMakeDedupKeys:
 
         # AMTRAK "NE" should NOT be normalized (it's a different system)
         assert "NE:AMTRAK:09:15" in fallbacks
+
+    def test_tolerance_minutes_widens_fallback_window(self):
+        """Custom tolerance_minutes argument spans 2*tolerance + 1 buckets."""
+        departure = self._create_departure(
+            train_id="3936",
+            line_code="NE",
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="NJT",
+        )
+
+        _, fallbacks = self.service._make_dedup_keys(departure, tolerance_minutes=3)
+
+        # 7 keys: 09:12, 09:13, 09:14, 09:15, 09:16, 09:17, 09:18
+        assert len(fallbacks) == 7
+        for hh_mm in ("09:12", "09:13", "09:14", "09:15", "09:16", "09:17", "09:18"):
+            assert f"NE:NJT:{hh_mm}" in fallbacks
+
+    def test_tolerance_minutes_default_is_one(self):
+        """Omitting tolerance_minutes preserves the realtime/GTFS-merge window."""
+        departure = self._create_departure(
+            train_id="3936",
+            line_code="NE",
+            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            data_source="NJT",
+        )
+
+        _, default_fallbacks = self.service._make_dedup_keys(departure)
+        _, explicit_fallbacks = self.service._make_dedup_keys(
+            departure, tolerance_minutes=1
+        )
+
+        assert default_fallbacks == explicit_fallbacks
 
 
 class TestMergeDepartures:
@@ -665,6 +705,33 @@ class TestDedupeScheduledObservedCollisions:
         assert len(result) == 1
         assert result[0].train_id == "1234"
 
+    def test_matches_destination_with_transit_center_suffix(self):
+        """NJT schedule API 'TRENTON TRANSIT CENTER' vs real-time 'Trenton' (issue #1329)."""
+        observed_time = ET.localize(datetime(2026, 6, 24, 19, 10))
+        scheduled_time = ET.localize(datetime(2026, 6, 24, 19, 11))
+
+        deps = [
+            self._create_departure(
+                train_id="3865",
+                line_code="NE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+                destination="Trenton",
+            ),
+            self._create_departure(
+                train_id="UNKNOWN",
+                line_code="NE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+                destination="TRENTON TRANSIT CENTER",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        assert len(result) == 1
+        assert result[0].train_id == "3865"
+
     def test_does_not_collapse_two_observed_rows(self):
         """Two OBSERVED rows at same line/time are presumed real distinct trains."""
         time = ET.localize(datetime(2026, 5, 17, 12, 30))
@@ -776,8 +843,12 @@ class TestDedupeScheduledObservedCollisions:
 
         assert result is deps  # short-circuited
 
-    def test_drift_beyond_two_minutes_does_not_collapse(self):
-        """A SCHEDULED row 3 minutes off the OBSERVED stays — outside tolerance."""
+    def test_drift_within_three_minutes_collapses(self):
+        """The reported NJT case (issue #1329): NJT republishes the SCHEDULED
+        row's time a few minutes off the live OBSERVED row, so the safety
+        net needs a wider window than realtime/GTFS merge (±1 min). At a
+        3-min drift, the OBSERVED ±3 min keys cover the SCHEDULED row's
+        exact minute and the SCHEDULED row drops."""
         observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
         scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 33))
 
@@ -798,7 +869,66 @@ class TestDedupeScheduledObservedCollisions:
 
         result = self.service._dedupe_scheduled_observed_collisions(deps)
 
-        # ±1 min on each side overlaps at 12:31 only; 12:33 falls outside.
+        assert len(result) == 1
+        assert result[0].train_id == "1234"
+        assert result[0].observation_type == "OBSERVED"
+
+    def test_drift_beyond_three_minutes_does_not_collapse(self):
+        """A SCHEDULED row 4 minutes off the OBSERVED stays — just beyond the
+        ±3 min safety-net tolerance. The window is asymmetric (OBSERVED
+        side is widened ±3 min; SCHEDULED side keys on its exact minute),
+        so the effective window is exactly ±3 min — not the ±6 min that
+        symmetric widening would produce."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 34))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        # OBSERVED keys span 12:27..12:33; SCHEDULED keys exactly on 12:34.
+        # No overlap → both rows survive.
+        assert len(result) == 2
+
+    def test_drift_at_six_minutes_does_not_collapse(self):
+        """Regression guard for the asymmetric widening: symmetric ±3-min
+        widening on both sides would intersect at the boundary (OBSERVED
+        12:27..12:33 ∩ SCHEDULED 12:33..12:39 = {12:33}) and incorrectly
+        drop a SCHEDULED train 6 min away. With one-sided widening,
+        distinct trains 6 min apart survive."""
+        observed_time = ET.localize(datetime(2026, 5, 17, 12, 30))
+        scheduled_time = ET.localize(datetime(2026, 5, 17, 12, 36))
+
+        deps = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BE",
+                scheduled_time=observed_time,
+                observation_type="OBSERVED",
+            ),
+            self._create_departure(
+                train_id="5678",
+                line_code="BE",
+                scheduled_time=scheduled_time,
+                observation_type="SCHEDULED",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
         assert len(result) == 2
 
     def test_one_observed_collapses_multiple_matching_scheduled(self):

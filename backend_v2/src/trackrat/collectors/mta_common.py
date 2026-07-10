@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 JOURNEY_UPDATE_LOAD_OPTIONS = (
     selectinload(TrainJourney.stops),
-    selectinload(TrainJourney.snapshots),
     selectinload(TrainJourney.segment_times),
     selectinload(TrainJourney.dwell_times),
     selectinload(TrainJourney.progress),

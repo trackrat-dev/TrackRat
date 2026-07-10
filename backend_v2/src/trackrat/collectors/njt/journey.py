@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -23,8 +23,9 @@ from trackrat.collectors.njt.client import (
 from trackrat.config.stations import get_station_name
 from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
-from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
+from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
     DATETIME_MAX_ET,
@@ -34,7 +35,7 @@ from trackrat.utils.time import (
     now_et,
     parse_njt_time,
 )
-from trackrat.utils.train import is_njt_stop_cancelled
+from trackrat.utils.train import is_njt_stop_cancelled, normalize_njt_destination
 
 logger = get_logger(__name__)
 
@@ -73,7 +74,6 @@ def _journey_eager_options() -> list[Any]:
     """
     return [
         selectinload(TrainJourney.stops),
-        selectinload(TrainJourney.snapshots),
         selectinload(TrainJourney.segment_times),
         selectinload(TrainJourney.dwell_times),
         selectinload(TrainJourney.progress),
@@ -526,6 +526,7 @@ class JourneyCollector(BaseJourneyCollector):
         - "New York -SEC &#9992" -> "new york"
         - "Penn Station New York" -> "new york"
         - "Trenton" -> "trenton"
+        - "TRENTON TRANSIT CENTER" -> "trenton"
         """
         if not destination:
             return ""
@@ -544,7 +545,14 @@ class JourneyCollector(BaseJourneyCollector):
         # Remove extra whitespace
         normalized = " ".join(normalized.split())
 
-        return normalized.strip()
+        # Collapse NJT's schedule-API " TRANSIT CENTER" suffix so the full
+        # official name ("TRENTON TRANSIT CENTER") and the real-time short
+        # name ("Trenton") for the same station compare equal. A journey
+        # merged/promoted from a SCHEDULED row carries the schedule-API
+        # destination; without this it would be falsely flagged as a
+        # DESTINATION_MISMATCH and expired on the next collection pass before
+        # update_journey_metadata could heal the field (issue #1329).
+        return normalize_njt_destination(normalized)
 
     async def _is_same_journey(
         self,
@@ -850,6 +858,11 @@ class JourneyCollector(BaseJourneyCollector):
         # Track start time for performance measurement
         start_time = now_et()
 
+        # Serialize this journey's writers across replicas (issue #1369):
+        # scheduled collection, JIT refresh, and the nightly schedule rebuild
+        # can otherwise interleave a phantom-stop delete with a stop update.
+        await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
+
         logger.debug(
             "collecting_journey_details",
             train_id=journey.train_id,
@@ -1077,9 +1090,6 @@ class JourneyCollector(BaseJourneyCollector):
         if not skip_enhancement:
             await self.enhance_with_departure_board_data(journey, train_data)
 
-        # Create snapshot for historical analysis
-        await self.create_journey_snapshot(session, journey, train_data)
-
         # Update journey metadata
         await self.update_journey_metadata(session, journey, train_data)
 
@@ -1123,80 +1133,6 @@ class JourneyCollector(BaseJourneyCollector):
             destination=train_data.DESTINATION,
             update_count=journey.update_count,
         )
-
-    async def create_journey_snapshot(
-        self,
-        session: AsyncSession,
-        journey: TrainJourney,
-        train_data: NJTransitTrainData,
-    ) -> JourneySnapshot:
-        """Create a historical snapshot of the journey data.
-
-        NOTE: Only keeps one snapshot per journey to prevent database growth.
-        Replaces any existing snapshots for this journey.
-
-        Args:
-            session: Database session
-            journey: Journey record
-            train_data: Raw API response data
-
-        Returns:
-            Created snapshot
-        """
-        # Delete existing snapshots for this journey to maintain single snapshot per journey.
-        # Use synchronize_session=False to avoid desync between the Core SQL delete
-        # and the ORM identity map's snapshots collection, which can cause
-        # MissingGreenlet errors during subsequent flush cascade/orphan processing.
-        await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id),
-            execution_options={"synchronize_session": False},
-        )
-        # Clear the in-memory collection to match DB state.
-        # This prevents flush from seeing stale deleted objects in the collection.
-        journey.snapshots.clear()
-
-        # Extract metrics
-        completed_stops = sum(1 for stop in train_data.STOPS if stop.DEPARTED == "YES")
-
-        # Extract track assignments
-        track_assignments = {
-            stop.STATION_2CHAR: stop.TRACK for stop in train_data.STOPS if stop.TRACK
-        }
-
-        # Calculate overall delay (from last departed stop)
-        delay_minutes = 0
-        for stop in reversed(train_data.STOPS):
-            if stop.DEPARTED == "YES" and stop.STOP_STATUS:
-                # Parse delay from status if available
-                if "LATE" in (stop.STOP_STATUS or ""):
-                    # Extract delay if in format "X MINUTES LATE" or "X MINS LATE"
-                    try:
-                        parts = stop.STOP_STATUS.split()
-                        if "MINUTES" in parts:
-                            idx = parts.index("MINUTES")
-                            if idx > 0:
-                                delay_minutes = int(parts[idx - 1])
-                        elif "MINS" in parts:
-                            idx = parts.index("MINS")
-                            if idx > 0:
-                                delay_minutes = int(parts[idx - 1])
-                    except (ValueError, IndexError):
-                        pass
-                break
-
-        snapshot = JourneySnapshot(
-            journey_id=journey.id,
-            captured_at=now_et(),
-            raw_stop_list_data={},  # Deactivated to reduce database size - full data is in journey_stops
-            train_status=self.determine_train_status(train_data.STOPS),
-            delay_minutes=delay_minutes,
-            completed_stops=completed_stops,
-            total_stops=len(train_data.STOPS),
-            track_assignments=track_assignments,
-        )
-
-        session.add(snapshot)
-        return snapshot
 
     async def update_journey_metadata(
         self,
@@ -1480,19 +1416,34 @@ class JourneyCollector(BaseJourneyCollector):
                 # discovery creating the same stop.  This avoids begin_nested()
                 # savepoints whose rollback expires eagerly-loaded relationship
                 # state and triggers MissingGreenlet on the next flush.
+                insert_values: dict[str, Any] = {
+                    "journey_id": journey.id,
+                    "journey_date": journey.journey_date,
+                    "station_code": stop_data.STATION_2CHAR,
+                    "station_name": stop_data.STATIONNAME
+                    or get_station_name(stop_data.STATION_2CHAR or ""),
+                    "stop_sequence": sequence,
+                    "scheduled_arrival": best_scheduled_arrival,
+                    "scheduled_departure": best_scheduled_departure,
+                }
+                if dialect_name == "sqlite":
+                    # SQLite has no ROWID-alias autoincrement for a column in
+                    # a composite primary key (`id` is part of
+                    # `(id, journey_date)` since issue #1343), and Core-level
+                    # inserts bypass the ORM `before_insert` event that
+                    # backstops this for session.add()-based inserts. Assign
+                    # one explicitly; Postgres uses a real Identity() column
+                    # and must not receive an explicit id.
+                    insert_values["id"] = (
+                        await session.execute(
+                            text("SELECT COALESCE(MAX(id), 0) + 1 FROM journey_stops")
+                        )
+                    ).scalar_one()
                 insert_stmt = (
                     dialect_insert(JourneyStop)
-                    .values(
-                        journey_id=journey.id,
-                        station_code=stop_data.STATION_2CHAR,
-                        station_name=stop_data.STATIONNAME
-                        or get_station_name(stop_data.STATION_2CHAR or ""),
-                        stop_sequence=sequence,
-                        scheduled_arrival=best_scheduled_arrival,
-                        scheduled_departure=best_scheduled_departure,
-                    )
+                    .values(**insert_values)
                     .on_conflict_do_nothing(
-                        index_elements=["journey_id", "station_code"]
+                        index_elements=["journey_id", "station_code", "journey_date"]
                     )
                 )
                 insert_result = await session.execute(insert_stmt)
@@ -2459,36 +2410,6 @@ class JourneyCollector(BaseJourneyCollector):
                 origin_station=journey.origin_station_code,
                 error=str(e),
             )
-
-    def determine_train_status(self, stops_data: list[NJTransitStopData]) -> str:
-        """Determine overall train status from stops.
-
-        Args:
-            stops_data: List of stop data
-
-        Returns:
-            Overall status string
-        """
-        if not stops_data:
-            return "UNKNOWN"
-
-        # Check if all stops are cancelled
-        if all(is_njt_stop_cancelled(stop.STOP_STATUS) for stop in stops_data):
-            return "CANCELLED"
-
-        # Find current position
-        for i, stop in enumerate(stops_data):
-            if stop.DEPARTED != "YES":
-                # This is the next stop
-                if i == 0:
-                    return "NOT_DEPARTED"
-                elif stop.TRACK:
-                    return "BOARDING"
-                else:
-                    return "IN_TRANSIT"
-
-        # All stops departed
-        return "COMPLETED"
 
     async def collect_single_journey(
         self, train_id: str, journey_date: datetime | None = None

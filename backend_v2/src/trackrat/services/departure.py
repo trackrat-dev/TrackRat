@@ -28,6 +28,8 @@ from trackrat.models.api import (
     TrainPosition,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.settings import get_settings
+from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
     DATETIME_MAX_ET,
@@ -40,13 +42,13 @@ from trackrat.utils.train import (
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
+    normalize_njt_destination,
 )
 
 logger = get_logger(__name__)
 
 _NJT_REFRESH_LOAD_OPTIONS = (
     selectinload(TrainJourney.stops),
-    selectinload(TrainJourney.snapshots),
     selectinload(TrainJourney.segment_times),
     selectinload(TrainJourney.dwell_times),
     selectinload(TrainJourney.progress),
@@ -58,8 +60,10 @@ def _destination_prefix(destination: str | None) -> str:
     """Normalize a destination string for similarity comparison.
 
     NJT's schedule API and real-time API sometimes return the same terminus
-    with different suffixes ("Suffern" vs "Suffern via Hoboken"). Lowercase
-    the string, trim whitespace, and strip any " via ..." suffix so the two
+    with different suffixes ("Suffern" vs "Suffern via Hoboken", "Trenton"
+    vs "TRENTON TRANSIT CENTER"). Lowercase the string, trim whitespace,
+    strip any " via ..." suffix, and strip the generic NJT schedule-API
+    " TRANSIT CENTER" suffix (see ``normalize_njt_destination``) so the two
     forms compare equal — but preserve the rest of the destination so that
     distinct termini sharing a leading word ("Long Branch" vs "Long Island",
     "Atlantic City" vs "Atlantic Highlands") still compare unequal. Empty
@@ -71,7 +75,7 @@ def _destination_prefix(destination: str | None) -> str:
     via_idx = normalized.find(" via ")
     if via_idx > 0:
         normalized = normalized[:via_idx].rstrip()
-    return normalized
+    return normalize_njt_destination(normalized)
 
 
 # Tracks station codes currently being refreshed in background tasks.
@@ -144,6 +148,17 @@ ALL_DATA_SOURCES: list[str] = [
     "BART",
     "MBTA",
 ]
+
+
+def active_data_sources(requested: list[str] | None) -> list[str]:
+    """Resolve the effective data_source list, dropping any globally disabled sources.
+
+    Applies to both an explicit ``requested`` list and the ``ALL_DATA_SOURCES``
+    default, so disabled systems are never queried or served to any client.
+    """
+    settings = get_settings()
+    sources = requested if requested else ALL_DATA_SOURCES
+    return [s for s in sources if not settings.is_data_source_disabled(s)]
 
 
 def _has_direct_route(
@@ -249,24 +264,28 @@ class DepartureService:
             aware_time_from = (
                 ensure_timezone_aware(time_from) if time_from is not None else None
             )
+            # Resolve globally-disabled sources out once, then use the same list
+            # for the GTFS query, the response filter, and the direct-route check
+            # so a disabled feed's static schedule can't leak on future-date
+            # requests (whether via the ALL_DATA_SOURCES default or an explicit
+            # &data_sources=<disabled>).
+            allowed_sources = active_data_sources(data_sources)
             response = await gtfs_service.get_scheduled_departures(
                 db=db,
                 from_station=from_station,
                 to_station=to_station,
                 target_date=target_date,
                 limit=limit,
-                data_sources=data_sources,
+                data_sources=allowed_sources,
                 time_from=aware_time_from,
             )
-            if data_sources:
-                response.departures = [
-                    d for d in response.departures if d.data_source in data_sources
-                ]
-                response.metadata["count"] = len(response.departures)
+            response.departures = [
+                d for d in response.departures if d.data_source in allowed_sources
+            ]
+            response.metadata["count"] = len(response.departures)
             if to_station:
-                all_sources = data_sources or ALL_DATA_SOURCES
                 response.has_direct_route = _has_direct_route(
-                    from_station, to_station, all_sources
+                    from_station, to_station, allowed_sources
                 )
             return response
 
@@ -315,7 +334,7 @@ class DepartureService:
 
         # Build additional filters for hide_departed and data_sources
         # Default to all data sources if not specified
-        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        allowed_sources = active_data_sources(data_sources)
 
         departure_filters = [
             JourneyStop.scheduled_departure >= time_from,
@@ -350,7 +369,8 @@ class DepartureService:
         # Cancelled trains are shown only if their scheduled time is still upcoming,
         # to avoid duplication with the recent-departures endpoint.
         if hide_departed:
-            past_cutoff = now_et() - timedelta(minutes=5)
+            now = now_et()
+            past_cutoff = now - timedelta(minutes=5)
             departure_filters.append(
                 or_(
                     # Train hasn't departed (normal case)
@@ -363,6 +383,17 @@ class DepartureService:
                             JourneyStop.scheduled_departure > past_cutoff,
                         ),
                     ),
+                    # Departure still upcoming: keep even if has_departed_station
+                    # was latched True. The flag is set monotonically (never reset),
+                    # so a train dwelling at its origin terminal can carry it while
+                    # its real departure is still in the future; without this branch
+                    # hide_departed would wrongly hide it (issue #1422). actual_departure
+                    # takes precedence so a train that left early stays hidden.
+                    func.coalesce(
+                        JourneyStop.actual_departure,
+                        JourneyStop.scheduled_departure,
+                    )
+                    > now,
                     # Cancelled trains only if scheduled departure is still upcoming
                     and_(
                         TrainJourney.is_cancelled.is_(True),
@@ -693,7 +724,7 @@ class DepartureService:
             TrainJourney.journey_date <= now.date(),
         )
 
-        allowed_sources = data_sources if data_sources else ALL_DATA_SOURCES
+        allowed_sources = active_data_sources(data_sources)
         from_codes = expand_station_codes(from_station)
         to_codes = expand_station_codes(to_station) if to_station else []
 
@@ -1476,6 +1507,10 @@ class DepartureService:
         Uses PostgreSQL ON CONFLICT to safely handle concurrent updates from
         multiple sessions (e.g., cache precomputation vs user request).
         """
+        # Serialize this journey's writers across replicas (issue #1369):
+        # this bulk station-board refresh mutates the same journey_stops
+        # rows as collect_journey_details and _update_journey_with_stops.
+        await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
 
         # Build lookup from eagerly-loaded stops to avoid N+1 queries and
         # prevent greenlet_spawn errors from fetching stops outside the ORM
@@ -1507,6 +1542,7 @@ class DepartureService:
                     pg_insert(JourneyStop)
                     .values(
                         journey_id=journey.id,
+                        journey_date=journey.journey_date,
                         station_code=station_code,
                         station_name=stop_data.get("STATIONNAME", ""),
                         stop_sequence=i,
@@ -1639,14 +1675,28 @@ class DepartureService:
             return NJT_LINE_CANONICALIZATION.get(line_code, line_code)
         return line_code
 
-    def _make_dedup_keys(self, dep: TrainDeparture) -> tuple[str | None, list[str]]:
+    def _make_dedup_keys(
+        self,
+        dep: TrainDeparture,
+        tolerance_minutes: int = 1,
+    ) -> tuple[str | None, list[str]]:
         """Create primary (train_id) and fallback (line+time) dedup keys.
+
+        Args:
+            dep: Departure to key.
+            tolerance_minutes: Half-width of the fallback-key time bucket.
+                Default ±1 min suits realtime/GTFS merging where times are
+                expected to agree to the minute. The SCHEDULED-vs-OBSERVED
+                safety net (``_dedupe_scheduled_observed_collisions``) uses
+                a wider window because NJT republishes scheduled times when
+                operations slip, leaving a SCHEDULED row a few minutes off
+                its matching OBSERVED row.
 
         Returns:
             Tuple of (primary_key, fallback_keys) where:
             - primary_key may be None if train_id is missing or unreliable
-            - fallback_keys is a list of keys for the current time ±1 minute
-              to handle minor schedule differences between sources
+            - fallback_keys is a list of HH:MM-bucketed keys spanning the
+              tolerance window in both directions
         """
         # Primary: normalized train_id
         primary_key = None
@@ -1659,16 +1709,15 @@ class DepartureService:
 
         # Fallback: line + scheduled time with tolerance
         # - Normalize line codes to handle NJT API inconsistencies
-        # - Generate keys for ±1 minute to handle minor time differences
+        # - Generate keys for the tolerance window to handle schedule drift
         # - Normalize to ET to handle timezone differences between data sources
         line_code = self._normalize_line_code(dep.line.code, dep.data_source)
         scheduled = dep.departure.scheduled_time
 
         if scheduled:
             scheduled_et = normalize_to_et(scheduled)
-            # Generate keys for current minute and adjacent minutes
             fallback_keys = []
-            for minute_offset in [-1, 0, 1]:
+            for minute_offset in range(-tolerance_minutes, tolerance_minutes + 1):
                 adj_time = scheduled_et + timedelta(minutes=minute_offset)
                 time_str = adj_time.strftime("%H:%M")
                 fallback_keys.append(f"{line_code}:{dep.data_source}:{time_str}")
@@ -1690,25 +1739,42 @@ class DepartureService:
         ``getTrainSchedule`` vs the real-time feed, which causes
         ``_find_matching_scheduled_train`` to miss the merge. The two rows
         then have different ``train_id`` values and scheduled times that may
-        differ by a minute, so the exact-``train_id`` dedup above doesn't
+        differ by a few minutes (NJT republishes scheduled times when
+        operations slip), so the exact-``train_id`` dedup above doesn't
         catch them and clients render the same train twice (once labeled
         "Train TBD" from the SCHEDULED row, once with the real number).
 
-        Collapse logic: within a ``(journey_date, data_source, line_code,
-        scheduled_time ±1 min)`` bucket, if any departure is OBSERVED, drop
-        SCHEDULED rows in the same bucket whose normalized destination
-        matches the OBSERVED row. Pairs of two OBSERVED rows are NOT
-        collapsed — they are presumed to be genuinely different trains.
-        The destination check guards against the rare case where two
-        legitimate trains run on the same line within ±1 min to different
-        termini. The ``journey_date`` scope keeps an OBSERVED train from
-        suppressing a distinct SCHEDULED train at the same wall-clock
-        minute on a different calendar day (``_make_dedup_keys`` fallback
-        keys are date-less ``HH:MM`` and ``get_departures`` returns a
-        multi-day window).
+        Collapse logic: within a ``(journey_date, data_source, line_code)``
+        group, if a SCHEDULED row's exact HH:MM falls within ±3 min of any
+        OBSERVED row's HH:MM and shares the normalized destination, drop
+        it. This is implemented by widening only the OBSERVED-side key set
+        (the SCHEDULED side keys on its exact minute) so the effective
+        window is exactly ±3 min — symmetric widening would double it. The
+        window is wider than the realtime/GTFS merge (±1 min) to catch
+        realistic NJT schedule republishes while staying well below
+        typical same-line headway, so same-line + same-destination
+        collisions are virtually always the same physical train. Pairs of
+        two OBSERVED rows are NOT collapsed — they are presumed to be
+        genuinely different trains. The destination check guards against
+        the rare case where two legitimate trains run on the same line
+        within ±3 min to different termini. The ``journey_date`` scope
+        keeps an OBSERVED train from suppressing a distinct SCHEDULED
+        train at the same wall-clock minute on a different calendar day
+        (``_make_dedup_keys`` fallback keys are date-less ``HH:MM`` and
+        ``get_departures`` returns a multi-day window).
         """
         if len(departures) < 2:
             return departures
+
+        # Widen ONLY the OBSERVED side. The SCHEDULED side uses an exact
+        # HH:MM key so the effective collapse window is exactly
+        # ±safety_net_tolerance minutes — widening both sides would double
+        # it (e.g. OBSERVED ±3 keys [12:27..12:33] would intersect
+        # SCHEDULED ±3 keys [12:33..12:39] at 12:33, collapsing trains a
+        # full 6 min apart). The wider tolerance vs realtime/GTFS merge
+        # (±1 min) accommodates NJT republishing scheduled times when
+        # operations slip.
+        safety_net_tolerance = 3
 
         # Build map from (journey_date, fallback key) -> set of normalized
         # OBSERVED destinations claiming that bucket. Date scope keeps an
@@ -1718,7 +1784,9 @@ class DepartureService:
         for dep in departures:
             if dep.observation_type != "OBSERVED":
                 continue
-            _, fallbacks = self._make_dedup_keys(dep)
+            _, fallbacks = self._make_dedup_keys(
+                dep, tolerance_minutes=safety_net_tolerance
+            )
             dest_token = _destination_prefix(dep.destination)
             for fb in fallbacks:
                 observed_keys.setdefault((dep.journey_date, fb), set()).add(dest_token)
@@ -1730,7 +1798,7 @@ class DepartureService:
         dropped_train_ids: list[str | None] = []
         for dep in departures:
             if dep.observation_type == "SCHEDULED":
-                _, fallbacks = self._make_dedup_keys(dep)
+                _, fallbacks = self._make_dedup_keys(dep, tolerance_minutes=0)
                 dest_token = _destination_prefix(dep.destination)
                 if any(
                     dest_token in observed_keys[(dep.journey_date, fb)]

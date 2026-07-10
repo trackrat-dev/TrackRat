@@ -14,7 +14,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -32,7 +32,7 @@ from trackrat.config.stations.wmata import (
     infer_wmata_origin,
 )
 from trackrat.db.engine import get_session
-from trackrat.models.database import JourneySnapshot, JourneyStop, TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import now_et
@@ -431,6 +431,7 @@ class WMATACollector:
 
             stop = JourneyStop(
                 journey_id=journey.id,
+                journey_date=journey.journey_date,
                 station_code=station_code,
                 station_name=get_station_name(station_code),
                 stop_sequence=seq + 1,
@@ -545,9 +546,6 @@ class WMATACollector:
                         train_id=journey.train_id,
                         reason="no_matching_predictions",
                     )
-
-            # Create/update snapshot
-            await self._create_snapshot(session, journey, stops)
 
         return {"updated": updated, "completed": completed}
 
@@ -689,38 +687,6 @@ class WMATACollector:
                     return pred
 
         return best
-
-    async def _create_snapshot(
-        self,
-        session: AsyncSession,
-        journey: TrainJourney,
-        stops: list[JourneyStop],
-    ) -> None:
-        """Create or replace journey snapshot."""
-        # Delete existing snapshots for this journey
-        await session.execute(
-            delete(JourneySnapshot).where(JourneySnapshot.journey_id == journey.id)
-        )
-
-        completed_stops = sum(1 for s in stops if s.has_departed_station)
-        total_stops = len(stops)
-
-        if journey.is_completed:
-            status = "completed"
-        elif completed_stops > 0:
-            status = "in_transit"
-        else:
-            status = "scheduled"
-
-        snapshot = JourneySnapshot(
-            journey_id=journey.id,
-            captured_at=now_et(),
-            train_status=status,
-            completed_stops=completed_stops,
-            total_stops=total_stops,
-            raw_stop_list_data={},
-        )
-        session.add(snapshot)
 
 
 def _generate_wmata_train_id(

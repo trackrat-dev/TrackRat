@@ -254,17 +254,60 @@ class TestFindRelevantTransferPoints:
         assert frozenset({"GCT", "S723"}) in station_pairs
         assert frozenset({"GCT", "S901"}) in station_pairs
 
+    def test_njt_pascack_to_nec_finds_secaucus_junction(self):
+        """Regression #1296: Pascack Valley (NH) -> NEC (NY) must surface the
+        Secaucus (SE) intra-NJT junction. Before the fix, the junction only
+        carried the first-generated line-pair ({NE}<->{NC}), which doesn't
+        connect Pascack Valley, so this returned nothing."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"NJT"}, from_station="NH", to_station="NY"
+        )
+        assert any(
+            tp.station_a == "SE" and tp.station_b == "SE" and tp.system_a == "NJT"
+            for tp in transfers
+        ), "Expected a Secaucus intra-NJT junction transfer for NH->NY"
+
+    def test_njt_morris_essex_to_nec_finds_secaucus_junction(self):
+        """Regression #1296: Madison (M&E) -> Trenton (NEC) also routes via SE."""
+        transfers = _find_relevant_transfer_points(
+            {"NJT"}, {"NJT"}, from_station="MA", to_station="TR"
+        )
+        assert any(
+            tp.station_a == "SE" and tp.station_b == "SE" for tp in transfers
+        ), "Expected a Secaucus junction transfer for Madison->Trenton"
+
+    def test_lirr_branch_to_branch_finds_jamaica_junction(self):
+        """Regression #1296: Ronkonkoma (RON) -> Long Beach (LBH) must surface
+        the Jamaica (JAM) junction. Only the first branch-pair survived before
+        the fix, so most LIRR inter-branch transfers were dropped."""
+        transfers = _find_relevant_transfer_points(
+            {"LIRR"}, {"LIRR"}, from_station="RON", to_station="LBH"
+        )
+        assert any(
+            tp.station_a == "JAM" and tp.station_b == "JAM" for tp in transfers
+        ), "Expected a Jamaica junction transfer for Ronkonkoma->Long Beach"
+
 
 class TestStationLinesExpanded:
     """Test line lookup across physical station equivalences."""
 
-    def test_penn_station_rail_code_expands_to_subway_lines(self):
-        lines = _get_station_lines_expanded("NY", "SUBWAY")
+    def test_penn_station_subway_platforms_expand_to_all_lines(self):
+        # S128 (1/2/3) and SA28 (A/C/E) are equivalent subway platforms at Penn
+        # Station; the rail code NY is a transfer, not an equivalence (#1355).
+        lines = _get_station_lines_expanded("S128", "SUBWAY")
         assert {"1", "2", "3", "A", "C", "E"} <= set(lines)
 
-    def test_grand_central_rail_code_expands_to_subway_lines(self):
-        lines = _get_station_lines_expanded("GCT", "SUBWAY")
+    def test_grand_central_subway_platforms_expand_to_all_lines(self):
+        # S631 (4/5/6), S723 (7), and S901 (GS shuttle) are equivalent subway
+        # platforms at Grand Central; GCT is a transfer, not an equivalence (#1355).
+        lines = _get_station_lines_expanded("S631", "SUBWAY")
         assert {"4", "5", "6", "7", "GS"} <= set(lines)
+
+    def test_penn_station_rail_code_no_longer_expands_to_subway_lines(self):
+        # NY (rail) and the subway platforms are a transfer, not an
+        # equivalence, so the rail code alone yields no subway lines.
+        lines = _get_station_lines_expanded("NY", "SUBWAY")
+        assert lines == frozenset()
 
 
 class TestOrientTransfer:
@@ -1079,6 +1122,70 @@ class TestRankTransferPoints:
         assert len(result) == 1
         assert result[0] is tp
 
+    def test_intra_system_ranked_before_cross_system(self):
+        """Regression #1296: a relevance-verified intra-system junction must
+        rank ahead of speculative cross-system transfers, even when the
+        cross-system points sort earlier by station code. Otherwise the only
+        useful transfer gets crowded out of the MAX_TRANSFER_QUERIES budget."""
+        intra = self._make_tp(
+            station_a="SE",
+            system_a="NJT",
+            station_b="SE",
+            system_b="NJT",
+            walk_minutes=5,
+            same_station=True,
+        )
+        # Cross-system same-station transfers whose codes sort before "SE".
+        cross = [
+            self._make_tp(
+                station_a=code,
+                system_a="NJT",
+                station_b=code,
+                system_b="AMTRAK",
+                walk_minutes=5,
+                same_station=True,
+            )
+            for code in ("MP", "NB", "NP", "NY", "PH", "PJ")
+        ]
+        ranked = _rank_transfer_points(
+            cross + [intra], "NH", "NY", {"NJT"}, {"NJT", "AMTRAK"}
+        )
+        assert ranked[0] is intra, "Intra-system junction must rank first"
+
+
+class TestSecaucusJunctionBudget:
+    """End-to-end transfer-selection regression for issue #1296.
+
+    Combines the real route topology, _find_relevant_transfer_points, and
+    _rank_transfer_points to confirm the Secaucus junction is actually queried
+    for the reported New Bridge Landing -> NY Penn search in both the
+    single-system and default multi-system cases.
+    """
+
+    def _secaucus_in_budget(
+        self, from_systems: set[str], to_systems: set[str]
+    ) -> bool:
+        transfers = _find_relevant_transfer_points(
+            from_systems, to_systems, from_station="NH", to_station="NY"
+        )
+        ranked = _rank_transfer_points(
+            transfers, "NH", "NY", from_systems, to_systems
+        )
+        budget = MAX_TRANSFER_QUERIES // 2
+        return any(
+            tp.station_a == "SE" and tp.station_b == "SE" and tp.system_a == "NJT"
+            for tp in ranked[:budget]
+        )
+
+    def test_njt_only(self):
+        """With data_sources=NJT, the Secaucus junction is selected."""
+        assert self._secaucus_in_budget({"NJT"}, {"NJT"})
+
+    def test_multi_source_not_crowded_out(self):
+        """With no filter (NJT+AMTRAK+LIRR), Amtrak-shared stations must not
+        crowd Secaucus out of the queried budget."""
+        assert self._secaucus_in_budget({"NJT"}, {"NJT", "AMTRAK", "LIRR"})
+
 
 class TestMaxTransferQueriesIncreased:
     """Verify MAX_TRANSFER_QUERIES is large enough to avoid aggressive truncation."""
@@ -1160,12 +1267,11 @@ class TestSystemsForStation:
     """
 
     def test_native_code_returns_native_systems_only(self):
-        """S128 (subway) is in subway routes, so expansion must NOT add NJT/AMTRAK/LIRR.
+        """S128 (subway) is in subway routes, so it stays SUBWAY-only.
 
-        S128 is in equivalence group {NY, S128, SA28}. Without the alias-only
-        guard, expansion would union systems from NY, polluting the subway
-        code's set with commuter-rail systems and breaking the
-        cross-system direct filter for TR↔S128 etc.
+        S128's equivalence group is now subway-only ({S128, SA28}); the Penn
+        commuter-rail code (NY) is a cross-modal transfer, not an equivalence
+        sibling (#1355), so no rail system leaks into the subway code's set.
         """
         assert _systems_for_station("S128") == {"SUBWAY"}
 
@@ -1226,12 +1332,11 @@ class TestFilterCrossSystemDirectTrips:
     """Test filtering of direct trips that matched only via station equivalence expansion.
 
     When the departure service expands station codes across equivalence groups,
-    it can return trains from systems that don't natively serve the user's
-    requested station. E.g., searching to=S128 (subway 34 St-Penn Station)
-    returns Amtrak trains to NY (Penn Station) because {NY, S128, SA28} are
-    equivalent. These cross-system matches are not "direct" — they require a
-    physical system transfer — and should be filtered so the transfer search
-    can propose the correct multi-leg trip.
+    it can return trains from systems that don't natively serve both endpoints.
+    Any train whose data_source isn't in ``from_systems & to_systems`` is not a
+    genuine direct trip and is filtered so the transfer search can propose the
+    correct multi-leg trip. Cross-modal hub pairs (e.g. TR->S127) always have an
+    empty intersection and so are fully filtered here (#1355).
     """
 
     def _make_trip_with_source(self, data_source: str) -> TripOption:
@@ -1272,11 +1377,11 @@ class TestFilterCrossSystemDirectTrips:
         assert result[0].legs[0].data_source == "NJT"
 
     def test_cross_system_filtered_out(self):
-        """Amtrak trip should be filtered when to_station is subway-only (S128).
+        """Rail trips are filtered when to_station is subway-only.
 
-        This is the core bug: from=TR (NJT, AMTRAK) to=S128 (SUBWAY).
-        Amtrak trains to NY matched via equivalence expansion and were returned
-        as 'direct' trips to the subway station.
+        Cross-modal case from=TR (NJT, AMTRAK) to=S128 (SUBWAY): rail trains
+        that matched only via the departure service's equivalence expansion have
+        no shared system with the subway destination, so none survive as direct.
         """
         trips = [
             self._make_trip_with_source("AMTRAK"),
@@ -1496,103 +1601,56 @@ class TestResolveArrivalTime:
         assert _resolve_arrival_time(dep) is None
 
 
-class TestSystemsForStationWithOtherCode:
-    """Bug B from #1231: subway-only codes (e.g. S128) must expand to include
-    rail systems when the other endpoint actually shares those rail systems.
-
-    The pre-existing single-arg behavior is preserved so the cross-modal
-    expansion only kicks in when the caller signals which station the user
-    is actually pairing with.
+class TestCrossModalHubsRouteAsTransfer:
+    """Cross-modal mega-hubs (Penn, GCT, WTC) are modeled as transfers, not
+    same-station equivalences (see CROSS_MODAL_HUBS). A rail<->subway pair must
+    therefore share NO system, giving an empty direct-filter intersection so
+    trip search falls through to transfer search (#1355).
     """
 
-    def test_single_arg_call_stays_strict_subway_only(self):
-        """Backward compat: zero-arg call must keep the strict #1121 behavior."""
-        assert _systems_for_station("S128") == {"SUBWAY"}
-        assert _systems_for_station("S138") == {"SUBWAY"}
+    def test_hub_subway_codes_stay_subway_only(self):
+        """The subway platform codes at Penn/GCT/WTC keep only SUBWAY — the
+        adjacent rail/PATH code is no longer an equivalence sibling."""
+        assert _systems_for_station("S128") == {"SUBWAY"}  # Penn 1/2/3
+        assert _systems_for_station("SA28") == {"SUBWAY"}  # Penn A/C/E
+        assert _systems_for_station("S631") == {"SUBWAY"}  # GCT 4/5/6
+        assert _systems_for_station("S138") == {"SUBWAY"}  # WTC
 
-    def test_subway_code_paired_with_rail_endpoint_expands(self):
-        """S128's group = {NY, S128, SA28}. NY serves NJT/AMTRAK/LIRR.
-        Pairing with TR (NJT, AMTRAK) should pull in NJT and AMTRAK so the
-        direct-trip filter accepts NJT/Amtrak trains as valid TR↔NY service.
-        """
-        systems = _systems_for_station("S128", "TR")
-        assert "SUBWAY" in systems, "must not lose native subway membership"
-        assert "NJT" in systems, "NY shares NJT with TR → must expand"
-        assert "AMTRAK" in systems, "NY shares AMTRAK with TR → must expand"
-        # LIRR isn't served by TR, so it should NOT pulled in
-        assert "LIRR" not in systems, (
-            "TR isn't served by LIRR — expansion must filter by the other "
-            f"endpoint's systems, got {systems}"
-        )
+    def test_hub_rail_codes_carry_no_subway(self):
+        """NY/GCT/PWC carry only their rail/PATH systems — no SUBWAY leaks in."""
+        assert _systems_for_station("NY") == {"NJT", "AMTRAK", "LIRR"}
+        assert "SUBWAY" not in _systems_for_station("GCT")
+        assert "SUBWAY" not in _systems_for_station("PWC")
+        assert "PATH" in _systems_for_station("PWC")
+
+    def test_cross_modal_pairs_share_no_system(self):
+        """Rail/PATH <-> subway hub pairs have an empty intersection, so the
+        direct search produces nothing and transfer search takes over."""
+        for a, b in [
+            ("TR", "S127"),  # NJT Trenton <-> Times Sq (subway)
+            ("S127", "TR"),
+            ("MSTM", "S635"),  # MNR Stamford <-> Union Sq (subway)
+            ("PWC", "S635"),  # PATH WTC <-> Union Sq (subway)
+        ]:
+            shared = _systems_for_station(a) & _systems_for_station(b)
+            assert not shared, (
+                f"{a}->{b} is cross-modal and must share no system "
+                f"(routes as a transfer), got {shared}"
+            )
 
     def test_pure_subway_pair_stays_strict(self):
-        """Pure-subway stations with no cross-modal equivalents must stay SUBWAY-only."""
-        # SR01 (N at Astoria) and S701 (7 at Flushing) are not in any equivalence
-        # group, so neither side has rail siblings to expand into.
-        assert _systems_for_station("SR01", "S701") == {"SUBWAY"}
-        assert _systems_for_station("S701", "SR01") == {"SUBWAY"}
+        """Pure-subway stations stay SUBWAY-only (unchanged)."""
+        assert _systems_for_station("SR01") == {"SUBWAY"}
+        assert _systems_for_station("S701") == {"SUBWAY"}
 
-    def test_subway_code_paired_with_unrelated_endpoint_stays_strict(self):
-        """S128 paired with a station whose equivalence group shares no rail systems."""
-        # PWC's group has SUBWAY/PATH; NY's group has NJT/AMTRAK/LIRR — no overlap.
-        assert _systems_for_station("S128", "PWC") == {"SUBWAY"}
-
-    def test_penn_to_gct_subway_codes_share_lirr_via_east_side_access(self):
-        """S128 (Penn subway) ↔ S631 (GCT subway): both equivalence groups
-        include LIRR-serving stations (NY/GCT), so LIRR is a legitimate
-        cross-equivalence direct option. This is not a bug — a LIRR rider
-        can travel between the two complexes without changing systems.
+    def test_same_station_cross_system_rail_still_direct(self):
+        """Genuine same-station cross-system pairs are unchanged: NP<->PWC still
+        share PATH via the NP/PNK equivalence, so they stay direct. Only the
+        cross-MODAL (rail<->subway) hubs were reclassified as transfers.
         """
-        systems = _systems_for_station("S128", "S631")
-        assert "SUBWAY" in systems
-        assert "LIRR" in systems, (
-            "NY and GCT both serve LIRR (East Side Access). Subway↔subway pair "
-            f"that shares a rail system should reflect it, got {systems}"
-        )
-        # Systems served by only one side must NOT appear
-        assert "NJT" not in systems, "GCT doesn't serve NJT"
-        assert "AMTRAK" not in systems, "GCT doesn't serve AMTRAK"
-        assert "MNR" not in systems, "NY doesn't serve MNR"
-
-    def test_wtc_paired_with_path_endpoint_expands(self):
-        """PWC equivalence group includes PATH-system codes; pairing with a
-        PATH origin (e.g. PHO) should expand the subway-only siblings.
-        """
-        # S138 (WTC subway platform code) is subway-only natively, group
-        # includes PWC which serves PATH.
-        systems = _systems_for_station("S138", "PHO")
-        assert "SUBWAY" in systems
-        assert "PATH" in systems, (
-            "PWC in S138's group serves PATH; PHO (PATH) shares it → must expand. "
-            f"Got {systems}"
-        )
-
-    def test_rail_code_unaffected_by_other_code(self):
-        """Non-subway-only codes ignore other_code (no behavior change)."""
-        assert _systems_for_station("NY") == _systems_for_station("NY", "TR")
-        assert _systems_for_station("NP") == _systems_for_station("NP", "PWC")
-
-    def test_search_trips_pairing_symmetric_for_tr_and_s128(self):
-        """End-to-end Bug B check: TR↔S128 must produce a non-empty
-        ``valid_systems`` intersection in both directions, so the
-        direct-trip filter keeps NJT/AMTRAK trains either way.
-        """
-        forward_from = _systems_for_station("TR", "S128")
-        forward_to = _systems_for_station("S128", "TR")
-        forward_intersection = forward_from & forward_to
-        assert forward_intersection & {"NJT", "AMTRAK"}, (
-            "TR→S128 should preserve at least one rail system in the "
-            f"direct-filter intersection, got from={forward_from} "
-            f"to={forward_to} ∩={forward_intersection}"
-        )
-
-        reverse_from = _systems_for_station("S128", "TR")
-        reverse_to = _systems_for_station("TR", "S128")
-        reverse_intersection = reverse_from & reverse_to
-        assert reverse_intersection == forward_intersection, (
-            "Direct-filter intersection must be direction-symmetric for "
-            f"TR↔S128, got forward={forward_intersection} "
-            f"reverse={reverse_intersection}"
+        valid = _systems_for_station("NP") & _systems_for_station("PWC")
+        assert "PATH" in valid, (
+            f"NP<->PWC must keep PATH as a direct system, got {valid}"
         )
 
 
@@ -1636,11 +1694,11 @@ class TestHasSharedLine:
         )
 
 
-class TestFilterCrossSystemEndToEndForBugB:
-    """End-to-end Bug B check: ``search_trips`` builds the direct-filter
-    intersection from ``_systems_for_station(a, b)`` / ``_systems_for_station(b, a)``,
-    so the filter must keep NJT trains for TR↔S128 once those calls supply
-    the expanded systems.
+class TestFilterCrossModalDirectTrips:
+    """End-to-end check for #1355: ``search_trips`` builds the direct-filter
+    intersection from ``_systems_for_station``. Cross-modal hub pairs share no
+    system, so any rail train that only matched via the departure service's
+    equivalence expansion is dropped and the trip routes as a transfer.
     """
 
     def _make_trip(self, data_source: str) -> TripOption:
@@ -1668,36 +1726,25 @@ class TestFilterCrossSystemEndToEndForBugB:
             is_direct=True,
         )
 
-    def test_tr_to_s128_keeps_njt_amtrak_via_systems_for_station(self):
-        """Wiring check: when search_trips computes systems with the new
-        ``other_code`` argument, the filter intersection contains NJT/AMTRAK
-        and NJT trains pass through.
-        """
-        from_systems = _systems_for_station("TR", "S128")
-        to_systems = _systems_for_station("S128", "TR")
-        trips = [self._make_trip("NJT"), self._make_trip("AMTRAK")]
-        result = _filter_cross_system_direct_trips(trips, from_systems, to_systems)
-        sources = sorted(t.legs[0].data_source for t in result)
-        assert sources == ["AMTRAK", "NJT"], (
-            f"NJT and AMTRAK trains TR↔S128 must survive the filter, got {sources}"
-        )
-
-    def test_s128_to_tr_keeps_njt_amtrak_via_systems_for_station(self):
-        """Reverse direction must produce the same filter result (symmetry)."""
-        from_systems = _systems_for_station("S128", "TR")
-        to_systems = _systems_for_station("TR", "S128")
-        trips = [self._make_trip("NJT"), self._make_trip("AMTRAK")]
-        result = _filter_cross_system_direct_trips(trips, from_systems, to_systems)
-        sources = sorted(t.legs[0].data_source for t in result)
-        assert sources == ["AMTRAK", "NJT"], (
-            f"S128↔TR must be symmetric with TR↔S128 — both keep NJT/AMTRAK, got {sources}"
-        )
+    def test_cross_modal_pair_drops_rail_direct_trips(self):
+        """TR<->S127 is cross-modal (no shared system), so rail trains that
+        matched only via equivalence expansion must NOT survive as direct."""
+        for from_code, to_code in [("TR", "S127"), ("S127", "TR")]:
+            from_systems = _systems_for_station(from_code)
+            to_systems = _systems_for_station(to_code)
+            trips = [self._make_trip("NJT"), self._make_trip("AMTRAK")]
+            result = _filter_cross_system_direct_trips(trips, from_systems, to_systems)
+            sources = [t.legs[0].data_source for t in result]
+            assert sources == [], (
+                f"{from_code}->{to_code} is cross-modal; rail trains must not "
+                f"survive the direct filter (route as transfer), got {sources}"
+            )
 
     def test_pure_subway_pair_excludes_unrelated_rail(self):
         """Subway-only pair without shared rail equivalents must drop NJT/MNR."""
         # SR01 (N) and S701 (7) have no equivalence groups.
-        from_systems = _systems_for_station("SR01", "S701")
-        to_systems = _systems_for_station("S701", "SR01")
+        from_systems = _systems_for_station("SR01")
+        to_systems = _systems_for_station("S701")
         trips = [
             self._make_trip("SUBWAY"),
             self._make_trip("NJT"),  # would be wrong to keep
@@ -1809,10 +1856,8 @@ class TestSharedLineShortcutRespectsDataSources:
     """
 
     def test_njt_amtrak_overlap_invisible_when_user_only_enabled_subway(self):
-        """NP (Newark Penn) and NY share NJT + AMTRAK on NEC, plus subway
-        equivalents (PNK is in S128's group via NY in different equivalence
-        chains).  If the user only enabled SUBWAY, the rail overlap must NOT
-        trigger the shortcut.
+        """NP (Newark Penn) and NY share NJT + AMTRAK on the NEC.  If the user
+        only enabled SUBWAY, that rail overlap must NOT trigger the shortcut.
         """
         # Mirror what search_trips computes: from_systems/to_systems after
         # the data_sources filter has been applied.

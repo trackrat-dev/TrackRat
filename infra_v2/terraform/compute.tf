@@ -29,7 +29,7 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    disk_size_gb = 20 # Increased from 10GB for Docker image storage
+    disk_size_gb = 10 # COS minimum; only container images live here (~0.6GB), all state is on the data disk
   }
 
   network_interface {
@@ -214,6 +214,7 @@ TRACKRAT_WMATA_API_KEY=$WMATA_API_KEY
 TRACKRAT_METRA_API_TOKEN=$METRA_API_TOKEN
 TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO
+TRACKRAT_DISABLED_DATA_SOURCES=BART,WMATA,MBTA,METRA
 ENVEOF
       chmod 600 "$APP_DIR/.env"
 
