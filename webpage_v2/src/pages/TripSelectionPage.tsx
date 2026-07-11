@@ -265,7 +265,7 @@ export function TripSelectionPage() {
         />
 
         <div className="relative pt-3">
-          <div className="flex gap-1.5 overflow-x-auto pr-8">
+          <div className="flex justify-end gap-1.5 overflow-x-auto pl-8">
             {AVAILABLE_SYSTEMS.map((system) => {
               const active = preferredSystems.length === 0 || preferredSystems.includes(system);
               return (
@@ -283,7 +283,7 @@ export function TripSelectionPage() {
               );
             })}
           </div>
-          <div className="pointer-events-none absolute top-3 right-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent" />
+          <div className="pointer-events-none absolute top-3 left-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent" />
         </div>
 
         {shouldShowSearchResults && (
