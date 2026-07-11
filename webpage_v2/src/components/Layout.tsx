@@ -20,7 +20,7 @@ export function Layout() {
                 alt="TrackRat"
                 className="w-8 h-8 rounded-lg"
               />
-              <span className="bg-gradient-to-r from-primary-start to-primary-end bg-clip-text text-transparent">
+              <span className="text-accent">
                 TrackRat
               </span>
               <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-accent/15 text-accent">
