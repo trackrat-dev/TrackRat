@@ -159,9 +159,13 @@ resource "google_monitoring_alert_policy" "data_disk_usage_warning" {
       threshold_value = 75
       duration        = "0s"
 
+      # data_disk_usage_percent is a DELTA/DISTRIBUTION logs metric. ALIGN_MEAN
+      # is invalid on distributions; ALIGN_DELTA aggregates the window into a
+      # distribution and REDUCE_MEAN reduces it to the exact mean (a DOUBLE).
       aggregations {
-        alignment_period   = "1800s"
-        per_series_aligner = "ALIGN_MEAN"
+        alignment_period     = "1800s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_MEAN"
       }
     }
   }
@@ -193,9 +197,13 @@ resource "google_monitoring_alert_policy" "data_disk_usage_critical" {
       threshold_value = 85
       duration        = "0s"
 
+      # data_disk_usage_percent is a DELTA/DISTRIBUTION logs metric. ALIGN_MEAN
+      # is invalid on distributions; ALIGN_DELTA aggregates the window into a
+      # distribution and REDUCE_MEAN reduces it to the exact mean (a DOUBLE).
       aggregations {
-        alignment_period   = "1800s"
-        per_series_aligner = "ALIGN_MEAN"
+        alignment_period     = "1800s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_MEAN"
       }
     }
   }
@@ -245,10 +253,14 @@ resource "google_monitoring_alert_policy" "table_vacuum_health" {
       threshold_value = 30
       duration        = "0s"
 
+      # table_dead_tuple_ratio_pct is a DELTA/DISTRIBUTION logs metric. Neither
+      # ALIGN_MEAN nor REDUCE_MAX is valid on distributions; ALIGN_DELTA +
+      # REDUCE_MEAN grouped by table_name yields each table's exact mean ratio
+      # (a DOUBLE), so the condition fires if any single table exceeds 30%.
       aggregations {
         alignment_period     = "1800s"
-        per_series_aligner   = "ALIGN_MEAN"
-        cross_series_reducer = "REDUCE_MAX"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_MEAN"
         group_by_fields      = ["metric.label.table_name"]
       }
     }
