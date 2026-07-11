@@ -193,8 +193,8 @@ resource "google_logging_metric" "data_disk_usage_percent" {
 
   # Logs-based metrics only support counter (INT64) or DISTRIBUTION value types;
   # a scalar value_extractor requires DISTRIBUTION (GCP rejects it on any other
-  # type). The alert reads this via ALIGN_MEAN, which uses the distribution's
-  # exact mean, so bucket boundaries don't affect the threshold.
+  # type). The alert reads this via ALIGN_DELTA + REDUCE_MEAN, which yields the
+  # distribution's exact mean, so bucket boundaries don't affect the threshold.
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "DISTRIBUTION"
@@ -232,8 +232,8 @@ resource "google_logging_metric" "database_size_gb" {
   ])
 
   # DISTRIBUTION (not GAUGE/DOUBLE): a value_extractor is only valid on a
-  # distribution-typed logs metric. Exponential buckets span a wide GB range
-  # as the database grows; ALIGN_MEAN reads the exact mean regardless.
+  # distribution-typed logs metric. This metric has no alert (trend/dashboard
+  # only); exponential buckets span a wide GB range as the database grows.
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "DISTRIBUTION"
@@ -275,7 +275,7 @@ resource "google_logging_metric" "table_dead_tuple_ratio_pct" {
 
   # DISTRIBUTION (not GAUGE/DOUBLE): a value_extractor is only valid on a
   # distribution-typed logs metric. The alert aggregates per table_name with
-  # ALIGN_MEAN + REDUCE_MAX, reading each distribution's exact mean.
+  # ALIGN_DELTA + REDUCE_MEAN, reading each distribution's exact mean.
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "DISTRIBUTION"
