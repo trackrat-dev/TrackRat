@@ -14,9 +14,9 @@ function renderLandingPage() {
 }
 
 describe('LandingPage hero CTAs', () => {
-  it('offers a one-click path into /departures via the primary "Open the web app" CTA', () => {
+  it('offers a one-click path into /departures via the "Open the web app (beta)" CTA', () => {
     renderLandingPage();
-    const webAppCta = screen.getByRole('link', { name: 'Open the web app' });
+    const webAppCta = screen.getByRole('link', { name: 'Open the web app (beta)' });
     expect(webAppCta).toHaveAttribute('href', '/departures');
     // Must be a real anchor link (keyboard reachable), not a div/button with onClick.
     expect(webAppCta.tagName).toBe('A');
@@ -31,7 +31,7 @@ describe('LandingPage hero CTAs', () => {
 
   it('gives the two hero CTAs distinct accessible names and separate destinations', () => {
     renderLandingPage();
-    const webAppCta = screen.getByRole('link', { name: 'Open the web app' });
+    const webAppCta = screen.getByRole('link', { name: 'Open the web app (beta)' });
     const iosCta = screen.getByRole('link', { name: 'Download for iOS' });
     expect(webAppCta).not.toBe(iosCta);
     expect(webAppCta.getAttribute('href')).not.toBe(iosCta.getAttribute('href'));
