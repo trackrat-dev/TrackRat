@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 
 // Matches the base path in vite.config.ts and BrowserRouter basename
@@ -68,58 +67,9 @@ const transitSystems = [
   { name: 'NYC Subway', region: 'New York' },
 ];
 
-function IOSBanner() {
-  const [dismissed, setDismissed] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-
-  useEffect(() => {
-    setIsIOS(/iPhone|iPad|iPod/.test(navigator.userAgent));
-    setDismissed(sessionStorage.getItem('trackrat:ios-banner-dismissed') === 'true');
-  }, []);
-
-  if (!isIOS || dismissed) return null;
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    sessionStorage.setItem('trackrat:ios-banner-dismissed', 'true');
-  };
-
-  return (
-    <div className="bg-surface/90 backdrop-blur-xl border-b border-text-muted/20 px-4 py-3">
-      <div className="max-w-3xl mx-auto flex items-center gap-3">
-        <img
-          src={`${BASE}icon.png`}
-          alt="TrackRat"
-          className="w-10 h-10 rounded-lg"
-        />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-text-primary">TrackRat</div>
-          <div className="text-xs text-text-muted">Get the full experience on iOS</div>
-        </div>
-        <a
-          href={APP_STORE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-xl shrink-0"
-        >
-          Open
-        </a>
-        <button
-          onClick={handleDismiss}
-          className="text-text-muted hover:text-text-primary text-lg leading-none shrink-0"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-text-muted">
-      <IOSBanner />
-
       {/* Hero */}
       <section className="px-6 pt-14 pb-12 text-center max-w-3xl mx-auto">
         <img
