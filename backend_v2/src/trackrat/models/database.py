@@ -129,7 +129,8 @@ class TrainJourney(Base):
         UniqueConstraint(
             "train_id", "journey_date", "data_source", name="unique_train_journey"
         ),
-        Index("idx_train_id", "train_id"),
+        # No standalone idx_train_id: train_id-only lookups use the leading
+        # column of unique_train_journey (dropped in 82fd0005853a).
         Index("idx_data_source", "data_source"),
         Index("idx_active_journeys", "is_completed", "is_expired", "is_cancelled"),
         # Composite index for date + source queries (congestion, history, forecaster).
@@ -281,12 +282,10 @@ class JourneyStop(Base):
         ),
         Index("idx_stop_track_distribution", "station_code", "track"),
         Index("idx_stop_delay_forecaster", "station_code", "journey_id"),
-        Index(
-            "idx_stop_journey_station_seq",
-            "journey_id",
-            "station_code",
-            "stop_sequence",
-        ),
+        # No (journey_id, station_code, stop_sequence) index: equality
+        # lookups on (journey_id, station_code) use unique_journey_stop's
+        # identical leading prefix, and journey_id-ordered scans use
+        # idx_journey_stops_sequence_lookup (dropped in 82fd0005853a).
         # Companion to idx_station_times for the "actual if present, else
         # scheduled" departure-window filter used by summary.py and
         # congestion queries. Without this, that OR condition can't use an
@@ -557,13 +556,9 @@ class SegmentTransitTime(Base):
 
     __table_args__ = (
         Index("idx_segment_journey", "journey_id"),
-        Index(
-            "idx_segment_lookup",
-            "from_station_code",
-            "to_station_code",
-            "data_source",
-            "departure_time",
-        ),
+        # No (from, to, data_source, departure_time) index: its consumers
+        # moved to idx_segment_baseline (b8ca879ae8c5), and from-prefix
+        # range scans use idx_recent_segments (dropped in 82fd0005853a).
         Index(
             "idx_recent_segments", "from_station_code", "to_station_code", "created_at"
         ),

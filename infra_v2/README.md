@@ -192,7 +192,7 @@ gcloud compute disks delete trackrat-production-data --zone=us-east4-a
 gcloud compute disks create trackrat-production-data \
   --source-snapshot=SNAPSHOT_NAME \
   --zone=us-east4-a \
-  --type=pd-ssd
+  --type=pd-balanced
 gcloud compute instance-groups managed resize trackrat-production-mig --size=1 --zone=us-east4-a
 ```
 
@@ -209,10 +209,10 @@ copy-out / recreate / copy-back that preserves the canonical disk name. Only
 a production snapshot on every deploy (`cloudbuild-staging.yaml`), and you cannot
 create a 40GB disk from a 60GB snapshot. Once production is at 40GB, staging inherits
 the new **size** automatically on its next deploy (the clone passes no `--size`).
-The clone's **type**, however, is hardcoded (`--type=pd-ssd` in
-`cloudbuild-staging.yaml`), so that line must also be switched to `pd-balanced`
-alongside the `storage.tf` change — otherwise staging keeps recreating a `pd-ssd`
-disk and never matches production.
+The clone's **type**, however, is hardcoded (`--type=pd-balanced` in
+`cloudbuild-staging.yaml`), so that line must be kept in sync with the disk type
+in `storage.tf` — otherwise staging keeps recreating a disk of the old type and
+never matches production.
 
 **Terraform sequencing:** perform the manual migration to the *exact* target
 (size + type + same name) **before** merging the matching `variables.tf` /
@@ -266,9 +266,10 @@ gcloud compute instance-groups managed resize $MIG --size=1 --zone=$ZONE
 #    A subsequent terraform apply re-attaches the snapshot schedule if needed.
 ```
 
-**Backout:** as long as the pre-migration snapshot exists (retention is
-`snapshot_retention_days`, default 35), recreate `$DISK` from it at the original
-`--size=60 --type=pd-ssd` and scale the MIG back up.
+**Backout:** as long as the pre-migration snapshot exists (manual snapshots are
+not auto-deleted; policy snapshots follow `snapshot_retention_days`, default 7),
+recreate `$DISK` from it at the original pre-migration size/type (e.g.
+`--size=60 --type=pd-ssd` for the 2026-07 migration) and scale the MIG back up.
 
 ### Force Instance Replacement
 

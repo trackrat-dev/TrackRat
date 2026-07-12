@@ -117,7 +117,7 @@ steps:
           if ! gcloud compute disks create ${_STAGING_DISK} \
             --source-snapshot=staging-clone-${BUILD_ID} \
             --zone=${_ZONE} \
-            --type=pd-ssd \
+            --type=pd-balanced \
             --labels=app=trackrat,environment=staging; then
             echo "ERROR: Failed to create staging disk. Cleaning up snapshot..."
             gcloud compute snapshots delete staging-clone-${BUILD_ID} --quiet || true
