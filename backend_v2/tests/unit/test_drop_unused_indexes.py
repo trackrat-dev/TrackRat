@@ -16,6 +16,7 @@ from trackrat.models.database import (
     JourneyStop,
     RouteAlertSubscription,
     SchedulerTaskRun,
+    SegmentTransitTime,
     ServiceAlert,
     StationDwellTime,
     TrainJourney,
@@ -40,7 +41,6 @@ RETAINED_INDEXES = {
     "idx_station_times",
     "idx_stop_track_distribution",
     "idx_stop_delay_forecaster",
-    "idx_stop_journey_station_seq",
     "idx_journey_time",
     "idx_service_alert_active",
     "idx_alert_sub_device",
@@ -118,7 +118,6 @@ def test_retained_indexes_still_present_on_journey_stops():
         "idx_station_times",
         "idx_stop_track_distribution",
         "idx_stop_delay_forecaster",
-        "idx_stop_journey_station_seq",
         # Covering index that supersedes the dropped idx_journey_sequence.
         "idx_journey_stops_sequence_lookup",
     }
@@ -397,3 +396,103 @@ def test_fd85e7f3abb3_upgrade_statements():
             table in s and "autovacuum_vacuum_cost_limit = 1000" in s
             for s in statements
         ), f"missing cost_limit tuning for {table}"
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-12 production index review (migration 82fd0005853a)
+# ---------------------------------------------------------------------------
+
+# Indexes dropped after the 2026-07-12 review of pg_stat_user_indexes on
+# production: each is fully substitutable by an existing index with the same
+# leading columns (see the migration docstring for scan counts and sizes).
+REVIEW_2026_07_DROPPED = {
+    "idx_segment_lookup",  # -> idx_recent_segments / idx_segment_baseline
+    "idx_stop_journey_station_seq",  # -> unique_journey_stop prefix
+    "idx_train_id",  # -> unique_train_journey prefix
+}
+
+
+def test_review_dropped_indexes_removed_from_models():
+    """The three substitutable indexes must be gone from the models."""
+    all_idx = (
+        _get_index_names(TrainJourney)
+        | _get_index_names(JourneyStop)
+        | _get_index_names(SegmentTransitTime)
+    )
+    overlap = REVIEW_2026_07_DROPPED & all_idx
+    assert not overlap, f"Models still declare dropped indexes: {overlap}"
+
+
+def test_review_substitute_indexes_present_in_models():
+    """The indexes that absorb the dropped ones must still be declared.
+
+    unique_train_journey and unique_journey_stop are UniqueConstraints (their
+    backing indexes provide the leading-column prefixes); the rest are Index
+    declarations.
+    """
+    assert "idx_recent_segments" in _get_index_names(SegmentTransitTime)
+    assert "idx_segment_baseline" in _get_index_names(SegmentTransitTime)
+    assert "idx_journey_stops_sequence_lookup" in _get_index_names(JourneyStop)
+
+    tj_constraints = {
+        c.name
+        for c in getattr(TrainJourney, "__table_args__", ())
+        if isinstance(c, UniqueConstraint)
+    }
+    assert "unique_train_journey" in tj_constraints
+    js_constraints = {
+        c.name
+        for c in getattr(JourneyStop, "__table_args__", ())
+        if isinstance(c, UniqueConstraint)
+    }
+    assert "unique_journey_stop" in js_constraints
+
+
+def _run_82fd0005853a(direction):
+    """Import migration 82fd0005853a and capture its op.execute statements."""
+    migration = importlib.import_module(
+        "trackrat.db.migrations.versions."
+        "20260712_1820-82fd0005853a_drop_redundant_indexes_idx_segment_"
+    )
+    assert migration.revision == "82fd0005853a"
+    assert migration.down_revision == "03db10760b28"
+
+    statements: list[str] = []
+    mock_op = types.SimpleNamespace(execute=lambda sql: statements.append(str(sql)))
+
+    original_op = getattr(migration, "op", None)
+    try:
+        migration.op = mock_op
+        getattr(migration, direction)()
+    finally:
+        migration.op = original_op
+    return statements
+
+
+def test_82fd0005853a_upgrade_drops_exactly_the_reviewed_indexes():
+    statements = _run_82fd0005853a("upgrade")
+    joined = "\n".join(statements)
+    for name in REVIEW_2026_07_DROPPED:
+        assert f"DROP INDEX IF EXISTS {name}" in joined, f"missing drop for {name}"
+    assert len(statements) == len(REVIEW_2026_07_DROPPED), (
+        f"upgrade should only drop the three reviewed indexes, " f"got: {statements}"
+    )
+
+
+def test_82fd0005853a_downgrade_recreates_all_three_indexes():
+    statements = _run_82fd0005853a("downgrade")
+    joined = "\n".join(statements)
+    for name in REVIEW_2026_07_DROPPED:
+        assert (
+            f"CREATE INDEX IF NOT EXISTS {name}" in joined
+        ), f"missing recreate for {name}"
+    # Recreated with their original column lists.
+    assert (
+        "idx_segment_lookup ON segment_transit_times "
+        "(from_station_code, to_station_code, data_source, departure_time)" in joined
+    )
+    assert (
+        "idx_stop_journey_station_seq ON journey_stops "
+        "(journey_id, station_code, stop_sequence)" in joined
+    )
+    assert "idx_train_id ON train_journeys (train_id)" in joined
