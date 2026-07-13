@@ -1139,4 +1139,102 @@ class TrainV2Tests: XCTestCase {
         XCTAssertTrue(train.isBoardingAtStation("TEST"),
             "A train with a live estimate 12 min out must still show boarding")
     }
+
+    // MARK: - StopV2.arrivalDelayBadge (Issue #1487)
+
+    func testArrivalDelayBadge_terminalEstimatedArrival_showsDelay() {
+        print("🐀 Testing StopV2.arrivalDelayBadge annotates a not-yet-reached terminal's live estimate")
+
+        // Regression for #1487: NY Penn (terminal) showed the delayed arrival
+        // time but no "+Nm delay" badge, while an earlier intermediate stop
+        // (Secaucus) did. A terminal has no departure, so only updatedArrival
+        // (NJT live TIME) is present and the badge must come from it.
+        let now = Date()
+        let scheduledArrival = now.addingTimeInterval(20 * 60)
+        let estimatedArrival = now.addingTimeInterval(32 * 60)   // 12 min late
+
+        let terminal = makeStop(
+            stationCode: "NY",
+            sequence: 12,
+            scheduledDeparture: nil,               // terminal: no departure
+            scheduledArrival: scheduledArrival,
+            updatedDeparture: nil,                 // terminal: no updated_departure
+            updatedArrival: estimatedArrival       // live delayed estimate
+        )
+
+        let badge = StopV2.arrivalDelayBadge(
+            arrival: terminal.updatedArrival,
+            scheduledArrival: terminal.scheduledArrival
+        )
+        print("  - badge: \(badge)")
+        XCTAssertEqual(badge, "+12m delay",
+            "A terminal with a +12 min live arrival estimate must show its delay badge")
+    }
+
+    func testArrivalDelayBadge_upcomingIntermediateInversion_usesArrivalNotDeparture() {
+        print("🐀 Testing StopV2.arrivalDelayBadge reads the arrival estimate, ignoring NJT's updated_departure schedule")
+
+        // At an NJT intermediate stop, updated_departure = DEP_TIME (schedule)
+        // and updated_arrival = TIME (live estimate). The arrival badge must use
+        // updatedArrival vs scheduledArrival — not the inverted departure field.
+        let now = Date()
+        let scheduledArrival = now.addingTimeInterval(5 * 60)
+        let scheduledDeparture = now.addingTimeInterval(6 * 60)
+        let estimatedArrival = now.addingTimeInterval(12 * 60)   // arrives 7 min late
+
+        let stop = makeStop(
+            stationCode: "SE",
+            sequence: 6,
+            scheduledDeparture: scheduledDeparture,
+            scheduledArrival: scheduledArrival,
+            updatedDeparture: scheduledDeparture,   // NJT inversion: schedule here
+            updatedArrival: estimatedArrival        // NJT inversion: live estimate here
+        )
+
+        let badge = StopV2.arrivalDelayBadge(
+            arrival: stop.updatedArrival,
+            scheduledArrival: stop.scheduledArrival
+        )
+        XCTAssertEqual(badge, "+7m delay",
+            "An upcoming NJT stop with a +7 min live arrival estimate must show 7 min, not the schedule's 0")
+    }
+
+    func testArrivalDelayBadge_onTimeEstimate_isEmpty() {
+        print("🐀 Testing StopV2.arrivalDelayBadge is empty for an on-time estimate")
+
+        let now = Date()
+        let badge = StopV2.arrivalDelayBadge(arrival: now, scheduledArrival: now)
+        XCTAssertEqual(badge, "", "An on-time arrival must not render a delay badge")
+    }
+
+    func testArrivalDelayBadge_earlyEstimate_showsEarly() {
+        print("🐀 Testing StopV2.arrivalDelayBadge shows 'early' when the estimate beats the schedule")
+
+        let now = Date()
+        let scheduledArrival = now.addingTimeInterval(30 * 60)
+        let estimatedArrival = now.addingTimeInterval(26 * 60)   // 4 min early
+        let badge = StopV2.arrivalDelayBadge(arrival: estimatedArrival, scheduledArrival: scheduledArrival)
+        XCTAssertEqual(badge, "4m early", "A 4-min-early arrival estimate must show '4m early'")
+    }
+
+    func testArrivalDelayBadge_oneMinuteEarly_isEmpty() {
+        print("🐀 Testing StopV2.arrivalDelayBadge suppresses a 1-minute-early estimate")
+
+        // Threshold parity with the previous private helper: only < -1 min shows "early".
+        let now = Date()
+        let scheduledArrival = now.addingTimeInterval(30 * 60)
+        let estimatedArrival = now.addingTimeInterval(29 * 60)   // 1 min early
+        let badge = StopV2.arrivalDelayBadge(arrival: estimatedArrival, scheduledArrival: scheduledArrival)
+        XCTAssertEqual(badge, "", "A 1-min-early arrival must not render a badge (noise suppression)")
+    }
+
+    func testArrivalDelayBadge_missingInputs_isEmpty() {
+        print("🐀 Testing StopV2.arrivalDelayBadge is empty when either time is missing")
+
+        let now = Date()
+        XCTAssertEqual(StopV2.arrivalDelayBadge(arrival: nil, scheduledArrival: now), "",
+            "No arrival time means no badge")
+        XCTAssertEqual(StopV2.arrivalDelayBadge(arrival: now, scheduledArrival: nil), "",
+            "No scheduled arrival means no badge")
+    }
 }

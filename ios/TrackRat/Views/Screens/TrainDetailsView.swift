@@ -736,7 +736,8 @@ struct StopRowV2: View {
                 let arrivalText = "Arrival: \(formatter.string(from: actualArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (arrivalText, nil, [])
             } else if let estimatedArrival = stop.updatedArrival {
-                let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival))"
+                let delayText = arrivalDelayText(actual: estimatedArrival, scheduled: stop.scheduledArrival)
+                let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (arrivalText, nil, [])
             } else if let scheduledArrival = stop.scheduledArrival {
                 return ("Arrival: \(formatter.string(from: scheduledArrival))", nil, [])
@@ -744,14 +745,15 @@ struct StopRowV2: View {
                 return ("Arrival: --:--", nil, [])
             }
         }
-        
+
         // For upcoming stops: Show only arrival time
         if let actualArrival = stop.actualArrival {
             let delayText = arrivalDelayText(actual: actualArrival, scheduled: stop.scheduledArrival)
             let arrivalText = "Arrival: \(formatter.string(from: actualArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
             return (arrivalText, nil, [])
         } else if let estimatedArrival = stop.updatedArrival {
-            let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival))"
+            let delayText = arrivalDelayText(actual: estimatedArrival, scheduled: stop.scheduledArrival)
+            let arrivalText = "Arrival: \(formatter.string(from: estimatedArrival))" + (delayText.isEmpty ? "" : " (\(delayText))")
             return (arrivalText, nil, [])
         } else if let scheduledArrival = stop.scheduledArrival {
             return ("Arrival: \(formatter.string(from: scheduledArrival))", nil, [])
@@ -761,14 +763,7 @@ struct StopRowV2: View {
     }
     
     private func arrivalDelayText(actual: Date?, scheduled: Date?) -> String {
-        guard let actual = actual, let scheduled = scheduled else { return "" }
-        let delayMinutes = Int(actual.timeIntervalSince(scheduled) / 60)
-        if delayMinutes > 0 {
-            return "+\(delayMinutes)m delay"
-        } else if delayMinutes < -1 {
-            return "\(abs(delayMinutes))m early"
-        }
-        return "" // Don't show anything for on-time or 1 minute early
+        StopV2.arrivalDelayBadge(arrival: actual, scheduledArrival: scheduled)
     }
     
     private func departureDelayText(actual: Date, scheduled: Date?) -> String {
