@@ -165,6 +165,12 @@ Get trains between stations with filtering:
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
+#### Recent Departures
+```
+GET /api/v2/trains/recent-departures?from=NY&data_sources=NJT&limit=50
+```
+Recent departures from a station without a destination/route filter.
+
 #### Train Details
 ```
 GET /api/v2/trains/{train_id}?date=2025-09-15&refresh=true
@@ -488,7 +494,7 @@ The scheduler supports multiple replicas:
 - **MetraCollector**: Unified Metra collector using GTFS-RT feeds (Central Time)
 - **WMATACollector**: DC Metro collector using WMATA REST API
 - **MTA Common**: Shared MTA logic for stop merging, departure inference, completion detection
-- **JustInTimeUpdateService**: On-demand data refresh (supports NJT, Amtrak, PATH)
+- **JustInTimeUpdateService**: On-demand data refresh with staleness checking (all data sources)
 
 **Note**: PATCO uses GTFS static schedules only (no dedicated collector).
 

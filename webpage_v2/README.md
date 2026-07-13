@@ -57,7 +57,7 @@ npm run preview
 ```
 src/
 ├── components/       # Reusable UI components
-├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, TripDetails, TripHistory, RouteStatus, NetworkStatus, Favorites)
+├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, StationDetails, TripDetails, TripHistory, RouteStatus, NetworkStatus, Favorites)
 ├── services/        # API client (with caching) and localStorage wrapper
 ├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
