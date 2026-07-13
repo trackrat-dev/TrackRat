@@ -739,8 +739,9 @@ class TestAmtrakCompletionOnExpiry:
     async def test_expires_when_penultimate_not_departed(
         self, db_session: AsyncSession, journey_collector
     ):
-        """Train disappears after 3 strikes WITHOUT penultimate departed →
-        backstop cannot fire; falls through to is_expired."""
+        """Train that departed its origin then vanished mid-run after 3
+        strikes, WITHOUT the penultimate stop departed → completion backstop
+        cannot fire; falls through to is_expired."""
         scheduled_departure = now_et().replace(
             hour=14, minute=30, second=0, microsecond=0
         )
@@ -764,13 +765,25 @@ class TestAmtrakCompletionOnExpiry:
         db_session.add(journey)
         await db_session.flush()
 
-        # Penultimate has NOT departed — backstop returns without marking complete.
+        # Origin HAS departed (train is genuinely mid-run), so expiry is
+        # allowed; but the penultimate stop has NOT departed, so the
+        # completion backstop abstains and the row must fall through to
+        # is_expired.
+        origin = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+            has_departed_station=True,
+        )
         penultimate = JourneyStop(
             journey_id=journey.id,
             journey_date=journey.journey_date,
             station_code="BWI",
             station_name="Baltimore-Washington Intl",
-            stop_sequence=0,
+            stop_sequence=1,
             scheduled_departure=scheduled_departure + timedelta(minutes=45),
             has_departed_station=False,
         )
@@ -779,11 +792,11 @@ class TestAmtrakCompletionOnExpiry:
             journey_date=journey.journey_date,
             station_code="WS",
             station_name="Washington Union",
-            stop_sequence=1,
+            stop_sequence=2,
             scheduled_arrival=scheduled_departure + timedelta(hours=1),
             has_departed_station=False,
         )
-        db_session.add_all([penultimate, terminal])
+        db_session.add_all([origin, penultimate, terminal])
         await db_session.flush()
 
         mock_client = AsyncMock()
@@ -800,6 +813,149 @@ class TestAmtrakCompletionOnExpiry:
             journey.is_completed is False
         ), "Without a departed penultimate stop, completion backstop must abstain"
         assert journey.is_expired is True, (
-            "When the backstop cannot fire, the row must still be expired so "
-            "future passes stop refreshing it"
+            "A train that departed its origin and then vanished mid-run must "
+            "still expire when the completion backstop cannot fire"
         )
+
+    @pytest.mark.asyncio
+    async def test_does_not_expire_before_origin_departed(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """Train missing from the feed while still at/before its origin must
+        NOT be expired.
+
+        Regression for Amtrak A129 (issue #1489): the feed drops trains during
+        the normal pre-departure gap, and expiring here permanently blocks JIT
+        refreshes (JustInTimeUpdateService.needs_refresh), so the row would
+        never capture its real departure once it reappears.
+        """
+        scheduled_departure = now_et().replace(
+            hour=16, minute=24, second=0, microsecond=0
+        )
+
+        journey = TrainJourney(
+            train_id="A129",
+            journey_date=date.today(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=2,  # one more strike trips the threshold
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Origin has NOT departed — the train is still waiting to leave NYP.
+        origin = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+            has_departed_station=False,
+        )
+        terminal = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="WS",
+            station_name="Washington Union",
+            stop_sequence=1,
+            scheduled_arrival=scheduled_departure + timedelta(hours=3),
+            has_departed_station=False,
+        )
+        db_session.add_all([origin, terminal])
+        await db_session.flush()
+
+        # Train briefly absent from the Amtraker feed (pre-departure churn).
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get_all_trains.return_value = {}
+        journey_collector.client = mock_client
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.api_error_count >= 3
+        assert journey.is_completed is False
+        assert journey.is_expired is False, (
+            "A train that has not departed its origin must stay refreshable so "
+            "a transient pre-departure feed gap cannot strand it"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reobservation_clears_expiry(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A previously-expired journey that reappears in the feed is
+        un-expired on the next successful collection, so JIT can resume
+        refreshing it."""
+        scheduled_departure = now_et().replace(
+            hour=14, minute=30, second=0, microsecond=0
+        )
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=date.today(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,  # stranded by an earlier transient feed gap
+            api_error_count=5,
+            update_count=2,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # The train is back in the live feed, having departed NY Penn.
+        train_data = create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="NYP",
+                    name="New York Penn Station",
+                    sch_dep="2026-07-13T14:30:00-04:00",
+                    actual_dep="2026-07-13T14:33:00-04:00",
+                    status="Departed",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr="2026-07-13T18:00:00-04:00",
+                    status="Enroute",
+                ),
+            ],
+        )
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get_all_trains.return_value = {"2150": [train_data]}
+        journey_collector.client = mock_client
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.is_expired is False, (
+            "A train seen in the feed again must be un-expired so JIT can keep "
+            "refreshing it"
+        )
+        assert journey.api_error_count == 0
+        assert journey.update_count == 3
