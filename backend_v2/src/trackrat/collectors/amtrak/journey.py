@@ -816,20 +816,37 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
     async def _has_departed_origin(
         self, session: AsyncSession, journey: TrainJourney
     ) -> bool:
-        """Return True if the journey's origin stop has been departed.
+        """Return True if the journey has genuinely started its run.
 
-        Distinguishes a train that has genuinely started its run (safe to
-        expire once it vanishes from the feed) from one still waiting at or
-        before its origin, whose absence is just the normal pre-departure feed
-        gap and must stay refreshable.
+        Distinguishes a train that has departed its origin (safe to expire
+        once it vanishes from the feed) from one still waiting at or before its
+        origin, whose absence is just the normal pre-departure feed gap and
+        must stay refreshable.
+
+        Uses durable signals rather than the lowest-``stop_sequence`` stop: the
+        Amtraker feed trims already-passed stations and this collector deletes
+        stops no longer in the feed (``amtrak_stale_stops_removed``), so once a
+        mid-run train's origin is trimmed the lowest remaining stop is a
+        *future* stop whose ``has_departed_station`` is ``False``. That would
+        make a genuinely-departed, now-lost train look pre-departure and leave
+        it unexpired forever. ``journey.actual_departure`` (set at discovery
+        when the origin departs) persists on the row regardless of stop
+        trimming; the surviving-departed-stop check is a fallback for rows that
+        never captured it.
         """
-        first_stop = await session.scalar(
+        if journey.actual_departure is not None:
+            return True
+        departed_stop = await session.scalar(
             select(JourneyStop)
-            .where(JourneyStop.journey_id == journey.id)
-            .order_by(JourneyStop.stop_sequence.asc())
+            .where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.has_departed_station.is_(True),
+                )
+            )
             .limit(1)
         )
-        return bool(first_stop and first_stop.has_departed_station)
+        return departed_stop is not None
 
     async def _attempt_completion_on_expiry(
         self,

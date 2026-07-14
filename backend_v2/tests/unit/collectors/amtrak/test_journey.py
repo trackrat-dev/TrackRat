@@ -892,6 +892,87 @@ class TestAmtrakCompletionOnExpiry:
         )
 
     @pytest.mark.asyncio
+    async def test_expires_when_origin_stop_trimmed_but_actual_departure_set(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """Mid-run train whose origin stop was trimmed from the feed must still
+        expire when it vanishes.
+
+        The Amtraker feed drops already-passed stations and this collector
+        deletes stops no longer in the feed, so a genuinely-departed train can
+        be left with only future stops in the DB — every remaining
+        ``has_departed_station`` is ``False`` and the lowest ``stop_sequence``
+        is an upcoming stop. Expiry must key off the durable
+        ``journey.actual_departure`` (set at discovery), not the first remaining
+        stop, or a lost mid-run train would look pre-departure and never retire.
+        """
+        scheduled_departure = now_et().replace(
+            hour=14, minute=30, second=0, microsecond=0
+        )
+
+        journey = TrainJourney(
+            train_id="A183",
+            journey_date=date.today(),
+            line_code="NEC",
+            line_name="Acela",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=scheduled_departure,
+            # Origin departure captured earlier by discovery; persists on the
+            # row even after the origin stop is trimmed from the feed.
+            actual_departure=scheduled_departure + timedelta(minutes=2),
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=2,  # one more strike trips the threshold
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Only future stops survive in the DB — the feed trimmed the origin and
+        # every already-departed station, so none has has_departed_station=True.
+        upcoming_1 = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="PHL",
+            station_name="Philadelphia",
+            stop_sequence=3,
+            scheduled_arrival=scheduled_departure + timedelta(hours=1),
+            has_departed_station=False,
+        )
+        terminal = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="WS",
+            station_name="Washington Union",
+            stop_sequence=4,
+            scheduled_arrival=scheduled_departure + timedelta(hours=3),
+            has_departed_station=False,
+        )
+        db_session.add_all([upcoming_1, terminal])
+        await db_session.flush()
+
+        # Train has vanished from the feed entirely (genuinely lost mid-run).
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get_all_trains.return_value = {}
+        journey_collector.client = mock_client
+
+        await journey_collector.collect_journey_details(db_session, journey)
+        await db_session.refresh(journey)
+
+        assert journey.api_error_count >= 3
+        assert journey.is_completed is False
+        assert journey.is_expired is True, (
+            "A departed train whose origin stop was trimmed from the feed must "
+            "still expire — actual_departure is the durable departed signal"
+        )
+
+    @pytest.mark.asyncio
     async def test_reobservation_clears_expiry(
         self, db_session: AsyncSession, journey_collector
     ):
