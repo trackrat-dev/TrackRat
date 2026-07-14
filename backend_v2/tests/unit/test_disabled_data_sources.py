@@ -165,3 +165,34 @@ class TestEnsureSourceEnabled:
 
         # Should not raise.
         ensure_source_enabled(None)
+
+
+class TestComposePassthrough:
+    """Guard the deployment plumbing, not just the Python logic (issue #1484).
+
+    The startup script writes TRACKRAT_DISABLED_DATA_SOURCES into the compose
+    project's .env file, but a compose .env only interpolates ${VAR} references
+    in docker-compose.yml — it does NOT inject env into containers. Unless the
+    api service's environment block explicitly passes the variable through, the
+    container never sees it and every "disabled" collector silently runs. That
+    exact gap shipped with the feature (2a1d231) and went unnoticed in
+    production for months because the only signal was the *absence* of a log
+    line. This test fails if the passthrough is ever dropped again.
+    """
+
+    def test_api_service_passes_disabled_sources_through(self):
+        from pathlib import Path
+
+        compose = Path(__file__).parents[2] / "docker-compose.yml"
+        assert compose.exists(), f"expected compose file at {compose}"
+        content = compose.read_text()
+
+        assert (
+            "TRACKRAT_DISABLED_DATA_SOURCES: ${TRACKRAT_DISABLED_DATA_SOURCES"
+            in content
+        ), (
+            "backend_v2/docker-compose.yml must pass TRACKRAT_DISABLED_DATA_SOURCES "
+            "through to the api container (environment block). Without it the "
+            "instance-level flag never reaches Settings and disabled-source "
+            "collectors run anyway — see issue #1484."
+        )
