@@ -13,6 +13,9 @@ import MapKit
 /// Tapping a map segment or a route row presents `RouteStatusView` as a sheet.
 struct TrainSystemDetailView: View {
     let system: TrainSystem
+    /// Service-alert IDs to focus on when opened from a tapped service-alert
+    /// push (scrolls to and expands the matching alert).
+    let focusedAlertIds: [String]
 
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @ObservedObject private var alertService = AlertSubscriptionService.shared
@@ -20,6 +23,14 @@ struct TrainSystemDetailView: View {
 
     @State private var region: MKCoordinateRegion
     @State private var serviceAlerts: [V2ServiceAlert] = []
+    /// Gates the Service Alerts section so it is first constructed only after
+    /// `loadServiceAlerts()` completes. `ServiceAlertsSection` seeds its
+    /// `@State selectedFilter` (the focused tab) from `alerts` once, in `init`.
+    /// Rendering it while `serviceAlerts` is still empty would lock the tab to
+    /// `.active`, hiding a focused push-target alert that belongs on Upcoming.
+    @State private var serviceAlertsLoaded = false
+    /// One-shot guard so the deep-link scroll to a focused alert fires only once.
+    @State private var didScrollToFocusedAlert = false
     @State private var showingPaywall = false
     @State private var routeStatusContext: RouteStatusContext?
     @State private var feedbackRequest: FeedbackSheetRequest?
@@ -32,18 +43,27 @@ struct TrainSystemDetailView: View {
     /// Initialized in `.task`; consumed when the user picks any active day.
     @State private var draftSubscription: RouteAlertSubscription?
 
-    init(system: TrainSystem) {
+    init(system: TrainSystem, focusedAlertIds: [String] = []) {
         self.system = system
+        self.focusedAlertIds = focusedAlertIds
         self._region = State(initialValue: system.defaultMapRegion)
     }
 
+    /// ScrollView anchor id for the Service Alerts section (deep-link target).
+    private static let serviceAlertsAnchor = "serviceAlerts"
+
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(spacing: 16) {
                 mapSection
                 OperationsSummaryView(scope: .network, dataSource: system.dataSource)
-                if system.hasServiceAlertFeed {
-                    ServiceAlertsSection(alerts: serviceAlerts)
+                if system.hasServiceAlertFeed && serviceAlertsLoaded {
+                    ServiceAlertsSection(
+                        alerts: serviceAlerts,
+                        focusedAlertIds: Set(focusedAlertIds)
+                    )
+                    .id(Self.serviceAlertsAnchor)
                 }
                 routesSection
                 alertsSection
@@ -76,6 +96,17 @@ struct TrainSystemDetailView: View {
             await mapViewModel.fetchCongestionData(dataSource: system.dataSource)
             await loadServiceAlerts()
         }
+        .onChange(of: serviceAlertsLoaded) { _, isLoaded in
+            // When opened from a tapped service-alert push, jump to the alert
+            // once its section has actually rendered. The anchored section is
+            // gated on serviceAlertsLoaded, so scroll from here (after the
+            // render) rather than inline in .task, where the anchor wouldn't
+            // exist yet. One-shot.
+            guard isLoaded, system.hasServiceAlertFeed, !focusedAlertIds.isEmpty,
+                  !didScrollToFocusedAlert else { return }
+            didScrollToFocusedAlert = true
+            withAnimation { proxy.scrollTo(Self.serviceAlertsAnchor, anchor: .top) }
+        }
         .onDisappear {
             guard !editedSubscriptions.isEmpty else { return }
             for (_, edited) in editedSubscriptions {
@@ -92,6 +123,7 @@ struct TrainSystemDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .feedbackSheet(request: $feedbackRequest)
+        }
     }
 
     // MARK: - Sections
@@ -349,6 +381,10 @@ struct TrainSystemDetailView: View {
 
     private func loadServiceAlerts() async {
         guard system.hasServiceAlertFeed else { return }
+        // Reveal the section once loading finishes, whether it succeeded or not,
+        // so a failed fetch still shows the (empty) section rather than hiding
+        // it forever — and so the section is first built against loaded alerts.
+        defer { serviceAlertsLoaded = true }
         do {
             serviceAlerts = try await APIService.shared.fetchServiceAlerts(dataSource: system.dataSource)
         } catch {

@@ -240,7 +240,7 @@ struct MapContainerView: View {
                    context.toStationCode == nil,
                    let system = TrainSystem(rawValue: context.dataSource) {
                     NavigationStack {
-                        TrainSystemDetailView(system: system)
+                        TrainSystemDetailView(system: system, focusedAlertIds: context.focusedAlertIds)
                     }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
