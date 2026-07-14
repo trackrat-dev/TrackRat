@@ -117,6 +117,66 @@ class TestArrivalAt:
         journey = _make_journey(data_source="NJT", stops=[stop])
         assert _arrival_at(journey, "HB") == updated_dep
 
+    def test_njt_terminal_skips_max_and_uses_arrival_estimate(self) -> None:
+        """Issue #1492 applied to share previews: at the genuine terminal of a
+        fully-sequenced NJT journey, ``DEP_TIME`` can be a later turnaround
+        departure. The max() must not promote it into the shared arrival."""
+        arrival_estimate = datetime(2026, 4, 24, 21, 30, tzinfo=UTC)  # live TIME
+        turnaround_dep = datetime(2026, 4, 24, 21, 50, tzinfo=UTC)  # later DEP_TIME
+        origin = JourneyStop(
+            station_code="DV",
+            station_name="Dover",
+            stop_sequence=0,
+            scheduled_departure=datetime(2026, 4, 24, 20, 30, tzinfo=UTC),
+        )
+        terminal = JourneyStop(
+            station_code="HB",
+            station_name="Hoboken",
+            stop_sequence=1,
+            updated_arrival=arrival_estimate,
+            updated_departure=turnaround_dep,
+        )
+        journey = _make_journey(data_source="NJT", stops=[origin, terminal])
+        assert (
+            _arrival_at(journey, "HB") == arrival_estimate
+        ), "Terminal arrival in share copy was inflated by the turnaround DEP_TIME"
+
+    def test_njt_unsequenced_terminal_conservatively_keeps_max(self) -> None:
+        """A not-yet-fully-collected journey (NULL stop_sequence) can't trust
+        positional terminal detection (terminal_stop_index returns None), so the
+        canonical max() stays in effect even at the terminal-coded stop."""
+        updated_arr = datetime(2026, 4, 24, 21, 30, tzinfo=UTC)
+        updated_dep = datetime(2026, 4, 24, 21, 50, tzinfo=UTC)
+        stop = JourneyStop(
+            station_code="HB",
+            station_name="Hoboken",
+            updated_arrival=updated_arr,
+            updated_departure=updated_dep,
+        )
+        journey = _make_journey(data_source="NJT", stops=[stop])
+        assert _arrival_at(journey, "HB") == updated_dep
+
+    def test_njt_intermediate_stop_keeps_max_on_sequenced_journey(self) -> None:
+        """The terminal exemption must not leak to intermediate stops: there the
+        max() is what surfaces the live delayed estimate over the schedule."""
+        schedule_dep = datetime(2026, 4, 24, 21, 10, tzinfo=UTC)  # DEP_TIME
+        live_estimate = datetime(2026, 4, 24, 21, 25, tzinfo=UTC)  # TIME, delayed
+        intermediate = JourneyStop(
+            station_code="NP",
+            station_name="Newark Penn",
+            stop_sequence=1,
+            updated_arrival=live_estimate,
+            updated_departure=schedule_dep,
+        )
+        terminal = JourneyStop(
+            station_code="HB",
+            station_name="Hoboken",
+            stop_sequence=2,
+            scheduled_arrival=datetime(2026, 4, 24, 21, 45, tzinfo=UTC),
+        )
+        journey = _make_journey(data_source="NJT", stops=[intermediate, terminal])
+        assert _arrival_at(journey, "NP") == live_estimate
+
     def test_returns_none_when_no_matching_stop_for_non_terminal(self) -> None:
         """User asked about XYZ which isn't a stop on this journey: return None,
         don't lie with the terminal time."""

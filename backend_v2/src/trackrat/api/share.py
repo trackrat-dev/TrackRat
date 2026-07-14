@@ -38,6 +38,7 @@ from trackrat.db.engine import get_db
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.share_image import render_share_image
 from trackrat.utils.time import normalize_to_et, now_et
+from trackrat.utils.train import terminal_stop_index
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/share", tags=["share"], include_in_schema=False)
@@ -153,9 +154,7 @@ def _format_share_copy(
 
     eta = _arrival_at(journey, dest_code)
     if eta is None:
-        return _ShareCopy(
-            title=title, headline=headline, status="View train details"
-        )
+        return _ShareCopy(title=title, headline=headline, status="View train details")
 
     time_str = _format_clock_time(normalize_to_et(eta))
     if journey.observation_type == "SCHEDULED":
@@ -229,7 +228,11 @@ def _arrival_at(journey: TrainJourney, station_code: str) -> datetime | None:
     Falls through actual → updated → scheduled. NJT's ``updated_*`` fields
     have inverted semantics at intermediate stops (see JourneyStop docs);
     we take ``max(updated_arrival, updated_departure)`` as the live estimate
-    for that case, which is harmless for other providers.
+    for that case, which is harmless for other providers. The genuine terminal
+    stop (per ``terminal_stop_index``) is exempt from the ``max()``: NJT can
+    populate its ``DEP_TIME`` with a later turnaround departure, which would
+    inflate the shared arrival time — the same #1492 fix applied by
+    ``/trains/{train_id}``.
 
     If ``station_code`` is the journey's terminal and there's no matching
     ``JourneyStop`` (rare — happens for journeys without per-stop records
@@ -237,12 +240,14 @@ def _arrival_at(journey: TrainJourney, station_code: str) -> datetime | None:
     station_code with no matching stop, returns ``None`` so the caller
     can render a generic status rather than the wrong time.
     """
-    for stop in journey.stops or []:
+    sorted_stops = sorted(journey.stops or [], key=lambda s: s.stop_sequence or 0)
+    terminal_index = terminal_stop_index(sorted_stops, journey.terminal_station_code)
+    for index, stop in enumerate(sorted_stops):
         if stop.station_code != station_code:
             continue
         if stop.actual_arrival:
             return stop.actual_arrival
-        if journey.data_source == "NJT":
+        if journey.data_source == "NJT" and index != terminal_index:
             updated = [t for t in (stop.updated_arrival, stop.updated_departure) if t]
             if updated:
                 return max(updated)
