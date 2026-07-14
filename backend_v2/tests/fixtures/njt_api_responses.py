@@ -33,6 +33,7 @@ class StopBuilder:
         cancelled: bool = False,
         cancelled_spelling: str = "CANCELLED",
         stop_status: Optional[str] = None,
+        sched_dep_date: Optional[str] = None,
     ) -> MagicMock:
         """Build a mock stop object matching NJT API structure.
 
@@ -52,6 +53,11 @@ class StopBuilder:
             stop_status: Explicit STOP_STATUS override (wins over `cancelled`).
                 Real NJT values include "ON TIME", "ONTIME", "LATE",
                 "ALL ABOARD". Defaults to "ON TIME".
+            sched_dep_date: Immutable scheduled departure string → SCHED_DEP_DATE
+                field. Defaults to None (many NJT responses omit it). Note the
+                semantic difference at the origin: DEP_TIME there is a *live*
+                estimate that moves with delays, while SCHED_DEP_DATE never
+                changes (issue #1496).
 
         Returns:
             Mock object matching NJT API stop structure with correct field semantics:
@@ -97,7 +103,7 @@ class StopBuilder:
         stop.PICKUP = None
         stop.DROPOFF = None
         stop.SCHED_ARR_DATE = None
-        stop.SCHED_DEP_DATE = None
+        stop.SCHED_DEP_DATE = sched_dep_date
 
         return stop
 

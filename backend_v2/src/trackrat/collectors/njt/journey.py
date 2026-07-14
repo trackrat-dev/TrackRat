@@ -627,9 +627,24 @@ class JourneyCollector(BaseJourneyCollector):
         # IMPORTANT: If the journey doesn't have complete data yet, skip this check
         # because discovery might have recorded the wrong origin/departure time
         if stored_journey.has_complete_journey:
-            if api_train_data.STOPS and api_train_data.STOPS[0].DEP_TIME:
+            if api_train_data.STOPS and (
+                api_train_data.STOPS[0].SCHED_DEP_DATE
+                or api_train_data.STOPS[0].DEP_TIME
+            ):
                 first_stop = api_train_data.STOPS[0]
-                dep_time = first_stop.DEP_TIME
+                # At the origin, DEP_TIME is the live departure estimate that
+                # moves with delays (see normalize_njt_stop_times), so comparing
+                # it against the stored schedule falsely rejects any train
+                # delayed >10 minutes *before* departure. The departed-stop
+                # guard in collect_journey_details never engages for such a
+                # train (no stop has departed, and the mismatch path skips stop
+                # updates so DEPARTED=YES is never persisted), so it strikes
+                # out, expires, and flaps via discovery reactivation for the
+                # whole run (issue #1496). SCHED_DEP_DATE is the immutable
+                # schedule, so prefer a schedule-to-schedule comparison;
+                # DEP_TIME remains the fallback for responses that omit
+                # SCHED_DEP_DATE.
+                dep_time = first_stop.SCHED_DEP_DATE or first_stop.DEP_TIME
                 if dep_time is not None:
                     api_departure = parse_njt_time(dep_time)
 
@@ -810,7 +825,9 @@ class JourneyCollector(BaseJourneyCollector):
                             has_complete_journey=stored_journey.has_complete_journey,
                             stored_departure_tz_info=str(stored_departure.tzinfo),
                             api_departure_tz_info=str(api_departure.tzinfo),
-                            raw_api_dep_time=dep_time,
+                            raw_api_compared_time=dep_time,
+                            raw_api_dep_time=first_stop.DEP_TIME,
+                            raw_api_sched_dep_date=first_stop.SCHED_DEP_DATE,
                         )
                         return JourneyMatchResult.DEPARTURE_TIME_MISMATCH
         else:
