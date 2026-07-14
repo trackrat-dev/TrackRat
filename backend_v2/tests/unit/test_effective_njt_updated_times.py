@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from trackrat.models.database import JourneyStop
-from trackrat.utils.train import effective_njt_updated_times
+from trackrat.utils.train import effective_njt_updated_times, terminal_stop_index
 
 # Realistic delayed-train sample times (HH:MM in UTC; ET semantics don't matter
 # for arithmetic but production data is always tz-aware).
@@ -187,6 +187,58 @@ class TestNJTTerminalStop:
         arr, dep = effective_njt_updated_times(stop, "AMTRAK", is_terminal=True)
         assert arr == arrival
         assert dep == departure
+
+
+def _seq_stop(station_code: str, stop_sequence: int | None) -> JourneyStop:
+    """A JourneyStop carrying only the fields terminal_stop_index reads."""
+    return JourneyStop(station_code=station_code, stop_sequence=stop_sequence)
+
+
+class TestTerminalStopIndex:
+    """Regression-protects the PR #1495 review: the ``/trains/{train_id}``
+    endpoint must not treat the last ``stop_sequence``-sorted row as terminal on
+    a not-yet-fully-collected NJT journey. Such journeys have NULL stop_sequence
+    rows (which the endpoint's ``s.stop_sequence or 0`` sort collapses to 0,
+    leaving load order) and a placeholder ``terminal_station_code``, so the last
+    sorted row can be an intermediate stop. Flagging it terminal would skip the
+    NJT ``max()`` and expose the scheduled DEP_TIME, hiding that stop's delay."""
+
+    def test_fully_sequenced_last_stop_matches_terminal_is_terminal(self) -> None:
+        # Normal fully-collected shape: contiguous sequences ending at the
+        # station recorded as terminal_station_code.
+        stops = [_seq_stop("DV", 0), _seq_stop("NP", 1), _seq_stop("NY", 2)]
+        assert terminal_stop_index(stops, "NY") == 2
+
+    def test_null_sequence_rows_disable_positional_detection(self) -> None:
+        # Discovered-but-not-collected: every row NULL. Even though the last
+        # row's code matches the (placeholder) terminal, the unreliable ordering
+        # means we must NOT flag any stop terminal.
+        stops = [_seq_stop("NY", None), _seq_stop("NP", None)]
+        assert terminal_stop_index(stops, "NY") is None
+
+    def test_partial_sequence_disables_positional_detection(self) -> None:
+        # A single NULL among real sequences (mid-collection) is enough to
+        # distrust the ordering.
+        stops = [_seq_stop("DV", 0), _seq_stop("NP", 1), _seq_stop("NY", None)]
+        assert terminal_stop_index(stops, "NY") is None
+
+    def test_last_stop_not_matching_terminal_code_returns_none(self) -> None:
+        # Sequenced, but the last-by-sequence stop isn't the recorded terminal
+        # (e.g. a malformed feed where scheduled-time sort diverges from API
+        # order). Safe: don't grant the terminal exemption.
+        stops = [_seq_stop("DV", 0), _seq_stop("NY", 1), _seq_stop("NP", 2)]
+        assert terminal_stop_index(stops, "NY") is None
+
+    def test_empty_stops_returns_none(self) -> None:
+        assert terminal_stop_index([], "NY") is None
+
+    def test_single_fully_sequenced_stop_matching_terminal(self) -> None:
+        assert terminal_stop_index([_seq_stop("NY", 0)], "NY") == 0
+
+    def test_none_terminal_code_returns_none(self) -> None:
+        # Defensive: a missing terminal code can't confirm any stop as terminal.
+        stops = [_seq_stop("DV", 0), _seq_stop("NY", 1)]
+        assert terminal_stop_index(stops, None) is None
 
 
 class TestNonNJTPassthrough:
