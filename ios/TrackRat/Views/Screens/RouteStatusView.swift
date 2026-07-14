@@ -43,8 +43,12 @@ struct RouteStatusView: View {
     /// Train selected for detail sheet
     @State private var selectedTrain: TrainV2?
 
+    /// Guards the one-shot scroll to a focused service alert from a tapped push
+    @State private var didScrollToFocusedAlert = false
+
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 16) {
                     mapSection
@@ -55,6 +59,7 @@ struct RouteStatusView: View {
                     historySections
                     departuresSection
                     serviceAlertsSection
+                        .id(Self.serviceAlertsAnchor)
                     alertSubscriptionSection
                     FeedbackButton(
                         screen: "route_status",
@@ -148,8 +153,21 @@ struct RouteStatusView: View {
                 PaywallView(context: .routeAlerts)
             }
             .feedbackSheet(request: $feedbackRequest)
+            .onChange(of: viewModel.isLoadingServiceAlerts) { _, isLoading in
+                // When opened from a tapped service-alert push, jump to the
+                // alert once its section has rendered (the anchored view only
+                // exists after loading finishes).
+                guard !isLoading, !context.focusedAlertIds.isEmpty, !didScrollToFocusedAlert else { return }
+                didScrollToFocusedAlert = true
+                withAnimation { proxy.scrollTo(Self.serviceAlertsAnchor, anchor: .top) }
+            }
+            }
         }
     }
+
+    /// ScrollView anchor id for the Service Alerts section (used to deep-link
+    /// to a tapped service-alert push).
+    private static let serviceAlertsAnchor = "serviceAlerts"
 
     // MARK: - Alert Subscription Section
 
@@ -416,7 +434,10 @@ struct RouteStatusView: View {
         if viewModel.isLoadingServiceAlerts && viewModel.hasServiceAlertSystems {
             // No skeleton for service alerts — they appear when ready
         } else if viewModel.hasServiceAlertSystems {
-            ServiceAlertsSection(alerts: viewModel.serviceAlerts)
+            ServiceAlertsSection(
+                alerts: viewModel.serviceAlerts,
+                focusedAlertIds: Set(context.focusedAlertIds)
+            )
         }
     }
 
@@ -1226,6 +1247,11 @@ final class RouteStatusViewModel: ObservableObject {
         // otherwise fall back to the context's static route IDs.
         let lineGtfsIds = enabledGtfsRouteIds
         let relevantRouteIds = lineGtfsIds.isEmpty ? context.gtfsRouteIds : lineGtfsIds
+        // Alerts the view was opened to focus on (from a tapped push) are always
+        // kept, even if their affected routes don't overlap this route — a
+        // system-wide advisory (empty affected_route_ids) would otherwise be
+        // filtered out, leaving the tapped alert missing from the page.
+        let focusedAlertIds = Set(context.focusedAlertIds)
         var allAlerts: [V2ServiceAlert] = []
 
         await withTaskGroup(of: [V2ServiceAlert].self) { group in
@@ -1238,7 +1264,8 @@ final class RouteStatusViewModel: ObservableObject {
                             return alerts
                         } else {
                             return alerts.filter { alert in
-                                !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
+                                focusedAlertIds.contains(alert.alertId)
+                                    || !Set(alert.affectedRouteIds).isDisjoint(with: relevantRouteIds)
                             }
                         }
                     } catch {

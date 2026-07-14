@@ -8,7 +8,27 @@ import SwiftUI
 /// the system supports alerts and loading has finished).
 struct ServiceAlertsSection: View {
     let alerts: [V2ServiceAlert]
-    @State private var selectedFilter: ServiceAlertFilter = .active
+    /// Alert IDs the section was opened to focus on (from a tapped push).
+    /// Focused cards start expanded and highlighted, and the initial tab is
+    /// chosen to contain a focused alert.
+    let focusedAlertIds: Set<String>
+    @State private var selectedFilter: ServiceAlertFilter
+
+    init(alerts: [V2ServiceAlert], focusedAlertIds: Set<String> = []) {
+        self.alerts = alerts
+        self.focusedAlertIds = focusedAlertIds
+        _selectedFilter = State(initialValue: Self.initialFilter(alerts: alerts, focusedAlertIds: focusedAlertIds))
+    }
+
+    /// Picks the initial tab: `.upcoming` only when a focused alert exists and
+    /// none of the focused alerts are active now; otherwise `.active` (the
+    /// default), matching prior behavior when nothing is focused.
+    static func initialFilter(alerts: [V2ServiceAlert], focusedAlertIds: Set<String>) -> ServiceAlertFilter {
+        guard !focusedAlertIds.isEmpty else { return .active }
+        let focused = alerts.filter { focusedAlertIds.contains($0.alertId) }
+        guard !focused.isEmpty else { return .active }
+        return focused.contains(where: { $0.isActiveNow }) ? .active : .upcoming
+    }
 
     var body: some View {
         let active = alerts
@@ -41,7 +61,7 @@ struct ServiceAlertsSection: View {
                     .padding(.vertical, 8)
             } else {
                 ForEach(visible) { alert in
-                    ServiceAlertCard(alert: alert)
+                    ServiceAlertCard(alert: alert, isFocused: focusedAlertIds.contains(alert.alertId))
                 }
             }
         }
@@ -67,7 +87,15 @@ enum ServiceAlertFilter: CaseIterable {
 
 struct ServiceAlertCard: View {
     let alert: V2ServiceAlert
-    @State private var isExpanded = false
+    let isFocused: Bool
+    @State private var isExpanded: Bool
+
+    init(alert: V2ServiceAlert, isFocused: Bool = false) {
+        self.alert = alert
+        self.isFocused = isFocused
+        // The alert the user tapped to get here starts expanded.
+        _isExpanded = State(initialValue: isFocused)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -126,6 +154,10 @@ struct ServiceAlertCard: View {
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.orange, lineWidth: isFocused ? 2 : 0)
+        )
     }
 
     private var alertTypeColor: Color {

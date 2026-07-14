@@ -13,6 +13,9 @@ import MapKit
 /// Tapping a map segment or a route row presents `RouteStatusView` as a sheet.
 struct TrainSystemDetailView: View {
     let system: TrainSystem
+    /// Service-alert IDs to focus on when opened from a tapped service-alert
+    /// push (scrolls to and expands the matching alert).
+    let focusedAlertIds: [String]
 
     @StateObject private var mapViewModel = CongestionMapViewModel()
     @ObservedObject private var alertService = AlertSubscriptionService.shared
@@ -32,18 +35,27 @@ struct TrainSystemDetailView: View {
     /// Initialized in `.task`; consumed when the user picks any active day.
     @State private var draftSubscription: RouteAlertSubscription?
 
-    init(system: TrainSystem) {
+    init(system: TrainSystem, focusedAlertIds: [String] = []) {
         self.system = system
+        self.focusedAlertIds = focusedAlertIds
         self._region = State(initialValue: system.defaultMapRegion)
     }
 
+    /// ScrollView anchor id for the Service Alerts section (deep-link target).
+    private static let serviceAlertsAnchor = "serviceAlerts"
+
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(spacing: 16) {
                 mapSection
                 OperationsSummaryView(scope: .network, dataSource: system.dataSource)
                 if system.hasServiceAlertFeed {
-                    ServiceAlertsSection(alerts: serviceAlerts)
+                    ServiceAlertsSection(
+                        alerts: serviceAlerts,
+                        focusedAlertIds: Set(focusedAlertIds)
+                    )
+                    .id(Self.serviceAlertsAnchor)
                 }
                 routesSection
                 alertsSection
@@ -75,6 +87,10 @@ struct TrainSystemDetailView: View {
             }
             await mapViewModel.fetchCongestionData(dataSource: system.dataSource)
             await loadServiceAlerts()
+            // Opened from a tapped push: jump to the alert now that it's loaded.
+            if system.hasServiceAlertFeed, !focusedAlertIds.isEmpty {
+                withAnimation { proxy.scrollTo(Self.serviceAlertsAnchor, anchor: .top) }
+            }
         }
         .onDisappear {
             guard !editedSubscriptions.isEmpty else { return }
@@ -92,6 +108,7 @@ struct TrainSystemDetailView: View {
                 .presentationDragIndicator(.visible)
         }
         .feedbackSheet(request: $feedbackRequest)
+        }
     }
 
     // MARK: - Sections

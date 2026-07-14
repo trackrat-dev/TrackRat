@@ -177,7 +177,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                 lineId: serviceAlert["line_id"] as? String,
                 direction: serviceAlert["direction"] as? String,
                 fromStationCode: serviceAlert["from_station_code"] as? String,
-                toStationCode: serviceAlert["to_station_code"] as? String
+                toStationCode: serviceAlert["to_station_code"] as? String,
+                focusedAlertIds: serviceAlert["alert_ids"] as? [String] ?? []
             )
             Task { @MainActor in
                 if let appState = AppDelegate.appState {
@@ -584,13 +585,19 @@ struct RouteStatusContext: Identifiable, Equatable {
     let direction: String?
     let fromStationCode: String?
     let toStationCode: String?
+    /// Service-alert IDs to focus on when this context is opened from a
+    /// tapped service-alert push. When non-empty, `RouteStatusView` scrolls to
+    /// the Service Alerts section, keeps these alerts even if they'd be
+    /// route-filtered out, and expands the matching cards.
+    let focusedAlertIds: [String]
 
-    init(dataSource: String, lineId: String? = nil, direction: String? = nil, fromStationCode: String? = nil, toStationCode: String? = nil) {
+    init(dataSource: String, lineId: String? = nil, direction: String? = nil, fromStationCode: String? = nil, toStationCode: String? = nil, focusedAlertIds: [String] = []) {
         self.dataSource = dataSource
         self.lineId = lineId
         self.direction = direction
         self.fromStationCode = fromStationCode
         self.toStationCode = toStationCode
+        self.focusedAlertIds = focusedAlertIds
     }
 
     /// Human-readable title for the route
