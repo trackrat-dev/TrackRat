@@ -34,9 +34,9 @@ variable "domain" {
 }
 
 variable "machine_type" {
-  description = "GCE machine type"
+  description = "GCE machine type. e2-custom-2-4096 = 2 vCPU / 4 GB: keeps 2 vCPU for scheduler-burst headroom (prod peaks ~1.07 vCPU) while cutting RAM from 8 GB (only ~1.1 GB used) on the cheaper E2 family."
   type        = string
-  default     = "t2d-standard-2"
+  default     = "e2-custom-2-4096"
 }
 
 variable "disk_size_gb" {
