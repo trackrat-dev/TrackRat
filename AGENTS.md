@@ -8,10 +8,10 @@ TrackRat is an open-source transit tracking framework (GPLv3) with:
 - **Backend**: Python (FastAPI + PostgreSQL + APScheduler) in `backend_v2/`
 - **iOS**: Swift (SwiftUI + ActivityKit) in `ios/`
 - **Android**: Kotlin (Jetpack Compose + Hilt + Retrofit) in `android/`
-- **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/AGENTS.md`
-- **Backend docs**: See `backend_v2/AGENTS.md` for detailed backend architecture
-- **iOS docs**: See `ios/AGENTS.md` for iOS architecture and development
-- **Android docs**: See `android/AGENTS.md` for Android architecture and development
+- **Web**: React (TypeScript + Vite + Tailwind) in `webpage_v2/` - See `webpage_v2/CLAUDE.md`
+- **Backend docs**: See `backend_v2/CLAUDE.md` for detailed backend architecture
+- **iOS docs**: See `ios/CLAUDE.md` for iOS architecture and development
+- **Android docs**: See `android/CLAUDE.md` for Android architecture and development
 - **Infrastructure**: Terraform (Google Cloud Platform) in `infra_v2/`
 
 ## USE SUB-AGENTS FOR CONTEXT OPTIMIZATION
@@ -97,7 +97,7 @@ bash scripts/verify-deployment.sh https://staging.apiv2.trackrat.net [--no-wait]
 bash scripts/e2e-api-test.sh https://staging.apiv2.trackrat.net --no-random
 
 # 3. Check backend logs for errors
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py --env staging --errors
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env staging --errors
 ```
 
 When E2E fails, correlate with logs using the route and timestamp from the failure output.
@@ -415,7 +415,7 @@ terraform apply -var="environment=production"
 
 ## GCP Log Viewing (Cloud Environment)
 
-The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.Codex/settings.json` writes `GCP_SA_KEY_JSON` to `/root/.config/gcloud/service-account.json`. This hook is required for authentication.
+The cloud environment has a read-only GCP service account (`roles/logging.viewer` on `trackrat-v2`). The SessionStart hook in `.claude/settings.json` writes `GCP_SA_KEY_JSON` to `/root/.config/gcloud/service-account.json`. This hook is required for authentication.
 
 ### Setup (once per session)
 
@@ -443,26 +443,26 @@ There are two log sources per GCE instance. **Always use `cos_containers` for ap
 
 ### Query Logs (Helper Script)
 
-Use `.Codex/scripts/gcp-logs.py` — handles auth, hostname discovery, and structured log formatting:
+Use `.claude/scripts/gcp-logs.py` — handles auth, hostname discovery, and structured log formatting:
 
 ```bash
 # Recent staging app logs (default)
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py
 
 # Production app logs
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py --env production
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env production
 
 # Errors only
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py --errors
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --errors
 
 # Search for a pattern (searches event + message fields)
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py --search "departure_cache"
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --search "departure_cache"
 
 # Save to file for file-analyzer sub-agent
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py --output /tmp/logs.txt --limit 500
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --output /tmp/logs.txt --limit 500
 
 # Include raw Docker events (noisy, rarely needed)
-PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .Codex/scripts/gcp-logs.py --raw
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 ```
 
 ### Common Filters (for manual queries or --filter flag)

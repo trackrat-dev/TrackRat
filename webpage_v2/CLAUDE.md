@@ -4,11 +4,11 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 6.0 + PWA (vite-plugin-pwa)
-- **Build Tool**: Vite 8.0 (fast dev server, optimized builds)
+- **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa)
+- **Build Tool**: Vite 8.1 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
-- **Routing**: React Router DOM 7.16
+- **Routing**: React Router DOM 7.18
 - **Date Handling**: date-fns 4.4
 - **HTTP Client**: Native `fetch` (no axios)
 - **Maps**: MapLibre GL 5.22 + react-map-gl 8.1
@@ -24,7 +24,7 @@
 
 ### Component Structure
 - **Functional Components**: All components use hooks (no class components)
-- **Colocation**: Keep related logic together (no separate files for hooks)
+- **Colocation**: Keep related logic together; small view-models live in the view file. Genuinely shared hooks (e.g. `usePolling`, `useBackNavigation`) live in `utils/`.
 - **Composition**: Small, focused components composed into pages
 - **No Component Libraries**: All UI components are custom-built
 
@@ -85,13 +85,17 @@ className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2x
 - **Cache Strategy**: In-memory Map with timestamp checks
 
 ### Polling Pattern
+Use the shared `usePolling` hook (`utils/usePolling.ts`) rather than a raw `setInterval`.
+It runs the callback on mount then every 30s (`DEFAULT_POLLING_INTERVAL_MS`), passes an
+`AbortSignal` (aborted on unmount, dependency change, and each new tick), and pauses on
+hidden tabs / resumes on focus.
 ```tsx
-useEffect(() => {
-  const fetchData = async () => { /* ... */ };
-  fetchData();
-  const interval = setInterval(fetchData, 30000); // 30s
-  return () => clearInterval(interval);
-}, [dependencies]);
+import { usePolling } from '../utils/usePolling';
+
+usePolling(async (signal) => {
+  const data = await apiService.getDepartures(from, { to, signal });
+  setTrains(data.departures);
+}, [from, to]);
 ```
 
 ### Error Handling
@@ -128,23 +132,29 @@ webpage_v2/
 │   │   ├── TrackPredictionBar.tsx # Track/platform predictions
 │   │   ├── ShareButton.tsx  # Web Share API with clipboard fallback
 │   │   ├── LoadingSpinner.tsx
+│   │   ├── Skeleton.tsx     # Loading skeleton placeholders
 │   │   ├── DelayForecastCard.tsx  # Delay/cancellation forecast
 │   │   ├── FeedbackModal.tsx     # In-app feedback submission
 │   │   ├── HistoricalPerformance.tsx # Train history + track distribution
 │   │   ├── ServiceAlertBanner.tsx # MTA service alerts (collapsible)
 │   │   ├── TransferTripCard.tsx  # Multi-leg trip result card
 │   │   ├── RouteMap.tsx          # MapLibre GL route map
+│   │   ├── CongestionMap.tsx     # MapLibre GL network congestion map
 │   │   ├── SimilarTrainsPanel.tsx # Similar trains suggestion panel
 │   │   ├── TrainDistributionChart.tsx # Track distribution chart
 │   │   ├── DeparturesTimeline.tsx # Recent (dimmed) + NOW divider + upcoming departures (Route Status)
 │   │   ├── SubwayLineChips.tsx  # Subway line badge chips
+│   │   ├── StatusBadge.tsx      # Status badge (delayed/on-time/cancelled)
+│   │   ├── TimeDisplay.tsx      # Formatted time display
+│   │   ├── icons.tsx            # Shared SVG icon components
 │   │   ├── ErrorBoundary.tsx     # React error boundary
 │   │   └── ErrorMessage.tsx
 │   ├── pages/              # Route components
-│   │   ├── LandingPage.tsx        # Marketing landing (/, open-source section, iOS banner)
+│   │   ├── LandingPage.tsx        # Marketing landing (/, hero CTAs, open-source section, quick search)
 │   │   ├── TripSelectionPage.tsx  # Station selection (/departures)
 │   │   ├── TrainListPage.tsx      # Departures for route (filter, summary, date picker)
 │   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (predictions, history, alerts)
+│   │   ├── StationDetailsPage.tsx # Single-station view (/station/:code)
 │   │   ├── RouteStatusPage.tsx    # Route performance over time
 │   │   ├── NetworkStatusPage.tsx  # System-wide congestion overview
 │   │   ├── TripDetailsPage.tsx    # Multi-leg trip details view
@@ -162,13 +172,17 @@ webpage_v2/
 │   ├── types/
 │   │   └── index.ts        # TypeScript interfaces
 │   └── utils/
+│       ├── congestion.ts   # Congestion map data helpers
 │       ├── date.ts         # date-fns wrappers
 │       ├── formatting.ts   # Status badge classes
 │       ├── ratsense.ts     # AI journey predictions (RatSense)
-│       ├── routes.ts       # Route path helpers and URL builders
+│       ├── routes.ts       # Route path helpers + compact /trip URL builders
 │       ├── share.ts        # Web Share API helper + train URL builder
+│       ├── stationSelection.ts # Personalized "Your stations" picker (Home/Work/favorite/recent)
 │       ├── trainSearch.ts  # Train search and filtering logic
-│       └── trips.ts        # TripOption → Train conversion (shared by departures list + timeline)
+│       ├── trips.ts        # TripOption → Train conversion (shared by departures list + timeline)
+│       ├── useBackNavigation.ts # Back-navigation hook
+│       └── usePolling.ts   # Shared 30s polling hook (AbortSignal + visibility pause/resume)
 ├── public/                 # Static assets
 ├── index.html             # SPA entry point
 ├── vite.config.ts         # Build config (PWA, Workbox, path aliases)
@@ -177,11 +191,12 @@ webpage_v2/
 
 ## Routes
 
-- `/` - Landing page (marketing, open-source info, iOS banner)
+- `/` - Landing page (marketing, open-source info)
 - `/departures` - Trip selection (origin + destination pickers, last route restore)
 - `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts)
 - `/train/:trainId/:from?/:to?` - Train details (predictions, history, alerts)
-- `/trip` - Multi-leg trip details view (transfer connections)
+- `/station/:code` - Single-station details view
+- `/trip` - Multi-leg trip details view (transfer connections); compact URL `?date&legs&walk` with `legs` as `dataSource:trainId:boardingCode:alightingCode` (legacy `?trip=<JSON>` still parsed)
 - `/route/:from/:to` - Route performance history (7d/30d/90d)
 - `/status` - Network-wide congestion overview by system
 - `/favorites` - Manage favorite stations
@@ -218,23 +233,17 @@ const [trains, setTrains] = useState<Train[]>([]);
 const [loading, setLoading] = useState(true);
 const [error, setError] = useState<string | null>(null);
 
-useEffect(() => {
-  const fetchTrains = async () => {
-    try {
-      setLoading(true);
-      const data = await apiService.getDepartures(from, to);
-      setTrains(data.departures);
-      setError(null);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  fetchTrains();
-  const interval = setInterval(fetchTrains, 30000);
-  return () => clearInterval(interval);
+usePolling(async (signal) => {
+  try {
+    setLoading(true);
+    const data = await apiService.getDepartures(from, { to, signal });
+    setTrains(data.departures);
+    setError(null);
+  } catch (err) {
+    if ((err as Error).name !== 'AbortError') setError((err as Error).message);
+  } finally {
+    setLoading(false);
+  }
 }, [from, to]);
 ```
 
