@@ -528,18 +528,36 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 if not journey.is_completed:
                     await self._attempt_completion_on_expiry(session, journey)
 
-                if not journey.is_completed:
+                # Only expire a train that has actually started its run. A
+                # train still at or before its origin is missing from the feed
+                # only because of the normal pre-departure gap (the feed drops
+                # trains before they go active), so expiring it would be wrong:
+                # it permanently blocks JIT refreshes (see
+                # JustInTimeUpdateService.needs_refresh), and the row would
+                # never capture its real departure once it reappears.
+                if not journey.is_completed and await self._has_departed_origin(
+                    session, journey
+                ):
                     journey.is_expired = True
 
-                logger.warning(
-                    (
-                        "amtrak_train_marked_expired"
-                        if journey.is_expired
-                        else "amtrak_train_completed_on_expiry"
-                    ),
-                    train_id=journey.train_id,
-                    api_error_count=journey.api_error_count,
-                )
+                if journey.is_expired:
+                    logger.warning(
+                        "amtrak_train_marked_expired",
+                        train_id=journey.train_id,
+                        api_error_count=journey.api_error_count,
+                    )
+                elif journey.is_completed:
+                    logger.warning(
+                        "amtrak_train_completed_on_expiry",
+                        train_id=journey.train_id,
+                        api_error_count=journey.api_error_count,
+                    )
+                else:
+                    logger.debug(
+                        "amtrak_train_missing_before_departure",
+                        train_id=journey.train_id,
+                        api_error_count=journey.api_error_count,
+                    )
             await session.flush()
             return
 
@@ -551,6 +569,16 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 previous_count=journey.api_error_count,
             )
             journey.api_error_count = 0
+
+        # Seeing the train in the feed again clears any prior expiry. A
+        # transient feed gap must not leave a still-running journey stranded
+        # as expired, which would block every future JIT refresh.
+        if journey.is_expired:
+            logger.info(
+                "amtrak_train_unexpired_on_reobservation",
+                train_id=journey.train_id,
+            )
+            journey.is_expired = False
 
         # Update journey with latest data
         journey.last_updated_at = now_et()
@@ -784,6 +812,41 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 train_id=journey.train_id,
                 journey_id=journey.id,
             )
+
+    async def _has_departed_origin(
+        self, session: AsyncSession, journey: TrainJourney
+    ) -> bool:
+        """Return True if the journey has genuinely started its run.
+
+        Distinguishes a train that has departed its origin (safe to expire
+        once it vanishes from the feed) from one still waiting at or before its
+        origin, whose absence is just the normal pre-departure feed gap and
+        must stay refreshable.
+
+        Uses durable signals rather than the lowest-``stop_sequence`` stop: the
+        Amtraker feed trims already-passed stations and this collector deletes
+        stops no longer in the feed (``amtrak_stale_stops_removed``), so once a
+        mid-run train's origin is trimmed the lowest remaining stop is a
+        *future* stop whose ``has_departed_station`` is ``False``. That would
+        make a genuinely-departed, now-lost train look pre-departure and leave
+        it unexpired forever. ``journey.actual_departure`` (set at discovery
+        when the origin departs) persists on the row regardless of stop
+        trimming; the surviving-departed-stop check is a fallback for rows that
+        never captured it.
+        """
+        if journey.actual_departure is not None:
+            return True
+        departed_stop = await session.scalar(
+            select(JourneyStop)
+            .where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.has_departed_station.is_(True),
+                )
+            )
+            .limit(1)
+        )
+        return departed_stop is not None
 
     async def _attempt_completion_on_expiry(
         self,
