@@ -30,6 +30,7 @@ from trackrat.services.congestion_types import (
 )
 from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import ensure_timezone_aware, now_et
+from trackrat.utils.train import effective_njt_updated_times
 
 logger = get_logger(__name__)
 
@@ -119,7 +120,23 @@ def _stop_pairs_cte(ds_filter: str) -> str:
             js.station_code as from_station,
             js.actual_departure as from_actual_departure,
             js.actual_arrival as from_actual_arrival,
-            js.updated_departure as from_updated_departure,
+            -- NJT inversion correction (issue #1503): at NJT intermediate
+            -- stops updated_departure is the immutable schedule (DEP_TIME)
+            -- and the live delayed estimate is in updated_arrival (TIME).
+            -- Consuming raw updated_departure as the segment departure
+            -- attributed a delayed train's full lateness to every segment
+            -- it hadn't run yet. GREATEST() is the SQL twin of
+            -- utils/train.effective_njt_updated_times; the from-stop of a
+            -- pair is never the journey terminal (rows without a to_station
+            -- are filtered by every consumer), so no terminal exemption is
+            -- needed here.
+            CASE
+                WHEN tj_pre.data_source = 'NJT'
+                     AND js.updated_departure IS NOT NULL
+                     AND js.updated_arrival IS NOT NULL
+                THEN GREATEST(js.updated_departure, js.updated_arrival)
+                ELSE js.updated_departure
+            END as from_updated_departure,
             js.updated_arrival as from_updated_arrival,
             js.scheduled_departure as from_scheduled_departure,
             LEAD(js.station_code) OVER w as to_station,
@@ -483,9 +500,9 @@ class CongestionAnalyzer:
                 -- For MTA (subway/LIRR/MNR), GTFS-RT often omits departure
                 -- times at intermediate stops. Fall back to actual_arrival
                 -- as a proxy (dwell time is negligible for rapid transit).
-                -- updated_arrival/updated_departure are live estimates from
-                -- provider APIs, filling gaps where actual times are NULL
-                -- (e.g. NJT stops the train hasn't reached yet).
+                -- updated_arrival/updated_departure are live estimates for
+                -- most providers; for NJT, from_updated_departure is already
+                -- inversion-corrected in the stop_pairs CTE (issue #1503).
                 EXTRACT(EPOCH FROM (
                     COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) -
                     COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
@@ -1062,26 +1079,28 @@ class CongestionAnalyzer:
                 from_stop = sorted_stops[i]
                 to_stop = sorted_stops[i + 1]
 
-                # Skip if missing real-time data. Only use actual/updated (live
-                # estimates), never scheduled — scheduled times would produce
-                # misleading "on-time" congestion factors for delayed trains.
-                if not all(
-                    [
-                        from_stop.station_code,
-                        to_stop.station_code,
-                        from_stop.actual_departure or from_stop.updated_departure,
-                        to_stop.actual_arrival or to_stop.updated_arrival,
-                    ]
-                ):
-                    continue
-
-                # Use actual times when available, fall back to updated (live estimate)
-                departure_time = (
-                    from_stop.actual_departure or from_stop.updated_departure
-                )
+                # Use actual times when available, fall back to updated (live
+                # estimate) — never scheduled, which would produce misleading
+                # "on-time" congestion factors for delayed trains.
+                # NJT inversion correction (issue #1503): raw
+                # updated_departure at NJT intermediate stops is the schedule,
+                # not a live estimate — from_stop always has a to_stop after
+                # it here, so it is never the terminal and the intermediate
+                # max() semantics apply.
+                departure_time = from_stop.actual_departure
+                if not departure_time:
+                    _, departure_time = effective_njt_updated_times(
+                        from_stop, journey.data_source
+                    )
                 arrival_time = to_stop.actual_arrival or to_stop.updated_arrival
 
-                if not departure_time or not arrival_time:
+                # Skip if missing real-time data
+                if (
+                    not from_stop.station_code
+                    or not to_stop.station_code
+                    or not departure_time
+                    or not arrival_time
+                ):
                     continue
                 # Ensure timezone awareness
                 departure_time = ensure_timezone_aware(departure_time)

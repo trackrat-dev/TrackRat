@@ -721,8 +721,11 @@ class TestCongestionAnalyzer:
         sql_with_ds = _stop_pairs_cte("AND tj_pre.data_source = :data_source")
         assert "tj_pre.data_source = :data_source" in sql_with_ds
 
+        # Without a filter, no bound :data_source parameter may leak into the
+        # CTE. (The literal tj_pre.data_source = 'NJT' CASE is the inversion
+        # correction from issue #1503, not a filter — it's always present.)
         sql_without_ds = _stop_pairs_cte("")
-        assert "data_source" not in sql_without_ds
+        assert ":data_source" not in sql_without_ds
 
     @pytest.mark.asyncio
     async def test_aggregated_congestion_sql_has_cutoff_in_stop_pairs(
