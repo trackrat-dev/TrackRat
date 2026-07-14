@@ -109,8 +109,40 @@ def get_train_data_source(train_id: str) -> str:
     return "AMTRAK" if is_amtrak_train(train_id) else "NJT"
 
 
+def terminal_stop_index(
+    sorted_stops: "list[JourneyStop]", terminal_station_code: str | None
+) -> int | None:
+    """Index of the genuine terminal stop in a ``stop_sequence``-sorted list,
+    or ``None`` when positional detection can't be trusted.
+
+    Callers sort stops with ``key=lambda s: s.stop_sequence or 0``, so the last
+    element is only reliably the terminal once a journey is **fully collected**.
+    NJT discovery/schedule rows carry ``stop_sequence = NULL`` (collapsed to 0 by
+    that sort key, leaving them in load order) and the journey's
+    ``terminal_station_code`` is still an origin/discovery placeholder until full
+    collection rewrites it to the last API stop. On such a partially-collected
+    journey ``sorted_stops[-1]`` can be an intermediate stop; flagging it terminal
+    would skip ``effective_njt_updated_times``'s ``max()`` and expose NJT's raw
+    scheduled ``DEP_TIME``, hiding that stop's delay (PR #1495 review).
+
+    Guard against that by only accepting the last stop as terminal when every stop
+    has a non-null ``stop_sequence`` (i.e. the journey has been fully sequenced)
+    **and** that last stop's ``station_code`` matches ``terminal_station_code``.
+    Both conditions hold together only after full journey collection, which is
+    exactly when the terminal exemption is meant to apply.
+    """
+    if not sorted_stops:
+        return None
+    if any(s.stop_sequence is None for s in sorted_stops):
+        return None
+    last_index = len(sorted_stops) - 1
+    if sorted_stops[last_index].station_code != terminal_station_code:
+        return None
+    return last_index
+
+
 def effective_njt_updated_times(
-    stop: "JourneyStop", data_source: str | None
+    stop: "JourneyStop", data_source: str | None, is_terminal: bool = False
 ) -> tuple[datetime | None, datetime | None]:
     """Return ``(updated_arrival, updated_departure)`` with NJT inversion correction.
 
@@ -128,8 +160,21 @@ def effective_njt_updated_times(
     fields are genuine live estimates that may legitimately differ by the
     stop's dwell time, so we return them unmodified to preserve that
     distinction.
+
+    The ``max()`` is correct at intermediate stops but wrong at the **terminal**:
+    the train does not continue onward there, so ``DEP_TIME`` is not a live
+    departure estimate. When NJT nonetheless populates it (e.g. with a later
+    scheduled/turnaround departure), an on-time or lightly delayed train has
+    ``TIME < DEP_TIME`` and the ``max()`` would promote the departure value into
+    the arrival slot, inflating the displayed terminal arrival by several
+    minutes (issue #1492). At the terminal the live arrival estimate is ``TIME``
+    (``updated_arrival``) alone, so pass ``is_terminal=True`` to skip the
+    ``max()`` and return the raw fields.
     """
     if data_source != "NJT":
+        return stop.updated_arrival, stop.updated_departure
+
+    if is_terminal:
         return stop.updated_arrival, stop.updated_departure
 
     if stop.updated_arrival is not None and stop.updated_departure is not None:

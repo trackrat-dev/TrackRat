@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from trackrat.models.database import JourneyStop
-from trackrat.utils.train import effective_njt_updated_times
+from trackrat.utils.train import effective_njt_updated_times, terminal_stop_index
 
 # Realistic delayed-train sample times (HH:MM in UTC; ET semantics don't matter
 # for arithmetic but production data is always tz-aware).
@@ -103,6 +103,142 @@ class TestNJTEdgeCases:
         arr, dep = effective_njt_updated_times(stop, "NJT")
         assert arr is None
         assert dep is None
+
+
+class TestNJTTerminalStop:
+    """Regression-protects issue #1492: at the terminal, NJT sometimes populates
+    ``DEP_TIME`` with a later turnaround/layover departure. For an on-time or
+    lightly delayed train ``TIME < DEP_TIME``, so the intermediate-stop ``max()``
+    would promote the departure into the arrival slot and inflate the displayed
+    terminal arrival by several minutes. The terminal arrival is ``TIME``
+    (``updated_arrival``) alone — ``is_terminal=True`` must skip the ``max()``."""
+
+    def test_terminal_with_later_dep_time_keeps_arrival_estimate(self) -> None:
+        # The exact reported shape: NYP arrival estimate 8:04 (TIME) but a later
+        # 8:18 turnaround DEP_TIME. Without is_terminal the user saw 8:18.
+        arrival_estimate = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)  # 8:04 ET
+        later_departure = datetime(2026, 7, 14, 12, 18, tzinfo=UTC)  # 8:18 ET
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=arrival_estimate,
+            updated_departure=later_departure,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT", is_terminal=True)
+        assert arr == arrival_estimate, "terminal arrival was inflated by DEP_TIME"
+        assert arr != later_departure
+        # Departure is passed through untouched (the train terminates here).
+        assert dep == later_departure
+
+    def test_same_stop_inflates_when_not_flagged_terminal(self) -> None:
+        """Contrast: the identical stop treated as intermediate (the default)
+        DOES apply max() — this is what produced the wrong 8:18 arrival."""
+        arrival_estimate = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)
+        later_departure = datetime(2026, 7, 14, 12, 18, tzinfo=UTC)
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=arrival_estimate,
+            updated_departure=later_departure,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT")
+        assert arr == later_departure
+        assert dep == later_departure
+
+    def test_terminal_delayed_train_still_shows_delay(self) -> None:
+        """A genuinely delayed terminal (TIME > DEP_TIME) is unaffected: the
+        live estimate is already the arrival, so skipping max() keeps it."""
+        schedule = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)
+        delayed_estimate = datetime(2026, 7, 14, 12, 24, tzinfo=UTC)  # 20-min late
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=delayed_estimate,
+            updated_departure=schedule,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT", is_terminal=True)
+        assert arr == delayed_estimate
+        assert dep == schedule
+
+    def test_terminal_without_dep_time_unchanged(self) -> None:
+        """The documented terminal shape (DEP_TIME absent) is unaffected by the
+        flag — arrival is the live estimate, departure stays None."""
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=_LIVE_ESTIMATE,
+            updated_departure=None,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT", is_terminal=True)
+        assert arr == _LIVE_ESTIMATE
+        assert dep is None
+
+    def test_terminal_flag_is_noop_for_non_njt(self) -> None:
+        """is_terminal only affects NJT — other providers short-circuit before
+        the max() regardless, so the flag must not change their passthrough."""
+        arrival = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)
+        departure = datetime(2026, 7, 14, 12, 6, tzinfo=UTC)
+        stop = JourneyStop(
+            station_code="NYP",
+            station_name="New York Penn",
+            updated_arrival=arrival,
+            updated_departure=departure,
+        )
+        arr, dep = effective_njt_updated_times(stop, "AMTRAK", is_terminal=True)
+        assert arr == arrival
+        assert dep == departure
+
+
+def _seq_stop(station_code: str, stop_sequence: int | None) -> JourneyStop:
+    """A JourneyStop carrying only the fields terminal_stop_index reads."""
+    return JourneyStop(station_code=station_code, stop_sequence=stop_sequence)
+
+
+class TestTerminalStopIndex:
+    """Regression-protects the PR #1495 review: the ``/trains/{train_id}``
+    endpoint must not treat the last ``stop_sequence``-sorted row as terminal on
+    a not-yet-fully-collected NJT journey. Such journeys have NULL stop_sequence
+    rows (which the endpoint's ``s.stop_sequence or 0`` sort collapses to 0,
+    leaving load order) and a placeholder ``terminal_station_code``, so the last
+    sorted row can be an intermediate stop. Flagging it terminal would skip the
+    NJT ``max()`` and expose the scheduled DEP_TIME, hiding that stop's delay."""
+
+    def test_fully_sequenced_last_stop_matches_terminal_is_terminal(self) -> None:
+        # Normal fully-collected shape: contiguous sequences ending at the
+        # station recorded as terminal_station_code.
+        stops = [_seq_stop("DV", 0), _seq_stop("NP", 1), _seq_stop("NY", 2)]
+        assert terminal_stop_index(stops, "NY") == 2
+
+    def test_null_sequence_rows_disable_positional_detection(self) -> None:
+        # Discovered-but-not-collected: every row NULL. Even though the last
+        # row's code matches the (placeholder) terminal, the unreliable ordering
+        # means we must NOT flag any stop terminal.
+        stops = [_seq_stop("NY", None), _seq_stop("NP", None)]
+        assert terminal_stop_index(stops, "NY") is None
+
+    def test_partial_sequence_disables_positional_detection(self) -> None:
+        # A single NULL among real sequences (mid-collection) is enough to
+        # distrust the ordering.
+        stops = [_seq_stop("DV", 0), _seq_stop("NP", 1), _seq_stop("NY", None)]
+        assert terminal_stop_index(stops, "NY") is None
+
+    def test_last_stop_not_matching_terminal_code_returns_none(self) -> None:
+        # Sequenced, but the last-by-sequence stop isn't the recorded terminal
+        # (e.g. a malformed feed where scheduled-time sort diverges from API
+        # order). Safe: don't grant the terminal exemption.
+        stops = [_seq_stop("DV", 0), _seq_stop("NY", 1), _seq_stop("NP", 2)]
+        assert terminal_stop_index(stops, "NY") is None
+
+    def test_empty_stops_returns_none(self) -> None:
+        assert terminal_stop_index([], "NY") is None
+
+    def test_single_fully_sequenced_stop_matching_terminal(self) -> None:
+        assert terminal_stop_index([_seq_stop("NY", 0)], "NY") == 0
+
+    def test_none_terminal_code_returns_none(self) -> None:
+        # Defensive: a missing terminal code can't confirm any stop as terminal.
+        stops = [_seq_stop("DV", 0), _seq_stop("NY", 1)]
+        assert terminal_stop_index(stops, None) is None
 
 
 class TestNonNJTPassthrough:
