@@ -511,6 +511,27 @@ struct StopV2: Identifiable, Codable {
         }
         return 0
     }
+
+    /// Formats the arrival delay badge ("+Nm delay" / "Nm early") shown on the
+    /// train-detail stop row, from an arrival time vs the scheduled arrival.
+    ///
+    /// The `arrival` may be an *actual* arrival or a *live estimate*
+    /// (`updatedArrival`): both cases must annotate the row identically so a
+    /// not-yet-reached terminal or upcoming stop still shows its delay. At an
+    /// NJT terminal `updatedArrival` = live TIME and `updatedDeparture` is nil,
+    /// so there is no TIME/DEP_TIME inversion to undo here. Returns an empty
+    /// string when on-time, roughly on-time, or either input is missing so the
+    /// caller can suppress the badge. Pure and testable.
+    static func arrivalDelayBadge(arrival: Date?, scheduledArrival: Date?) -> String {
+        guard let arrival = arrival, let scheduledArrival = scheduledArrival else { return "" }
+        let delayMinutes = Int(arrival.timeIntervalSince(scheduledArrival) / 60)
+        if delayMinutes > 0 {
+            return "+\(delayMinutes)m delay"
+        } else if delayMinutes < -1 {
+            return "\(abs(delayMinutes))m early"
+        }
+        return "" // Don't show anything for on-time or 1 minute early
+    }
     
     enum CodingKeys: String, CodingKey {
         case stationCode = "station_code"
