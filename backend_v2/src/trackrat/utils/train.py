@@ -110,7 +110,7 @@ def get_train_data_source(train_id: str) -> str:
 
 
 def effective_njt_updated_times(
-    stop: "JourneyStop", data_source: str | None
+    stop: "JourneyStop", data_source: str | None, is_terminal: bool = False
 ) -> tuple[datetime | None, datetime | None]:
     """Return ``(updated_arrival, updated_departure)`` with NJT inversion correction.
 
@@ -128,8 +128,21 @@ def effective_njt_updated_times(
     fields are genuine live estimates that may legitimately differ by the
     stop's dwell time, so we return them unmodified to preserve that
     distinction.
+
+    The ``max()`` is correct at intermediate stops but wrong at the **terminal**:
+    the train does not continue onward there, so ``DEP_TIME`` is not a live
+    departure estimate. When NJT nonetheless populates it (e.g. with a later
+    scheduled/turnaround departure), an on-time or lightly delayed train has
+    ``TIME < DEP_TIME`` and the ``max()`` would promote the departure value into
+    the arrival slot, inflating the displayed terminal arrival by several
+    minutes (issue #1492). At the terminal the live arrival estimate is ``TIME``
+    (``updated_arrival``) alone, so pass ``is_terminal=True`` to skip the
+    ``max()`` and return the raw fields.
     """
     if data_source != "NJT":
+        return stop.updated_arrival, stop.updated_departure
+
+    if is_terminal:
         return stop.updated_arrival, stop.updated_departure
 
     if stop.updated_arrival is not None and stop.updated_departure is not None:

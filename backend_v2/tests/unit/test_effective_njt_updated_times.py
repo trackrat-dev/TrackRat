@@ -105,6 +105,90 @@ class TestNJTEdgeCases:
         assert dep is None
 
 
+class TestNJTTerminalStop:
+    """Regression-protects issue #1492: at the terminal, NJT sometimes populates
+    ``DEP_TIME`` with a later turnaround/layover departure. For an on-time or
+    lightly delayed train ``TIME < DEP_TIME``, so the intermediate-stop ``max()``
+    would promote the departure into the arrival slot and inflate the displayed
+    terminal arrival by several minutes. The terminal arrival is ``TIME``
+    (``updated_arrival``) alone — ``is_terminal=True`` must skip the ``max()``."""
+
+    def test_terminal_with_later_dep_time_keeps_arrival_estimate(self) -> None:
+        # The exact reported shape: NYP arrival estimate 8:04 (TIME) but a later
+        # 8:18 turnaround DEP_TIME. Without is_terminal the user saw 8:18.
+        arrival_estimate = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)  # 8:04 ET
+        later_departure = datetime(2026, 7, 14, 12, 18, tzinfo=UTC)  # 8:18 ET
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=arrival_estimate,
+            updated_departure=later_departure,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT", is_terminal=True)
+        assert arr == arrival_estimate, "terminal arrival was inflated by DEP_TIME"
+        assert arr != later_departure
+        # Departure is passed through untouched (the train terminates here).
+        assert dep == later_departure
+
+    def test_same_stop_inflates_when_not_flagged_terminal(self) -> None:
+        """Contrast: the identical stop treated as intermediate (the default)
+        DOES apply max() — this is what produced the wrong 8:18 arrival."""
+        arrival_estimate = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)
+        later_departure = datetime(2026, 7, 14, 12, 18, tzinfo=UTC)
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=arrival_estimate,
+            updated_departure=later_departure,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT")
+        assert arr == later_departure
+        assert dep == later_departure
+
+    def test_terminal_delayed_train_still_shows_delay(self) -> None:
+        """A genuinely delayed terminal (TIME > DEP_TIME) is unaffected: the
+        live estimate is already the arrival, so skipping max() keeps it."""
+        schedule = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)
+        delayed_estimate = datetime(2026, 7, 14, 12, 24, tzinfo=UTC)  # 20-min late
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=delayed_estimate,
+            updated_departure=schedule,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT", is_terminal=True)
+        assert arr == delayed_estimate
+        assert dep == schedule
+
+    def test_terminal_without_dep_time_unchanged(self) -> None:
+        """The documented terminal shape (DEP_TIME absent) is unaffected by the
+        flag — arrival is the live estimate, departure stays None."""
+        stop = JourneyStop(
+            station_code="NY",
+            station_name="New York Penn",
+            updated_arrival=_LIVE_ESTIMATE,
+            updated_departure=None,
+        )
+        arr, dep = effective_njt_updated_times(stop, "NJT", is_terminal=True)
+        assert arr == _LIVE_ESTIMATE
+        assert dep is None
+
+    def test_terminal_flag_is_noop_for_non_njt(self) -> None:
+        """is_terminal only affects NJT — other providers short-circuit before
+        the max() regardless, so the flag must not change their passthrough."""
+        arrival = datetime(2026, 7, 14, 12, 4, tzinfo=UTC)
+        departure = datetime(2026, 7, 14, 12, 6, tzinfo=UTC)
+        stop = JourneyStop(
+            station_code="NYP",
+            station_name="New York Penn",
+            updated_arrival=arrival,
+            updated_departure=departure,
+        )
+        arr, dep = effective_njt_updated_times(stop, "AMTRAK", is_terminal=True)
+        assert arr == arrival
+        assert dep == departure
+
+
 class TestNonNJTPassthrough:
     """For Amtrak / PATH / GTFS-RT / WMATA, ``updated_arrival`` and
     ``updated_departure`` are distinct live estimates of arrival vs. departure.

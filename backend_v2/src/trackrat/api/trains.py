@@ -460,14 +460,18 @@ async def get_train_details(
     ensure_source_enabled(journey.data_source)
 
     # Build stop details
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
     stops = []
-    for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
+    for stop_index, stop in enumerate(sorted_stops):
         # NJT's raw updated_arrival/updated_departure have inverted semantics at
         # intermediate stops (DEP_TIME=schedule, TIME=live estimate). Normalize
         # here so clients reading either field get the live delayed estimate —
         # mirrors the max() applied in services/departure.py for /departures.
+        # The terminal stop is exempt from the max(): its DEP_TIME can be a later
+        # turnaround departure that would inflate the arrival estimate (#1492).
+        is_terminal = stop_index == len(sorted_stops) - 1
         updated_arrival, updated_departure = effective_njt_updated_times(
-            stop, journey.data_source
+            stop, journey.data_source, is_terminal=is_terminal
         )
         stop_detail = StopDetails(
             station=SimpleStationInfo(
