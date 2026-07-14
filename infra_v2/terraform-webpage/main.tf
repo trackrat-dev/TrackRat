@@ -237,6 +237,15 @@ resource "google_compute_backend_bucket" "webpage_production_backend" {
   bucket_name = google_storage_bucket.webpage_production.name
   enable_cdn  = true
 
+  # HSTS on the apex (trackrat.net) + www responses. Required to submit
+  # trackrat.net to the browser HSTS preload list (includeSubDomains covers
+  # apiv2/www). The apiv2 backend sets the same header via FastAPI middleware.
+  # NOTE: `preload` here is a standing commitment — do not remove it while the
+  # domain is on the preload list. See infra_v2/RUNBOOK-lb-consolidation.md.
+  custom_response_headers = [
+    "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload",
+  ]
+
   cdn_policy {
     cache_mode       = "CACHE_ALL_STATIC"
     default_ttl      = 3600  # 1 hour fallback (objects' own Cache-Control wins)
@@ -246,11 +255,31 @@ resource "google_compute_backend_bucket" "webpage_production_backend" {
   }
 }
 
-# URL map for production
+# API backend service (owned by infra_v2/terraform/ production workspace).
+# Looked up by its stable name so the consolidated LB can host-route apiv2 to
+# it without cross-root state coupling. Must already exist (it does, as long
+# as the production API workspace is applied).
+data "google_compute_backend_service" "api_production" {
+  name = "trackrat-production-backend"
+}
+
+# URL map for production — consolidated load balancer:
+#   apiv2.trackrat.net        -> API backend service (VM MIG)
+#   trackrat.net / www.*      -> webpage GCS bucket (default)
 resource "google_compute_url_map" "webpage_production" {
   name            = "trackrat-webpage-production-map"
-  description     = "URL map for TrackRat production webpage"
+  description     = "Consolidated LB: apiv2 -> API backend, apex/www -> webpage bucket"
   default_service = google_compute_backend_bucket.webpage_production_backend.id
+
+  host_rule {
+    hosts        = ["apiv2.trackrat.net"]
+    path_matcher = "api"
+  }
+
+  path_matcher {
+    name            = "api"
+    default_service = data.google_compute_backend_service.api_production.id
+  }
 }
 
 # SSL certificate covers both apex and www.
@@ -269,11 +298,19 @@ resource "google_compute_global_address" "webpage_production_ip" {
   name = "trackrat-webpage-production-ip"
 }
 
-# HTTPS proxy for production
+# HTTPS proxy for production. Serves two managed certs via SNI:
+#   - webpage cert: trackrat.net, www.trackrat.net (owned here)
+#   - API cert: apiv2.trackrat.net (owned by infra_v2/terraform/ production
+#     workspace, referenced by self-link — both are already ACTIVE, so no
+#     provisioning gap during cutover). Do not delete trackrat-production-cert
+#     from the API workspace while it is attached here.
 resource "google_compute_target_https_proxy" "webpage_production_proxy" {
-  name             = "trackrat-webpage-production-https-proxy"
-  url_map          = google_compute_url_map.webpage_production.id
-  ssl_certificates = [google_compute_managed_ssl_certificate.webpage_production_cert.id]
+  name    = "trackrat-webpage-production-https-proxy"
+  url_map = google_compute_url_map.webpage_production.id
+  ssl_certificates = [
+    google_compute_managed_ssl_certificate.webpage_production_cert.id,
+    "projects/${var.project_id}/global/sslCertificates/trackrat-production-cert",
+  ]
 }
 
 # HTTPS forwarding rule for production
