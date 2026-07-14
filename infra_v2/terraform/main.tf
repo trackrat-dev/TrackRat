@@ -33,4 +33,11 @@ provider "google" {
 locals {
   domain      = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
   use_spot_vm = var.environment == "staging"
+
+  # Production's HTTPS frontend (IP, url map, proxies, forwarding rules) is
+  # served by the consolidated webpage load balancer in
+  # infra_v2/terraform-webpage (apiv2.trackrat.net is host-routed there to
+  # this workspace's backend service). This drops production's 2 dedicated
+  # global forwarding rules. Staging keeps its own dedicated API LB.
+  create_api_frontend = var.environment != "production"
 }

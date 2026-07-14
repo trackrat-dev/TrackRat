@@ -241,6 +241,27 @@ async def correlation_id_middleware(
 
 
 @app.middleware("http")
+async def hsts_header_middleware(
+    request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
+) -> Response:
+    """Add HTTP Strict Transport Security to HTTPS responses.
+
+    The domain (trackrat.net) is on the browser HSTS preload list, so the
+    header carries `preload` and must stay present. Only emitted when the
+    original request was HTTPS (the GCE external load balancer sets
+    X-Forwarded-Proto) so plain-HTTP local dev is unaffected — per RFC 6797,
+    HSTS must not be sent over plaintext.
+    """
+    response: Response = await call_next(request)
+    forwarded_proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    if forwarded_proto == "https":
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains; preload"
+        )
+    return response
+
+
+@app.middleware("http")
 async def suppress_health_check_logs(
     request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
 ) -> Response:
