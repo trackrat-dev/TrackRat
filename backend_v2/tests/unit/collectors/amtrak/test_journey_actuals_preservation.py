@@ -272,6 +272,134 @@ class TestTrimmedStopPreservation:
         )
         assert codes == ["NY", "WS"]
 
+    @pytest.mark.asyncio
+    async def test_convert_to_journey_preserves_sequence_and_count(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """The batch conversion path (_convert_to_journey), reached for
+        OBSERVED + is_expired rows requeued by #1500, must apply the same
+        preserved-stop sequencing and DB recount as collect_journey_details:
+        a trimmed departed origin keeps sequence 0, surviving feed stops are
+        renumbered AFTER it, and stops_count includes the preserved stop.
+        Renumbering the feed from 0 collided with the preserved origin and
+        undercounted stops_count (issue #1502 codex follow-up).
+        """
+        origin_sched = now_et().replace(microsecond=0) - timedelta(hours=2)
+        origin_actual = origin_sched + timedelta(minutes=3)
+        feed_origin_dep = origin_sched + timedelta(minutes=17)
+        # Match the journey_date _convert_to_journey derives (first tracked
+        # feed stop's schDep) so the existing row is found, not duplicated.
+        jdate = feed_origin_dep.date()
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=jdate,
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=origin_sched,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,  # requeued expired row (the #1500 batch path)
+            api_error_count=2,
+            update_count=1,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        db_session.add_all(
+            [
+                JourneyStop(
+                    journey=journey,
+                    station_code="NY",
+                    station_name="New York Penn Station",
+                    stop_sequence=0,
+                    scheduled_departure=origin_sched,
+                    actual_departure=origin_actual,
+                    has_departed_station=True,
+                    track="9",
+                ),
+                JourneyStop(
+                    journey=journey,
+                    station_code="NP",
+                    station_name="Newark Penn Station",
+                    stop_sequence=1,
+                    scheduled_arrival=origin_sched + timedelta(minutes=15),
+                    has_departed_station=False,
+                ),
+                JourneyStop(
+                    journey=journey,
+                    station_code="WS",
+                    station_name="Washington Union",
+                    stop_sequence=2,
+                    scheduled_arrival=origin_sched + timedelta(hours=3),
+                    has_departed_station=False,
+                ),
+            ]
+        )
+        await db_session.flush()
+
+        # Mid-run feed with the origin (NYP) trimmed.
+        train_data = create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="NWK",
+                    name="Newark Penn",
+                    sch_arr=_iso(origin_sched + timedelta(minutes=15)),
+                    sch_dep=_iso(feed_origin_dep),
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=_iso(origin_sched + timedelta(hours=3)),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+        result = await journey_collector._convert_to_journey(db_session, train_data)
+        assert (
+            result is not None and result.id == journey.id
+        ), "must update the existing requeued row, not create a duplicate"
+        await db_session.refresh(journey)
+
+        stops = (
+            (
+                await db_session.execute(
+                    select(JourneyStop)
+                    .where(JourneyStop.journey_id == journey.id)
+                    .order_by(JourneyStop.stop_sequence)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        codes = [s.station_code for s in stops]
+        assert codes == [
+            "NY",
+            "NP",
+            "WS",
+        ], f"trimmed departed origin must survive conversion; got {codes}"
+        assert [s.stop_sequence for s in stops] == [0, 1, 2], (
+            "feed stops must be renumbered AFTER the preserved origin (seq 0); "
+            "renumbering from 0 collides with the preserved sequence"
+        )
+        assert journey.stops_count == 3, (
+            "stops_count must be recounted from the DB to include the preserved "
+            "trimmed origin, not len(feed stops)"
+        )
+        assert stops[0].actual_departure == origin_actual
+        assert journey.terminal_station_code == "WS"
+
 
 class TestDurableActualDeparture:
     @pytest.mark.asyncio

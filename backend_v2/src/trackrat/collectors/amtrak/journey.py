@@ -270,11 +270,40 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
             # Process stops - only include our tracked stations
             # Use upsert logic to avoid delete+insert race conditions
-            stop_sequence = 0
             last_tracked_code = origin_code
             new_stops = []  # Track processed stops for metadata updates
-            api_station_codes: set[str] = set()
             time_corrections = 0
+
+            # Build the feed's station set up front: it drives the stale-stop
+            # deletion below AND the stop_sequence base. The Amtraker feed trims
+            # already-passed stations, and the deletion guard preserves trimmed
+            # stops carrying recorded actuals — so surviving feed stops must be
+            # numbered AFTER the preserved ones. Renumbering the feed from 0
+            # would collide with the preserved origin's sequence and scramble
+            # stop ordering (issue #1502; mirrors collect_journey_details).
+            api_station_codes: set[str] = {
+                code
+                for amtrak_stop in train_data.stations
+                if (code := AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code))
+            }
+
+            stop_sequence = 0
+            if journey.id and api_station_codes:
+                preserved_max_seq = await session.scalar(
+                    select(func.max(JourneyStop.stop_sequence)).where(
+                        and_(
+                            JourneyStop.journey_id == journey.id,
+                            JourneyStop.station_code.notin_(api_station_codes),
+                            or_(
+                                JourneyStop.has_departed_station.is_(True),
+                                JourneyStop.actual_arrival.is_not(None),
+                                JourneyStop.actual_departure.is_not(None),
+                            ),
+                        )
+                    )
+                )
+                if preserved_max_seq is not None:
+                    stop_sequence = preserved_max_seq + 1
 
             for amtrak_stop in train_data.stations:
                 internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
@@ -283,7 +312,6 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
                 # Update terminal station
                 last_tracked_code = internal_code
-                api_station_codes.add(internal_code)
 
                 # Parse times
                 sched_arr = (
@@ -390,7 +418,19 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
             # Update terminal station and other fields using our local data
             journey.terminal_station_code = last_tracked_code
-            journey.stops_count = len(new_stops)
+            # Recount stops from the DB: preserved trimmed stops (see the
+            # deletion guard above) are not in new_stops, so len(new_stops)
+            # would undercount. The terminal is still the feed's last tracked
+            # stop (the feed trims from the front, never the end).
+            await session.flush()
+            journey.stops_count = (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(JourneyStop)
+                    .where(JourneyStop.journey_id == journey.id)
+                )
+                or 0
+            )
             journey.scheduled_arrival = (
                 new_stops[-1].scheduled_arrival if new_stops else None
             )
