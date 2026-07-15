@@ -283,3 +283,72 @@ class TestScheduleJourneyDate:
             .all()
         )
         assert stop_count == 2, "Full stop list must replace the placeholder"
+
+    @pytest.mark.asyncio
+    async def test_two_same_numbered_runs_in_one_window_get_separate_rows(
+        self, db_session: AsyncSession, schedule_collector
+    ):
+        """The 27h window can contain BOTH service days' occurrence of an
+        overnight train (~00:30-03:30 departures): today's 01:00 run AND
+        tomorrow's 01:00 run share a TRAIN_ID. A single earliest-per-train
+        date collapsed them onto the earlier date, so tomorrow's run lost
+        its SCHEDULED row until the next nightly pass (PR #1510 review).
+        Run clustering must date each occurrence by its own run's origin,
+        producing two rows.
+        """
+        first_run_origin = now_et().replace(hour=1, minute=0, second=0, microsecond=0)
+        first_run_later_stop = first_run_origin + timedelta(minutes=40)
+        second_run_origin = first_run_origin + timedelta(days=1)
+
+        schedule_data = [
+            # One station's 27h board legitimately lists the train twice.
+            _station(
+                "NY",
+                "New York Penn",
+                [
+                    _item("9006", first_run_origin),
+                    _item("9006", second_run_origin),
+                ],
+            ),
+            # A later stop chains into the FIRST run (40-min gap), proving
+            # clustering keeps intra-run stops on the origin's date.
+            _station(
+                "NP",
+                "Newark Penn",
+                [_item("9006", first_run_later_stop)],
+            ),
+        ]
+
+        await schedule_collector._process_schedule_data(db_session, schedule_data)
+
+        journeys = (
+            (
+                await db_session.execute(
+                    select(TrainJourney)
+                    .where(
+                        TrainJourney.train_id == "9006",
+                        TrainJourney.data_source == "NJT",
+                    )
+                    .order_by(TrainJourney.journey_date)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(journeys) == 2, (
+            "Two same-numbered runs in one window must produce two rows, "
+            f"got {[(j.journey_date, j.scheduled_departure) for j in journeys]}"
+        )
+        first_row, second_row = journeys
+        assert first_row.journey_date == first_run_origin.date(), (
+            "Today's run must be dated by its own origin"
+        )
+        assert first_row.scheduled_departure == first_run_origin, (
+            "The intra-run later stop must converge to the run origin's "
+            "departure, not fork a row or shift the date"
+        )
+        assert second_row.journey_date == second_run_origin.date(), (
+            "Tomorrow's run must keep its own SCHEDULED row dated by its "
+            "own origin — not collapse onto today's run"
+        )
+        assert second_row.scheduled_departure == second_run_origin

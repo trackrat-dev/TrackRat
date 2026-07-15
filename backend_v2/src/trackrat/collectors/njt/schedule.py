@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.collectors.njt.journey import STALE_PRIOR_RUN_THRESHOLD_SECONDS
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
@@ -147,19 +148,28 @@ class NJTScheduleCollector:
             "errors": 0,
         }
 
-        # Derive each train's journey_date from its earliest scheduled
-        # departure across all stations (= its origin departure), NOT from
-        # the nightly run date. The schedule window spans ~27 hours, so a
-        # train departing after the next midnight belongs to the NEXT service
-        # date; stamping it with the run date made discovery — which derives
-        # journey_date from SCHED_DEP_DATE (see discovery.py) — miss the row
-        # on both its exact and fuzzy matches and create a duplicate OBSERVED
-        # journey, leaving the run-dated SCHEDULED row as a permanent zombie
-        # on departure boards (issue #1499). Using the per-train earliest
-        # departure also keeps cross-midnight runs (origin before midnight,
-        # later stops after) on a single row dated by their origin, since
-        # each station's item carries that station's own departure date.
-        earliest_departure_by_train: dict[str, datetime] = {}
+        # Derive each item's journey_date from its RUN's origin departure,
+        # NOT from the nightly run date. The schedule window spans ~27 hours,
+        # so a train departing after the next midnight belongs to the NEXT
+        # service date; stamping it with the run date made discovery — which
+        # derives journey_date from SCHED_DEP_DATE (see discovery.py) — miss
+        # the row on both its exact and fuzzy matches and create a duplicate
+        # OBSERVED journey, leaving the run-dated SCHEDULED row as a
+        # permanent zombie on departure boards (issue #1499).
+        #
+        # Each train's departures are clustered into runs because the 27h
+        # window can contain BOTH service days' occurrence of an overnight
+        # train (~00:30-03:30 departures): a single earliest-per-train date
+        # would collapse the two runs onto the earlier date, costing the
+        # next day's run its SCHEDULED visibility (PR #1510 review).
+        # Departures within STALE_PRIOR_RUN_THRESHOLD_SECONDS of the
+        # previous one chain into the same run — which keeps a cross-midnight
+        # run (origin before midnight, later stops minutes after) on a
+        # single row dated by its origin — while a larger gap (~24h for a
+        # daily train) starts a new run. The mapping is keyed by the item's
+        # raw SCHED_DEP_DATE string so the item loop needs no re-parse and
+        # the lookup is exact.
+        departures_by_train: dict[str, list[tuple[datetime, str]]] = {}
         for station_data in schedule_data:
             for item in station_data.get("ITEMS") or []:
                 item_train_id = item.get("TRAIN_ID")
@@ -170,14 +180,27 @@ class NJTScheduleCollector:
                     item_departure = parse_njt_time(item_dep_str)
                 except Exception:
                     # _process_schedule_item re-parses and reports the error
-                    # for this item; the train may still get a date from its
+                    # for this item; the train may still get dates from its
                     # parseable items at other stations.
                     continue
                 if not item_departure:
                     continue
-                current_earliest = earliest_departure_by_train.get(item_train_id)
-                if current_earliest is None or item_departure < current_earliest:
-                    earliest_departure_by_train[item_train_id] = item_departure
+                departures_by_train.setdefault(item_train_id, []).append(
+                    (item_departure, item_dep_str)
+                )
+
+        origin_date_by_departure: dict[str, dict[str, date]] = {}
+        for train_id, departures in departures_by_train.items():
+            departures.sort(key=lambda pair: pair[0])
+            mapping: dict[str, date] = {}
+            run_origin = previous = departures[0][0]
+            for item_departure, item_dep_str in departures:
+                gap_seconds = (item_departure - previous).total_seconds()
+                if gap_seconds > STALE_PRIOR_RUN_THRESHOLD_SECONDS:
+                    run_origin = item_departure
+                mapping[item_dep_str] = run_origin.date()
+                previous = item_departure
+            origin_date_by_departure[train_id] = mapping
 
         # Fallback only for items whose own SCHED_DEP_DATE is missing or
         # unparseable — _process_schedule_item skips or errors those before
@@ -206,14 +229,15 @@ class NJTScheduleCollector:
 
                 try:
                     item_train_id = item.get("TRAIN_ID")
-                    earliest_departure = (
-                        earliest_departure_by_train.get(item_train_id)
-                        if item_train_id
+                    item_dep_str = item.get("SCHED_DEP_DATE")
+                    run_origin_date = (
+                        origin_date_by_departure.get(item_train_id, {}).get(
+                            item_dep_str
+                        )
+                        if item_train_id and item_dep_str
                         else None
                     )
-                    journey_date = (
-                        earliest_departure.date() if earliest_departure else run_date
-                    )
+                    journey_date = run_origin_date or run_date
 
                     # Mirror discovery.py's guard: never persist a schedule row
                     # on an implausible date. parse_njt_time is lenient, so a
