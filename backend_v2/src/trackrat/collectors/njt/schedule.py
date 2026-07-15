@@ -5,7 +5,7 @@ Fetches 27-hour schedule data once daily and creates SCHEDULED journey records.
 """
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_, select
@@ -18,7 +18,7 @@ from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
-from trackrat.utils.time import now_et, parse_njt_time
+from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 
 logger = get_logger(__name__)
 
@@ -147,8 +147,42 @@ class NJTScheduleCollector:
             "errors": 0,
         }
 
-        # Get current date in Eastern Time for journey date
-        journey_date = now_et().date()
+        # Derive each train's journey_date from its earliest scheduled
+        # departure across all stations (= its origin departure), NOT from
+        # the nightly run date. The schedule window spans ~27 hours, so a
+        # train departing after the next midnight belongs to the NEXT service
+        # date; stamping it with the run date made discovery — which derives
+        # journey_date from SCHED_DEP_DATE (see discovery.py) — miss the row
+        # on both its exact and fuzzy matches and create a duplicate OBSERVED
+        # journey, leaving the run-dated SCHEDULED row as a permanent zombie
+        # on departure boards (issue #1499). Using the per-train earliest
+        # departure also keeps cross-midnight runs (origin before midnight,
+        # later stops after) on a single row dated by their origin, since
+        # each station's item carries that station's own departure date.
+        earliest_departure_by_train: dict[str, datetime] = {}
+        for station_data in schedule_data:
+            for item in station_data.get("ITEMS") or []:
+                item_train_id = item.get("TRAIN_ID")
+                item_dep_str = item.get("SCHED_DEP_DATE")
+                if not item_train_id or not item_dep_str:
+                    continue
+                try:
+                    item_departure = parse_njt_time(item_dep_str)
+                except Exception:
+                    # _process_schedule_item re-parses and reports the error
+                    # for this item; the train may still get a date from its
+                    # parseable items at other stations.
+                    continue
+                if not item_departure:
+                    continue
+                current_earliest = earliest_departure_by_train.get(item_train_id)
+                if current_earliest is None or item_departure < current_earliest:
+                    earliest_departure_by_train[item_train_id] = item_departure
+
+        # Fallback only for items whose own SCHED_DEP_DATE is missing or
+        # unparseable — _process_schedule_item skips or errors those before
+        # journey_date is ever persisted.
+        run_date = now_et().date()
 
         # Process each station's schedule items
         for station_data in schedule_data:
@@ -171,12 +205,33 @@ class NJTScheduleCollector:
                 stats["total_schedules"] += 1
 
                 try:
-                    # Fix timezone bug: ensure datetime is timezone-aware in ET
-                    from trackrat.utils.time import ET
-
-                    journey_start_time = ET.localize(
-                        datetime.combine(journey_date, datetime.min.time())
+                    item_train_id = item.get("TRAIN_ID")
+                    earliest_departure = (
+                        earliest_departure_by_train.get(item_train_id)
+                        if item_train_id
+                        else None
                     )
+                    journey_date = (
+                        earliest_departure.date() if earliest_departure else run_date
+                    )
+
+                    # Mirror discovery.py's guard: never persist a schedule row
+                    # on an implausible date. parse_njt_time is lenient, so a
+                    # malformed SCHED_DEP_DATE can parse to a far-future date;
+                    # journey_date has no DB CHECK and the partition default
+                    # accepts any date, so without this a bad provider timestamp
+                    # would create a far-future zombie SCHEDULED row. Discovery
+                    # will pick the train up with its own validation if/when it
+                    # actually appears in the real-time feed.
+                    if not validate_journey_date(journey_date):
+                        stats["errors"] += 1
+                        logger.warning(
+                            "rejecting_invalid_schedule_journey_date",
+                            station_code=station_code,
+                            train_id=item_train_id,
+                            journey_date=journey_date.isoformat(),
+                        )
+                        continue
 
                     # Use savepoint so a single item failure (e.g. unique
                     # constraint violation) doesn't poison the session for
@@ -187,7 +242,7 @@ class NJTScheduleCollector:
                             item,
                             station_code,
                             station_name or "",
-                            journey_start_time,
+                            journey_date,
                         )
 
                     if result == "new":
@@ -411,13 +466,18 @@ class NJTScheduleCollector:
             "stop_collections_failed": 0,
         }
 
-        # Get all NJT scheduled trains created today that need stop lists
-        journey_date = now_et().date()
+        # Get all NJT scheduled trains from tonight's run that need stop
+        # lists. The 27-hour schedule window produces rows dated today AND
+        # tomorrow (after-midnight departures carry the next service date,
+        # issue #1499), so cover both dates — a run-date-only filter would
+        # leave next-date rows without stop lists until observed.
+        today = now_et().date()
         stmt = select(TrainJourney).where(
             and_(
                 TrainJourney.observation_type == "SCHEDULED",
                 TrainJourney.data_source == "NJT",
-                TrainJourney.journey_date == journey_date,
+                TrainJourney.journey_date >= today,
+                TrainJourney.journey_date <= today + timedelta(days=1),
                 TrainJourney.has_complete_journey.is_(
                     False
                 ),  # Only trains without stops
