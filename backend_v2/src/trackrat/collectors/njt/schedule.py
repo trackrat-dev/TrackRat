@@ -17,6 +17,7 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
+from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time
 
 logger = get_logger(__name__)
@@ -331,6 +332,12 @@ class NJTScheduleCollector:
             )
             return "updated"
 
+        # The schedule API sometimes returns the line name (or another >5-char
+        # string) in TRACK; sanitize it like journey.py/discovery.py do —
+        # writing it raw overflows the String(5) column and aborts the whole
+        # item under StringDataRightTruncation (issue #1508).
+        sanitized_track = sanitize_track(track) if track and track != line else None
+
         # Create new SCHEDULED journey
         new_journey = TrainJourney(
             train_id=train_id,
@@ -344,7 +351,7 @@ class NJTScheduleCollector:
             observation_type="SCHEDULED",
             scheduled_departure=scheduled_departure,
             discovery_station_code=station_code,
-            discovery_track=track if track and track != line else None,
+            discovery_track=sanitized_track,
             has_complete_journey=False,  # Schedule doesn't include stop details
             stops_count=0,
             is_cancelled=False,
@@ -367,8 +374,8 @@ class NJTScheduleCollector:
             stop_sequence=None,  # Will be set during journey collection
             scheduled_departure=scheduled_departure,
             scheduled_arrival=scheduled_departure,  # Same as departure for origin
-            track=track if track and track != line else None,
-            track_assigned_at=now_et() if (track and track != line) else None,
+            track=sanitized_track,
+            track_assigned_at=now_et() if sanitized_track else None,
             has_departed_station=False,
         )
 
@@ -537,7 +544,11 @@ class NJTScheduleCollector:
                 parse_njt_time(stop.SCHED_DEP_DATE) if stop.SCHED_DEP_DATE else None
             )
 
-            # Create stop record
+            # Create stop record. TRACK must be sanitized — NJT serves
+            # >5-char values (e.g. "Millstone Running") and a raw write
+            # overflows the String(5) column, failing this train's whole
+            # stop list once daily (issue #1508).
+            sanitized_track = sanitize_track(stop.TRACK)
             journey_stop = JourneyStop(
                 journey=journey,
                 station_code=stop.STATION_2CHAR,
@@ -545,8 +556,8 @@ class NJTScheduleCollector:
                 stop_sequence=idx,
                 scheduled_arrival=scheduled_arrival,
                 scheduled_departure=scheduled_departure,
-                track=stop.TRACK if stop.TRACK else None,
-                track_assigned_at=now_et() if stop.TRACK else None,
+                track=sanitized_track,
+                track_assigned_at=now_et() if sanitized_track else None,
                 has_departed_station=False,
             )
 
