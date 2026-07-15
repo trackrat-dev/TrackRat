@@ -1417,3 +1417,340 @@ class TestStalePriorRunDetection:
             "The departed-stop guard on DEPARTURE_TIME_MISMATCH must skip the "
             "strike for a running train, so the counter stays at 0"
         )
+
+
+class TestPreDepartureDelaySemantics:
+    """Test that pre-departure delays don't falsely mismatch (issue #1496).
+
+    At the ORIGIN stop, the NJT API's DEP_TIME is a live departure estimate
+    that moves with delays (see normalize_njt_stop_times), NOT the immutable
+    schedule. _is_same_journey must therefore compare the API's SCHED_DEP_DATE
+    (schedule-to-schedule) when present, falling back to DEP_TIME only when
+    SCHED_DEP_DATE is absent.
+
+    The bug: a train delayed >10 minutes BEFORE departure produced
+    DEPARTURE_TIME_MISMATCH on every collection cycle. Because the mismatch
+    path skips stop updates, DEPARTED=YES was never persisted, so the
+    departed-stop strike guard never engaged — even after the train physically
+    left. Three strikes → is_expired → hidden from /departures → discovery
+    reactivates → repeat, for the entire run, with no data ever collected.
+    """
+
+    def _make_journey_and_stop(self, db_session, scheduled_departure):
+        journey = TrainJourney(
+            train_id="3922",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="PJ",
+            terminal_station_code="NY",
+            data_source="NJT",
+            scheduled_departure=scheduled_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=0,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        return journey
+
+    @pytest.mark.asyncio
+    async def test_pre_departure_delay_matches_when_schedule_unchanged(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A 12-minute pre-departure delay (live DEP_TIME moved, SCHED_DEP_DATE
+        unchanged) must be recognized as the SAME journey. Before the fix this
+        returned DEPARTURE_TIME_MISMATCH and struck the journey toward expiry
+        while it was still waiting to depart.
+        """
+        scheduled_departure = now_et().replace(
+            hour=7, minute=30, second=0, microsecond=0
+        )
+        live_delayed_departure = scheduled_departure + timedelta(minutes=12)
+
+        journey = self._make_journey_and_stop(db_session, scheduled_departure)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="PJ",
+            station_name="Princeton Junction",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3922",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Junction",
+                    # DEP_TIME = live estimate, moved by the delay
+                    live_delayed_departure.strftime(NJT_TIME_FORMAT),
+                    # SCHED_DEP_DATE = immutable schedule, unchanged
+                    sched_dep_date=scheduled_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.MATCH, (
+            "A pre-departure delay moves the origin's live DEP_TIME but not "
+            "SCHED_DEP_DATE — the journey must match on the immutable schedule, "
+            "not strike toward expiry (issue #1496)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_collect_journey_details_survives_sustained_pre_departure_delay(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """End-to-end regression: repeated collection cycles against a
+        pre-departure-delayed train must accumulate NO strikes and must not
+        expire the row. Before the fix, cycle 3 set is_expired=True and the
+        train vanished from /departures while still at its origin.
+
+        Times are anchored in the FUTURE relative to now: the scenario is a
+        train that has not departed yet, so no stop time may be in the past
+        (past times would legitimately trigger departure inference /
+        completion logic on the MATCH update path).
+        """
+        scheduled_departure = (now_et() + timedelta(minutes=30)).replace(
+            second=0, microsecond=0
+        )
+        live_delayed_departure = scheduled_departure + timedelta(minutes=14)
+
+        journey = self._make_journey_and_stop(db_session, scheduled_departure)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="PJ",
+            station_name="Princeton Junction",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        # A realistic still-to-run journey: origin not departed, terminal
+        # arrival in the future — nothing here may trigger the completion
+        # backstops once the journey correctly MATCHes.
+        terminal_arrival = live_delayed_departure + timedelta(hours=2)
+        api_response = create_stop_list_response(
+            train_id="3922",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Junction",
+                    live_delayed_departure.strftime(NJT_TIME_FORMAT),
+                    sched_dep_date=scheduled_departure.strftime(NJT_TIME_FORMAT),
+                ),
+                builder.build_stop(
+                    "NY",
+                    "New York Penn",
+                    terminal_arrival.strftime(NJT_TIME_FORMAT),
+                    arr_time=terminal_arrival.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        # Run well past the old 3-strike threshold.
+        for _ in range(5):
+            await journey_collector.collect_journey_details(
+                db_session, journey, skip_enhancement=True
+            )
+            await db_session.refresh(journey)
+
+        assert journey.is_expired is False, (
+            "A pre-departure delayed train must never be expired by repeated "
+            "collection cycles — the delay is visible in DEP_TIME only, the "
+            "schedule is unchanged (issue #1496)"
+        )
+        assert journey.api_error_count == 0, (
+            "No strikes may accumulate for a pre-departure delay: the journey "
+            "matches on SCHED_DEP_DATE, so each cycle is a normal update"
+        )
+        assert journey.is_completed is False
+
+    @pytest.mark.asyncio
+    async def test_genuine_schedule_change_still_mismatches(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """When SCHED_DEP_DATE itself is displaced beyond tolerance, the
+        mismatch must still be detected — the fix must not blind the
+        comparison to genuinely different journeys.
+        """
+        scheduled_departure = now_et().replace(
+            hour=7, minute=30, second=0, microsecond=0
+        )
+        displaced_schedule = scheduled_departure + timedelta(minutes=30)
+
+        journey = self._make_journey_and_stop(db_session, scheduled_departure)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="PJ",
+            station_name="Princeton Junction",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3922",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Junction",
+                    displaced_schedule.strftime(NJT_TIME_FORMAT),
+                    sched_dep_date=displaced_schedule.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH, (
+            "A >10-minute displacement of SCHED_DEP_DATE itself is a real "
+            "mismatch and must still be flagged"
+        )
+
+    @pytest.mark.asyncio
+    async def test_missing_sched_dep_date_falls_back_to_dep_time(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """When the API omits SCHED_DEP_DATE, the comparison must fall back to
+        DEP_TIME — preserving the pre-fix conservative behavior for responses
+        that don't carry the immutable schedule field.
+        """
+        scheduled_departure = now_et().replace(
+            hour=7, minute=30, second=0, microsecond=0
+        )
+        live_delayed_departure = scheduled_departure + timedelta(minutes=22)
+
+        journey = self._make_journey_and_stop(db_session, scheduled_departure)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="PJ",
+            station_name="Princeton Junction",
+            stop_sequence=0,
+            scheduled_departure=scheduled_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3922",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                # sched_dep_date deliberately omitted (fixture default None)
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Junction",
+                    live_delayed_departure.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH, (
+            "Without SCHED_DEP_DATE the comparison must fall back to DEP_TIME "
+            "and keep the existing conservative mismatch behavior"
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_prior_run_still_detected_via_sched_dep_date(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """Reused-train_id detection (issue #1238) must keep working when the
+        comparison uses SCHED_DEP_DATE: the next service day's run is ~24h
+        displaced in the schedule field too.
+        """
+        stored_departure = (now_et() - timedelta(days=1)).replace(
+            hour=16, minute=0, second=0, microsecond=0
+        )
+        next_day_schedule = stored_departure + timedelta(days=1)
+
+        journey = TrainJourney(
+            train_id="3922",
+            journey_date=now_et().date() - timedelta(days=1),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="PJ",
+            terminal_station_code="NY",
+            data_source="NJT",
+            scheduled_departure=stored_departure,
+            has_complete_journey=True,
+            is_completed=False,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        stop = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="PJ",
+            station_name="Princeton Junction",
+            stop_sequence=0,
+            scheduled_departure=stored_departure,
+        )
+        db_session.add(stop)
+        await db_session.flush()
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3922",
+            line_code="NE",
+            destination="New York",
+            stops=[
+                builder.build_stop(
+                    "PJ",
+                    "Princeton Junction",
+                    next_day_schedule.strftime(NJT_TIME_FORMAT),
+                    sched_dep_date=next_day_schedule.strftime(NJT_TIME_FORMAT),
+                ),
+            ],
+        )
+
+        result = await journey_collector._is_same_journey(
+            db_session, journey, api_response
+        )
+
+        assert result is JourneyMatchResult.STALE_PRIOR_RUN, (
+            "A whole-service-day displacement in SCHED_DEP_DATE is daily "
+            "train_id reuse and must still classify as STALE_PRIOR_RUN"
+        )
