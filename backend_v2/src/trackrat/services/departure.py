@@ -39,10 +39,12 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
 )
 from trackrat.utils.train import (
+    effective_njt_updated_times,
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
     normalize_njt_destination,
+    terminal_stop_index,
 )
 
 logger = get_logger(__name__)
@@ -224,6 +226,36 @@ def _detect_at_station(journey: TrainJourney) -> str | None:
 
 class DepartureService:
     """Service for handling departure queries and processing."""
+
+    @staticmethod
+    def _effective_updated_time(
+        journey: TrainJourney,
+        from_stop: JourneyStop,
+        sorted_stops: list[JourneyStop],
+    ) -> datetime | None:
+        """Live time to display for a from-stop on a departure board.
+
+        Routes through the canonical effective_njt_updated_times helper
+        (issue #1505) so the NJT TIME/DEP_TIME inversion correction lives in
+        exactly one place: at intermediate stops the max() surfaces the live
+        delayed estimate; at the journey terminal the max() must be skipped —
+        DEP_TIME there can be a later turnaround departure that inflates the
+        displayed time past the train's true arrival (issue #1492) — and the
+        meaningful live time for a terminating train is its arrival.
+        terminal_stop_index() only trusts positional terminal detection on
+        fully-sequenced journeys, so partially-collected journeys
+        conservatively keep the max().
+        """
+        terminal_idx = terminal_stop_index(sorted_stops, journey.terminal_station_code)
+        is_terminal = (
+            terminal_idx is not None and sorted_stops[terminal_idx] is from_stop
+        )
+        eff_arrival, eff_departure = effective_njt_updated_times(
+            from_stop, journey.data_source, is_terminal=is_terminal
+        )
+        if is_terminal:
+            return eff_arrival or eff_departure
+        return eff_departure or eff_arrival
 
     async def get_departures(
         self,
@@ -485,7 +517,8 @@ class DepartureService:
             # Find from and to stops
             from_stop = None
             to_stop = None
-            for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
+            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            for stop in sorted_stops:
                 if stop.station_code in from_codes and not from_stop:
                     from_stop = stop
                 elif to_station and stop.station_code in to_codes and from_stop:
@@ -516,17 +549,10 @@ class DepartureService:
                     name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # IMPORTANT: max() is required here due to NJT's inverted semantics.
-                    # At NJT intermediate stops, updated_departure = original schedule
-                    # (DEP_TIME) while updated_arrival = live delayed estimate (TIME).
-                    # The schedule is typically earlier, so plain `or` would return it
-                    # and hide delays. max() ensures we surface the delayed time.
-                    # For non-NJT providers, both fields are live estimates so max()
-                    # is harmless. See database.py JourneyStop model for full docs.
-                    updated_time=(
-                        max(from_stop.updated_departure, from_stop.updated_arrival)
-                        if from_stop.updated_departure and from_stop.updated_arrival
-                        else from_stop.updated_departure or from_stop.updated_arrival
+                    # NJT inversion correction with the #1492 terminal
+                    # exemption — see _effective_updated_time.
+                    updated_time=self._effective_updated_time(
+                        journey, from_stop, sorted_stops
                     ),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
@@ -773,7 +799,8 @@ class DepartureService:
         for journey in unique_journeys:
             from_stop = None
             to_stop = None
-            for stop in sorted(journey.stops, key=lambda s: s.stop_sequence or 0):
+            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            for stop in sorted_stops:
                 if stop.station_code in from_codes and not from_stop:
                     from_stop = stop
                 elif to_station and stop.station_code in to_codes and from_stop:
@@ -799,11 +826,12 @@ class DepartureService:
                     name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # See get_departures for max() rationale re: NJT semantics.
-                    updated_time=(
-                        max(from_stop.updated_departure, from_stop.updated_arrival)
-                        if from_stop.updated_departure and from_stop.updated_arrival
-                        else from_stop.updated_departure or from_stop.updated_arrival
+                    # NJT inversion correction with the #1492 terminal
+                    # exemption — see _effective_updated_time. Terminating
+                    # trains DO land on this board (no to-station filter),
+                    # which is where the exemption matters.
+                    updated_time=self._effective_updated_time(
+                        journey, from_stop, sorted_stops
                     ),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
