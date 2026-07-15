@@ -230,6 +230,41 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 .with_for_update(skip_locked=True)
             )
 
+            if existing is None:
+                # The Amtraker feed trims passed stops, so an overnight train
+                # whose pre-midnight tracked stops are all trimmed derives a
+                # D+1 journey_date here and misses its existing (expired) D
+                # row — the #1500 requeue rescue then silently no-ops and a
+                # duplicate D+1 row shadows the real one. Fall back to the
+                # immediately prior service day for the same train before
+                # creating, so a requeued expired row (or any mid-run
+                # overnight row) is reused, not orphaned. The is_completed
+                # guard avoids capturing a genuinely different prior-day run
+                # of the same daily train number: yesterday's run is
+                # completed by the time today's departs. Overnight service is
+                # at most one calendar day behind the derived date, so a
+                # single-day back-window suffices.
+                existing = await session.scalar(
+                    select(TrainJourney)
+                    .where(
+                        and_(
+                            TrainJourney.train_id == train_id,
+                            TrainJourney.journey_date
+                            == journey_date - timedelta(days=1),
+                            TrainJourney.data_source == "AMTRAK",
+                            TrainJourney.is_completed.is_(False),
+                        )
+                    )
+                    .with_for_update(skip_locked=True)
+                )
+                if existing is not None:
+                    logger.info(
+                        "amtrak_prior_day_journey_matched",
+                        train_id=train_id,
+                        derived_journey_date=journey_date.isoformat(),
+                        matched_journey_date=existing.journey_date.isoformat(),
+                    )
+
             if existing:
                 # Update existing journey
                 journey = existing

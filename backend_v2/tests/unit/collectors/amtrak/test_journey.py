@@ -1375,3 +1375,145 @@ class TestConvertMidRunHardening:
         assert result.stops_count == len(
             stops
         ), "stops_count must match the DB after a mid-run convert"
+
+
+class TestConvertCrossDayMatching:
+    """_convert_to_journey must reuse an existing prior-day row when feed
+    trimming pushes the derived journey_date past midnight (issue #1500
+    follow-up).
+
+    _convert_to_journey derives journey_date from the feed's first tracked
+    stop's schDep. The Amtraker feed trims passed stops, so for an overnight
+    train whose pre-midnight tracked stops are all trimmed, the derived date
+    is D+1 — the exact-date lookup missed the existing day-D row, the #1500
+    expired-row requeue silently no-oped, and a duplicate D+1 row shadowed
+    the real one. The fallback matches the immediately prior service day
+    (same train, not completed) before creating a new row.
+    """
+
+    def _overnight_trimmed_feed(self, post_midnight):
+        """Feed for an overnight run with every pre-midnight stop trimmed:
+        the first surviving tracked stop departs after midnight."""
+        return create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="PHL",
+                    name="Philadelphia",
+                    sch_arr=(post_midnight - timedelta(minutes=5)).isoformat(),
+                    sch_dep=post_midnight.isoformat(),
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(post_midnight + timedelta(hours=2)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+    def _day_d_journey(self, day_d, origin_sched, is_completed=False):
+        return TrainJourney(
+            train_id="A2150",
+            journey_date=day_d,
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=origin_sched,
+            has_complete_journey=True,
+            is_completed=is_completed,
+            is_expired=True,  # stranded by a transient feed gap mid-run
+            api_error_count=3,
+            update_count=1,
+            observation_type="OBSERVED",
+        )
+
+    @pytest.mark.asyncio
+    async def test_overnight_trimmed_feed_reuses_prior_day_row(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """The derived D+1 date must fall back to the existing day-D row:
+        the expired row is reused and rescued, not shadowed by a duplicate."""
+        # First surviving feed stop departs shortly after midnight "today";
+        # the run's origin departed yesterday (day D) before midnight.
+        post_midnight = now_et().replace(
+            hour=0, minute=30, second=0, microsecond=0
+        )
+        day_d = post_midnight.date() - timedelta(days=1)
+        origin_sched = post_midnight - timedelta(hours=2)  # 22:30 on day D
+
+        journey = self._day_d_journey(day_d, origin_sched)
+        db_session.add(journey)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._overnight_trimmed_feed(post_midnight)
+        )
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == journey.id, (
+            "The overnight run's derived D+1 journey_date must fall back to "
+            "the existing day-D row instead of creating a duplicate"
+        )
+        assert result.journey_date == day_d, "The row keeps its origin date"
+        assert result.is_expired is False, (
+            "The requeue rescue must reach the day-D row and clear its expiry"
+        )
+        assert result.api_error_count == 0
+
+        from sqlalchemy import select as sa_select
+
+        rows = (
+            (
+                await db_session.execute(
+                    sa_select(TrainJourney).where(
+                        TrainJourney.train_id == "A2150",
+                        TrainJourney.data_source == "AMTRAK",
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1, (
+            f"Exactly one journey row must exist for the train; got "
+            f"{[(r.journey_date, r.is_expired) for r in rows]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_completed_prior_day_run_is_not_captured(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A COMPLETED prior-day run of the same daily train number is
+        finalized history — the fallback must skip it and create a fresh
+        row for the new service day."""
+        post_midnight = now_et().replace(
+            hour=0, minute=30, second=0, microsecond=0
+        )
+        day_d = post_midnight.date() - timedelta(days=1)
+        origin_sched = post_midnight - timedelta(hours=2)
+
+        finished = self._day_d_journey(day_d, origin_sched, is_completed=True)
+        db_session.add(finished)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._overnight_trimmed_feed(post_midnight)
+        )
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id != finished.id, (
+            "A completed prior-day run must not be captured by the cross-day "
+            "fallback — this is a new service day's journey"
+        )
+        assert result.journey_date == post_midnight.date()
+        assert finished.is_completed is True, "Finalized history untouched"
