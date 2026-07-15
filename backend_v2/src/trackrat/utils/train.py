@@ -198,6 +198,27 @@ def is_njt_stop_cancelled(status: str | None) -> bool:
     return status.strip().upper() in ("CANCELLED", "CANCELED")
 
 
+def njt_stops_indicate_cancellation(stop_statuses: list[str | None]) -> bool:
+    """True if a train's NJT stop statuses indicate the train is cancelled.
+
+    Mirrors the collector's cancellation rule (``collect_journey_details``):
+    a train is cancelled if NJT marks *every* stop cancelled (train never ran)
+    OR the *terminal* stop is cancelled (train didn't complete its journey —
+    origin may read "ON TIME" while every later stop is "CANCELLED").
+
+    ``stop_statuses`` must be in stop order; the last element is treated as the
+    terminal stop. An empty list is not a cancellation (absent evidence), so
+    callers gating on this stay conservative.
+    """
+    if not stop_statuses:
+        return False
+    cancelled = [is_njt_stop_cancelled(s) for s in stop_statuses]
+    cancelled_count = sum(cancelled)
+    if not cancelled_count:
+        return False
+    return cancelled_count == len(stop_statuses) or cancelled[-1]
+
+
 def normalize_njt_destination(destination: str | None) -> str:
     """Normalize an NJT destination string for cross-source matching.
 
