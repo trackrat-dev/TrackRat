@@ -24,9 +24,11 @@ class TrainCacheService {
     // PERFORMANCE: Maximum number of entries in memory cache to prevent unbounded growth
     private let maxMemoryCacheSize = 50
 
-    // Maximum age for cached data (5 minutes = 300 seconds)
-    // This is separate from API data freshness - it's how long we trust our local cache
-    private let maxCacheAge: TimeInterval = 300
+    // How long entries are retained at all. Stale entries (past the freshness
+    // window but within retention) are kept so offline readers can render
+    // last-known data via `allowStale` — e.g. tapping a Live Activity with no
+    // cell service. Swept on initialization.
+    private let maxCacheRetention: TimeInterval = 24 * 60 * 60
 
     private init() {
         // Clean up old cache entries on initialization
@@ -40,8 +42,14 @@ class TrainCacheService {
         let cachedAt: Date
         let cacheKey: String
 
+        /// Freshness window (5 minutes). This is separate from API data
+        /// freshness - it's how long we trust our local cache. Older entries
+        /// are stale: not served by default reads, but retained for
+        /// `allowStale` readers.
+        static let freshnessWindow: TimeInterval = 300
+
         var isExpired: Bool {
-            Date().timeIntervalSince(cachedAt) > 300 // 5 minutes
+            Date().timeIntervalSince(cachedAt) > Self.freshnessWindow
         }
 
         var ageSeconds: Int {
@@ -127,10 +135,40 @@ class TrainCacheService {
     // MARK: - Retrieval
 
     /// Retrieves cached train details. Returns nil for miss or expired entry.
+    /// With `allowStale`, an expired entry still within `maxCacheRetention` is
+    /// returned when no fresh one exists, so callers can render last-known data
+    /// while the network is unavailable. Check `CachedTrain.isExpired` on the
+    /// result to surface staleness to the user.
     func getCachedTrain(
         trainNumber: String,
         date: Date = Date(),
-        dataSource: String? = nil
+        dataSource: String? = nil,
+        allowStale: Bool = false
+    ) -> CachedTrain? {
+        // Fresh entries always win; only fall back to a stale one when allowed,
+        // so a stale entry under one key never shadows a fresh one under another.
+        if let fresh = lookupCachedTrain(
+            trainNumber: trainNumber,
+            date: date,
+            dataSource: dataSource,
+            allowStale: false
+        ) {
+            return fresh
+        }
+        guard allowStale else { return nil }
+        return lookupCachedTrain(
+            trainNumber: trainNumber,
+            date: date,
+            dataSource: dataSource,
+            allowStale: true
+        )
+    }
+
+    private func lookupCachedTrain(
+        trainNumber: String,
+        date: Date,
+        dataSource: String?,
+        allowStale: Bool
     ) -> CachedTrain? {
         let requestedSource = normalizedDataSource(dataSource)
 
@@ -139,7 +177,7 @@ class TrainCacheService {
             date: date,
             dataSource: dataSource
         ) {
-            if let cached = getCachedTrainByKey(cacheKey) {
+            if let cached = getCachedTrainByKey(cacheKey, allowStale: allowStale) {
                 if let requestedSource,
                    normalizedDataSource(cached.train.dataSource) != requestedSource {
                     continue
@@ -158,7 +196,7 @@ class TrainCacheService {
                 trainNumber: trainNumber,
                 date: date
             ) {
-                if let cached = getCachedTrainByKey(cacheKey) {
+                if let cached = getCachedTrainByKey(cacheKey, allowStale: allowStale) {
                     return cached
                 }
             }
@@ -166,39 +204,60 @@ class TrainCacheService {
         return nil
     }
 
-    /// Internal helper to get cached train by key
-    private func getCachedTrainByKey(_ cacheKey: String) -> CachedTrain? {
+    /// Internal helper to get cached train by key. Expired entries are retained
+    /// (for `allowStale` readers) until they age past `maxCacheRetention`.
+    private func getCachedTrainByKey(_ cacheKey: String, allowStale: Bool) -> CachedTrain? {
         // Check in-memory cache first (fastest)
         if let cached = memoryCache[cacheKey] {
-            if !cached.isExpired {
-                print("✅ Cache HIT (memory): \(cacheKey) - age: \(cached.ageSeconds)s")
+            if Double(cached.ageSeconds) > maxCacheRetention {
+                print("🧹 Cache RETENTION EXPIRED (memory): \(cacheKey) - age: \(cached.ageSeconds)s")
+                removeCacheEntry(cacheKey)
+                return nil
+            }
+            if !cached.isExpired || allowStale {
+                print("✅ Cache HIT (memory\(cached.isExpired ? ", stale" : "")): \(cacheKey) - age: \(cached.ageSeconds)s")
                 // Update LRU access order
                 updateAccessOrder(for: cacheKey)
                 return cached
-            } else {
-                print("⏰ Cache EXPIRED (memory): \(cacheKey) - age: \(cached.ageSeconds)s")
-                memoryCache.removeValue(forKey: cacheKey)
-                memoryCacheAccessOrder.removeAll { $0 == cacheKey }
             }
+            print("⏰ Cache EXPIRED (memory): \(cacheKey) - age: \(cached.ageSeconds)s")
+            // Memory is written on every cacheTrain alongside UserDefaults, so
+            // the persistent tier can never hold a fresher copy — stop here.
+            return nil
         }
 
         // Check persistent cache (UserDefaults)
         let persistentKey = cacheKeyPrefix + cacheKey
         if let data = userDefaults.data(forKey: persistentKey),
            let cached = try? JSONDecoder().decode(CachedTrain.self, from: data) {
-            if !cached.isExpired {
-                print("✅ Cache HIT (persistent): \(cacheKey) - age: \(cached.ageSeconds)s")
+            if Double(cached.ageSeconds) > maxCacheRetention {
+                print("🧹 Cache RETENTION EXPIRED (persistent): \(cacheKey) - age: \(cached.ageSeconds)s")
+                removeCacheEntry(cacheKey)
+                return nil
+            }
+            if !cached.isExpired || allowStale {
+                print("✅ Cache HIT (persistent\(cached.isExpired ? ", stale" : "")): \(cacheKey) - age: \(cached.ageSeconds)s")
                 // Restore to memory cache with LRU tracking
                 addToMemoryCache(key: cacheKey, value: cached)
                 return cached
-            } else {
-                print("⏰ Cache EXPIRED (persistent): \(cacheKey) - age: \(cached.ageSeconds)s")
-                userDefaults.removeObject(forKey: persistentKey)
             }
+            print("⏰ Cache EXPIRED (persistent): \(cacheKey) - age: \(cached.ageSeconds)s")
+            return nil
         }
 
         print("❌ Cache MISS: \(cacheKey)")
         return nil
+    }
+
+    /// Drops an entry from both tiers and the metadata index.
+    private func removeCacheEntry(_ cacheKey: String) {
+        memoryCache.removeValue(forKey: cacheKey)
+        memoryCacheAccessOrder.removeAll { $0 == cacheKey }
+        userDefaults.removeObject(forKey: cacheKeyPrefix + cacheKey)
+        var metadata = getCacheMetadata()
+        if metadata.keys.removeValue(forKey: cacheKey) != nil {
+            saveCacheMetadata(metadata)
+        }
     }
 
     /// Returns the age of the cache in seconds, or nil if not cached. Used to gate
@@ -292,14 +351,14 @@ class TrainCacheService {
 
     // MARK: - Cache Management
 
-    /// Removes expired cache entries from persistent storage
+    /// Removes entries older than the retention window from persistent storage
     private func cleanupExpiredCache() {
         var metadata = getCacheMetadata()
         var hasChanges = false
 
         for (cacheKey, cachedAt) in metadata.keys {
             let age = Date().timeIntervalSince(cachedAt)
-            if age > maxCacheAge {
+            if age > maxCacheRetention {
                 let persistentKey = cacheKeyPrefix + cacheKey
                 userDefaults.removeObject(forKey: persistentKey)
                 metadata.keys.removeValue(forKey: cacheKey)
@@ -382,10 +441,11 @@ class TrainCacheService {
     func injectLegacyTrainForTesting(
         _ train: TrainV2,
         trainNumber: String,
-        date: Date = Date()
+        date: Date = Date(),
+        cachedAt: Date = Date()
     ) {
         let cacheKey = generateLegacyCacheKey(trainNumber: trainNumber, date: date)
-        let cached = CachedTrain(train: train, cachedAt: Date(), cacheKey: cacheKey)
+        let cached = CachedTrain(train: train, cachedAt: cachedAt, cacheKey: cacheKey)
 
         addToMemoryCache(key: cacheKey, value: cached)
         if let encoded = try? JSONEncoder().encode(cached) {

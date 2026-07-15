@@ -192,6 +192,13 @@ struct TrainDetailsView: View {
                         }
                     } else if let train = viewModel.train {
                         VStack(spacing: 16) {
+                            // Refresh is failing (likely offline) — say how old the
+                            // data on screen is instead of hiding it. Clears on the
+                            // next successful poll.
+                            if let staleSince = viewModel.staleDataTimestamp {
+                                StaleDataBanner(lastUpdated: staleSince)
+                            }
+
                             // Explain "Train TBD" — scheduled-only NJT/Amtrak trains not yet
                             // seen in the live feed. Self-clears once observationType flips.
                             if train.hasUnconfirmedTrainNumber {
@@ -603,6 +610,31 @@ struct CombinedDetailsCard: View {
 }
 
 // Note: StatusV2 functionality is now integrated directly into TrainV2 model
+
+// MARK: - Stale Data Banner
+/// Shown when the displayed train data couldn't be refreshed (e.g. no cell
+/// service after tapping a Live Activity). `Text(_:style: .relative)` keeps
+/// the age ticking without a timer; the polling loop keeps retrying and the
+/// next successful refresh removes the banner.
+struct StaleDataBanner: View {
+    let lastUpdated: Date
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "wifi.exclamationmark")
+                .foregroundColor(.orange)
+            Text("Can't reach live updates — showing data from \(Text(lastUpdated, style: .relative)) ago. Retrying…")
+                .font(.subheadline)
+                .foregroundColor(.white.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12))
+        .cornerRadius(8)
+    }
+}
 
 // MARK: - Scheduled Train Info Banner
 struct ScheduledTrainInfoBanner: View {
@@ -1042,6 +1074,16 @@ class TrainDetailsViewModel: ObservableObject {
     @Published var error: String?
     @Published var triggerTrackAssignedHaptic = false
 
+    /// Non-nil when the displayed train data is older than the cache freshness
+    /// window and couldn't be refreshed (e.g. no cell service after tapping a
+    /// Live Activity). Drives the stale-data banner; cleared by the next
+    /// successful fetch.
+    @Published var staleDataTimestamp: Date?
+
+    /// When the currently displayed train data was last fetched (network) or
+    /// cached. Decides whether a failed refresh leaves us showing stale data.
+    private var trainDataAsOf: Date?
+
     // Prefetched secondary data (loaded in parallel with main train fetch)
     @Published var prefetchedSummary: OperationsSummaryResponse?
     @Published var prefetchedDelayForecast: DelayForecastResponse?
@@ -1220,20 +1262,35 @@ class TrainDetailsViewModel: ObservableObject {
             )
         }
 
-        // PRIORITY 1: Render any non-expired cache instantly, reconcile in background.
-        // The 5-minute isExpired ceiling in TrainCacheService bounds staleness; the
-        // background refresh corrects any drift. Critical for Live Activity taps: the
+        // PRIORITY 1: Render any cached data instantly, reconcile in background.
+        // Stale entries (past the 5-minute freshness window) are rendered too —
+        // flagged via staleDataTimestamp — because last-known stops beat an endless
+        // spinner when the network is gone. Critical for Live Activity taps: the
         // Activity's ContentState has progress info but no stops array, so the cache
         // (written by LiveActivityService.fetchAndUpdateTrain) is the only instant
-        // source of departed-stops state.
+        // source of departed-stops state. The pushed ContentState is then overlaid
+        // on top: APNs keeps updating the activity while the app is suspended, so
+        // it is often newer than the cache.
         if !trainIdentifier.isEmpty,
            let cached = cacheService.getCachedTrain(
                trainNumber: trainIdentifier,
                date: effectiveDate,
-               dataSource: dataSource
+               dataSource: dataSource,
+               allowStale: true
            ) {
-            print("📦 Loading from cache (\(cached.ageSeconds)s old) - instant display")
-            train = cached.train
+            print("📦 Loading from cache (\(cached.ageSeconds)s old\(cached.isExpired ? ", stale" : "")) - instant display")
+            var cachedTrain = cached.train
+            var dataAsOf = cached.cachedAt
+            if let pushedState = LiveActivityService.shared.pushedContentState(
+                forTrainId: trainIdentifier,
+                dataSource: dataSource ?? cachedTrain.dataSource
+            ) {
+                cachedTrain = cachedTrain.applyingLiveActivityState(pushedState, ifNewerThan: dataAsOf)
+                dataAsOf = max(dataAsOf, Date(timeIntervalSince1970: pushedState.dataTimestamp))
+            }
+            train = cachedTrain
+            trainDataAsOf = dataAsOf
+            staleDataTimestamp = isStale(dataAsOf) ? dataAsOf : nil
             updateComputedProperties()
             await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             return
@@ -1244,6 +1301,10 @@ class TrainDetailsViewModel: ObservableObject {
             let hasStops = existingTrain.stops != nil && !existingTrain.stops!.isEmpty
             print("⚡ Using existing train from appState - instant display (hasStops: \(hasStops))")
             train = existingTrain
+            // appState.currentTrain was fetched during this session's recent
+            // navigation; approximating its age as "now" lets markRefreshFailed
+            // arm the stale banner if refreshes keep failing from here on.
+            trainDataAsOf = Date()
             updateComputedProperties()
 
             // If train doesn't have stops, show loading indicator for stops section
@@ -1281,6 +1342,7 @@ class TrainDetailsViewModel: ObservableObject {
             )
 
             train = fetchedTrain
+            markDataFetched()
 
             // Cache the newly fetched train
             if !trainIdentifier.isEmpty {
@@ -1353,12 +1415,33 @@ class TrainDetailsViewModel: ObservableObject {
 
             // Update UI with fresh data (seamless update)
             train = newTrain
+            markDataFetched()
             updateComputedProperties()
 
         } catch {
             // Silent failure for background refresh - user already has cached data
             print("⚠️ Background refresh failed (not critical): \(error)")
+            markRefreshFailed()
         }
+    }
+
+    /// Records a successful network fetch: data is fresh, clear any stale banner.
+    private func markDataFetched() {
+        trainDataAsOf = Date()
+        staleDataTimestamp = nil
+    }
+
+    /// Records a failed refresh: once the data on screen has aged past the cache
+    /// freshness window, surface the stale banner. Polling keeps retrying, and
+    /// the next successful fetch clears it via markDataFetched.
+    private func markRefreshFailed() {
+        guard train != nil, let dataAsOf = trainDataAsOf, isStale(dataAsOf) else { return }
+        staleDataTimestamp = dataAsOf
+    }
+
+    /// Whether data fetched at the given time is past the cache freshness window.
+    private func isStale(_ dataAsOf: Date) -> Bool {
+        Date().timeIntervalSince(dataAsOf) > TrainCacheService.CachedTrain.freshnessWindow
     }
     
     func refreshTrainDetails(fromStationCode: String? = nil, toStationCode: String? = nil, selectedDestinationName: String? = nil) async {
@@ -1428,11 +1511,13 @@ class TrainDetailsViewModel: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 self?.objectWillChange.send()
                 self?.train = newTrain
+                self?.markDataFetched()
                 self?.updateComputedProperties()
             }
         } catch {
             print("❌ TrainDetailsView refresh failed for train \(trainId): \(error)")
             print("❌ Full error details: \(String(describing: error))")
+            markRefreshFailed()
         }
     }
 

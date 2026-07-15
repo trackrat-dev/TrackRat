@@ -1237,4 +1237,182 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(StopV2.arrivalDelayBadge(arrival: now, scheduledArrival: nil), "",
             "No scheduled arrival means no badge")
     }
+
+    // MARK: - applyingLiveActivityState (pushed Live Activity overlay)
+
+    /// Build a pushed Live Activity content state with only the fields the
+    /// overlay reads; everything else stays neutral.
+    private func makePushedState(
+        status: String = "DEPARTED",
+        track: String? = nil,
+        nextStopCode: String? = nil,
+        hasTrainDeparted: Bool = false,
+        dataTimestamp: TimeInterval,
+        originStationCode: String? = "NY"
+    ) -> TrainActivityAttributes.ContentState {
+        TrainActivityAttributes.ContentState(
+            status: status,
+            track: track,
+            currentStopName: "Test Station",
+            nextStopName: nil,
+            delayMinutes: 0,
+            journeyProgress: 0.5,
+            dataTimestamp: dataTimestamp,
+            scheduledDepartureTime: nil,
+            scheduledArrivalTime: nil,
+            nextStopArrivalTime: nil,
+            nextStopCode: nextStopCode,
+            hasTrainDeparted: hasTrainDeparted,
+            predictedTrack: nil,
+            predictedTrackConfidence: nil,
+            originStationCode: originStationCode,
+            destinationStationCode: "PH"
+        )
+    }
+
+    /// Four-stop journey NY → NWK → MET → PH with nothing departed and no
+    /// track, exactly what a stale cache entry looks like after the app was
+    /// suspended for a while.
+    private func makeFourStopTrain() -> TrainV2 {
+        let base = Date()
+        let stops = [
+            makeStop(stationCode: "NY", sequence: 1, scheduledDeparture: base),
+            makeStop(stationCode: "NWK", sequence: 2, scheduledDeparture: base.addingTimeInterval(900)),
+            makeStop(stationCode: "MET", sequence: 3, scheduledDeparture: base.addingTimeInterval(1800)),
+            makeStop(stationCode: "PH", sequence: 4, scheduledDeparture: base.addingTimeInterval(3600))
+        ]
+        return createTestTrainV2(departureCode: "NY", track: nil, stops: stops)
+    }
+
+    func testApplyingLiveActivityState_marksPassedStopsDeparted() {
+        print("🐀 Testing overlay marks stops the train passed since the cache was written")
+
+        // Cache written 30 min ago (before departure); push from 1 min ago says
+        // the train is en route with MET as the next stop.
+        let cachedAt = Date().addingTimeInterval(-30 * 60)
+        let train = makeFourStopTrain()
+        let state = makePushedState(
+            nextStopCode: "MET",
+            hasTrainDeparted: true,
+            dataTimestamp: Date().addingTimeInterval(-60).timeIntervalSince1970
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        let departedCodes = updated.stops?.filter { $0.hasDepartedStation }.map { $0.stationCode } ?? []
+        print("  - Departed stops after overlay: \(departedCodes)")
+        XCTAssertEqual(departedCodes, ["NY", "NWK"],
+            "Every stop before the pushed nextStopCode must be marked departed, and no others")
+        XCTAssertTrue(updated.hasTrainDepartedFromStation("NY"),
+            "Origin must report departed after the overlay")
+        XCTAssertEqual(updated.calculateStatus(fromStationCode: "NY"), .departed,
+            "Derived status must flip to departed from the overlaid stops")
+    }
+
+    func testApplyingLiveActivityState_ignoresStateOlderThanCache() {
+        print("🐀 Testing overlay is a no-op when the push predates the cached data")
+
+        let cachedAt = Date().addingTimeInterval(-60)
+        let train = makeFourStopTrain()
+        let state = makePushedState(
+            track: "9",
+            nextStopCode: "MET",
+            hasTrainDeparted: true,
+            dataTimestamp: Date().addingTimeInterval(-30 * 60).timeIntervalSince1970
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        XCTAssertEqual(updated.stops?.filter { $0.hasDepartedStation }.count, 0,
+            "An older push must never overwrite newer cached data")
+        XCTAssertNil(updated.track, "An older push's track must not be adopted")
+    }
+
+    func testApplyingLiveActivityState_beforeOriginDepartureMarksNothing() {
+        print("🐀 Testing overlay marks nothing while the train is short of the user's origin")
+
+        // nextStopCode is the origin itself and hasTrainDeparted is false: the
+        // train may not even have started, so nothing about earlier stops can
+        // be inferred from the push.
+        let cachedAt = Date().addingTimeInterval(-10 * 60)
+        let train = makeFourStopTrain()
+        let state = makePushedState(
+            status: "NOT_DEPARTED",
+            nextStopCode: "NY",
+            hasTrainDeparted: false,
+            dataTimestamp: Date().timeIntervalSince1970
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        XCTAssertEqual(updated.stops?.filter { $0.hasDepartedStation }.count, 0,
+            "Without hasTrainDeparted no stop may be marked departed")
+        XCTAssertFalse(updated.isCancelled)
+    }
+
+    func testApplyingLiveActivityState_adoptsPushedTrackAtOrigin() {
+        print("🐀 Testing overlay adopts a track assignment pushed after the cache was written")
+
+        let cachedAt = Date().addingTimeInterval(-10 * 60)
+        let train = makeFourStopTrain()
+        XCTAssertNil(train.track, "Precondition: cached train has no track yet")
+
+        let state = makePushedState(
+            status: "BOARDING",
+            track: "9",
+            dataTimestamp: Date().timeIntervalSince1970,
+            originStationCode: "NY"
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        print("  - train.track after overlay: \(updated.track ?? "none")")
+        XCTAssertEqual(updated.track, "9",
+            "Train-level track (departure timing) must adopt the pushed assignment")
+        XCTAssertEqual(updated.stops?.first?.track, "9",
+            "Origin stop must adopt the pushed track (drives boarding detection)")
+        XCTAssertNil(updated.stops?[1].track,
+            "Other stops must not inherit the origin's track")
+    }
+
+    func testApplyingLiveActivityState_trackForOtherOriginLeavesDepartureTimingAlone() {
+        print("🐀 Testing pushed track only applies to the activity's own origin station")
+
+        // Cached train was fetched relative to NY, but the activity tracks a
+        // journey boarding at NWK: the pushed track belongs to NWK only.
+        let cachedAt = Date().addingTimeInterval(-10 * 60)
+        let train = makeFourStopTrain()
+        let state = makePushedState(
+            status: "BOARDING",
+            track: "3",
+            dataTimestamp: Date().timeIntervalSince1970,
+            originStationCode: "NWK"
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        XCTAssertNil(updated.track,
+            "Departure timing is for NY, so an NWK track must not be applied to it")
+        XCTAssertEqual(updated.stops?[1].track, "3",
+            "The NWK stop must adopt the pushed track")
+    }
+
+    func testApplyingLiveActivityState_appliesCancellation() {
+        print("🐀 Testing overlay applies a pushed cancellation")
+
+        let cachedAt = Date().addingTimeInterval(-10 * 60)
+        let train = makeFourStopTrain()
+        XCTAssertFalse(train.isCancelled, "Precondition: cached train is not cancelled")
+
+        let state = makePushedState(
+            status: "CANCELLED",
+            dataTimestamp: Date().timeIntervalSince1970
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        XCTAssertTrue(updated.isCancelled,
+            "A pushed cancellation must be surfaced immediately — it changes what the user should do")
+        XCTAssertEqual(updated.calculateStatus(fromStationCode: "NY"), .cancelled)
+    }
 }

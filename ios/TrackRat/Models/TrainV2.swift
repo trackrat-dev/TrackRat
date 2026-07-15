@@ -29,12 +29,14 @@ struct TrainV2: Identifiable, Codable {
     let journeyDate: Date?
     let line: LineInfo
     let destination: String
-    let departure: StationTiming
+    // `departure` and `isCancelled` are mutable so applyingLiveActivityState
+    // can overlay fresher pushed Live Activity facts onto cached data.
+    var departure: StationTiming
     let arrival: StationTiming?
     let trainPosition: TrainPosition?
     let dataFreshness: DataFreshness?
     let observationType: String?
-    let isCancelled: Bool
+    var isCancelled: Bool
     let cancellationReason: String?
     let isCompleted: Bool
     let dataSource: String
@@ -377,7 +379,9 @@ struct StationTiming: Codable {
     let scheduledTime: Date?
     let updatedTime: Date?  // Renamed from estimatedTime to match backend
     let actualTime: Date?
-    let track: String?
+    // Mutable so applyingLiveActivityState can adopt a track assignment pushed
+    // to the Live Activity after the cached train data was written.
+    var track: String?
     
     // Computed property to calculate delay client-side (pure data approach)
     var delayMinutes: Int {
@@ -450,9 +454,11 @@ struct StopV2: Identifiable, Codable {
     let updatedDeparture: Date?
     let actualArrival: Date?
     let actualDeparture: Date?
-    let track: String?
+    // `track` and `hasDepartedStation` are mutable so applyingLiveActivityState
+    // can overlay fresher pushed Live Activity facts onto cached data.
+    var track: String?
     let rawStatus: RawStopStatus?
-    let hasDepartedStation: Bool
+    var hasDepartedStation: Bool
     
     // Prediction fields
     let predictedArrival: Date?
@@ -616,8 +622,69 @@ extension TrainV2 {
         )
     }
 
+    /// Overlays fresher pushed Live Activity state onto (typically cached) train data.
+    ///
+    /// APNs keeps updating the Live Activity while the app is suspended, so after the
+    /// app returns from the background the pushed ContentState is often newer than any
+    /// cached train — and when the network is unavailable it is the freshest train data
+    /// on the device. The push carries no stops array, only scalar facts, so this
+    /// applies exactly those facts to the cached stops: stops the train has passed,
+    /// the origin track assignment, and cancellation. Times keep their cached values.
+    ///
+    /// Returns self unchanged when the pushed state is not newer than `dataAsOf`
+    /// (the time the cached data was fetched).
+    func applyingLiveActivityState(
+        _ state: TrainActivityAttributes.ContentState,
+        ifNewerThan dataAsOf: Date
+    ) -> TrainV2 {
+        guard state.dataTimestamp > dataAsOf.timeIntervalSince1970 else { return self }
+        var updated = self
+
+        // Mark stops the train has passed since the cache was written. The push's
+        // nextStopCode is the first stop not yet departed within the user's journey
+        // segment, so once the train has left the user's origin every stop before
+        // it has been departed. Without hasTrainDeparted the train may still be
+        // short of the origin, where stops before nextStopCode aren't departed yet.
+        if state.hasTrainDeparted,
+           let nextStopCode = state.nextStopCode,
+           var stops = updated.stops,
+           let nextIndex = stops.firstIndex(where: {
+               Stations.areEquivalentStations($0.stationCode, nextStopCode)
+           }) {
+            for index in stops.indices where index < nextIndex {
+                stops[index].hasDepartedStation = true
+            }
+            updated.stops = stops
+        }
+
+        // Adopt a track assignment pushed after the cache was written. The pushed
+        // track is for the activity's origin station, so only apply it there.
+        if let track = state.track, !track.isEmpty,
+           let originCode = state.originStationCode {
+            if Stations.areEquivalentStations(updated.departure.code, originCode) {
+                updated.departure.track = track
+            }
+            if var stops = updated.stops,
+               let originIndex = stops.firstIndex(where: {
+                   Stations.areEquivalentStations($0.stationCode, originCode)
+               }) {
+                stops[originIndex].track = track
+                updated.stops = stops
+            }
+        }
+
+        // Cancellation is the one status worth trusting immediately — it changes
+        // what the user should do next. Other statuses are derived client-side
+        // from the (now overlaid) stops, so they need no explicit copy.
+        if state.status == TrainStatus.cancelled.rawValue {
+            updated.isCancelled = true
+        }
+
+        return updated
+    }
+
     // MARK: - Helper Methods for Live Activities
-    
+
     // Calculate journey progress for a specific origin-destination segment
     func calculateJourneyProgress(from originCode: String, toCode destinationCode: String) -> Double {
         guard let stops = stops else { return 0.0 }

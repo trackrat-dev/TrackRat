@@ -545,7 +545,21 @@ class LiveActivityService: ObservableObject {
 
         print("📱 Found existing Live Activity: \(activity.id)")
     }
-    
+
+    /// The pushed content state of the current Live Activity when it matches the
+    /// given train, or nil. APNs keeps updating the activity while the app is
+    /// suspended, so after returning from the background this is often newer than
+    /// anything in TrainCacheService — and with no network it is the freshest
+    /// train data on the device. Compare its `dataTimestamp` against the cache's
+    /// timestamp before trusting it (see TrainV2.applyingLiveActivityState).
+    func pushedContentState(forTrainId trainId: String, dataSource: String?) -> TrainActivityAttributes.ContentState? {
+        guard let activity = currentActivity,
+              activity.attributes.matchesTrain(trainId: trainId, dataSource: dataSource) else {
+            return nil
+        }
+        return activity.content.state
+    }
+
     // MARK: - Helper Methods
     
     /// Simple check using the same logic as the Live Activity widget
