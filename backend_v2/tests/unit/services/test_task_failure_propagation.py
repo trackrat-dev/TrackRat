@@ -130,6 +130,7 @@ class TestTaskFailurePropagation:
         """A failed NJT maintenance sweep (issue #1497) must surface as a
         failed run — not stamp last_successful_run while the reconcile /
         expiry sweeps silently stop running."""
+        scheduler_service.njt_client = AsyncMock()  # get past the no-client guard
         with (
             _patched(),
             patch("trackrat.services.scheduler.get_session", _fake_session),
