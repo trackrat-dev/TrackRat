@@ -235,6 +235,26 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 journey = existing
                 journey.last_updated_at = now_et()
                 journey.update_count = (journey.update_count or 0) + 1
+                # Seeing the train in the live feed clears any prior expiry
+                # and resets the not-found strike counter, mirroring
+                # collect_journey_details (issue #1500). Without this, a row
+                # re-collected via the batch path stayed stranded expired
+                # while the feed served the train, and a promoted row could
+                # enter its run pre-loaded with strikes — one transient
+                # mid-run miss away from expiry.
+                if journey.api_error_count:
+                    logger.info(
+                        "resetting_api_error_count",
+                        train_id=train_id,
+                        previous_count=journey.api_error_count,
+                    )
+                    journey.api_error_count = 0
+                if journey.is_expired:
+                    logger.info(
+                        "amtrak_train_unexpired_on_reobservation",
+                        train_id=train_id,
+                    )
+                    journey.is_expired = False
                 # Mark as observed if it was previously scheduled
                 if journey.observation_type == "SCHEDULED":
                     journey.observation_type = "OBSERVED"

@@ -1554,6 +1554,20 @@ class SchedulerService:
                         train_id=original_train_id,
                         internal_id=internal_train_id,
                     )
+                elif existing_journey.is_expired:
+                    # The train is present in the live feed (that's how it
+                    # entered unique_trains), so a prior expiry was transient
+                    # (feed gap). Re-collect so the collector clears
+                    # is_expired (issue #1500) — JIT cannot do it:
+                    # needs_refresh() blocks expired rows, so without this
+                    # hook a wrongly-expired train with no Live Activity
+                    # stays frozen for the rest of its run.
+                    trains_to_collect.append(original_train_id)
+                    logger.info(
+                        "amtrak_expired_reobserved_requeued",
+                        train_id=original_train_id,
+                        internal_id=internal_train_id,
+                    )
                 else:
                     logger.debug(
                         "amtrak_journey_already_observed",

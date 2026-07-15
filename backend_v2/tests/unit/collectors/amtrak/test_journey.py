@@ -1040,3 +1040,144 @@ class TestAmtrakCompletionOnExpiry:
         )
         assert journey.api_error_count == 0
         assert journey.update_count == 3
+
+
+class TestConvertReobservationReset:
+    """_convert_to_journey's existing-row branch must mirror
+    collect_journey_details' reobservation semantics (issue #1500).
+
+    The batch path (schedule_amtrak_journey_collections -> collect_journey ->
+    _convert_to_journey) is the only automatic route back to a wrongly
+    expired OBSERVED row — JIT's needs_refresh() blocks expired rows. Before
+    the fix, _convert_to_journey cleared neither is_expired nor
+    api_error_count, so requeuing an expired train achieved nothing, and a
+    SCHEDULED row promoted via this path could enter its run pre-loaded with
+    strikes (pre-departure JIT misses), one transient mid-run miss from
+    expiry.
+    """
+
+    @pytest.mark.asyncio
+    async def test_convert_clears_expiry_and_strikes_on_reobservation(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """An expired OBSERVED row processed by _convert_to_journey while its
+        train is live in the feed must be un-expired with strikes reset."""
+        origin_sched = now_et().replace(microsecond=0) - timedelta(hours=1)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=origin_sched.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=origin_sched,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,  # stranded by an earlier transient feed gap
+            api_error_count=5,
+            update_count=2,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        train_data = create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="NYP",
+                    name="New York Penn Station",
+                    sch_dep=origin_sched.isoformat(),
+                    actual_dep=(origin_sched + timedelta(minutes=3)).isoformat(),
+                    status="Departed",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(origin_sched + timedelta(hours=3)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+        result = await journey_collector._convert_to_journey(db_session, train_data)
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == journey.id, "Must update the existing row, not fork"
+        assert result.is_expired is False, (
+            "Reobservation via the batch/_convert path must clear is_expired "
+            "(issue #1500)"
+        )
+        assert result.api_error_count == 0, (
+            "Reobservation must reset the strike counter so the row does not "
+            "enter its run one transient miss away from expiry"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scheduled_promotion_resets_preloaded_strikes(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A SCHEDULED row that accumulated pre-departure strikes (each JIT
+        miss before the train appears in the feed increments the counter)
+        must be promoted with a clean slate."""
+        origin_sched = now_et().replace(microsecond=0) - timedelta(minutes=30)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=origin_sched.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=origin_sched,
+            has_complete_journey=False,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=3,  # pre-departure JIT misses
+            update_count=1,
+            observation_type="SCHEDULED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        train_data = create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="NYP",
+                    name="New York Penn Station",
+                    sch_dep=origin_sched.isoformat(),
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(origin_sched + timedelta(hours=3)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+        result = await journey_collector._convert_to_journey(db_session, train_data)
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == journey.id
+        assert result.observation_type == "OBSERVED"
+        assert result.api_error_count == 0, (
+            "Promotion must reset pre-departure strikes; otherwise the row "
+            "starts its run at the 3-strike threshold and expires on the "
+            "first transient mid-run feed miss"
+        )
