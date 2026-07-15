@@ -861,10 +861,13 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         but marking the journey completed lets the scheduler end the user's
         Live Activity rather than orphaning it on is_expired alone.
         """
+        # Postgres sorts NULLs FIRST on DESC; guard against unsequenced
+        # placeholder rows being picked as terminal/penultimate (issue #1506,
+        # same hardening as the NJT collector).
         last_two_stmt = (
             select(JourneyStop)
             .where(JourneyStop.journey_id == journey.id)
-            .order_by(JourneyStop.stop_sequence.desc())
+            .order_by(JourneyStop.stop_sequence.desc().nulls_last())
             .limit(2)
         )
         result = await session.execute(last_two_stmt)
@@ -875,6 +878,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
         terminal_stop = last_two[0]
         penultimate_stop = last_two[1]
+
+        if (
+            terminal_stop.stop_sequence is None
+            or penultimate_stop.stop_sequence is None
+        ):
+            return
 
         if not penultimate_stop.has_departed_station:
             return

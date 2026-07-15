@@ -2060,11 +2060,18 @@ class JourneyCollector(BaseJourneyCollector):
         data, use the stored terminal estimate or schedule as a conservative
         fallback.
         """
-        # Get last two stops by sequence
+        # Get last two stops by sequence. Postgres sorts NULLs FIRST on DESC,
+        # and discovery/schedule generation create placeholder stops with
+        # stop_sequence = NULL — without nulls_last() an arbitrary placeholder
+        # is picked as "terminal" on partially-collected journeys, suppressing
+        # valid completions or writing actual_arrival from the wrong stop
+        # (issue #1506). Note the unit-test backend (SQLite) orders NULLs LAST
+        # on DESC, the opposite of Postgres, so only nulls_last() gives both
+        # the same, correct behavior.
         last_two_stmt = (
             select(JourneyStop)
             .where(JourneyStop.journey_id == journey.id)
-            .order_by(JourneyStop.stop_sequence.desc())
+            .order_by(JourneyStop.stop_sequence.desc().nulls_last())
             .limit(2)
         )
         result = await session.execute(last_two_stmt)
@@ -2075,6 +2082,15 @@ class JourneyCollector(BaseJourneyCollector):
 
         terminal_stop = last_two[0]
         penultimate_stop = last_two[1]
+
+        if (
+            terminal_stop.stop_sequence is None
+            or penultimate_stop.stop_sequence is None
+        ):
+            # Positional terminal/penultimate detection can't be trusted while
+            # unsequenced placeholder rows remain (same conservative posture
+            # as utils/train.terminal_stop_index).
+            return
 
         if not (
             penultimate_stop.has_departed_station
