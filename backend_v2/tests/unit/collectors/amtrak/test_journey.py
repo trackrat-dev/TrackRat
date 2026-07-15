@@ -301,8 +301,20 @@ class TestAmtrakJourneyCollector:
         self, journey_collector, mock_db_session, sample_train_data
     ):
         """Test _convert_to_journey for a new journey."""
-        # Mock the session query to return no existing journey
-        mock_db_session.scalar.return_value = None
+
+        # _convert_to_journey issues extra scalar() queries beyond the
+        # existing-journey lookup: the preserved-sequence max() and the
+        # stops_count count() recount (issue #1502). A single return_value
+        # can't serve all three, so dispatch on the statement.
+        async def scalar_dispatch(stmt, *args, **kwargs):
+            sql = str(stmt).lower()
+            if "count(" in sql:
+                return 4  # four tracked stops persisted (NYP, NWK, TRE, PHL)
+            if "max(" in sql:
+                return None  # new journey has no preserved trimmed stops
+            return None  # no existing journey, no existing stops
+
+        mock_db_session.scalar = AsyncMock(side_effect=scalar_dispatch)
 
         # Mock flush and refresh to do nothing
         mock_db_session.flush = AsyncMock()
@@ -343,7 +355,22 @@ class TestAmtrakJourneyCollector:
         existing_journey.stops = []
         existing_journey.update_count = 5
         existing_journey.observation_type = "SCHEDULED"
-        mock_db_session.scalar.return_value = existing_journey
+
+        # Dispatch scalar() per statement: the journey lookup returns the
+        # existing row, while the preserved-sequence max() and stops_count
+        # count() recount (issue #1502) need numeric results, and per-stop
+        # lookups must return None so new stops are created.
+        async def scalar_dispatch(stmt, *args, **kwargs):
+            sql = str(stmt).lower()
+            if "count(" in sql:
+                return 4  # recounted stops in the DB
+            if "max(" in sql:
+                return None  # no preserved trimmed stops
+            if "from train_journeys" in sql:
+                return existing_journey
+            return None  # per-stop existing-stop lookups -> create new
+
+        mock_db_session.scalar = AsyncMock(side_effect=scalar_dispatch)
 
         # Mock flush, refresh, and execute to do nothing
         mock_db_session.flush = AsyncMock()
