@@ -545,6 +545,27 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                     journey_date=journey_date,
                                 )
 
+                            # Clear a stale cancellation when the train reappears
+                            # live. is_cancelled is otherwise a one-way door:
+                            # JIT (jit.py) and every scheduler NJT candidate
+                            # query exclude cancelled rows, and discovery's fuzzy
+                            # re-match filters them out, so nothing else can undo
+                            # it. If NJT un-annuls a train (restored service, or
+                            # a transient glitch that briefly showed the terminal
+                            # stop CANCELLED), the cancelled row would otherwise
+                            # shadow the running train for the rest of the day
+                            # (issue #1498). A later collect_journey_details pass
+                            # legitimately re-sets it if the train is still
+                            # reported cancelled, so this is not a flip-flop.
+                            if existing.is_cancelled:
+                                existing.is_cancelled = False
+                                existing.cancellation_reason = None
+                                logger.info(
+                                    "reactivated_cancelled_train",
+                                    train_id=train_id,
+                                    journey_date=journey_date,
+                                )
+
                             # Mark as observed if it was previously scheduled
                             if existing.observation_type == "SCHEDULED":
                                 existing.observation_type = "OBSERVED"

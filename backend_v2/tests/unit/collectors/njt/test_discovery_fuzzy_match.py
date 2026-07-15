@@ -253,6 +253,59 @@ class TestFuzzyMatchScheduledTrain:
         assert existing_journey.observation_type == "OBSERVED"
 
     @pytest.mark.asyncio
+    async def test_reobservation_clears_stale_cancellation(self, collector):
+        """A cancelled NJT row that reappears live in discovery must have its
+        cancellation cleared. is_cancelled is otherwise a one-way door — JIT,
+        every scheduler NJT candidate query, and the fuzzy re-match all exclude
+        cancelled rows — so without this the cancelled row shadows the running
+        train for the rest of the day (issue #1498).
+        """
+        mock_session = _make_session_mock()
+
+        dep_time = datetime(2025, 7, 5, 10, 15, 0)
+        existing_journey = Mock(spec=TrainJourney)
+        existing_journey.train_id = "3965"
+        existing_journey.observation_type = "OBSERVED"
+        existing_journey.is_expired = False
+        existing_journey.is_cancelled = True
+        existing_journey.cancellation_reason = "Not observed in real-time feed"
+        existing_journey.last_updated_at = None
+
+        # Exact match → the cancelled existing journey.
+        mock_session.scalar = AsyncMock(return_value=existing_journey)
+
+        # No TRACK / STOPS so the track and stop-population paths are skipped.
+        train_data = [
+            {
+                "TRAIN_ID": "3965",
+                "LINE": "NEC",
+                "DESTINATION": "Hamilton",
+                "SCHED_DEP_DATE": "05-Jul-2025 10:15:00 AM",
+            }
+        ]
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time"
+        ) as mock_parse_time:
+            mock_parse_time.return_value = dep_time
+
+            with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
+                mock_now.return_value = datetime(2025, 7, 5, 9, 0, 0)
+
+                result = await collector.process_discovered_trains(
+                    mock_session, "NY", train_data
+                )
+
+        # Reused the existing row, no duplicate created.
+        assert result == set()
+        mock_session.add.assert_not_called()
+
+        # The stale cancellation is cleared so the row no longer shadows the
+        # running train.
+        assert existing_journey.is_cancelled is False
+        assert existing_journey.cancellation_reason is None
+
+    @pytest.mark.asyncio
     async def test_already_observed_not_matched(self, collector):
         """Fuzzy match should only match SCHEDULED trains, not OBSERVED.
 
