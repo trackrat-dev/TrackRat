@@ -643,10 +643,19 @@ extension TrainV2 {
         // Mark stops the train has passed since the cache was written. The push's
         // nextStopCode is the first stop not yet departed within the user's journey
         // segment, so once the train has left the user's origin every stop before
-        // it has been departed. Without hasTrainDeparted the train may still be
-        // short of the origin, where stops before nextStopCode aren't departed yet.
+        // it has been departed. Two combinations carry no trustworthy "stops
+        // passed" information and must mark nothing:
+        // - hasTrainDeparted false: the train may still be short of the origin,
+        //   where stops before nextStopCode aren't departed yet.
+        // - nextStopCode == the activity's origin: the backend only produces this
+        //   when the origin stop's departed flag is unset, so hasTrainDeparted is
+        //   its schedule-time fallback (scheduled departure in the past), not an
+        //   observation — the train is likely overdue at or short of the origin,
+        //   and marking anything departed would misstate an unobserved fact.
         if state.hasTrainDeparted,
            let nextStopCode = state.nextStopCode,
+           let activityOriginCode = state.originStationCode,
+           !Stations.areEquivalentStations(nextStopCode, activityOriginCode),
            var stops = updated.stops,
            let nextIndex = stops.firstIndex(where: {
                Stations.areEquivalentStations($0.stationCode, nextStopCode)

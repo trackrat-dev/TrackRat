@@ -1350,6 +1350,33 @@ class TrainV2Tests: XCTestCase {
         XCTAssertFalse(updated.isCancelled)
     }
 
+    func testApplyingLiveActivityState_overdueTrainAtOriginMarksNothing() {
+        print("🐀 Testing overlay ignores schedule-time-inferred departure (overdue train)")
+
+        // The backend sets hasTrainDeparted from the schedule when the origin
+        // stop's departed flag is unset (scheduled departure in the past), and
+        // in exactly that state nextStopCode is still the origin. The train is
+        // likely sitting delayed at the platform — marking the origin (or the
+        // stops before it) departed would tell an offline rider their train
+        // already left.
+        let cachedAt = Date().addingTimeInterval(-10 * 60)
+        let train = makeFourStopTrain()
+        let state = makePushedState(
+            status: "EN ROUTE",
+            nextStopCode: "NY",
+            hasTrainDeparted: true,
+            dataTimestamp: Date().timeIntervalSince1970,
+            originStationCode: "NY"
+        )
+
+        let updated = train.applyingLiveActivityState(state, ifNewerThan: cachedAt)
+
+        XCTAssertEqual(updated.stops?.filter { $0.hasDepartedStation }.count, 0,
+            "Schedule-inferred hasTrainDeparted with nextStopCode == origin must not mark any stop departed")
+        XCTAssertFalse(updated.hasTrainDepartedFromStation("NY"),
+            "Origin must stay not-departed — no observation says the train left")
+    }
+
     func testApplyingLiveActivityState_adoptsPushedTrackAtOrigin() {
         print("🐀 Testing overlay adopts a track assignment pushed after the cache was written")
 
