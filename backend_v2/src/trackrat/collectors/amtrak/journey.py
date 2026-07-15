@@ -235,6 +235,26 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 journey = existing
                 journey.last_updated_at = now_et()
                 journey.update_count = (journey.update_count or 0) + 1
+                # Seeing the train in the live feed clears any prior expiry
+                # and resets the not-found strike counter, mirroring
+                # collect_journey_details (issue #1500). Without this, a row
+                # re-collected via the batch path stayed stranded expired
+                # while the feed served the train, and a promoted row could
+                # enter its run pre-loaded with strikes — one transient
+                # mid-run miss away from expiry.
+                if journey.api_error_count:
+                    logger.info(
+                        "resetting_api_error_count",
+                        train_id=train_id,
+                        previous_count=journey.api_error_count,
+                    )
+                    journey.api_error_count = 0
+                if journey.is_expired:
+                    logger.info(
+                        "amtrak_train_unexpired_on_reobservation",
+                        train_id=train_id,
+                    )
+                    journey.is_expired = False
                 # Mark as observed if it was previously scheduled
                 if journey.observation_type == "SCHEDULED":
                     journey.observation_type = "OBSERVED"
@@ -275,12 +295,14 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             time_corrections = 0
 
             # Build the feed's station set up front: it drives the stale-stop
-            # deletion below AND the stop_sequence base. The Amtraker feed trims
-            # already-passed stations, and the deletion guard preserves trimmed
-            # stops carrying recorded actuals — so surviving feed stops must be
-            # numbered AFTER the preserved ones. Renumbering the feed from 0
-            # would collide with the preserved origin's sequence and scramble
-            # stop ordering (issue #1502; mirrors collect_journey_details).
+            # deletion below AND the stop_sequence base. The issue #1500
+            # requeue routes expired OBSERVED mid-run rows through this path,
+            # and the Amtraker feed trims already-passed stations; the deletion
+            # guard preserves trimmed stops carrying recorded actuals — so
+            # surviving feed stops must be numbered AFTER the preserved ones.
+            # Renumbering the feed from 0 would collide with the preserved
+            # origin's sequence and scramble stop ordering (issue #1502;
+            # mirrors collect_journey_details).
             api_station_codes: set[str] = {
                 code
                 for amtrak_stop in train_data.stations
@@ -416,12 +438,12 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                         count=stale_count,
                     )
 
-            # Update terminal station and other fields using our local data
+            # Update terminal station and other fields using our local data.
+            # stops_count is recounted from the DB rather than len(new_stops):
+            # for mid-run rows (issue #1500 requeue) the feed is trimmed and
+            # preserved stops are not in new_stops. The terminal is still the
+            # feed's last stop — trimming never touches the end of the list.
             journey.terminal_station_code = last_tracked_code
-            # Recount stops from the DB: preserved trimmed stops (see the
-            # deletion guard above) are not in new_stops, so len(new_stops)
-            # would undercount. The terminal is still the feed's last tracked
-            # stop (the feed trims from the front, never the end).
             await session.flush()
             journey.stops_count = (
                 await session.scalar(
@@ -439,15 +461,31 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             journey.is_cancelled = train_data.trainState == "Cancelled"
             journey.is_completed = train_data.trainState == "Terminated"
 
-            # Set actual departure and arrival times from stops
-            if new_stops:
-                # Set actual departure from first stop
-                if new_stops[0].actual_departure:
-                    journey.actual_departure = new_stops[0].actual_departure
+            # Set actual departure and arrival times from stops.
+            # actual_departure is write-once and keyed to the journey's
+            # ORIGIN stop: the old new_stops[0] overwrite assumed this path
+            # only ran pre-run (new/SCHEDULED rows, where the first feed stop
+            # IS the origin). The issue #1500 requeue also routes expired
+            # OBSERVED mid-run rows here, where the feed has trimmed passed
+            # stations and new_stops[0] is a mid-route stop — an overwrite
+            # would permanently record a false origin departure (a
+            # multi-hour phantom delay in every downstream consumer).
+            if journey.actual_departure is None and journey.origin_station_code:
+                origin_actual = await session.scalar(
+                    select(JourneyStop.actual_departure).where(
+                        and_(
+                            JourneyStop.journey_id == journey.id,
+                            JourneyStop.station_code == journey.origin_station_code,
+                            JourneyStop.actual_departure.is_not(None),
+                        )
+                    )
+                )
+                if origin_actual is not None:
+                    journey.actual_departure = origin_actual
 
+            if new_stops and new_stops[-1].actual_arrival:
                 # Set actual arrival from last stop
-                if new_stops[-1].actual_arrival:
-                    journey.actual_arrival = new_stops[-1].actual_arrival
+                journey.actual_arrival = new_stops[-1].actual_arrival
 
             # Flush to ensure all data is persisted before analysis
             await session.flush()

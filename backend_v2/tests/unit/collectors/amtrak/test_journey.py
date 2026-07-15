@@ -303,16 +303,17 @@ class TestAmtrakJourneyCollector:
         """Test _convert_to_journey for a new journey."""
 
         # _convert_to_journey issues extra scalar() queries beyond the
-        # existing-journey lookup: the preserved-sequence max() and the
-        # stops_count count() recount (issue #1502). A single return_value
-        # can't serve all three, so dispatch on the statement.
+        # existing-journey lookup: the preserved-sequence max(), the
+        # stops_count count() recount (issue #1502), and the origin
+        # actual_departure lookup (issue #1500). A single return_value can't
+        # serve them all, so dispatch on the statement.
         async def scalar_dispatch(stmt, *args, **kwargs):
             sql = str(stmt).lower()
             if "count(" in sql:
                 return 4  # four tracked stops persisted (NYP, NWK, TRE, PHL)
             if "max(" in sql:
                 return None  # new journey has no preserved trimmed stops
-            return None  # no existing journey, no existing stops
+            return None  # no existing journey/stops, no origin actual yet
 
         mock_db_session.scalar = AsyncMock(side_effect=scalar_dispatch)
 
@@ -355,17 +356,24 @@ class TestAmtrakJourneyCollector:
         existing_journey.stops = []
         existing_journey.update_count = 5
         existing_journey.observation_type = "SCHEDULED"
+        existing_journey.is_expired = False
+        existing_journey.api_error_count = 0
+        existing_journey.actual_departure = None
+        existing_journey.origin_station_code = "NY"
 
         # Dispatch scalar() per statement: the journey lookup returns the
-        # existing row, while the preserved-sequence max() and stops_count
-        # count() recount (issue #1502) need numeric results, and per-stop
-        # lookups must return None so new stops are created.
+        # existing row, while the preserved-sequence max(), stops_count
+        # count() recount (issue #1502), and origin actual_departure lookup
+        # (issue #1500) need type-appropriate results, and per-stop lookups
+        # must return None so new stops are created.
         async def scalar_dispatch(stmt, *args, **kwargs):
             sql = str(stmt).lower()
-            if "count(" in sql:
-                return 4  # recounted stops in the DB
             if "max(" in sql:
                 return None  # no preserved trimmed stops
+            if "count(" in sql:
+                return 4  # recounted stops in the DB
+            if sql.startswith("select journey_stops.actual_departure"):
+                return None
             if "from train_journeys" in sql:
                 return existing_journey
             return None  # per-stop existing-stop lookups -> create new
@@ -1067,3 +1075,303 @@ class TestAmtrakCompletionOnExpiry:
         )
         assert journey.api_error_count == 0
         assert journey.update_count == 3
+
+
+class TestConvertReobservationReset:
+    """_convert_to_journey's existing-row branch must mirror
+    collect_journey_details' reobservation semantics (issue #1500).
+
+    The batch path (schedule_amtrak_journey_collections -> collect_journey ->
+    _convert_to_journey) is the only automatic route back to a wrongly
+    expired OBSERVED row — JIT's needs_refresh() blocks expired rows. Before
+    the fix, _convert_to_journey cleared neither is_expired nor
+    api_error_count, so requeuing an expired train achieved nothing, and a
+    SCHEDULED row promoted via this path could enter its run pre-loaded with
+    strikes (pre-departure JIT misses), one transient mid-run miss from
+    expiry.
+    """
+
+    @pytest.mark.asyncio
+    async def test_convert_clears_expiry_and_strikes_on_reobservation(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """An expired OBSERVED row processed by _convert_to_journey while its
+        train is live in the feed must be un-expired with strikes reset."""
+        origin_sched = now_et().replace(microsecond=0) - timedelta(hours=1)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=origin_sched.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=origin_sched,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,  # stranded by an earlier transient feed gap
+            api_error_count=5,
+            update_count=2,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        train_data = create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="NYP",
+                    name="New York Penn Station",
+                    sch_dep=origin_sched.isoformat(),
+                    actual_dep=(origin_sched + timedelta(minutes=3)).isoformat(),
+                    status="Departed",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(origin_sched + timedelta(hours=3)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+        result = await journey_collector._convert_to_journey(db_session, train_data)
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == journey.id, "Must update the existing row, not fork"
+        assert result.is_expired is False, (
+            "Reobservation via the batch/_convert path must clear is_expired "
+            "(issue #1500)"
+        )
+        assert result.api_error_count == 0, (
+            "Reobservation must reset the strike counter so the row does not "
+            "enter its run one transient miss away from expiry"
+        )
+
+    @pytest.mark.asyncio
+    async def test_scheduled_promotion_resets_preloaded_strikes(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A SCHEDULED row that accumulated pre-departure strikes (each JIT
+        miss before the train appears in the feed increments the counter)
+        must be promoted with a clean slate."""
+        origin_sched = now_et().replace(microsecond=0) - timedelta(minutes=30)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=origin_sched.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=origin_sched,
+            has_complete_journey=False,
+            is_completed=False,
+            is_expired=False,
+            api_error_count=3,  # pre-departure JIT misses
+            update_count=1,
+            observation_type="SCHEDULED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        train_data = create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="NYP",
+                    name="New York Penn Station",
+                    sch_dep=origin_sched.isoformat(),
+                    status="Enroute",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(origin_sched + timedelta(hours=3)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+        result = await journey_collector._convert_to_journey(db_session, train_data)
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == journey.id
+        assert result.observation_type == "OBSERVED"
+        assert result.api_error_count == 0, (
+            "Promotion must reset pre-departure strikes; otherwise the row "
+            "starts its run at the 3-strike threshold and expires on the "
+            "first transient mid-run feed miss"
+        )
+
+
+class TestConvertMidRunHardening:
+    """_convert_to_journey must be safe for mid-run rows (issue #1500).
+
+    The expired-row requeue routes OBSERVED mid-run rows through
+    _convert_to_journey, whose stop sync historically assumed it only ran
+    pre-run (new/SCHEDULED rows): it renumbered the trimmed feed from 0 and
+    overwrote journey.actual_departure from the first surviving feed stop —
+    which mid-run is a mid-route station, not the origin. That would have
+    permanently recorded a false origin departure (write-once elsewhere
+    means nothing ever repairs it) and collided sequences with preserved
+    passed stops.
+    """
+
+    def _mid_run_feed(self, base):
+        """Trimmed mid-run feed: origin NYP already dropped; PHL just
+        departed (carries an actual departure), WAS ahead."""
+        return create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="PHL",
+                    name="Philadelphia",
+                    sch_arr=(base + timedelta(hours=1)).isoformat(),
+                    sch_dep=(base + timedelta(hours=1, minutes=5)).isoformat(),
+                    actual_dep=(base + timedelta(hours=1, minutes=7)).isoformat(),
+                    status="Departed",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(base + timedelta(hours=3)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_mid_run_convert_does_not_fake_origin_departure(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """With the origin trimmed from the feed and journey.actual_departure
+        unset, _convert must NOT record a mid-route stop's departure as the
+        journey's origin departure."""
+        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=base.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=base,
+            actual_departure=None,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,
+            api_error_count=3,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._mid_run_feed(base)
+        )
+        await db_session.flush()
+
+        assert result is not None and result.id == journey.id
+        assert result.actual_departure is None, (
+            "A mid-route feed stop's departure must not be recorded as the "
+            "journey's origin actual_departure (issue #1500 hardening)"
+        )
+        assert result.is_expired is False, "Reobservation still clears expiry"
+
+    @pytest.mark.asyncio
+    async def test_mid_run_convert_preserves_recorded_origin_departure(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """An already-recorded origin departure survives a mid-run _convert
+        (write-once), and sequences stay unique with stops_count matching
+        the DB."""
+        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+        recorded_origin_dep = base + timedelta(minutes=4)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=base.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=base,
+            actual_departure=recorded_origin_dep,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,
+            api_error_count=3,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # A passed origin stop with recorded actuals, as preserved by the
+        # issue #1502 deletion guard when both fixes are deployed together.
+        db_session.add(
+            JourneyStop(
+                journey=journey,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=0,
+                scheduled_departure=base,
+                actual_departure=recorded_origin_dep,
+                has_departed_station=True,
+            )
+        )
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._mid_run_feed(base)
+        )
+        await db_session.flush()
+
+        assert result is not None and result.id == journey.id
+        assert result.actual_departure == recorded_origin_dep, (
+            "journey.actual_departure is write-once — a mid-run refresh must "
+            "not replace the recorded origin departure"
+        )
+
+        from sqlalchemy import select as sa_select
+
+        stops = (
+            (
+                await db_session.execute(
+                    sa_select(JourneyStop)
+                    .where(JourneyStop.journey_id == journey.id)
+                    .order_by(JourneyStop.stop_sequence)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        sequences = [s.stop_sequence for s in stops]
+        assert len(sequences) == len(set(sequences)), (
+            f"Stop sequences must be unique after a mid-run convert; got "
+            f"{[(s.station_code, s.stop_sequence) for s in stops]}"
+        )
+        assert result.stops_count == len(
+            stops
+        ), "stops_count must match the DB after a mid-run convert"
