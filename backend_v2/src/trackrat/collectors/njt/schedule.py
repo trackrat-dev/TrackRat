@@ -17,7 +17,7 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
-from trackrat.utils.time import now_et, parse_njt_time
+from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 
 logger = get_logger(__name__)
 
@@ -213,6 +213,24 @@ class NJTScheduleCollector:
                     journey_date = (
                         earliest_departure.date() if earliest_departure else run_date
                     )
+
+                    # Mirror discovery.py's guard: never persist a schedule row
+                    # on an implausible date. parse_njt_time is lenient, so a
+                    # malformed SCHED_DEP_DATE can parse to a far-future date;
+                    # journey_date has no DB CHECK and the partition default
+                    # accepts any date, so without this a bad provider timestamp
+                    # would create a far-future zombie SCHEDULED row. Discovery
+                    # will pick the train up with its own validation if/when it
+                    # actually appears in the real-time feed.
+                    if not validate_journey_date(journey_date):
+                        stats["errors"] += 1
+                        logger.warning(
+                            "rejecting_invalid_schedule_journey_date",
+                            station_code=station_code,
+                            train_id=item_train_id,
+                            journey_date=journey_date.isoformat(),
+                        )
+                        continue
 
                     # Use savepoint so a single item failure (e.g. unique
                     # constraint violation) doesn't poison the session for

@@ -185,6 +185,33 @@ class TestScheduleJourneyDate:
         assert journey.journey_date == departure.date()
 
     @pytest.mark.asyncio
+    async def test_far_future_departure_date_rejected(
+        self, db_session: AsyncSession, schedule_collector
+    ):
+        """A malformed-but-parseable SCHED_DEP_DATE that lands far in the
+        future must be rejected before persisting, mirroring discovery's
+        validate_journey_date guard. parse_njt_time is lenient and journey_date
+        has no DB backstop, so otherwise a bad provider timestamp would create
+        an out-of-window zombie SCHEDULED row.
+        """
+        far_future = now_et().replace(second=0, microsecond=0) + timedelta(days=400)
+
+        schedule_data = [_station("NY", "New York Penn", [_item("9005", far_future)])]
+
+        await schedule_collector._process_schedule_data(db_session, schedule_data)
+
+        journey = await db_session.scalar(
+            select(TrainJourney).where(
+                TrainJourney.train_id == "9005",
+                TrainJourney.data_source == "NJT",
+            )
+        )
+        assert journey is None, (
+            "A far-future (out-of-window) journey_date must be rejected, not "
+            "persisted as a zombie SCHEDULED row"
+        )
+
+    @pytest.mark.asyncio
     async def test_stop_list_collection_covers_next_date_rows(
         self, db_session: AsyncSession, schedule_collector, mock_njt_client
     ):
