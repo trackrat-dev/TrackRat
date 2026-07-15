@@ -2586,6 +2586,10 @@ class SchedulerService:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+                # Re-raise so run_with_freshness_check records a failed run
+                # instead of bumping last_successful_run (issue #1507, same
+                # pattern as retention_cleanup).
+                raise
 
         # Use freshness check to prevent duplicate runs across replicas
         # This runs daily, so use a 23-hour minimum interval
@@ -3055,6 +3059,10 @@ class SchedulerService:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+                # Re-raise so run_with_freshness_check records a failed run
+                # instead of bumping last_successful_run (issue #1507, same
+                # pattern as retention_cleanup).
+                raise
             finally:
                 self._running_tasks.pop(task_id, None)
 
@@ -3696,6 +3704,10 @@ class SchedulerService:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+                # Re-raise so run_with_freshness_check records a failed run
+                # instead of bumping last_successful_run (issue #1507, same
+                # pattern as retention_cleanup).
+                raise
             finally:
                 # Remove from running tasks
                 self._running_tasks.pop(task_id, None)
@@ -3775,6 +3787,12 @@ class SchedulerService:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+                # Re-raise so run_with_freshness_check records a failed run
+                # instead of bumping last_successful_run (issue #1507, same
+                # pattern as retention_cleanup). A masked failure here means
+                # empty future departure boards all day while monitoring
+                # reads healthy.
+                raise
             finally:
                 # Remove from running tasks
                 self._running_tasks.pop(task_id, None)
@@ -3859,6 +3877,10 @@ class SchedulerService:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
+                # Re-raise so run_with_freshness_check records a failed run
+                # instead of bumping last_successful_run (issue #1507, same
+                # pattern as retention_cleanup).
+                raise
             finally:
                 # Remove from running tasks
                 self._running_tasks.pop(task_id, None)
