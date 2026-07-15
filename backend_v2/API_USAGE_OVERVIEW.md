@@ -91,7 +91,6 @@ This document provides a comprehensive overview of all upstream API usage in Tra
 - **Call Chain**:
   ```
   SchedulerService.collect_journey()
-  → JourneyCollector.collect_single_journey()
   → JourneyCollector.collect_journey_details(session, journey, skip_enhancement=False)
   → NJTransitClient.get_train_stop_list(train_id)
   → POST /TrainData/getTrainStopList

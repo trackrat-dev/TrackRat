@@ -8,20 +8,18 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, or_, select, text, update
+from sqlalchemy import and_, delete, func, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
-from trackrat.collectors.base import BaseJourneyCollector
 from trackrat.collectors.njt.client import (
     NJTransitClient,
     NJTransitNullDataError,
     TrainNotFoundError,
 )
 from trackrat.config.stations import get_station_name
-from trackrat.db.engine import get_session
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
@@ -62,6 +60,16 @@ class JourneyMatchResult(Enum):
 # daily displacement, so it cleanly separates "delayed today" from "yesterday's
 # reused train_id". See JourneyMatchResult.STALE_PRIOR_RUN and issue #1238.
 STALE_PRIOR_RUN_THRESHOLD_SECONDS = 6 * 3600
+
+
+# Safety cap on the unobserved-train reconciliation sweep. If a single run would
+# cancel more than this many trains, that is almost certainly a systemic
+# discovery/feed outage (discovery stopped upgrading SCHEDULED->OBSERVED for the
+# whole system) rather than that many genuine silent cancellations. Falsely
+# marking running trains "Cancelled" is far worse for riders than leaving a
+# handful of truly-cancelled trains showing as scheduled, so on a spike this
+# large the sweep skips the update and logs an error for investigation.
+MAX_UNOBSERVED_CANCELLATIONS_PER_RUN = 50
 
 
 def _journey_eager_options() -> list[Any]:
@@ -139,7 +147,7 @@ def normalize_njt_stop_times(
         }
 
 
-class JourneyCollector(BaseJourneyCollector):
+class JourneyCollector:
     """Collects complete journey data for trains."""
 
     def __init__(self, njt_client: NJTransitClient) -> None:
@@ -150,189 +158,18 @@ class JourneyCollector(BaseJourneyCollector):
         """
         self.njt_client = njt_client
 
-    async def collect_journey(
-        self, train_id: str, skip_enhancement: bool = False
-    ) -> TrainJourney | None:
-        """Collect journey details for a specific train.
-
-        Args:
-            train_id: The train ID to collect journey details for
-            skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
-
-        Returns:
-            TrainJourney object if successful, None if failed
-        """
-        async with get_session() as session:
-            return await self.collect_journey_with_session(
-                session, train_id, skip_enhancement
-            )
-
-    async def collect_journey_with_session(
-        self, session: AsyncSession, train_id: str, skip_enhancement: bool = False
-    ) -> TrainJourney | None:
-        """Collect journey details for a specific train using provided session.
-
-        Args:
-            session: Database session to use
-            train_id: The train ID to collect journey details for
-            skip_enhancement: If True, skip departure board enhancement (for scheduled batch collection)
-
-        Returns:
-            TrainJourney object if successful, None if failed
-        """
-        # Find the journey for this train
-        stmt = (
-            select(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.train_id == train_id,
-                    TrainJourney.data_source == "NJT",
-                    TrainJourney.journey_date == now_et().date(),
-                )
-            )
-            .options(*_journey_eager_options())
-        )
-        journey = await session.scalar(stmt)
-
-        if not journey:
-            logger.warning("journey_not_found", train_id=train_id)
-            return None
-
-        try:
-            await self.collect_journey_details(session, journey, skip_enhancement)
-            return journey
-        except TrainNotFoundError as e:
-            # Train no longer available - this is handled gracefully in collect_journey_details
-            logger.info(
-                "collect_journey_train_not_found", train_id=train_id, error=str(e)
-            )
-            return journey
-        except Exception as e:
-            logger.error("collect_journey_failed", train_id=train_id, error=str(e))
-            raise  # Re-raise to let caller handle transaction
-
-    async def run(self) -> dict[str, Any]:
-        """Run the collector with a database session.
-
-        Returns:
-            Collection results
-        """
-        async with get_session() as session:
-            return await self.collect(session)
-
-    async def collect(self, session: AsyncSession) -> dict[str, Any]:
-        """Collect journey data for trains that need updates.
-
-        This method finds trains that:
-        1. Don't have complete journey data yet
-        2. Are active (not completed/cancelled) and need periodic updates
-        3. Historical trains that need transit time analysis
-
-        Args:
-            session: Database session
-
-        Returns:
-            Collection results summary
-        """
-        logger.info("starting_journey_collection")
-
-        # Find trains that need collection
-        trains_to_collect = await self.find_trains_needing_collection(session)
-
-        logger.info("found_trains_for_collection", count=len(trains_to_collect))
-
-        results: dict[str, Any] = {
-            "trains_processed": 0,
-            "successful": 0,
-            "failed": 0,
-            "errors": [],
-            "historical_backfilled": 0,
-        }
-
-        # Process current trains
-        for journey in trains_to_collect:
-            try:
-                await self.collect_journey_details(session, journey)
-                results["successful"] += 1
-            except TrainNotFoundError as e:
-                # Train no longer available - this is expected and handled
-                logger.info(
-                    "train_not_found_during_collection",
-                    train_id=journey.train_id,
-                    journey_id=journey.id,
-                    error=str(e),
-                )
-                results[
-                    "successful"
-                ] += 1  # Count as successful since it's handled properly
-            except Exception as e:
-                logger.error(
-                    "failed_to_collect_journey",
-                    train_id=journey.train_id,
-                    journey_id=journey.id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-                results["failed"] += 1
-                results["errors"].append(
-                    {"train_id": journey.train_id, "error": str(e)}
-                )
-
-            results["trains_processed"] += 1
-
-        # Process historical trains for backfill
-        historical_trains = await self.find_historical_trains_for_backfill(session)
-
-        if historical_trains:
-            logger.info(
-                "found_historical_trains_for_backfill", count=len(historical_trains)
-            )
-
-            for journey in historical_trains:
-                try:
-                    await self.collect_journey_details(
-                        session, journey, skip_enhancement=True
-                    )
-                    results["successful"] += 1
-                    results["historical_backfilled"] += 1
-
-                    if results["historical_backfilled"] % 10 == 0:
-                        logger.info(
-                            "backfill_progress",
-                            processed=results["historical_backfilled"],
-                        )
-
-                except Exception as e:
-                    logger.error(
-                        "failed_to_backfill_historical_journey",
-                        train_id=journey.train_id,
-                        journey_id=journey.id,
-                        error=str(e),
-                        error_type=type(e).__name__,
-                    )
-                    results["failed"] += 1
-                    results["errors"].append(
-                        {
-                            "train_id": journey.train_id,
-                            "error": str(e),
-                            "type": "historical",
-                        }
-                    )
-
-                results["trains_processed"] += 1
-
-        # Clean up old journeys to prevent database clutter
-        await self._expire_old_journeys(session)
-
-        # Mark SCHEDULED trains that were never observed as likely cancelled
-        await self._reconcile_unobserved_trains(session)
-
-        logger.info("journey_collection_complete", **results)
-        return results
-
     async def _expire_old_journeys(self, session: AsyncSession) -> None:
-        """Mark yesterday's incomplete journeys as expired to clean up database."""
-        cutoff_date = now_et().date()
+        """Expire stale incomplete NJT journeys to clean up the database.
+
+        The cutoff is ``today - 1 day`` (exclusive): only journeys dated the day
+        before yesterday or earlier are expired. The periodic update sweep keeps
+        ``journey_date >= today - 1 day`` in its active-candidate window
+        (scheduler ``schedule_periodic_updates``) so trains crossing midnight
+        (origin before, arrival after) keep updating — expiring anything inside
+        that window would kill such a train mid-run. Nothing two calendar days
+        old can still be running, so this cutoff never races an active journey.
+        """
+        cutoff_date = now_et().date() - timedelta(days=1)
 
         stmt = (
             update(TrainJourney)
@@ -367,24 +204,43 @@ class JourneyCollector(BaseJourneyCollector):
 
         This fills a gap where NJT silently cancels trains by removing them
         from the real-time feed rather than explicitly flagging stops as
-        "Cancelled".
+        "Cancelled". A spike in candidates (see
+        MAX_UNOBSERVED_CANCELLATIONS_PER_RUN) is treated as a systemic outage
+        and skipped rather than mass-cancelling running trains.
         """
         now = now_et()
         cutoff_time = now - timedelta(minutes=50)
 
+        candidate_filter = and_(
+            TrainJourney.data_source == "NJT",
+            TrainJourney.journey_date == now.date(),
+            TrainJourney.observation_type == "SCHEDULED",
+            TrainJourney.is_cancelled.is_(False),
+            TrainJourney.is_expired.is_(False),
+            TrainJourney.is_completed.is_(False),
+            TrainJourney.scheduled_departure < cutoff_time,
+        )
+
+        candidate_count = await session.scalar(
+            select(func.count()).select_from(TrainJourney).where(candidate_filter)
+        )
+        if not candidate_count:
+            return
+
+        if candidate_count > MAX_UNOBSERVED_CANCELLATIONS_PER_RUN:
+            # Almost certainly a discovery/feed outage, not this many real
+            # cancellations. Skip rather than falsely cancel running trains.
+            logger.error(
+                "unobserved_reconciliation_skipped_spike",
+                candidate_count=candidate_count,
+                limit=MAX_UNOBSERVED_CANCELLATIONS_PER_RUN,
+                cutoff_time=cutoff_time.isoformat(),
+            )
+            return
+
         stmt = (
             update(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.data_source == "NJT",
-                    TrainJourney.journey_date == now.date(),
-                    TrainJourney.observation_type == "SCHEDULED",
-                    TrainJourney.is_cancelled.is_(False),
-                    TrainJourney.is_expired.is_(False),
-                    TrainJourney.is_completed.is_(False),
-                    TrainJourney.scheduled_departure < cutoff_time,
-                )
-            )
+            .where(candidate_filter)
             .values(
                 is_cancelled=True,
                 cancellation_reason="Not observed in real-time feed",
@@ -399,125 +255,6 @@ class JourneyCollector(BaseJourneyCollector):
                 count=result.rowcount,
                 cutoff_time=cutoff_time.isoformat(),
             )
-
-    async def find_trains_needing_collection(
-        self, session: AsyncSession, limit: int = 50
-    ) -> list[TrainJourney]:
-        """Find trains that need journey collection.
-
-        Args:
-            session: Database session
-            limit: Maximum number of trains to process
-
-        Returns:
-            List of journeys needing collection
-        """
-        cutoff_time = now_et() - timedelta(minutes=15)
-
-        # Query for trains needing updates
-        stmt = (
-            select(TrainJourney)
-            .where(
-                and_(
-                    # Only NJT trains
-                    TrainJourney.data_source == "NJT",
-                    # Only today's trains (prevent updating old journeys)
-                    TrainJourney.journey_date >= now_et().date(),
-                    # Not cancelled, completed, or expired
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.is_completed.is_not(True),
-                    TrainJourney.is_expired.is_not(True),
-                    # Either no complete journey or stale data
-                    or_(
-                        TrainJourney.has_complete_journey.is_not(True),
-                        TrainJourney.last_updated_at < cutoff_time,
-                    ),
-                )
-            )
-            .order_by(
-                # Prioritize trains without any data
-                TrainJourney.has_complete_journey,
-                # Then by oldest update
-                TrainJourney.last_updated_at,
-            )
-            .options(*_journey_eager_options())
-            .limit(limit)
-        )
-
-        result = await session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def find_historical_trains_for_backfill(
-        self, session: AsyncSession
-    ) -> list[TrainJourney]:
-        """Find historical trains that need transit time analysis.
-
-        These are completed NJT journeys that have stop data but haven't
-        had the 30-minute inference logic applied yet.
-
-        Args:
-            session: Database session
-
-        Returns:
-            List of historical journeys needing analysis
-        """
-        # Query for historical journeys that haven't been analyzed
-        stmt = (
-            select(TrainJourney)
-            .where(
-                and_(
-                    # Only NJT trains
-                    TrainJourney.data_source == "NJT",
-                    # Only recent trains (last 2 days max)
-                    TrainJourney.journey_date >= now_et().date() - timedelta(days=2),
-                    # Have complete journey data with stops
-                    TrainJourney.has_complete_journey.is_(True),
-                    TrainJourney.stops_count > 0,
-                    # No actual departure time set (haven't been analyzed)
-                    TrainJourney.actual_departure.is_(None),
-                    # Completed or older journeys (not active)
-                    or_(
-                        TrainJourney.is_completed.is_(True),
-                        TrainJourney.is_cancelled.is_(True),
-                        TrainJourney.is_expired.is_(True),
-                    ),
-                )
-            )
-            .options(*_journey_eager_options())
-            .order_by(TrainJourney.journey_date.desc())
-        )
-
-        result = await session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def _has_stops_with_actual_times(
-        self, session: AsyncSession, journey_id: int
-    ) -> bool:
-        """Check if this journey has any stops with actual arrival or departure times."""
-        stmt = (
-            select(JourneyStop.id)
-            .where(
-                and_(
-                    JourneyStop.journey_id == journey_id,
-                    or_(
-                        JourneyStop.actual_departure.is_not(None),
-                        JourneyStop.actual_arrival.is_not(None),
-                    ),
-                )
-            )
-            .limit(1)
-        )
-
-        result = await session.execute(stmt)
-        has_actual_times = result.scalar() is not None
-
-        logger.info(
-            "checked_stops_for_actual_times",
-            journey_id=journey_id,
-            has_actual_times=has_actual_times,
-        )
-
-        return has_actual_times
 
     def _normalize_destination(self, destination: str) -> str:
         """Normalize destination name for comparison.
@@ -2410,58 +2147,3 @@ class JourneyCollector(BaseJourneyCollector):
                 origin_station=journey.origin_station_code,
                 error=str(e),
             )
-
-    async def collect_single_journey(
-        self, train_id: str, journey_date: datetime | None = None
-    ) -> dict[str, Any]:
-        """Collect journey data for a specific train.
-
-        This is useful for just-in-time updates.
-
-        Args:
-            train_id: Train ID to collect
-            journey_date: Optional journey date (defaults to today)
-
-        Returns:
-            Collection result
-        """
-        async with get_session() as session:
-            # Find the journey
-            stmt = (
-                select(TrainJourney)
-                .where(
-                    and_(
-                        TrainJourney.train_id == train_id,
-                        TrainJourney.data_source == "NJT",
-                    )
-                )
-                .options(*_journey_eager_options())
-            )
-
-            if journey_date:
-                stmt = stmt.where(TrainJourney.journey_date == journey_date)
-
-            stmt = stmt.order_by(TrainJourney.journey_date.desc()).limit(1)
-
-            journey = await session.scalar(stmt)
-
-            if not journey:
-                return {
-                    "success": False,
-                    "error": f"Journey not found for train {train_id}",
-                }
-
-            try:
-                await self.collect_journey_details(session, journey)
-                await session.commit()
-
-                return {
-                    "success": True,
-                    "train_id": train_id,
-                    "journey_id": journey.id,
-                    "stops_count": journey.stops_count,
-                    "is_completed": journey.is_completed,
-                }
-            except Exception as e:
-                await session.rollback()
-                return {"success": False, "error": str(e)}

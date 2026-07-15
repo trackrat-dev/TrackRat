@@ -274,6 +274,21 @@ class SchedulerService:
             max_instances=1,
         )
 
+        # Schedule NJT journey maintenance sweeps (every 15 minutes)
+        # Expires long-stale rows and marks silently-cancelled NJT trains
+        # (re-homed from the dead JourneyCollector.collect() pipeline, #1497).
+        self.scheduler.add_job(
+            self.run_njt_journey_maintenance,
+            trigger=IntervalTrigger(
+                minutes=15, start_date=now + timedelta(minutes=5), jitter=60
+            ),
+            id="njt_journey_maintenance",
+            name="NJT Journey Maintenance",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
         # Schedule Live Activity updates (every minute)
         self.scheduler.add_job(
             self.update_live_activities,
@@ -3790,6 +3805,64 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("njt_schedule_collection_skipped_still_fresh")
+
+    async def run_njt_journey_maintenance(self) -> None:
+        """Periodic NJT journey housekeeping (every 15 minutes).
+
+        Re-homes the two database sweeps that previously lived in the NJT
+        ``JourneyCollector.collect()`` pipeline, which nothing in production
+        called (issue #1497):
+
+        - ``_reconcile_unobserved_trains`` — the only mechanism that flags
+          trains NJT drops from the real-time feed (rather than marking stops
+          "Cancelled") as cancelled. Needs to run through the day so
+          silent-cancellations are caught near their scheduled departure.
+        - ``_expire_old_journeys`` — ages out long-stale incomplete rows.
+
+        Both are set-based, idempotent UPDATEs, so periodic re-runs are safe.
+        """
+        if self.settings.is_data_source_disabled("NJT"):
+            return
+        if not self.njt_client:
+            logger.warning("njt_journey_maintenance_skipped_no_client")
+            return
+        njt_client = self.njt_client
+        task_id = f"njt_journey_maintenance_{now_et().isoformat()}"
+
+        async def do_maintenance_work() -> None:
+            """The actual maintenance sweeps."""
+            from trackrat.collectors.njt.journey import JourneyCollector
+
+            try:
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+
+                collector = JourneyCollector(njt_client)
+                # The sweeps do not commit; own the session and commit here.
+                async with get_session() as work_db:
+                    await collector._expire_old_journeys(work_db)
+                    await collector._reconcile_unobserved_trains(work_db)
+                    await work_db.commit()
+            except Exception as e:
+                logger.error(
+                    "njt_journey_maintenance_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="njt_journey_maintenance",
+                minimum_interval_seconds=calculate_safe_interval(15),
+                task_func=do_maintenance_work,
+            )
+
+            if not executed:
+                logger.debug("njt_journey_maintenance_skipped_still_fresh")
 
     async def generate_amtrak_schedules(self) -> None:
         """Generate Amtrak schedules based on historical patterns.

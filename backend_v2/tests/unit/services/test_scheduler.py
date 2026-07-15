@@ -100,6 +100,7 @@ class TestSchedulerService:
                 ("bart_collection", IntervalTrigger, {"minutes": 4}),
                 ("mbta_collection", IntervalTrigger, {"minutes": 4}),
                 ("journey_update_check", IntervalTrigger, {"minutes": 5}),
+                ("njt_journey_maintenance", IntervalTrigger, {"minutes": 15}),
                 ("live_activity_updates", IntervalTrigger, {"minutes": 1}),
                 ("live_activity_token_cleanup", IntervalTrigger, {"hours": 1}),
                 ("congestion_cache_precompute", IntervalTrigger, {"minutes": 15}),

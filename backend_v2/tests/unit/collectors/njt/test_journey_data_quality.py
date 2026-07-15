@@ -15,7 +15,7 @@ Uses an in-memory SQLite database to avoid requiring PostgreSQL for unit tests.
 """
 
 from datetime import date, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy import select, event
@@ -341,6 +341,184 @@ class TestReconcileUnobservedTrains:
             f"Should preserve original cancellation_reason, "
             f"got {journey.cancellation_reason!r}"
         )
+
+    async def _add_scheduled_past_trains(self, session, count):
+        """Seed `count` SCHEDULED NJT trains whose departure was 2h ago."""
+        two_hours_ago = now_et() - timedelta(hours=2)
+        journeys = []
+        for i in range(count):
+            journey = TrainJourney(
+                train_id=f"90{i:02d}",
+                journey_date=now_et().date(),
+                line_code="NE",
+                line_name="Northeast Corridor",
+                destination="NEW YORK PENN STATION",
+                origin_station_code="TR",
+                terminal_station_code="NY",
+                data_source="NJT",
+                observation_type="SCHEDULED",
+                scheduled_departure=two_hours_ago,
+                is_cancelled=False,
+                is_expired=False,
+                is_completed=False,
+            )
+            session.add(journey)
+            journeys.append(journey)
+        await session.flush()
+        return journeys
+
+    @pytest.mark.asyncio
+    async def test_skips_reconciliation_on_cancellation_spike(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """When the number of unobserved candidates exceeds the safety cap,
+        the sweep must skip entirely (a systemic discovery/feed outage, not
+        that many real cancellations) rather than mass-cancel running trains."""
+        journeys = await self._add_scheduled_past_trains(sqlite_session, 3)
+
+        with patch(
+            "trackrat.collectors.njt.journey.MAX_UNOBSERVED_CANCELLATIONS_PER_RUN",
+            2,
+        ):
+            await journey_collector._reconcile_unobserved_trains(sqlite_session)
+
+        for journey in journeys:
+            await sqlite_session.refresh(journey)
+            assert journey.is_cancelled is False, (
+                f"Train {journey.train_id} must NOT be cancelled when the "
+                f"candidate count (3) exceeds the cap (2)"
+            )
+
+    @pytest.mark.asyncio
+    async def test_reconciles_when_at_or_below_cap(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """At/below the safety cap the sweep proceeds and cancels the
+        unobserved trains as normal."""
+        journeys = await self._add_scheduled_past_trains(sqlite_session, 2)
+
+        with patch(
+            "trackrat.collectors.njt.journey.MAX_UNOBSERVED_CANCELLATIONS_PER_RUN",
+            2,
+        ):
+            await journey_collector._reconcile_unobserved_trains(sqlite_session)
+
+        for journey in journeys:
+            await sqlite_session.refresh(journey)
+            assert journey.is_cancelled is True, (
+                f"Train {journey.train_id} should be cancelled when the "
+                f"candidate count (2) is within the cap (2)"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 1b. Old-journey expiry (midnight-safe cutoff)
+# ---------------------------------------------------------------------------
+
+
+class TestExpireOldJourneys:
+    """`_expire_old_journeys` must expire only journeys older than the active
+    (today + yesterday) window, so midnight-crossing trains are never expired
+    mid-run."""
+
+    def _make_journey(self, journey_date, **overrides):
+        # scheduled_departure is NOT NULL; anchor it to journey_date (its exact
+        # value is irrelevant to _expire_old_journeys, which filters on
+        # journey_date / is_completed / data_source only).
+        days_old = (now_et().date() - journey_date).days
+        defaults = {
+            "train_id": "7100",
+            "journey_date": journey_date,
+            "scheduled_departure": now_et() - timedelta(days=days_old),
+            "line_code": "NE",
+            "line_name": "Northeast Corridor",
+            "destination": "NEW YORK PENN STATION",
+            "origin_station_code": "TR",
+            "terminal_station_code": "NY",
+            "data_source": "NJT",
+            "observation_type": "OBSERVED",
+            "is_completed": False,
+            "is_expired": False,
+        }
+        defaults.update(overrides)
+        return TrainJourney(**defaults)
+
+    @pytest.mark.asyncio
+    async def test_expires_journey_two_days_old(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """An incomplete NJT journey dated two days ago is safely past the
+        active window and should be expired."""
+        journey = self._make_journey(
+            now_et().date() - timedelta(days=2), train_id="7101"
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        await journey_collector._expire_old_journeys(sqlite_session)
+        await sqlite_session.refresh(journey)
+
+        assert journey.is_expired is True, (
+            "A NJT journey two days old should be expired, "
+            f"got is_expired={journey.is_expired}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_does_not_expire_yesterday_midnight_crosser(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """A journey dated yesterday is still inside the periodic-update
+        active window (a train can cross midnight), so it must NOT be
+        expired -- expiring it would kill it mid-run."""
+        journey = self._make_journey(
+            now_et().date() - timedelta(days=1), train_id="7102"
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        await journey_collector._expire_old_journeys(sqlite_session)
+        await sqlite_session.refresh(journey)
+
+        assert journey.is_expired is False, (
+            "Yesterday's journey is within the active window and must NOT be "
+            f"expired, got is_expired={journey.is_expired}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_does_not_expire_completed_old_journey(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Completed journeys are never expired, even when old."""
+        journey = self._make_journey(
+            now_et().date() - timedelta(days=2),
+            train_id="7103",
+            is_completed=True,
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        await journey_collector._expire_old_journeys(sqlite_session)
+        await sqlite_session.refresh(journey)
+
+        assert journey.is_expired is False, "Completed journeys must not be expired"
+
+    @pytest.mark.asyncio
+    async def test_does_not_expire_non_njt_journey(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """The NJT sweep must not touch other providers' journeys."""
+        journey = self._make_journey(
+            now_et().date() - timedelta(days=2),
+            train_id="7104",
+            data_source="AMTRAK",
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        await journey_collector._expire_old_journeys(sqlite_session)
+        await sqlite_session.refresh(journey)
+
+        assert journey.is_expired is False, "Non-NJT journeys must not be expired"
 
 
 # ---------------------------------------------------------------------------
