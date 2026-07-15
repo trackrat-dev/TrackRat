@@ -1263,14 +1263,14 @@ class TrainDetailsViewModel: ObservableObject {
         }
 
         // PRIORITY 1: Render any cached data instantly, reconcile in background.
-        // Stale entries (past the 5-minute freshness window) are rendered too —
-        // flagged via staleDataTimestamp — because last-known stops beat an endless
-        // spinner when the network is gone. Critical for Live Activity taps: the
-        // Activity's ContentState has progress info but no stops array, so the cache
-        // (written by LiveActivityService.fetchAndUpdateTrain) is the only instant
-        // source of departed-stops state. The pushed ContentState is then overlaid
-        // on top: APNs keeps updating the activity while the app is suspended, so
-        // it is often newer than the cache.
+        // Stale entries (past the 5-minute freshness window) are rendered too,
+        // because last-known stops beat an endless spinner when the network is
+        // gone. Critical for Live Activity taps: the Activity's ContentState has
+        // progress info but no stops array, so the cache (written by
+        // LiveActivityService.fetchAndUpdateTrain) is the only instant source of
+        // departed-stops state. The pushed ContentState is then overlaid on top:
+        // APNs keeps updating the activity while the app is suspended, so it is
+        // often newer than the cache.
         if !trainIdentifier.isEmpty,
            let cached = cacheService.getCachedTrain(
                trainNumber: trainIdentifier,
@@ -1290,7 +1290,12 @@ class TrainDetailsViewModel: ObservableObject {
             }
             train = cachedTrain
             trainDataAsOf = dataAsOf
-            staleDataTimestamp = isStale(dataAsOf) ? dataAsOf : nil
+            // Even when the render is stale, don't arm the stale banner yet —
+            // its "Can't reach live updates" copy would be a lie for the ~1s an
+            // online user waits for the refresh below to succeed. If we really
+            // are offline, that refresh fails fast and markRefreshFailed arms
+            // the banner with this same trainDataAsOf.
+            staleDataTimestamp = nil
             updateComputedProperties()
             await refreshTrainDetailsInBackground(fromStationCode: fromStationCode, toStationCode: toStationCode, selectedDestinationName: selectedDestinationName)
             return
