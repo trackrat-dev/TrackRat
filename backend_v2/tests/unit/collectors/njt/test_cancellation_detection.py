@@ -32,7 +32,10 @@ from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.models.api import NJTransitStopData
 from trackrat.models.database import Base, JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
-from trackrat.utils.train import is_njt_stop_cancelled
+from trackrat.utils.train import (
+    is_njt_stop_cancelled,
+    njt_stops_indicate_cancellation,
+)
 
 # ---------------------------------------------------------------------------
 # Pure-function tests — the helper that backs every call site
@@ -70,6 +73,32 @@ class TestIsNjtStopCancelled:
     )
     def test_recognizes_cancellation_and_rejects_other_statuses(self, status, expected):
         assert is_njt_stop_cancelled(status) is expected
+
+
+class TestNjtStopsIndicateCancellation:
+    """Unit tests for the train-level cancellation rule shared by the collector
+    and discovery (PR #1519)."""
+
+    @pytest.mark.parametrize(
+        "statuses,expected",
+        [
+            # Every stop cancelled → train never ran
+            (["CANCELLED", "CANCELLED", "CANCELLED"], True),
+            # Mixed spelling still all-cancelled
+            (["CANCELED", "CANCELLED"], True),
+            # Terminal cancelled, origin on time → cancelled mid-journey
+            (["ON TIME", "LATE", "CANCELLED"], True),
+            # Only intermediate stops cancelled, terminal fine → NOT cancelled
+            (["ON TIME", "CANCELLED", "ON TIME"], False),
+            # No cancellations at all
+            (["ON TIME", "LATE", "BOARDING"], False),
+            # Absent evidence stays conservative (do not treat as cancelled)
+            ([], False),
+            ([None, None], False),
+        ],
+    )
+    def test_train_level_cancellation_rule(self, statuses, expected):
+        assert njt_stops_indicate_cancellation(statuses) is expected
 
 
 # ---------------------------------------------------------------------------

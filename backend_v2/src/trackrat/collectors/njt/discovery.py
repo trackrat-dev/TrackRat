@@ -20,7 +20,11 @@ from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
-from trackrat.utils.train import is_amtrak_train, normalize_njt_destination
+from trackrat.utils.train import (
+    is_amtrak_train,
+    njt_stops_indicate_cancellation,
+    normalize_njt_destination,
+)
 
 logger = get_logger(__name__)
 
@@ -546,18 +550,37 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                                 )
 
                             # Clear a stale cancellation when the train reappears
-                            # live. is_cancelled is otherwise a one-way door:
-                            # JIT (jit.py) and every scheduler NJT candidate
-                            # query exclude cancelled rows, and discovery's fuzzy
-                            # re-match filters them out, so nothing else can undo
-                            # it. If NJT un-annuls a train (restored service, or
-                            # a transient glitch that briefly showed the terminal
-                            # stop CANCELLED), the cancelled row would otherwise
-                            # shadow the running train for the rest of the day
-                            # (issue #1498). A later collect_journey_details pass
-                            # legitimately re-sets it if the train is still
-                            # reported cancelled, so this is not a flip-flop.
-                            if existing.is_cancelled:
+                            # live *and the live feed no longer marks it
+                            # cancelled*. is_cancelled is otherwise a one-way
+                            # door: JIT (jit.py) and every scheduler NJT
+                            # candidate query exclude cancelled rows, and
+                            # discovery's fuzzy re-match filters them out, so
+                            # nothing else can undo it. If NJT un-annuls a train
+                            # (restored service, or a transient glitch that
+                            # briefly showed the terminal stop CANCELLED), the
+                            # cancelled row would otherwise shadow the running
+                            # train for the rest of the day (issue #1498).
+                            #
+                            # But a train NJT is *still* annulling also reappears
+                            # on the board — with its terminal (or every) stop
+                            # STOP_STATUS=CANCELLED. Clearing then would show it
+                            # as running: _populate_stop_times_from_discovery
+                            # (below) bumps last_updated_at, so the next batch/JIT
+                            # collection can skip the row as fresh, leaving the
+                            # re-set from collect_journey_details until it goes
+                            # stale. So gate the clear on the embedded STOPS not
+                            # indicating cancellation (same rule as
+                            # collect_journey_details). Absent/ambiguous STOPS
+                            # clear as before, preserving the #1498 recovery.
+                            if (
+                                existing.is_cancelled
+                                and not njt_stops_indicate_cancellation(
+                                    [
+                                        stop.get("STOP_STATUS")
+                                        for stop in (train_data.get("STOPS") or [])
+                                    ]
+                                )
+                            ):
                                 existing.is_cancelled = False
                                 existing.cancellation_reason = None
                                 logger.info(
