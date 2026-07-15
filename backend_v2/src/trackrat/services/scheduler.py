@@ -58,6 +58,7 @@ from trackrat.utils.time import (
     now_et,
     safe_datetime_subtract,
 )
+from trackrat.utils.train import effective_njt_updated_times
 
 logger = get_logger(__name__)
 
@@ -2433,19 +2434,33 @@ class SchedulerService:
         for stop in stops_to_check:
             if stop.station_code == token.origin_code:
                 origin_stop = stop
+                # NJT inversion correction (issue #1504): at NJT intermediate
+                # stops the raw updated_departure is the immutable schedule
+                # (DEP_TIME) while the live delayed estimate sits in
+                # updated_arrival (TIME). Reading updated_departure directly
+                # pushed the schedule to the lock screen, so a delayed train
+                # rendered as on time. The user's boarding stop is never the
+                # journey terminal here (they board to travel onward), so the
+                # intermediate-stop max() semantics apply.
+                eff_arrival, eff_departure = effective_njt_updated_times(
+                    stop, journey.data_source if journey else None
+                )
                 # Convert to ISO8601 string for iOS
-                dep_time = stop.updated_departure or stop.scheduled_departure
+                dep_time = eff_departure or eff_arrival or stop.scheduled_departure
                 scheduled_departure_time = dep_time.isoformat() if dep_time else None
                 # Check if departed
 
                 # Use has_departed_station as authoritative source
                 if stop.has_departed_station:
                     has_train_departed = True
-                elif stop.scheduled_departure:
-                    # Use ensure_timezone_aware to properly handle timezone conversion
-                    scheduled_dep = ensure_timezone_aware(stop.scheduled_departure)
+                elif dep_time:
+                    # Infer departure from the best-known (delay-aware)
+                    # departure estimate, not the raw schedule — wall-clock
+                    # passing the *scheduled* time on a delayed train showed
+                    # "departed on time" while it was still at the platform.
+                    best_departure = ensure_timezone_aware(dep_time)
                     current_time = now_et()
-                    if scheduled_dep < current_time:
+                    if best_departure < current_time:
                         has_train_departed = True
             if stop.station_code == token.destination_code:
                 destination_stop = stop
@@ -3474,8 +3489,19 @@ class SchedulerService:
                                 )
                                 if not origin_stop or origin_stop.track:
                                     continue  # Already has track or stop not found
+                                # Delay-aware estimate (issue #1504): the raw
+                                # updated_departure is the schedule at NJT
+                                # intermediate stops, which would force track
+                                # polling earlier than needed for late trains.
+                                (
+                                    eff_arrival,
+                                    eff_departure,
+                                ) = effective_njt_updated_times(
+                                    origin_stop, journey.data_source
+                                )
                                 dep_time = (
-                                    origin_stop.updated_departure
+                                    eff_departure
+                                    or eff_arrival
                                     or origin_stop.scheduled_departure
                                 )
                                 if (
