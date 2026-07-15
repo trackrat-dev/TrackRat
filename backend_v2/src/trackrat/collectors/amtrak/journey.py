@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -290,11 +290,41 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
             # Process stops - only include our tracked stations
             # Use upsert logic to avoid delete+insert race conditions
-            stop_sequence = 0
             last_tracked_code = origin_code
             new_stops = []  # Track processed stops for metadata updates
-            api_station_codes: set[str] = set()
             time_corrections = 0
+
+            # Feed station set built up front: the issue #1500 requeue routes
+            # expired OBSERVED mid-run rows through this path, and the
+            # Amtraker feed trims already-passed stations. Stops preserved
+            # from earlier refreshes (they carry actuals — see the guarded
+            # deletion in collect_journey_details / issue #1502) must keep
+            # their positions, so surviving feed stops are numbered AFTER
+            # them; renumbering the feed from 0 would collide with the
+            # preserved origin's sequence and scramble stop ordering.
+            api_station_codes: set[str] = {
+                code
+                for amtrak_stop in train_data.stations
+                if (code := AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code))
+            }
+
+            stop_sequence = 0
+            if existing and api_station_codes:
+                preserved_max_seq = await session.scalar(
+                    select(func.max(JourneyStop.stop_sequence)).where(
+                        and_(
+                            JourneyStop.journey_id == journey.id,
+                            JourneyStop.station_code.notin_(api_station_codes),
+                            or_(
+                                JourneyStop.has_departed_station.is_(True),
+                                JourneyStop.actual_arrival.is_not(None),
+                                JourneyStop.actual_departure.is_not(None),
+                            ),
+                        )
+                    )
+                )
+                if preserved_max_seq is not None:
+                    stop_sequence = preserved_max_seq + 1
 
             for amtrak_stop in train_data.stations:
                 internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
@@ -303,7 +333,6 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
 
                 # Update terminal station
                 last_tracked_code = internal_code
-                api_station_codes.add(internal_code)
 
                 # Parse times
                 sched_arr = (
@@ -403,9 +432,21 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                         count=stale_count,
                     )
 
-            # Update terminal station and other fields using our local data
+            # Update terminal station and other fields using our local data.
+            # stops_count is recounted from the DB rather than len(new_stops):
+            # for mid-run rows (issue #1500 requeue) the feed is trimmed and
+            # preserved stops are not in new_stops. The terminal is still the
+            # feed's last stop — trimming never touches the end of the list.
             journey.terminal_station_code = last_tracked_code
-            journey.stops_count = len(new_stops)
+            await session.flush()
+            journey.stops_count = (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(JourneyStop)
+                    .where(JourneyStop.journey_id == journey.id)
+                )
+                or 0
+            )
             journey.scheduled_arrival = (
                 new_stops[-1].scheduled_arrival if new_stops else None
             )
@@ -414,15 +455,31 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             journey.is_cancelled = train_data.trainState == "Cancelled"
             journey.is_completed = train_data.trainState == "Terminated"
 
-            # Set actual departure and arrival times from stops
-            if new_stops:
-                # Set actual departure from first stop
-                if new_stops[0].actual_departure:
-                    journey.actual_departure = new_stops[0].actual_departure
+            # Set actual departure and arrival times from stops.
+            # actual_departure is write-once and keyed to the journey's
+            # ORIGIN stop: the old new_stops[0] overwrite assumed this path
+            # only ran pre-run (new/SCHEDULED rows, where the first feed stop
+            # IS the origin). The issue #1500 requeue also routes expired
+            # OBSERVED mid-run rows here, where the feed has trimmed passed
+            # stations and new_stops[0] is a mid-route stop — an overwrite
+            # would permanently record a false origin departure (a
+            # multi-hour phantom delay in every downstream consumer).
+            if journey.actual_departure is None and journey.origin_station_code:
+                origin_actual = await session.scalar(
+                    select(JourneyStop.actual_departure).where(
+                        and_(
+                            JourneyStop.journey_id == journey.id,
+                            JourneyStop.station_code == journey.origin_station_code,
+                            JourneyStop.actual_departure.is_not(None),
+                        )
+                    )
+                )
+                if origin_actual is not None:
+                    journey.actual_departure = origin_actual
 
+            if new_stops and new_stops[-1].actual_arrival:
                 # Set actual arrival from last stop
-                if new_stops[-1].actual_arrival:
-                    journey.actual_arrival = new_stops[-1].actual_arrival
+                journey.actual_arrival = new_stops[-1].actual_arrival
 
             # Flush to ensure all data is persisted before analysis
             await session.flush()

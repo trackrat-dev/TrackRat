@@ -301,8 +301,16 @@ class TestAmtrakJourneyCollector:
         self, journey_collector, mock_db_session, sample_train_data
     ):
         """Test _convert_to_journey for a new journey."""
-        # Mock the session query to return no existing journey
-        mock_db_session.scalar.return_value = None
+
+        # No existing journey / stops; the stops_count recount (issue #1500
+        # hardening) sees the 4 tracked stops in the DB.
+        async def scalar_side_effect(stmt, *args, **kwargs):
+            sql = str(stmt).lower()
+            if "count(" in sql:
+                return 4
+            return None
+
+        mock_db_session.scalar = AsyncMock(side_effect=scalar_side_effect)
 
         # Mock flush and refresh to do nothing
         mock_db_session.flush = AsyncMock()
@@ -343,7 +351,28 @@ class TestAmtrakJourneyCollector:
         existing_journey.stops = []
         existing_journey.update_count = 5
         existing_journey.observation_type = "SCHEDULED"
-        mock_db_session.scalar.return_value = existing_journey
+        existing_journey.is_expired = False
+        existing_journey.api_error_count = 0
+        existing_journey.actual_departure = None
+        existing_journey.origin_station_code = "NY"
+
+        # Dispatch per statement: the journey lookup returns the existing
+        # row; the issue #1500 hardening queries (preserved-sequence max,
+        # stops_count recount, origin actual_departure) get type-appropriate
+        # results.
+        async def scalar_side_effect(stmt, *args, **kwargs):
+            sql = str(stmt).lower()
+            if "max(" in sql:
+                return None
+            if "count(" in sql:
+                return 4
+            if sql.startswith("select journey_stops.actual_departure"):
+                return None
+            if "from train_journeys" in sql:
+                return existing_journey
+            return None
+
+        mock_db_session.scalar = AsyncMock(side_effect=scalar_side_effect)
 
         # Mock flush, refresh, and execute to do nothing
         mock_db_session.flush = AsyncMock()
@@ -1181,3 +1210,162 @@ class TestConvertReobservationReset:
             "starts its run at the 3-strike threshold and expires on the "
             "first transient mid-run feed miss"
         )
+
+
+class TestConvertMidRunHardening:
+    """_convert_to_journey must be safe for mid-run rows (issue #1500).
+
+    The expired-row requeue routes OBSERVED mid-run rows through
+    _convert_to_journey, whose stop sync historically assumed it only ran
+    pre-run (new/SCHEDULED rows): it renumbered the trimmed feed from 0 and
+    overwrote journey.actual_departure from the first surviving feed stop —
+    which mid-run is a mid-route station, not the origin. That would have
+    permanently recorded a false origin departure (write-once elsewhere
+    means nothing ever repairs it) and collided sequences with preserved
+    passed stops.
+    """
+
+    def _mid_run_feed(self, base):
+        """Trimmed mid-run feed: origin NYP already dropped; PHL just
+        departed (carries an actual departure), WAS ahead."""
+        return create_amtrak_train_data(
+            train_id="2150-13",
+            train_num="2150",
+            route="Northeast Regional",
+            train_state="Active",
+            stations=[
+                create_amtrak_station_data(
+                    code="PHL",
+                    name="Philadelphia",
+                    sch_arr=(base + timedelta(hours=1)).isoformat(),
+                    sch_dep=(base + timedelta(hours=1, minutes=5)).isoformat(),
+                    actual_dep=(base + timedelta(hours=1, minutes=7)).isoformat(),
+                    status="Departed",
+                ),
+                create_amtrak_station_data(
+                    code="WAS",
+                    name="Washington Union",
+                    sch_arr=(base + timedelta(hours=3)).isoformat(),
+                    status="Enroute",
+                ),
+            ],
+        )
+
+    @pytest.mark.asyncio
+    async def test_mid_run_convert_does_not_fake_origin_departure(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """With the origin trimmed from the feed and journey.actual_departure
+        unset, _convert must NOT record a mid-route stop's departure as the
+        journey's origin departure."""
+        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=base.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=base,
+            actual_departure=None,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,
+            api_error_count=3,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._mid_run_feed(base)
+        )
+        await db_session.flush()
+
+        assert result is not None and result.id == journey.id
+        assert result.actual_departure is None, (
+            "A mid-route feed stop's departure must not be recorded as the "
+            "journey's origin actual_departure (issue #1500 hardening)"
+        )
+        assert result.is_expired is False, "Reobservation still clears expiry"
+
+    @pytest.mark.asyncio
+    async def test_mid_run_convert_preserves_recorded_origin_departure(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """An already-recorded origin departure survives a mid-run _convert
+        (write-once), and sequences stay unique with stops_count matching
+        the DB."""
+        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+        recorded_origin_dep = base + timedelta(minutes=4)
+
+        journey = TrainJourney(
+            train_id="A2150",
+            journey_date=base.date(),
+            line_code="NEC",
+            line_name="Northeast Regional",
+            destination="Washington",
+            origin_station_code="NY",
+            terminal_station_code="WS",
+            data_source="AMTRAK",
+            scheduled_departure=base,
+            actual_departure=recorded_origin_dep,
+            has_complete_journey=True,
+            is_completed=False,
+            is_expired=True,
+            api_error_count=3,
+            observation_type="OBSERVED",
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # A passed origin stop with recorded actuals, as preserved by the
+        # issue #1502 deletion guard when both fixes are deployed together.
+        db_session.add(
+            JourneyStop(
+                journey=journey,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=0,
+                scheduled_departure=base,
+                actual_departure=recorded_origin_dep,
+                has_departed_station=True,
+            )
+        )
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._mid_run_feed(base)
+        )
+        await db_session.flush()
+
+        assert result is not None and result.id == journey.id
+        assert result.actual_departure == recorded_origin_dep, (
+            "journey.actual_departure is write-once — a mid-run refresh must "
+            "not replace the recorded origin departure"
+        )
+
+        from sqlalchemy import select as sa_select
+
+        stops = (
+            (
+                await db_session.execute(
+                    sa_select(JourneyStop)
+                    .where(JourneyStop.journey_id == journey.id)
+                    .order_by(JourneyStop.stop_sequence)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        sequences = [s.stop_sequence for s in stops]
+        assert len(sequences) == len(set(sequences)), (
+            f"Stop sequences must be unique after a mid-run convert; got "
+            f"{[(s.station_code, s.stop_sequence) for s in stops]}"
+        )
+        assert result.stops_count == len(
+            stops
+        ), "stops_count must match the DB after a mid-run convert"

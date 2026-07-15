@@ -207,6 +207,7 @@ class TestScheduleAmtrakJourneyCollections:
         mock_expired_journey = Mock(spec=TrainJourney)
         mock_expired_journey.observation_type = "OBSERVED"
         mock_expired_journey.is_expired = True
+        mock_expired_journey.is_completed = False
 
         with patch("trackrat.services.scheduler.get_session") as mock_get_session:
             mock_session = AsyncMock()
@@ -228,6 +229,33 @@ class TestScheduleAmtrakJourneyCollections:
                 "An expired-but-reobserved train must be requeued for "
                 f"collection; got {batch_trains}"
             )
+
+    @pytest.mark.asyncio
+    async def test_completed_expired_trains_are_not_requeued(self, scheduler_service):
+        """A row that is both expired AND completed is finalized history —
+        re-collection could only overwrite recorded data, so it must be
+        skipped by the requeue."""
+        train_ids = ["2150-4"]
+
+        mock_finalized_journey = Mock(spec=TrainJourney)
+        mock_finalized_journey.observation_type = "OBSERVED"
+        mock_finalized_journey.is_expired = True
+        mock_finalized_journey.is_completed = True
+
+        with patch("trackrat.services.scheduler.get_session") as mock_get_session:
+            mock_session = AsyncMock()
+            mock_session.scalar.return_value = mock_finalized_journey
+            mock_get_session.return_value.__aenter__.return_value = mock_session
+
+            mock_scheduler = Mock()
+            scheduler_service.scheduler = mock_scheduler
+
+            with patch("trackrat.services.scheduler.now_et") as mock_now:
+                mock_now.return_value = ET.localize(datetime(2025, 7, 5, 14, 0, 0))
+
+                await scheduler_service.schedule_amtrak_journey_collections(train_ids)
+
+            mock_scheduler.add_job.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_new_trains_without_existing_records_are_collected(
