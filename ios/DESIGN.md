@@ -481,10 +481,10 @@ All services follow the singleton pattern with `shared` instance for app-wide ac
 ### TrainCacheService
 - **Two-Tier Caching**: In-memory cache for speed, UserDefaults for persistence
 - **LRU Eviction**: Automatic eviction of least recently used entries (max 50 in memory)
-- **5-Minute Expiry**: Cached train data expires after 300 seconds
+- **5-Minute Freshness Window**: Data older than 300 seconds is stale; stale entries are retained (24h) and served only to `allowStale` readers so the train details screen can render last-known data offline (e.g. tapping a Live Activity with no cell service)
 - **Cache Key Generation**: Unique keys based on trainId, trainNumber, date, fromStation
 - **Methods**:
-  - `getCachedTrain()`: Retrieve cached train if available and not expired
+  - `getCachedTrain()`: Retrieve cached train; fresh by default, last-known with `allowStale: true`
   - `cacheTrain()`: Store train in both memory and persistent cache
   - `clearCache()`: Remove specific or all cached entries
   - `getCacheStats()`: Debug helper for cache statistics

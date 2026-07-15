@@ -342,6 +342,89 @@ final class TrainCacheServiceTests: XCTestCase {
         XCTAssertEqual(cached?.train.trainId, "601")
     }
 
+    // MARK: - Stale reads (offline rendering)
+
+    func testStaleEntryServedOnlyToAllowStaleReaders() {
+        let date = Date()
+        let train = makeTrain(trainId: "900", dataSource: "NJT")
+        let staleTimestamp = Date().addingTimeInterval(-(TrainCacheService.CachedTrain.freshnessWindow + 60))
+        cacheService.injectTrainForTesting(train, trainNumber: "900", date: date, dataSource: "NJT", cachedAt: staleTimestamp)
+
+        XCTAssertNil(cacheService.getCachedTrain(trainNumber: "900", date: date, dataSource: "NJT"),
+                     "Default readers must never be served stale data")
+
+        let stale = cacheService.getCachedTrain(trainNumber: "900", date: date, dataSource: "NJT", allowStale: true)
+        XCTAssertEqual(stale?.train.trainId, "900",
+                       "allowStale readers must get the last-known data so offline taps can render")
+        XCTAssertEqual(stale?.isExpired, true,
+                       "The stale entry must still report isExpired so callers can flag its age")
+    }
+
+    func testDefaultReadDoesNotPurgeStaleEntry() {
+        // Regression: reads used to delete expired entries on sight, so any
+        // default read destroyed the data an offline allowStale read (e.g. a
+        // Live Activity tap moments later) still needs.
+        let date = Date()
+        let train = makeTrain(trainId: "901", dataSource: "NJT")
+        let staleTimestamp = Date().addingTimeInterval(-(TrainCacheService.CachedTrain.freshnessWindow + 60))
+        cacheService.injectTrainForTesting(train, trainNumber: "901", date: date, dataSource: "NJT", cachedAt: staleTimestamp)
+
+        XCTAssertNil(cacheService.getCachedTrain(trainNumber: "901", date: date, dataSource: "NJT"))
+
+        let stale = cacheService.getCachedTrain(trainNumber: "901", date: date, dataSource: "NJT", allowStale: true)
+        XCTAssertEqual(stale?.train.trainId, "901",
+                       "A default (fresh-only) read must leave the stale entry in place")
+    }
+
+    func testStaleEntrySurvivesMemoryClearAndIsServedFromDisk() {
+        // Simulates being killed and relaunched offline: only UserDefaults persists.
+        let date = Date()
+        let train = makeTrain(trainId: "902", dataSource: "NJT")
+        let staleTimestamp = Date().addingTimeInterval(-(TrainCacheService.CachedTrain.freshnessWindow + 60))
+        cacheService.injectTrainForTesting(train, trainNumber: "902", date: date, dataSource: "NJT", cachedAt: staleTimestamp)
+
+        cacheService.clearMemoryCacheForTesting()
+
+        let stale = cacheService.getCachedTrain(trainNumber: "902", date: date, dataSource: "NJT", allowStale: true)
+        XCTAssertEqual(stale?.train.trainId, "902",
+                       "Stale entry must be recoverable from UserDefaults after a relaunch")
+    }
+
+    func testFreshEntryUnderAnotherKeyBeatsStaleOne() {
+        // A stale legacy entry must not shadow a fresh source-qualified entry:
+        // the fresh pass runs across every key before the stale fallback.
+        let date = Date()
+        let staleTimestamp = Date().addingTimeInterval(-(TrainCacheService.CachedTrain.freshnessWindow + 60))
+        cacheService.injectLegacyTrainForTesting(
+            makeTrain(trainId: "903", dataSource: "NJT"),
+            trainNumber: "903",
+            date: date,
+            cachedAt: staleTimestamp
+        )
+        cacheService.cacheTrain(
+            makeTrain(trainId: "903", dataSource: "AMTRAK"),
+            trainNumber: "903",
+            date: date,
+            dataSource: "AMTRAK"
+        )
+
+        let cached = cacheService.getCachedTrain(trainNumber: "903", date: date, dataSource: nil, allowStale: true)
+        XCTAssertEqual(cached?.train.dataSource, "AMTRAK",
+                       "The fresh source-qualified entry must win over the stale legacy one")
+        XCTAssertEqual(cached?.isExpired, false)
+    }
+
+    func testEntriesBeyondRetentionAreDroppedEvenForAllowStale() {
+        let date = Date()
+        let train = makeTrain(trainId: "904", dataSource: "NJT")
+        // 25 hours old — past the 24-hour retention window.
+        let ancientTimestamp = Date().addingTimeInterval(-25 * 60 * 60)
+        cacheService.injectTrainForTesting(train, trainNumber: "904", date: date, dataSource: "NJT", cachedAt: ancientTimestamp)
+
+        XCTAssertNil(cacheService.getCachedTrain(trainNumber: "904", date: date, dataSource: "NJT", allowStale: true),
+                     "Day-old data is useless for a live journey and must not be served even to allowStale readers")
+    }
+
     // MARK: - Persistence
 
     func testPersistedEntrySurvivesMemoryCacheClear() {

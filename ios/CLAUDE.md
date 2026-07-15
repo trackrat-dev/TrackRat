@@ -133,6 +133,7 @@ CI: `.github/workflows/ios-ci.yml` builds and runs the test suite on every push/
 - Journey progress with interpolation
 - Track/platform prediction shown on the Lock Screen when available (`predictedTrack` / `predictedTrackConfidence`)
 - Departure/arrival countdown shown as minute-granular text (`minutesUntilDeparture` / `minutesUntilArrival` on `ContentState`, e.g. "Departing in 5 minutes" / "~5 min"), refreshed by the 30s backend pushes. Deliberately not a seconds-ticking `Text(timerInterval:)` / `.relative` view: the schedule has only minute resolution, so a MM:SS countdown would imply false precision.
+- Offline tap: TrainDetailsView renders instantly from `TrainCacheService` even when the entry is stale (`allowStale: true`), overlays the activity's pushed `ContentState` when it is newer than the cache (`TrainV2.applyingLiveActivityState` — departed stops, origin track, cancellation), and shows a `StaleDataBanner` while refreshes keep failing. No stops array is ever pushed through APNs (4KB Live Activity payload cap).
 
 ## Testing
 
