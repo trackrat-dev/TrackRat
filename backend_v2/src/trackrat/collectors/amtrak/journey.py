@@ -8,7 +8,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -362,7 +362,9 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             # SCHEDULED journeys created by the pattern scheduler copy stops from
             # the most recent OBSERVED journey, which may include stations the
             # train doesn't actually stop at on this run. Without this cleanup
-            # those stale stops persist with incorrect times.
+            # those stale stops persist with incorrect times. Guarded to rows
+            # with no recorded reality (issue #1502): the feed trims already-
+            # passed stations, and passed stops' actuals must survive.
             if journey.id and api_station_codes:
                 deleted = cast(
                     CursorResult[tuple[()]],
@@ -371,6 +373,9 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                             and_(
                                 JourneyStop.journey_id == journey.id,
                                 JourneyStop.station_code.notin_(api_station_codes),
+                                JourneyStop.has_departed_station.is_(False),
+                                JourneyStop.actual_arrival.is_(None),
+                                JourneyStop.actual_departure.is_(None),
                             )
                         )
                     ),
@@ -598,17 +603,44 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         journey.has_complete_journey = True
 
         # Update stops
-        stop_sequence = 0
         tracked_stops = []
-        api_station_codes: set[str] = set()
         time_corrections = 0
+
+        # Build the feed's station set up front: it drives the stale-stop
+        # deletion below AND the stop_sequence base for this refresh. The
+        # Amtraker feed trims already-passed stations, and the deletion guard
+        # below preserves trimmed stops that carry recorded actuals — so the
+        # surviving feed stops must be numbered AFTER the preserved ones.
+        # Renumbering the feed from 0 would collide with the preserved
+        # origin's sequence and scramble stop ordering (issue #1502).
+        api_station_codes: set[str] = {
+            code
+            for amtrak_stop in train_data.stations
+            if (code := AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code))
+        }
+
+        stop_sequence = 0
+        if api_station_codes:
+            preserved_max_seq = await session.scalar(
+                select(func.max(JourneyStop.stop_sequence)).where(
+                    and_(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.station_code.notin_(api_station_codes),
+                        or_(
+                            JourneyStop.has_departed_station.is_(True),
+                            JourneyStop.actual_arrival.is_not(None),
+                            JourneyStop.actual_departure.is_not(None),
+                        ),
+                    )
+                )
+            )
+            if preserved_max_seq is not None:
+                stop_sequence = preserved_max_seq + 1
 
         for amtrak_stop in train_data.stations:
             internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak_stop.code)
             if not internal_code:
                 continue
-
-            api_station_codes.add(internal_code)
 
             # Find existing stop or create new
             existing_stop = await session.scalar(
@@ -744,11 +776,15 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 corrections=time_corrections,
             )
 
-        # Remove stops that are no longer in the Amtrak API response.
-        # SCHEDULED journeys created by the pattern scheduler copy stops from
-        # the most recent OBSERVED journey, which may include stations the
-        # train doesn't actually stop at on this run. Without this cleanup
-        # those stale stops persist with incorrect times.
+        # Remove stops that are no longer in the Amtrak API response — but
+        # only rows with no recorded reality. The feed TRIMS already-passed
+        # stations, so an unguarded delete destroyed passed stops' actual
+        # times and tracks on every refresh (issue #1502): origin-keyed
+        # queries stopped matching mid-run, completed journeys kept only tail
+        # stops, and the pattern scheduler's required-origin consensus check
+        # starved. Pattern-scheduler template stops the train doesn't serve
+        # never acquire actuals or a departed flag, so they are still cleaned
+        # up as intended.
         if api_station_codes:
             deleted = cast(
                 CursorResult[tuple[()]],
@@ -757,6 +793,9 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                         and_(
                             JourneyStop.journey_id == journey.id,
                             JourneyStop.station_code.notin_(api_station_codes),
+                            JourneyStop.has_departed_station.is_(False),
+                            JourneyStop.actual_arrival.is_(None),
+                            JourneyStop.actual_departure.is_(None),
                         )
                     )
                 ),
@@ -769,8 +808,38 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                     count=stale_count,
                 )
 
-        # Update journey metadata
-        journey.stops_count = len(tracked_stops)
+        # Durable origin-departure signal (issue #1501): the only other
+        # writer of journey.actual_departure is _convert_to_journey, which
+        # never re-runs once a row is OBSERVED (batch collection skips
+        # OBSERVED rows) — so the #1490 expiry gate degraded to its fragile
+        # surviving-stop fallback on the JIT-only lifecycle. Record it
+        # write-once from the origin stop while that stop still exists.
+        await session.flush()
+        if journey.actual_departure is None and journey.origin_station_code:
+            origin_actual = await session.scalar(
+                select(JourneyStop.actual_departure).where(
+                    and_(
+                        JourneyStop.journey_id == journey.id,
+                        JourneyStop.station_code == journey.origin_station_code,
+                        JourneyStop.actual_departure.is_not(None),
+                    )
+                )
+            )
+            if origin_actual is not None:
+                journey.actual_departure = origin_actual
+
+        # Update journey metadata. stops_count is recounted from the DB
+        # because preserved trimmed stops (see deletion guard above) are not
+        # in tracked_stops; the terminal is still the feed's last stop (the
+        # feed trims from the front, never the end).
+        journey.stops_count = (
+            await session.scalar(
+                select(func.count())
+                .select_from(JourneyStop)
+                .where(JourneyStop.journey_id == journey.id)
+            )
+            or 0
+        )
         if tracked_stops:
             journey.terminal_station_code = tracked_stops[-1].station_code
             journey.scheduled_arrival = tracked_stops[-1].scheduled_arrival
@@ -829,10 +898,11 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         mid-run train's origin is trimmed the lowest remaining stop is a
         *future* stop whose ``has_departed_station`` is ``False``. That would
         make a genuinely-departed, now-lost train look pre-departure and leave
-        it unexpired forever. ``journey.actual_departure`` (set at discovery
-        when the origin departs) persists on the row regardless of stop
-        trimming; the surviving-departed-stop check is a fallback for rows that
-        never captured it.
+        it unexpired forever. ``journey.actual_departure`` (recorded
+        write-once by ``_convert_to_journey`` and ``collect_journey_details``
+        when the origin stop reports departure, issue #1501) persists on the
+        row regardless of stop trimming; the surviving-departed-stop check is
+        a fallback for rows that never captured it.
         """
         if journey.actual_departure is not None:
             return True

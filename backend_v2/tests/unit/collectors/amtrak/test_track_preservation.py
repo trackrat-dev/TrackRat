@@ -296,8 +296,23 @@ class TestCollectJourneyDetailsTrackPreservation:
         )
 
         mock_session = AsyncMock()
-        # Return the existing stop when queried by station_code
-        mock_session.scalar = AsyncMock(return_value=existing_stop)
+
+        # collect_journey_details issues several scalar() queries: the
+        # preserved-sequence max() and stops_count count() (issue #1502),
+        # the origin actual_departure lookup (issue #1501), and the
+        # per-station existing-stop lookup this test is about. Dispatch on
+        # the statement so each gets a type-appropriate result.
+        async def scalar_side_effect(stmt, *args, **kwargs):
+            sql = str(stmt).lower()
+            if "max(" in sql:
+                return None  # no preserved trimmed stops in this scenario
+            if "count(" in sql:
+                return 1
+            if sql.startswith("select journey_stops.actual_departure"):
+                return None
+            return existing_stop
+
+        mock_session.scalar = AsyncMock(side_effect=scalar_side_effect)
         mock_session.execute = AsyncMock(return_value=MagicMock())
         mock_session.flush = AsyncMock()
 
