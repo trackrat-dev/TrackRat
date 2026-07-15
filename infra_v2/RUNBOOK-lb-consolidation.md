@@ -1,7 +1,16 @@
 # Runbook: LB consolidation + VM right-size + HSTS preload (production)
 
-Manual cutover for the cost-reduction work. **Nothing here is applied
-automatically** — run each step by hand and gate on the validation checks.
+Phased cutover for the cost-reduction work.
+
+**Automation model (read first):** `infra_v2/cloudbuild-terraform.yaml` runs
+`terraform apply -auto-approve` on the matching workspace whenever
+`infra_v2/terraform/**` changes land on a deploy branch (`main` → staging,
+`production` → production). So the `terraform/` root is **never** hand-applied
+here — merges *are* the applies. The destructive step (old API frontend
+teardown) is therefore gated on `var.consolidate_api_lb` (default `false`),
+and executing it means merging the one-line cutover PR at Phase 4 — a
+deliberate act that cannot ride along on an unrelated deploy. Only the
+`terraform-webpage/` root (no Cloud Build trigger) is applied by hand.
 
 ## Goal / cost impact (production, us-east4)
 
@@ -14,18 +23,42 @@ Measured basis: prod CPU 24h mean 35% / peak 54% of 2 vCPU (keep 2 vCPU);
 RAM 1.09 GB used of 7.76 GB (cut to 4 GB). LB egress 0.46 GB/day → the LB bill
 is essentially the per-rule minimum, so the win is rule count, not data.
 
-## What the PR changes
+> **Verify the ~$55 before committing to Phase 5.** The estimate assumes
+> forwarding rules bill per-rule (~$18/mo each). Under GCP's legacy
+> first-5-rules bundle pricing, 4 → 1 rules in this project saves far less
+> (possibly $0 if the project's total rule count stays ≤ 5 either way).
+> Check the actual invoice line item ("Forwarding Rule Minimum Service
+> Charge") before deciding the HSTS-preload lock-in is worth it; the
+> consolidation through Phase 4 is worth doing regardless.
 
-- `infra_v2/terraform/variables.tf` — `machine_type` default → `e2-custom-2-4096`.
-- `infra_v2/terraform/main.tf` — new local `create_api_frontend` (false in prod).
-- `infra_v2/terraform/loadbalancer.tf` — keeps backend service + cert; **gates the
-  HTTPS frontend on `create_api_frontend`** (prod no longer owns IP/url-map/proxies/rules).
-- `infra_v2/terraform/outputs.tf` — `load_balancer_ip` guarded for prod.
+## How the change is split (two PRs)
+
+**PR 1 — prep (safe to merge anytime; auto-applies are non-destructive):**
+
+- `infra_v2/terraform/variables.tf` — `machine_type` default → `e2-custom-2-4096`;
+  new `consolidate_api_lb` bool (default **false**).
+- `infra_v2/terraform/main.tf` — local
+  `create_api_frontend = !(var.environment == "production" && var.consolidate_api_lb)`
+  → true everywhere until the cutover PR flips the variable.
+- `infra_v2/terraform/loadbalancer.tf` — keeps backend service + cert; gates the
+  HTTPS frontend on `create_api_frontend`; `moved` blocks map the seven existing
+  frontend resources to their new `[0]` addresses (plan must show **0 destroys**
+  while the gate is off).
+- `infra_v2/terraform/outputs.tf` — `load_balancer_ip` guarded.
 - `infra_v2/terraform-webpage/main.tf` — production URL map host-routes
   `apiv2.trackrat.net` → API backend service; proxy serves the API cert via SNI;
-  webpage bucket emits HSTS (`preload`).
+  webpage bucket emits HSTS (`preload`). Hand-applied at Phase 1.
 - `backend_v2/src/trackrat/main.py` (+ `tests/test_hsts_middleware.py`) — HSTS
   header on HTTPS API responses.
+
+Merging PR 1 to `main` / pushing to `production` rolls each VM to E2 (template
+replace + MIG roll, ~5 min blip) and no-ops the frontend (moves only). That is
+the *only* infra effect until Phase 4.
+
+**PR 2 — cutover (merge only at Phase 4):** one line, `consolidate_api_lb`
+default `false` → `true`. Merging it to `production` is what tears down the old
+API frontend. Committing the flip (rather than a hand-run `-var`) keeps every
+subsequent auto-apply consistent — nothing later recreates the frontend.
 
 ## Key facts
 
@@ -40,23 +73,43 @@ is essentially the per-rule minimum, so the win is rule count, not data.
 ## Ordering rule (do not violate)
 
 `terraform-webpage` apply (Phase 1) is **additive** and safe anytime.
-The `terraform/` production apply (Phase 4) **deletes the old API frontend + IP**
-and must run **only after** apiv2 DNS has moved and the old API forwarding rule
-has drained to ~0 req. Applying `terraform/` prod before the DNS flip will break
-apiv2.
+Merging the cutover PR to `production` (Phase 4) **deletes the old API frontend
++ IP** via the auto-apply and must happen **only after** apiv2 DNS has moved
+and the old API forwarding rule has drained to ~0 req. Merging it before the
+DNS flip will break apiv2 — recovery gets a *different* IP (see Rollback).
 
 ---
 
-## Phase 0 — Ship the API HSTS header
+## Phase 0 — Merge PR 1: HSTS header + VM right-size + gated (no-op) frontend refactor
 
 The backend must already emit HSTS before we advertise preload.
 
-1. Merge the backend change; deploy to production (push to `production` branch → CI).
-2. Verify:
+1. Merge PR 1 to `main`. The staging auto-apply fires: expect the staging VM to
+   roll to E2 and the seven frontend resources to show **moved** (not
+   destroyed/recreated) in the Cloud Build plan output. Verify staging:
+   ```bash
+   dig +short staging.apiv2.trackrat.net    # unchanged IP = the moves worked
+   curl -sI https://staging.apiv2.trackrat.net/health | grep -i strict-transport-security
+   bash scripts/validate-staging.sh
+   ```
+2. Push to `production`. This rolls the production VM to E2 (**~5 min apiv2
+   blip** while the MIG recreates the single VM — same as any deploy; schedule
+   accordingly) and no-ops the frontend. Verify:
    ```bash
    curl -sI https://apiv2.trackrat.net/health | grep -i strict-transport-security
    # expect: strict-transport-security: max-age=31536000; includeSubDomains; preload
+
+   # VM is now e2 — confirm memory headroom on the smaller box:
+   curl -s https://apiv2.trackrat.net/admin/stats.json | python3 -c 'import sys,json;m=json.load(sys.stdin)["system"]["memory"];print(m)'
+   #   watch used_gb stays well under 4 GB total; if it climbs toward the cap,
+   #   bump machine_type to e2-custom-2-6144 and redeploy.
    ```
+
+**Watch for a few days before proceeding:** E2 is oversubscribed vs T2D's
+dedicated cores; at 35% avg there's headroom, but confirm p99 latency and CPU
+haven't regressed, and that the reduced-DB working set keeps RAM under 4 GB.
+The VM change is now decoupled from the LB cutover, so a `machine_type` revert
+is just another deploy.
 
 ## Phase 1 — Build the consolidated LB (additive; apiv2 DNS unchanged)
 
@@ -115,43 +168,30 @@ gcloud monitoring time-series list \
 is effectively zero — remaining hits are non-preloaded stragglers/scanners that
 will fail closed, which is acceptable per the port-80 decision.
 
-## Phase 4 — Tear down the old API frontend + resize the VM
+## Phase 4 — Merge PR 2: tear down the old API frontend
 
-> This single `terraform/` production apply does **two** things:
-> (a) removes the old API IP/url-map/proxies/forwarding rules, and
-> (b) replaces the instance (t2d → e2-custom-2-4096) → **~5 min apiv2 blip**
-> while the MIG recreates the single VM (same as any deploy). Schedule a window.
-> If you want them decoupled, apply the machine-type change on its own first
-> (e.g. `-target=google_compute_instance_template.trackrat -target=google_compute_instance_group_manager.trackrat`)
-> **only after** Phase 2, since a full `terraform/` prod apply also deletes the frontend.
+> Merging the cutover PR (`consolidate_api_lb` default → `true`) to
+> `production` triggers the auto-apply that destroys the old API frontend.
+> Do **not** merge it until Phases 1–3 are done. The VM was already resized in
+> Phase 0, so this phase touches only the frontend — no MIG roll, no blip
+> (apiv2 traffic is already on the shared LB).
 
-```bash
-cd infra_v2/terraform
-terraform init
-terraform workspace select production
-terraform plan -var="environment=production"
-#   Expect DESTROY: global address, url_map, https/http proxies, 2 forwarding
-#   rules, redirect url_map. Expect REPLACE: instance template (+ MIG roll).
-#   Expect NO CHANGE: backend service, managed ssl cert, health check.
-terraform apply -var="environment=production"
-```
+1. Merge PR 2 to `main` first. The staging auto-apply must be a **no-op**
+   (staging keeps its frontend regardless of the variable) — confirm the Cloud
+   Build plan shows `0 to add, 0 to change, 0 to destroy`.
+2. Push to `production`. In the Cloud Build plan output expect
+   **DESTROY**: global address, url map, https/http proxies, 2 forwarding
+   rules, redirect url map. Expect **NO CHANGE**: backend service, managed ssl
+   cert (still attached to the shared proxy), health check, instance template.
 
 Validate:
 
 ```bash
 curl -sI https://apiv2.trackrat.net/health/ready | head -1        # 200 via shared LB
 curl -sI https://apiv2.trackrat.net/health | grep -i strict-transport
-# VM is now e2 — confirm memory headroom on the smaller box after a few minutes:
-curl -s https://apiv2.trackrat.net/admin/stats.json | python3 -c 'import sys,json;m=json.load(sys.stdin)["system"]["memory"];print(m)'
-#   watch used_gb stays well under 4 GB total; if it climbs toward the cap,
-#   bump machine_type to e2-custom-2-6144 and re-apply.
 gcloud compute forwarding-rules list --global --format='table(name,IPAddress,portRange)'
 #   apiv2 rules gone; remaining: webpage :80 + :443 (+ any staging).
 ```
-
-**Watch for a few days:** E2 is oversubscribed vs T2D's dedicated cores; at 35%
-avg there's headroom, but confirm p99 latency and CPU haven't regressed, and that
-the reduced-DB working set keeps RAM under 4 GB.
 
 ## Phase 5 — HSTS preload, then drop port 80 (the last rule)
 
@@ -182,12 +222,11 @@ clients rely on it until preload propagates.
   plain `default_service` and drop the 2nd cert / bucket header. apiv2 unaffected
   (DNS never moved).
 - **Phase 2**: revert the apiv2 A record to `34.102.163.196` (old API LB still live).
-- **Phase 4** (frontend torn down): recovery is `git revert` of the `terraform/`
-  frontend gating + `terraform apply` to recreate the API IP/proxies/rules, then
-  point apiv2 DNS back. The **new IP will differ** from 34.102.163.196 — cutover
-  again via DNS. Prefer fixing forward on the shared LB.
-- **VM**: set `machine_type` back to `t2d-standard-2` and apply (another MIG roll).
+- **Phase 4** (frontend torn down): recovery is `git revert` of the cutover PR
+  pushed to `production` — the auto-apply recreates the API IP/proxies/rules —
+  then point apiv2 DNS back. The **new IP will differ** from 34.102.163.196 —
+  cutover again via DNS. Prefer fixing forward on the shared LB.
+- **VM**: set `machine_type` back to `t2d-standard-2` and deploy (another MIG roll).
 - **Phase 5 / preload**: effectively irreversible on browser timescales — serve
   `max-age=0` and request removal at hstspreload.org, expect months. This is why
   :80 stays until preload is certain.
-```

@@ -34,10 +34,14 @@ locals {
   domain      = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
   use_spot_vm = var.environment == "staging"
 
-  # Production's HTTPS frontend (IP, url map, proxies, forwarding rules) is
-  # served by the consolidated webpage load balancer in
-  # infra_v2/terraform-webpage (apiv2.trackrat.net is host-routed there to
-  # this workspace's backend service). This drops production's 2 dedicated
-  # global forwarding rules. Staging keeps its own dedicated API LB.
-  create_api_frontend = var.environment != "production"
+  # Once var.consolidate_api_lb is flipped, production's HTTPS frontend (IP,
+  # url map, proxies, forwarding rules) is served by the consolidated webpage
+  # load balancer in infra_v2/terraform-webpage (apiv2.trackrat.net is
+  # host-routed there to this workspace's backend service), dropping
+  # production's 2 dedicated global forwarding rules. Gated on the variable
+  # (default false) because infra_v2/cloudbuild-terraform.yaml auto-applies
+  # this root on every deploy-branch push — the teardown must be an explicit
+  # runbook Phase-4 action, never a side effect of an unrelated deploy.
+  # Staging always keeps its own dedicated API LB.
+  create_api_frontend = !(var.environment == "production" && var.consolidate_api_lb)
 }

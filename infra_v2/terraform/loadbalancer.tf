@@ -1,13 +1,14 @@
 # Load Balancer Configuration
 # HTTPS load balancer with managed SSL certificate.
 #
-# The backend service and managed SSL certificate below always exist. In
-# PRODUCTION, the HTTPS *frontend* (static IP, url map, proxies, forwarding
-# rules) is NOT created here — apiv2.trackrat.net is served by the consolidated
-# webpage load balancer (infra_v2/terraform-webpage), which host-routes it to
-# this backend service (by name) and attaches this cert (by self-link). That
+# The backend service and managed SSL certificate below always exist. Once
+# var.consolidate_api_lb is flipped (runbook Phase 4), PRODUCTION's HTTPS
+# *frontend* (static IP, url map, proxies, forwarding rules) is no longer
+# created here — apiv2.trackrat.net is served by the consolidated webpage
+# load balancer (infra_v2/terraform-webpage), which host-routes it to this
+# backend service (by name) and attaches this cert (by self-link). That
 # consolidation removes production's 2 dedicated global forwarding rules.
-# STAGING keeps its own dedicated frontend (local.create_api_frontend = true).
+# STAGING always keeps its own dedicated frontend.
 
 # Managed SSL certificate (referenced by the consolidated webpage proxy in
 # production via self-link "projects/<project>/global/sslCertificates/trackrat-production-cert").
@@ -46,9 +47,51 @@ resource "google_compute_backend_service" "trackrat" {
 }
 
 # ---------------------------------------------------------------------------
-# Dedicated HTTPS frontend — STAGING ONLY (local.create_api_frontend).
-# In production these resources are absent; the webpage LB serves apiv2.
+# Dedicated HTTPS frontend — gated on local.create_api_frontend (true in
+# staging always; true in production until var.consolidate_api_lb flips at
+# runbook Phase 4, after which the webpage LB serves apiv2).
+#
+# The moved blocks record the no-count -> count refactor so existing state
+# maps to [0] instead of destroy/create. Terraform >= 1.1 implies these moves
+# for the count boundary automatically, but stating them makes the plan
+# guarantee explicit: while create_api_frontend is true, a plan against
+# existing state must show zero frontend destroys.
 # ---------------------------------------------------------------------------
+
+moved {
+  from = google_compute_global_address.trackrat
+  to   = google_compute_global_address.trackrat[0]
+}
+
+moved {
+  from = google_compute_url_map.trackrat
+  to   = google_compute_url_map.trackrat[0]
+}
+
+moved {
+  from = google_compute_target_https_proxy.trackrat
+  to   = google_compute_target_https_proxy.trackrat[0]
+}
+
+moved {
+  from = google_compute_global_forwarding_rule.trackrat_https
+  to   = google_compute_global_forwarding_rule.trackrat_https[0]
+}
+
+moved {
+  from = google_compute_url_map.trackrat_redirect
+  to   = google_compute_url_map.trackrat_redirect[0]
+}
+
+moved {
+  from = google_compute_target_http_proxy.trackrat_redirect
+  to   = google_compute_target_http_proxy.trackrat_redirect[0]
+}
+
+moved {
+  from = google_compute_global_forwarding_rule.trackrat_http
+  to   = google_compute_global_forwarding_rule.trackrat_http[0]
+}
 
 # Static IP address
 resource "google_compute_global_address" "trackrat" {
