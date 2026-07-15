@@ -124,3 +124,19 @@ class TestTaskFailurePropagation:
             pytest.raises(RuntimeError),
         ):
             await scheduler_service.cleanup_expired_live_activity_tokens()
+
+    @pytest.mark.asyncio
+    async def test_njt_journey_maintenance_failure_propagates(self, scheduler_service):
+        """A failed NJT maintenance sweep (issue #1497) must surface as a
+        failed run — not stamp last_successful_run while the reconcile /
+        expiry sweeps silently stop running."""
+        with (
+            _patched(),
+            patch("trackrat.services.scheduler.get_session", _fake_session),
+            patch(
+                "trackrat.collectors.njt.journey.JourneyCollector",
+                side_effect=RuntimeError("maintenance sweep exploded"),
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            await scheduler_service.run_njt_journey_maintenance()
