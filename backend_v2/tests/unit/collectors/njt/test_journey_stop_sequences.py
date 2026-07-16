@@ -806,6 +806,92 @@ class TestCorruptedTimeDataHandling:
         ], f"Expected TR before NY, but got {station_codes}"
 
     @pytest.mark.asyncio
+    async def test_discovery_stop_with_only_updated_times_sorts_by_live_time(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Discovery-populated stops (updated_* only, no scheduled_*) sort by live time.
+
+        Replicates issue #1530: NJT train 3701 (NY -> MP) showed Newark Penn before
+        Secaucus. Secaucus was added by the discovery phase, so it had only
+        updated_arrival / updated_departure and no scheduled_* times. Previously it
+        was bucketed after all scheduled stops (DATETIME_MAX_ET) and rendered out of
+        order. It must instead sort by its live time into NY -> SE -> NP.
+        """
+
+        journey = TrainJourney(
+            train_id="3701",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Matawan",
+            origin_station_code="NY",
+            terminal_station_code="MP",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Origin: New York Penn, departure only (scheduled).
+        ny_penn = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_arrival=None,
+            scheduled_departure=datetime(2024, 1, 1, 18, 0, 0, tzinfo=UTC),
+        )
+        db_session.add(ny_penn)
+
+        # Newark Penn: fully scheduled downstream stop.
+        newark = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NP",
+            station_name="Newark Penn Station",
+            stop_sequence=1,
+            scheduled_arrival=datetime(2024, 1, 1, 18, 18, 0, tzinfo=UTC),
+            scheduled_departure=datetime(2024, 1, 1, 18, 20, 0, tzinfo=UTC),
+        )
+        db_session.add(newark)
+
+        # Secaucus: discovery-populated, only live (updated) times, no schedule and
+        # no assigned sequence. Its live time (18:08) is between NY and Newark.
+        secaucus = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="SE",
+            station_name="Secaucus Junction",
+            stop_sequence=None,
+            scheduled_arrival=None,
+            scheduled_departure=None,
+            updated_arrival=datetime(2024, 1, 1, 18, 8, 0, tzinfo=UTC),
+            updated_departure=datetime(2024, 1, 1, 18, 9, 0, tzinfo=UTC),
+        )
+        db_session.add(secaucus)
+        await db_session.flush()
+
+        await journey_collector._resequence_stops(db_session, journey)
+        await db_session.flush()
+
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+
+        station_codes = [s.station_code for s in stops]
+        assert station_codes == [
+            "NY",
+            "SE",
+            "NP",
+        ], f"Expected NY -> SE -> NP, but got {station_codes}"
+
+    @pytest.mark.asyncio
     async def test_sequential_inference_with_skipped_departed_flag(
         self, db_session: AsyncSession, journey_collector, mock_njt_client
     ):
