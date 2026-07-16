@@ -107,11 +107,15 @@ train_journeys (
     api_error_count, is_expired, discovery_track, discovery_station_code
 
 -- Individual stops with times and tracks
--- NOTE: updated_arrival / updated_departure have INVERTED semantics for NJT.
--- For most providers these are live estimates. For NJT intermediate stops,
--- updated_departure = original schedule, updated_arrival = live estimate.
--- Consumers must use max(updated_departure, updated_arrival) for NJT departures.
--- See database.py JourneyStop model for full documentation.
+-- NOTE: updated_arrival / updated_departure have POSITION-DEPENDENT semantics
+-- for NJT (raw TIME/DEP_TIME passthroughs). At intermediate stops
+-- updated_departure = original schedule and updated_arrival = live estimate;
+-- at the ORIGIN it's the reverse (updated_departure is the live estimate);
+-- at the TERMINAL updated_departure can be a later turnaround departure.
+-- NEVER read these raw for NJT — use utils/train.effective_njt_updated_times
+-- (+ terminal_stop_index for the #1492 terminal exemption); the SQL twin is
+-- GREATEST(updated_departure, updated_arrival) guarded to NJT.
+-- Full reference: docs/journey-lifecycle.md §2.
 -- PARTITIONED BY RANGE (journey_date) (issue #1343) — see "Partitioning" below.
 -- journey_date is denormalized from train_journeys.journey_date (required by
 -- Postgres so the partition key can sit in journey_stops' composite PK/unique
@@ -449,6 +453,11 @@ The system now includes comprehensive transit time analysis:
    - **NOTE**: Migrations run automatically during application startup (after backup restore). A broken migration tree = staging/prod crash loop.
 
 3. **Collector Changes**:
+   - **Read `docs/journey-lifecycle.md` first** — journey state machine,
+     lifecycle-flag invariants ("every flag that blocks refresh needs an
+     automatic clearer"), NJT/Amtrak field semantics, `journey_date`
+     conventions, and the Postgres-vs-SQLite test gotchas. Most recurring
+     collector bugs violated one of those rules.
    - NJT collectors in `collectors/njt/` (discovery.py, journey.py, client.py, schedule.py)
    - Amtrak collectors in `collectors/amtrak/` (discovery.py, journey.py, client.py)
    - PATH collector in `collectors/path/` (collector.py, client.py, ridepath_client.py, segment_times.py)
@@ -842,6 +851,11 @@ The backend is organized into service classes for better maintainability:
 ## Recent Improvements & Known Issues
 
 ### Recent Improvements (July 2026)
+- ✅ NJT/Amtrak reliability sweep from a systematic latent-bug review (issues #1496–#1508, PRs #1509–#1518), plus the new `docs/journey-lifecycle.md` reference distilling the invariants:
+  - **NJT collector**: `_is_same_journey` compares the immutable `SCHED_DEP_DATE` instead of the origin's live `DEP_TIME`, so pre-departure delays >10 min no longer strike and expire running trains (#1496); nightly schedule generation derives `journey_date` from each train's earliest departure instead of the run date, ending the nightly zombie-duplicate for after-midnight departures, and the stop-list pass covers `[today, today+1]` (#1499); schedule collection routes TRACK through `sanitize_track`, so String(5) overflows no longer abort a train's daily stop list (#1508); completion-on-expiry uses `nulls_last()` + an unsequenced-stop guard in both collectors — Postgres NULLS-FIRST no longer picks placeholder stops as "terminal" (#1506, invisible on SQLite-backed tests).
+  - **NJT consumers**: the TIME/DEP_TIME inversion correction is now single-sourced through `utils/train.effective_njt_updated_times` + `terminal_stop_index` everywhere — Live Activity pushes (#1504, delayed trains no longer render on-time/departed on the lock screen), the congestion `stop_pairs` CTE via a guarded `GREATEST()` (#1503, delayed NJT trains no longer register their full delay as segment congestion), and both departure boards via `DepartureService._effective_updated_time` with the #1492 terminal exemption (#1505).
+  - **Amtrak lifecycle**: stale-stop deletion preserves passed stops carrying recorded actuals (the feed trims passed stations), feed stops are sequenced after preserved stops, `stops_count` is recounted from the DB, and `journey.actual_departure` is recorded write-once keyed to the origin stop in BOTH stop-sync paths (`collect_journey_details` and `_convert_to_journey`) — restoring the #1490 expiry gate's durable signal (#1501, #1502); batch collection requeues expired-but-reobserved rows (and `_convert_to_journey` clears expiry/strikes) so the #1489 unexpire path is reachable without a Live Activity (#1500).
+  - **Scheduler observability**: the five remaining freshness-wrapped tasks (GTFS refresh, both nightly schedule jobs, Live Activity token cleanup, train validation) re-raise failures like `retention_cleanup`, so a failed run no longer stamps `last_successful_run` and hides from monitoring (#1507).
 - ✅ Closed a disabled-source serving leak: `active_data_sources()` was only wired into the departure / recent-departure / trip-search paths, so the **analytics and train_id-scoped endpoints still served residual rows** from a disabled feed (present until they age out of the retention window). `/routes/congestion` was the standout — `CONGESTION_PROVIDERS` hard-listed the disabled sources, so the 15-min precompute kept re-warming their caches and the all-systems merge kept serving their `train_positions`. Fixes: precompute + merge now iterate `active_data_sources(CONGESTION_PROVIDERS)` and the congestion endpoint normalizes `requested_systems` to the active set (empty ⇒ empty map); `get_network_congestion_with_trains`, `_query_line_stats_sql`/route-summary, and `/routes/segments/.../trains` constrain `data_source` to the active set even when unscoped; a shared `api/utils.ensure_source_enabled()` 404s the train_id/source-scoped endpoints (`/trains/{id}`, `/trains/{id}/history`, `/predictions/track|delay`, `/routes/history`). (`api/utils.py`, `api/routes.py`, `api/trains.py`, `api/predictions.py`, `services/api_cache.py`, `services/congestion.py`, `services/summary.py`)
 - ✅ Added `TRACKRAT_DISABLED_DATA_SOURCES` feature flag to fully disable train systems — a disabled source is skipped for real-time collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of departure / trip-search API responses (`DepartureService.active_data_sources()`) so no stale data is served. Currently `BART,WMATA,MBTA,METRA` in staging/production via `infra_v2/terraform/compute.tf`; iOS mirrors the set in `TrainSystem.disabledSystems`, web in `DISABLED_SYSTEMS` (`webpage_v2/src/data/stations.ts`) (PR #1401, `settings.py`, `services/scheduler.py`, `services/departure.py`, `collectors/service_alerts.py`)
 - ✅ Partitioned `journey_stops` (RANGE on `journey_date`) and `segment_transit_times` (RANGE on `departure_time`) by month so retention can `DROP TABLE` an aged-out partition instead of relying on `DELETE` + autovacuum, which never returned space to the filesystem (`journey_stops` alone was ~33 GB / ~70% of journey storage on production). Existing rows are not rewritten in place: the prior tables are renamed to `*_legacy`, an idempotent background task (`SchedulerService.backfill_legacy_partitions`) copies the last `retention_days` of rows into the new partitions, and each `*_legacy` table is dropped once its backfill completes — so recent history stays readable and the reclaimed space comes back in one shot instead of over a 60-day drain. See "Partitioning" in the Database Schema section above for the full design. (issue #1343, `db/partitioning.py`, `models/database.py`, `services/scheduler.py`, migration `03db10760b28`)
@@ -951,6 +965,9 @@ The backend is organized into service classes for better maintainability:
 - ✅ Correlation ID middleware for request tracing
 
 ### Known Issues & Areas for Improvement
+- ⚠️ NJT `is_cancelled` is a one-way door (issue #1498): no code path clears it, so a falsely-cancelled row (e.g. a transient terminal-CANCELLED glitch) shows "Cancelled" for its lifetime while the train runs. Discovery's exact-match reactivation clears `is_expired` but not `is_cancelled`.
+- ⚠️ The NJT `JourneyCollector.collect()` pipeline is dead code (issue #1497): nothing schedules it, so its silent-cancellation reconcile sweep and old-journey expiry sweep never run — NJT trains annulled without an explicit "Cancelled" stop status are never marked cancelled. Do NOT wire it up as-is (single-transaction batch with accumulating advisory locks; midnight-unsafe expiry) — re-home the sweeps as scheduler tasks instead.
+- ⚠️ Amtrak concurrent same-number instances (overnight long-haul + today's run) can cross-refresh one journey row around midnight — bounded since the #1500 hardening (no permanent corruption), not yet solved. See `docs/journey-lifecycle.md` §4.
 - ⚠️ Cache invalidation strategy could be more sophisticated
 - ⚠️ Test coverage for schedule generation features needs expansion
 - ⚠️ Validation service route pairs are hardcoded (should be configurable)

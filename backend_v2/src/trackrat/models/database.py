@@ -193,18 +193,28 @@ class JourneyStop(Base):
 
     # Updated times — raw real-time values from the transit provider API.
     #
-    # WARNING — NJT SEMANTIC MISMATCH:
+    # WARNING — NJT SEMANTIC MISMATCH (position-dependent):
     # For most providers (Amtrak, GTFS-RT systems, PATH, WMATA), these are
     # genuine live estimates (i.e., "current best guess for arrival/departure").
-    # For NJT, these are raw API field passthroughs with INVERTED semantics:
-    #   - updated_arrival  = NJT TIME field     (live estimate at intermediate stops,
-    #                                            but scheduled arrival at origin)
-    #   - updated_departure = NJT DEP_TIME field (original schedule at intermediate stops,
-    #                                             but actual departure at origin)
-    # This means at NJT intermediate stops, updated_departure is typically EARLIER
-    # than updated_arrival (schedule vs delayed estimate). Consumers must use
-    # max(updated_departure, updated_arrival) to get the true delayed estimate.
-    # See departure.py DepartureService for the canonical handling pattern.
+    # For NJT, these are raw TIME/DEP_TIME passthroughs whose meaning depends
+    # on the stop's position in the journey:
+    #   - ORIGIN:       updated_arrival = original schedule (TIME);
+    #                   updated_departure = LIVE departure estimate (DEP_TIME,
+    #                   moves with delays — issue #1496)
+    #   - INTERMEDIATE: updated_arrival = LIVE arrival estimate (TIME);
+    #                   updated_departure = original schedule (DEP_TIME)
+    #   - TERMINAL:     updated_arrival = LIVE arrival estimate (TIME);
+    #                   updated_departure is usually absent, but when present
+    #                   can be a later TURNAROUND departure that must not be
+    #                   promoted into the arrival (issue #1492)
+    # NEVER read these fields raw for NJT. The canonical correction is
+    # utils/train.effective_njt_updated_times (max() at non-terminal stops,
+    # skipped at the terminal) with utils/train.terminal_stop_index for
+    # conservative terminal detection; the SQL twin is
+    # GREATEST(updated_departure, updated_arrival) guarded to NJT rows (see
+    # the congestion stop_pairs CTE). The arrival-side fallback
+    # `updated_arrival or updated_departure` is safe for NJT.
+    # Full reference: backend_v2/docs/journey-lifecycle.md §2.
     updated_arrival = Column(DateTime(timezone=True))
     updated_departure = Column(DateTime(timezone=True))
 
