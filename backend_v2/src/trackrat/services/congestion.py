@@ -30,7 +30,10 @@ from trackrat.services.congestion_types import (
 )
 from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import ensure_timezone_aware, now_et
-from trackrat.utils.train import effective_njt_updated_times
+from trackrat.utils.train import (
+    effective_njt_updated_times,
+    stop_sequence_sort_key,
+)
 
 logger = get_logger(__name__)
 
@@ -1052,7 +1055,7 @@ class CongestionAnalyzer:
                 continue
 
             # Sort stops by sequence
-            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
 
             # Track cancellations for each potential segment
             if journey.is_cancelled:

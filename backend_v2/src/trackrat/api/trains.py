@@ -55,6 +55,7 @@ from trackrat.utils.train import (
     effective_njt_updated_times,
     get_effective_observation_type,
     is_amtrak_train,
+    stop_sequence_sort_key,
     terminal_stop_index,
 )
 
@@ -461,7 +462,7 @@ async def get_train_details(
     ensure_source_enabled(journey.data_source)
 
     # Build stop details
-    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
     # Terminal stop is exempt from the NJT max() (its DEP_TIME can be a later
     # turnaround departure that would inflate the arrival estimate, #1492).
     # Only trust positional detection on a fully-sequenced journey — a
@@ -827,14 +828,12 @@ async def get_train_history(
             # Skip if either station is not found, or if they're in wrong order
             if not from_stop or not to_stop:
                 continue
-            if (from_stop.stop_sequence or 0) >= (to_stop.stop_sequence or 0):
+            if stop_sequence_sort_key(from_stop) >= stop_sequence_sort_key(to_stop):
                 continue
 
         # Get key stops
         first_stop = (
-            min(journey.stops, key=lambda s: s.stop_sequence or 0)
-            if journey.stops
-            else None
+            min(journey.stops, key=stop_sequence_sort_key) if journey.stops else None
         )
         last_stop = (
             max(journey.stops, key=lambda s: s.stop_sequence or 0)
@@ -992,12 +991,12 @@ async def get_train_history(
 
                 if not from_stop or not to_stop:
                     continue
-                if (from_stop.stop_sequence or 0) >= (to_stop.stop_sequence or 0):
+                if stop_sequence_sort_key(from_stop) >= stop_sequence_sort_key(to_stop):
                     continue
 
             # Get key stops (same logic)
             first_stop = (
-                min(journey.stops, key=lambda s: s.stop_sequence or 0)
+                min(journey.stops, key=stop_sequence_sort_key)
                 if journey.stops
                 else None
             )
@@ -1183,9 +1182,9 @@ def count_stops_between(
     count = 0
     for stop in journey.stops:
         if (
-            (from_stop.stop_sequence or 0)
-            < (stop.stop_sequence or 0)
-            < (to_stop.stop_sequence or 0)
+            stop_sequence_sort_key(from_stop)
+            < stop_sequence_sort_key(stop)
+            < stop_sequence_sort_key(to_stop)
         ):
             count += 1
     return count
@@ -1199,7 +1198,7 @@ def calculate_train_position(journey: TrainJourney) -> TrainPosition:
     if not journey.stops:
         return TrainPosition()
 
-    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
 
     last_departed_station_code = None
     next_station_code = None
@@ -1227,7 +1226,7 @@ def calculate_train_position(journey: TrainJourney) -> TrainPosition:
 def get_first_stop_name(journey: TrainJourney) -> str:
     """Get the name of the first stop."""
     if journey.stops:
-        first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
+        first_stop = min(journey.stops, key=stop_sequence_sort_key)
         return first_stop.station_name or journey.origin_station_code or "Unknown"
     return journey.origin_station_code or "Unknown"
 
@@ -1238,7 +1237,7 @@ def get_first_stop_code(journey: TrainJourney) -> str:
     This always reflects the true origin, even if discovery data was wrong.
     """
     if journey.stops:
-        first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
+        first_stop = min(journey.stops, key=stop_sequence_sort_key)
         return first_stop.station_code or journey.origin_station_code or "Unknown"
     return journey.origin_station_code or "Unknown"
 

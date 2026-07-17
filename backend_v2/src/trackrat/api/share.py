@@ -38,7 +38,7 @@ from trackrat.db.engine import get_db
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.share_image import render_share_image
 from trackrat.utils.time import normalize_to_et, now_et
-from trackrat.utils.train import terminal_stop_index
+from trackrat.utils.train import stop_sequence_sort_key, terminal_stop_index
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/share", tags=["share"], include_in_schema=False)
@@ -240,7 +240,7 @@ def _arrival_at(journey: TrainJourney, station_code: str) -> datetime | None:
     station_code with no matching stop, returns ``None`` so the caller
     can render a generic status rather than the wrong time.
     """
-    sorted_stops = sorted(journey.stops or [], key=lambda s: s.stop_sequence or 0)
+    sorted_stops = sorted(journey.stops or [], key=stop_sequence_sort_key)
     terminal_index = terminal_stop_index(sorted_stops, journey.terminal_station_code)
     for index, stop in enumerate(sorted_stops):
         if stop.station_code != station_code:

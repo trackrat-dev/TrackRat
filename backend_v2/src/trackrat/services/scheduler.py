@@ -58,7 +58,10 @@ from trackrat.utils.time import (
     now_et,
     safe_datetime_subtract,
 )
-from trackrat.utils.train import effective_njt_updated_times
+from trackrat.utils.train import (
+    effective_njt_updated_times,
+    stop_sequence_sort_key,
+)
 
 logger = get_logger(__name__)
 
@@ -2283,7 +2286,7 @@ class SchedulerService:
 
         if journey and journey.stops:
             # Sort stops by sequence to ensure proper ordering
-            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
 
             # Find user's origin and destination indices
             origin_index = None
@@ -2426,7 +2429,7 @@ class SchedulerService:
             stops_for_delay = (
                 sorted_stops
                 if "sorted_stops" in locals()
-                else sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+                else sorted(journey.stops, key=stop_sequence_sort_key)
             )
             for stop in reversed(stops_for_delay):
                 if stop.has_departed_station:
@@ -2456,7 +2459,7 @@ class SchedulerService:
             sorted_stops
             if "sorted_stops" in locals()
             else (
-                sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+                sorted(journey.stops, key=stop_sequence_sort_key)
                 if journey and journey.stops
                 else []
             )
