@@ -302,3 +302,44 @@ resource "google_logging_metric" "table_dead_tuple_ratio_pct" {
 
   depends_on = [google_project_service.apis["logging.googleapis.com"]]
 }
+
+# =============================================================================
+# STOP-ORDER WARNING METRIC
+# Tracks: NJT journey stop-ordering warnings logged by the collector's
+# _resequence_stops path (collectors/njt/journey.py) — origin_station_not_first
+# and stops_missing_scheduled_times. Both fired for #1530 (Newark Penn rendered
+# before Secaucus) and went unnoticed until in-app user feedback. Drives the
+# "NJT Stop-Order Warnings" alert in monitoring.tf so a sustained misordering
+# spike pages before a rider reports it. An `event` label is extracted for
+# diagnosis; the alert sums across both events (mirrors provider_auth_failures).
+# =============================================================================
+resource "google_logging_metric" "stop_order_warnings" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "stop_order_warnings"
+  description = "NJT stop-ordering warnings (origin displaced / stops missing scheduled times)"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.level=\"warning\"",
+    "(jsonPayload.event=\"origin_station_not_first\" OR jsonPayload.event=\"stops_missing_scheduled_times\")",
+  ])
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    labels {
+      key         = "event"
+      value_type  = "STRING"
+      description = "Which ordering warning fired"
+    }
+  }
+
+  label_extractors = {
+    "event" = "EXTRACT(jsonPayload.event)"
+  }
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}

@@ -136,7 +136,7 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider WMATA --verbos
 poetry run python3 ../scripts/ground-truth-validate.py --all --verbose
 ```
 
-Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
+Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs), `--stop-order-warn` (report NJT stop-order inversions as WARN instead of FAIL; NJT also runs a stop-order check comparing TrackRat's persisted `stop_sequence` order against NJT `getTrainStopList` geographic order — see #1538).
 Default target is staging; pass a URL as first positional arg for production.
 
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,

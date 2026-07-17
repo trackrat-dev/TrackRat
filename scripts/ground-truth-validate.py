@@ -48,6 +48,17 @@ FAIL_COUNT = 0
 WARN_COUNT = 0
 SKIP_COUNT = 0
 
+# --- Stop-order check config ---
+# When True, NJT stop-order inversions are reported as WARN instead of FAIL
+# (set from the --stop-order-warn CLI flag). Kept as a module global to match
+# the existing counter-global idiom and avoid threading an NJT-only flag
+# through the uniform provider-runner signature.
+STOP_ORDER_WARN = False
+# Cap on how many NJT trains are sampled for the stop-order check. Each sampled
+# train costs one extra getTrainStopList call plus one TrackRat train-details
+# call, so this bounds the added API load per validation run.
+STOP_ORDER_SAMPLE_SIZE = 12
+
 
 def log_pass(msg: str) -> None:
     global PASS_COUNT
@@ -617,6 +628,152 @@ def fetch_trackrat_departures(
     return departures
 
 
+# --- Stop-order validation (issue #1538) ---
+
+
+def find_stop_order_inversions(
+    tr_order: list[str], reference_order: list[str]
+) -> list[tuple[str, str]]:
+    """Detect stop-order inversions between TrackRat and a reference geographic order.
+
+    ``tr_order`` is TrackRat's persisted stop order (station codes sorted by
+    ``stop_sequence``). ``reference_order`` is the provider's own geographic
+    stop list (NJT ``getTrainStopList`` is geographic). Only stations present in
+    BOTH lists are compared, so extra/missing stops on either side are ignored.
+
+    Returns a list of ``(earlier_in_tr, later_in_tr)`` pairs that are adjacent in
+    the common-station subsequence of ``tr_order`` but appear in the OPPOSITE
+    relative order in ``reference_order`` — i.e. TrackRat renders
+    ``earlier_in_tr`` ahead of ``later_in_tr`` while the provider places
+    ``later_in_tr`` first. This is exactly the #1530 shape (Newark Penn rendered
+    before Secaucus). An empty list means TrackRat's order is consistent with the
+    reference.
+    """
+    ref_index: dict[str, int] = {}
+    for idx, code in enumerate(reference_order):
+        if code and code not in ref_index:  # first occurrence wins
+            ref_index[code] = idx
+
+    # Common stations in TrackRat order, de-duplicated (keep first occurrence).
+    seen: set[str] = set()
+    common: list[str] = []
+    for code in tr_order:
+        if code in ref_index and code not in seen:
+            seen.add(code)
+            common.append(code)
+
+    inversions: list[tuple[str, str]] = []
+    for earlier, later in zip(common, common[1:]):
+        if ref_index[earlier] > ref_index[later]:
+            inversions.append((earlier, later))
+    return inversions
+
+
+def fetch_njt_train_stop_orders(train_ids: list[str]) -> dict[str, list[str]]:
+    """Fetch each NJT train's geographic stop order via getTrainStopList.
+
+    Returns a mapping of ``train_id`` -> ordered list of ``STATION_2CHAR`` codes
+    (the provider's own geographic order, used as ground truth). Trains whose
+    stop list is unavailable (not found / transient null data) are skipped and
+    logged, and simply omitted from the returned mapping.
+    """
+
+    async def _fetch() -> dict[str, list[str]]:
+        results: dict[str, list[str]] = {}
+        async with _create_njt_client() as client:
+            for train_id in train_ids:
+                try:
+                    data = await client.get_train_stop_list(train_id)
+                except Exception as e:
+                    log_skip(f"NJT stop list unavailable for train {train_id}: {e}")
+                    continue
+                order = [
+                    stop.STATION_2CHAR.strip()
+                    for stop in data.STOPS
+                    if stop.STATION_2CHAR and stop.STATION_2CHAR.strip()
+                ]
+                if order:
+                    results[train_id] = order
+        return results
+
+    return asyncio.run(_fetch())
+
+
+def fetch_trackrat_train_stop_order(
+    client: httpx.Client, base_url: str, train_id: str
+) -> list[str] | None:
+    """Fetch TrackRat's persisted stop order for a train, sorted by stop_sequence.
+
+    Returns the ordered list of station codes, or ``None`` if the request fails.
+    """
+    url = f"{base_url.rstrip('/')}/api/v2/trains/{train_id}"
+    try:
+        resp = client.get(url, timeout=15)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        log_warn(f"TrackRat train details request failed for {train_id}: {e}")
+        return None
+
+    stops = resp.json().get("stops", [])
+    ordered = sorted(stops, key=lambda s: s.get("stop_sequence", 0))
+    codes: list[str] = []
+    for stop in ordered:
+        code = (stop.get("station") or {}).get("code", "").strip()
+        if code:
+            codes.append(code)
+    return codes
+
+
+def check_njt_stop_order(
+    base_url: str,
+    gt_arrivals: list[GroundTruthArrival],
+    verbose: bool,
+    warn_only: bool,
+    sample_size: int = STOP_ORDER_SAMPLE_SIZE,
+) -> None:
+    """Compare TrackRat's persisted stop order to NJT's geographic order (#1538).
+
+    Samples up to ``sample_size`` NJT trains seen in the ground-truth feed, and
+    for each compares TrackRat's ``/trains/{id}`` stop order against the NJT
+    ``getTrainStopList`` geographic order. Inversions are reported as FAIL
+    (or WARN when ``warn_only``), with both orders printed for diagnosis.
+    """
+    # Deterministic sample of unique train IDs so runs are reproducible.
+    train_ids = sorted({a.train_id for a in gt_arrivals if a.train_id})[:sample_size]
+    if not train_ids:
+        return
+
+    print(f"\n{BOLD}--- Stop Order Check (NJT geographic vs TrackRat) ---{NC}")
+    print(f"Note: sampling {len(train_ids)} trains for stop-order validation")
+
+    gt_orders = fetch_njt_train_stop_orders(train_ids)
+    log = log_warn if warn_only else log_fail
+
+    client = httpx.Client()
+    try:
+        for train_id in train_ids:
+            reference_order = gt_orders.get(train_id)
+            if not reference_order:
+                continue  # unavailable stop list already logged as SKIP
+
+            tr_order = fetch_trackrat_train_stop_order(client, base_url, train_id)
+            if not tr_order:
+                continue
+
+            inversions = find_stop_order_inversions(tr_order, reference_order)
+            if inversions:
+                pairs = ", ".join(f"{a} before {b}" for a, b in inversions)
+                detail = (
+                    f"TrackRat order: {' -> '.join(tr_order)}\n"
+                    f"       NJT order:      {' -> '.join(reference_order)}"
+                )
+                log(f"Train {train_id}: stop order inverted vs NJT ({pairs})", detail)
+            else:
+                log_pass(f"Train {train_id}: stop order matches NJT geographic order")
+    finally:
+        client.close()
+
+
 # --- Matching ---
 
 
@@ -1183,6 +1340,10 @@ def run_njt_validation(base_url: str, tolerance: float, verbose: bool = False, g
             )
 
     route_directions_tested = run_validation_loop(gt_arrivals, "NJT", base_url, tolerance, verbose, gt_window, far_future)
+
+    # Stop-order regression check (#1538): NJT geographic order vs TrackRat.
+    check_njt_stop_order(base_url, gt_arrivals, verbose, warn_only=STOP_ORDER_WARN)
+
     print_summary(route_directions_tested)
 
 
@@ -1384,7 +1545,15 @@ def main() -> None:
         action="store_true",
         help="Show raw GT arrivals, TR departures, and nearest-match details on FAILs",
     )
+    parser.add_argument(
+        "--stop-order-warn",
+        action="store_true",
+        help="Report NJT stop-order inversions as WARN instead of FAIL (default: FAIL)",
+    )
     args = parser.parse_args()
+
+    global STOP_ORDER_WARN
+    STOP_ORDER_WARN = args.stop_order_warn
 
     runners = {
         "PATH": run_path_validation,
