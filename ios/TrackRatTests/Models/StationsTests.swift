@@ -457,7 +457,8 @@ class StationsTests: XCTestCase {
 
     func testSystemMappingReturnsValidSystems() {
         let validSystems: Set<String> = ["NJT", "AMTRAK", "PATH", "PATCO", "LIRR", "MNR",
-                                         "SUBWAY", "MBTA", "WMATA", "BART", "METRA"]
+                                         "SUBWAY", "MBTA", "WMATA", "BART", "METRA",
+                                         "SEPTA_RR", "SEPTA_METRO"]
         let allCodes = Set(Stations.stationCodes.values)
 
         for code in allCodes {
