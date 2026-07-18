@@ -40,6 +40,8 @@ _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
     "MNR",
     "MBTA",
     "METRA",
+    "SEPTA_RR",
+    "SEPTA_METRO",
 }
 
 

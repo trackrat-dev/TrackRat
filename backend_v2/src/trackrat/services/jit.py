@@ -21,6 +21,8 @@ from trackrat.collectors.mnr.collector import MNRCollector
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.septa_metro.collector import SeptaMetroCollector
+from trackrat.collectors.septa_rr.collector import SeptaRailCollector
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
 from trackrat.db.engine import retry_on_deadlock
@@ -57,6 +59,8 @@ class JustInTimeUpdateService:
         self._wmata_collector: WMATACollector | None = None
         self._bart_collector: BARTCollector | None = None
         self._mbta_collector: MBTACollector | None = None
+        self._septa_rr_collector: SeptaRailCollector | None = None
+        self._septa_metro_collector: SeptaMetroCollector | None = None
 
     async def __aenter__(self) -> "JustInTimeUpdateService":
         """Enter async context."""
@@ -93,6 +97,12 @@ class JustInTimeUpdateService:
         if self._mbta_collector:
             await self._mbta_collector.close()
             self._mbta_collector = None
+        if self._septa_rr_collector:
+            await self._septa_rr_collector.close()
+            self._septa_rr_collector = None
+        if self._septa_metro_collector:
+            await self._septa_metro_collector.close()
+            self._septa_metro_collector = None
         # AmtrakJourneyCollector doesn't have a close method - no cleanup needed
         self._amtrak_collector = None
 
@@ -168,6 +178,20 @@ class JustInTimeUpdateService:
             self._mbta_collector = MBTACollector()
         return self._mbta_collector
 
+    @property
+    def septa_rr_collector(self) -> SeptaRailCollector:
+        """Get or create SEPTA Regional Rail journey collector."""
+        if self._septa_rr_collector is None:
+            self._septa_rr_collector = SeptaRailCollector()
+        return self._septa_rr_collector
+
+    @property
+    def septa_metro_collector(self) -> SeptaMetroCollector:
+        """Get or create SEPTA Metro journey collector."""
+        if self._septa_metro_collector is None:
+            self._septa_metro_collector = SeptaMetroCollector()
+        return self._septa_metro_collector
+
     async def get_collector_for_journey(
         self, journey: TrainJourney
     ) -> (
@@ -181,6 +205,8 @@ class JustInTimeUpdateService:
         | WMATACollector
         | BARTCollector
         | MBTACollector
+        | SeptaRailCollector
+        | SeptaMetroCollector
         | None
     ):
         """Get the appropriate collector for a journey based on its data source.
@@ -212,6 +238,12 @@ class JustInTimeUpdateService:
             return self.bart_collector
         elif journey.data_source == "MBTA":
             return self.mbta_collector
+        elif journey.data_source == "SEPTA_RR":
+            return self.septa_rr_collector
+        elif journey.data_source == "SEPTA_METRO":
+            # OBSERVED metro journeys come only from lines SEPTA feeds in real
+            # time (NHSL, trolleys); schedule-only lines have no journey row.
+            return self.septa_metro_collector
         elif journey.data_source == "PATCO":
             # PATCO is schedule-only (GTFS static), no real-time API available
             return None

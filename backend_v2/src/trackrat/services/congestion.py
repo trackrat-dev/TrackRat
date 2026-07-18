@@ -47,6 +47,8 @@ REALTIME_SOURCES = {
     "WMATA",
     "BART",
     "MBTA",
+    "SEPTA_RR",
+    "SEPTA_METRO",
 }
 
 

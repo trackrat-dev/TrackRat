@@ -60,10 +60,12 @@ REALTIME_SOURCES = {
     "WMATA",
     "BART",
     "MBTA",
+    "SEPTA_RR",
+    "SEPTA_METRO",
 }
 
 # Data sources where train_id is stable and represents the same daily service
-STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR", "MBTA"}
+STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR", "MBTA", "SEPTA_RR"}
 
 # Data sources that support service alerts
 SERVICE_ALERT_SOURCES = {"SUBWAY", "LIRR", "MNR", "NJT"}

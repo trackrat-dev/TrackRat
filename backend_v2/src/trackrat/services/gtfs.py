@@ -65,6 +65,16 @@ GTFS_FEED_URLS = {
     "WMATA": "https://api.wmata.com/gtfs/rail-gtfs-static.zip",
     "BART": "https://www.bart.gov/dev/schedules/google_transit.zip",
     "MBTA": "https://cdn.mbta.com/MBTA_GTFS.zip",
+    "SEPTA_RR": "https://www3.septa.org/developer/google_rail.zip",
+    "SEPTA_METRO": "https://www3.septa.org/developer/google_bus.zip",
+}
+
+# Sources whose GTFS bundle contains routes we do not ingest. SEPTA's
+# google_bus.zip carries all 131 bus routes alongside the Metro rail network;
+# we keep only route_type 0 (trolley/light-rail) and 1 (subway). Filtering at
+# the route level cascades to trips and stop_times.
+GTFS_ROUTE_TYPE_FILTER: dict[str, frozenset[str]] = {
+    "SEPTA_METRO": frozenset({"0", "1"}),
 }
 
 # Data sources whose upstream GTFS feed ships an already-expired service
@@ -95,6 +105,8 @@ DEFAULT_LINE_COLORS = {
     "WMATA": "#004E8C",  # WMATA blue
     "BART": "#009BDA",  # BART blue
     "MBTA": "#80276C",  # MBTA purple
+    "SEPTA_RR": "#4F758B",  # SEPTA Regional Rail blue
+    "SEPTA_METRO": "#F26100",  # SEPTA Metro (Broad St orange as neutral default)
 }
 
 # NJT GTFS route_short_name to line code mapping
@@ -521,10 +533,18 @@ class GTFSService:
         """Parse routes.txt and store in database. Returns route_id -> db_id mapping."""
         routes: dict[str, int] = {}
 
+        route_type_filter = GTFS_ROUTE_TYPE_FILTER.get(data_source)
         with zf.open("routes.txt") as f:
             for row in _gtfs_csv_rows(f):
                 route_id = row.get("route_id", "")
                 if route_id in routes:
+                    continue
+
+                # Drop routes we don't ingest (e.g. SEPTA bus routes in the
+                # Metro bundle); trips/stop_times cascade off the routes dict.
+                if route_type_filter is not None and (
+                    row.get("route_type", "") not in route_type_filter
+                ):
                     continue
 
                 route = GTFSRoute(
@@ -1378,6 +1398,8 @@ class GTFSService:
             "WMATA",
             "BART",
             "MBTA",
+            "SEPTA_RR",
+            "SEPTA_METRO",
         ]
 
         # Filter to requested sources if specified
@@ -1644,6 +1666,30 @@ class GTFSService:
                         if route_color
                         else DEFAULT_LINE_COLORS.get(data_source, "#004E8C")
                     )
+            elif data_source in ("SEPTA_RR", "SEPTA_METRO"):
+                from trackrat.config.stations import (
+                    get_septa_metro_route_info,
+                    get_septa_rr_route_info,
+                )
+
+                resolver = (
+                    get_septa_rr_route_info
+                    if data_source == "SEPTA_RR"
+                    else get_septa_metro_route_info
+                )
+                septa_route_info = resolver(gtfs_route_id)
+                if septa_route_info:
+                    line_code, line_name, line_color = septa_route_info
+                    if not line_color.startswith("#"):
+                        line_color = f"#{line_color}"
+                else:
+                    line_code = route_short or f"SEPTA-{gtfs_route_id}"
+                    line_name = route_long or route_short or "SEPTA"
+                    line_color = (
+                        f"#{route_color}"
+                        if route_color
+                        else DEFAULT_LINE_COLORS.get(data_source, "#4F758B")
+                    )
             else:
                 # For NJT, map GTFS route_short_name to API line codes for deduplication
                 if data_source == "NJT" and route_short:
@@ -1851,6 +1897,8 @@ class GTFSService:
             "WMATA",
             "BART",
             "MBTA",
+            "SEPTA_RR",
+            "SEPTA_METRO",
         ]
         sources_to_search = [data_source] if data_source else all_sources
 
@@ -2068,6 +2116,26 @@ class GTFSService:
                 line_code = route_short or "MNR"
                 line_name = route_long or route_short or "Metro-North"
                 line_color = f"#{route_color}" if route_color else "#0039A6"
+        elif matched_source in ("SEPTA_RR", "SEPTA_METRO"):
+            from trackrat.config.stations import (
+                get_septa_metro_route_info,
+                get_septa_rr_route_info,
+            )
+
+            resolver = (
+                get_septa_rr_route_info
+                if matched_source == "SEPTA_RR"
+                else get_septa_metro_route_info
+            )
+            septa_route_info = resolver(gtfs_route_id)
+            if septa_route_info:
+                line_code, line_name, line_color = septa_route_info
+                if not line_color.startswith("#"):
+                    line_color = f"#{line_color}"
+            else:
+                line_code = route_short or f"SEPTA-{gtfs_route_id}"
+                line_name = route_long or route_short or "SEPTA"
+                line_color = f"#{route_color}" if route_color else "#4F758B"
         else:
             # For NJT, map GTFS route_short_name to API line codes for consistency
             if matched_source == "NJT" and route_short:

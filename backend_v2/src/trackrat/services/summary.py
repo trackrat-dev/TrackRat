@@ -65,6 +65,8 @@ CARRIER_DISPLAY_NAMES: dict[str, str] = {
     "WMATA": "DC Metro",
     "BART": "BART",
     "MBTA": "MBTA Commuter Rail",
+    "SEPTA_RR": "SEPTA Regional Rail",
+    "SEPTA_METRO": "SEPTA Metro",
 }
 
 
