@@ -900,10 +900,24 @@ class TestSystemAwareAlertPriority:
         print(f"  Verified: SUBWAY cancellation fires correctly — {title}")
 
     async def test_frequency_first_sources_constant(self):
-        """FREQUENCY_FIRST_SOURCES should match iOS preferredHighlightMode == .health."""
-        assert FREQUENCY_FIRST_SOURCES == {"SUBWAY", "PATH", "PATCO", "WMATA", "BART"}
+        """FREQUENCY_FIRST_SOURCES should match iOS preferredHighlightMode == .health.
+
+        SEPTA Metro (subway + trolley) is frequency-first like the other rapid-transit
+        systems; SEPTA Regional Rail is NOT — it is a delay-first commuter railroad and
+        must stay out of this set.
+        """
+        assert FREQUENCY_FIRST_SOURCES == {
+            "SUBWAY",
+            "PATH",
+            "PATCO",
+            "WMATA",
+            "BART",
+            "SEPTA_METRO",
+        }
+        assert "SEPTA_METRO" in FREQUENCY_FIRST_SOURCES
+        assert "SEPTA_RR" not in FREQUENCY_FIRST_SOURCES
         # Verify no overlap: frequency-first should not include delay-first systems
-        delay_first = {"NJT", "AMTRAK", "LIRR", "MNR"}
+        delay_first = {"NJT", "AMTRAK", "LIRR", "MNR", "SEPTA_RR"}
         assert FREQUENCY_FIRST_SOURCES.isdisjoint(
             delay_first
         ), "Frequency-first and delay-first sets must not overlap"

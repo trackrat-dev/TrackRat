@@ -1,0 +1,379 @@
+"""Unit tests for SeptaRailCollector.
+
+The heart of these tests is :func:`resolve_arrivals`, which reconstructs
+absolute stop times by applying the feed's per-stop *delays* to the GTFS static
+schedule using GTFS-RT propagation semantics (a delay applies to its stop and
+every later stop until the next update; stops before the first update are
+already-passed and excluded). ``_generate_train_id`` and ``_parse_journey_date``
+extract identifiers from SEPTA's ``<short_name>_<YYYYMMDD>_<SID...>`` trip_ids.
+"""
+
+from datetime import date, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from trackrat.collectors.septa_rr.client import (
+    SeptaRailArrival,
+    SeptaRailClient,
+    SeptaRailStopUpdate,
+    SeptaRailTripUpdate,
+)
+from trackrat.collectors.septa_rr.collector import (
+    SeptaRailCollector,
+    _generate_train_id,
+    _parse_journey_date,
+    resolve_arrivals,
+)
+from trackrat.utils.time import ET
+
+
+def _static_stop(
+    station_code: str,
+    stop_sequence: int | None,
+    arrival: datetime,
+    departure: datetime | None = None,
+) -> dict:
+    """Build one GTFS static stop dict (tz-aware ET times), as the collector expects."""
+    return {
+        "station_code": station_code,
+        "stop_sequence": stop_sequence,
+        "arrival_time": arrival,
+        "departure_time": departure if departure is not None else arrival,
+    }
+
+
+def _trip(stop_updates: list[SeptaRailStopUpdate], **overrides) -> SeptaRailTripUpdate:
+    defaults = {
+        "trip_id": "CHW8312_20260718_SID189411",
+        "route_id": "CHW",
+        "direction_id": 0,
+        "vehicle_label": "805",
+    }
+    defaults.update(overrides)
+    return SeptaRailTripUpdate(stop_updates=stop_updates, **defaults)
+
+
+# A fixed base time so delay arithmetic is easy to reason about.
+_BASE = ET.localize(datetime(2026, 7, 18, 10, 0, 0))
+
+
+class TestGenerateTrainId:
+    """First underscore-segment is the GTFS trip_short_name."""
+
+    def test_standard_trip_id(self):
+        assert _generate_train_id("CHW8312_20260718_SID189411") == "CHW8312"
+
+    def test_no_underscore_returns_input(self):
+        assert _generate_train_id("CHW8312") == "CHW8312"
+
+    def test_leading_underscore_falls_back_to_full_id(self):
+        # split("_", 1)[0] is "" here, so the `or trip_id` fallback kicks in.
+        assert _generate_train_id("_20260718_SID1") == "_20260718_SID1"
+
+    def test_empty_string(self):
+        assert _generate_train_id("") == ""
+
+
+class TestParseJourneyDate:
+    """The middle _YYYYMMDD_ segment is the service date; else fall back to today."""
+
+    def test_standard_trip_id(self):
+        assert _parse_journey_date("CHW8312_20260718_SID189411") == date(2026, 7, 18)
+
+    def test_different_date(self):
+        assert _parse_journey_date("TRE1000_20251231_SID9") == date(2025, 12, 31)
+
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    def test_malformed_date_falls_back_to_today(self, mock_now):
+        mock_now.return_value = ET.localize(datetime(2026, 3, 4, 9, 0, 0))
+        # 7 digits, not 8 → unparseable → today.
+        assert _parse_journey_date("CHW8312_2026071_SID1") == date(2026, 3, 4)
+
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    def test_non_numeric_date_falls_back_to_today(self, mock_now):
+        mock_now.return_value = ET.localize(datetime(2026, 3, 4, 9, 0, 0))
+        assert _parse_journey_date("CHW8312_notadate_SID1") == date(2026, 3, 4)
+
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    def test_single_segment_falls_back_to_today(self, mock_now):
+        mock_now.return_value = ET.localize(datetime(2026, 3, 4, 9, 0, 0))
+        assert _parse_journey_date("CHW8312") == date(2026, 3, 4)
+
+
+class TestResolveArrivals:
+    """Delay-to-absolute-time reconstruction — the collector's core logic."""
+
+    def test_single_update_excludes_passed_stops_and_applies_delay(self):
+        """One update at seq 3, delay 120s: seq 1-2 are excluded (already passed),
+        seq 3-5 all shift by +120s."""
+        stops = [
+            _static_stop("SEPR90801", 1, _BASE + timedelta(minutes=0)),
+            _static_stop("SEPR90802", 2, _BASE + timedelta(minutes=5)),
+            _static_stop("SEPR90803", 3, _BASE + timedelta(minutes=10)),
+            _static_stop("SEPR90804", 4, _BASE + timedelta(minutes=15)),
+            _static_stop("SEPR90805", 5, _BASE + timedelta(minutes=20)),
+        ]
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=3, arrival_delay=120, departure_delay=120
+                )
+            ]
+        )
+
+        arrivals = resolve_arrivals(trip, stops)
+
+        codes = [a.station_code for a in arrivals]
+        assert codes == ["SEPR90803", "SEPR90804", "SEPR90805"]
+        assert all(a.delay_seconds == 120 for a in arrivals)
+        # Exact arithmetic: static + 120s.
+        assert arrivals[0].arrival_time == _BASE + timedelta(minutes=10, seconds=120)
+        assert arrivals[1].arrival_time == _BASE + timedelta(minutes=15, seconds=120)
+        assert arrivals[2].arrival_time == _BASE + timedelta(minutes=20, seconds=120)
+
+    def test_two_updates_propagate_between_and_after(self):
+        """Updates at seq 2 (D=60) and seq 4 (D=180): seq 2-3 get 60, seq 4-5 get 180.
+        seq 1 (before the first update) is excluded."""
+        stops = [
+            _static_stop("A", 1, _BASE + timedelta(minutes=0)),
+            _static_stop("B", 2, _BASE + timedelta(minutes=5)),
+            _static_stop("C", 3, _BASE + timedelta(minutes=10)),
+            _static_stop("D", 4, _BASE + timedelta(minutes=15)),
+            _static_stop("E", 5, _BASE + timedelta(minutes=20)),
+        ]
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=2, arrival_delay=60, departure_delay=60
+                ),
+                SeptaRailStopUpdate(
+                    stop_sequence=4, arrival_delay=180, departure_delay=180
+                ),
+            ]
+        )
+
+        arrivals = resolve_arrivals(trip, stops)
+        by_code = {a.station_code: a for a in arrivals}
+
+        assert "A" not in by_code, "seq 1 precedes the first update → excluded"
+        assert by_code["B"].delay_seconds == 60
+        assert by_code["C"].delay_seconds == 60  # propagated from seq 2
+        assert by_code["D"].delay_seconds == 180
+        assert by_code["E"].delay_seconds == 180  # propagated from seq 4
+        assert by_code["C"].arrival_time == _BASE + timedelta(minutes=10, seconds=60)
+        assert by_code["E"].arrival_time == _BASE + timedelta(minutes=20, seconds=180)
+
+    def test_updates_out_of_order_are_sorted(self):
+        """The first RT sequence is the smallest even if updates arrive unsorted."""
+        stops = [
+            _static_stop("A", 1, _BASE),
+            _static_stop("B", 2, _BASE + timedelta(minutes=5)),
+            _static_stop("C", 3, _BASE + timedelta(minutes=10)),
+        ]
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=3, arrival_delay=300, departure_delay=300
+                ),
+                SeptaRailStopUpdate(
+                    stop_sequence=1, arrival_delay=60, departure_delay=60
+                ),
+            ]
+        )
+
+        arrivals = resolve_arrivals(trip, stops)
+        by_code = {a.station_code: a for a in arrivals}
+        # first_rt_seq must be 1, so no stop is excluded.
+        assert set(by_code) == {"A", "B", "C"}
+        assert by_code["A"].delay_seconds == 60
+        assert by_code["B"].delay_seconds == 60  # propagated
+        assert by_code["C"].delay_seconds == 300
+
+    def test_departure_delay_fallback_when_arrival_delay_none(self):
+        """When arrival_delay is None the applicable departure_delay is used for arrival."""
+        stops = [
+            _static_stop("A", 1, _BASE + timedelta(minutes=0)),
+            _static_stop("B", 2, _BASE + timedelta(minutes=5)),
+        ]
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=1, arrival_delay=None, departure_delay=90
+                )
+            ]
+        )
+
+        arrivals = resolve_arrivals(trip, stops)
+        assert all(a.delay_seconds == 90 for a in arrivals)
+        assert arrivals[0].arrival_time == _BASE + timedelta(seconds=90)
+
+    def test_arrival_delay_used_for_departure_when_departure_none(self):
+        """When departure_delay is None the departure_time falls back to arrival delay."""
+        stops = [
+            _static_stop(
+                "A",
+                1,
+                arrival=_BASE,
+                departure=_BASE + timedelta(minutes=1),
+            ),
+        ]
+        # Single-stop trips are legal for resolve_arrivals (the >= 2 guard lives in
+        # _process_trip, not here).
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=1, arrival_delay=45, departure_delay=None
+                )
+            ]
+        )
+
+        arrivals = resolve_arrivals(trip, stops)
+        assert len(arrivals) == 1
+        arr = arrivals[0]
+        assert arr.delay_seconds == 45
+        assert arr.arrival_time == _BASE + timedelta(seconds=45)
+        # departure_time = scheduled departure (base + 1min) + arrival-delay fallback (45s)
+        assert arr.departure_time == _BASE + timedelta(minutes=1, seconds=45)
+
+    def test_exact_timedelta_equality(self):
+        """arrival_time is exactly static arrival + timedelta(seconds=delay)."""
+        static_arr = ET.localize(datetime(2026, 7, 18, 14, 23, 7))
+        stops = [_static_stop("Z", 1, static_arr)]
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=1, arrival_delay=137, departure_delay=137
+                )
+            ]
+        )
+        arrivals = resolve_arrivals(trip, stops)
+        assert arrivals[0].arrival_time == static_arr + timedelta(seconds=137)
+
+    def test_empty_updates_returns_empty(self):
+        assert resolve_arrivals(_trip([]), [_static_stop("A", 1, _BASE)]) == []
+
+    def test_stop_with_none_sequence_is_skipped(self):
+        """A static stop with a NULL stop_sequence cannot be positioned → skipped."""
+        stops = [
+            _static_stop("A", 1, _BASE),
+            _static_stop("NULLSEQ", None, _BASE + timedelta(minutes=3)),
+            _static_stop("B", 2, _BASE + timedelta(minutes=5)),
+        ]
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=60, departure_delay=60)]
+        )
+        arrivals = resolve_arrivals(trip, stops)
+        assert [a.station_code for a in arrivals] == ["A", "B"]
+
+    def test_carries_trip_identity_onto_arrivals(self):
+        """route_id/direction_id/trip_id/track are copied through to each arrival."""
+        stops = [_static_stop("A", 1, _BASE)]
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=1, arrival_delay=10, departure_delay=10
+                )
+            ],
+            trip_id="TRE9_20260718_SIDX",
+            route_id="TRE",
+            direction_id=1,
+        )
+        arr = resolve_arrivals(trip, stops)[0]
+        assert isinstance(arr, SeptaRailArrival)
+        assert arr.trip_id == "TRE9_20260718_SIDX"
+        assert arr.route_id == "TRE"
+        assert arr.direction_id == 1
+        assert arr.track is None
+
+
+class TestCollectorInit:
+    def test_creates_own_client(self):
+        collector = SeptaRailCollector()
+        assert collector.client is not None
+        assert collector._owns_client is True
+
+    def test_uses_provided_client(self):
+        client = SeptaRailClient()
+        collector = SeptaRailCollector(client=client)
+        assert collector.client is client
+        assert collector._owns_client is False
+
+    @pytest.mark.asyncio
+    async def test_close_owned_client(self):
+        collector = SeptaRailCollector()
+        collector.client = AsyncMock(spec=SeptaRailClient)
+        collector._owns_client = True
+        await collector.close()
+        collector.client.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_close_external_client_not_closed(self):
+        client = AsyncMock(spec=SeptaRailClient)
+        collector = SeptaRailCollector(client=client)
+        await collector.close()
+        client.close.assert_not_called()
+
+
+class TestProcessTrip:
+    """_process_trip: the static schedule is mandatory for Regional Rail."""
+
+    @pytest.fixture
+    def collector(self):
+        return SeptaRailCollector(client=AsyncMock(spec=SeptaRailClient))
+
+    @pytest.mark.asyncio
+    async def test_skips_when_no_static_schedule(self, collector):
+        """No GTFS static schedule → nothing to reconstruct from → (None, None)."""
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=[])
+        session = AsyncMock()
+
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=60, departure_delay=60)]
+        )
+        result, journey = await collector._process_trip(session, trip)
+        assert result is None
+        assert journey is None
+
+    @pytest.mark.asyncio
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    async def test_discovers_new_journey_from_delays(self, mock_now, collector):
+        """End-to-end discovery: delays + static schedule → a new OBSERVED journey
+        with a complete, back-filled stop list."""
+        mock_now.return_value = _BASE
+
+        static_stops = [
+            _static_stop("SEPR90801", 1, _BASE + timedelta(minutes=0)),
+            _static_stop("SEPR90802", 2, _BASE + timedelta(minutes=5)),
+            _static_stop("SEPR90803", 3, _BASE + timedelta(minutes=10)),
+            _static_stop("SEPR90804", 4, _BASE + timedelta(minutes=15)),
+        ]
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(
+            return_value=static_stops
+        )
+
+        # No existing journey for this train/day.
+        no_existing = MagicMock()
+        no_existing.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute.return_value = no_existing
+
+        trip = _trip(
+            [
+                SeptaRailStopUpdate(
+                    stop_sequence=2, arrival_delay=120, departure_delay=120
+                )
+            ]
+        )
+
+        result, journey = await collector._process_trip(session, trip)
+
+        assert result == "discovered"
+        assert journey is not None
+        assert journey.data_source == "SEPTA_RR"
+        assert journey.train_id == "CHW8312"
+        assert journey.observation_type == "OBSERVED"
+        # A journey + one stop per merged static stop were added to the session.
+        assert session.add.call_count >= 1
