@@ -312,13 +312,15 @@ resource "google_monitoring_alert_policy" "stop_order_warnings" {
       threshold_value = 15
       duration        = "0s"
 
-      # stop_order_warnings is a DELTA/INT64 counter. ALIGN_DELTA + REDUCE_SUM
-      # sums both events across the 30-minute window into one count (mirrors the
-      # provider_auth_failures policy), so the condition fires on the aggregate
-      # ordering-warning rate regardless of which event dominates.
+      # stop_order_warnings is a DELTA/INT64 counter. ALIGN_SUM totals every
+      # warning event within the 30-minute window (ALIGN_DELTA only reports the
+      # boundary-bucket change, which can undercount a sustained spike); REDUCE_SUM
+      # then folds both events into one count. Mirrors the provider_auth_failures
+      # policy exactly, so the condition fires on the aggregate ordering-warning
+      # rate regardless of which event dominates.
       aggregations {
         alignment_period     = "1800s"
-        per_series_aligner   = "ALIGN_DELTA"
+        per_series_aligner   = "ALIGN_SUM"
         cross_series_reducer = "REDUCE_SUM"
       }
     }

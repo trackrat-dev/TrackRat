@@ -714,7 +714,9 @@ def fetch_trackrat_train_stop_order(
         log_warn(f"TrackRat train details request failed for {train_id}: {e}")
         return None
 
-    stops = resp.json().get("stops", [])
+    # /api/v2/trains/{id} returns TrainDetailsResponse: stops live under
+    # ``train.stops`` (models/api.py TrainDetails.stops), not at the top level.
+    stops = (resp.json().get("train") or {}).get("stops", [])
     ordered = sorted(stops, key=lambda s: s.get("stop_sequence", 0))
     codes: list[str] = []
     for stop in ordered:

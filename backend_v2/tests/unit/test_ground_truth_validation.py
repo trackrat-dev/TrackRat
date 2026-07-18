@@ -26,6 +26,7 @@ parse_arrival_minutes = gtv.parse_arrival_minutes
 parse_arrival_seconds = gtv.parse_arrival_seconds
 find_stop_order_inversions = gtv.find_stop_order_inversions
 check_njt_stop_order = gtv.check_njt_stop_order
+fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
 
 
 # --- Helpers ---
@@ -787,3 +788,81 @@ class TestCheckNjtStopOrder:
         )
 
         assert len(captured["ids"]) == 5
+
+
+# --- Tests for fetch_trackrat_train_stop_order payload parsing (issue #1538) ---
+
+
+class _FakeResponse:
+    """Minimal httpx.Response stand-in for parsing tests (no mocks of gtv)."""
+
+    def __init__(self, payload: dict):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _FakeClient:
+    """httpx.Client stand-in returning a fixed TrainDetailsResponse payload."""
+
+    def __init__(self, payload: dict):
+        self._payload = payload
+
+    def get(self, url, timeout=None):
+        return _FakeResponse(self._payload)
+
+
+class TestFetchTrackratTrainStopOrder:
+    """The /api/v2/trains/{id} response nests stops under ``train`` (issue #1538).
+
+    Reading them from the top level silently returns [] for every real
+    response, turning the whole stop-order check into a production no-op while
+    the monkeypatched orchestration tests stay green. These tests exercise the
+    real parser against the actual TrainDetailsResponse shape.
+    """
+
+    def test_reads_stops_from_train_payload_in_sequence_order(self):
+        # Real response shape: {"train": {"stops": [...]}}, out of order to
+        # prove the sort by stop_sequence is applied.
+        payload = {
+            "train": {
+                "stops": [
+                    {"station": {"code": "NP"}, "stop_sequence": 2},
+                    {"station": {"code": "NY"}, "stop_sequence": 0},
+                    {"station": {"code": "SE"}, "stop_sequence": 1},
+                ]
+            }
+        }
+        order = fetch_trackrat_train_stop_order(
+            _FakeClient(payload), "http://test", "3701"
+        )
+        assert order == ["NY", "SE", "NP"], (
+            "stops must be read from train.stops and sorted by stop_sequence; "
+            f"got {order}"
+        )
+
+    def test_top_level_stops_are_ignored(self):
+        # A well-formed response has no top-level "stops"; the old code read
+        # this and got []. Assert we do not regress to that path.
+        payload = {
+            "train": {
+                "stops": [
+                    {"station": {"code": "NY"}, "stop_sequence": 0},
+                    {"station": {"code": "TR"}, "stop_sequence": 1},
+                ]
+            }
+        }
+        order = fetch_trackrat_train_stop_order(
+            _FakeClient(payload), "http://test", "3701"
+        )
+        assert order == ["NY", "TR"]
+
+    def test_missing_train_key_returns_empty_list(self):
+        order = fetch_trackrat_train_stop_order(
+            _FakeClient({}), "http://test", "3701"
+        )
+        assert order == []
