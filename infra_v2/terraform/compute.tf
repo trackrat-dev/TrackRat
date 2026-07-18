@@ -10,7 +10,7 @@ data "google_compute_image" "cos" {
 # Instance template
 resource "google_compute_instance_template" "trackrat" {
   name_prefix  = "trackrat-${var.environment}-"
-  machine_type = var.machine_type
+  machine_type = local.machine_type
   region       = var.region
 
   lifecycle {
