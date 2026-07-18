@@ -34,9 +34,9 @@ variable "domain" {
 }
 
 variable "machine_type" {
-  description = "GCE machine type. e2-custom-2-4096 = 2 vCPU / 4 GB: keeps 2 vCPU for scheduler-burst headroom (prod peaks ~1.07 vCPU) while cutting RAM from 8 GB (only ~1.1 GB used) on the cheaper E2 family."
+  description = "GCE machine type. t2d-standard-2 = 2 vCPU / 8 GB on the Tau/AMD Milan family: dedicated physical cores give consistent per-core latency for the FastAPI + colocated Postgres. Reverted from e2-custom-2-4096, whose oversubscribed, variable-platform vCPUs regressed API responsiveness. T2D is fixed-shape (no custom RAM), so RAM is 8 GB though only ~1.1 GB is used."
   type        = string
-  default     = "e2-custom-2-4096"
+  default     = "t2d-standard-2"
 }
 
 variable "consolidate_api_lb" {
