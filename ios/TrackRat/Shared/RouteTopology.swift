@@ -39,7 +39,7 @@ struct RouteTopology {
 
     // MARK: - All Routes
 
-    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes + wmataRoutes + bartRoutes + mbtaRoutes
+    static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes + wmataRoutes + bartRoutes + mbtaRoutes + septaRegionalRailRoutes + septaMetroRoutes
 
     // MARK: - NJ Transit Routes
 
@@ -973,6 +973,172 @@ struct RouteTopology {
             dataSource: "MBTA",
             stationCodes: ["BOS", "BBRN", "BBRO", "BLKV", "BWRV", "BBZB", "BBNE", "BHYN"]
         ),
+    ]
+
+    // MARK: - SEPTA Regional Rail Routes
+
+    static let septaRegionalRailRoutes: [RouteLine] = [
+        RouteLine(
+            id: "SEPTA-AIR",
+            name: "Airport Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90401", "SEPR90402", "SEPR90403", "SEPR90404", "SEPR90405", "SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007"]
+        ),
+        RouteLine(
+            id: "SEPTA-CHE",
+            name: "Chestnut Hill East Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007", "SEPR90009", "SEPR90712", "SEPR90713", "SEPR90714", "SEPR90715", "SEPR90716", "SEPR90717", "SEPR90718", "SEPR90719", "SEPR90720"]
+        ),
+        RouteLine(
+            id: "SEPTA-CHW",
+            name: "Chestnut Hill West Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90801", "SEPR90802", "SEPR90803", "SEPR90804", "SEPR90805", "SEPR90806", "SEPR90807", "SEPR90808", "SEPR90809", "SEPR90810", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007"]
+        ),
+        RouteLine(
+            id: "SEPTA-CYN",
+            name: "Cynwyd Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90001", "SEPR90002", "SEPR90003", "SEPR90004", "SEPR90005"]
+        ),
+        RouteLine(
+            id: "SEPTA-FOX",
+            name: "Fox Chase Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007", "SEPR90009", "SEPR90811", "SEPR90812", "SEPR90813", "SEPR90814", "SEPR90815"]
+        ),
+        RouteLine(
+            id: "SEPTA-LAN",
+            name: "Lansdale/Doylestown Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007", "SEPR90008", "SEPR90009", "SEPR90407", "SEPR90408", "SEPR90409", "SEPR90410", "SEPR90411", "SEPR90523", "SEPR90524", "SEPR90525", "SEPR90526", "SEPR90527", "SEPR90528", "SEPR90529", "SEPR90530", "SEPR90531", "SEPR90539", "SEPR90532", "SEPR90533", "SEPR90534", "SEPR90535", "SEPR90536", "SEPR90537", "SEPR90538"]
+        ),
+        RouteLine(
+            id: "SEPTA-MED",
+            name: "Media/Wawa Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90300", "SEPR90301", "SEPR90302", "SEPR90303", "SEPR90304", "SEPR90305", "SEPR90306", "SEPR90307", "SEPR90308", "SEPR90309", "SEPR90310", "SEPR90311", "SEPR90312", "SEPR90313", "SEPR90314", "SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007"]
+        ),
+        RouteLine(
+            id: "SEPTA-NOR",
+            name: "Manayunk/Norristown Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007", "SEPR90008", "SEPR90218", "SEPR90219", "SEPR90220", "SEPR90221", "SEPR90222", "SEPR90223", "SEPR90224", "SEPR90225", "SEPR90226", "SEPR90227", "SEPR90228"]
+        ),
+        RouteLine(
+            id: "SEPTA-PAO",
+            name: "Paoli/Thorndale Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90501", "SEPR90502", "SEPR90503", "SEPR90504", "SEPR90505", "SEPR90506", "SEPR90507", "SEPR90508", "SEPR90509", "SEPR90510", "SEPR90511", "SEPR90512", "SEPR90513", "SEPR90514", "SEPR90515", "SEPR90516", "SEPR90517", "SEPR90518", "SEPR90519", "SEPR90520", "SEPR90521", "SEPR90522", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007"]
+        ),
+        RouteLine(
+            id: "SEPTA-TRE",
+            name: "Trenton Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90701", "SEPR90702", "SEPR90703", "SEPR90704", "SEPR90705", "SEPR90706", "SEPR90707", "SEPR90708", "SEPR90709", "SEPR90710", "SEPR90711", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007"]
+        ),
+        RouteLine(
+            id: "SEPTA-WAR",
+            name: "Warminster Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007", "SEPR90009", "SEPR90407", "SEPR90408", "SEPR90409", "SEPR90410", "SEPR90411", "SEPR90412", "SEPR90413", "SEPR90414", "SEPR90415", "SEPR90416", "SEPR90417"]
+        ),
+        RouteLine(
+            id: "SEPTA-WIL",
+            name: "Wilmington/Newark Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90201", "SEPR90202", "SEPR90203", "SEPR90204", "SEPR90205", "SEPR90206", "SEPR90207", "SEPR90208", "SEPR90209", "SEPR90210", "SEPR90211", "SEPR90212", "SEPR90213", "SEPR90214", "SEPR90215", "SEPR90216", "SEPR90217", "SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007"]
+        ),
+        RouteLine(
+            id: "SEPTA-WTR",
+            name: "West Trenton Line",
+            dataSource: "SEPTA_RR",
+            stationCodes: ["SEPR90406", "SEPR90004", "SEPR90005", "SEPR90006", "SEPR90007", "SEPR90407", "SEPR90408", "SEPR90409", "SEPR90410", "SEPR90315", "SEPR90316", "SEPR90317", "SEPR90318", "SEPR90319", "SEPR90320", "SEPR90321", "SEPR90322", "SEPR90323", "SEPR90324", "SEPR90325", "SEPR90326", "SEPR90327"]
+        )
+    ]
+
+    // MARK: - SEPTA Metro Routes
+
+    static let septaMetroRoutes: [RouteLine] = [
+        RouteLine(
+            id: "SEPTA-B1",
+            name: "Broad Street Line Local",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM20965", "SEPM33027", "SEPM1272", "SEPM1273", "SEPM1274", "SEPM140", "SEPM142", "SEPM2439", "SEPM1276", "SEPM1277", "SEPM20966", "SEPM1278", "SEPM1279", "SEPM1280", "SEPM33029", "SEPM1282", "SEPM1283", "SEPM1284", "SEPM1285", "SEPM1286", "SEPM20967", "SEPM152"]
+        ),
+        RouteLine(
+            id: "SEPTA-B2",
+            name: "Broad Street Line Express",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM20965", "SEPM82", "SEPM140", "SEPM20966", "SEPM1279", "SEPM1280", "SEPM1281", "SEPM1282", "SEPM152"]
+        ),
+        RouteLine(
+            id: "SEPTA-B3",
+            name: "Broad-Ridge Spur",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM20965", "SEPM82", "SEPM140", "SEPM2439", "SEPM20966", "SEPM1278", "SEPM2440", "SEPM2457"]
+        ),
+        RouteLine(
+            id: "SEPTA-D1",
+            name: "Route 101",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM15497", "SEPM15319", "SEPM18597", "SEPM1938", "SEPM18598", "SEPM18599", "SEPM15322", "SEPM1939", "SEPM18600", "SEPM18601", "SEPM1940", "SEPM15349", "SEPM18602", "SEPM16402", "SEPM18603", "SEPM18604", "SEPM18605", "SEPM30607", "SEPM18606", "SEPM15355", "SEPM18614", "SEPM1943", "SEPM18607", "SEPM1944", "SEPM20024", "SEPM15358", "SEPM18608", "SEPM1946", "SEPM18609", "SEPM18610", "SEPM15379", "SEPM18611", "SEPM18612", "SEPM18613", "SEPM1947"]
+        ),
+        RouteLine(
+            id: "SEPTA-D2",
+            name: "Route 102",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM15497", "SEPM15319", "SEPM18597", "SEPM1938", "SEPM18598", "SEPM18599", "SEPM15322", "SEPM1939", "SEPM18600", "SEPM18601", "SEPM1940", "SEPM15325", "SEPM15326", "SEPM15327", "SEPM15328", "SEPM1959", "SEPM15329", "SEPM15330", "SEPM18636", "SEPM12048", "SEPM10011", "SEPM1961", "SEPM4726", "SEPM15333", "SEPM2099", "SEPM20431"]
+        ),
+        RouteLine(
+            id: "SEPTA-G1",
+            name: "63rd-Girard to Richmond-Westmorelnd",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM341", "SEPM12196", "SEPM20979", "SEPM20981", "SEPM20982", "SEPM12218", "SEPM20983", "SEPM20984", "SEPM650", "SEPM25779", "SEPM20986", "SEPM20988", "SEPM20989", "SEPM20991", "SEPM31540", "SEPM24038", "SEPM31347", "SEPM23992", "SEPM481", "SEPM342", "SEPM20993", "SEPM20994", "SEPM20995", "SEPM20996", "SEPM20998", "SEPM20999", "SEPM21001", "SEPM21002", "SEPM343", "SEPM21005", "SEPM21006", "SEPM21008", "SEPM30290", "SEPM21009", "SEPM21010", "SEPM30791", "SEPM21014", "SEPM21016", "SEPM21017", "SEPM21018", "SEPM21019", "SEPM21021", "SEPM21022", "SEPM30291", "SEPM21025", "SEPM344", "SEPM21026", "SEPM21027", "SEPM21028", "SEPM30550", "SEPM21030", "SEPM21032", "SEPM21033", "SEPM21035", "SEPM21037", "SEPM21038", "SEPM345", "SEPM21040", "SEPM21041", "SEPM21042", "SEPM21481", "SEPM21044"]
+        ),
+        RouteLine(
+            id: "SEPTA-L1",
+            name: "Market-Frankford Line All Stops",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM416", "SEPM2446", "SEPM2447", "SEPM2448", "SEPM2449", "SEPM2450", "SEPM2451", "SEPM2452", "SEPM2453", "SEPM21532", "SEPM1392", "SEPM2455", "SEPM2456", "SEPM2457", "SEPM2458", "SEPM428", "SEPM2459", "SEPM353", "SEPM2460", "SEPM2461", "SEPM2462", "SEPM797", "SEPM60", "SEPM2463", "SEPM838", "SEPM2464", "SEPM217", "SEPM61"]
+        ),
+        RouteLine(
+            id: "SEPTA-M1",
+            name: "Norristown High Speed Line Local",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM416", "SEPM1917", "SEPM1918", "SEPM1919", "SEPM1908", "SEPM1921", "SEPM30519", "SEPM1923", "SEPM1924", "SEPM1925", "SEPM1902", "SEPM1927", "SEPM1900", "SEPM1929", "SEPM1930", "SEPM1931", "SEPM1932", "SEPM1895", "SEPM1934", "SEPM1935", "SEPM1892", "SEPM30520"]
+        ),
+        RouteLine(
+            id: "SEPTA-T1",
+            name: "13th St to 63rd-Malvern/Overbrook",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM31294", "SEPM20610", "SEPM20611", "SEPM20612", "SEPM20613", "SEPM20614", "SEPM20615", "SEPM15271", "SEPM20616", "SEPM20617", "SEPM20618", "SEPM20619", "SEPM20622", "SEPM20623", "SEPM20624", "SEPM20625", "SEPM20626", "SEPM20627", "SEPM277", "SEPM20628", "SEPM20630", "SEPM20631", "SEPM20632", "SEPM20633", "SEPM20634", "SEPM20635", "SEPM21422", "SEPM21423", "SEPM21424", "SEPM279", "SEPM20636", "SEPM20638", "SEPM32722", "SEPM20639", "SEPM20640", "SEPM20641", "SEPM20642", "SEPM20643", "SEPM20645", "SEPM20646", "SEPM31140", "SEPM283"]
+        ),
+        RouteLine(
+            id: "SEPTA-T2",
+            name: "Route 34",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM20932", "SEPM20704", "SEPM599", "SEPM20859", "SEPM20860", "SEPM20861", "SEPM20862", "SEPM20863", "SEPM20864", "SEPM20865", "SEPM20866", "SEPM20867", "SEPM20868", "SEPM20869", "SEPM600", "SEPM20870", "SEPM20871", "SEPM20872", "SEPM20873", "SEPM20874", "SEPM20875", "SEPM20876", "SEPM20804", "SEPM30820", "SEPM21457", "SEPM22127", "SEPM672", "SEPM22128", "SEPM22129", "SEPM21248", "SEPM20731", "SEPM20732", "SEPM20642", "SEPM20643", "SEPM20645", "SEPM20646", "SEPM31140", "SEPM283"]
+        ),
+        RouteLine(
+            id: "SEPTA-T3",
+            name: "Route 13",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM305", "SEPM32523", "SEPM20768", "SEPM20770", "SEPM20771", "SEPM20772", "SEPM20773", "SEPM20774", "SEPM20775", "SEPM20776", "SEPM20777", "SEPM20778", "SEPM20779", "SEPM20781", "SEPM20782", "SEPM20843", "SEPM319", "SEPM20785", "SEPM20784", "SEPM20786", "SEPM20787", "SEPM20788", "SEPM320", "SEPM20791", "SEPM20792", "SEPM20793", "SEPM20794", "SEPM20795", "SEPM20796", "SEPM20797", "SEPM321", "SEPM20789", "SEPM20790", "SEPM20799", "SEPM20800", "SEPM20801", "SEPM20802", "SEPM20804", "SEPM21456", "SEPM30820", "SEPM21457", "SEPM22127", "SEPM672", "SEPM22128", "SEPM22129", "SEPM21248", "SEPM20731", "SEPM20732", "SEPM20642", "SEPM20643", "SEPM20645", "SEPM20646", "SEPM31140", "SEPM283"]
+        ),
+        RouteLine(
+            id: "SEPTA-T4",
+            name: "Route 11",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM305", "SEPM24568", "SEPM20697", "SEPM20698", "SEPM20699", "SEPM20700", "SEPM20701", "SEPM20702", "SEPM20703", "SEPM20704", "SEPM20705", "SEPM20706", "SEPM20707", "SEPM20708", "SEPM20709", "SEPM20710", "SEPM20711", "SEPM20712", "SEPM20713", "SEPM20714", "SEPM20715", "SEPM20717", "SEPM20716", "SEPM20718", "SEPM20719", "SEPM20720", "SEPM20721", "SEPM20722", "SEPM21208", "SEPM20723", "SEPM20724", "SEPM20725", "SEPM297", "SEPM20726", "SEPM20958", "SEPM20727", "SEPM20728", "SEPM20729", "SEPM20804", "SEPM21456", "SEPM30820", "SEPM21457", "SEPM22127", "SEPM672", "SEPM22128", "SEPM22129", "SEPM21248", "SEPM20731", "SEPM20732", "SEPM20642", "SEPM20643", "SEPM20645", "SEPM20646", "SEPM31140", "SEPM283"]
+        ),
+        RouteLine(
+            id: "SEPTA-T5",
+            name: "Route 36",
+            dataSource: "SEPTA_METRO",
+            stationCodes: ["SEPM612", "SEPM605", "SEPM20927", "SEPM20929", "SEPM20931", "SEPM611", "SEPM20932", "SEPM20933", "SEPM20934", "SEPM20935", "SEPM20936", "SEPM20937", "SEPM20938", "SEPM20939", "SEPM20940", "SEPM20941", "SEPM20942", "SEPM20943", "SEPM20944", "SEPM20946", "SEPM20947", "SEPM20948", "SEPM20949", "SEPM20950", "SEPM20951", "SEPM20952", "SEPM20954", "SEPM20955", "SEPM20957", "SEPM20726", "SEPM20727", "SEPM20728", "SEPM20729", "SEPM20804", "SEPM21456", "SEPM30820", "SEPM21457", "SEPM22127", "SEPM672", "SEPM22128", "SEPM22129", "SEPM21248", "SEPM20731", "SEPM20732", "SEPM20642", "SEPM20643", "SEPM20645", "SEPM20646", "SEPM31140", "SEPM283"]
+        )
     ]
 
     // MARK: - Station Expansion

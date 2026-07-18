@@ -6,7 +6,7 @@ class TrainSystemTests: XCTestCase {
     // MARK: - supportsAlerts
 
     func testSupportsAlerts_realtimeSystems() {
-        let realtimeSystems: [TrainSystem] = [.njt, .amtrak, .path, .lirr, .mnr, .subway, .wmata]
+        let realtimeSystems: [TrainSystem] = [.njt, .amtrak, .path, .lirr, .mnr, .subway, .wmata, .septaRegionalRail, .septaMetro]
         for system in realtimeSystems {
             XCTAssertTrue(
                 system.supportsAlerts,
@@ -38,8 +38,8 @@ class TrainSystemTests: XCTestCase {
             allSystems.count,
             "Every TrainSystem must be classified as either alert-capable or schedule-only"
         )
-        // Current expectations: 10 real-time, 1 schedule-only (PATCO)
-        XCTAssertEqual(alertCapable.count, 10, "Expected 10 alert-capable systems: \(alertCapable)")
+        // Current expectations: 12 real-time, 1 schedule-only (PATCO)
+        XCTAssertEqual(alertCapable.count, 12, "Expected 12 alert-capable systems: \(alertCapable)")
         XCTAssertEqual(scheduleOnly.count, 1, "Expected 1 schedule-only system: \(scheduleOnly)")
     }
 
@@ -476,6 +476,8 @@ class TrainSystemTests: XCTestCase {
         XCTAssertEqual(TrainSystem.wmata.chipLabel, "DC")
         XCTAssertEqual(TrainSystem.bart.chipLabel, "BART")
         XCTAssertEqual(TrainSystem.mbta.chipLabel, "MBTA")
+        XCTAssertEqual(TrainSystem.septaRegionalRail.chipLabel, "SEPR")
+        XCTAssertEqual(TrainSystem.septaMetro.chipLabel, "SEPM")
     }
 
     func testChipLabel_uniqueAcrossSystems() {
@@ -483,6 +485,17 @@ class TrainSystemTests: XCTestCase {
         let uniqueLabels = Set(labels)
         XCTAssertEqual(labels.count, uniqueLabels.count,
                       "All chipLabels should be unique, duplicates found: \(labels)")
+    }
+
+    // MARK: - preferredHighlightMode
+
+    func testPreferredHighlightMode_septa() {
+        // Regional Rail is commuter/intercity rail → delays (travel-time variance matters).
+        // Metro is high-frequency rapid transit → health (train frequency matters more).
+        XCTAssertEqual(TrainSystem.septaRegionalRail.preferredHighlightMode, .delays,
+                      "SEPTA Regional Rail should highlight delays (travel time)")
+        XCTAssertEqual(TrainSystem.septaMetro.preferredHighlightMode, .health,
+                      "SEPTA Metro should highlight health (train frequency)")
     }
 
     // MARK: - SystemChips logic (non-subway filtering)
