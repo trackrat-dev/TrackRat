@@ -320,14 +320,14 @@ class SeptaMetroCollector:
         journey.actual_arrival = last_arrival.arrival_time
         stops_by_code = {s.station_code: s for s in journey.stops}
         for arr in arrivals:
-            stop = stops_by_code.get(arr.station_code)
-            if stop:
-                stop.actual_arrival = arr.arrival_time
-                stop.updated_arrival = arr.arrival_time
-                stop.arrival_source = "api_observed"
+            existing_stop = stops_by_code.get(arr.station_code)
+            if existing_stop:
+                existing_stop.actual_arrival = arr.arrival_time
+                existing_stop.updated_arrival = arr.arrival_time
+                existing_stop.arrival_source = "api_observed"
                 if arr.departure_time:
-                    stop.actual_departure = arr.departure_time
-                    stop.updated_departure = arr.departure_time
+                    existing_stop.actual_departure = arr.departure_time
+                    existing_stop.updated_departure = arr.departure_time
 
         now = now_et()
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
