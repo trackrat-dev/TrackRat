@@ -197,7 +197,14 @@ def _detect_at_station(journey: TrainJourney) -> str | None:
     if not journey.stops:
         return None
 
-    sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
+    # Deliberately NOT stop_sequence_sort_key (nulls-last) here. This detection
+    # keys off the FIRST undeparted stop and breaks immediately. A discovery-
+    # created stop with a track but no assigned stop_sequence yet (NULL) is the
+    # strongest "train is at this station right now" signal; nulls-last would
+    # sort it behind the sequenced stops, so the break would return before ever
+    # reaching it and at_station_code would be lost until the next collection
+    # resequences. The `or 0` front-floating is correct for this one function.
+    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
     next_station_found = False
     for stop in sorted_stops:
