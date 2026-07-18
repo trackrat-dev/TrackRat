@@ -1,6 +1,6 @@
 // Core Types
 
-export type TransitSystem = 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA' | 'WMATA' | 'BART' | 'MBTA';
+export type TransitSystem = 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA' | 'WMATA' | 'BART' | 'MBTA' | 'SEPTA_RR' | 'SEPTA_METRO';
 
 export interface Station {
   code: string;
@@ -79,7 +79,7 @@ export interface Train {
     between_stations?: boolean;
   };
   data_freshness: DataFreshness;
-  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA' | 'WMATA' | 'BART' | 'MBTA';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA' | 'WMATA' | 'BART' | 'MBTA' | 'SEPTA_RR' | 'SEPTA_METRO';
   observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
 }
@@ -142,7 +142,7 @@ export interface TrainDetails {
   };
   stops: Stop[];
   data_freshness: DataFreshness;
-  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA' | 'WMATA' | 'BART' | 'MBTA';
+  data_source: 'NJT' | 'AMTRAK' | 'PATH' | 'PATCO' | 'LIRR' | 'MNR' | 'SUBWAY' | 'METRA' | 'WMATA' | 'BART' | 'MBTA' | 'SEPTA_RR' | 'SEPTA_METRO';
   observation_type: 'OBSERVED' | 'SCHEDULED';
   is_cancelled: boolean;
   is_completed: boolean;
