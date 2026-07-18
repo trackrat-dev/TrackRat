@@ -665,7 +665,7 @@ The container performs comprehensive APNS validation at startup:
 
 ### Future Enhancements
 
-1. **🌐 Additional Transit Systems**: SEPTA regional rail, NJ Light Rail
+1. **🌐 Additional Transit Systems**: NJ Light Rail
 2. **🤖 Enhanced ML**: Improved track prediction models with occupancy detection
 3. **📊 Advanced Monitoring**: Grafana dashboards for Prometheus metrics
 4. **⚡ Performance**: Redis caching layer for frequent queries
@@ -704,7 +704,7 @@ The V2 backend is designed for easy contribution:
 ### Future Enhancements
 1. **WebSocket Support**: Real-time updates for connected clients
 2. **GraphQL API**: More flexible querying for complex data needs
-3. **Additional Transit**: SEPTA regional rail support
+3. **Additional Transit**: NJ Light Rail support
 4. **Advanced ML**: Passenger flow analysis and enhanced predictions
 
 ## System Requirements

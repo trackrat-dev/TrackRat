@@ -784,7 +784,7 @@ Live Activities now use the enhanced data for better tracking:
 - **Offline Mode**: Core Data caching for reliability
 - **Interactive Notifications**: Quick actions from alerts
 - **CarPlay Support**: Hands-free train tracking
-- **Additional Transit Systems**: SEPTA regional rail
+- **Additional Transit Systems**: NJ Light Rail
 
 ### Potential Enhancements
 - **Multi-Language Support**: Localization for broader audience

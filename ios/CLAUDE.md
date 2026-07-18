@@ -2,7 +2,7 @@
 
 ## Overview
 
-SwiftUI app for tracking trains across 11 transit systems: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA (DC Metro). Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, multi-leg trip search, and Pro subscription.
+SwiftUI app for tracking trains across 13 transit systems: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA (DC Metro), and SEPTA (Regional Rail + Metro). Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, multi-leg trip search, and Pro subscription.
 
 - **iOS 18.0+** deployment target
 - **Xcode 16.0+** required

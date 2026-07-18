@@ -1,6 +1,6 @@
 # TrackRat
 
-**Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA!**
+**Open source, real-time train tracking for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, and SEPTA (Regional Rail + Metro)!**
 
 [![App Store](https://img.shields.io/badge/App_Store-Download-blue?logo=apple)](https://apps.apple.com/us/app/trackrat/id6746423610)
 [![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
@@ -211,7 +211,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
 
 ### Areas Where Help Is Wanted
 
-- Adding new transit systems (SEPTA, NJ Light Rail, Caltrain, and beyond)
+- Adding new transit systems (NJ Light Rail, Caltrain, and beyond)
 - Improving test coverage
 - Android app development
 - Web app features (maps, charts, offline improvements)

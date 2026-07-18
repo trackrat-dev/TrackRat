@@ -4,7 +4,7 @@ This guide provides comprehensive information for Claude Code when working with 
 
 **Last Updated:** July 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
-**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
+**Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA Regional Rail, SEPTA Metro), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ The V2 backend eliminates the complexity of V1 by:
 - **Minimal API calls**: ~95% reduction through smart caching and scheduling
 - **No consolidation needed**: Unified data model from the start
 - **PostgreSQL**: Production-ready database with async driver and connection pooling
-- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA data sources with extensible architecture
+- **Multi-Transit Support**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, and SEPTA (Regional Rail + Metro) data sources with extensible architecture
 - **Prediction Features**: Track predictions, arrival forecasting, delay/cancellation forecasting, and congestion analysis
 - **API Response Caching**: Intelligent caching system for performance optimization
 
@@ -459,6 +459,8 @@ The system now includes comprehensive transit time analysis:
    - MBTA collector in `collectors/mbta/` (collector.py, client.py)
    - Metra collector in `collectors/metra/` (collector.py, client.py)
    - WMATA collector in `collectors/wmata/` (collector.py, client.py)
+   - SEPTA Regional Rail collector in `collectors/septa_rr/` (collector.py, client.py) — delay-based GTFS-RT, joins static schedule
+   - SEPTA Metro collector in `collectors/septa_metro/` (collector.py, client.py) — subway + trolley, route-filtered GTFS-RT, schedule-first serving
    - Service alerts collector in `collectors/service_alerts.py`
    - MTA shared logic in `collectors/mta_common.py` and `collectors/mta_extensions.py`
    - Base classes in `collectors/base.py`
@@ -764,7 +766,7 @@ asyncio.run(check_tasks())
 
 1. **Enhanced Track Prediction Models**: Improved ML models with occupancy detection
 2. **WebSocket Support**: Real-time updates for clients
-3. **Additional Transit Systems**: SEPTA regional rail, NJ Light Rail, Caltrain
+3. **Additional Transit Systems**: NJ Light Rail, Caltrain
 4. **Advanced Analytics**: Enhanced journey pattern analysis
 5. **GraphQL API**: More efficient client queries
 
