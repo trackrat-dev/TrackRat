@@ -46,6 +46,7 @@ function getAlertTypeLabel(alertType: string): string {
 export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerProps) {
   const [alerts, setAlerts] = useState<ServiceAlert[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [sectionExpanded, setSectionExpanded] = useState(false);
   const [failed, setFailed] = useState(false);
 
   // Stabilize routeIds reference for the polling dependency
@@ -93,47 +94,71 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
     return (order[a.alert_type] ?? 3) - (order[b.alert_type] ?? 3);
   });
 
-  return (
-    <div className="space-y-2 mb-4">
-      {sortedAlerts.map(alert => {
-        const style = getAlertStyle(alert.alert_type);
-        const isExpanded = expandedId === alert.alert_id;
+  // Section is collapsed by default so alert-heavy routes (e.g. HL/NY) don't lead
+  // with a wall of alerts (#1543). The collapsed header is tinted by the
+  // highest-severity alert (sortedAlerts[0]) so an active real-time alert still
+  // stands out without needing to expand.
+  const topStyle = getAlertStyle(sortedAlerts[0].alert_type);
 
-        return (
-          <div
-            key={alert.alert_id}
-            className={`${style.bg} border ${style.border} rounded-xl overflow-hidden`}
-          >
-            <button
-              onClick={() => setExpandedId(isExpanded ? null : alert.alert_id)}
-              className="w-full flex items-start gap-3 p-3 text-left"
-              aria-expanded={isExpanded}
-            >
-              <AlertTypeIcon alertType={alert.alert_type} className={`${style.icon} mt-0.5 shrink-0`} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className={`text-xs font-semibold ${style.icon}`}>
-                    {getAlertTypeLabel(alert.alert_type)}
-                  </span>
-                  {alert.affected_route_ids.length > 0 && (
-                    <span className="text-xs text-text-muted">
-                      {alert.affected_route_ids.slice(0, 3).join(', ')}
-                      {alert.affected_route_ids.length > 3 && ` +${alert.affected_route_ids.length - 3}`}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-text-primary line-clamp-2">{alert.header_text}</p>
+  return (
+    <div className="mb-4">
+      <button
+        onClick={() => setSectionExpanded(prev => !prev)}
+        className={`w-full flex items-center gap-2 p-3 rounded-xl border ${topStyle.bg} ${topStyle.border} text-left transition-all`}
+        aria-expanded={sectionExpanded}
+        aria-label={`${sectionExpanded ? 'Hide' : 'Show'} service alerts (${sortedAlerts.length})`}
+      >
+        <AlertTypeIcon alertType={sortedAlerts[0].alert_type} className={`${topStyle.icon} shrink-0`} />
+        <span className="text-sm font-semibold text-text-primary">
+          {sortedAlerts.length === 1 ? 'Service Alert' : 'Service Alerts'}
+        </span>
+        <span className={`text-xs font-semibold ${topStyle.icon}`}>{sortedAlerts.length}</span>
+        <ChevronIcon direction={sectionExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0 ml-auto" />
+      </button>
+
+      {sectionExpanded && (
+        <div className="space-y-2 mt-2">
+          {sortedAlerts.map(alert => {
+            const style = getAlertStyle(alert.alert_type);
+            const isExpanded = expandedId === alert.alert_id;
+
+            return (
+              <div
+                key={alert.alert_id}
+                className={`${style.bg} border ${style.border} rounded-xl overflow-hidden`}
+              >
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : alert.alert_id)}
+                  className="w-full flex items-start gap-3 p-3 text-left"
+                  aria-expanded={isExpanded}
+                >
+                  <AlertTypeIcon alertType={alert.alert_type} className={`${style.icon} mt-0.5 shrink-0`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className={`text-xs font-semibold ${style.icon}`}>
+                        {getAlertTypeLabel(alert.alert_type)}
+                      </span>
+                      {alert.affected_route_ids.length > 0 && (
+                        <span className="text-xs text-text-muted">
+                          {alert.affected_route_ids.slice(0, 3).join(', ')}
+                          {alert.affected_route_ids.length > 3 && ` +${alert.affected_route_ids.length - 3}`}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-text-primary line-clamp-2">{alert.header_text}</p>
+                  </div>
+                  <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0 mt-0.5" />
+                </button>
+                {isExpanded && alert.description_text && (
+                  <div className="px-3 pb-3 pl-9">
+                    <p className="text-xs text-text-secondary whitespace-pre-line">{alert.description_text}</p>
+                  </div>
+                )}
               </div>
-              <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0 mt-0.5" />
-            </button>
-            {isExpanded && alert.description_text && (
-              <div className="px-3 pb-3 pl-9">
-                <p className="text-xs text-text-secondary whitespace-pre-line">{alert.description_text}</p>
-              </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
