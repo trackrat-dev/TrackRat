@@ -40,9 +40,9 @@ variable "machine_type" {
 }
 
 variable "consolidate_api_lb" {
-  description = "Production cutover switch: when true, tear down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because apiv2.trackrat.net is served by the consolidated webpage LB (infra_v2/terraform-webpage). Keep false until the webpage LB is applied, apiv2 DNS has flipped to the shared IP, and the old forwarding rule has drained — see infra_v2/RUNBOOK-lb-consolidation.md Phase 4. Flipped via a committed default change, not -var, so push-triggered applies stay consistent. No effect on staging."
+  description = "Production cutover switch: when true, tear down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because apiv2.trackrat.net is served by the consolidated webpage LB (infra_v2/terraform-webpage). Flipped to true at runbook Phase 4 (webpage LB applied, apiv2 DNS on the shared IP, old forwarding rule drained) — see infra_v2/RUNBOOK-lb-consolidation.md. Flipped via a committed default change, not -var, so push-triggered applies stay consistent. No effect on staging."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "disk_size_gb" {
