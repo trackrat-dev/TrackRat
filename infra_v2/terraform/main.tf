@@ -34,6 +34,13 @@ locals {
   domain      = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
   use_spot_vm = var.environment == "staging"
 
+  # Staging runs a smaller machine as a cost experiment: t2d-standard-1
+  # (1 vCPU / 4 GB) vs production's var.machine_type (t2d-standard-2, 2 vCPU /
+  # 8 GB). Both stay on the T2D/AMD Milan family for consistent per-core
+  # latency. Revert the experiment by dropping the staging branch of this
+  # ternary (staging then inherits var.machine_type again).
+  machine_type = var.environment == "staging" ? "t2d-standard-1" : var.machine_type
+
   # Once var.consolidate_api_lb is flipped, production's HTTPS frontend (IP,
   # url map, proxies, forwarding rules) is served by the consolidated webpage
   # load balancer in infra_v2/terraform-webpage (apiv2.trackrat.net is

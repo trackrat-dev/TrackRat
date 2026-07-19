@@ -34,7 +34,7 @@ variable "domain" {
 }
 
 variable "machine_type" {
-  description = "GCE machine type. t2d-standard-2 = 2 vCPU / 8 GB on the Tau/AMD Milan family: dedicated physical cores give consistent per-core latency for the FastAPI + colocated Postgres. Reverted from e2-custom-2-4096, whose oversubscribed, variable-platform vCPUs regressed API responsiveness. T2D is fixed-shape (no custom RAM), so RAM is 8 GB though only ~1.1 GB is used."
+  description = "GCE machine type for production. t2d-standard-2 = 2 vCPU / 8 GB on the Tau/AMD Milan family: dedicated physical cores give consistent per-core latency for the FastAPI + colocated Postgres. Reverted from e2-custom-2-4096, whose oversubscribed, variable-platform vCPUs regressed API responsiveness. T2D is fixed-shape (no custom RAM), so RAM is 8 GB though only ~1.1 GB is used. Staging overrides this to t2d-standard-1 via local.machine_type (see main.tf)."
   type        = string
   default     = "t2d-standard-2"
 }

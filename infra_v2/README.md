@@ -135,11 +135,11 @@ Manual deploy from the repo root:
 | `project_id` | trackrat-v2 | GCP project |
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
-| `machine_type` | t2d-standard-2 | VM machine type |
+| `machine_type` | t2d-standard-2 | Production VM machine type (staging overrides to t2d-standard-1 via `local.machine_type`) |
 | `disk_size_gb` | 40 | Persistent disk size |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
 
-**Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability.
+**Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability. Staging also runs a smaller `t2d-standard-1` (1 vCPU / 4 GB) as a cost experiment, while production stays on `t2d-standard-2` (2 vCPU / 8 GB).
 
 ### Outputs
 
