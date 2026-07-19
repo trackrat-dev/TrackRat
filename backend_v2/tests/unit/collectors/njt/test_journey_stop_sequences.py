@@ -896,6 +896,113 @@ class TestCorruptedTimeDataHandling:
         ], f"Expected NY -> SE -> NP, but got {station_codes}"
 
     @pytest.mark.asyncio
+    async def test_schedule_less_stop_with_early_live_time_cannot_displace_origin(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """A schedule-less stop with an implausibly early live time keeps origin at 0.
+
+        Hardening for issue #1535 (follow-up to the #1530 updated_* fallback).
+        The #1530 fallback sorts a schedule-less stop by its earliest live time
+        so a discovery-populated stop (e.g. Secaucus) lands in its geographic
+        slot. But without a lower bound, a stale or bogus live TIME earlier than
+        the origin's scheduled departure would sort the schedule-less stop to
+        sequence 0, displacing the origin.
+
+        Here the origin NY departs at 18:00 (scheduled) and a schedule-less stop
+        carries updated_arrival 17:45 — before the origin. The fallback must be
+        discarded for that stop (its live time is outside the journey's
+        scheduled window), so NY stays at sequence 0 and the bogus stop falls to
+        the end instead of occupying position 0.
+        """
+
+        journey = TrainJourney(
+            train_id="3703",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Matawan",
+            origin_station_code="NY",
+            terminal_station_code="MP",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Origin: New York Penn, scheduled departure 18:00.
+        ny_penn = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=0,
+            scheduled_arrival=None,
+            scheduled_departure=datetime(2024, 1, 1, 18, 0, 0, tzinfo=UTC),
+        )
+        db_session.add(ny_penn)
+
+        # Newark Penn: fully scheduled downstream stop.
+        newark = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NP",
+            station_name="Newark Penn Station",
+            stop_sequence=1,
+            scheduled_arrival=datetime(2024, 1, 1, 18, 18, 0, tzinfo=UTC),
+            scheduled_departure=datetime(2024, 1, 1, 18, 20, 0, tzinfo=UTC),
+        )
+        db_session.add(newark)
+
+        # Schedule-less stop whose only live time (17:45) is BEFORE the origin's
+        # scheduled departure (18:00). This is the #1535 hazard: an implausibly
+        # early live time. It must not sort ahead of the origin.
+        bogus = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="SE",
+            station_name="Secaucus Junction",
+            stop_sequence=None,
+            scheduled_arrival=None,
+            scheduled_departure=None,
+            updated_arrival=datetime(2024, 1, 1, 17, 45, 0, tzinfo=UTC),
+            updated_departure=None,
+        )
+        db_session.add(bogus)
+        await db_session.flush()
+
+        await journey_collector._resequence_stops(db_session, journey)
+        await db_session.flush()
+
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+
+        station_codes = [s.station_code for s in stops]
+        # The origin must stay first; the schedule-less early-live-time stop must
+        # fall to the end rather than occupy sequence 0.
+        assert station_codes[0] == "NY", (
+            "Origin NY must remain at sequence 0; a schedule-less stop with a "
+            f"live time before the origin must not displace it. Got {station_codes}"
+        )
+        assert station_codes == [
+            "NY",
+            "NP",
+            "SE",
+        ], f"Expected NY -> NP -> SE (bogus stop bucketed last), got {station_codes}"
+
+        # Sequences must remain a clean 0..N-1 with no duplicates.
+        sequences = [s.stop_sequence for s in stops]
+        assert sequences == [0, 1, 2], f"Expected [0, 1, 2], got {sequences}"
+        assert len(sequences) == len(
+            set(sequences)
+        ), f"Found duplicate stop_sequence values: {sequences}"
+
+    @pytest.mark.asyncio
     async def test_sequential_inference_with_skipped_departed_flag(
         self, db_session: AsyncSession, journey_collector, mock_njt_client
     ):
