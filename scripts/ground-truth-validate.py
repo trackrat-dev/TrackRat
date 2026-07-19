@@ -12,6 +12,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -1131,6 +1132,34 @@ _SEPTA_RR_QUERY_NAME_OVERRIDES: dict[str, str] = {
     "SEPR90701": "Trenton",               # our "Trenton Transit Center"
 }
 
+# SEPTA's Arrivals API `destination` labels -> internal codes. SEPTA uses terse,
+# inconsistent abbreviations here that differ from both our GTFS names and the
+# API's own board headers (e.g. "Chestnut H East" / "Norristown" for what our
+# config calls "Chestnut Hill East" / "Norristown Elm Street"), so an explicit
+# map keyed on the normalized label is the only reliable resolver. Enumerated
+# from the live feed. Short-turn termini not modeled as route terminals in our
+# topology (e.g. Malvern, Wilmington) are intentionally omitted — trains bound
+# there simply aren't validated.
+_SEPTA_RR_DEST_TO_CODE: dict[str, str] = {
+    "airport": "SEPR90401",
+    "chestnut h east": "SEPR90720",
+    "chestnut h west": "SEPR90801",
+    "cynwyd": "SEPR90001",
+    "doylestown": "SEPR90538",
+    "fox chase": "SEPR90815",
+    "gray 30th street": "SEPR90004",
+    "jefferson": "SEPR90006",
+    "newark": "SEPR90201",
+    "norristown": "SEPR90228",
+    "suburban station": "SEPR90005",
+    "temple u": "SEPR90007",
+    "thorndale": "SEPR90501",
+    "trenton": "SEPR90701",
+    "warminster": "SEPR90417",
+    "wawa": "SEPR90300",
+    "west trenton": "SEPR90327",
+}
+
 
 def _septa_rr_query_name(code: str) -> str:
     """The station name SEPTA's Arrivals API accepts for an internal code."""
@@ -1142,30 +1171,37 @@ def _norm_septa_name(name: str) -> str:
     return " ".join(name.lower().split())
 
 
-def _parse_septa_arrivals_payload(payload: dict) -> tuple[str, list[dict]]:
-    """Extract (septa_short_name, entries) from an Arrivals API response.
+def _collect_septa_arrival_entries(node: Any, out: list[dict]) -> None:
+    """Recursively collect arrival entry dicts from an Arrivals API board body.
 
-    Response shape (one top-level key is the board header):
-        {"<Short> Departures: <ts>": [[{"Northbound": [..]}], [{"Southbound": [..]}]]}
-    The header's short name is SEPTA's canonical label for the station, which is
-    also what appears in each entry's ``destination`` field — so returning it
-    lets the caller learn a short-name -> internal-code map for free.
+    The API is inconsistent about nesting: a board's body is
+    ``[{"Northbound": [..]}, {"Southbound": [..]}]`` when trains are running but
+    ``[[{"Northbound": [..]}], []]`` when sparse. Every real arrival is a dict
+    carrying a ``train_id`` key, so walk the structure and collect those.
+    """
+    if isinstance(node, dict):
+        if "train_id" in node:
+            out.append(node)
+        else:
+            for value in node.values():
+                _collect_septa_arrival_entries(value, out)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_septa_arrival_entries(item, out)
+
+
+def _parse_septa_arrivals_payload(payload: dict) -> list[dict]:
+    """Extract all arrival entries from an Arrivals API response.
+
+    The response has a single top-level key (the board header); its value holds
+    the arrivals in one of the two nesting shapes handled above.
     """
     if not payload:
-        return "", []
+        return []
     header = next(iter(payload))
-    short = header.split(" Departures")[0].strip()
     entries: list[dict] = []
-    for group in payload.get(header) or []:
-        if not isinstance(group, list):
-            continue
-        for wrapper in group:
-            if not isinstance(wrapper, dict):
-                continue
-            for arr_list in wrapper.values():
-                if isinstance(arr_list, list):
-                    entries.extend(a for a in arr_list if isinstance(a, dict))
-    return short, entries
+    _collect_septa_arrival_entries(payload.get(header), entries)
+    return entries
 
 
 def _parse_septa_local_time(value: str, tz: ZoneInfo) -> datetime | None:
@@ -1184,16 +1220,15 @@ def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
     """Fetch SEPTA Regional Rail departures from SEPTA's Arrivals REST API.
 
     Queries each route origin/terminal (the stations run_validation_loop tests)
-    plus the Center City hubs, learns each board's SEPTA short name from its
-    header, then resolves every entry's ``destination`` label back to an internal
-    code via that map. Entries whose destination isn't one of those stations are
-    dropped (safe: reduces coverage, never a false FAIL).
+    plus the Center City hubs, then resolves every entry's ``destination`` label
+    back to an internal code via ``_SEPTA_RR_DEST_TO_CODE``. Entries whose
+    destination isn't one of our route terminals (e.g. short-turns to Malvern or
+    Wilmington) are dropped — safe: reduces coverage, never a false FAIL.
     """
     et = ZoneInfo("America/New_York")
 
-    # Stations to query: route origins/terminals + Center City hubs (common
-    # through-route destinations). Hubs may not be route terminals themselves but
-    # populate the destination resolver.
+    # Stations to query: every route origin/terminal (what run_validation_loop
+    # iterates), plus the Center City hubs so those directions are covered too.
     query_codes: set[str] = set(SEPTA_RR_DISCOVERY_STATIONS)
     for route in get_routes_for_data_source("SEPTA_RR"):
         stations = list(route.stations)
@@ -1201,8 +1236,8 @@ def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
             query_codes.add(stations[0])
             query_codes.add(stations[-1])
 
-    short_name_to_code: dict[str, str] = {}
-    raw_by_code: dict[str, list[dict]] = {}
+    arrivals: list[GroundTruthArrival] = []
+    now = datetime.now(timezone.utc)
 
     client = httpx.Client()
     try:
@@ -1218,48 +1253,44 @@ def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
             except (httpx.HTTPError, ValueError) as e:
                 log_warn(f"SEPTA Arrivals fetch failed for {code}: {e}")
                 continue
-            short, entries = _parse_septa_arrivals_payload(payload)
-            if short:
-                short_name_to_code[_norm_septa_name(short)] = code
-            raw_by_code[code] = entries
+
+            for entry in _parse_septa_arrivals_payload(payload):
+                dest_name = (entry.get("destination") or "").strip()
+                dest_code = _SEPTA_RR_DEST_TO_CODE.get(_norm_septa_name(dest_name))
+                # Skip unresolved destinations and terminating arrivals (dest ==
+                # the board's own station, which has no onward departure).
+                if not dest_code or dest_code == code:
+                    continue
+
+                # Prefer the estimated depart_time; fall back to scheduled.
+                time_str = (
+                    entry.get("depart_time") or entry.get("sched_time") or ""
+                ).strip()
+                expected_time = _parse_septa_local_time(time_str, et)
+                if expected_time is None:
+                    continue
+
+                train_id = (entry.get("train_id") or "").strip()
+                track = (entry.get("track") or "").strip() or None
+                minutes_away = max(
+                    0,
+                    int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60),
+                )
+
+                arrivals.append(
+                    GroundTruthArrival(
+                        station_code=code,
+                        destination_code=dest_code,
+                        expected_time=expected_time,
+                        line_color="",  # Arrivals API exposes a line name, not a color
+                        headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
+                        minutes_away=minutes_away,
+                        train_id=train_id,
+                        track=track,
+                    )
+                )
     finally:
         client.close()
-
-    arrivals: list[GroundTruthArrival] = []
-    now = datetime.now(timezone.utc)
-    for code, entries in raw_by_code.items():
-        for entry in entries:
-            dest_name = (entry.get("destination") or "").strip()
-            dest_code = short_name_to_code.get(_norm_septa_name(dest_name))
-            # Skip unresolved destinations and terminating arrivals (dest == the
-            # board's own station, which has no onward departure).
-            if not dest_code or dest_code == code:
-                continue
-
-            # Prefer the estimated depart_time; fall back to the scheduled time.
-            time_str = (entry.get("depart_time") or entry.get("sched_time") or "").strip()
-            expected_time = _parse_septa_local_time(time_str, et)
-            if expected_time is None:
-                continue
-
-            train_id = (entry.get("train_id") or "").strip()
-            track = (entry.get("track") or "").strip() or None
-            minutes_away = max(
-                0, int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60)
-            )
-
-            arrivals.append(
-                GroundTruthArrival(
-                    station_code=code,
-                    destination_code=dest_code,
-                    expected_time=expected_time,
-                    line_color="",  # Arrivals API exposes a line name, not a color
-                    headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
-                    minutes_away=minutes_away,
-                    train_id=train_id,
-                    track=track,
-                )
-            )
 
     return arrivals
 
