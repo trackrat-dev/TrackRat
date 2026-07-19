@@ -64,7 +64,7 @@ fun ProfileScreen(
                     ProfileActionRow(
                         icon = Icons.Default.Info,
                         text = "Report Issues",
-                        subtitle = "What you write here helps!",
+                        subtitle = "What you write here is automatically worked on!",
                         isExternalLink = true,
                         onClick = { viewModel.openSignalLink() }
                     )
