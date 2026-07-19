@@ -24,6 +24,9 @@ compare_route = gtv.compare_route
 format_delta = gtv.format_delta
 parse_arrival_minutes = gtv.parse_arrival_minutes
 parse_arrival_seconds = gtv.parse_arrival_seconds
+find_stop_order_inversions = gtv.find_stop_order_inversions
+check_njt_stop_order = gtv.check_njt_stop_order
+fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
 
 
 # --- Helpers ---
@@ -611,3 +614,255 @@ class TestCompareRouteFarFuture:
 
         assert len(result.missing) == 1
         assert result.missing[0].minutes_away == 5
+
+
+# --- Tests for find_stop_order_inversions (issue #1538) ---
+
+
+class TestFindStopOrderInversions:
+    """Pure stop-order comparison logic: TrackRat order vs provider geographic order."""
+
+    def test_identical_order_no_inversions(self):
+        order = ["NY", "SE", "NP", "MP"]
+        assert find_stop_order_inversions(order, order) == []
+
+    def test_1530_shape_detected(self):
+        """The #1530 bug: Newark Penn (NP) rendered before Secaucus (SE)."""
+        tr = ["NY", "NP", "SE"]  # discovery-created SE shoved to the end in TrackRat
+        njt = ["NY", "SE", "NP"]  # provider's geographic order
+        assert find_stop_order_inversions(tr, njt) == [("NP", "SE")]
+
+    def test_reverse_order_flags_each_adjacent_pair(self):
+        tr = ["MP", "NP", "SE", "NY"]
+        njt = ["NY", "SE", "NP", "MP"]
+        # Every adjacent pair in the fully-reversed common subsequence is inverted.
+        assert find_stop_order_inversions(tr, njt) == [
+            ("MP", "NP"),
+            ("NP", "SE"),
+            ("SE", "NY"),
+        ]
+
+    def test_ignores_stations_not_in_reference(self):
+        """A TrackRat-only station (not in the provider list) is ignored, not flagged."""
+        tr = ["NY", "XX", "SE", "NP"]  # XX only in TrackRat
+        njt = ["NY", "SE", "NP"]
+        assert find_stop_order_inversions(tr, njt) == []
+
+    def test_ignores_stations_not_in_trackrat(self):
+        """A reference-only station is ignored; remaining common order is consistent."""
+        tr = ["NY", "SE", "NP"]
+        njt = ["NY", "SE", "EX", "NP"]  # EX only in the provider list
+        assert find_stop_order_inversions(tr, njt) == []
+
+    def test_common_subset_inversion_still_detected(self):
+        tr = ["NY", "NP", "XX", "SE"]  # XX ignored; NP before SE is still an inversion
+        njt = ["NY", "SE", "NP"]
+        assert find_stop_order_inversions(tr, njt) == [("NP", "SE")]
+
+    def test_empty_trackrat_order(self):
+        assert find_stop_order_inversions([], ["NY", "SE", "NP"]) == []
+
+    def test_empty_reference_order(self):
+        assert find_stop_order_inversions(["NY", "SE", "NP"], []) == []
+
+    def test_duplicate_codes_use_first_occurrence(self):
+        """A repeated code keeps its first-occurrence position on both sides."""
+        tr = ["NY", "SE", "SE", "NP"]  # SE duplicated in TrackRat
+        njt = ["NY", "SE", "NP"]
+        assert find_stop_order_inversions(tr, njt) == []
+
+    def test_single_common_station_no_inversion(self):
+        assert find_stop_order_inversions(["NY", "AA"], ["NY", "BB"]) == []
+
+
+# --- Tests for check_njt_stop_order orchestration (issue #1538) ---
+
+
+class TestCheckNjtStopOrder:
+    """Orchestration: sampling, FAIL vs WARN, and PASS counting."""
+
+    @pytest.fixture(autouse=True)
+    def reset_counters(self, monkeypatch):
+        monkeypatch.setattr(gtv, "PASS_COUNT", 0)
+        monkeypatch.setattr(gtv, "FAIL_COUNT", 0)
+        monkeypatch.setattr(gtv, "WARN_COUNT", 0)
+        monkeypatch.setattr(gtv, "SKIP_COUNT", 0)
+        monkeypatch.setattr(gtv, "httpx", _StubHttpx())
+
+    def test_inversion_reported_as_fail_by_default(self, monkeypatch):
+        monkeypatch.setattr(
+            gtv, "fetch_njt_train_stop_orders", lambda ids: {"3701": ["NY", "SE", "NP"]}
+        )
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_train_stop_order",
+            lambda *_a, **_kw: ["NY", "NP", "SE"],  # SE after NP -> inversion
+        )
+        gt = [_gt(train_id="3701")]
+
+        check_njt_stop_order("http://test", gt, verbose=True, warn_only=False)
+
+        assert gtv.FAIL_COUNT == 1
+        assert gtv.WARN_COUNT == 0
+        assert gtv.PASS_COUNT == 0
+
+    def test_inversion_reported_as_warn_when_flagged(self, monkeypatch):
+        monkeypatch.setattr(
+            gtv, "fetch_njt_train_stop_orders", lambda ids: {"3701": ["NY", "SE", "NP"]}
+        )
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_train_stop_order",
+            lambda *_a, **_kw: ["NY", "NP", "SE"],
+        )
+        gt = [_gt(train_id="3701")]
+
+        check_njt_stop_order("http://test", gt, verbose=False, warn_only=True)
+
+        assert gtv.WARN_COUNT == 1
+        assert gtv.FAIL_COUNT == 0
+        assert gtv.PASS_COUNT == 0
+
+    def test_correct_order_is_pass(self, monkeypatch):
+        monkeypatch.setattr(
+            gtv, "fetch_njt_train_stop_orders", lambda ids: {"3701": ["NY", "SE", "NP"]}
+        )
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_train_stop_order",
+            lambda *_a, **_kw: ["NY", "SE", "NP"],
+        )
+        gt = [_gt(train_id="3701")]
+
+        check_njt_stop_order("http://test", gt, verbose=False, warn_only=False)
+
+        assert gtv.PASS_COUNT == 1
+        assert gtv.FAIL_COUNT == 0
+        assert gtv.WARN_COUNT == 0
+
+    def test_no_train_ids_is_noop(self, monkeypatch):
+        called = {"njt": False}
+
+        def _should_not_call(_ids):
+            called["njt"] = True
+            return {}
+
+        monkeypatch.setattr(gtv, "fetch_njt_train_stop_orders", _should_not_call)
+        gt = [_gt()]  # no train_id
+
+        check_njt_stop_order("http://test", gt, verbose=False, warn_only=False)
+
+        assert called["njt"] is False
+        assert gtv.FAIL_COUNT == 0
+        assert gtv.WARN_COUNT == 0
+        assert gtv.PASS_COUNT == 0
+
+    def test_unavailable_stop_list_is_skipped_not_failed(self, monkeypatch):
+        # Provider stop list unavailable for the sampled train -> omitted from map.
+        monkeypatch.setattr(gtv, "fetch_njt_train_stop_orders", lambda ids: {})
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_train_stop_order",
+            lambda *_a, **_kw: ["NY", "NP", "SE"],
+        )
+        gt = [_gt(train_id="3701")]
+
+        check_njt_stop_order("http://test", gt, verbose=False, warn_only=False)
+
+        assert gtv.FAIL_COUNT == 0
+        assert gtv.WARN_COUNT == 0
+        assert gtv.PASS_COUNT == 0
+
+    def test_sampling_capped_by_sample_size(self, monkeypatch):
+        captured = {}
+
+        def _capture(ids):
+            captured["ids"] = ids
+            return {}
+
+        monkeypatch.setattr(gtv, "fetch_njt_train_stop_orders", _capture)
+        gt = [_gt(train_id=str(9000 + i)) for i in range(20)]
+
+        check_njt_stop_order(
+            "http://test", gt, verbose=False, warn_only=False, sample_size=5
+        )
+
+        assert len(captured["ids"]) == 5
+
+
+# --- Tests for fetch_trackrat_train_stop_order payload parsing (issue #1538) ---
+
+
+class _FakeResponse:
+    """Minimal httpx.Response stand-in for parsing tests (no mocks of gtv)."""
+
+    def __init__(self, payload: dict):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _FakeClient:
+    """httpx.Client stand-in returning a fixed TrainDetailsResponse payload."""
+
+    def __init__(self, payload: dict):
+        self._payload = payload
+
+    def get(self, url, timeout=None):
+        return _FakeResponse(self._payload)
+
+
+class TestFetchTrackratTrainStopOrder:
+    """The /api/v2/trains/{id} response nests stops under ``train`` (issue #1538).
+
+    Reading them from the top level silently returns [] for every real
+    response, turning the whole stop-order check into a production no-op while
+    the monkeypatched orchestration tests stay green. These tests exercise the
+    real parser against the actual TrainDetailsResponse shape.
+    """
+
+    def test_reads_stops_from_train_payload_in_sequence_order(self):
+        # Real response shape: {"train": {"stops": [...]}}, out of order to
+        # prove the sort by stop_sequence is applied.
+        payload = {
+            "train": {
+                "stops": [
+                    {"station": {"code": "NP"}, "stop_sequence": 2},
+                    {"station": {"code": "NY"}, "stop_sequence": 0},
+                    {"station": {"code": "SE"}, "stop_sequence": 1},
+                ]
+            }
+        }
+        order = fetch_trackrat_train_stop_order(
+            _FakeClient(payload), "http://test", "3701"
+        )
+        assert order == ["NY", "SE", "NP"], (
+            "stops must be read from train.stops and sorted by stop_sequence; "
+            f"got {order}"
+        )
+
+    def test_top_level_stops_are_ignored(self):
+        # A well-formed response has no top-level "stops"; the old code read
+        # this and got []. Assert we do not regress to that path.
+        payload = {
+            "train": {
+                "stops": [
+                    {"station": {"code": "NY"}, "stop_sequence": 0},
+                    {"station": {"code": "TR"}, "stop_sequence": 1},
+                ]
+            }
+        }
+        order = fetch_trackrat_train_stop_order(
+            _FakeClient(payload), "http://test", "3701"
+        )
+        assert order == ["NY", "TR"]
+
+    def test_missing_train_key_returns_empty_list(self):
+        order = fetch_trackrat_train_stop_order(
+            _FakeClient({}), "http://test", "3701"
+        )
+        assert order == []

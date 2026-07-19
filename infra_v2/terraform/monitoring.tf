@@ -277,3 +277,63 @@ resource "google_monitoring_alert_policy" "table_vacuum_health" {
     time_sleep.wait_vacuum_health_metric,
   ]
 }
+
+# Alert policy - fires when NJT stop-ordering warnings spike.
+# Backed by google_logging_metric.stop_order_warnings (see metrics.tf).
+# Both origin_station_not_first and stops_missing_scheduled_times fire per
+# journey per collection; a low baseline is expected (a discovery-created stop
+# legitimately lacks scheduled times for one cycle), so the threshold sits well
+# above that baseline over a 30-minute window (two NJT collection cycles). A
+# sustained spike — or the origin-displacement regression behind #1530 that hits
+# many trains at once — pages, while occasional single occurrences do not.
+resource "time_sleep" "wait_stop_order_metric" {
+  count = var.environment == "production" ? 1 : 0
+
+  depends_on      = [google_logging_metric.stop_order_warnings]
+  create_duration = "60s"
+
+  triggers = {
+    metric_name = google_logging_metric.stop_order_warnings[0].name
+  }
+}
+
+resource "google_monitoring_alert_policy" "stop_order_warnings" {
+  count = var.environment == "production" ? 1 : 0
+
+  display_name = "NJT Stop-Order Warnings (spike)"
+  combiner     = "OR"
+
+  conditions {
+    display_name = "Stop-ordering warnings above baseline"
+
+    condition_threshold {
+      filter          = "resource.type = \"gce_instance\" AND metric.type = \"logging.googleapis.com/user/${google_logging_metric.stop_order_warnings[0].name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 15
+      duration        = "0s"
+
+      # stop_order_warnings is a DELTA/INT64 counter. ALIGN_SUM totals every
+      # warning event within the 30-minute window (ALIGN_DELTA only reports the
+      # boundary-bucket change, which can undercount a sustained spike); REDUCE_SUM
+      # then folds both events into one count. Mirrors the provider_auth_failures
+      # policy exactly, so the condition fires on the aggregate ordering-warning
+      # rate regardless of which event dominates.
+      aggregations {
+        alignment_period     = "1800s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  notification_channels = [google_monitoring_notification_channel.email[0].name]
+
+  alert_strategy {
+    auto_close = "1800s"
+  }
+
+  depends_on = [
+    google_project_service.apis["monitoring.googleapis.com"],
+    time_sleep.wait_stop_order_metric,
+  ]
+}
