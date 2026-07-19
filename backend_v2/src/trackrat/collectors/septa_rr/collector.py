@@ -42,6 +42,14 @@ _DEFAULT_LINE_COLOR = "#4F758B"  # SEPTA Regional Rail blue
 # well within the scheduler task budget so a hung upstream can't starve it.
 _FEED_FETCH_TIMEOUT_SECONDS = 60.0
 
+# Hour (ET) at which the operating day rolls over for schedule resolution.
+# SEPTA RR service days run past midnight (latest scheduled arrival 01:33) and
+# the next day's first train departs 03:49, so nothing is ever running between
+# those times. Anchoring the rollover inside that gap means a trip seen before
+# the cutoff can only belong to the previous service day, and one seen after it
+# can only belong to the current day. See ``_resolve_static_schedule``.
+_SERVICE_DAY_ROLLOVER_HOUR = 3
+
 
 def _generate_train_id(trip_id: str) -> str:
     """Derive a stable train id from a SEPTA trip_id.
@@ -227,13 +235,29 @@ class SeptaRailCollector:
         schedule-version tag bound to the ``service_id``, *not* the operating date —
         it is weeks stale and identical across many days, so it must never be used to
         look up active services. The feed also carries no ``start_date``, so the
-        operating day comes from the wall clock. A trip still in the feed just after
-        midnight belongs to the previous service day (SEPTA RR runs past midnight), so
-        today is tried first, then yesterday. Returns the matched date and its stops,
-        or ``(None, None)`` when neither day has the trip in the static schedule.
+        operating day comes from the wall clock.
+
+        Ordering matters: before ``_SERVICE_DAY_ROLLOVER_HOUR`` the only trains in the
+        feed are the tail of *yesterday's* service day, so yesterday must be tried
+        first. Trying today first would silently win, because SEPTA's weekday
+        ``service_id``s (e.g. SID189324, Mon–Fri) are active on both sides of a
+        weeknight midnight — and since ``get_static_stop_times`` anchors every stop
+        time to the date it is given, matching the wrong day shifts the entire
+        reconstructed schedule ~24h into the future and files the train under a
+        duplicate ``journey_date``.
+
+        Returns the matched date and its stops, or ``(None, None)`` when neither day
+        has the trip in the static schedule.
         """
-        today = now_et().date()
-        for candidate in (today, today - timedelta(days=1)):
+        now = now_et()
+        today = now.date()
+        yesterday = today - timedelta(days=1)
+        candidates = (
+            (yesterday, today)
+            if now.hour < _SERVICE_DAY_ROLLOVER_HOUR
+            else (today, yesterday)
+        )
+        for candidate in candidates:
             static_stops = await self._gtfs_service.get_static_stop_times(
                 session, DATA_SOURCE, trip.trip_id, candidate
             )

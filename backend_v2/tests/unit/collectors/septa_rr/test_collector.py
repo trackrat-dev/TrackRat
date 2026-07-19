@@ -81,14 +81,34 @@ class TestResolveStaticSchedule:
 
     SEPTA RR trip_ids embed a stale schedule-version date bound to the service_id
     (e.g. ``_20260621_`` served weeks later); using it to look up active GTFS
-    services returns nothing, which silently dropped ~90% of live trains. These
-    tests pin that the join uses today (then yesterday for post-midnight service
-    days) and never the embedded date.
+    services returns nothing, which silently dropped ~90% of live trains.
+
+    Which wall-clock day is tried *first* matters just as much. SEPTA's weekday
+    service_ids (SID189324 et al., Mon-Fri) are active on both sides of a weeknight
+    midnight, so a post-midnight train matches today's schedule too. Because
+    ``get_static_stop_times`` anchors every stop time to the date it is handed,
+    resolving to the wrong day shifts the whole reconstructed journey ~24h forward
+    and files it under a duplicate ``journey_date``. The ordering tests below
+    therefore make BOTH days match — the real production shape — so a regression to
+    unconditional today-first fails them instead of passing on a rigged stub.
     """
 
     @pytest.fixture
     def collector(self):
         return SeptaRailCollector(client=AsyncMock(spec=SeptaRailClient))
+
+    @staticmethod
+    def _stub_days(collector, matching_dates, stops):
+        """Stub the GTFS lookup to match ``matching_dates``; record query order."""
+        seen_dates: list[date] = []
+
+        async def fake_get(_session, _source, _trip_id, target_date):
+            seen_dates.append(target_date)
+            return stops if target_date in matching_dates else []
+
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(side_effect=fake_get)
+        return seen_dates
 
     @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
@@ -121,16 +141,20 @@ class TestResolveStaticSchedule:
 
     @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
-    async def test_falls_back_to_yesterday_for_post_midnight(self, mock_now, collector):
-        """A train still in the feed after midnight belongs to yesterday's service."""
-        mock_now.return_value = ET.localize(datetime(2026, 7, 19, 0, 15, 0))
+    async def test_prefers_yesterday_before_rollover_when_both_days_match(
+        self, mock_now, collector
+    ):
+        """Post-midnight, yesterday must win even though today also matches.
+
+        The production case: 00:15 on a Tuesday, a Monday-night train still in the
+        feed on a Mon-Fri service_id that is active Tuesday too. Today-first would
+        match Tuesday and shift the whole journey ~24h forward, so yesterday must be
+        queried first and today must never be reached.
+        """
+        mock_now.return_value = ET.localize(datetime(2026, 7, 21, 0, 15, 0))  # Tuesday
         stops = [_static_stop("SEPR90801", 1, _BASE)]
-
-        async def fake_get(_session, _source, _trip_id, target_date):
-            return stops if target_date == date(2026, 7, 18) else []
-
-        collector._gtfs_service = MagicMock()
-        collector._gtfs_service.get_static_stop_times = AsyncMock(side_effect=fake_get)
+        both = {date(2026, 7, 20), date(2026, 7, 21)}
+        seen_dates = self._stub_days(collector, both, stops)
 
         trip = _trip(
             [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
@@ -139,8 +163,105 @@ class TestResolveStaticSchedule:
             AsyncMock(), trip
         )
 
-        assert resolved_date == date(2026, 7, 18)
+        assert resolved_date == date(2026, 7, 20), (
+            "a 00:15 train belongs to the previous service day, but resolved to "
+            f"{resolved_date}"
+        )
         assert resolved_stops == stops
+        assert seen_dates == [date(2026, 7, 20)], (
+            "yesterday must be queried first and win outright before the rollover; "
+            f"query order was {seen_dates}"
+        )
+
+    @pytest.mark.asyncio
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    async def test_prefers_today_after_rollover_when_both_days_match(
+        self, mock_now, collector
+    ):
+        """Mid-afternoon, today must win even though yesterday also matches."""
+        mock_now.return_value = ET.localize(datetime(2026, 7, 21, 15, 0, 0))
+        stops = [_static_stop("SEPR90801", 1, _BASE)]
+        both = {date(2026, 7, 20), date(2026, 7, 21)}
+        seen_dates = self._stub_days(collector, both, stops)
+
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        resolved_date, resolved_stops = await collector._resolve_static_schedule(
+            AsyncMock(), trip
+        )
+
+        assert resolved_date == date(2026, 7, 21)
+        assert resolved_stops == stops
+        assert seen_dates == [date(2026, 7, 21)], (
+            f"today must win outright after the rollover; query order was {seen_dates}"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "hour,expected_first",
+        [
+            (0, date(2026, 7, 20)),  # 00:00 — yesterday's service day still running
+            (1, date(2026, 7, 20)),  # 01:33 is the latest scheduled arrival
+            (2, date(2026, 7, 20)),  # dead zone, no train running either way
+            (3, date(2026, 7, 21)),  # rollover: first departure of the day is 03:49
+            (4, date(2026, 7, 21)),
+            (23, date(2026, 7, 21)),
+        ],
+    )
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    async def test_rollover_boundary_is_inside_the_service_gap(
+        self, mock_now, collector, hour, expected_first
+    ):
+        """The 03:00 rollover sits in the 01:33-03:49 gap when nothing is running.
+
+        Pins the constant against both failure modes: rolling over too early would
+        mis-assign trains still finishing yesterday's service day, too late would
+        mis-assign the 03:49 first departures of today.
+        """
+        mock_now.return_value = ET.localize(datetime(2026, 7, 21, hour, 0, 0))
+        stops = [_static_stop("SEPR90801", 1, _BASE)]
+        both = {date(2026, 7, 20), date(2026, 7, 21)}
+        seen_dates = self._stub_days(collector, both, stops)
+
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        resolved_date, _ = await collector._resolve_static_schedule(AsyncMock(), trip)
+
+        assert resolved_date == expected_first, (
+            f"at {hour:02d}:00 ET the operating day must resolve to {expected_first}, "
+            f"got {resolved_date}"
+        )
+        assert seen_dates == [expected_first]
+
+    @pytest.mark.asyncio
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    async def test_falls_through_to_today_before_rollover_when_yesterday_missing(
+        self, mock_now, collector
+    ):
+        """Before the rollover, a yesterday miss still falls through to today.
+
+        Covers the service_id boundary (e.g. Sunday 00:15, where the Saturday-only
+        service that ran the train is no longer active) — best effort beats dropping
+        the trip entirely.
+        """
+        mock_now.return_value = ET.localize(datetime(2026, 7, 19, 0, 15, 0))
+        stops = [_static_stop("SEPR90801", 1, _BASE)]
+        seen_dates = self._stub_days(collector, {date(2026, 7, 19)}, stops)
+
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        resolved_date, resolved_stops = await collector._resolve_static_schedule(
+            AsyncMock(), trip
+        )
+
+        assert resolved_date == date(2026, 7, 19)
+        assert resolved_stops == stops
+        assert seen_dates == [date(2026, 7, 18), date(2026, 7, 19)], (
+            f"yesterday must be tried before today, got {seen_dates}"
+        )
 
     @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
