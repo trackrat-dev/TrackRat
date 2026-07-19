@@ -1166,8 +1166,14 @@ final class RouteStatusViewModel: ObservableObject {
             for system in systemsToFetch {
                 group.addTask {
                     do {
+                        // Use the same 2-hour window as the full congestion map
+                        // (CongestionMapView / JourneyCongestionMapView) so a segment
+                        // lands in the same congestion tier — and therefore the same
+                        // color — in both places. A shorter window here aggregates
+                        // fewer trains and can shift the tier, showing a different hue
+                        // for the same route (issue #1557).
                         let response = try await APIService.shared.fetchCongestionData(
-                            timeWindowHours: 1,
+                            timeWindowHours: 2,
                             maxPerSegment: 100,
                             dataSource: system
                         )
