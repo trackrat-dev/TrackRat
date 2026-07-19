@@ -106,7 +106,7 @@ The E2E script prints response bodies on HTTP errors and flags slow responses (>
 **Ground Truth Validation:**
 
 Compares TrackRat departures against raw transit provider APIs to verify data quality.
-Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA.
+Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA, SEPTA_RR.
 
 ```bash
 cd backend_v2
@@ -131,6 +131,11 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbo
 
 # WMATA (needs token via TRACKRAT_WMATA_API_KEY or WMATA_API_KEY env var)
 poetry run python3 ../scripts/ground-truth-validate.py --provider WMATA --verbose
+
+# SEPTA Regional Rail (no auth; ground truth is SEPTA's rider-facing Arrivals REST
+# API, since the GTFS-RT feed TrackRat consumes is delay-only. SEPTA Metro is
+# schedule-first with no independent real-time departure API, so it is not covered.)
+poetry run python3 ../scripts/ground-truth-validate.py --provider SEPTA_RR --verbose
 
 # All providers at once
 poetry run python3 ../scripts/ground-truth-validate.py --all --verbose

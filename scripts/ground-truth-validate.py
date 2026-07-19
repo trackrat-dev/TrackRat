@@ -28,6 +28,7 @@ from trackrat.config.stations import (  # noqa: E402
     DISCOVERY_STATIONS,
     AMTRAK_TO_INTERNAL_STATION_MAP,
     PATH_RIDEPATH_API_TO_INTERNAL_MAP,
+    SEPTA_RR_DISCOVERY_STATIONS,
     WMATA_STATION_NAMES,
     get_station_code_by_name,
     get_station_name,
@@ -1110,6 +1111,159 @@ def fetch_wmata_arrivals(client: httpx.Client, api_key: str) -> list[GroundTruth
     return arrivals
 
 
+# --- Fetch ground truth from SEPTA Regional Rail (Arrivals REST API) ---
+
+SEPTA_ARRIVALS_API_URL = "https://www3.septa.org/api/Arrivals/index.php"
+
+# SEPTA's Regional Rail TripUpdates GTFS-RT feed is delay-only (no absolute
+# times), so it can't serve as independent ground truth without re-running the
+# collector's static-schedule join. Instead we use SEPTA's rider-facing Arrivals
+# REST API — a per-station departure board with train_id, scheduled + estimated
+# depart times, and track — which is a genuinely independent source.
+#
+# A few internal station names aren't accepted verbatim by the Arrivals API
+# (it's picky about spelling); map those codes to the exact query string SEPTA
+# expects. Every other code uses get_station_name() directly.
+_SEPTA_RR_QUERY_NAME_OVERRIDES: dict[str, str] = {
+    "SEPR90004": "30th Street Station",   # our "Gray 30th St Station"
+    "SEPR90201": "Newark",                # our "Newark DE"
+    "SEPR90401": "Airport Terminal E-F",  # our "Airport Terminals E & F"
+    "SEPR90701": "Trenton",               # our "Trenton Transit Center"
+}
+
+
+def _septa_rr_query_name(code: str) -> str:
+    """The station name SEPTA's Arrivals API accepts for an internal code."""
+    return _SEPTA_RR_QUERY_NAME_OVERRIDES.get(code, get_station_name(code))
+
+
+def _norm_septa_name(name: str) -> str:
+    """Normalize a SEPTA station name for matching (lowercase, collapse spaces)."""
+    return " ".join(name.lower().split())
+
+
+def _parse_septa_arrivals_payload(payload: dict) -> tuple[str, list[dict]]:
+    """Extract (septa_short_name, entries) from an Arrivals API response.
+
+    Response shape (one top-level key is the board header):
+        {"<Short> Departures: <ts>": [[{"Northbound": [..]}], [{"Southbound": [..]}]]}
+    The header's short name is SEPTA's canonical label for the station, which is
+    also what appears in each entry's ``destination`` field — so returning it
+    lets the caller learn a short-name -> internal-code map for free.
+    """
+    if not payload:
+        return "", []
+    header = next(iter(payload))
+    short = header.split(" Departures")[0].strip()
+    entries: list[dict] = []
+    for group in payload.get(header) or []:
+        if not isinstance(group, list):
+            continue
+        for wrapper in group:
+            if not isinstance(wrapper, dict):
+                continue
+            for arr_list in wrapper.values():
+                if isinstance(arr_list, list):
+                    entries.extend(a for a in arr_list if isinstance(a, dict))
+    return short, entries
+
+
+def _parse_septa_local_time(value: str, tz: ZoneInfo) -> datetime | None:
+    """Parse a SEPTA local timestamp ('YYYY-MM-DD HH:MM:SS.000') as tz-aware ET."""
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=tz)
+        except ValueError:
+            continue
+    return None
+
+
+def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
+    """Fetch SEPTA Regional Rail departures from SEPTA's Arrivals REST API.
+
+    Queries each route origin/terminal (the stations run_validation_loop tests)
+    plus the Center City hubs, learns each board's SEPTA short name from its
+    header, then resolves every entry's ``destination`` label back to an internal
+    code via that map. Entries whose destination isn't one of those stations are
+    dropped (safe: reduces coverage, never a false FAIL).
+    """
+    et = ZoneInfo("America/New_York")
+
+    # Stations to query: route origins/terminals + Center City hubs (common
+    # through-route destinations). Hubs may not be route terminals themselves but
+    # populate the destination resolver.
+    query_codes: set[str] = set(SEPTA_RR_DISCOVERY_STATIONS)
+    for route in get_routes_for_data_source("SEPTA_RR"):
+        stations = list(route.stations)
+        if stations:
+            query_codes.add(stations[0])
+            query_codes.add(stations[-1])
+
+    short_name_to_code: dict[str, str] = {}
+    raw_by_code: dict[str, list[dict]] = {}
+
+    client = httpx.Client()
+    try:
+        for code in sorted(query_codes):
+            try:
+                resp = client.get(
+                    SEPTA_ARRIVALS_API_URL,
+                    params={"station": _septa_rr_query_name(code), "results": 10},
+                    timeout=15,
+                )
+                resp.raise_for_status()
+                payload = resp.json()
+            except (httpx.HTTPError, ValueError) as e:
+                log_warn(f"SEPTA Arrivals fetch failed for {code}: {e}")
+                continue
+            short, entries = _parse_septa_arrivals_payload(payload)
+            if short:
+                short_name_to_code[_norm_septa_name(short)] = code
+            raw_by_code[code] = entries
+    finally:
+        client.close()
+
+    arrivals: list[GroundTruthArrival] = []
+    now = datetime.now(timezone.utc)
+    for code, entries in raw_by_code.items():
+        for entry in entries:
+            dest_name = (entry.get("destination") or "").strip()
+            dest_code = short_name_to_code.get(_norm_septa_name(dest_name))
+            # Skip unresolved destinations and terminating arrivals (dest == the
+            # board's own station, which has no onward departure).
+            if not dest_code or dest_code == code:
+                continue
+
+            # Prefer the estimated depart_time; fall back to the scheduled time.
+            time_str = (entry.get("depart_time") or entry.get("sched_time") or "").strip()
+            expected_time = _parse_septa_local_time(time_str, et)
+            if expected_time is None:
+                continue
+
+            train_id = (entry.get("train_id") or "").strip()
+            track = (entry.get("track") or "").strip() or None
+            minutes_away = max(
+                0, int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60)
+            )
+
+            arrivals.append(
+                GroundTruthArrival(
+                    station_code=code,
+                    destination_code=dest_code,
+                    expected_time=expected_time,
+                    line_color="",  # Arrivals API exposes a line name, not a color
+                    headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
+                    minutes_away=minutes_away,
+                    train_id=train_id,
+                    track=track,
+                )
+            )
+
+    return arrivals
+
+
 # --- Provider-specific runners ---
 
 
@@ -1337,6 +1491,35 @@ def run_wmata_validation(base_url: str, tolerance: float, verbose: bool = False,
     print_summary(route_directions_tested)
 
 
+def run_septa_rr_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120, far_future: int = 12) -> None:
+    """Run ground truth validation for SEPTA Regional Rail."""
+    _print_header("SEPTA_RR", base_url, tolerance, gt_window)
+    et = ZoneInfo("America/New_York")
+
+    gt_arrivals = fetch_septa_rr_ground_truth()
+    if not gt_arrivals:
+        if FAIL_COUNT == 0:
+            log_warn("No departures from SEPTA Arrivals API (overnight / off-peak?)")
+        print(f"\nNote: Fetched 0 departures from SEPTA Arrivals API")
+        print_summary(0)
+        return
+    print(f"Note: Fetched {len(gt_arrivals)} departures from SEPTA Arrivals API")
+
+    if verbose:
+        print(f"\n{BOLD}--- Ground Truth Departures ---{NC}")
+        for a in sorted(gt_arrivals, key=lambda x: (x.station_code, x.expected_time)):
+            time_str = a.expected_time.astimezone(et).strftime("%H:%M:%S")
+            track_str = f"  track={a.track}" if a.track else ""
+            id_str = f"  id={a.train_id}" if a.train_id else ""
+            print(
+                f"  {a.station_code} -> {a.destination_code}  "
+                f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{id_str}{track_str}'
+            )
+
+    route_directions_tested = run_validation_loop(gt_arrivals, "SEPTA_RR", base_url, tolerance, verbose, gt_window, far_future)
+    print_summary(route_directions_tested)
+
+
 # --- Main ---
 
 
@@ -1353,7 +1536,7 @@ def main() -> None:
     parser.add_argument(
         "--provider",
         default="PATH",
-        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR", "SUBWAY", "WMATA"],
+        choices=["PATH", "NJT", "AMTRAK", "LIRR", "MNR", "SUBWAY", "WMATA", "SEPTA_RR"],
         help="Transit provider to validate (default: PATH)",
     )
     parser.add_argument(
@@ -1394,6 +1577,7 @@ def main() -> None:
         "MNR": run_mnr_validation,
         "SUBWAY": run_subway_validation,
         "WMATA": run_wmata_validation,
+        "SEPTA_RR": run_septa_rr_validation,
     }
 
     if args.all:
